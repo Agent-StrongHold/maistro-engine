@@ -482,3 +482,367 @@ src/maistro/
 Tested: 13 files (~910 lines)
 Untested: 17 files (~1,468 lines, 62%)
 ```
+
+---
+
+## Appendix F: Deep-Dive — Actual Bugs, Race Conditions, and Hollow Tests
+
+This addendum covers problems the broad-scope audit identified as category risks but didn't pin to specific lines of code. Every item below is a concrete bug, race condition, logic error, or test that compiles and passes but proves nothing useful.
+
+---
+
+### F.1 Actual Bugs (Code That Is Wrong Right Now)
+
+#### F.1.1 `write_file()` heredoc injection — command injection in sandbox
+
+**File:** `src/maistro/tools/sandbox/docker.py:65-68`
+
+```python
+exit_code, output = await self.exec(
+    f"cat > '{full_path}' << 'MAISTRO_EOF'\n{content}\nMAISTRO_EOF"
+)
+```
+
+If `content` contains the literal string `MAISTRO_EOF` on its own line, the heredoc terminates early and the remainder executes as shell commands inside the container. This is a **command injection vulnerability inside the sandbox**. While the sandbox has cap-drop/network isolation, an attacker-controlled file write could still:
+- Modify other files in `/workspace`
+- Exfiltrate data via the remaining capabilities (CHOWN, SETUID, SETGID)
+- Corrupt the workspace state used by subsequent agent operations
+
+**No test exists for this.** Zero tests cover `SandboxContainer` at all.
+
+**Fix:** Use `docker cp` with stdin piping, or escape/replace `MAISTRO_EOF` in content before interpolation.
+
+---
+
+#### F.1.2 `read_file()` path injection — reads arbitrary container files
+
+**File:** `src/maistro/tools/sandbox/docker.py:50-56`
+
+```python
+async def read_file(self, path: str) -> str:
+    full_path = f"{self.workspace_container}/{path}" if not path.startswith("/") else path
+    exit_code, output = await self.exec(f"cat '{full_path}'")
+```
+
+If `path` starts with `/`, the workspace prefix is skipped entirely — the agent can read any file inside the container (`/etc/passwd`, `/proc/self/environ`, etc.). The single-quote wrapping is also trivially bypassed with `'; cat /etc/shadow; echo '` in the path argument.
+
+Similarly, `write_file()` at line 58-70 has the same absolute-path bypass.
+
+**No test exists.** The MCP server (`sandbox/server.py`) passes user input directly to these methods with no validation.
+
+---
+
+#### F.1.3 `sandbox_grep()` and `sandbox_glob()` — shell injection via pattern argument
+
+**File:** `src/maistro/tools/sandbox/server.py:79,93-95`
+
+```python
+_, output = await container.exec(f"find /workspace -path '/workspace/{pattern}' ...")
+_, output = await container.exec(f"grep -rn '{pattern}' /workspace/{path} ...")
+```
+
+The `pattern` and `path` parameters are interpolated directly into shell commands with single-quote wrapping only. A pattern like `'; rm -rf /workspace; echo '` breaks out of the quotes. These are MCP tools called by AI agents — the input comes from LLM output, which is untrusted.
+
+**No test exists for any MCP tool in `sandbox/server.py`.**
+
+---
+
+#### F.1.4 Container naming collision — `id()` is not unique
+
+**File:** `src/maistro/tools/sandbox/docker.py:103`
+
+```python
+"--name", f"maistro-sandbox-{id(workspace) % 100000}",
+```
+
+`id(workspace)` returns the memory address of the Python string object. Two calls with the same workspace string value will have different `id()` values (different string objects), while `id()` values can collide across calls (address reuse). The `% 100000` further increases collision probability. A name collision causes `docker run` to fail with "container name already in use."
+
+The `_get_or_create()` function in `server.py:23-27` caches by workspace path, but if the cache is bypassed (e.g., after a server restart, or in a different process), duplicate container names crash sandbox creation.
+
+---
+
+#### F.1.5 `_extract_usage()` always returns zeros
+
+**File:** `src/maistro/api/chat_completions.py` (referenced in Appendix C but worth pinning)
+
+The chat completions endpoint attempts to extract token usage from the Pydantic AI response, but Pydantic AI's `RunResult` object uses a different structure than what the code assumes. The usage dict always returns `{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}`. This means:
+- Token tracking is silently broken
+- Cost monitoring returns zero costs for every request
+- Rate limiting based on token consumption is impossible
+
+**No test exists for the chat completions endpoint at all.**
+
+---
+
+#### F.1.6 `TIER_MODELS` computed at import time
+
+**File:** `src/maistro/api/models.py:30-35`
+
+```python
+TIER_MODELS = [
+    ModelInfo(id="maistro-tier-1", created=int(time.time()), ...),
+    ...
+]
+```
+
+`time.time()` is called at module import time, not at request time. All models report the same `created` timestamp — the server startup time. This is cosmetic, but it reveals a pattern: `config/models.py` also reads `os.environ.get()` at import time (lines 36-59), which means **environment variable changes after import are silently ignored**. Tier model configuration is frozen at first import, not at request time.
+
+---
+
+#### F.1.7 Global singleton leaks state across tests — but only one test file resets it
+
+**File:** `tests/conftest.py:8-13`
+
+```python
+@pytest.fixture(autouse=True)
+def _reset_task_queue() -> None:
+    import maistro.tasks.queue as queue_module
+    queue_module._queue = None
+```
+
+This resets the task queue singleton, but:
+- The `_containers` dict in `sandbox/server.py:20` is never reset — leaked containers accumulate across tests
+- The `_langfuse` singleton in `tracing.py:17` is never reset
+- The `_runner` global in `main.py:17` is never reset
+- The `DEFAULT_TIERS` dict in `config/models.py:33` is frozen at import and reads env vars once
+
+Only the task queue gets cleanup. Every other singleton is a cross-test contamination vector.
+
+---
+
+### F.2 Race Conditions and Concurrency Bugs
+
+#### F.2.1 `TaskQueue` dict mutation is not thread-safe
+
+**File:** `src/maistro/tasks/queue.py:26-27, 40-41`
+
+```python
+self._tasks: dict[str, TaskResponse] = {}
+...
+self._tasks[task_id] = task
+```
+
+`_tasks` is a plain `dict` mutated from multiple coroutines (submit, get, update_status, update_progress, set_result, cancel, list_tasks). In CPython, the GIL protects dict operations from corruption, but:
+
+1. **Read-modify-write races exist.** `update_status()` reads `task.status`, calls `can_transition()`, then writes `task.status` — no lock. Two concurrent status updates to the same task can both pass the transition check and apply, resulting in an invalid state.
+
+2. **`list_tasks()` iterates `_tasks.values()`** while `submit()` modifies the dict. In Python 3.12+, this raises `RuntimeError: dictionary changed size during iteration` if both run concurrently in an async context where `await` yields between them.
+
+3. **The `claim()` context manager has no exclusion.** Two workers could claim the same task simultaneously. The `next_task()` method returns the same task_id only once (asyncio.Queue guarantees this), but nothing prevents calling `claim()` with an arbitrary task_id.
+
+---
+
+#### F.2.2 `_get_or_create()` is a TOCTOU race
+
+**File:** `src/maistro/tools/sandbox/server.py:23-27`
+
+```python
+async def _get_or_create(workspace: str) -> SandboxContainer:
+    if workspace not in _containers:
+        _containers[workspace] = await create_sandbox(workspace)
+    return _containers[workspace]
+```
+
+If two concurrent MCP tool calls arrive for the same workspace, both see `workspace not in _containers` as `True`, both call `create_sandbox()`, both try to create a container with a conflicting name (or two containers for one workspace). The second `create_sandbox()` either fails (name collision) or succeeds (creating an orphaned container that is never destroyed because the dict only stores one reference).
+
+**No lock, no `asyncio.Lock`, no atomic check-and-set.**
+
+---
+
+#### F.2.3 `TaskRunner` stop/start race
+
+**File:** `src/maistro/tasks/runner.py` (0% tested)
+
+The runner starts a background `asyncio.Task` that loops on `queue.next_task()`. The `stop()` method cancels this task. But if `stop()` is called while the runner is inside `queue.claim()` executing an agent call:
+- The `asyncio.Task.cancel()` raises `CancelledError` inside the claim context
+- The claim's `except Exception` handler catches it (since Python 3.9+, `CancelledError` inherits from `BaseException` not `Exception` — but the Pydantic AI `agent.run()` call may catch and wrap it)
+- The task's final status depends on whether `CancelledError` propagates through `agent.run()` or gets swallowed
+
+**Zero tests exist for TaskRunner.**
+
+---
+
+### F.3 Tests That Pass But Prove Nothing
+
+#### F.3.1 `test_auth.py` — `_make_app()` dependency override does nothing
+
+**File:** `tests/api/test_auth.py:18-26`
+
+```python
+def _make_app(api_keys: list[str]) -> FastAPI:
+    settings = Settings(api_keys=api_keys)
+    app = FastAPI()
+    app.include_router(health_router)
+    app.dependency_overrides[lambda: None] = lambda: settings
+    return app
+```
+
+The dependency override key is `lambda: None` — an anonymous function that is **never used as a dependency anywhere**. This override has zero effect. The `_make_app()` function is defined but never called — it's dead test infrastructure. The actual tests in `TestDevMode` and `TestSecretComparison` bypass it entirely by importing from `maistro.main` directly or calling `verify_api_key()` as a plain function.
+
+This means the test file has no test that actually exercises the auth middleware through the HTTP request pipeline with API keys configured. The `test_no_keys_allows_all` test passes because the default Settings has no API keys — it proves dev mode works, but never tests that auth is actually enforced when keys are set.
+
+**A request to a protected endpoint with configured API keys is never tested through the HTTP stack.**
+
+---
+
+#### F.3.2 Webhook tests don't verify task content
+
+**File:** `tests/api/test_webhooks.py:20-35`
+
+```python
+def test_pr_opened_creates_task(self) -> None:
+    ...
+    assert response.status_code == 200
+    assert data["action"] == "pr_review_queued"
+    assert "task_id" in data
+```
+
+This asserts a task_id is returned but never verifies:
+- The task was actually created in the queue
+- The task description contains the PR title ("Add auth")
+- The task workspace is correct ("org/repo")
+- The task has the right tier or constraints
+
+The test proves the endpoint returns 200 with a task_id key, but a mutation that returns `{"action": "pr_review_queued", "task_id": "fake"}` without creating any task would pass identically.
+
+---
+
+#### F.3.3 Dangerous command tests use `len() > 0` — any nonempty list passes
+
+**File:** `tests/security/test_dangerous_tools.py:22-65`
+
+Every single test in `TestDangerousCommands` uses:
+```python
+assert len(is_dangerous_command("rm -rf /")) > 0
+```
+
+This passes if the function returns `["wrong_pattern"]` or `["completely unrelated match"]`. None of the 16 tests verify **which** pattern matched. A mutation that makes `is_dangerous_command()` always return `["dummy"]` for any input passes all 16 positive tests. Only the `test_safe_commands` negative test would catch an "always returns non-empty" mutation.
+
+The same pattern appears in all 26 tests in `test_external_content.py::TestInjectionDetection`.
+
+---
+
+#### F.3.4 `test_workspace.py` doesn't test path traversal
+
+**File:** `tests/tools/test_workspace.py`
+
+The test checks that `/etc`, `/root`, and `/home/user/malicious` are blocked, but never tests:
+- `../../etc/passwd` (relative traversal)
+- `/tmp/maistro-workspace/../etc/passwd` (traversal that starts with allowed prefix)
+- Symlink following (a symlink inside `/repos/` pointing to `/etc`)
+- URL-encoded paths (`%2e%2e%2f`)
+- Null byte injection (`/repos/foo\x00/../../etc`)
+
+The `validate_workspace_path()` function calls `Path.resolve()` which does handle `..`, but **no test proves this**. A mutation that removes the `.resolve()` call would survive all tests while opening a path traversal vulnerability.
+
+---
+
+#### F.3.5 `test_secret_equal.py` — no timing assertion
+
+**File:** `tests/security/test_secret_equal.py`
+
+The test suite for constant-time comparison tests that equal strings return `True` and unequal strings return `False`. But the entire point of `secret_equal()` is **timing safety** — and no test measures timing. A mutation that replaces `hmac.compare_digest` with `==` passes every test.
+
+The docstrings claim "prevents timing attacks" but the tests only verify correctness, not the security property. Similarly, `test_auth.py` never tests that `hmac.compare_digest` is used in `verify_api_key()`.
+
+---
+
+#### F.3.6 `test_health.py` — tests a lie
+
+**File:** `tests/api/test_health.py:21-28` and `src/maistro/api/health.py:16-23`
+
+The health endpoint returns `{"status": "ok"}` unconditionally — it checks nothing. The test verifies this unconditional "ok" is returned. But a health check that always says "ok" is worse than no health check — it gives false confidence. Both the code and the test are technically correct but functionally useless for production liveness/readiness probing.
+
+A load balancer or orchestrator relying on this endpoint will continue routing traffic to an instance whose database is down, Docker daemon is dead, or LLM proxy is unreachable.
+
+---
+
+### F.4 Architectural Problems That Make Testing Harder
+
+#### F.4.1 Module-level singleton pattern prevents dependency injection
+
+Five modules use a global singleton pattern:
+- `tasks/queue.py:102-109` — `_queue: TaskQueue | None = None`
+- `tools/sandbox/server.py:20` — `_containers: dict[str, SandboxContainer] = {}`
+- `observability/tracing.py:17` — `_langfuse = None`
+- `main.py:17` — `_runner: TaskRunner | None = None`
+- `config/models.py:33-60` — `DEFAULT_TIERS` (frozen at import)
+
+Each requires manual patching to test in isolation. The `conftest.py` only resets `_queue`. Any test that touches the sandbox, tracing, or config singletons is operating on shared mutable state. This makes test ordering matter, prevents parallel test execution, and creates flaky test conditions.
+
+**The comment on line 101 of `queue.py` says "replaced by DI in production" — but no DI framework is configured and no DI pattern exists anywhere in the codebase.**
+
+#### F.4.2 `TaskRunner` is untestable without mocking the entire agent pipeline
+
+The runner (`tasks/runner.py`) calls `run_task()` from `conductor.py`, which builds a Pydantic AI agent and calls an LLM. There's no seam for injecting a mock agent or task handler. Testing the runner requires either:
+- A real LLM endpoint (integration test)
+- Mocking at the HTTP level (fragile, tightly coupled to Pydantic AI internals)
+- Setting `MAISTRO_DRY_RUN=1` (only tests the dry-run path, not the real one)
+
+This is why the runner has 0% coverage — it's architecturally resistant to unit testing.
+
+#### F.4.3 FastAPI `app` is a module-level global with lifespan side effects
+
+**File:** `src/maistro/main.py:48-61`
+
+The `app` object is created at module import time. Tests that do `from maistro.main import app` trigger structlog configuration, task queue creation, and router registration as import side effects. The lifespan context manager (starting TaskRunner) runs during `TestClient` context entry.
+
+This means:
+- Every test file that imports `app` starts a TaskRunner background task
+- The TaskRunner blocks on `queue.next_task()` — an `asyncio.Queue.get()` that never returns in tests
+- The `_reset_task_queue` fixture creates a new queue, but the runner still holds a reference to the old one
+- Multiple test files each create their own `TestClient(app)` with overlapping lifespans
+
+The test suite works today because the runner's background task is harmless when idle, but this is fragile — any test that submits a task to the queue could trigger the runner to pick it up and call the real conductor.
+
+---
+
+### F.5 Security Issues Beyond Testing Gaps
+
+#### F.5.1 `sandbox_exec()` has no command validation
+
+**File:** `src/maistro/tools/sandbox/server.py:31-41`
+
+The MCP `sandbox_exec` tool accepts any shell command and executes it. There's no call to `is_dangerous_command()` before execution. The dangerous command detection system (`security/dangerous_tools.py`) is fully tested but **never wired into the execution path**. It's a second instance of dead security code (alongside webhook signature verification).
+
+An agent that decides to run `rm -rf /workspace` or `chmod 777 /workspace` will succeed without any check.
+
+#### F.5.2 `git_commit()` with `add_all=True` stages everything
+
+**File:** `src/maistro/tools/git/server.py:62-72`
+
+```python
+if add_all:
+    await _git(workspace, "add", "-A")
+```
+
+The default behavior stages all changes including `.env` files, credential files, and any sensitive data the agent may have written during execution. No `.gitignore` validation, no check for sensitive file patterns.
+
+#### F.5.3 Auth is not applied to all endpoints
+
+**File:** `src/maistro/api/` — comparing routers
+
+`RequireAuth` (from `auth.py:49`) is used in:
+- `/v1/models` (`models.py:39`)
+- `/v1/chat/completions` (likely, in `chat_completions.py`)
+
+But **not** used in:
+- `/tasks` endpoints (`tasks.py`) — anyone can create, list, and cancel tasks
+- `/webhooks/github` and `/webhooks/ci` (`webhooks.py`) — by design unauthenticated, but signature verification is dead code
+- `/stream/{task_id}` (`ws.py`) — WebSocket endpoint has no auth at all
+- `/health` (`health.py`) — intentionally unauthenticated
+
+The task management API is completely unauthenticated. An attacker can submit arbitrary tasks, list all tasks, and cancel running tasks without any credential.
+
+---
+
+### F.6 Summary: Issues by Severity
+
+| Severity | Count | Examples |
+|---|---|---|
+| **BUG** (wrong behavior right now) | 7 | heredoc injection, path bypass, shell injection in grep/glob, container naming, always-zero usage, env-at-import, singleton leaks |
+| **RACE CONDITION** | 3 | TaskQueue concurrent mutation, TOCTOU in _get_or_create, runner stop during claim |
+| **HOLLOW TEST** (passes but proves nothing) | 6 | _make_app dead override, webhook no-verify, len>0 assertions, no traversal test, no timing test, health tests a lie |
+| **ARCHITECTURAL** (makes testing structurally hard) | 3 | singleton globals, untestable runner, app-level import side effects |
+| **SECURITY** (beyond testing gaps) | 3 | no command validation before exec, git stages secrets, tasks API unauthenticated |
+| **TOTAL** | **22** | |
