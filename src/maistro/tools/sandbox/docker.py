@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import time
 
 import structlog
 
@@ -19,17 +20,34 @@ logger = structlog.get_logger()
 
 
 class SandboxContainer:
-    """Manages a Docker container for sandboxed code execution."""
+    """Manages a Docker container for sandboxed code execution.
+
+    Supports use as an async context manager for automatic cleanup.
+    """
 
     def __init__(
         self,
         container_id: str,
         workspace_host: str,
         workspace_container: str = CONTAINER_WORKSPACE,
+        ttl: int = 3600,
     ) -> None:
         self.container_id = container_id
         self.workspace_host = workspace_host
         self.workspace_container = workspace_container
+        self.created_at = time.monotonic()
+        self.ttl = ttl
+
+    @property
+    def expired(self) -> bool:
+        """Check if container has exceeded its TTL."""
+        return (time.monotonic() - self.created_at) > self.ttl
+
+    async def __aenter__(self) -> SandboxContainer:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.destroy()
 
     async def exec(self, command: str, timeout: int = 60) -> tuple[int, str]:
         """Execute a command in the container. Returns (exit_code, output)."""
@@ -78,11 +96,21 @@ class SandboxContainer:
         """Stop and remove the container."""
         proc = await asyncio.create_subprocess_exec(
             "docker", "rm", "-f", self.container_id,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        await proc.wait()
-        await logger.ainfo("sandbox_destroyed", container_id=self.container_id[:12])
+        _, stderr = await proc.communicate()
+        rc = proc.returncode or 0
+        if rc != 0:
+            err = stderr.decode() if stderr else ""
+            await logger.awarning(
+                "sandbox_destroy_error",
+                container_id=self.container_id[:12],
+                exit_code=rc,
+                error=err[:200],
+            )
+        else:
+            await logger.ainfo("sandbox_destroyed", container_id=self.container_id[:12])
 
 
 async def create_sandbox(
@@ -148,4 +176,5 @@ async def create_sandbox(
     return SandboxContainer(
         container_id=container_id,
         workspace_host=str(host_path),
+        ttl=settings.timeout,
     )

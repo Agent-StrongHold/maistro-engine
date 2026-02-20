@@ -7,7 +7,7 @@ Phase 2 will split this into sub-agents (planner, coder, reviewer, scout).
 from __future__ import annotations
 
 import asyncio
-import os
+import functools
 import random
 
 import httpx
@@ -20,6 +20,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
 from maistro.agents.types import ConductorOutput, LLMProviderError, PlanOutput, SubTask
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
+from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
 from maistro.tasks.models import TaskCreate
 
@@ -39,29 +40,29 @@ def _resolve_model(tier_model: str) -> tuple[str, str | None]:
 
     Returns (model_string, base_url) where base_url is set for Ollama/LiteLLM.
     """
-    litellm_url = os.environ.get("LITELLM_BASE_URL", "")
-    if litellm_url:
+    settings = get_settings()
+
+    if settings.litellm.base_url and settings.litellm.base_url != "http://localhost:4000":
         model_name = tier_model.split("/")[-1]
-        return f"openai:{model_name}", litellm_url
+        return f"openai:{model_name}", settings.litellm.base_url
 
     # Ollama: strip ollama/ prefix, use OpenAI-compat endpoint
-    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
     if tier_model.startswith("ollama/"):
         model_name = tier_model.removeprefix("ollama/")
-        return f"openai:{model_name}", ollama_url
+        return f"openai:{model_name}", settings.ollama_base_url
 
     # Direct provider access — no base_url override
     return tier_model, None
 
 
+@functools.lru_cache(maxsize=16)
 def build_conductor(
     model: str | KnownModelName | None = None,
     base_url: str | None = None,
 ) -> Agent[None, ConductorOutput]:
     """Build a conductor agent with the given model.
 
-    The conductor is a single agent (Phase 1) that handles the full
-    plan → code → review pipeline via structured output.
+    Agents are cached by (model, base_url) to avoid re-compiling schemas.
     """
     if base_url:
         # Use OpenAI-compatible provider with custom base_url (for Ollama / LiteLLM)
@@ -147,10 +148,12 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
     3. Runs the agent with timeout and retry logic
     4. Returns structured output
 
-    If MAISTRO_DRY_RUN=1 is set, returns a mock result without calling any LLM.
+    If maistro_dry_run is set in settings, returns a mock result without calling any LLM.
     """
+    settings = get_settings()
+
     # Dry-run mode — return mock result without LLM call
-    if os.environ.get("MAISTRO_DRY_RUN", "").strip() in ("1", "true", "yes"):
+    if settings.maistro_dry_run:
         await logger.ainfo("conductor_dry_run", description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN])
         return ConductorOutput(
             plan=PlanOutput(

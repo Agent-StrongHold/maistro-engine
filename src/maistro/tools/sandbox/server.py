@@ -25,10 +25,33 @@ _containers: dict[str, SandboxContainer] = {}
 
 
 async def _get_or_create(workspace: str) -> SandboxContainer:
-    """Get an existing container for this workspace or create one."""
-    if workspace not in _containers:
-        _containers[workspace] = await create_sandbox(workspace)
-    return _containers[workspace]
+    """Get an existing container for this workspace or create one.
+
+    If the existing container has expired, destroy it and create a new one.
+    """
+    existing = _containers.get(workspace)
+    if existing is not None:
+        if existing.expired:
+            logger.info("sandbox_ttl_expired", workspace=workspace)
+            await existing.destroy()
+            del _containers[workspace]
+        else:
+            return existing
+
+    container = await create_sandbox(workspace)
+    _containers[workspace] = container
+    return container
+
+
+async def cleanup_all_containers() -> None:
+    """Destroy all active sandbox containers. Called during shutdown."""
+    for workspace, container in list(_containers.items()):
+        try:
+            await container.destroy()
+        except Exception:
+            logger.exception("sandbox_cleanup_error", workspace=workspace)
+    _containers.clear()
+    logger.info("all_sandboxes_cleaned_up", count=len(_containers))
 
 
 def _check_path(path: str) -> str | None:
