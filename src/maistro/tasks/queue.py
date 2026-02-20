@@ -80,8 +80,10 @@ class TaskQueue:
         """Block until a task is available, return its ID."""
         return await self._pending.get()
 
-    def list_tasks(self, limit: int = 50) -> list[TaskResponse]:
-        return list(self._tasks.values())[-limit:]
+    def list_tasks(self, limit: int = 50, offset: int = 0) -> list[TaskResponse]:
+        """List tasks with pagination support."""
+        all_tasks = list(self._tasks.values())
+        return all_tasks[offset : offset + limit]
 
     @asynccontextmanager
     async def claim(self, task_id: str) -> AsyncIterator[TaskResponse]:

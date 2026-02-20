@@ -7,10 +7,13 @@ network isolation, and environment sanitization.
 from __future__ import annotations
 
 import asyncio
+import shlex
+import uuid
 
 import structlog
 
 from maistro.config.settings import SandboxSettings
+from maistro.security.dangerous_tools import is_dangerous_command
 from maistro.tools.sandbox.env_sanitize import sanitize_env
 from maistro.tools.sandbox.workspace import CONTAINER_WORKSPACE, ensure_workspace
 
@@ -32,6 +35,17 @@ class SandboxContainer:
 
     async def exec(self, command: str, timeout: int = 60) -> tuple[int, str]:
         """Execute a command in the container. Returns (exit_code, output)."""
+        # MAJ-04: Check for dangerous commands before execution
+        dangers = is_dangerous_command(command)
+        if dangers:
+            await logger.awarn(
+                "dangerous_command_blocked",
+                command=command[:200],
+                patterns=dangers,
+                container=self.container_id[:12],
+            )
+            return 1, f"Command blocked by safety filter: {', '.join(dangers[:3])}"
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 "docker", "exec", self.container_id,
@@ -49,22 +63,30 @@ class SandboxContainer:
 
     async def read_file(self, path: str) -> str:
         """Read a file from the container workspace."""
+        # MAJ-01: Sanitize path to prevent injection
+        if path.startswith("/") and not path.startswith(self.workspace_container):
+            raise ValueError(f"Path must be within workspace: {path}")
         full_path = f"{self.workspace_container}/{path}" if not path.startswith("/") else path
-        exit_code, output = await self.exec(f"cat '{full_path}'")
+        safe_path = shlex.quote(full_path)
+        exit_code, output = await self.exec(f"cat {safe_path}")
         if exit_code != 0:
             raise FileNotFoundError(f"Cannot read {path}: {output}")
         return output
 
     async def write_file(self, path: str, content: str) -> None:
-        """Write a file in the container workspace."""
+        """Write a file in the container workspace via docker cp stdin."""
+        if path.startswith("/") and not path.startswith(self.workspace_container):
+            raise ValueError(f"Path must be within workspace: {path}")
         full_path = f"{self.workspace_container}/{path}" if not path.startswith("/") else path
+        safe_path = shlex.quote(full_path)
         # Ensure parent directory exists
         parent = "/".join(full_path.rsplit("/", 1)[:-1])
         if parent:
-            await self.exec(f"mkdir -p '{parent}'")
-        # Use heredoc to write content safely
+            await self.exec(f"mkdir -p {shlex.quote(parent)}")
+        # MAJ-02: Use randomized heredoc delimiter to prevent injection
+        delimiter = f"MAISTRO_EOF_{uuid.uuid4().hex[:8]}"
         exit_code, output = await self.exec(
-            f"cat > '{full_path}' << 'MAISTRO_EOF'\n{content}\nMAISTRO_EOF"
+            f"cat > {safe_path} << '{delimiter}'\n{content}\n{delimiter}"
         )
         if exit_code != 0:
             raise OSError(f"Cannot write {path}: {output}")
@@ -98,9 +120,12 @@ async def create_sandbox(
     host_path = ensure_workspace(workspace)
     safe_env = sanitize_env(env or {})
 
+    # MIN-02: Use UUID for unique, unpredictable container names
+    container_name = f"maistro-sandbox-{uuid.uuid4().hex[:12]}"
+
     cmd = [
         "docker", "run", "-d",
-        "--name", f"maistro-sandbox-{id(workspace) % 100000}",
+        "--name", container_name,
         # Resource limits
         f"--memory={settings.memory_limit}",
         f"--cpus={settings.cpu_count}",
@@ -115,7 +140,7 @@ async def create_sandbox(
         "-w", CONTAINER_WORKSPACE,
     ]
 
-    # Network isolation
+    # Network isolation (MAJ-05: now defaults to True in settings)
     if settings.network_disabled:
         cmd.append("--network=none")
 

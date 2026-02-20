@@ -10,6 +10,8 @@ This FastMCP server provides tools for:
 
 from __future__ import annotations
 
+import shlex
+
 from fastmcp import FastMCP
 
 from maistro.tools.sandbox.docker import SandboxContainer, create_sandbox
@@ -76,7 +78,11 @@ async def sandbox_glob(workspace: str, pattern: str) -> str:
         pattern: Glob pattern (e.g., '**/*.py', 'src/**/*.ts')
     """
     container = await _get_or_create(workspace)
-    _, output = await container.exec(f"find /workspace -path '/workspace/{pattern}' -type f 2>/dev/null | head -100")
+    # MAJ-01: Sanitize pattern to prevent shell injection
+    safe_pattern = shlex.quote(f"/workspace/{pattern}")
+    _, output = await container.exec(
+        f"find /workspace -path {safe_pattern} -type f 2>/dev/null | head -100"
+    )
     return output or "No files found"
 
 
@@ -90,8 +96,11 @@ async def sandbox_grep(workspace: str, pattern: str, path: str = ".") -> str:
         path: Directory or file to search in (relative to workspace)
     """
     container = await _get_or_create(workspace)
+    # MAJ-01: Sanitize pattern and path to prevent shell injection
+    safe_pattern = shlex.quote(pattern)
+    safe_path = shlex.quote(f"/workspace/{path}")
     _, output = await container.exec(
-        f"grep -rn '{pattern}' /workspace/{path} 2>/dev/null | head -50"
+        f"grep -rn {safe_pattern} {safe_path} 2>/dev/null | head -50"
     )
     return output or "No matches found"
 

@@ -6,11 +6,20 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+import hmac
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 
+from maistro.config.settings import Settings, get_settings
 from maistro.tasks.queue import TaskQueue, get_task_queue
 
 router = APIRouter(tags=["streaming"])
+
+
+def _verify_ws_token(token: str, settings: Settings) -> bool:
+    """Verify a WebSocket auth token against configured API keys."""
+    if not settings.api_keys:
+        return not settings.require_auth
+    return any(hmac.compare_digest(token.encode(), k.encode()) for k in settings.api_keys)
 
 
 @router.websocket("/stream/{task_id}")
@@ -18,7 +27,15 @@ async def stream_task(
     websocket: WebSocket,
     task_id: str,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    token: str | None = Query(None),
 ) -> None:
+    # MAJ-03: Authenticate WebSocket connections
+    if settings.api_keys:
+        if not token or not _verify_ws_token(token, settings):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
     await websocket.accept()
 
     try:

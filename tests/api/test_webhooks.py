@@ -1,14 +1,15 @@
-"""Tests for webhook endpoints.
-
-Evidence: GitHub and CI webhooks create tasks automatically.
-The GitHub webhook had a structlog bug where event= conflicted
-with structlog's reserved 'event' parameter — regression test included.
-"""
+"""Tests for webhook endpoints — signature verification and content wrapping."""
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+
+import pytest
 from fastapi.testclient import TestClient
 
+from maistro.config.settings import Settings, get_settings
 from maistro.main import app
 
 
@@ -16,9 +17,96 @@ def _client() -> TestClient:
     return TestClient(app)
 
 
-class TestGitHubWebhook:
+@pytest.fixture
+def app_with_webhook_secret():
+    """Create app with webhook secrets configured."""
+    secret = "test-webhook-secret-123"
+    settings = Settings(
+        require_auth=False,
+        github_webhook_secret=secret,
+        ci_webhook_secret="ci-token-abc",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    yield secret
+    app.dependency_overrides.clear()
+
+
+def _make_signature(payload: bytes, secret: str) -> str:
+    digest = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+    return f"sha256={digest}"
+
+
+class TestGitHubWebhookSignature:
+    """CRIT-03: Webhook signature must be verified when secret is configured."""
+
+    def test_missing_signature_rejected(self, app_with_webhook_secret: str) -> None:
+        client = _client()
+        response = client.post(
+            "/webhooks/github",
+            json={"action": "opened"},
+            headers={"X-GitHub-Event": "push"},
+        )
+        assert response.status_code == 401
+
+    def test_invalid_signature_rejected(self, app_with_webhook_secret: str) -> None:
+        client = _client()
+        response = client.post(
+            "/webhooks/github",
+            json={"action": "opened"},
+            headers={
+                "X-GitHub-Event": "push",
+                "X-Hub-Signature-256": "sha256=invalid",
+            },
+        )
+        assert response.status_code == 403
+
+    def test_valid_signature_accepted(self, app_with_webhook_secret: str) -> None:
+        client = _client()
+        payload = json.dumps({"action": "opened"}).encode()
+        sig = _make_signature(payload, app_with_webhook_secret)
+        response = client.post(
+            "/webhooks/github",
+            content=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-GitHub-Event": "push",
+                "X-Hub-Signature-256": sig,
+            },
+        )
+        assert response.status_code == 200
+
+
+class TestCIWebhookAuth:
+    """CRIT-03: CI webhook must require token when secret is configured."""
+
+    def test_missing_token_rejected(self, app_with_webhook_secret: str) -> None:
+        client = _client()
+        response = client.post("/webhooks/ci", json={"status": "failure"})
+        assert response.status_code == 401
+
+    def test_wrong_token_rejected(self, app_with_webhook_secret: str) -> None:
+        client = _client()
+        response = client.post(
+            "/webhooks/ci",
+            json={"status": "failure"},
+            headers={"X-CI-Token": "wrong-token"},
+        )
+        assert response.status_code == 401
+
+    def test_valid_token_accepted(self, app_with_webhook_secret: str) -> None:
+        client = _client()
+        response = client.post(
+            "/webhooks/ci",
+            json={"status": "success"},
+            headers={"X-CI-Token": "ci-token-abc"},
+        )
+        assert response.status_code == 200
+
+
+class TestGitHubWebhookFunctionality:
+    """Test webhook routing still works (no secrets = dev mode)."""
+
     def test_pr_opened_creates_task(self) -> None:
-        """Evidence: PR opened events should auto-create a review task."""
         client = _client()
         response = client.post(
             "/webhooks/github",
@@ -60,7 +148,7 @@ class TestGitHubWebhook:
         assert response.json()["status"] == "ignored"
 
 
-class TestCIWebhook:
+class TestCIWebhookFunctionality:
     def test_failure_creates_fix_task(self) -> None:
         client = _client()
         response = client.post(
