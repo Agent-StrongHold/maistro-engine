@@ -18,6 +18,7 @@ Rules are organized by domain prefix:
 - **API-###**: API surface, contracts, and interface design
 - **CMPLX-###**: Complexity thresholds and cognitive load
 - **PERF-###**: Performance patterns and resource management
+- **ERR-###**: Error handling, resilience, and failure recovery
 - **TEST-###**: Testing quality and coverage requirements
 
 ---
@@ -546,6 +547,114 @@ Rules are organized by domain prefix:
 
 ---
 
+### ERR-001: Chat completions must not return errors as HTTP 200 OK
+**Severity:** critical
+**Rationale:** In chat_completions.py lines 100-104 and 152-156, all exceptions from run_task() are caught with `except Exception` and converted to `response_text = f"Error: {exc}"`, returned as a normal ChatCompletionResponse with HTTP 200. Clients cannot distinguish success from failure. Stack traces are discarded with no logging.
+**Pass:** Errors from run_task() are caught with specific exception types, logged with full context and stack trace, and returned as appropriate HTTP error status codes (502 for upstream LLM failure, 504 for timeout, 500 for unexpected) with a structured JSON error body.
+**Fail:** `except Exception as exc: response_text = f"Error: {exc}"` followed by returning ChatCompletionResponse with HTTP 200, as in src/maistro/api/chat_completions.py lines 100-104 and 152-156.
+**Automated check available:** partial — grep for bare Exception catches in API handlers returning 200
+
+---
+
+### ERR-002: TaskRunner worker loop must not die from individual task failures
+**Severity:** critical
+**Rationale:** In runner.py line 47, `await self._execute_task(task_id)` is called inside _worker_loop() which only catches TimeoutError and CancelledError. The queue.claim() context manager re-raises exceptions after marking the task as failed. Any unhandled exception type terminates the asyncio task running _worker_loop(). Once dead, the system accepts tasks that will never execute.
+**Pass:** _execute_task() is called inside a try/except that catches Exception, logs the error with full context, and continues the while loop.
+**Fail:** `await self._execute_task(task_id)` called without a surrounding try/except in _worker_loop(), as in src/maistro/tasks/runner.py line 47.
+**Automated check available:** yes — check _worker_loop for Exception catch around _execute_task
+
+---
+
+### ERR-003: FastAPI app must register a global exception handler returning structured JSON
+**Severity:** critical
+**Rationale:** No exception handler is registered on the FastAPI app. FastAPI's default for unhandled exceptions is plain-text "Internal Server Error" with HTTP 500. Some errors return JSON (HTTPException), others return plain text. Clients parsing JSON will crash. No error logging at framework level.
+**Pass:** App registers `@app.exception_handler(Exception)` that logs with structlog and returns JSON with consistent schema (`{"error": {"type": "...", "message": "...", "request_id": "..."}}`).
+**Fail:** No exception handler registered on the FastAPI app object, as in src/maistro/main.py.
+**Automated check available:** yes — grep for exception_handler registration on app
+
+---
+
+### ERR-004: GitHub CLI helpers must handle JSONDecodeError and TimeoutError
+**Severity:** major
+**Rationale:** get_pr() and list_issues() call json.loads(output) on raw gh CLI stdout without handling JSONDecodeError. _run_gh() uses asyncio.wait_for() with timeout but does not catch TimeoutError. Non-JSON output (auth errors, stderr leaking) will crash. Timeout produces unhandled exception despite having a timeout parameter.
+**Pass:** json.loads() wrapped in try/except JSONDecodeError. _run_gh() catches TimeoutError and returns meaningful error tuple.
+**Fail:** Bare json.loads(output) in get_pr() and list_issues(), and asyncio.wait_for() without TimeoutError handling in _run_gh(), as in src/maistro/tools/git/github.py.
+**Automated check available:** yes — grep for json.loads without try/except in github.py
+
+---
+
+### ERR-005: SandboxContainer must guarantee Docker container cleanup on error paths
+**Severity:** major
+**Rationale:** SandboxContainer has destroy() but no __aenter__/__aexit__. The sandbox server stores containers in a global dict with no cleanup mechanism. Process crashes, exceptions, or timeout expiry leave containers running. destroy() ignores the exit code of `docker rm -f`.
+**Pass:** SandboxContainer implements __aenter__/__aexit__ calling destroy() on exit, or a cleanup mechanism (periodic reaper, atexit handler) ensures cleanup. destroy() checks and logs exit code.
+**Fail:** No __aenter__/__aexit__, no finalizer, and global dict with no cleanup, as in src/maistro/tools/sandbox/docker.py and src/maistro/tools/sandbox/server.py.
+**Automated check available:** partial — check for context manager protocol on SandboxContainer
+
+---
+
+### ERR-006: Health check must probe downstream dependencies
+**Severity:** major
+**Rationale:** The /health endpoint unconditionally returns `{"status": "ok"}` without checking Docker, LLM provider, or database. Load balancers continue routing to instances that cannot process tasks because all dependencies are down.
+**Pass:** Health endpoint probes critical dependencies with short timeouts, returns `{"status": "degraded", "checks": {...}}` when any fails. Separate `/health/live` can remain unconditional.
+**Fail:** Health endpoint returns hardcoded `{"status": "ok"}` without probing any dependency, as in src/maistro/api/health.py.
+**Automated check available:** partial — check health handler for dependency probes
+
+---
+
+### ERR-007: LLM calls must have explicit error handling with retry and backoff
+**Severity:** major
+**Rationale:** agent.run(prompt) at conductor.py:135 has no try/except. Pydantic AI's retries=3 only handles validation failures, not network errors, HTTP 429, or timeouts. Transient LLM outages cause every task to fail immediately with unhandled exceptions. No circuit breaker prevents cascading failures.
+**Pass:** agent.run() wrapped in try/except catching provider-specific exceptions with exponential backoff and jitter. Domain-specific exception (e.g., LLMProviderError) raised after exhausting retries.
+**Fail:** `result = await agent.run(prompt)` with no surrounding try/except, as in src/maistro/agents/conductor.py line 135.
+**Automated check available:** partial — check for exception handling around agent.run()
+
+---
+
+### ERR-008: Sandbox exec must not use bare except Exception for all errors
+**Severity:** major
+**Rationale:** In docker.py lines 47-48, `except Exception as exc: return 1, f"Exec error: {exc}"` catches every exception including FileNotFoundError (Docker not installed), PermissionError (no Docker socket access), and MemoryError. Caller cannot distinguish "command failed" from "infrastructure broken." Stack trace discarded.
+**Pass:** Catch only subprocess-related exceptions (OSError, subprocess.SubprocessError). Infrastructure failures re-raised with context or logged at ERROR.
+**Fail:** `except Exception as exc: return 1, f"Exec error: {exc}"` converting all exceptions into generic tuple, as in src/maistro/tools/sandbox/docker.py.
+**Automated check available:** partial — check for bare Exception in sandbox exec
+
+---
+
+### ERR-009: TaskQueue.update_status() must not silently drop invalid transitions
+**Severity:** minor
+**Rationale:** update_status() returns False on invalid state transitions but runner.py never checks this value. Invalid transitions are silently ignored. If a task is already FAILED, subsequent COMPLETED updates return False but the runner proceeds as if successful.
+**Pass:** update_status() logs a warning on rejected transitions including current state, requested state, and task_id. Callers check return value.
+**Fail:** Silently returns False with no logging, caller never checks, as in src/maistro/tasks/queue.py and src/maistro/tasks/runner.py.
+**Automated check available:** partial — check for logging in update_status rejection path
+
+---
+
+### ERR-010: WebSocket handler must catch all exceptions and enforce connection timeout
+**Severity:** minor
+**Rationale:** ws.py only catches WebSocketDisconnect. Serialization errors from model_dump() or ConnectionResetError leave WebSocket in indeterminate state. No maximum connection duration — clients can hold connections indefinitely. No authentication on the endpoint.
+**Pass:** Try block catches Exception, sends close frame with error code, logs error. asyncio.timeout() limits session duration. Endpoint requires authentication.
+**Fail:** Only `except WebSocketDisconnect: pass` with no other exception handling and no timeout, as in src/maistro/api/ws.py.
+**Automated check available:** partial — check for broad exception handling in WebSocket handlers
+
+---
+
+### ERR-011: Webhook must verify GitHub HMAC-SHA256 signature before processing
+**Severity:** major
+**Rationale:** _verify_github_signature is defined but never called. x_hub_signature_256 header is accepted but ignored. Any HTTP client can send arbitrary webhook payloads triggering task creation.
+**Pass:** github_webhook calls _verify_github_signature() with raw request body, signature, and configured secret. Returns HTTP 403 on failure.
+**Fail:** _verify_github_signature defined but never called, signature header ignored, as in src/maistro/api/webhooks.py.
+**Automated check available:** yes — grep for _verify_github_signature call sites
+
+---
+
+### ERR-012: Git/GitHub CLI helpers must handle TimeoutError and FileNotFoundError
+**Severity:** major
+**Rationale:** Both _git() and _run_gh() use asyncio.wait_for() without catching TimeoutError. Neither handles FileNotFoundError from asyncio.create_subprocess_exec() when git/gh binaries are missing. git_clone() has no timeout at all — large repo clones block indefinitely.
+**Pass:** Both functions catch TimeoutError and FileNotFoundError/OSError, returning meaningful error messages. git_clone() uses asyncio.wait_for() with configurable timeout.
+**Fail:** asyncio.wait_for() without TimeoutError handling, and git_clone() without any timeout, as in src/maistro/tools/git/server.py and src/maistro/tools/git/github.py.
+**Automated check available:** yes — grep for wait_for without try/except TimeoutError
+
+---
+
 ## Evaluation Protocol
 
 When evaluating a file or pull request against these standards, follow these steps:
@@ -553,9 +662,9 @@ When evaluating a file or pull request against these standards, follow these ste
 ### Step 1: Identify Applicable Rules
 - Determine which domain(s) the changed files fall into based on their path:
   - `api/` files: Apply all API-### and relevant ARCH-### rules
-  - `agents/` files: Apply ARCH-###, COUP-###, PERF-006, PERF-007
-  - `tasks/` files: Apply ARCH-###, COUP-###, PERF-004, PERF-008
-  - `tools/` files: Apply ARCH-009, COUP-003, PERF-002
+  - `agents/` files: Apply ARCH-###, COUP-###, PERF-006, PERF-007, ERR-007
+  - `tasks/` files: Apply ARCH-###, COUP-###, PERF-004, PERF-008, ERR-002, ERR-009
+  - `tools/` files: Apply ARCH-009, COUP-003, PERF-002, ERR-005, ERR-008, ERR-012
   - `security/` files: Apply CMPLX-### rules
   - `config/` files: Apply COUP-001, COUP-007, PERF-001, PERF-010
   - All files: Apply CMPLX-001 through CMPLX-006, TEST-### rules
@@ -634,5 +743,6 @@ Still report the violation, but mark it:
 ### 4. Invalid Waivers
 Flag these as violations despite the waiver comment:
 - Critical security rules (ARCH-001, ARCH-005, ARCH-011, API-003, API-004) cannot be waived
+- Critical error handling rules (ERR-001, ERR-002, ERR-003) cannot be waived
 - Performance rules that affect availability (PERF-003, PERF-004, PERF-007) cannot be waived without an alternative mitigation documented in the waiver
 - Waivers that say "TODO" or "fix later" without a linked issue number are not valid
