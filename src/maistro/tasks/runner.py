@@ -8,6 +8,7 @@ import contextlib
 import structlog
 
 from maistro.agents.conductor import run_task
+from maistro.constants import WORKER_POLL_TIMEOUT
 from maistro.tasks.models import TaskCreate, TaskProgress, TaskResult, TaskStatus
 from maistro.tasks.queue import TaskQueue
 
@@ -38,13 +39,18 @@ class TaskRunner:
     async def _worker_loop(self) -> None:
         while self._running:
             try:
-                task_id = await asyncio.wait_for(self._queue.next_task(), timeout=1.0)
+                task_id = await asyncio.wait_for(
+                    self._queue.next_task(), timeout=WORKER_POLL_TIMEOUT
+                )
             except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
 
-            await self._execute_task(task_id)
+            try:
+                await self._execute_task(task_id)
+            except Exception:
+                await logger.aexception("task_execution_failed", task_id=task_id)
 
     async def _execute_task(self, task_id: str) -> None:
         task = self._queue.get(task_id)

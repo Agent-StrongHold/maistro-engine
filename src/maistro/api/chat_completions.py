@@ -6,15 +6,24 @@ Supports streaming SSE responses.
 
 from __future__ import annotations
 
+import asyncio
+import json
 import time
 import uuid
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter
+import structlog
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from maistro.agents.conductor import run_task
+from maistro.agents.types import LLMProviderError
 from maistro.api.auth import RequireAuth
+from maistro.constants import STREAM_CHUNK_SIZE
+from maistro.tasks.models import TaskCreate
+
+logger = structlog.get_logger()
 
 router = APIRouter(prefix="/v1", tags=["openai-compat"])
 
@@ -72,6 +81,24 @@ class ChatCompletionChunk(BaseModel):
     choices: list[StreamChoice]
 
 
+def _extract_user_message(request: ChatCompletionRequest) -> str:
+    """Extract the last user message from the chat request."""
+    return next(
+        (m.content for m in reversed(request.messages) if m.role == "user" and m.content),
+        "",
+    ) or "No task specified"
+
+
+async def _run_conductor(user_msg: str) -> str:
+    """Run the conductor pipeline and return the final answer text.
+
+    Raises appropriate exceptions for callers to handle.
+    """
+    task = TaskCreate(description=user_msg)
+    result = await run_task(task)
+    return result.final_answer or "Task completed successfully."
+
+
 async def _stream_conductor_response(
     request: ChatCompletionRequest,
 ) -> AsyncIterator[str]:
@@ -88,25 +115,32 @@ async def _stream_conductor_response(
 
     # For Phase 1, run the conductor and stream the final_answer in chunks.
     # Phase 2 will stream real-time progress from sub-agents.
-    from maistro.agents.conductor import run_task
-    from maistro.tasks.models import TaskCreate
+    user_msg = _extract_user_message(request)
 
-    user_msg = next(
-        (m.content for m in reversed(request.messages) if m.role == "user" and m.content),
-        "",
-    )
-
-    task = TaskCreate(description=user_msg or "No task specified")
     try:
-        result = await run_task(task)
-        response_text = result.final_answer or "Task completed successfully."
-    except Exception as exc:
-        response_text = f"Error: {exc}"
+        response_text = await _run_conductor(user_msg)
+    except (asyncio.TimeoutError, TimeoutError):
+        logger.error("chat_completions_timeout", user_msg=user_msg[:100])
+        error_event = {"error": {"type": "timeout", "message": "LLM call timed out"}}
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+    except LLMProviderError:
+        logger.exception("chat_completions_llm_error", user_msg=user_msg[:100])
+        error_event = {"error": {"type": "upstream_error", "message": "LLM provider error"}}
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
+    except Exception:
+        logger.exception("chat_completions_error", user_msg=user_msg[:100])
+        error_event = {"error": {"type": "internal_error", "message": "Internal server error"}}
+        yield f"data: {json.dumps(error_event)}\n\n"
+        yield "data: [DONE]\n\n"
+        return
 
     # Stream content in small chunks for responsive feel
-    chunk_size = 20
-    for i in range(0, len(response_text), chunk_size):
-        text_chunk = response_text[i : i + chunk_size]
+    for i in range(0, len(response_text), STREAM_CHUNK_SIZE):
+        text_chunk = response_text[i : i + STREAM_CHUNK_SIZE]
         content_chunk = ChatCompletionChunk(
             id=chunk_id,
             model=request.model,
@@ -140,20 +174,19 @@ async def chat_completions(
         )
 
     # Non-streaming: run conductor and return full response
-    from maistro.agents.conductor import run_task
-    from maistro.tasks.models import TaskCreate
+    user_msg = _extract_user_message(request)
 
-    user_msg = next(
-        (m.content for m in reversed(request.messages) if m.role == "user" and m.content),
-        "",
-    )
-
-    task = TaskCreate(description=user_msg or "No task specified")
     try:
-        result = await run_task(task)
-        response_text = result.final_answer or "Task completed successfully."
-    except Exception as exc:
-        response_text = f"Error: {exc}"
+        response_text = await _run_conductor(user_msg)
+    except (asyncio.TimeoutError, TimeoutError):
+        logger.error("chat_completions_timeout", user_msg=user_msg[:100])
+        raise HTTPException(status_code=504, detail="LLM call timed out")
+    except LLMProviderError as exc:
+        logger.exception("chat_completions_llm_error", user_msg=user_msg[:100])
+        raise HTTPException(status_code=502, detail=str(exc))
+    except Exception:
+        logger.exception("chat_completions_error", user_msg=user_msg[:100])
+        raise HTTPException(status_code=500, detail="Internal server error")
 
     return ChatCompletionResponse(
         model=request.model,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -65,9 +67,14 @@ class Settings(BaseSettings):
 
     # Auth
     api_keys: list[str] = Field(default_factory=list, description="Valid API bearer tokens")
+    github_webhook_secret: str = ""
+    ci_webhook_secret: str = ""
 
     # Default LLM model for agents
     default_model: str = "anthropic/claude-sonnet-4-20250514"
+
+    # Request limits
+    max_webhook_body_bytes: int = 1_048_576  # 1 MB
 
     # Sub-configs
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
@@ -76,5 +83,6 @@ class Settings(BaseSettings):
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
 
 
+@functools.lru_cache()
 def get_settings() -> Settings:
     return Settings()
