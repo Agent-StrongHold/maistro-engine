@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Depends, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from maistro.tasks.models import TaskCreate
 from maistro.tasks.queue import TaskQueue, get_task_queue
@@ -31,6 +32,22 @@ async def github_webhook(
     x_github_event: str | None = Header(None),
     x_hub_signature_256: str | None = Header(None),
 ) -> dict[str, Any]:
+    raw_body = await request.body()
+
+    # Verify signature if a webhook secret is configured
+    webhook_secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+    if webhook_secret:
+        if not x_hub_signature_256:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing webhook signature",
+            )
+        if not _verify_github_signature(raw_body, x_hub_signature_256, webhook_secret):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid webhook signature",
+            )
+
     payload = await request.json()
 
     event = x_github_event or "unknown"
@@ -77,12 +94,12 @@ async def ci_webhook(
 ) -> dict[str, Any]:
     payload = await request.json()
 
-    status = payload.get("status", "")
+    ci_status = payload.get("status", "")
     repo = payload.get("repository", "")
     branch = payload.get("branch", "main")
     log_url = payload.get("log_url", "")
 
-    if status == "failure":
+    if ci_status == "failure":
         task = TaskCreate(
             description=f"Fix CI failure on {branch} in {repo}. Log: {log_url}",
             workspace=f"/repos/{repo}",
@@ -91,4 +108,4 @@ async def ci_webhook(
         result = await queue.submit(task)
         return {"task_id": result.task_id, "action": "ci_fix_queued"}
 
-    return {"status": "ignored", "ci_status": status}
+    return {"status": "ignored", "ci_status": ci_status}

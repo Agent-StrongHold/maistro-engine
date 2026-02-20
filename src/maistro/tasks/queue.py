@@ -25,6 +25,8 @@ class TaskQueue:
     def __init__(self) -> None:
         self._tasks: dict[str, TaskResponse] = {}
         self._pending: asyncio.Queue[str] = asyncio.Queue()
+        self._lock = asyncio.Lock()
+        self._claimed: set[str] = set()
 
     async def submit(self, request: TaskCreate) -> TaskResponse:
         task_id = TaskResponse.new_id()
@@ -38,7 +40,8 @@ class TaskQueue:
             progress=TaskProgress(),
             created_at=datetime.now(UTC),
         )
-        self._tasks[task_id] = task
+        async with self._lock:
+            self._tasks[task_id] = task
         await self._pending.put(task_id)
         await logger.ainfo("task_queued", task_id=task_id, description=request.description[:80])
         return task
@@ -46,20 +49,21 @@ class TaskQueue:
     def get(self, task_id: str) -> TaskResponse | None:
         return self._tasks.get(task_id)
 
-    def update_status(self, task_id: str, status: TaskStatus) -> bool:
-        task = self._tasks.get(task_id)
-        if task is None:
-            return False
-        if not can_transition(task.status, status):
-            return False
+    async def update_status(self, task_id: str, status: TaskStatus) -> bool:
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                return False
+            if not can_transition(task.status, status):
+                return False
 
-        task.status = status
-        task.phase = status.value
+            task.status = status
+            task.phase = status.value
 
-        if status == TaskStatus.PLANNING:
-            task.started_at = datetime.now(UTC)
-        elif status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
-            task.completed_at = datetime.now(UTC)
+            if status == TaskStatus.PLANNING:
+                task.started_at = datetime.now(UTC)
+            elif status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+                task.completed_at = datetime.now(UTC)
 
         return True
 
@@ -73,29 +77,36 @@ class TaskQueue:
         if task:
             task.result = result
 
-    def cancel(self, task_id: str) -> bool:
-        return self.update_status(task_id, TaskStatus.CANCELLED)
+    async def cancel(self, task_id: str) -> bool:
+        return await self.update_status(task_id, TaskStatus.CANCELLED)
 
     async def next_task(self) -> str:
         """Block until a task is available, return its ID."""
         return await self._pending.get()
 
-    def list_tasks(self, limit: int = 50) -> list[TaskResponse]:
-        return list(self._tasks.values())[-limit:]
+    async def list_tasks(self, limit: int = 50) -> list[TaskResponse]:
+        async with self._lock:
+            return list(self._tasks.values())[-limit:]
 
     @asynccontextmanager
     async def claim(self, task_id: str) -> AsyncIterator[TaskResponse]:
         """Context manager that transitions task through its lifecycle."""
-        task = self._tasks.get(task_id)
-        if task is None:
-            raise ValueError(f"Task {task_id} not found")
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                raise ValueError(f"Task {task_id} not found")
+            if task_id in self._claimed:
+                raise ValueError(f"Task {task_id} already claimed")
+            self._claimed.add(task_id)
         try:
             yield task
-        except Exception as exc:
-            self.update_status(task_id, TaskStatus.FAILED)
+        except BaseException as exc:
+            await self.update_status(task_id, TaskStatus.FAILED)
             self.set_result(task_id, TaskResult(error=str(exc)))
             await logger.aexception("task_failed", task_id=task_id)
             raise
+        finally:
+            self._claimed.discard(task_id)
 
 
 # Singleton — replaced by DI in production

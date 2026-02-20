@@ -6,6 +6,8 @@ timingSafeEqual to prevent timing attacks via length leakage.
 
 from __future__ import annotations
 
+import inspect
+
 from maistro.security.secret_equal import secret_equal
 
 
@@ -51,3 +53,17 @@ class TestSecretEqual:
         token = "sk-ant-api03-" + "a" * 80
         assert secret_equal(token, token) is True
         assert secret_equal(token, token[:-1] + "b") is False
+
+    def test_uses_hmac_compare_digest(self) -> None:
+        """Evidence: The implementation must use hmac.compare_digest, not ==.
+        A mutation replacing compare_digest with == must be caught."""
+        source = inspect.getsource(secret_equal)
+        assert "compare_digest" in source, \
+            "secret_equal must use hmac.compare_digest for constant-time comparison"
+
+    def test_uses_hmac_hashing(self) -> None:
+        """Evidence: Inputs are HMAC-hashed before comparison to prevent
+        length leakage via early-exit."""
+        source = inspect.getsource(secret_equal)
+        assert "hmac.new" in source or "hmac.HMAC" in source, \
+            "secret_equal must HMAC-hash inputs before comparison"

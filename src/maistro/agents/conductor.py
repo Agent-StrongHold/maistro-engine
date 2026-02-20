@@ -16,7 +16,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
 from maistro.agents.types import ConductorOutput, PlanOutput, SubTask
-from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
+from maistro.config.models import Tier, TierConfig, get_tier_config
 from maistro.tasks.models import TaskCreate
 
 logger = structlog.get_logger()
@@ -24,7 +24,7 @@ logger = structlog.get_logger()
 
 def _get_tier_config(tier: int | None) -> TierConfig:
     t = Tier(tier) if tier and tier in [e.value for e in Tier] else Tier.STANDARD
-    return DEFAULT_TIERS[t]
+    return get_tier_config(t)
 
 
 def _resolve_model(tier_model: str) -> tuple[str, str | None]:
