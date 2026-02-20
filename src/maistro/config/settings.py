@@ -52,6 +52,24 @@ class SandboxSettings(BaseSettings):
     network_disabled: bool = False
 
 
+class OllamaSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="OLLAMA_")
+
+    base_url: str = "http://localhost:11434/v1"
+
+
+class TierModelSettings(BaseSettings):
+    """Per-tier model overrides via MAISTRO_TIER_*_MODEL env vars."""
+
+    model_config = SettingsConfigDict(env_prefix="MAISTRO_TIER_")
+
+    # Tier model names — None means use the hardcoded default
+    _1_model: str = Field("", alias="MAISTRO_TIER_1_MODEL")
+    _2_model: str = Field("", alias="MAISTRO_TIER_2_MODEL")
+    _3_model: str = Field("", alias="MAISTRO_TIER_3_MODEL")
+    _4_model: str = Field("", alias="MAISTRO_TIER_4_MODEL")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -72,6 +90,16 @@ class Settings(BaseSettings):
 
     # Default LLM model for agents
     default_model: str = "anthropic/claude-sonnet-4-20250514"
+
+    # LLM model routing — consolidated from os.environ.get() calls
+    ollama_base_url: str = "http://localhost:11434/v1"
+    maistro_dry_run: bool = False
+
+    # Per-tier model overrides
+    tier_1_model: str = ""
+    tier_2_model: str = ""
+    tier_3_model: str = ""
+    tier_4_model: str = ""
 
     # Request limits
     max_webhook_body_bytes: int = 1_048_576  # 1 MB

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import functools
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar
@@ -55,7 +56,8 @@ def trace_agent(name: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
                 span.end(output=f"error: {exc}", level="ERROR")
                 raise
             finally:
-                langfuse.flush()
+                # Non-blocking flush — run in thread to avoid blocking the event loop
+                asyncio.get_running_loop().run_in_executor(None, langfuse.flush)
 
         return wrapper  # type: ignore[return-value]
 

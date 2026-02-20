@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import Annotated, Any
+import json
+from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
+from maistro.api.schemas import CIWebhookIgnored, WebhookAccepted, WebhookIgnored
 from maistro.config.settings import Settings, get_settings
 from maistro.constants import WEBHOOK_BODY_PREVIEW_LEN
 from maistro.security.external_content import ContentSource, detect_injection, wrap_external_content
@@ -53,7 +55,7 @@ async def github_webhook(
     settings: Annotated[Settings, Depends(get_settings)],
     x_github_event: str | None = Header(None),
     x_hub_signature_256: str | None = Header(None),
-) -> dict[str, Any]:
+) -> WebhookAccepted | WebhookIgnored:
     _check_body_size(request, settings)
     body = await request.body()
 
@@ -65,7 +67,6 @@ async def github_webhook(
     else:
         logger.warning("github_webhook_secret_not_configured")
 
-    import json
     payload = json.loads(body)
 
     event = x_github_event or "unknown"
@@ -85,7 +86,7 @@ async def github_webhook(
             workspace=f"/repos/{repo}",
         )
         result = await queue.submit(task)
-        return {"task_id": result.task_id, "action": "pr_review_queued"}
+        return WebhookAccepted(task_id=result.task_id, action="pr_review_queued")
 
     # Handle issue events
     if event == "issues" and action == "opened":
@@ -100,9 +101,9 @@ async def github_webhook(
             workspace=f"/repos/{repo}",
         )
         result = await queue.submit(task)
-        return {"task_id": result.task_id, "action": "issue_task_queued"}
+        return WebhookAccepted(task_id=result.task_id, action="issue_task_queued")
 
-    return {"status": "ignored", "event": event, "action": action}
+    return WebhookIgnored(status="ignored", event=event, action=action)
 
 
 class CIWebhookPayload(BaseModel):
@@ -122,7 +123,7 @@ async def ci_webhook(
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
     settings: Annotated[Settings, Depends(get_settings)],
     x_webhook_secret: str | None = Header(None),
-) -> dict[str, Any]:
+) -> WebhookAccepted | CIWebhookIgnored:
     _check_body_size(request, settings)
 
     # Verify CI webhook shared secret when configured
@@ -140,6 +141,6 @@ async def ci_webhook(
             branch=payload.branch,
         )
         result = await queue.submit(task)
-        return {"task_id": result.task_id, "action": "ci_fix_queued"}
+        return WebhookAccepted(task_id=result.task_id, action="ci_fix_queued")
 
-    return {"status": "ignored", "ci_status": payload.status}
+    return CIWebhookIgnored(status="ignored", ci_status=payload.status)

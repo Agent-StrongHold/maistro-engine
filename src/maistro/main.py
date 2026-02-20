@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,25 +10,22 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
 from maistro.api import chat_completions, health, models, tasks, webhooks, ws
+from maistro.api.schemas import ErrorDetail, ErrorResponse
 from maistro.tasks.queue import get_task_queue
 from maistro.tasks.runner import TaskRunner
+from maistro.tools.sandbox.server import cleanup_all_containers
 
 logger = structlog.get_logger()
 
 _runner: TaskRunner | None = None
 
-
-class ErrorDetail(BaseModel):
-    type: str
-    message: str
-    request_id: str
-
-
-class ErrorResponse(BaseModel):
-    error: ErrorDetail
+# Single source of truth for version — read from installed package metadata
+try:
+    APP_VERSION = importlib.metadata.version("maistro")
+except importlib.metadata.PackageNotFoundError:
+    APP_VERSION = "0.1.0-dev"
 
 
 @asynccontextmanager
@@ -49,19 +47,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     queue = get_task_queue()
     _runner = TaskRunner(queue)
     await _runner.start()
-    await logger.ainfo("maistro_engine_started")
+    await logger.ainfo("maistro_engine_started", version=APP_VERSION)
 
     yield
 
     if _runner:
         await _runner.stop()
+    await cleanup_all_containers()
     await logger.ainfo("maistro_engine_stopped")
 
 
 app = FastAPI(
     title="Maistro Engine",
     description="Software engineering department in a box",
-    version="0.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
