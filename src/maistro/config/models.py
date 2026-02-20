@@ -27,34 +27,52 @@ class TierConfig(BaseModel):
     parallel_generations: int = 1  # >1 for ensemble (tier 3-4)
 
 
-# Default tier configurations — overridable via config/env
-# Uses local Ollama models by default (P40 24GB VRAM)
-# Override with MAISTRO_TIER_*_MODEL env vars for cloud models
-DEFAULT_TIERS: dict[Tier, TierConfig] = {
-    Tier.QUICK: TierConfig(
-        tier=Tier.QUICK,
-        model=os.environ.get("MAISTRO_TIER_1_MODEL", "ollama/qwen2.5-coder:7b"),
+# Tier defaults — env vars are read lazily via get_tier_config() so that
+# changes to the environment after import are respected.
+_TIER_DEFAULTS: dict[Tier, dict[str, object]] = {
+    Tier.QUICK: dict(
+        env_var="MAISTRO_TIER_1_MODEL",
+        fallback="ollama/qwen2.5-coder:7b",
         max_retries=1,
         temperature=0.0,
     ),
-    Tier.STANDARD: TierConfig(
-        tier=Tier.STANDARD,
-        model=os.environ.get("MAISTRO_TIER_2_MODEL", "ollama/qwen2.5-coder:32b"),
+    Tier.STANDARD: dict(
+        env_var="MAISTRO_TIER_2_MODEL",
+        fallback="ollama/qwen2.5-coder:32b",
         max_retries=3,
         temperature=0.0,
     ),
-    Tier.THOROUGH: TierConfig(
-        tier=Tier.THOROUGH,
-        model=os.environ.get("MAISTRO_TIER_3_MODEL", "ollama/qwen3-coder-next:latest"),
+    Tier.THOROUGH: dict(
+        env_var="MAISTRO_TIER_3_MODEL",
+        fallback="ollama/qwen3-coder-next:latest",
         max_retries=5,
         temperature=0.3,
-        parallel_generations=1,  # single-gen on P40 (VRAM-constrained)
+        parallel_generations=1,
     ),
-    Tier.ULTRA: TierConfig(
-        tier=Tier.ULTRA,
-        model=os.environ.get("MAISTRO_TIER_4_MODEL", "ollama/qwen3-coder-next:latest"),
+    Tier.ULTRA: dict(
+        env_var="MAISTRO_TIER_4_MODEL",
+        fallback="ollama/qwen3-coder-next:latest",
         max_retries=5,
         temperature=0.5,
-        parallel_generations=1,  # single-gen on P40 (VRAM-constrained)
+        parallel_generations=1,
     ),
 }
+
+
+def get_tier_config(tier: Tier) -> TierConfig:
+    """Build a TierConfig, reading env vars at call time (not import time)."""
+    defaults = _TIER_DEFAULTS[tier]
+    model = os.environ.get(
+        str(defaults["env_var"]), str(defaults["fallback"])
+    )
+    return TierConfig(
+        tier=tier,
+        model=model,
+        max_retries=int(defaults.get("max_retries", 3)),  # type: ignore[arg-type]
+        temperature=float(defaults.get("temperature", 0.0)),  # type: ignore[arg-type]
+        parallel_generations=int(defaults.get("parallel_generations", 1)),  # type: ignore[arg-type]
+    )
+
+
+# Keep DEFAULT_TIERS for backward compatibility, but document it's a snapshot
+DEFAULT_TIERS: dict[Tier, TierConfig] = {t: get_tier_config(t) for t in Tier}

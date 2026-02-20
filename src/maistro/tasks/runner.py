@@ -44,7 +44,15 @@ class TaskRunner:
             except asyncio.CancelledError:
                 break
 
-            await self._execute_task(task_id)
+            try:
+                await self._execute_task(task_id)
+            except asyncio.CancelledError:
+                # Graceful shutdown — mark task as failed rather than leaving it stuck
+                await self._queue.update_status(task_id, TaskStatus.FAILED)
+                self._queue.set_result(
+                    task_id, TaskResult(error="Task cancelled during shutdown")
+                )
+                break
 
     async def _execute_task(self, task_id: str) -> None:
         task = self._queue.get(task_id)
@@ -53,7 +61,7 @@ class TaskRunner:
 
         async with self._queue.claim(task_id):
             # Planning phase
-            self._queue.update_status(task_id, TaskStatus.PLANNING)
+            await self._queue.update_status(task_id, TaskStatus.PLANNING)
             self._queue.update_progress(
                 task_id, TaskProgress(current="Analyzing task and creating plan...")
             )
@@ -66,7 +74,7 @@ class TaskRunner:
             )
 
             # Run the conductor
-            self._queue.update_status(task_id, TaskStatus.CODING)
+            await self._queue.update_status(task_id, TaskStatus.CODING)
             self._queue.update_progress(
                 task_id, TaskProgress(current="Generating implementation...")
             )
@@ -76,19 +84,19 @@ class TaskRunner:
             # Process result — walk through remaining phases
             if result.success:
                 # CODING → REVIEWING
-                self._queue.update_status(task_id, TaskStatus.REVIEWING)
+                await self._queue.update_status(task_id, TaskStatus.REVIEWING)
                 self._queue.update_progress(
                     task_id, TaskProgress(current="Reviewing implementation...")
                 )
 
                 # REVIEWING → TESTING
-                self._queue.update_status(task_id, TaskStatus.TESTING)
+                await self._queue.update_status(task_id, TaskStatus.TESTING)
                 self._queue.update_progress(
                     task_id, TaskProgress(current="Running tests...")
                 )
 
                 # TESTING → COMPLETED
-                self._queue.update_status(task_id, TaskStatus.COMPLETED)
+                await self._queue.update_status(task_id, TaskStatus.COMPLETED)
                 self._queue.set_result(
                     task_id,
                     TaskResult(
@@ -97,7 +105,7 @@ class TaskRunner:
                     ),
                 )
             else:
-                self._queue.update_status(task_id, TaskStatus.FAILED)
+                await self._queue.update_status(task_id, TaskStatus.FAILED)
                 self._queue.set_result(
                     task_id,
                     TaskResult(error=result.final_answer),
