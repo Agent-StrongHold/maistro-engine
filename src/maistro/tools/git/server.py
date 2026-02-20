@@ -13,35 +13,49 @@ from maistro.tools.git.github import create_pr, get_pr, list_issues
 
 mcp = FastMCP("git", instructions="Git and GitHub operations")
 
+# Default timeout for clone operations (large repos)
+GIT_CLONE_TIMEOUT = 300
+
 
 async def _git(workspace: str, *args: str, timeout: int = 60) -> str:
     """Run a git command in the given workspace."""
-    proc = await asyncio.create_subprocess_exec(
-        "git", "-C", workspace, *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    output = stdout.decode("utf-8", errors="replace") if stdout else ""
-    code = proc.returncode or 0
-    return f"[exit {code}]\n{output}" if code != 0 else output
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "-C", workspace, *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        output = stdout.decode("utf-8", errors="replace") if stdout else ""
+        code = proc.returncode or 0
+        return f"[exit {code}]\n{output}" if code != 0 else output
+    except FileNotFoundError:
+        return "[exit 1]\ngit binary not found"
+    except TimeoutError:
+        return f"[exit 1]\ngit command timed out after {timeout}s"
 
 
 @mcp.tool()
-async def git_clone(url: str, dest: str) -> str:
+async def git_clone(url: str, dest: str, timeout: int = GIT_CLONE_TIMEOUT) -> str:
     """Clone a git repository.
 
     Args:
         url: Repository URL (HTTPS or SSH)
         dest: Destination directory path
+        timeout: Maximum time for clone in seconds
     """
-    proc = await asyncio.create_subprocess_exec(
-        "git", "clone", "--depth=1", url, dest,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    stdout, _ = await proc.communicate()
-    return stdout.decode() if stdout else "Cloned"
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "clone", "--depth=1", url, dest,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return stdout.decode() if stdout else "Cloned"
+    except FileNotFoundError:
+        return "[exit 1]\ngit binary not found"
+    except TimeoutError:
+        return f"[exit 1]\ngit clone timed out after {timeout}s"
 
 
 @mcp.tool()

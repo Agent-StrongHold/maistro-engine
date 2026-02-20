@@ -25,6 +25,9 @@ class TierConfig(BaseModel):
     max_retries: int = 3
     temperature: float = 0.0
     parallel_generations: int = 1  # >1 for ensemble (tier 3-4)
+    timeout: int = 120  # LLM call timeout in seconds
+    max_llm_retries: int = 3  # retries for transient LLM failures
+    initial_backoff: float = 1.0  # base delay for exponential backoff
 
 
 # Default tier configurations — overridable via config/env

@@ -7,6 +7,7 @@ network isolation, and environment sanitization.
 from __future__ import annotations
 
 import asyncio
+import subprocess
 
 import structlog
 
@@ -44,7 +45,11 @@ class SandboxContainer:
             return proc.returncode or 0, output
         except TimeoutError:
             return 124, f"Command timed out after {timeout}s"
-        except Exception as exc:
+        except FileNotFoundError:
+            raise  # Docker binary not installed
+        except PermissionError:
+            raise  # Docker socket inaccessible
+        except (OSError, subprocess.SubprocessError) as exc:
             return 1, f"Exec error: {exc}"
 
     async def read_file(self, path: str) -> str:

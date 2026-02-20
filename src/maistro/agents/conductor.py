@@ -6,8 +6,11 @@ Phase 2 will split this into sub-agents (planner, coder, reviewer, scout).
 
 from __future__ import annotations
 
+import asyncio
 import os
+import random
 
+import httpx
 import structlog
 from pydantic_ai import Agent
 from pydantic_ai.models import KnownModelName
@@ -15,11 +18,15 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
-from maistro.agents.types import ConductorOutput, PlanOutput, SubTask
+from maistro.agents.types import ConductorOutput, LLMProviderError, PlanOutput, SubTask
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
+from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
 from maistro.tasks.models import TaskCreate
 
 logger = structlog.get_logger()
+
+# HTTP status codes that indicate transient failures worth retrying
+_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 
 
 def _get_tier_config(tier: int | None) -> TierConfig:
@@ -76,20 +83,75 @@ def build_conductor(
     )
 
 
+def _is_retryable(exc: Exception) -> bool:
+    """Check if an exception represents a transient failure worth retrying."""
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return True
+    if isinstance(exc, httpx.ConnectError):
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _RETRYABLE_STATUS_CODES
+    return False
+
+
+async def _run_with_retry(
+    agent: Agent[None, ConductorOutput],
+    prompt: str,
+    tier_config: TierConfig,
+) -> ConductorOutput:
+    """Run the agent with timeout and retry logic for transient failures."""
+    last_exc: Exception | None = None
+
+    for attempt in range(tier_config.max_llm_retries):
+        try:
+            result = await asyncio.wait_for(
+                agent.run(prompt), timeout=tier_config.timeout
+            )
+            return result.output
+        except (TimeoutError, asyncio.TimeoutError) as exc:
+            last_exc = exc
+            await logger.awarning(
+                "llm_timeout",
+                attempt=attempt + 1,
+                max_retries=tier_config.max_llm_retries,
+                timeout=tier_config.timeout,
+            )
+        except Exception as exc:
+            if _is_retryable(exc):
+                last_exc = exc
+                await logger.awarning(
+                    "llm_transient_error",
+                    attempt=attempt + 1,
+                    max_retries=tier_config.max_llm_retries,
+                    error=str(exc),
+                )
+            else:
+                raise
+
+        # Exponential backoff with jitter before retry
+        if attempt < tier_config.max_llm_retries - 1:
+            delay = tier_config.initial_backoff * (2 ** attempt) + random.uniform(0, 1)
+            await asyncio.sleep(delay)
+
+    raise LLMProviderError(
+        f"LLM call failed after {tier_config.max_llm_retries} retries: {last_exc}"
+    )
+
+
 async def run_task(task: TaskCreate) -> ConductorOutput:
     """Execute a full engineering task through the conductor pipeline.
 
     This is the main entry point for task execution. It:
     1. Selects the appropriate tier/model configuration
     2. Builds the conductor agent
-    3. Runs the agent with the task description
+    3. Runs the agent with timeout and retry logic
     4. Returns structured output
 
     If MAISTRO_DRY_RUN=1 is set, returns a mock result without calling any LLM.
     """
     # Dry-run mode — return mock result without LLM call
     if os.environ.get("MAISTRO_DRY_RUN", "").strip() in ("1", "true", "yes"):
-        await logger.ainfo("conductor_dry_run", description=task.description[:80])
+        await logger.ainfo("conductor_dry_run", description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN])
         return ConductorOutput(
             plan=PlanOutput(
                 summary=f"[DRY RUN] Plan for: {task.description}",
@@ -120,7 +182,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         tier=tier_config.tier,
         model=resolved_model,
         base_url=base_url or "default",
-        description=task.description[:80],
+        description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN],
     )
 
     agent = build_conductor(model=resolved_model, base_url=base_url)
@@ -132,6 +194,6 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         f"Constraints:\n{constraints_text}"
     )
 
-    result = await agent.run(prompt)
-    await logger.ainfo("conductor_complete", success=result.output.success)
-    return result.output
+    result = await _run_with_retry(agent, prompt, tier_config)
+    await logger.ainfo("conductor_complete", success=result.success)
+    return result

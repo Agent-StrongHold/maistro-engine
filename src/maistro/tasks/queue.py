@@ -1,7 +1,7 @@
-"""In-memory task queue with PostgreSQL persistence.
+"""In-memory task queue (Phase 1).
 
-For Phase 1, tasks are stored in-memory with async persistence to PostgreSQL.
-This avoids needing Redis while still surviving restarts via DB recovery.
+All task state is held in memory. A process restart loses all tasks.
+Phase 2 will add PostgreSQL persistence via TaskRecord.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 import structlog
 
+from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
 from maistro.tasks.models import TaskCreate, TaskProgress, TaskResponse, TaskResult, TaskStatus
 from maistro.tasks.status import can_transition
 
@@ -40,7 +41,11 @@ class TaskQueue:
         )
         self._tasks[task_id] = task
         await self._pending.put(task_id)
-        await logger.ainfo("task_queued", task_id=task_id, description=request.description[:80])
+        await logger.ainfo(
+            "task_queued",
+            task_id=task_id,
+            description=request.description[:DESCRIPTION_LOG_PREVIEW_LEN],
+        )
         return task
 
     def get(self, task_id: str) -> TaskResponse | None:
@@ -49,8 +54,15 @@ class TaskQueue:
     def update_status(self, task_id: str, status: TaskStatus) -> bool:
         task = self._tasks.get(task_id)
         if task is None:
+            logger.warning("update_status_missing_task", task_id=task_id, requested=status.value)
             return False
         if not can_transition(task.status, status):
+            logger.warning(
+                "invalid_state_transition",
+                task_id=task_id,
+                current=task.status.value,
+                requested=status.value,
+            )
             return False
 
         task.status = status

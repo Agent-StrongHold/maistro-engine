@@ -13,14 +13,19 @@ logger = structlog.get_logger()
 
 async def _run_gh(*args: str, timeout: int = 30) -> tuple[int, str]:
     """Run a gh CLI command and return (exit_code, output)."""
-    proc = await asyncio.create_subprocess_exec(
-        "gh", *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-    )
-    stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    output = stdout.decode("utf-8", errors="replace") if stdout else ""
-    return proc.returncode or 0, output
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "gh", *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        output = stdout.decode("utf-8", errors="replace") if stdout else ""
+        return proc.returncode or 0, output
+    except FileNotFoundError:
+        return 1, "gh CLI binary not found — install GitHub CLI"
+    except TimeoutError:
+        return 1, f"gh command timed out after {timeout}s"
 
 
 async def create_pr(
@@ -50,7 +55,11 @@ async def get_pr(repo: str, number: int) -> dict[str, Any]:
         "--json", "title,body,state,files,reviews",
     )
     if code == 0:
-        return json.loads(output)
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            logger.warning("gh_pr_invalid_json", repo=repo, number=number, output=output[:200])
+            return {"error": f"Invalid JSON from gh: {output[:200]}"}
     return {"error": output}
 
 
@@ -63,5 +72,9 @@ async def list_issues(repo: str, limit: int = 10) -> list[dict[str, Any]]:
         "--json", "number,title,body,labels",
     )
     if code == 0:
-        return json.loads(output)
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            logger.warning("gh_issues_invalid_json", repo=repo, output=output[:200])
+            return []
     return []

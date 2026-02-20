@@ -10,9 +10,13 @@ This FastMCP server provides tools for:
 
 from __future__ import annotations
 
+import structlog
 from fastmcp import FastMCP
 
+from maistro.security.dangerous_tools import is_blocked_path, is_dangerous_command
 from maistro.tools.sandbox.docker import SandboxContainer, create_sandbox
+
+logger = structlog.get_logger()
 
 mcp = FastMCP("sandbox", instructions="Docker sandbox for isolated code execution")
 
@@ -27,6 +31,13 @@ async def _get_or_create(workspace: str) -> SandboxContainer:
     return _containers[workspace]
 
 
+def _check_path(path: str) -> str | None:
+    """Return an error string if path is blocked, else None."""
+    if is_blocked_path(path):
+        return f"Blocked: access to '{path}' is not allowed"
+    return None
+
+
 @mcp.tool()
 async def sandbox_exec(workspace: str, command: str, timeout: int = 60) -> str:
     """Execute a shell command in the sandbox container.
@@ -36,6 +47,11 @@ async def sandbox_exec(workspace: str, command: str, timeout: int = 60) -> str:
         command: Shell command to execute
         timeout: Maximum execution time in seconds
     """
+    violations = is_dangerous_command(command)
+    if violations:
+        logger.warning("dangerous_command_blocked", command=command, violations=violations)
+        return f"[exit 1]\nBlocked: command matched dangerous patterns: {', '.join(violations)}"
+
     container = await _get_or_create(workspace)
     exit_code, output = await container.exec(command, timeout=timeout)
     return f"[exit {exit_code}]\n{output}"
@@ -49,6 +65,8 @@ async def sandbox_read(workspace: str, path: str) -> str:
         workspace: Path to the workspace directory
         path: Relative path to the file within the workspace
     """
+    if err := _check_path(path):
+        return err
     container = await _get_or_create(workspace)
     return await container.read_file(path)
 
@@ -62,6 +80,8 @@ async def sandbox_write(workspace: str, path: str, content: str) -> str:
         path: Relative path to the file within the workspace
         content: File content to write
     """
+    if err := _check_path(path):
+        return err
     container = await _get_or_create(workspace)
     await container.write_file(path, content)
     return f"Written: {path}"
@@ -75,6 +95,8 @@ async def sandbox_glob(workspace: str, pattern: str) -> str:
         workspace: Path to the workspace directory
         pattern: Glob pattern (e.g., '**/*.py', 'src/**/*.ts')
     """
+    if err := _check_path(pattern):
+        return err
     container = await _get_or_create(workspace)
     _, output = await container.exec(f"find /workspace -path '/workspace/{pattern}' -type f 2>/dev/null | head -100")
     return output or "No files found"
@@ -89,6 +111,8 @@ async def sandbox_grep(workspace: str, pattern: str, path: str = ".") -> str:
         pattern: Search pattern (regex)
         path: Directory or file to search in (relative to workspace)
     """
+    if err := _check_path(path):
+        return err
     container = await _get_or_create(workspace)
     _, output = await container.exec(
         f"grep -rn '{pattern}' /workspace/{path} 2>/dev/null | head -50"
