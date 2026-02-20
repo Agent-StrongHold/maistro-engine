@@ -1,0 +1,109 @@
+version: "3.9"
+
+services:
+  # ─── Maistro Engine ────────────────────────────────────
+  maistro-engine:
+    build: .
+    container_name: maistro-engine
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=maistro
+      - DB_USER=maistro
+      - DB_PASSWORD=${DB_PASSWORD:-maistro}
+      - LITELLM_BASE_URL=http://litellm:4000
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-litellm-dev}
+      - LANGFUSE_HOST=http://langfuse:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-anthropic/claude-sonnet-4-20250514}
+      - API_KEYS=${API_KEYS:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspace-data:/repos
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── PostgreSQL ────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: maistro-postgres
+    environment:
+      POSTGRES_USER: maistro
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-maistro}
+      POSTGRES_DB: maistro
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U maistro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── LiteLLM Proxy ────────────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: maistro-litellm
+    ports:
+      - "4000:4000"
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-litellm-dev}
+      - DATABASE_URL=postgresql://maistro:${DB_PASSWORD:-maistro}@postgres:5432/litellm
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Langfuse (Observability) ──────────────────────────
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: maistro-langfuse
+    ports:
+      - "3100:3000"
+    environment:
+      - DATABASE_URL=postgresql://maistro:${DB_PASSWORD:-maistro}@postgres:5432/langfuse
+      - NEXTAUTH_URL=http://localhost:3100
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-changeme-langfuse-secret}
+      - SALT=${LANGFUSE_SALT:-changeme-langfuse-salt}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Open WebUI (Chat Interface) ──────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: maistro-webui
+    ports:
+      - "3080:8080"
+    environment:
+      - OPENAI_API_BASE_URL=http://maistro-engine:8000/v1
+      - OPENAI_API_KEY=${API_KEYS:-sk-maistro-dev}
+      - WEBUI_AUTH=true
+      - OAUTH_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-}
+      - OAUTH_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET:-}
+      - OPENID_PROVIDER_URL=${KEYCLOAK_OIDC_URL:-}
+    volumes:
+      - webui-data:/app/backend/data
+    depends_on:
+      - maistro-engine
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  workspace-data:
+  webui-data:
