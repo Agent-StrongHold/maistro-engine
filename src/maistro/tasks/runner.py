@@ -20,7 +20,9 @@ class TaskRunner:
     def __init__(self, queue: TaskQueue) -> None:
         self._queue = queue
         self._running = False
+        self._draining = False
         self._worker_task: asyncio.Task[None] | None = None
+        self._current_task_id: str | None = None
 
     async def start(self) -> None:
         self._running = True
@@ -35,6 +37,30 @@ class TaskRunner:
                 await self._worker_task
         await logger.ainfo("task_runner_stopped")
 
+    async def drain(self, timeout: int = 30) -> None:
+        """Graceful shutdown: stop accepting new tasks, wait for current task."""
+        self._draining = True
+        self._running = False
+        await logger.ainfo("task_runner_draining", timeout=timeout, current_task=self._current_task_id)
+
+        if self._current_task_id and self._worker_task:
+            try:
+                await asyncio.wait_for(asyncio.shield(self._worker_task), timeout=timeout)
+                await logger.ainfo("task_runner_drained_ok")
+            except TimeoutError:
+                await logger.awarn("task_runner_drain_timeout", task_id=self._current_task_id)
+                self._worker_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._worker_task
+        else:
+            if self._worker_task:
+                self._worker_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self._worker_task
+
+        self._draining = False
+        await logger.ainfo("task_runner_stopped")
+
     async def _worker_loop(self) -> None:
         while self._running:
             try:
@@ -44,7 +70,9 @@ class TaskRunner:
             except asyncio.CancelledError:
                 break
 
+            self._current_task_id = task_id
             await self._execute_task(task_id)
+            self._current_task_id = None
 
     async def _execute_task(self, task_id: str) -> None:
         task = self._queue.get(task_id)
@@ -65,7 +93,7 @@ class TaskRunner:
                 tier=task.tier,
             )
 
-            # Run the conductor
+            # Run the conductor (single-pass: plan + code in one LLM call)
             self._queue.update_status(task_id, TaskStatus.CODING)
             self._queue.update_progress(
                 task_id, TaskProgress(current="Generating implementation...")
@@ -73,27 +101,15 @@ class TaskRunner:
 
             result = await run_task(request)
 
-            # Process result — walk through remaining phases
+            # MAJ-16: Report honestly — Phase 1 is single-pass, no independent
+            # review or test execution. Only transition to COMPLETED or FAILED.
             if result.success:
-                # CODING → REVIEWING
-                self._queue.update_status(task_id, TaskStatus.REVIEWING)
-                self._queue.update_progress(
-                    task_id, TaskProgress(current="Reviewing implementation...")
-                )
-
-                # REVIEWING → TESTING
-                self._queue.update_status(task_id, TaskStatus.TESTING)
-                self._queue.update_progress(
-                    task_id, TaskProgress(current="Running tests...")
-                )
-
-                # TESTING → COMPLETED
                 self._queue.update_status(task_id, TaskStatus.COMPLETED)
                 self._queue.set_result(
                     task_id,
                     TaskResult(
                         files_changed=result.code.files_changed if result.code else [],
-                        review_score=result.review.score if result.review else None,
+                        # review_score omitted: no independent review in Phase 1
                     ),
                 )
             else:

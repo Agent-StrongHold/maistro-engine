@@ -1,55 +1,51 @@
 """Environment variable sanitization for sandbox containers.
 
-Prevents leaking secrets into sandbox environments. Pattern ported from
-OpenClaw's docker.ts env sanitization blocklist.
+Uses an ALLOWLIST approach — only explicitly approved env vars pass through.
+This is the inverse of the original blocklist approach, which could miss
+secrets in non-standard formats.
 """
 
 from __future__ import annotations
 
 import re
 
-# Environment variable names that must never be passed to sandbox containers.
-# Uses prefix matching — any env var starting with these strings is blocked.
-BLOCKED_PREFIXES = (
-    "API_KEY",
-    "SECRET",
-    "TOKEN",
-    "PASSWORD",
-    "CREDENTIAL",
-    "PRIVATE_KEY",
-    "AWS_",
-    "AZURE_",
-    "GCP_",
-    "GOOGLE_",
-    "ANTHROPIC_",
-    "OPENAI_",
-    "GITHUB_TOKEN",
-    "GH_TOKEN",
-    "NPM_TOKEN",
-    "PYPI_TOKEN",
-    "DOCKER_",
-    "KUBECONFIG",
-    "SSH_",
-    "PGP_",
-    "GPG_",
-    "LANGFUSE_",
-    "LITELLM_",
-    "DB_PASSWORD",
-    "DATABASE_URL",
-    "REDIS_URL",
-    "MAISTRO_API",
+# MAJ-07: Allowlist of env var names safe to pass into sandbox containers.
+# Only these prefixes/names are permitted; everything else is blocked.
+ALLOWED_PREFIXES = (
+    "LANG",          # Locale (LANG, LANGUAGE)
+    "LC_",           # Locale categories
+    "TZ",            # Timezone
+    "TERM",          # Terminal type
+    "PATH",          # Executable search path
+    "PYTHONPATH",    # Python module path
+    "NODE_PATH",     # Node module path
+    "PYTHONDONTWRITEBYTECODE",
+    "PIP_NO_CACHE_DIR",
+    "NPM_CONFIG_",
+    "VIRTUAL_ENV",
+    "CONDA_",
+    "CARGO_",
+    "GOPATH",
+    "RUSTUP_",
 )
 
-# Exact env var names to block
-BLOCKED_EXACT = frozenset({
-    "HOME",
-    "USER",
-    "LOGNAME",
-    "HOSTNAME",
-    "MAIL",
+ALLOWED_EXACT = frozenset({
+    "PATH",
+    "LANG",
+    "LANGUAGE",
+    "TZ",
+    "TERM",
+    "SHELL",
+    "EDITOR",
+    "PYTHONDONTWRITEBYTECODE",
+    "PIP_NO_CACHE_DIR",
+    "VIRTUAL_ENV",
+    "GOPATH",
+    "CI",
+    "DEBIAN_FRONTEND",
 })
 
-# Pattern for values that look like secrets (base64-ish, hex, JWT)
+# Legacy blocklist patterns kept for defense-in-depth on value heuristics
 _SECRET_PATTERN = re.compile(
     r"^(sk-[a-zA-Z0-9]{20,}|"  # OpenAI-style keys
     r"ghp_[a-zA-Z0-9]{36}|"  # GitHub PATs
@@ -60,12 +56,12 @@ _SECRET_PATTERN = re.compile(
 )
 
 
-def is_blocked_name(name: str) -> bool:
-    """Check if an env var name should be blocked from sandbox."""
+def is_allowed_name(name: str) -> bool:
+    """Check if an env var name is in the allowlist."""
     upper = name.upper()
-    if upper in BLOCKED_EXACT:
+    if upper in ALLOWED_EXACT:
         return True
-    return any(upper.startswith(prefix) for prefix in BLOCKED_PREFIXES)
+    return any(upper.startswith(prefix) for prefix in ALLOWED_PREFIXES)
 
 
 def looks_like_secret(value: str) -> bool:
@@ -74,12 +70,33 @@ def looks_like_secret(value: str) -> bool:
 
 
 def sanitize_env(env: dict[str, str]) -> dict[str, str]:
-    """Filter environment variables, removing anything that looks sensitive.
+    """Filter environment variables using allowlist approach.
 
-    Returns a new dict with only safe env vars.
+    Only explicitly allowed env var names pass through, and values
+    are still checked against secret patterns as defense-in-depth.
     """
     return {
         k: v
         for k, v in env.items()
-        if not is_blocked_name(k) and not looks_like_secret(v)
+        if is_allowed_name(k) and not looks_like_secret(v)
     }
+
+
+# Keep legacy blocklist functions available for other uses
+BLOCKED_PREFIXES = (
+    "API_KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL", "PRIVATE_KEY",
+    "AWS_", "AZURE_", "GCP_", "GOOGLE_", "ANTHROPIC_", "OPENAI_",
+    "GITHUB_TOKEN", "GH_TOKEN", "NPM_TOKEN", "PYPI_TOKEN", "DOCKER_",
+    "KUBECONFIG", "SSH_", "PGP_", "GPG_", "LANGFUSE_", "LITELLM_",
+    "DB_PASSWORD", "DATABASE_URL", "REDIS_URL", "MAISTRO_API",
+)
+
+BLOCKED_EXACT = frozenset({"HOME", "USER", "LOGNAME", "HOSTNAME", "MAIL"})
+
+
+def is_blocked_name(name: str) -> bool:
+    """Check if an env var name should be blocked (legacy blocklist)."""
+    upper = name.upper()
+    if upper in BLOCKED_EXACT:
+        return True
+    return any(upper.startswith(prefix) for prefix in BLOCKED_PREFIXES)

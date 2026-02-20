@@ -64,5 +64,7 @@ async def list_tasks(
     _auth: RequireAuth,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
     limit: int = 50,
+    offset: int = 0,
 ) -> list[TaskResponse]:
-    return queue.list_tasks(limit=limit)
+    """List tasks with pagination."""
+    return queue.list_tasks(limit=limit, offset=offset)

@@ -27,34 +27,47 @@ class TierConfig(BaseModel):
     parallel_generations: int = 1  # >1 for ensemble (tier 3-4)
 
 
-# Default tier configurations — overridable via config/env
-# Uses local Ollama models by default (P40 24GB VRAM)
-# Override with MAISTRO_TIER_*_MODEL env vars for cloud models
-DEFAULT_TIERS: dict[Tier, TierConfig] = {
-    Tier.QUICK: TierConfig(
-        tier=Tier.QUICK,
-        model=os.environ.get("MAISTRO_TIER_1_MODEL", "ollama/qwen2.5-coder:7b"),
-        max_retries=1,
-        temperature=0.0,
-    ),
-    Tier.STANDARD: TierConfig(
-        tier=Tier.STANDARD,
-        model=os.environ.get("MAISTRO_TIER_2_MODEL", "ollama/qwen2.5-coder:32b"),
-        max_retries=3,
-        temperature=0.0,
-    ),
-    Tier.THOROUGH: TierConfig(
-        tier=Tier.THOROUGH,
-        model=os.environ.get("MAISTRO_TIER_3_MODEL", "ollama/qwen3-coder-next:latest"),
-        max_retries=5,
-        temperature=0.3,
-        parallel_generations=1,  # single-gen on P40 (VRAM-constrained)
-    ),
-    Tier.ULTRA: TierConfig(
-        tier=Tier.ULTRA,
-        model=os.environ.get("MAISTRO_TIER_4_MODEL", "ollama/qwen3-coder-next:latest"),
-        max_retries=5,
-        temperature=0.5,
-        parallel_generations=1,  # single-gen on P40 (VRAM-constrained)
-    ),
+# MIN-07: Tier defaults — env vars are read lazily via get_tier_config()
+_TIER_DEFAULTS: dict[Tier, dict[str, str | int | float]] = {
+    Tier.QUICK: {
+        "env": "MAISTRO_TIER_1_MODEL",
+        "default": "ollama/qwen2.5-coder:7b",
+        "max_retries": 1,
+        "temperature": 0.0,
+    },
+    Tier.STANDARD: {
+        "env": "MAISTRO_TIER_2_MODEL",
+        "default": "ollama/qwen2.5-coder:32b",
+        "max_retries": 3,
+        "temperature": 0.0,
+    },
+    Tier.THOROUGH: {
+        "env": "MAISTRO_TIER_3_MODEL",
+        "default": "ollama/qwen3-coder-next:latest",
+        "max_retries": 5,
+        "temperature": 0.3,
+    },
+    Tier.ULTRA: {
+        "env": "MAISTRO_TIER_4_MODEL",
+        "default": "ollama/qwen3-coder-next:latest",
+        "max_retries": 5,
+        "temperature": 0.5,
+    },
 }
+
+
+def get_tier_config(tier: int | None = None) -> TierConfig:
+    """Build tier config lazily, reading env vars at call time."""
+    t = Tier(tier) if tier and tier in [e.value for e in Tier] else Tier.STANDARD
+    defaults = _TIER_DEFAULTS[t]
+    model = os.environ.get(str(defaults["env"]), str(defaults["default"]))
+    return TierConfig(
+        tier=t,
+        model=model,
+        max_retries=int(defaults["max_retries"]),
+        temperature=float(defaults["temperature"]),
+    )
+
+
+# Legacy alias for backwards compat
+DEFAULT_TIERS: dict[Tier, TierConfig] = {t: get_tier_config(t) for t in Tier}

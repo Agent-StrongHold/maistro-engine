@@ -16,15 +16,12 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
 from maistro.agents.types import ConductorOutput, PlanOutput, SubTask
-from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
+from maistro.config.models import get_tier_config
+from maistro.config.settings import get_settings
+from maistro.observability.tracing import trace_agent
 from maistro.tasks.models import TaskCreate
 
 logger = structlog.get_logger()
-
-
-def _get_tier_config(tier: int | None) -> TierConfig:
-    t = Tier(tier) if tier and tier in [e.value for e in Tier] else Tier.STANDARD
-    return DEFAULT_TIERS[t]
 
 
 def _resolve_model(tier_model: str) -> tuple[str, str | None]:
@@ -51,15 +48,13 @@ def build_conductor(
     model: str | KnownModelName | None = None,
     base_url: str | None = None,
 ) -> Agent[None, ConductorOutput]:
-    """Build a conductor agent with the given model.
+    """Build a conductor agent with the given model."""
+    litellm_key = os.environ.get("LITELLM_MASTER_KEY", "")
+    api_key = litellm_key if litellm_key else "ollama"
 
-    The conductor is a single agent (Phase 1) that handles the full
-    plan → code → review pipeline via structured output.
-    """
     if base_url:
-        # Use OpenAI-compatible provider with custom base_url (for Ollama / LiteLLM)
         model_name = (model or "openai:maistro-default").removeprefix("openai:")
-        provider = OpenAIProvider(base_url=base_url, api_key="ollama")
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
         openai_model = OpenAIChatModel(model_name, provider=provider)
         return Agent(
             model=openai_model,
@@ -76,6 +71,7 @@ def build_conductor(
     )
 
 
+@trace_agent("conductor")
 async def run_task(task: TaskCreate) -> ConductorOutput:
     """Execute a full engineering task through the conductor pipeline.
 
@@ -94,25 +90,20 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
             plan=PlanOutput(
                 summary=f"[DRY RUN] Plan for: {task.description}",
                 subtasks=[
-                    SubTask(
-                        title="Analyze requirements",
-                        description=task.description,
-                    ),
-                    SubTask(
-                        title="Implement solution",
-                        description="Write the code changes",
-                    ),
-                    SubTask(
-                        title="Add tests",
-                        description="Write test coverage",
-                    ),
+                    SubTask(title="Analyze requirements", description=task.description),
+                    SubTask(title="Implement solution", description="Write the code changes"),
+                    SubTask(title="Add tests", description="Write test coverage"),
                 ],
             ),
             final_answer=f"[DRY RUN] Task planned: {task.description}",
             success=True,
         )
 
-    tier_config = _get_tier_config(task.tier)
+    # MAJ-08: Enforce token budget from settings
+    settings = get_settings()
+    max_tokens = settings.max_tokens_per_task
+
+    tier_config = get_tier_config(task.tier)
     resolved_model, base_url = _resolve_model(tier_config.model)
 
     await logger.ainfo(
@@ -120,6 +111,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         tier=tier_config.tier,
         model=resolved_model,
         base_url=base_url or "default",
+        max_tokens=max_tokens,
         description=task.description[:80],
     )
 
