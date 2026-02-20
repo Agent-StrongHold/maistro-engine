@@ -19,6 +19,9 @@ This is the strongest domain. Most functions are short and focused with cyclomat
 ### Performance Patterns (Score: 3/10)
 The most concerning domain for an AI API gateway. The streaming endpoint doesn't actually stream (it buffers the full LLM response then chunks the string). The task runner processes exactly one task at a time. LLM calls have no timeout. Settings are re-parsed from disk on every request. Docker sandbox containers are cached in an unbounded dict with no cleanup. The WebSocket uses polling (500ms sleep) instead of event-driven updates. These patterns would cause severe latency amplification and resource exhaustion under any meaningful load.
 
+### Error Handling & Resilience (Score: 3/10)
+The codebase has critical gaps in error handling that would cause silent failures and system-wide outages in production. The chat completions endpoint masks all errors as HTTP 200 OK responses with error text embedded in message content — clients cannot distinguish failures from successes. The TaskRunner worker loop will permanently die from a single unhandled exception, silently stopping all task processing. There is no global exception handler, producing inconsistent error contracts (some JSON, some plain text). LLM calls have zero retry logic for transient failures. Docker containers leak on error paths with no cleanup mechanism. The health check always reports "ok" regardless of downstream dependency health. GitHub CLI helpers don't handle timeout or missing binary errors. There is no circuit breaker, no request correlation IDs, and critical error paths (chat_completions) perform no logging at all.
+
 ---
 
 ## Current State Scorecard
@@ -30,8 +33,9 @@ The most concerning domain for an AI API gateway. The streaming endpoint doesn't
 | API Surface | 4/10 | Good OpenAI-compat strategy marred by inconsistent response shapes, missing auth on WebSocket/webhooks, and dead verification code |
 | Complexity | 7/10 | Functions are generally well-decomposed; main risks are in ws.py nesting, runner.py multi-responsibility, and chat_completions.py duplication |
 | Performance | 3/10 | Fake streaming, single-threaded execution, no LLM timeouts, uncapped resource caches, and polling-based WebSocket constitute systemic risk for an API gateway |
+| Error Handling | 3/10 | Errors masked as 200 OK, worker loop dies on unhandled exceptions, no global exception handler, no retry logic, no circuit breaker, container resource leaks, health check always "ok" |
 
-**Overall: 4.6/10** — The codebase has a clear architectural vision and clean foundations but the implementation has critical gaps that would prevent production deployment without remediation.
+**Overall: 4.3/10** — The codebase has a clear architectural vision and clean foundations but the implementation has critical gaps across error handling, performance, and security that would prevent production deployment without remediation.
 
 ---
 
