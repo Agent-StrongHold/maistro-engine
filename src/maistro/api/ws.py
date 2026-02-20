@@ -12,17 +12,17 @@ from pydantic import BaseModel
 
 from maistro.config.settings import get_settings
 from maistro.security.secret_equal import secret_equal
+from maistro.tasks.models import TaskResponse
 from maistro.tasks.queue import TaskQueue, get_task_queue
 
 logger = structlog.get_logger()
 
 router = APIRouter(tags=["streaming"])
 
-# Maximum WebSocket session duration (1 hour)
 WS_SESSION_TIMEOUT = 3600
 
+_TERMINAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
-# --- WebSocket message schemas (Item 34) ---
 
 class WSProgressMessage(BaseModel):
     task_id: str
@@ -43,6 +43,40 @@ class WSErrorMessage(BaseModel):
     error: str
 
 
+def _has_state_changed(
+    task: TaskResponse, last_status: str | None, last_progress: str | None
+) -> tuple[bool, str, str]:
+    """Check if status or progress changed. Returns (changed, status, progress)."""
+    current_status = task.status.value
+    current_progress = task.progress.current if task.progress else ""
+    changed = current_status != last_status or current_progress != last_progress
+    return changed, current_status, current_progress
+
+
+def _build_progress_message(task_id: str, task: TaskResponse) -> WSProgressMessage:
+    return WSProgressMessage(
+        task_id=task_id,
+        phase=task.phase,
+        status=task.status.value,
+        message=task.progress.current if task.progress else "",
+        timestamp=datetime.now(UTC).isoformat(),
+    )
+
+
+def _build_result_message(task_id: str, task: TaskResponse) -> WSResultMessage | None:
+    if task.result is None:
+        return None
+    return WSResultMessage(
+        task_id=task_id,
+        result=task.result.model_dump(),
+        timestamp=datetime.now(UTC).isoformat(),
+    )
+
+
+def _is_terminal(status: str) -> bool:
+    return status in _TERMINAL_STATUSES
+
+
 @router.websocket("/stream/{task_id}")
 async def stream_task(
     websocket: WebSocket,
@@ -50,7 +84,6 @@ async def stream_task(
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
     token: str | None = Query(None),
 ) -> None:
-    # Authenticate before accepting
     settings = get_settings()
     if settings.api_keys:
         if not token or not any(secret_equal(token, key) for key in settings.api_keys):
@@ -61,48 +94,32 @@ async def stream_task(
 
     try:
         async with asyncio.timeout(WS_SESSION_TIMEOUT):
-            last_status = None
-            last_progress = None
+            last_status: str | None = None
+            last_progress: str | None = None
 
             while True:
                 task = queue.get(task_id)
                 if task is None:
-                    msg = WSErrorMessage(error="Task not found")
-                    await websocket.send_json(msg.model_dump())
+                    await websocket.send_json(WSErrorMessage(error="Task not found").model_dump())
                     break
 
-                # Send update if status or progress changed
-                current_status = task.status.value
-                current_progress = task.progress.current if task.progress else ""
-
-                if current_status != last_status or current_progress != last_progress:
-                    msg = WSProgressMessage(
-                        task_id=task_id,
-                        phase=task.phase,
-                        status=current_status,
-                        message=current_progress,
-                        timestamp=datetime.now(UTC).isoformat(),
-                    )
-                    await websocket.send_json(msg.model_dump())
+                changed, current_status, current_progress = _has_state_changed(
+                    task, last_status, last_progress
+                )
+                if changed:
+                    await websocket.send_json(_build_progress_message(task_id, task).model_dump())
                     last_status = current_status
                     last_progress = current_progress
 
-                # Stop streaming if task is terminal
-                if current_status in ("completed", "failed", "cancelled"):
-                    if task.result:
-                        result_msg = WSResultMessage(
-                            task_id=task_id,
-                            result=task.result.model_dump(),
-                            timestamp=datetime.now(UTC).isoformat(),
-                        )
+                if _is_terminal(current_status):
+                    result_msg = _build_result_message(task_id, task)
+                    if result_msg:
                         await websocket.send_json(result_msg.model_dump())
                     break
 
-                # Wait for event signal instead of polling
                 try:
                     await asyncio.wait_for(queue.wait_for_update(task_id), timeout=5.0)
                 except TimeoutError:
-                    # Periodic heartbeat check even without updates
                     pass
 
     except WebSocketDisconnect:

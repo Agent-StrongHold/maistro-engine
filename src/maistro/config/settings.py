@@ -17,6 +17,11 @@ class DatabaseSettings(BaseSettings):
     user: str = "maistro"
     password: str = "maistro"
 
+    # Connection pooling (Item 66)
+    pool_size: int = 5
+    max_overflow: int = 10
+    pool_recycle: int = 1800  # seconds
+
     @property
     def url(self) -> str:
         return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
@@ -58,18 +63,6 @@ class OllamaSettings(BaseSettings):
     base_url: str = "http://localhost:11434/v1"
 
 
-class TierModelSettings(BaseSettings):
-    """Per-tier model overrides via MAISTRO_TIER_*_MODEL env vars."""
-
-    model_config = SettingsConfigDict(env_prefix="MAISTRO_TIER_")
-
-    # Tier model names — None means use the hardcoded default
-    _1_model: str = Field("", alias="MAISTRO_TIER_1_MODEL")
-    _2_model: str = Field("", alias="MAISTRO_TIER_2_MODEL")
-    _3_model: str = Field("", alias="MAISTRO_TIER_3_MODEL")
-    _4_model: str = Field("", alias="MAISTRO_TIER_4_MODEL")
-
-
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -103,6 +96,13 @@ class Settings(BaseSettings):
 
     # Request limits
     max_webhook_body_bytes: int = 1_048_576  # 1 MB
+
+    # Rate limiting (Item 63)
+    rate_limit_per_minute: int = 60  # per-client requests/minute
+    rate_limit_burst: int = 10  # burst allowance
+
+    # CORS (Item 64)
+    cors_allowed_origins: list[str] = Field(default_factory=list)
 
     # Sub-configs
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)

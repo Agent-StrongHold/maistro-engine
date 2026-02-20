@@ -137,12 +137,14 @@ async def create_sandbox(
         # Resource limits
         f"--memory={settings.memory_limit}",
         f"--cpus={settings.cpu_count}",
-        # Security
+        # Security hardening (Item 67)
         "--security-opt=no-new-privileges",
         "--cap-drop=ALL",
         "--cap-add=CHOWN",
         "--cap-add=SETUID",
         "--cap-add=SETGID",
+        "--pids-limit=256",
+        "--tmpfs=/tmp:rw,noexec,nosuid,size=64m",
         # Filesystem
         "-v", f"{host_path}:{CONTAINER_WORKSPACE}",
         "-w", CONTAINER_WORKSPACE,
