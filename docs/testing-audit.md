@@ -1,670 +1,484 @@
-# Maistro Engine -- Testing Infrastructure Audit
+# Maistro Engine — Testing Infrastructure Audit
 
-**Date**: 2026-02-20
-**Scope**: Full-spectrum analysis of testing infrastructure, coverage, resilience, contracts, observability, mutation survivability, and CI/CD pipeline.
-
----
-
-## Table of Contents
-
-1. [Executive Summary](#1-executive-summary)
-2. [Current State Overview](#2-current-state-overview)
-3. [Coverage Analysis](#3-coverage-analysis)
-4. [Property-Based Testing Gaps](#4-property-based-testing-gaps)
-5. [Contract & Boundary Testing Gaps](#5-contract--boundary-testing-gaps)
-6. [Chaos & Fault Injection Analysis](#6-chaos--fault-injection-analysis)
-7. [Observability & Behavioral Testing Gaps](#7-observability--behavioral-testing-gaps)
-8. [Mutation Survivability Analysis](#8-mutation-survivability-analysis)
-9. [Infrastructure & Pipeline Gaps](#9-infrastructure--pipeline-gaps)
-10. [Unified Risk Matrix](#10-unified-risk-matrix)
-11. [Prioritized Remediation Roadmap](#11-prioritized-remediation-roadmap)
+**Date:** 2026-02-20
+**Scope:** Full codebase (`src/maistro/`, `tests/`, infrastructure configs)
+**Methodology:** Six-agent parallel analysis covering property testing, contracts, chaos/fault injection, observability, mutation testing, and CI/CD pipeline infrastructure.
 
 ---
 
 ## 1. Executive Summary
 
-The Maistro Engine has a **well-structured but incomplete** testing foundation. The security test suite is remarkably thorough, the tooling choices (pytest, ruff, mypy strict) are sound, and the evidence-based docstring convention is exemplary. However, critical gaps exist across every analysis dimension:
-
-| Metric | Value |
-|---|---|
-| Total test functions | ~141 |
-| Estimated line coverage | ~38% |
-| Source lines with zero test coverage | ~1,468 of ~2,378 (62%) |
-| Untested async code paths | 100% (all async code is untested) |
-| External call sites | 22 |
-| Identified failure modes | 48 |
-| Failure modes with test coverage | **0 (0%)** |
-| Mutation survivors (critical) | 7 of 10 highest-risk mutations |
-| Property-based tests | 0 |
-| Contract tests | 0 |
-| CI/CD pipelines | 0 |
-| Resilience mechanisms (retry/circuit breaker) | 1 partial (PydanticAI output validation only) |
-
-**The three most dangerous findings:**
-
-1. **The LLM provider call (`conductor.py:135`) has no timeout, no retry, and no circuit breaker.** A single slow or failed LLM request blocks all task processing because the task runner is single-threaded. This is a service-level outage waiting to happen.
-
-2. **The GitHub webhook signature verification (`webhooks.py:19-24`) is dead code -- never called.** Webhooks are completely unauthenticated. Any attacker can forge webhook events to create arbitrary tasks.
-
-3. **There is no CI/CD pipeline.** Tests, linting, and type checking are never enforced. The existing test investment provides zero protection against regressions because nothing runs automatically.
+Maistro Engine has a solid foundation of ~141 fast unit tests covering security pattern matching, API endpoint behavior, and task state machine logic, with an exemplary evidence-based docstring convention linking tests to real threat models. However, the testing infrastructure has critical gaps that would be unacceptable for a production multi-agent AI platform handling code execution in Docker sandboxes. There is no CI/CD pipeline — all quality gates are manual. Zero resilience tests exist for any of the 7 external dependencies (LiteLLM, Ollama, Docker, PostgreSQL, GitHub, Langfuse, Pydantic AI). The Docker sandbox construction — the most security-critical code path — has no test verifying that security flags like `--cap-drop=ALL` or `--network=none` are present. No property-based testing exists for the 14 adversarial-input security functions. No contract tests verify OpenAI-compatible API schema compliance, which Open WebUI depends on. The GitHub webhook signature verification function exists but is never called — webhooks are completely unauthenticated. 17 of 30 source files (57%) have zero test coverage, including the core conductor, task runner, queue, and Docker sandbox modules. Addressing these gaps requires three phases: quick wins (CI pipeline, coverage gates, pre-commit hooks, wiring up dead code — under 1 day each), medium investments (property tests, contract tests, integration tests, chaos tests — 1-2 weeks each), and strategic buildout (mutation testing, load testing, deployment automation — 1+ months).
 
 ---
 
-## 2. Current State Overview
+## 2. Testing Health Scorecard
 
-### 2.1 Test Tooling
+| Layer | Score | Justification |
+|-------|-------|---------------|
+| **Property Testing** | 0/10 | Zero Hypothesis tests exist; all 14 security-critical functions rely solely on hardcoded example inputs against effectively infinite adversarial input spaces. |
+| **Evidence Grounding** | 5/10 | Tests reference real threat models (OpenClaw patterns, known injection payloads) via excellent evidence-based docstrings, but use static examples rather than production-observed data or fuzz-generated inputs. |
+| **Contract Testing** | 2/10 | Pydantic models enforce some schema constraints and API tests check status codes and basic response shapes, but zero explicit contract tests exist for any of the 17 consumer-provider boundaries. |
+| **Chaos / Resilience** | 0/10 | Zero fault injection tests across all 48 identified failure modes. No circuit breakers, no retry-with-backoff tests, no timeout enforcement tests, no degradation tests for any external dependency. |
+| **Observability** | 1/10 | Structured logging exists for key lifecycle events and Langfuse tracing decorator is implemented, but the decorator is applied to zero functions, there are zero metrics, the health endpoint is shallow liveness-only, and zero behavioral assertions exist. |
+| **Mutation Testing** | 0/10 | No mutation testing tooling installed. All 6 Docker sandbox security flags and the webhook signature verification have mutations that would survive undetected. 7 of the 10 highest-risk mutations survive. |
+| **Infrastructure / Pipeline** | 1/10 | pytest, ruff, and mypy are installed and configured but enforced nowhere. No CI/CD pipeline, no pre-commit hooks, no coverage thresholds, no Makefile, no automated gates of any kind. |
 
-| Tool | Version | Purpose | Status |
+---
+
+## 3. Risk Register
+
+Top 10 gaps ranked by **probability × blast radius** if they reach production.
+
+| # | Risk | Prob. | Blast Radius | Source Agent | Affected Code |
+|---|------|-------|-------------|-------------|---------------|
+| 1 | **Docker sandbox security flags silently removed** — No test verifies `--cap-drop=ALL`, `--security-opt=no-new-privileges`, `--memory`, `--cpus`, `--network=none`, or `--pids-limit` in the Docker command. A refactoring that drops any flag passes all tests. | Medium | Critical — container escape, host compromise | Mutation (#5) | `src/maistro/tools/sandbox/docker.py:101-127` |
+| 2 | **LiteLLM/Ollama total outage cascades to all tasks** — No circuit breaker; all concurrent tasks independently retry 3x with no backoff, creating thundering herd. No fast-fail after detecting outage. No per-request timeout ceiling. | High | Critical — total platform failure | Chaos (#3) | `src/maistro/agents/conductor.py:79-137` |
+| 3 | **OpenAI-compatible API schema drift breaks Open WebUI** — No contract test verifies `/v1/chat/completions` response matches OpenAI schema (field names, types, nesting, `finish_reason` enum, `usage` fields). SSE streaming frame format (`data: {...}\n\n`, `data: [DONE]\n\n`) is completely untested. | Medium | Critical — entire UI breaks silently | Contract (#2) | `src/maistro/api/chat_completions.py` |
+| 4 | **No CI/CD pipeline — all quality gates are manual** — A developer can push code that fails linting, type checking, and all tests with zero automated prevention. The entire test investment provides zero regression protection. | High | High — any quality regression ships | Pipeline (#6) | `.github/workflows/` (missing) |
+| 5 | **Webhook signature verification is dead code** — `_verify_github_signature()` exists but is never called in the webhook handler. Any GitHub payload is accepted without authentication. An attacker can forge webhook events to create arbitrary tasks. | High | High — arbitrary task injection via forged webhooks | Mutation (#5), Chaos (#3) | `src/maistro/api/webhooks.py:19-24, 28-70` |
+| 6 | **Docker `create_sandbox()` has no timeout** — If image pull stalls, worker blocks indefinitely. No watchdog to kill stuck subprocess. Multiple stalls exhaust all workers and halt the system. | Medium | Critical — worker exhaustion, system halt | Chaos (#3) | `src/maistro/tools/sandbox/docker.py:129-134` |
+| 7 | **Zombie container accumulation** — No finally-block or context manager ensures containers are destroyed on exception. No periodic sweep, no reference tracking, no maximum container count. Containers accumulate until host resources are exhausted. | Medium | High — gradual host degradation then cascading failure | Chaos (#3) | `src/maistro/tools/sandbox/docker.py:72-80` |
+| 8 | **Security validators vulnerable to Unicode bypass** — `detect_injection()`, `is_dangerous_command()`, `is_blocked_path()` tested with hardcoded examples only. Zero fuzz testing against Unicode homoglyphs, zero-width injections, encoding tricks, obfuscated command patterns. | Medium | High — security bypass | Property (#1) | `src/maistro/security/external_content.py`, `src/maistro/security/dangerous_tools.py` |
+| 9 | **PostgreSQL is untested infrastructure** — Models defined in `memory/store.py`, connection configured, `tests/memory/` directory exists but is empty. Every failure mode (connection refused, pool exhaustion, query timeout, schema drift, missing pgvector extension) will be encountered for the first time in production. | High | High — data loss, startup failure, silent query errors | Chaos (#3), Pipeline (#6) | `src/maistro/memory/store.py`, `tests/memory/` (empty) |
+| 10 | **No performance regression detection** — Zero tests assert timing, token consumption, or throughput. A change that makes the system 3x slower or 5x more expensive passes all tests identically. | High | Medium — invisible cost explosion and user experience degradation | Observability (#4) | Entire test suite |
+
+---
+
+## 4. Contract Coverage Matrix
+
+Rows = consumers, columns = providers. Cells = coverage status.
+
+| Consumer ↓ / Provider → | `/tasks` API | `/v1/chat/completions` | `/v1/models` | `/webhooks/github` | `/webhooks/ci` | `WS /stream` | MCP sandbox (6 tools) | MCP git (11 tools) | LiteLLM Proxy | Ollama | PostgreSQL | Docker Engine | GitHub API | Langfuse | Pydantic AI SDK |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Custom Clients** | Partial | — | — | — | — | Missing | — | — | — | — | — | — | — | — | — |
+| **Open WebUI** | — | **Partial** | **Partial** | — | — | — | — | — | — | — | — | — | — | — | — |
+| **GitHub** | — | — | — | **Missing** | — | — | — | — | — | — | — | — | — | — | — |
+| **CI Systems** | — | — | — | — | **Missing** | — | — | — | — | — | — | — | — | — | — |
+| **Internal Agents** | — | — | — | — | — | — | **Missing** | **Missing** | — | — | — | — | — | — | — |
+| **Maistro (outbound)** | — | — | — | — | — | — | — | — | **Missing** | **Missing** | **Missing** | **Missing** | **Missing** | **Missing** | **Missing** |
+
+**Legend:** **Partial** = some happy-path status code tests, no schema snapshot or error-case contract | **Missing** = zero contract-level tests | **—** = no relationship
+
+**Summary:** 4 boundaries have partial coverage. 13 boundaries have zero coverage. **0 boundaries have full contract coverage.**
+
+### Priority Contracts to Implement
+
+| Priority | Contract | Blast Radius | Effort |
 |---|---|---|---|
-| pytest | `>=8.3` | Test runner | Configured, working |
-| pytest-asyncio | `>=0.25` | Async test support | Configured (`asyncio_mode = "auto"`), but no async tests exist |
-| pytest-cov | `>=6.0` | Coverage measurement | Installed but **unconfigured** (no thresholds, no report config) |
-| ruff | `>=0.9` | Linter + formatter | Configured with good rule selection |
-| mypy | `>=1.14` | Type checker | Configured in strict mode with Pydantic plugin |
-
-**Notable absences**: pytest-xdist, pytest-timeout, pytest-randomly, hypothesis, factory-boy, pytest-mock, bandit, pre-commit.
-
-### 2.2 Test Suite Composition
-
-| Directory | Tests | Focus |
-|---|---|---|
-| `tests/agents/` | 5 | Pydantic model validation for agent types |
-| `tests/api/` | 30 | REST endpoint CRUD, auth, health, webhooks, status |
-| `tests/security/` | 92 | Injection detection, dangerous tools, trust boundaries, secrets |
-| `tests/tools/` | 14 | Env sanitization, workspace path validation |
-| `tests/memory/` | 0 | Empty `__init__.py` only |
-| **Total** | **~141** | |
-
-### 2.3 Test Patterns
-
-| Pattern | Used | Notes |
-|---|---|---|
-| Class-based grouping (`class Test*`) | Yes | All test files |
-| `pytest.raises` | Yes | Exception testing |
-| `@pytest.mark.parametrize` | Yes | Security and tools tests |
-| FastAPI `TestClient` | Yes | API tests |
-| Evidence-based docstrings | Yes | Every test file (excellent practice) |
-| Async tests (`async def test_*`) | **No** | Zero async tests despite async codebase |
-| Mocking (`unittest.mock`) | **No** | Zero use of mocking anywhere |
-| Property-based testing | **No** | Zero use of hypothesis |
-| Integration tests | **No** | No database, no Docker, no real I/O |
-
-### 2.4 Python Version Inconsistency
-
-| Location | Version |
-|---|---|
-| `.python-version` | 3.13 |
-| `pyproject.toml` requires-python | `>=3.12` |
-| `Dockerfile` | `python:3.12-slim` |
-| `mypy` python_version | 3.12 |
-| Runtime environment | Python 3.11 (incompatible with `>=3.12`) |
+| P0-1 | OpenAI `/v1/chat/completions` response schema + SSE frames | Critical — breaks Open WebUI | Medium |
+| P0-2 | LiteLLM Proxy response contract (mock with schema validation) | Critical — breaks all LLM calls | Medium |
+| P0-3 | OpenAI `/v1/models` response schema | High — breaks model discovery | Low |
+| P1-1 | `POST /tasks` full contract (202 schema, 400/422 error shapes) | High — primary client API | Medium |
+| P1-2 | GitHub webhook payload parsing + signature verification | High — missed webhooks, security | Medium |
+| P1-3 | Docker Engine response contract (container create/exec/destroy) | High — sandbox is security-critical | High |
+| P2-1 | PostgreSQL schema contract (ORM vs DB schema via Alembic) | High but slow-moving | Medium |
+| P2-2 | MCP sandbox + git tool input/output schemas (17 tools) | High for agents | Medium |
+| P2-3 | WebSocket `/stream/{task_id}` message frame contract | Medium-High | Medium |
 
 ---
 
-## 3. Coverage Analysis
+## 5. Recommended Testing Architecture
 
-### 3.1 Modules WITH Tests
+### 5.1 Property Testing Layer
 
-| Source Module | Test File | Quality |
-|---|---|---|
-| `agents/types.py` (58 lines) | `tests/agents/test_types.py` | Good |
-| `api/auth.py` (49 lines) | `tests/api/test_auth.py` | Good |
-| `api/health.py` (23 lines) | `tests/api/test_health.py` | Good |
-| `api/tasks.py` (68 lines) | `tests/api/test_tasks.py` | Good |
-| `api/webhooks.py` (94 lines) | `tests/api/test_webhooks.py` | Partial (`_verify_github_signature` untested) |
-| `api/models.py` (40 lines) | `tests/api/test_tasks.py` | Good |
-| `tasks/status.py` (43 lines) | `tests/api/test_status.py` | Excellent |
-| `tasks/models.py` (66 lines) | Indirect via test_tasks | Partial |
-| `security/dangerous_tools.py` (89 lines) | `tests/security/test_dangerous_tools.py` | Excellent |
-| `security/external_content.py` (125 lines) | `tests/security/test_external_content.py` | Excellent |
-| `security/secret_equal.py` (33 lines) | `tests/security/test_secret_equal.py` | Excellent |
-| `security/secure_random.py` (35 lines) | `tests/security/test_secure_random.py` | Good |
-| `security/trust_boundary.py` (121 lines) | `tests/security/test_trust_boundary.py` | Good |
-| `tools/sandbox/env_sanitize.py` (85 lines) | `tests/tools/test_env_sanitize.py` | Good |
-| `tools/sandbox/workspace.py` (43 lines) | `tests/tools/test_workspace.py` | Good |
+**Status:** Zero Hypothesis tests. 24 pure/deterministic functions identified, 20 suitable for property testing, 12 rated HIGH priority.
 
-### 3.2 Modules WITHOUT Tests (0% Coverage)
+**Target:** Fuzz all adversarial-input security functions with [Hypothesis](https://hypothesis.readthedocs.io/). Structure as `tests/property/` directory.
 
-| Source Module | Lines | Risk |
-|---|---|---|
-| `agents/conductor.py` | 137 | **CRITICAL** -- core orchestration, LLM integration |
-| `api/chat_completions.py` | 163 | **HIGH** -- streaming SSE, OpenAI compat |
-| `api/ws.py` | 63 | Medium -- WebSocket streaming |
-| `config/settings.py` | 80 | Medium -- env loading |
-| `config/models.py` | 60 | Low -- tier definitions |
-| `main.py` | 62 | **HIGH** -- lifespan, startup/shutdown |
-| `memory/store.py` | 79 | Medium -- SQLAlchemy models |
-| `observability/tracing.py` | 62 | Medium -- Langfuse integration |
-| `tasks/queue.py` | 109 | **HIGH** -- async queue, state management |
-| `tasks/runner.py` | 104 | **HIGH** -- background worker |
-| `tools/sandbox/docker.py` | 146 | **HIGH** -- Docker container management |
-| `tools/sandbox/server.py` | 110 | Medium -- MCP tool server |
-| `tools/git/github.py` | 67 | Medium -- gh CLI wrapper |
-| `tools/git/server.py` | 169 | Medium -- MCP git tools |
-| `agents/prompts.py` | 57 | Low -- static strings |
-| **Total untested** | **~1,468** | |
-
-### 3.3 Coverage Configuration Gap
-
-pytest-cov is installed but completely unconfigured. No `[tool.coverage.run]` section, no `--cov-fail-under`, no `.coveragerc`. The `.gitignore` references coverage artifacts, indicating it has been run manually at least once.
-
----
-
-## 4. Property-Based Testing Gaps
-
-### 4.1 Functions Suitable for Property-Based Testing
-
-21 pure functions were identified as candidates. The highest-priority targets:
-
-| Priority | Function | File:Line | Property to Test |
+| Priority | Function | Location | Key Invariant |
 |---|---|---|---|
-| **P0** | `detect_injection(text)` | `security/external_content.py:20` | For all strings, if detect returns True the string must contain a pattern from the known-bad set; for all safe strings, must return False |
-| **P0** | `is_dangerous_command(cmd)` | `security/dangerous_tools.py:34` | Arbitrary shell strings: no false negatives for `rm -rf /`, `:(){ :\|: & };:`, etc. |
-| **P0** | `sanitize_env(env)` | `tools/sandbox/env_sanitize.py:30` | For any dict input, output never contains keys matching secret patterns; output is always a subset of input |
-| **P0** | `secret_equal(a, b)` | `security/secret_equal.py:9` | Equivalence with `==` for all string pairs; constant-time property |
-| **P1** | `is_safe_url(url)` | `security/external_content.py:61` | No private IPs (10.x, 172.16-31.x, 192.168.x, 127.x) ever return True |
-| **P1** | `is_blocked_path(path)` | `tools/sandbox/workspace.py:25` | Blocked prefixes remain blocked under path normalization (`/../`, `//`, `./`) |
-| **P1** | `validate_model_access(model, tier)` | `config/models.py:42` | Tier ordering is respected (higher tier grants superset of lower tier access) |
-| **P2** | `sanitize_content(text)` | `security/external_content.py:87` | Output length <= input length; no injection patterns survive |
-| **P2** | `secure_random_token(n)` | `security/secure_random.py:12` | Length is always `n`; character set is correct; distribution is uniform |
+| 1 | `detect_injection(text)` | `security/external_content.py` | Known payloads always detected; benign text never flagged |
+| 2 | `_normalize_text(text)` | `security/external_content.py` | Idempotent: `f(f(x)) == f(x)`; output never longer than input; ASCII preserved |
+| 3 | `wrap_external_content` / `contains_markers` | `security/external_content.py` | Roundtrip: `contains_markers(wrap(x, ...)) == True` for all x |
+| 4 | `sanitize_env(env)` | `tools/sandbox/env_sanitize.py` | Output ⊆ input; idempotent; no blocked keys; no secret values in output |
+| 5 | `is_dangerous_command(cmd)` | `security/dangerous_tools.py` | Dangerous stems always detected regardless of obfuscation |
+| 6 | `is_blocked_path(path)` | `security/dangerous_tools.py` | Blocked prefixes caught; path traversal variants caught |
+| 7 | `validate_workspace_path(path)` | `tools/sandbox/workspace.py` | Traversal escape never succeeds; result always under allowed prefix |
+| 8 | `looks_like_secret(value)` | `tools/sandbox/env_sanitize.py` | Known secret formats (AWS keys, JWTs, long hex) detected; normal values pass |
+| 9 | `secret_equal(a, b)` | `security/secret_equal.py` | Reflexive, symmetric, consistent with `==` |
+| 10 | `check_permission(grant, ...)` | `security/trust_boundary.py` | Expired grants always denied; matching non-expired grants always allowed |
+| 11 | `_verify_github_signature(...)` | `api/webhooks.py` | HMAC sign-then-verify roundtrip always succeeds; wrong secret always fails |
+| 12 | `secure_int(min, max)` | `security/secure_random.py` | Result always in `[min, max)` |
 
-### 4.2 Potential Security Bug Found
+### 5.2 Contract Testing Layer
 
-`is_blocked_path()` in `tools/sandbox/workspace.py:25` does **not normalize paths** before checking prefixes. An attacker could bypass path blocking with:
-- `/tmp/../etc/passwd` -- the prefix `/tmp/` matches the allowed list, but the resolved path is `/etc/passwd`
-- `//etc/passwd` -- double-slash normalization
-- `/tmp/./../../etc/shadow` -- dot-segment traversal
+**Status:** Zero explicit contract tests. 4 partial boundaries, 13 completely missing.
 
-**Recommendation**: Add `os.path.realpath()` or `pathlib.Path.resolve()` before prefix checking, and add property-based tests using hypothesis to generate adversarial paths.
+**Target:** Schema snapshot tests for all API surfaces; recorded response fixtures for external dependencies.
 
-### 4.3 Evidence Anchor Gaps
+**Recommended tools:** [Schemathesis](https://schemathesis.readthedocs.io/) for OpenAPI auto-testing, [respx](https://lundberg.github.io/respx/) for httpx request mocking with schema validation, [syrupy](https://github.com/toptal/syrupy) for snapshot assertions.
 
-The test suite uses an "Evidence:" docstring convention linking tests to threat models. 9 existing anchors reference real security frameworks (OWASP, CWE). 7 source modules with security implications have **no corresponding evidence anchors**:
+### 5.3 Chaos / Resilience Testing Layer
 
-| Module | Missing Evidence |
-|---|---|
-| `agents/conductor.py` | No prompt injection evidence |
-| `api/chat_completions.py` | No streaming security evidence |
-| `api/ws.py` | No WebSocket auth evidence |
-| `tools/sandbox/docker.py` | No container escape evidence |
-| `tools/git/server.py` | No command injection evidence |
-| `tasks/queue.py` | No denial-of-service evidence |
-| `observability/tracing.py` | No data exfiltration evidence |
+**Status:** Zero resilience tests across 48 identified failure modes. Zero circuit breakers. 5 of 22 external call sites have timeout protection.
 
----
+**Target:** Verify graceful degradation for every external failure mode.
 
-## 5. Contract & Boundary Testing Gaps
+**Priority chaos scenarios (ranked by blast radius):**
 
-### 5.1 Service Boundary Inventory
-
-22 distinct service boundaries were identified:
-
-| Category | Count | Boundaries |
-|---|---|---|
-| REST API endpoints | 10 | `/health`, `/tasks` CRUD, `/v1/chat/completions`, `/webhooks/*`, `/v1/models` |
-| WebSocket endpoints | 1 | `/stream/{task_id}` |
-| MCP Tool interfaces | 16 | 8 sandbox tools, 8 git tools |
-| External dependencies | 6 | LLM providers, PostgreSQL, Langfuse, Docker, GitHub API, Git CLI |
-
-### 5.2 Contract Test Coverage: Zero
-
-There are **zero formal contract tests** in the codebase. Key gaps:
-
-| Priority | Contract | Gap |
-|---|---|---|
-| **P0** | OpenAI `/v1/chat/completions` streaming SSE format | No test verifies `data: [DONE]` termination, chunk format, or `choices[0].delta` structure |
-| **P0** | OpenAI `/v1/chat/completions` non-streaming response | No test verifies `id`, `object`, `created`, `model`, `choices`, `usage` fields match OpenAI spec |
-| **P0** | OpenAI `/v1/models` response format | No test verifies model list matches OpenAI's `ListModelsResponse` schema |
-| **P1** | LLM provider request contract (PydanticAI -> Ollama/LiteLLM) | No test verifies request format, auth headers, model name mapping |
-| **P1** | MCP tool input/output schemas | 16 MCP tools have no schema validation tests |
-| **P1** | Task state machine transitions | Status transitions are tested (`test_status.py`) but not as a formal state machine contract |
-| **P2** | GitHub webhook payload contract | No test validates expected fields from GitHub webhook events |
-| **P2** | Docker CLI argument contract | No test verifies Docker commands use correct flags and argument ordering |
-| **P2** | Langfuse trace/span contract | No test verifies trace data format matches Langfuse expectations |
-
-### 5.3 Pydantic Schema Drift Risk
-
-The codebase uses Pydantic models extensively (18 models across 6 files). Schema changes have no contract tests to catch breaking changes at service boundaries. The `TaskCreate`, `TaskResponse`, and `ChatCompletionRequest` models are public API surfaces with zero schema regression tests.
-
----
-
-## 6. Chaos & Fault Injection Analysis
-
-### 6.1 External Call Sites & Resilience
-
-| Category | Call Sites | Timeout Protected | Retry Protected | Circuit Breaker |
+| # | Scenario | Inject | Assert | Effort |
 |---|---|---|---|---|
-| LLM Provider (HTTP) | 5 | **0 of 5** | 0 (PydanticAI retries are for validation only) | 0 |
-| Langfuse (HTTP) | 5 | 0 | 0 | 0 |
-| Docker subprocess | 3 | 2 of 3 (`exec` has timeout; `run` does not) | 0 | 0 |
-| Git subprocess | 3 | 2 of 3 (`_git` has timeout; `git_clone` does not) | 0 | 0 |
-| GitHub CLI subprocess | 2 | 1 of 2 | 0 | 0 |
-| WebSocket | 4 | 0 | 0 | 0 |
-| **Total** | **22** | **5 of 22 (23%)** | **0** | **0** |
+| 1 | LiteLLM total outage + concurrent load | Mock httpx → `ConnectError` for all requests; submit 20 tasks | All tasks fail within bounded time; no thundering herd; immediate recovery when mock removed | 2-3 hrs |
+| 2 | Docker `create_sandbox()` hang | Mock subprocess → never returns; 60s test timeout | Sandbox creation times out within 30s; subprocess killed; worker released | 1-2 hrs |
+| 3 | Docker fork bomb / resource exhaustion | Execute fork bomb inside sandbox | Container killed by cgroup limits; host stable; other containers unaffected | 2-3 hrs |
+| 4 | Zombie container accumulation | Mock `destroy()` → raise exception after `create_sandbox()` succeeds; run 10 tasks | All containers cleaned up by periodic sweep or finally-block | 3-4 hrs |
+| 5 | LiteLLM 429 rate limit | Mock httpx → 429 with `Retry-After: 2` for first 5 requests, then succeed | System respects Retry-After; exponential backoff applied; tasks eventually succeed | 2-3 hrs |
+| 6 | Ollama OOM kill | Mock httpx → partial response (truncated JSON, connection reset) | Partial response detected; fallback or clean failure; subsequent tasks don't retry same model | 3-4 hrs |
+| 7 | PostgreSQL pool exhaustion | Pool `max_size=2`; 2 long queries; submit 3rd | Clear "pool exhausted" error within timeout; no crash; recovery after long queries complete | 2-3 hrs |
+| 8 | Langfuse mid-execution failure | Mock `trace.span()` → `ConnectionError` during agent execution | Agent execution succeeds despite tracing failure; error logged but not propagated | 1-2 hrs |
 
-### 6.2 Top Failure Modes (by blast radius)
+### 5.4 Observability Testing Layer
 
-**CRITICAL -- Service-Level Outage:**
+**Status:** Structured logging exists. Langfuse tracing decorator implemented but applied to zero functions. Zero metrics. Health endpoint is shallow liveness-only. Zero behavioral assertions.
 
-| # | Failure Mode | Impact | Location |
-|---|---|---|---|
-| 1 | **LLM provider unavailable (no timeout, no retry)** | ALL users blocked. `agent.run()` hangs indefinitely. Single-worker runner stalls entire queue. | `conductor.py:135`, `runner.py:74` |
-| 2 | **Process restart loses all task state** | ALL active tasks lost. In-memory queue has no persistence despite SQLAlchemy models existing. | `queue.py:26-27` |
-| 3 | **Background task runner has no execution timeout** | One hung LLM call blocks all subsequent tasks forever. | `runner.py:74` |
-| 4 | **No rate limiting on any API endpoint** | Service DoS via queue flooding or LLM resource exhaustion. | All API routers |
+**Target:**
 
-**HIGH -- Feature-Level Failure:**
-
-| # | Failure Mode | Impact | Location |
-|---|---|---|---|
-| 5 | **Docker daemon failure** | All sandbox operations fail. No retry, no fallback. | `docker.py:129-138` |
-| 6 | **Git clone has no timeout** | `await proc.communicate()` hangs indefinitely on slow/large repos. | `server.py:38-43` |
-| 7 | **Webhook signature verification is dead code** | Webhooks completely unauthenticated. Attacker can create arbitrary tasks. | `webhooks.py:19-24` |
-| 8 | **Langfuse trace/span calls crash agent execution** | `langfuse.trace()` at line 47 is outside try/except. Langfuse outage crashes LLM calls. Observability becomes a single point of failure. | `tracing.py:47-48` |
-
-**MEDIUM -- Degraded Experience:**
-
-| # | Failure Mode | Impact | Location |
-|---|---|---|---|
-| 9 | **Chat completions expose raw exception messages** | `f"Error: {exc}"` leaks internal paths, class names, connection strings to users via HTTP 200. | `chat_completions.py:103-104` |
-| 10 | **WebSocket has no authentication** | Any user can observe any task's progress via `/stream/{task_id}`. | `ws.py:16-17` |
-| 11 | **`json.loads()` in GitHub API unhandled** | `gh pr view --json` returning non-JSON crashes `get_pr()`. | `github.py:53` |
-| 12 | **No max payload size on webhooks** | Memory exhaustion via large JSON payloads. | `webhooks.py:34` |
-| 13 | **Stale Docker container references** | Externally-killed containers leave stale references; subsequent operations fail cryptically. | `server.py:20-27` |
-
-### 6.3 Error Propagation Issues
-
-- **Chat completions catch-all** (`chat_completions.py:103-104`): Returns HTTP 200 with `f"Error: {exc}"` in the response body. Clients see a "successful" chat response whose content is a Python exception string. Both misleading (200 status) and leaky (internal details).
-
-- **Langfuse tracing vulnerability** (`tracing.py:47-48`): `langfuse.trace()` and `trace.span()` are outside the try/except block. If Langfuse becomes unreachable after initialization, these calls crash the decorated function.
-
-- **Git timeout propagation** (`server.py:17-27`): `_git()` has a timeout via `asyncio.wait_for` but does NOT catch `TimeoutError`. The exception propagates unhandled to MCP tool handlers.
-
-- **Dead retry config** (`config/models.py:25`): `TierConfig.max_retries` is defined (values 1-5) but **never read by any code path**. Operators configuring retries have their settings silently ignored.
-
-### 6.4 Resilience Test Coverage
-
-**Zero.** Of 48 identified failure modes, not a single one has a test. There are no tests for network failures, timeouts, malformed responses, subprocess failures, WebSocket disconnections, queue overflow, or concurrent access.
-
----
-
-## 7. Observability & Behavioral Testing Gaps
-
-### 7.1 Logging Infrastructure
-
-- **8 logger instances** across the codebase (structlog-based)
-- **13 log emission points** total
-- Structured logging is configured via structlog with JSON output
-- **No tests verify log output** for any scenario (errors, security events, lifecycle events)
-
-### 7.2 Tracing Infrastructure
-
-The Langfuse tracing decorator (`observability/tracing.py`) is **defined but never applied** to any function. The `@trace` decorator exists but is not imported or used anywhere in the codebase. This means:
-- Zero distributed traces are generated in production
-- The trace decorator has a bug (Langfuse calls outside try/except) that has never been caught because it's never been executed
-- Token and cost tracking (`_extract_usage`) always returns 0 because the response format assumption is wrong
-
-### 7.3 Metrics
-
-**Zero metrics infrastructure.** No Prometheus, no StatsD, no custom counters. There is no way to observe:
-- Request rates, latencies, error rates
-- Queue depth or processing time
-- LLM token usage or costs
-- Docker sandbox creation/destruction rates
-- Memory or CPU utilization
-
-### 7.4 Health Checking
-
-The `/health` endpoint (`api/health.py`) is a **shallow liveness probe only**. It returns `{"status": "ok"}` unconditionally -- it does not check:
-- Database connectivity
-- LLM provider reachability
-- Docker daemon availability
-- Queue health or backlog depth
-- Memory/disk pressure
-
-There is no readiness probe endpoint.
-
-### 7.5 Behavioral Test Coverage
-
-**Zero performance or behavioral tests.** The test suite cannot detect:
-- Latency regressions
-- Memory leaks
-- Throughput degradation
-- Resource exhaustion patterns
-- Queue processing rate changes
-
----
-
-## 8. Mutation Survivability Analysis
-
-### 8.1 Critical Mutation Survivors
-
-Of the 10 highest-risk mutations analyzed, **7 would survive** (not caught by any test):
-
-| # | Mutation | File | Survives? | Impact |
-|---|---|---|---|---|
-| 1 | Remove `--cap-drop=ALL` from Docker | `docker.py:117` | **YES** | Container runs with full Linux capabilities |
-| 2 | Remove `--network=none` from Docker | `docker.py:118` | **YES** | Sandbox has full network access |
-| 3 | Remove `--read-only` from Docker | `docker.py:119` | **YES** | Container filesystem becomes writable |
-| 4 | Skip `sanitize_env()` call | `docker.py:99` | **YES** | Secrets leak into sandbox environment |
-| 5 | Remove `--memory` limit from Docker | `docker.py:114` | **YES** | Container can consume unlimited memory |
-| 6 | Remove `--pids-limit` from Docker | `docker.py:116` | **YES** | Fork bomb possible inside sandbox |
-| 7 | Remove webhook signature check | `webhooks.py:19-24` | **YES** | Already dead code -- signature is never verified |
-| 8 | Invert `is_dangerous_command()` | `dangerous_tools.py:34` | No | Caught by parametrized tests |
-| 9 | Bypass `secret_equal()` timing safety | `secret_equal.py:9` | No | Caught by dedicated tests |
-| 10 | Skip `detect_injection()` | `external_content.py:20` | No | Caught by 34 test functions |
-
-**Key insight**: The Docker sandbox security controls are the most mutation-vulnerable code in the system. A single-character change to the Docker `run` command could remove all sandboxing protections, and no test would catch it.
-
-### 8.2 Weak Assertion Patterns
-
-The test suite uses `assert len(...) > 0` in multiple security tests, which passes for any non-empty result regardless of correctness. These assertions should verify specific expected values.
-
-### 8.3 Source Files with Zero Coverage
-
-17 of 30 source files (57%) have **zero test coverage**. Any mutation in these files survives by definition.
-
----
-
-## 9. Infrastructure & Pipeline Gaps
-
-### 9.1 CI/CD Pipeline
-
-**Status: None exists.** No GitHub Actions, no GitLab CI, no Jenkins, no CircleCI. No Makefile, no tox, no nox, no pre-commit hooks. Tests, linting, and type checking are only run manually.
-
-This means:
-- Nothing prevents broken code from being pushed or merged
-- The existing test investment provides zero automated protection
-- No coverage reporting or enforcement
-- No automated quality gates
-
-### 9.2 Current Development Workflow
-
-```
-Developer Workstation
-  |
-  +-- Manual: pytest tests/
-  +-- Manual: ruff check src/
-  +-- Manual: mypy src/
-  |
-  git push --> nothing happens
-```
-
-### 9.3 Configuration Issues
-
-| Issue | Details |
+| Test | Purpose |
 |---|---|
-| **No coverage config** | pytest-cov installed but no `[tool.coverage.run]` section, no `--cov-fail-under` |
-| **Dev deps in prod Docker** | Dockerfile installs `.[dev]` (pytest, ruff, mypy) in the production image |
-| **Duplicated TestClient fixture** | Copy-pasted across `test_health.py` and `test_tasks.py`; different pattern in `test_webhooks.py` |
-| **Overbroad autouse fixture** | `_reset_task_queue` runs for all 141 tests, including 106 that never touch the task queue |
+| Conductor latency budget | Mock LLM at fixed latency, assert orchestration overhead < budget |
+| Token consumption ceiling per tier | Assert tokens used < threshold per tier config |
+| Concurrent task correctness | Submit N tasks, assert no cross-contamination of results |
+| Sandbox cleanup on all exit paths | Assert Docker container count returns to baseline after all test paths |
+| Deep health check | Assert health endpoint reports unhealthy when dependencies are down |
+| Log output verification | Assert structured log entries emitted for key lifecycle events (task start, complete, fail) |
+
+### 5.5 Mutation Testing Layer
+
+**Status:** No mutation testing tooling. 7 of 10 highest-risk mutations survive.
+
+**Critical mutation survivors — all Docker sandbox security flags:**
+
+| Mutation | Survives? | Impact if Undetected |
+|---|---|---|
+| Remove `--cap-drop=ALL` | **YES** | Container gets full Linux capabilities |
+| Remove `--security-opt=no-new-privileges` | **YES** | Processes can escalate privileges |
+| Remove `--memory={limit}` | **YES** | Container can OOM-kill host |
+| Remove `--cpus={count}` | **YES** | Container can starve host CPU |
+| Remove `--network=none` conditional | **YES** | Network isolation never applied |
+| Remove `--pids-limit` | **YES** | Fork bomb possible |
+| Delete `_verify_github_signature()` | **YES** | No change — already dead code |
+| Change `hmac.compare_digest` to `==` in auth | **YES** | Timing attack on API keys |
+
+**Mutations caught by existing tests:** `is_dangerous_command()` inversion (parametrized tests), `secret_equal()` bypass (dedicated tests), `detect_injection()` skip (34 test functions), `sanitize_env()` filter removal (specific assertion tests), permission expiry flip (expiry test).
+
+**Target:** [mutmut](https://mutmut.readthedocs.io/) targeting `src/maistro/security/` (90%+ kill rate) and `src/maistro/tools/sandbox/` (90%+ kill rate).
+
+### 5.6 Infrastructure Layer
+
+**Status:** No CI/CD. No pre-commit hooks. No Makefile. No coverage thresholds. pytest-cov installed but unconfigured.
+
+**Current pipeline:**
+```
+Developer → (manual) pytest → (manual) ruff → (manual) mypy → git push → nothing happens
+```
+
+**Target pipeline:**
+```
+Pre-commit ──→ CI Stage 1 (< 3 min) ──→ CI Stage 2 (< 10 min) ──→ Build ──→ Deploy
+     │              │                          │                       │          │
+ ruff format    lint (ruff)              integration tests      Docker build   staging
+ mypy           typecheck (mypy)         property tests         trivy scan     smoke tests
+ detect-secrets unit tests + coverage    contract tests         registry push  promotion gate
+               security scan (bandit,    mutation (non-blocking)
+                pip-audit)
+```
+
+**Gap summary:**
+
+| Stage | Exists? | Effort |
+|---|---|---|
+| CI/CD platform (GitHub Actions) | No | 2-4 hours |
+| Pre-commit hooks | No | 1-2 hours |
+| Lint gate (ruff in CI) | Tool installed, not gated | 30 min |
+| Type check gate (mypy in CI) | Tool installed, not gated | 30 min |
+| Unit test gate | Tool installed, not gated | 30 min |
+| Coverage threshold | Tool installed, not configured | 30 min |
+| Security scanning (bandit, pip-audit) | No | 1-2 hours |
+| Integration tests (testcontainers) | No | 3-5 days |
+| Property-based tests (Hypothesis) | No | 3-5 days |
+| Contract tests (Schemathesis) | No | 2-3 days |
+| Mutation testing (mutmut) | No | 1-2 days setup |
+| Load testing (Locust) | No | 3-5 days |
+| Container scanning (Trivy) | No | 2-3 hours |
+| Deployment automation | No | 1-2 weeks |
 
 ---
 
-## 10. Unified Risk Matrix
+## 6. Roadmap
 
-Cross-referencing findings from all six analysis dimensions into a single risk matrix:
+### Phase 1: Quick Wins (< 1 day each)
 
-### CRITICAL (P0) -- Implement immediately
+| # | Item | Effort | Impact |
+|---|------|--------|--------|
+| 1.1 | **Create GitHub Actions CI workflow** — lint, typecheck, test+coverage, security scan as 4 parallel jobs | 2-4 hrs | Eliminates all manual gate enforcement; catches regressions immediately |
+| 1.2 | **Add coverage configuration + threshold** — `[tool.coverage.run]` in pyproject.toml, `--cov-fail-under=40` (ratchet up over time) | 30 min | Prevents coverage regression |
+| 1.3 | **Add pre-commit hooks** — ruff check+format, mypy, detect-secrets | 1-2 hrs | Catches issues before push |
+| 1.4 | **Create Makefile** — `make lint`, `make test`, `make typecheck`, `make all` | 1 hr | Developer ergonomics |
+| 1.5 | **Wire up `_verify_github_signature()`** — actually call it in the webhook handler; reject unauthenticated payloads | 1 hr | Closes the forged webhook vulnerability (Risk #5) |
+| 1.6 | **Add Docker sandbox security flag test** — mock subprocess, assert `--cap-drop=ALL`, `--security-opt=no-new-privileges`, `--memory`, `--cpus`, `--network`, `--pids-limit` are all present | 2 hrs | Prevents silent removal of security flags (Risk #1) |
+| 1.7 | **Apply `@trace_agent` decorator** to `run_task()` in conductor.py + fix Langfuse try/except scope | 30 min | Activates tracing for core code path; prevents observability from crashing business logic |
 
-| # | Risk | Dimensions | Location |
-|---|---|---|---|
-| 1 | **No CI/CD pipeline** -- tests never enforced | Infrastructure, Mutation | Project-level |
-| 2 | **LLM call has no timeout/retry/circuit-breaker** -- service outage on provider failure | Chaos, Contract, Behavioral | `conductor.py:135` |
-| 3 | **62% of code untested** -- all async paths, conductor, runner, queue, Docker, WS | Coverage, Mutation | 17 source files |
-| 4 | **Docker sandbox security flags untested** -- mutation removes `--cap-drop=ALL`, `--network=none`, `--read-only` with no detection | Mutation, Chaos | `docker.py:114-119` |
-| 5 | **Webhook signature verification is dead code** -- unauthenticated webhook ingestion | Chaos, Mutation, Contract | `webhooks.py:19-24` |
-| 6 | **No coverage configuration or enforcement** | Infrastructure | `pyproject.toml` |
+### Phase 2: Medium Investments (1-2 weeks each)
 
-### HIGH (P1) -- Implement within 1-2 sprints
+| # | Item | Effort | Impact |
+|---|------|--------|--------|
+| 2.1 | **Property-based tests for security module** — Hypothesis for 12 HIGH-priority functions with strategies for adversarial Unicode, shell commands, path traversal, environment dicts | 3-5 days | Closes adversarial-input coverage gap for all security-critical code |
+| 2.2 | **OpenAI-compatible API contract tests** — schema snapshot for `/v1/chat/completions` (non-streaming + SSE), `/v1/models`; verify all required fields, types, enum values | 2-3 days | Prevents silent breakage of Open WebUI integration (Risk #3) |
+| 2.3 | **Integration test infrastructure** — `docker-compose.test.yml`, testcontainers for Postgres, session-scoped fixtures | 3-5 days | Enables database and service integration testing (Risk #9) |
+| 2.4 | **Chaos test suite (scenarios 1-4)** — LiteLLM outage, Docker hang, fork bomb, zombie cleanup | 3-5 days | Proves resilience under the 4 highest-risk failure modes (Risk #2, #6, #7) |
+| 2.5 | **LiteLLM + Ollama response contract mocks** — recorded fixtures with schema validation via respx | 2-3 days | Catches LiteLLM/Ollama version-bump breakage |
+| 2.6 | **Webhook contract tests + conductor unit tests** — GitHub event parsing per event type; conductor with mocked LLM | 2-3 days | Covers the two largest untested code areas |
 
-| # | Risk | Dimensions | Location |
-|---|---|---|---|
-| 7 | **Zero async test coverage** -- conductor, runner, queue, WS all untested | Coverage, Contract | All async modules |
-| 8 | **Zero mocking infrastructure** -- cannot unit-test code with external deps | Coverage, Chaos | Project-level |
-| 9 | **Chat completions leak exception details** -- `f"Error: {exc}"` via HTTP 200 | Chaos, Contract | `chat_completions.py:103-104` |
-| 10 | **Langfuse tracing crashes agent execution** -- observability is a SPOF | Chaos | `tracing.py:47-48` |
-| 11 | **Git clone has no timeout** -- hangs indefinitely | Chaos | `server.py:38-43` |
-| 12 | **No OpenAI-compat contract tests** -- SSE streaming format, response schema | Contract | `chat_completions.py` |
-| 13 | **Path traversal in `is_blocked_path()`** -- no path normalization | Property | `workspace.py:25` |
-| 14 | **No pre-commit hooks or Makefile** -- no developer guardrails | Infrastructure | Project-level |
-| 15 | **Python version inconsistency** -- .python-version, Dockerfile, runtime disagree | Infrastructure | Multiple files |
-| 16 | **Dev deps in production Docker image** | Infrastructure | `Dockerfile:21` |
+### Phase 3: Strategic Buildout (1+ months)
 
-### MEDIUM (P2) -- Implement within 3-4 sprints
-
-| # | Risk | Dimensions | Location |
-|---|---|---|---|
-| 17 | **Langfuse tracing decorator is never applied** -- zero distributed traces | Observability | `tracing.py` |
-| 18 | **Token/cost tracking returns 0** -- usage data always wrong | Observability | `tracing.py` |
-| 19 | **Health check is liveness-only** -- no readiness probe | Observability, Contract | `health.py` |
-| 20 | **WebSocket has no authentication** | Chaos, Contract | `ws.py:16-17` |
-| 21 | **No property-based tests for security functions** | Property | `security/` modules |
-| 22 | **No test timeout enforcement** (no pytest-timeout) | Infrastructure | `pyproject.toml` |
-| 23 | **Autouse fixture overbroad** | Infrastructure | `tests/conftest.py` |
-| 24 | **No database tests** | Coverage | `tests/memory/` |
-| 25 | **`TierConfig.max_retries` is dead config** | Chaos | `config/models.py:25` |
-| 26 | **No log output verification tests** | Observability | All log sites |
-| 27 | **`_verify_github_signature` untested** (also dead code) | Coverage, Mutation | `webhooks.py:19-24` |
-| 28 | **Weak assertions (`len > 0`)** in security tests | Mutation | Multiple test files |
-
-### LOW (P3) -- Backlog
-
-| # | Risk | Dimensions | Location |
-|---|---|---|---|
-| 29 | **No mutation testing tooling** | Mutation | Project-level |
-| 30 | **No contract verification against OpenAI spec** | Contract | `chat_completions.py` |
-| 31 | **No chaos/resilience testing framework** | Chaos | Project-level |
-| 32 | **No property-based testing framework** | Property | Project-level |
-| 33 | **No test randomization** (pytest-randomly) | Infrastructure | `pyproject.toml` |
-| 34 | **Docker container name collision** (`id() % 100000`) | Chaos | `docker.py:103` |
-| 35 | **No snapshot testing for API responses** | Contract | API test files |
+| # | Item | Effort | Impact |
+|---|------|--------|--------|
+| 3.1 | **Mutation testing with mutmut** — target `security/` and `tools/sandbox/` at 90%+ kill rate; `agents/` at 80%+ | 1-2 weeks setup + ongoing | Proves test suite catches meaningful mutations, not just coverage |
+| 3.2 | **Load / performance testing** — Locust baseline for task submission, chat completions, webhook processing, concurrent agents | 3-5 days | Establishes performance regression baselines (Risk #10) |
+| 3.3 | **Full deployment pipeline** — staging environment, automated deploy, E2E smoke tests, rollback automation | 1-2 weeks | Production-readiness |
+| 3.4 | **Observability-driven tests** — latency budgets per tier, token consumption ceilings, memory stability under load | 1 week | Catches performance and cost regressions |
+| 3.5 | **Complete external dependency contract suite** — Docker Engine, PostgreSQL, Pydantic AI SDK, Langfuse, GitHub API, MCP tools | 2-3 weeks | Full contract coverage for all 13 missing boundaries |
 
 ---
 
-## 11. Prioritized Remediation Roadmap
+## 7. Tooling Recommendations
 
-### Phase 1: Foundation (1-2 days) -- Quick Wins
-
-These changes require no new test code and immediately improve the testing infrastructure:
-
-**1.1 Add coverage configuration to `pyproject.toml`:**
-```toml
-[tool.coverage.run]
-source = ["maistro"]
-omit = ["*/tests/*"]
-
-[tool.coverage.report]
-fail_under = 40
-show_missing = true
-```
-Start at 40% (current estimated level) and ratchet up as tests are added.
-
-**1.2 Add a Makefile:**
-```makefile
-.PHONY: test lint typecheck check
-test:
-	pytest tests/ --cov=maistro --cov-report=term-missing
-lint:
-	ruff check src/ tests/
-	ruff format --check src/ tests/
-typecheck:
-	mypy src/
-check: lint typecheck test
-```
-
-**1.3 Add pytest-timeout to dev dependencies and configure:**
-```toml
-# In [tool.pytest.ini_options]
-timeout = 30
-```
-
-**1.4 Move `_reset_task_queue` fixture** from root `conftest.py` to `tests/api/conftest.py`.
-
-**1.5 Consolidate TestClient fixture** into `tests/api/conftest.py`.
-
-**1.6 Align Python version** to 3.12 across `.python-version`, Dockerfile, and mypy config.
-
-**1.7 Fix Dockerfile** to use multi-stage build separating dev and prod dependencies.
-
-### Phase 2: CI/CD Pipeline (1-2 days)
-
-**2.1 Create GitHub Actions workflow** (`.github/workflows/ci.yml`):
-- Stage 1: `ruff check` + `ruff format --check` + `mypy`
-- Stage 2: `pytest --cov --cov-fail-under=40`
-- Stage 3: Upload coverage report
-- Trigger on push and PR
-
-**2.2 Add pre-commit hooks** (`.pre-commit-config.yaml`):
-- ruff check + format
-- mypy
-- trailing whitespace, end-of-file fixer
-- detect-secrets
-
-### Phase 3: Critical Test Coverage (3-5 days)
-
-**3.1 Docker sandbox security tests** (addresses Mutation Survivors #1-6):
-```python
-# tests/tools/test_docker_security.py
-# Verify Docker run commands include all security flags:
-# --cap-drop=ALL, --network=none, --read-only, --memory, --pids-limit
-# Use mock to capture subprocess args and assert flag presence
-```
-
-**3.2 Conductor tests with mocked LLM** (addresses Coverage gap for `conductor.py`):
-```python
-# tests/agents/test_conductor.py
-# Mock PydanticAI agent.run() to return known ConductorOutput
-# Test: happy path, LLM timeout, validation error (retries), provider error
-# Test: dry-run mode
-```
-
-**3.3 Task queue and runner tests** (addresses Coverage gap for `queue.py`, `runner.py`):
-```python
-# tests/tasks/test_queue.py, tests/tasks/test_runner.py
-# Test: submit, claim, complete, fail transitions
-# Test: queue ordering (FIFO)
-# Test: runner processes tasks from queue
-# Test: runner handles task failure gracefully
-```
-
-**3.4 Wire up and test webhook signature verification** (addresses dead code finding):
-```python
-# Actually call _verify_github_signature() in the webhook handler
-# Test: valid signature passes, invalid signature returns 401
-```
-
-### Phase 4: Resilience & Contracts (3-5 days)
-
-**4.1 LLM provider resilience:**
-- Add timeout to `agent.run()` calls (e.g., `asyncio.wait_for(..., timeout=120)`)
-- Add retry with exponential backoff for transient HTTP errors (429, 502, 503)
-- Add tests mocking each failure mode
-
-**4.2 Fix Langfuse tracing vulnerability:**
-- Move `langfuse.trace()` and `trace.span()` inside the try/except block
-- Add test: mock Langfuse to raise, verify decorated function still succeeds
-
-**4.3 Fix chat completions error handling:**
-- Return proper HTTP error status codes instead of 200 with error text
-- Sanitize exception messages (no internal details in responses)
-- Add tests for error responses
-
-**4.4 OpenAI-compatible contract tests:**
-- Verify streaming SSE format (`data: {...}\n\ndata: [DONE]\n\n`)
-- Verify non-streaming response schema matches OpenAI spec
-- Verify `/v1/models` response format
-
-**4.5 Add timeout to git clone:**
-- Wrap `proc.communicate()` in `asyncio.wait_for(..., timeout=120)`
-- Add test for timeout behavior
-
-### Phase 5: Advanced Testing (5-10 days, ongoing)
-
-**5.1 Property-based testing:**
-- Add `hypothesis` to dev dependencies
-- Write property tests for `detect_injection`, `is_dangerous_command`, `sanitize_env`, `secret_equal`, `is_blocked_path`
-
-**5.2 Fix `is_blocked_path()` path traversal:**
-- Add `pathlib.Path.resolve()` before prefix checking
-- Add hypothesis tests generating adversarial paths
-
-**5.3 Integration tests:**
-- Database integration tests with test PostgreSQL
-- Docker sandbox integration tests
-- End-to-end task lifecycle tests
-
-**5.4 Behavioral/performance baselines:**
-- Add pytest-benchmark for critical path functions
-- Establish latency baselines for API endpoints
-- Add memory profiling for long-running processes
-
-**5.5 Mutation testing:**
-- Add `mutmut` to dev dependencies
-- Run mutation testing on security modules
-- Establish mutation score baseline
+| Layer | Tool | Why | Notes |
+|-------|------|-----|-------|
+| **Property Testing** | [Hypothesis](https://hypothesis.readthedocs.io/) `>=6.100` | Industry standard for Python property-based testing; native pytest integration | Configure `--hypothesis-seed` in CI for reproducibility. Use `@settings(max_examples=200)` in CI, 50 locally. |
+| **Contract Testing** | [Schemathesis](https://schemathesis.readthedocs.io/) `>=3.30` | Auto-generates API tests from FastAPI's OpenAPI schema | Run against TestClient. Catches response schema drift automatically. |
+| **HTTP Mocking** | [respx](https://lundberg.github.io/respx/) `>=0.21` | Mocks httpx requests (used by Pydantic AI / LiteLLM) with schema validation | Use for LiteLLM, Ollama, Langfuse response contract mocks. |
+| **Snapshot Testing** | [syrupy](https://github.com/toptal/syrupy) `>=4.0` | Snapshot assertions for API response schemas | Use for contract snapshot tests on `/v1/chat/completions`, `/v1/models`. |
+| **Mutation Testing** | [mutmut](https://mutmut.readthedocs.io/) `>=3.0` | Python-native mutation testing; simple config | Target `src/maistro/security/` first. Run as non-blocking CI job. |
+| **Load Testing** | [Locust](https://locust.io/) `>=2.20` | Python-native, scriptable load testing | Scenarios for task submission, chat completions, concurrent agents. |
+| **CI/CD** | GitHub Actions | Implied by GitHub webhook integration; free for open source | 4 parallel jobs: lint, typecheck, test+coverage, security. |
+| **Security Scanning** | [pip-audit](https://pypi.org/project/pip-audit/) + [bandit](https://bandit.readthedocs.io/) | Dependency vulnerability audit + Python SAST | Run as CI job. |
+| **Container Scanning** | [Trivy](https://aquasecurity.github.io/trivy/) | OS and application vulnerability scanning for Docker images | Run after Docker build in CI. |
+| **Integration Tests** | [testcontainers-python](https://testcontainers-python.readthedocs.io/) `>=4.0` | Manages Docker containers for Postgres in tests | Session-scoped fixture with automatic schema migration. |
+| **Pre-commit** | [pre-commit](https://pre-commit.com/) | Git hook manager | Plugins: ruff, mypy, detect-secrets, trailing-whitespace. |
+| **Test Timeout** | pytest-timeout `>=2.3` | Prevents hung tests | Add `timeout = 30` to `[tool.pytest.ini_options]`. |
 
 ---
 
-## Appendix A: File Reference
+## Appendix A: Failure Mode Inventory
 
-All source files analyzed in this audit:
+### A.1 LiteLLM Proxy (HTTP via Pydantic AI / httpx)
+
+| Failure Mode | Current Handling | Tested? | Blast Radius |
+|---|---|---|---|
+| Connection refused (service down) | Pydantic AI retries 3x → TaskStatus.FAILED | No | Critical |
+| DNS resolution failure | Same as connection refused | No | Critical |
+| TCP timeout (service hangs) | httpx default timeout, 3 retries consume 3× timeout | No | High |
+| HTTP 429 (rate limit) | No backoff, no Retry-After respect | No | Critical |
+| HTTP 500/502/503 | Retries 3x without backoff → thundering herd | No | High |
+| HTTP 401/403 (auth failure) | Wastes retry budget on non-retryable error | No | Medium |
+| Malformed JSON response | Parse error → retries → fails | No | Medium |
+| Partial/truncated response | No partial response recovery or validation | No | High |
+| Extremely slow response (>10 min) | No per-request ceiling timeout | No | High |
+| Context window exceeded | No pre-flight check; error or truncation | No | Medium |
+
+### A.2 Docker Engine (subprocess)
+
+| Failure Mode | Current Handling | Tested? | Blast Radius |
+|---|---|---|---|
+| Daemon not running | RuntimeError raised | No | Critical |
+| Image pull stalls (`docker run` hangs) | **No timeout on create_sandbox()** | No | Critical |
+| Container OOM kill during exec | Generic Exception caught, opaque "Killed" message | No | Medium |
+| Container exits between create and exec | Generic Exception caught | No | Medium |
+| Disk full | docker run fails, RuntimeError | No | High |
+| `docker rm -f` fails during destroy | Unclear if caught; orphaned reference | No | Low |
+| Zombie containers (exception before cleanup) | No finally block or context manager | No | High |
+| Fork bomb / resource exhaustion | `--pids-limit` set but untested | No | Critical |
+
+### A.3 PostgreSQL (asyncpg / SQLAlchemy)
+
+| Failure Mode | Current Handling | Tested? | Blast Radius |
+|---|---|---|---|
+| Connection refused | Unhandled crash | No | Critical |
+| Pool exhaustion | Blocks then timeout, no backpressure | No | Critical |
+| Query timeout | No statement_timeout configured | No | High |
+| Connection drop mid-transaction | No retry with reconnect | No | High |
+| Auth failure (credential rotation) | Startup failure | No | Critical |
+| pgvector extension missing | Cryptic "type does not exist" error | No | High |
+| Deadlock | No retry logic | No | Medium |
+
+### A.4 Langfuse (HTTP)
+
+| Failure Mode | Current Handling | Tested? | Blast Radius |
+|---|---|---|---|
+| Service unavailable at init | `get_langfuse()` catches Exception → None → tracing skipped | No | Low |
+| `trace.span()` raises mid-execution | **NOT caught** — observability crash kills business logic | No | Medium |
+| `langfuse.flush()` hangs or blocks | No timeout on flush | No | Medium |
+
+### A.5 GitHub API (gh CLI subprocess)
+
+| Failure Mode | Current Handling | Tested? | Blast Radius |
+|---|---|---|---|
+| gh CLI not installed | Unhandled `FileNotFoundError` | No | Medium |
+| API rate limit (403) | `get_pr()` returns error dict; `list_issues()` returns `[]` silently | No | Medium |
+| Network timeout (30s) | Timeout exists, no retry | No | Low |
+| Malformed JSON from gh | json.loads exception propagates | No | Low |
+| `list_issues()` returns `[]` on failure | **Silent data loss** — caller cannot distinguish "no issues" from "API failed" | No | Medium |
+
+---
+
+## Appendix B: Mutation Survival Analysis (Full)
+
+### B.1 Docker Sandbox Security (CRITICAL — All Mutations Survive)
+
+| Mutation | Survives? | Impact |
+|---|---|---|
+| Remove `--cap-drop=ALL` | **YES** — no test checks Docker command | Container gets full Linux capabilities |
+| Remove `--security-opt=no-new-privileges` | **YES** | Container processes can escalate privileges |
+| Remove `--memory={limit}` | **YES** | Container can OOM-kill host |
+| Remove `--cpus={count}` | **YES** | Container can starve host CPU |
+| Remove `--network=none` conditional | **YES** | Network isolation never applied |
+| Remove `--pids-limit` | **YES** | Fork bomb possible |
+| Add `--privileged` flag | **YES** — no negative test | Full host access from container |
+
+### B.2 Webhook Signature
+
+| Mutation | Survives? | Impact |
+|---|---|---|
+| Delete `_verify_github_signature()` entirely | **YES** — never called | No change (already dead code) |
+| Return `True` unconditionally | **YES** — never tested | No change (already unused) |
+| Change `hmac.compare_digest` to `==` | **YES** — no test calls function | Timing attack possible |
+
+### B.3 Auth Logic
+
+| Mutation | Survives? | Impact |
+|---|---|---|
+| Flip `if not settings.api_keys` condition | **NO** — caught by `test_no_keys_allows_all` | Auth required when no keys configured |
+| Change status 401 to 400 | **NO** — tests assert status code | Wrong error code |
+| Change `hmac.compare_digest` to `==` | **YES** — timing safety untested | Timing attack on API keys |
+| Remove key iteration, return unconditionally | **NO** — caught by `test_wrong_key_rejected` | Any key accepted |
+
+### B.4 Permission Expiry
+
+| Mutation | Survives? | Impact |
+|---|---|---|
+| Flip `>` to `<` in expiry check | **NO** — caught by `test_expired_grant` | Expired accepted, valid denied |
+| Delete expiry check entirely | **NO** — caught by `test_expired_grant` | Grants never expire |
+| Change `Action.EXECUTE` to `Action.READ` | **NO** — caught by `test_execute_permission` | Execute treated as read |
+
+### B.5 Env Sanitization
+
+| Mutation | Survives? | Impact |
+|---|---|---|
+| Remove `not is_blocked_name(k)` check | **NO** — caught by existing tests | Blocked env vars leak |
+| Remove `not looks_like_secret(v)` check | **NO** — caught by existing tests | Secret values leak |
+| Flip `and` to `or` in filter | **NO** — caught by existing tests | Either blocked names or secrets leak |
+
+### B.6 Weak Assertion Patterns
+
+The test suite uses `assert len(matches) > 0` in 23 injection detection tests (e.g., `test_ignore_previous_instructions`, `test_rm_rf`, `test_sql_injection`). This assertion passes for **any** non-empty list regardless of which pattern matched or whether the detection is correct. Mutations that change which pattern matches — or return a garbage list — survive these assertions.
+
+**Recommendation:** Strengthen to `assert any("expected_pattern" in m for m in matches)` or assert the specific matched pattern name.
+
+---
+
+## Appendix C: Observability Inventory
+
+### Instrumentation Present
+
+| Type | Count | Details |
+|---|---|---|
+| Logger instances | 8 | structlog-based, JSON output |
+| Log emission points | 13 | Task lifecycle, errors, startup |
+| Langfuse tracing decorator | 1 | `trace_agent()` — **applied to 0 functions** |
+| Health endpoints | 1 | `GET /health` — shallow liveness only |
+| Prometheus/metrics | 0 | None |
+| Performance assertions | 0 | None |
+| SLA/latency tests | 0 | None |
+
+### Critical Observability Gaps
+
+1. **`@trace_agent` decorator is dead code** — defined in `observability/tracing.py` but imported and used nowhere
+2. **No readiness probe** — health check returns `{"status": "ok"}` unconditionally; doesn't check DB, LLM, Docker
+3. **No metrics** — no request rates, latencies, error rates, queue depth, token usage, sandbox counts
+4. **No behavioral assertions** — test suite cannot detect latency regressions, memory leaks, throughput degradation
+5. **Langfuse `trace.span()` outside try/except** — tracing failure crashes business logic (observer effect antipattern)
+6. **`_extract_usage()` always returns 0** — token/cost tracking has wrong response format assumption
+
+---
+
+## Appendix D: Property-Based Testing Candidates (Full)
+
+| # | Function | Location | Input Complexity | Priority |
+|---|---|---|---|---|
+| 1 | `detect_injection(text)` | `security/external_content.py` | HIGH — arbitrary UTF-8, Unicode confusables | **HIGH** |
+| 2 | `_normalize_text(text)` | `security/external_content.py` | HIGH — full Unicode range, NFKC edge cases | **HIGH** |
+| 3 | `contains_markers(text)` | `security/external_content.py` | MEDIUM — Unicode normalization | **HIGH** |
+| 4 | `wrap_external_content(...)` | `security/external_content.py` | MEDIUM — arbitrary content + metadata | **HIGH** |
+| 5 | `is_dangerous_command(cmd)` | `security/dangerous_tools.py` | HIGH — shell strings, quoting, pipes | **HIGH** |
+| 6 | `is_blocked_path(path)` | `security/dangerous_tools.py` | MEDIUM — path normalization, traversal | **HIGH** |
+| 7 | `sanitize_env(env)` | `tools/sandbox/env_sanitize.py` | HIGH — arbitrary dict[str,str] | **HIGH** |
+| 8 | `looks_like_secret(value)` | `tools/sandbox/env_sanitize.py` | HIGH — secret vs normal value boundary | **HIGH** |
+| 9 | `validate_workspace_path(path)` | `tools/sandbox/workspace.py` | MEDIUM — traversal attempts | **HIGH** |
+| 10 | `check_permission(...)` | `security/trust_boundary.py` | MEDIUM — glob patterns, expiry, actions | **HIGH** |
+| 11 | `secret_equal(a, b)` | `security/secret_equal.py` | LOW — two strings | **HIGH** |
+| 12 | `_verify_github_signature(...)` | `api/webhooks.py` | MEDIUM — bytes payload + HMAC | **HIGH** |
+| 13 | `is_blocked_name(name)` | `tools/sandbox/env_sanitize.py` | MEDIUM — prefix matching | MEDIUM |
+| 14 | `TaskSpec.validate_spec()` | `security/trust_boundary.py` | MEDIUM — structured object | MEDIUM |
+| 15 | `_matches_glob(path, patterns)` | `security/trust_boundary.py` | MEDIUM — fnmatch semantics | MEDIUM |
+| 16 | `can_transition(current, target)` | `tasks/status.py` | LOW — finite enum × enum | MEDIUM |
+| 17 | `secure_id(n_bytes)` | `security/secure_random.py` | LOW — integer input | MEDIUM |
+| 18 | `secure_int(min, max)` | `security/secure_random.py` | LOW — integer range | MEDIUM |
+| 19 | `secure_base36(length)` | `security/secure_random.py` | LOW — integer input | MEDIUM |
+| 20 | `secure_urlsafe(n_bytes)` | `security/secure_random.py` | LOW — integer input | MEDIUM |
+| 21 | `is_dangerous_tool(name)` | `security/dangerous_tools.py` | LOW — frozenset lookup | LOW |
+| 22 | `create_grant_for_task(...)` | `security/trust_boundary.py` | LOW — factory function | LOW |
+| 23 | `verify_api_key(...)` | `api/auth.py` | LOW — bearer token | LOW |
+| 24 | `_get_tier_config(tier)` | `agents/conductor.py` | LOW — Tier enum (4 values) | LOW |
+
+---
+
+## Appendix E: Source File Coverage Map
 
 ```
 src/maistro/
 ├── agents/
-│   ├── conductor.py      (137 lines, 0% tested)
+│   ├── conductor.py      (137 lines, 0% tested)  ← CRITICAL gap
 │   ├── prompts.py         (57 lines, 0% tested)
-│   └── types.py           (58 lines, tested)
+│   └── types.py           (58 lines, tested)       ✓
 ├── api/
-│   ├── auth.py            (49 lines, tested)
-│   ├── chat_completions.py (163 lines, 0% tested)
-│   ├── health.py          (23 lines, tested)
-│   ├── models.py          (40 lines, tested)
-│   ├── tasks.py           (68 lines, tested)
-│   ├── webhooks.py        (94 lines, partial)
+│   ├── auth.py            (49 lines, tested)       ✓
+│   ├── chat_completions.py (163 lines, 0% tested) ← HIGH gap
+│   ├── health.py          (23 lines, tested)       ✓
+│   ├── models.py          (40 lines, tested)       ✓
+│   ├── tasks.py           (68 lines, tested)       ✓
+│   ├── webhooks.py        (94 lines, partial)      ⚠ signature dead code
 │   └── ws.py              (63 lines, 0% tested)
 ├── config/
 │   ├── models.py          (60 lines, 0% tested)
 │   └── settings.py        (80 lines, 0% tested)
 ├── memory/
-│   └── store.py           (79 lines, 0% tested)
+│   └── store.py           (79 lines, 0% tested)   ← HIGH gap
 ├── observability/
-│   └── tracing.py         (62 lines, 0% tested)
+│   └── tracing.py         (62 lines, 0% tested)    dead decorator
 ├── security/
-│   ├── dangerous_tools.py (89 lines, tested)
-│   ├── external_content.py (125 lines, tested)
-│   ├── secret_equal.py    (33 lines, tested)
-│   ├── secure_random.py   (35 lines, tested)
-│   └── trust_boundary.py  (121 lines, tested)
+│   ├── dangerous_tools.py (89 lines, tested)       ✓
+│   ├── external_content.py (125 lines, tested)     ✓
+│   ├── secret_equal.py    (33 lines, tested)       ✓
+│   ├── secure_random.py   (35 lines, tested)       ✓
+│   └── trust_boundary.py  (121 lines, tested)      ✓
 ├── tasks/
 │   ├── models.py          (66 lines, partial)
-│   ├── queue.py          (109 lines, 0% tested)
-│   ├── runner.py         (104 lines, 0% tested)
-│   └── status.py          (43 lines, tested)
+│   ├── queue.py          (109 lines, 0% tested)   ← HIGH gap
+│   ├── runner.py         (104 lines, 0% tested)   ← HIGH gap
+│   └── status.py          (43 lines, tested)       ✓
 ├── tools/
 │   ├── git/
 │   │   ├── github.py      (67 lines, 0% tested)
 │   │   └── server.py     (169 lines, 0% tested)
 │   └── sandbox/
-│       ├── docker.py     (146 lines, 0% tested)
-│       ├── env_sanitize.py (85 lines, tested)
+│       ├── docker.py     (146 lines, 0% tested)   ← CRITICAL gap
+│       ├── env_sanitize.py (85 lines, tested)      ✓
 │       ├── server.py     (110 lines, 0% tested)
-│       └── workspace.py   (43 lines, tested)
+│       └── workspace.py   (43 lines, tested)       ✓
 └── main.py                (62 lines, 0% tested)
+
+Tested: 13 files (~910 lines)
+Untested: 17 files (~1,468 lines, 62%)
 ```
-
-## Appendix B: Recommended Chaos Test Scenarios
-
-| Priority | Scenario | Inject | Verify |
-|---|---|---|---|
-| P0 | LLM provider outage | Mock `agent.run()` -> `ConnectError` | Task fails gracefully, queue continues |
-| P0 | LLM infinite hang | Mock `agent.run()` -> `sleep(forever)` | Timeout fires, queue continues |
-| P0 | Process restart data loss | Kill process with 10 queued tasks | Document all tasks lost (motivates persistence) |
-| P1 | Docker daemon failure | Mock subprocess -> `FileNotFoundError` | Sandbox creation returns clear error |
-| P1 | Git clone hangs | Mock `proc.communicate()` -> never returns | Should timeout (currently hangs forever) |
-| P1 | Langfuse crashes agent | Mock `langfuse.trace()` -> `ConnectionError` | Agent execution succeeds regardless |
-| P1 | Forged GitHub webhook | Send webhook with bad signature | Should be rejected (currently accepted) |
-| P2 | Malformed LLM response | Mock PydanticAI -> `ValidationError` | Retries exhaust, task fails cleanly |
-| P2 | Exception message leak | Mock `run_task()` -> exception with DB connection string | Response must not contain connection string |
-| P2 | Queue flooding | Submit 10,000 tasks rapidly | System should back-pressure or rate-limit |
