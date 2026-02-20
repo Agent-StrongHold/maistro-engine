@@ -17,11 +17,15 @@ from pydantic_ai.models import KnownModelName
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from maistro.agents.circuit_breaker import CircuitOpenError, llm_circuit
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
 from maistro.agents.types import ConductorOutput, LLMProviderError, PlanOutput, SubTask
+from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
+from maistro.observability.metrics import llm_errors_total, llm_requests_total
+from maistro.observability.tracing import trace_agent
 from maistro.tasks.models import TaskCreate
 
 logger = structlog.get_logger()
@@ -33,26 +37,6 @@ _RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 def _get_tier_config(tier: int | None) -> TierConfig:
     t = Tier(tier) if tier and tier in [e.value for e in Tier] else Tier.STANDARD
     return DEFAULT_TIERS[t]
-
-
-def _resolve_model(tier_model: str) -> tuple[str, str | None]:
-    """Resolve a tier model name to a Pydantic AI model string + base_url.
-
-    Returns (model_string, base_url) where base_url is set for Ollama/LiteLLM.
-    """
-    settings = get_settings()
-
-    if settings.litellm.base_url and settings.litellm.base_url != "http://localhost:4000":
-        model_name = tier_model.split("/")[-1]
-        return f"openai:{model_name}", settings.litellm.base_url
-
-    # Ollama: strip ollama/ prefix, use OpenAI-compat endpoint
-    if tier_model.startswith("ollama/"):
-        model_name = tier_model.removeprefix("ollama/")
-        return f"openai:{model_name}", settings.ollama_base_url
-
-    # Direct provider access — no base_url override
-    return tier_model, None
 
 
 @functools.lru_cache(maxsize=16)
@@ -101,13 +85,18 @@ async def _run_with_retry(
     tier_config: TierConfig,
 ) -> ConductorOutput:
     """Run the agent with timeout and retry logic for transient failures."""
+    if not llm_circuit.allow_request():
+        raise CircuitOpenError(llm_circuit)
+
     last_exc: Exception | None = None
 
     for attempt in range(tier_config.max_llm_retries):
         try:
+            llm_requests_total.inc()
             result = await asyncio.wait_for(
                 agent.run(prompt), timeout=tier_config.timeout
             )
+            llm_circuit.record_success()
             return result.output
         except (TimeoutError, asyncio.TimeoutError) as exc:
             last_exc = exc
@@ -127,7 +116,12 @@ async def _run_with_retry(
                     error=str(exc),
                 )
             else:
+                llm_circuit.record_failure()
+                llm_errors_total.inc(error_type="non_retryable")
                 raise
+
+        llm_circuit.record_failure()
+        llm_errors_total.inc(error_type="retryable")
 
         # Exponential backoff with jitter before retry
         if attempt < tier_config.max_llm_retries - 1:
@@ -139,6 +133,7 @@ async def _run_with_retry(
     )
 
 
+@trace_agent("conductor")
 async def run_task(task: TaskCreate) -> ConductorOutput:
     """Execute a full engineering task through the conductor pipeline.
 
@@ -178,7 +173,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         )
 
     tier_config = _get_tier_config(task.tier)
-    resolved_model, base_url = _resolve_model(tier_config.model)
+    resolved_model, base_url = resolve_model(tier_config.model)
 
     await logger.ainfo(
         "conductor_start",

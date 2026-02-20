@@ -80,10 +80,13 @@ class TestCancelTask:
 
 
 class TestListTasks:
-    def test_list_returns_array(self, client: TestClient) -> None:
+    def test_list_returns_paginated(self, client: TestClient) -> None:
         response = client.get("/tasks")
         assert response.status_code == 200
-        assert isinstance(response.json(), list)
+        data = response.json()
+        assert "items" in data
+        assert "count" in data
+        assert isinstance(data["items"], list)
 
 
 class TestModelsEndpoint:

@@ -3,7 +3,7 @@ name = "maistro"
 version = "0.1.0"
 description = "Software engineering department in a box — multi-agent AI platform"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     # API
     "fastapi>=0.115",
@@ -27,12 +27,6 @@ dependencies = [
     "pgvector>=0.3",
     "alembic>=1.14",
 
-    # Browser
-    "playwright>=1.49",
-
-    # Scheduling
-    "apscheduler>=3.11",
-
     # Utilities
     "pydantic-settings>=2.7",
     "structlog>=24.4",
@@ -48,6 +42,8 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
 ]
+browser = ["playwright>=1.49"]
+scheduling = ["apscheduler>=3.11"]
 
 [build-system]
 requires = ["hatchling"]

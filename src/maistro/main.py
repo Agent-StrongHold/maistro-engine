@@ -9,10 +9,15 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from maistro.api import chat_completions, health, models, tasks, webhooks, ws
+from maistro.api import chat_completions, health, metrics, models, tasks, webhooks, ws
+from maistro.api.rate_limit import RateLimitMiddleware
 from maistro.api.schemas import ErrorDetail, ErrorResponse
+from maistro.config.settings import get_settings
+from maistro.observability.logging import configure_logging
+from maistro.observability.middleware import RequestIDMiddleware
 from maistro.tasks.queue import get_task_queue
 from maistro.tasks.runner import TaskRunner
 from maistro.tools.sandbox.server import cleanup_all_containers
@@ -27,33 +32,41 @@ try:
 except importlib.metadata.PackageNotFoundError:
     APP_VERSION = "0.1.0-dev"
 
+# Graceful shutdown drain timeout (seconds)
+SHUTDOWN_DRAIN_TIMEOUT = 30.0
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start/stop the background task runner with the app lifecycle."""
     global _runner
 
-    # Configure structlog
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso"),
-            structlog.dev.ConsoleRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(0),
-    )
+    # Configure structured logging (JSON in production, console in debug)
+    settings = get_settings()
+    configure_logging(debug=settings.debug, json_output=not settings.debug)
+
+    # Wire executor via import — the runner no longer imports conductor directly
+    from maistro.agents.conductor import run_task
 
     queue = get_task_queue()
-    _runner = TaskRunner(queue)
+    _runner = TaskRunner(queue, executor=run_task)
     await _runner.start()
     await logger.ainfo("maistro_engine_started", version=APP_VERSION)
 
     yield
 
+    # Graceful shutdown: drain tasks → cleanup containers → flush observability
     if _runner:
-        await _runner.stop()
+        await _runner.stop(drain_timeout=SHUTDOWN_DRAIN_TIMEOUT)
+
     await cleanup_all_containers()
+
+    # Flush observability
+    from maistro.observability.tracing import get_langfuse
+    langfuse = get_langfuse()
+    if langfuse:
+        langfuse.flush()
+
     await logger.ainfo("maistro_engine_stopped")
 
 
@@ -64,11 +77,30 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# --- Middleware (applied in reverse order — last added = first executed) ---
+
+_settings = get_settings()
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_settings.cors_allowed_origins or (["*"] if _settings.debug else []),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+)
+
+# Rate limiting
+app.add_middleware(RateLimitMiddleware)
+
+# Request correlation IDs
+app.add_middleware(RequestIDMiddleware)
+
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Wrap HTTPException in consistent error envelope."""
-    request_id = uuid.uuid4().hex[:12]
+    request_id = getattr(request.state, "request_id", uuid.uuid4().hex[:12])
     return JSONResponse(
         status_code=exc.status_code,
         content=ErrorResponse(
@@ -84,7 +116,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Catch-all handler for unhandled exceptions — log and return structured JSON."""
-    request_id = uuid.uuid4().hex[:12]
+    request_id = getattr(request.state, "request_id", uuid.uuid4().hex[:12])
     logger.exception(
         "unhandled_exception",
         request_id=request_id,
@@ -103,8 +135,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-# Register routers
+# Register routers — unversioned operational endpoints
 app.include_router(health.router)
+app.include_router(metrics.router)
+
+# API v1 — all business endpoints under /v1 prefix for versioning
+API_V1_PREFIX = "/v1"
+app.include_router(tasks.router, prefix=API_V1_PREFIX)
+app.include_router(chat_completions.router, prefix=API_V1_PREFIX)
+app.include_router(models.router, prefix=API_V1_PREFIX)
+app.include_router(webhooks.router, prefix=API_V1_PREFIX)
+app.include_router(ws.router, prefix=API_V1_PREFIX)
+
+# Backward compatibility — also mount at root (will be removed in v2)
 app.include_router(tasks.router)
 app.include_router(chat_completions.router)
 app.include_router(models.router)

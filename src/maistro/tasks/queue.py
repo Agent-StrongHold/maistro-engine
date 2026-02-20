@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 import structlog
 
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
+from maistro.observability.metrics import active_tasks, tasks_completed_total, tasks_failed_total, tasks_submitted_total
 from maistro.tasks.models import TaskCreate, TaskProgress, TaskResponse, TaskResult, TaskStatus
 from maistro.tasks.status import can_transition
 
@@ -87,6 +88,8 @@ class TaskQueue:
         self._tasks[task_id] = task
         self._maybe_prune()
         await self._pending.put(task_id)
+        tasks_submitted_total.inc()
+        active_tasks.inc()
         await logger.ainfo(
             "task_queued",
             task_id=task_id,
@@ -118,6 +121,11 @@ class TaskQueue:
             task.started_at = datetime.now(UTC)
         elif status in _TERMINAL:
             task.completed_at = datetime.now(UTC)
+            active_tasks.dec()
+            if status == TaskStatus.COMPLETED:
+                tasks_completed_total.inc()
+            elif status == TaskStatus.FAILED:
+                tasks_failed_total.inc()
 
         self._notify(task_id)
         return True
