@@ -55,19 +55,19 @@ def trace_agent(name: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
             langfuse = get_langfuse()
 
             if langfuse is None:
-                return await fn(*args, **kwargs)  # type: ignore[misc]
+                return await fn(*args, **kwargs)  # type: ignore[misc,no-any-return]
 
             try:
                 trace = langfuse.trace(name=name)
                 span = trace.span(name=f"{name}.run")
             except Exception:
                 # If tracing setup fails, run without tracing
-                return await fn(*args, **kwargs)  # type: ignore[misc]
+                return await fn(*args, **kwargs)  # type: ignore[misc,no-any-return]
 
             try:
                 result = await fn(*args, **kwargs)  # type: ignore[misc]
                 span.end(output=str(result)[:500])
-                return result
+                return result  # type: ignore[no-any-return]
             except Exception as exc:
                 span.end(output=f"error: {exc}", level="ERROR")
                 raise

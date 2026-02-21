@@ -67,7 +67,7 @@ async def get_pr(repo: str, number: int) -> dict[str, Any]:
     )
     if code == 0:
         try:
-            return json.loads(output)
+            return dict(json.loads(output))
         except json.JSONDecodeError:
             logger.warning("gh_pr_invalid_json", repo=repo, number=number, output=output[:200])
             return {"error": f"Invalid JSON from gh: {output[:200]}"}
@@ -88,7 +88,7 @@ async def list_issues(repo: str, limit: int = 10) -> list[dict[str, Any]]:
     )
     if code == 0:
         try:
-            return json.loads(output)
+            return list(json.loads(output))
         except json.JSONDecodeError:
             logger.warning("gh_issues_invalid_json", repo=repo, output=output[:200])
             return []

@@ -68,7 +68,7 @@ class TaskQueue:
         """Remove oldest terminal tasks when store exceeds max size."""
         if len(self._tasks) <= MAX_TASK_STORE_SIZE:
             return
-        to_remove = []
+        to_remove: list[str] = []
         for tid, task in self._tasks.items():
             if len(self._tasks) - len(to_remove) <= PRUNE_TARGET:
                 break

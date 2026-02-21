@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import hmac
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
@@ -36,7 +36,7 @@ class WSProgressMessage(BaseModel):
 class WSResultMessage(BaseModel):
     task_id: str
     phase: str = "done"
-    result: dict
+    result: dict[str, Any]
     timestamp: str
 
 

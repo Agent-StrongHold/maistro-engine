@@ -104,4 +104,4 @@ class _LazyTiers:
         return key in self._ensure()
 
 
-DEFAULT_TIERS: _LazyTiers = _LazyTiers()  # type: ignore[assignment]
+DEFAULT_TIERS: _LazyTiers = _LazyTiers()
