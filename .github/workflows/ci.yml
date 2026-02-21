@@ -46,7 +46,8 @@ jobs:
           python-version: "3.12"
       - run: pip install pip-audit
       - run: pip install -e .
-      - run: pip-audit --strict --skip-editable
+      - run: pip freeze --exclude-editable > /tmp/deps.txt
+      - run: pip-audit --strict -r /tmp/deps.txt
 
   docker-build:
     runs-on: ubuntu-latest
