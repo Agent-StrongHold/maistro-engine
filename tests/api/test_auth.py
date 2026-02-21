@@ -6,13 +6,17 @@ When no API keys are configured, auth is disabled (dev mode).
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
 from maistro.api.auth import verify_api_key
 from maistro.api.health import router as health_router
-from maistro.config.settings import Settings
+from maistro.api.tasks import router as tasks_router
+from maistro.config.settings import Settings, get_settings
 
 
 def _make_app(api_keys: list[str]) -> FastAPI:
@@ -20,9 +24,10 @@ def _make_app(api_keys: list[str]) -> FastAPI:
     settings = Settings(api_keys=api_keys)
     app = FastAPI()
     app.include_router(health_router)
+    app.include_router(tasks_router)
 
-    # Override settings dependency
-    app.dependency_overrides[lambda: None] = lambda: settings
+    # Override the get_settings dependency so auth actually uses our keys
+    app.dependency_overrides[get_settings] = lambda: settings
     return app
 
 
@@ -31,9 +36,38 @@ class TestDevMode:
 
     def test_no_keys_allows_all(self) -> None:
         from maistro.main import app
+
         client = TestClient(app)
         response = client.get("/health")
         assert response.status_code == 200
+
+
+class TestAuthThroughHTTPStack:
+    """Evidence: Auth must be enforced for protected endpoints when keys are set."""
+
+    def test_protected_endpoint_rejects_without_key(self) -> None:
+        app = _make_app(api_keys=["test-secret-key"])
+        client = TestClient(app)
+        response = client.get("/tasks")
+        assert response.status_code == 403 or response.status_code == 401
+
+    def test_protected_endpoint_accepts_correct_key(self) -> None:
+        app = _make_app(api_keys=["test-secret-key"])
+        client = TestClient(app)
+        response = client.get(
+            "/tasks",
+            headers={"Authorization": "Bearer test-secret-key"},
+        )
+        assert response.status_code == 200
+
+    def test_protected_endpoint_rejects_wrong_key(self) -> None:
+        app = _make_app(api_keys=["correct-key"])
+        client = TestClient(app)
+        response = client.get(
+            "/tasks",
+            headers={"Authorization": "Bearer wrong-key"},
+        )
+        assert response.status_code == 401
 
 
 class TestSecretComparison:
@@ -41,17 +75,12 @@ class TestSecretComparison:
     preventing timing attacks that could leak valid key characters."""
 
     def test_correct_key_accepted(self) -> None:
-        from fastapi.security import HTTPAuthorizationCredentials
-
         settings = Settings(api_keys=["test-key-123"])
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test-key-123")
         result = verify_api_key(creds, settings)
         assert result == "test-key-123"
 
     def test_wrong_key_rejected(self) -> None:
-        from fastapi import HTTPException
-        from fastapi.security import HTTPAuthorizationCredentials
-
         settings = Settings(api_keys=["correct-key"])
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="wrong-key")
         with pytest.raises(HTTPException) as exc_info:
@@ -59,9 +88,14 @@ class TestSecretComparison:
         assert exc_info.value.status_code == 401
 
     def test_missing_header_rejected(self) -> None:
-        from fastapi import HTTPException
-
         settings = Settings(api_keys=["some-key"])
         with pytest.raises(HTTPException) as exc_info:
             verify_api_key(None, settings)
         assert exc_info.value.status_code == 401
+
+    def test_uses_hmac_compare_digest(self) -> None:
+        """Evidence: The implementation must use hmac.compare_digest, not ==."""
+        source = inspect.getsource(verify_api_key)
+        assert "compare_digest" in source, "verify_api_key must use hmac.compare_digest"
+        assert "==" not in source or "status_code ==" in source or "== 401" in source, \
+            "verify_api_key should not use == for token comparison"

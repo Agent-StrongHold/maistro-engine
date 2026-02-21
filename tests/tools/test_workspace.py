@@ -39,3 +39,24 @@ class TestWorkspaceValidation:
     def test_blocked_var_run_docker(self) -> None:
         with pytest.raises(ValueError, match="not in an allowed location"):
             validate_workspace_path("/var/run/docker.sock")
+
+
+class TestPathTraversal:
+    """Evidence: Path traversal attacks must be blocked even when they start
+    with an allowed prefix. Path.resolve() collapses '..' components."""
+
+    def test_traversal_from_allowed_prefix(self) -> None:
+        """Traversal that starts with allowed prefix but escapes."""
+        with pytest.raises(ValueError, match="not in an allowed location"):
+            validate_workspace_path("/tmp/maistro-workspace/../../../etc/passwd")
+
+    def test_double_dot_relative(self) -> None:
+        with pytest.raises(ValueError, match="not in an allowed location"):
+            validate_workspace_path("../../etc/passwd")
+
+    def test_resolved_path_stays_within_prefix(self) -> None:
+        """Traversal within the allowed tree is fine — resolve() normalizes it."""
+        path = validate_workspace_path("/tmp/maistro-workspace/a/../b")
+        assert str(path).startswith("/tmp/maistro-workspace")
+        # '..' was resolved, so 'a' is gone
+        assert "/a/" not in str(path)
