@@ -59,14 +59,15 @@ _TIER_DEFAULTS: dict[Tier, dict[str, object]] = {
 }
 
 
-def get_tier_config(tier: Tier) -> TierConfig:
+def get_tier_config(tier: Tier | int | None = None) -> TierConfig:
     """Build a TierConfig, reading env vars at call time (not import time)."""
-    defaults = _TIER_DEFAULTS[tier]
+    t = Tier(tier) if tier and tier in [e.value for e in Tier] else Tier.STANDARD
+    defaults = _TIER_DEFAULTS[t]
     model = os.environ.get(
         str(defaults["env_var"]), str(defaults["fallback"])
     )
     return TierConfig(
-        tier=tier,
+        tier=t,
         model=model,
         max_retries=int(defaults.get("max_retries", 3)),  # type: ignore[arg-type]
         temperature=float(defaults.get("temperature", 0.0)),  # type: ignore[arg-type]

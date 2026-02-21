@@ -23,7 +23,14 @@ def _reset_singletons() -> Iterator[None]:
     # Langfuse tracing
     import maistro.observability.tracing as tracing_module
     tracing_module._langfuse = None
+    tracing_module._langfuse_checked = False
 
     # Task runner
     import maistro.main as main_module
     main_module._runner = None
+
+
+@pytest.fixture(autouse=True)
+def _disable_auth_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable auth requirement for tests (unless test explicitly configures it)."""
+    monkeypatch.setenv("REQUIRE_AUTH", "false")

@@ -22,6 +22,8 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
 from maistro.agents.types import ConductorOutput, PlanOutput, SubTask
 from maistro.config.models import Tier, TierConfig, get_tier_config
+from maistro.config.settings import get_settings
+from maistro.observability.tracing import trace_agent
 from maistro.tasks.models import TaskCreate
 
 logger = structlog.get_logger()
@@ -83,14 +85,16 @@ def build_conductor(
     system_prompt = CONDUCTOR_SYSTEM
     output_type: type = ConductorOutput
 
+    litellm_key = os.environ.get("LITELLM_MASTER_KEY", "")
+    api_key = litellm_key if litellm_key else "ollama"
+
     if use_json_mode:
-        # Ollama JSON-mode: prompt for JSON, return raw string
         system_prompt = CONDUCTOR_SYSTEM + _CONDUCTOR_JSON_SCHEMA
         output_type = str
 
     if base_url:
         model_name = (model or "openai:maistro-default").removeprefix("openai:")
-        provider = OpenAIProvider(base_url=base_url, api_key="ollama")
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
         openai_model = OpenAIChatModel(model_name, provider=provider)
         return Agent(
             model=openai_model,
@@ -116,17 +120,9 @@ def _parse_json_output(raw: str) -> ConductorOutput:
     return ConductorOutput.model_validate(data)
 
 
+@trace_agent("conductor")
 async def run_task(task: TaskCreate) -> ConductorOutput:
-    """Execute a full engineering task through the conductor pipeline.
-
-    This is the main entry point for task execution. It:
-    1. Selects the appropriate tier/model configuration
-    2. Builds the conductor agent
-    3. Runs the agent with the task description
-    4. Returns structured output
-
-    If MAISTRO_DRY_RUN=1 is set, returns a mock result without calling any LLM.
-    """
+    """Execute a full engineering task through the conductor pipeline."""
     # Dry-run mode — return mock result without LLM call
     if os.environ.get("MAISTRO_DRY_RUN", "").strip() in ("1", "true", "yes"):
         await logger.ainfo("conductor_dry_run", description=task.description[:80])
@@ -134,23 +130,18 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
             plan=PlanOutput(
                 summary=f"[DRY RUN] Plan for: {task.description}",
                 subtasks=[
-                    SubTask(
-                        title="Analyze requirements",
-                        description=task.description,
-                    ),
-                    SubTask(
-                        title="Implement solution",
-                        description="Write the code changes",
-                    ),
-                    SubTask(
-                        title="Add tests",
-                        description="Write test coverage",
-                    ),
+                    SubTask(title="Analyze requirements", description=task.description),
+                    SubTask(title="Implement solution", description="Write the code changes"),
+                    SubTask(title="Add tests", description="Write test coverage"),
                 ],
             ),
             final_answer=f"[DRY RUN] Task planned: {task.description}",
             success=True,
         )
+
+    # MAJ-08: Enforce token budget from settings
+    settings = get_settings()
+    max_tokens = settings.max_tokens_per_task
 
     tier_config = _get_tier_config(task.tier)
     resolved_model, base_url, use_json_mode = _resolve_model(tier_config.model)
@@ -161,6 +152,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         model=resolved_model,
         base_url=base_url or "default",
         json_mode=use_json_mode,
+        max_tokens=max_tokens,
         description=task.description[:80],
     )
 
@@ -176,7 +168,6 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
     result = await agent.run(prompt)
 
     if use_json_mode:
-        # Parse raw JSON string into ConductorOutput
         output = _parse_json_output(result.output)
         await logger.ainfo("conductor_complete", success=output.success, mode="json")
         return output

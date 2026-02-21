@@ -15,6 +15,7 @@ import uuid
 import structlog
 
 from maistro.config.settings import SandboxSettings
+from maistro.security.dangerous_tools import is_dangerous_command
 from maistro.tools.sandbox.env_sanitize import sanitize_env
 from maistro.tools.sandbox.workspace import CONTAINER_WORKSPACE, ensure_workspace
 
@@ -41,6 +42,17 @@ class SandboxContainer:
 
     async def exec(self, command: str, timeout: int = 60) -> tuple[int, str]:
         """Execute a command in the container. Returns (exit_code, output)."""
+        # MAJ-04: Check for dangerous commands before execution
+        dangers = is_dangerous_command(command)
+        if dangers:
+            await logger.awarn(
+                "dangerous_command_blocked",
+                command=command[:200],
+                patterns=dangers,
+                container=self.container_id[:12],
+            )
+            return 1, f"Command blocked by safety filter: {', '.join(dangers[:3])}"
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 "docker", "exec", self.container_id,
@@ -104,45 +116,37 @@ async def create_sandbox(
     settings: SandboxSettings | None = None,
     env: dict[str, str] | None = None,
 ) -> SandboxContainer:
-    """Create and start a new sandbox container.
-
-    Args:
-        workspace: Host path to mount as /workspace
-        settings: Sandbox configuration (image, limits, etc.)
-        env: Environment variables to pass (will be sanitized)
-    """
+    """Create and start a new sandbox container."""
     if settings is None:
         settings = SandboxSettings()
 
     host_path = ensure_workspace(workspace)
     safe_env = sanitize_env(env or {})
 
+    # MIN-02: Use UUID for unique, unpredictable container names
+    container_name = f"maistro-sandbox-{uuid.uuid4().hex[:12]}"
+
     cmd = [
         "docker", "run", "-d",
-        "--name", f"maistro-sandbox-{uuid.uuid4().hex[:12]}",
-        # Resource limits
+        "--name", container_name,
         f"--memory={settings.memory_limit}",
         f"--cpus={settings.cpu_count}",
-        # Security
         "--security-opt=no-new-privileges",
         "--cap-drop=ALL",
         "--cap-add=CHOWN",
         "--cap-add=SETUID",
         "--cap-add=SETGID",
-        # Filesystem
         "-v", f"{host_path}:{CONTAINER_WORKSPACE}",
         "-w", CONTAINER_WORKSPACE,
     ]
 
-    # Network isolation
+    # Network isolation (MAJ-05: now defaults to True in settings)
     if settings.network_disabled:
         cmd.append("--network=none")
 
-    # Environment variables
     for k, v in safe_env.items():
         cmd.extend(["-e", f"{k}={v}"])
 
-    # Image and keep-alive command
     cmd.extend([settings.image, "sleep", str(settings.timeout)])
 
     proc = await asyncio.create_subprocess_exec(
