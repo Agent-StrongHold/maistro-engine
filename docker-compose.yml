@@ -12,21 +12,34 @@ services:
       - DB_PORT=5432
       - DB_NAME=maistro
       - DB_USER=maistro
-      - DB_PASSWORD=${DB_PASSWORD:-maistro}
+      - DB_PASSWORD=${DB_PASSWORD:?Set DB_PASSWORD in .env}
       - LITELLM_BASE_URL=http://litellm:4000
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-litellm-dev}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in .env}
       - LANGFUSE_HOST=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - DEFAULT_MODEL=${DEFAULT_MODEL:-anthropic/claude-sonnet-4-20250514}
-      - API_KEYS=${API_KEYS:-}
+      - API_KEYS=${API_KEYS:?Set API_KEYS in .env for production}
+      - REQUIRE_AUTH=true
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
+      - CI_WEBHOOK_SECRET=${CI_WEBHOOK_SECRET:-}
+      - SANDBOX_NETWORK_DISABLED=true
     volumes:
+      # CRIT-01: Docker socket mount — required for sandbox containers.
+      # TODO: Replace with Docker-in-Docker sidecar or remote Docker API
+      # for production deployments. See AUDIT.md CRIT-01.
       - /var/run/docker.sock:/var/run/docker.sock
       - workspace-data:/repos
     depends_on:
       postgres:
         condition: service_healthy
+    stop_grace_period: 30s
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # ─── PostgreSQL ────────────────────────────────────────
   postgres:
@@ -34,10 +47,10 @@ services:
     container_name: maistro-postgres
     environment:
       POSTGRES_USER: maistro
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-maistro}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
       POSTGRES_DB: maistro
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
@@ -53,10 +66,10 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: maistro-litellm
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     environment:
-      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:-sk-litellm-dev}
-      - DATABASE_URL=postgresql://maistro:${DB_PASSWORD:-maistro}@postgres:5432/litellm
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in .env}
+      - DATABASE_URL=postgresql://maistro:${DB_PASSWORD}@postgres:5432/litellm
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -73,12 +86,12 @@ services:
     image: langfuse/langfuse:2
     container_name: maistro-langfuse
     ports:
-      - "3100:3000"
+      - "127.0.0.1:3100:3000"
     environment:
-      - DATABASE_URL=postgresql://maistro:${DB_PASSWORD:-maistro}@postgres:5432/langfuse
+      - DATABASE_URL=postgresql://maistro:${DB_PASSWORD}@postgres:5432/langfuse
       - NEXTAUTH_URL=http://localhost:3100
-      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:-changeme-langfuse-secret}
-      - SALT=${LANGFUSE_SALT:-changeme-langfuse-salt}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET:?Set LANGFUSE_NEXTAUTH_SECRET in .env}
+      - SALT=${LANGFUSE_SALT:?Set LANGFUSE_SALT in .env}
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,7 +105,7 @@ services:
       - "3080:8080"
     environment:
       - OPENAI_API_BASE_URL=http://maistro-engine:8000/v1
-      - OPENAI_API_KEY=${API_KEYS:-sk-maistro-dev}
+      - OPENAI_API_KEY=${API_KEYS}
       - WEBUI_AUTH=true
       - OAUTH_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-}
       - OAUTH_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET:-}

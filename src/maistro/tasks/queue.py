@@ -32,11 +32,13 @@ _TERMINAL = frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCE
 
 
 class TaskQueue:
-    """In-memory task queue with event-based notification."""
+    """In-memory task queue with event-based notification and async lock."""
 
     def __init__(self) -> None:
         self._tasks: OrderedDict[str, TaskResponse] = OrderedDict()
         self._pending: asyncio.Queue[str] = asyncio.Queue()
+        self._lock = asyncio.Lock()
+        self._claimed: set[str] = set()
         self._events: dict[str, asyncio.Event] = {}
 
     def _get_event(self, task_id: str) -> asyncio.Event:
@@ -85,8 +87,9 @@ class TaskQueue:
             progress=TaskProgress(),
             created_at=datetime.now(UTC),
         )
-        self._tasks[task_id] = task
-        self._maybe_prune()
+        async with self._lock:
+            self._tasks[task_id] = task
+            self._maybe_prune()
         await self._pending.put(task_id)
         tasks_submitted_total.inc()
         active_tasks.inc()
@@ -100,32 +103,33 @@ class TaskQueue:
     def get(self, task_id: str) -> TaskResponse | None:
         return self._tasks.get(task_id)
 
-    def update_status(self, task_id: str, status: TaskStatus) -> bool:
-        task = self._tasks.get(task_id)
-        if task is None:
-            logger.warning("update_status_missing_task", task_id=task_id, requested=status.value)
-            return False
-        if not can_transition(task.status, status):
-            logger.warning(
-                "invalid_state_transition",
-                task_id=task_id,
-                current=task.status.value,
-                requested=status.value,
-            )
-            return False
+    async def update_status(self, task_id: str, status: TaskStatus) -> bool:
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                logger.warning("update_status_missing_task", task_id=task_id, requested=status.value)
+                return False
+            if not can_transition(task.status, status):
+                logger.warning(
+                    "invalid_state_transition",
+                    task_id=task_id,
+                    current=task.status.value,
+                    requested=status.value,
+                )
+                return False
 
-        task.status = status
-        task.phase = status.value
+            task.status = status
+            task.phase = status.value
 
-        if status == TaskStatus.PLANNING:
-            task.started_at = datetime.now(UTC)
-        elif status in _TERMINAL:
-            task.completed_at = datetime.now(UTC)
-            active_tasks.dec()
-            if status == TaskStatus.COMPLETED:
-                tasks_completed_total.inc()
-            elif status == TaskStatus.FAILED:
-                tasks_failed_total.inc()
+            if status == TaskStatus.PLANNING:
+                task.started_at = datetime.now(UTC)
+            elif status in _TERMINAL:
+                task.completed_at = datetime.now(UTC)
+                active_tasks.dec()
+                if status == TaskStatus.COMPLETED:
+                    tasks_completed_total.inc()
+                elif status == TaskStatus.FAILED:
+                    tasks_failed_total.inc()
 
         self._notify(task_id)
         return True
@@ -142,8 +146,8 @@ class TaskQueue:
             task.result = result
             self._notify(task_id)
 
-    def cancel(self, task_id: str) -> bool:
-        return self.update_status(task_id, TaskStatus.CANCELLED)
+    async def cancel(self, task_id: str) -> bool:
+        return await self.update_status(task_id, TaskStatus.CANCELLED)
 
     async def next_task(self) -> str:
         """Block until a task is available, return its ID."""
@@ -159,7 +163,6 @@ class TaskQueue:
         Returns (items, next_cursor) where next_cursor is None if no more pages.
         """
         if cursor:
-            # Skip until we find the cursor, then take limit
             found = False
             items: list[TaskResponse] = []
             for tid, task in self._tasks.items():
@@ -179,16 +182,22 @@ class TaskQueue:
     @asynccontextmanager
     async def claim(self, task_id: str) -> AsyncIterator[TaskResponse]:
         """Context manager that transitions task through its lifecycle."""
-        task = self._tasks.get(task_id)
-        if task is None:
-            raise ValueError(f"Task {task_id} not found")
+        async with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None:
+                raise ValueError(f"Task {task_id} not found")
+            if task_id in self._claimed:
+                raise ValueError(f"Task {task_id} already claimed")
+            self._claimed.add(task_id)
         try:
             yield task
-        except Exception as exc:
-            self.update_status(task_id, TaskStatus.FAILED)
+        except BaseException as exc:
+            await self.update_status(task_id, TaskStatus.FAILED)
             self.set_result(task_id, TaskResult(error=str(exc)))
             await logger.aexception("task_failed", task_id=task_id)
             raise
+        finally:
+            self._claimed.discard(task_id)
 
 
 # Singleton — replaced by DI in production

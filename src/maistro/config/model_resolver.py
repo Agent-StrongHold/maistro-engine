@@ -9,21 +9,22 @@ from __future__ import annotations
 from maistro.config.settings import get_settings
 
 
-def resolve_model(tier_model: str) -> tuple[str, str | None]:
-    """Resolve a tier model name to a Pydantic AI model string + base_url.
+def resolve_model(tier_model: str) -> tuple[str, str | None, bool]:
+    """Resolve a tier model name to (pydantic_ai_model, base_url, use_json_mode).
 
-    Returns (model_string, base_url) where base_url is set for Ollama/LiteLLM.
+    Returns use_json_mode=True for Ollama models that need JSON-prompt fallback
+    instead of tool-based structured output.
     """
     settings = get_settings()
 
     if settings.litellm.base_url and settings.litellm.base_url != "http://localhost:4000":
         model_name = tier_model.split("/")[-1]
-        return f"openai:{model_name}", settings.litellm.base_url
+        return f"openai:{model_name}", settings.litellm.base_url, False
 
-    # Ollama: strip ollama/ prefix, use OpenAI-compat endpoint
+    # Ollama: strip ollama/ prefix, use OpenAI-compat endpoint, enable JSON mode
     if tier_model.startswith("ollama/"):
         model_name = tier_model.removeprefix("ollama/")
-        return f"openai:{model_name}", settings.ollama_base_url
+        return f"openai:{model_name}", settings.ollama_base_url, True
 
     # Direct provider access — no base_url override
-    return tier_model, None
+    return tier_model, None, False

@@ -64,11 +64,22 @@ async def git_branch(workspace: str, name: str, checkout: bool = True) -> dict[s
     return await _git(workspace, "branch", name)
 
 
+# File patterns that should never be staged
+_SENSITIVE_PATTERNS = (
+    ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx",
+    "credentials.json", "service-account.json", "secrets.yaml",
+    "id_rsa", "id_ed25519", ".npmrc", ".pypirc",
+)
+
+
 @mcp.tool()
 async def git_commit(workspace: str, message: str, add_all: bool = True) -> dict[str, Any]:
     """Stage and commit changes."""
     if add_all:
         await _git(workspace, "add", "-A")
+        # Unstage sensitive files if accidentally staged
+        for pattern in _SENSITIVE_PATTERNS:
+            await _git(workspace, "reset", "HEAD", "--", pattern)
     return await _git(workspace, "commit", "-m", message)
 
 

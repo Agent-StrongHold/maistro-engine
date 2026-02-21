@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -59,16 +58,25 @@ async def github_webhook(
     _check_body_size(request, settings)
     body = await request.body()
 
-    # Verify GitHub signature when secret is configured
+    # Verify GitHub webhook signature
     if settings.github_webhook_secret:
-        sig = x_hub_signature_256 or ""
-        if not _verify_github_signature(body, sig, settings.github_webhook_secret):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
+        if not x_hub_signature_256:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing X-Hub-Signature-256 header",
+            )
+        if not _verify_github_signature(body, x_hub_signature_256, settings.github_webhook_secret):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid webhook signature",
+            )
     else:
-        logger.warning("github_webhook_secret_not_configured")
+        await logger.awarn(
+            "github_webhook_no_secret",
+            msg="GITHUB_WEBHOOK_SECRET not set — signature verification skipped",
+        )
 
-    payload = json.loads(body)
-
+    payload = await request.json()
     event = x_github_event or "unknown"
     action = payload.get("action", "")
 
@@ -81,8 +89,16 @@ async def github_webhook(
         number = pr.get("number", "")
         repo = payload.get("repository", {}).get("full_name", "")
 
+        raw_description = f"Review PR #{number}: {title} in {repo}"
+        wrapped = wrap_external_content(
+            raw_description, ContentSource.WEBHOOK, sender=f"github/{repo}",
+        )
+        injections = detect_injection(title)
+        if injections:
+            await logger.awarn("injection_detected_in_pr", pr=number, patterns=injections)
+
         task = TaskCreate(
-            description=f"Review PR #{number}: {title} in {repo}",
+            description=wrapped,
             workspace=f"/repos/{repo}",
         )
         result = await queue.submit(task)
@@ -96,8 +112,16 @@ async def github_webhook(
         body_text = _sanitize(issue.get("body", "")[:WEBHOOK_BODY_PREVIEW_LEN])
         repo = payload.get("repository", {}).get("full_name", "")
 
+        raw_description = f"Investigate issue #{number}: {title}\n\n{body_text[:500]}"
+        wrapped = wrap_external_content(
+            raw_description, ContentSource.WEBHOOK, sender=f"github/{repo}",
+        )
+        injections = detect_injection(title) + detect_injection(body_text[:500])
+        if injections:
+            await logger.awarn("injection_detected_in_issue", issue=number, patterns=injections)
+
         task = TaskCreate(
-            description=f"Investigate issue #{number}: {title}\n\n{body_text}",
+            description=wrapped,
             workspace=f"/repos/{repo}",
         )
         result = await queue.submit(task)
@@ -122,21 +146,30 @@ async def ci_webhook(
     payload: CIWebhookPayload,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
     settings: Annotated[Settings, Depends(get_settings)],
-    x_webhook_secret: str | None = Header(None),
+    x_ci_token: str | None = Header(None),
 ) -> WebhookAccepted | CIWebhookIgnored:
     _check_body_size(request, settings)
 
-    # Verify CI webhook shared secret when configured
+    # Require CI webhook authentication
     if settings.ci_webhook_secret:
-        if not x_webhook_secret or x_webhook_secret != settings.ci_webhook_secret:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid webhook secret")
+        if not x_ci_token or not hmac.compare_digest(x_ci_token, settings.ci_webhook_secret):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing CI webhook token",
+            )
     else:
-        logger.warning("ci_webhook_secret_not_configured")
+        await logger.awarn(
+            "ci_webhook_no_secret",
+            msg="CI_WEBHOOK_SECRET not set — authentication skipped",
+        )
 
     if payload.status == "failure":
         log_ref = _sanitize(payload.log_url) if payload.log_url else "no log"
+        raw_description = f"Fix CI failure on {payload.branch} in {payload.repository}. Log: {log_ref}"
+        wrapped = wrap_external_content(raw_description, ContentSource.WEBHOOK, sender="ci")
+
         task = TaskCreate(
-            description=f"Fix CI failure on {payload.branch} in {payload.repository}. Log: {log_ref}",
+            description=wrapped,
             workspace=f"/repos/{payload.repository}",
             branch=payload.branch,
         )

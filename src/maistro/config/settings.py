@@ -54,7 +54,7 @@ class SandboxSettings(BaseSettings):
     memory_limit: str = "512m"
     cpu_count: int = 2
     timeout: int = 300
-    network_disabled: bool = False
+    network_disabled: bool = True
 
 
 class OllamaSettings(BaseSettings):
@@ -78,11 +78,24 @@ class Settings(BaseSettings):
 
     # Auth
     api_keys: list[str] = Field(default_factory=list, description="Valid API bearer tokens")
+    require_auth: bool = Field(
+        default=True,
+        description="Refuse to start without API keys. Set REQUIRE_AUTH=false for local dev only.",
+    )
     github_webhook_secret: str = ""
     ci_webhook_secret: str = ""
 
+    # CORS
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3080"],
+        description="Allowed CORS origins",
+    )
+
     # Default LLM model for agents
     default_model: str = "anthropic/claude-sonnet-4-20250514"
+
+    # LLM cost controls
+    max_tokens_per_task: int = Field(default=100_000, description="Max LLM tokens per task")
 
     # LLM model routing — consolidated from os.environ.get() calls
     ollama_base_url: str = "http://localhost:11434/v1"
@@ -97,12 +110,9 @@ class Settings(BaseSettings):
     # Request limits
     max_webhook_body_bytes: int = 1_048_576  # 1 MB
 
-    # Rate limiting (Item 63)
+    # Rate limiting
     rate_limit_per_minute: int = 60  # per-client requests/minute
     rate_limit_burst: int = 10  # burst allowance
-
-    # CORS (Item 64)
-    cors_allowed_origins: list[str] = Field(default_factory=list)
 
     # Sub-configs
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)

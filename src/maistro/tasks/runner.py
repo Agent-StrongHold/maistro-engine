@@ -40,6 +40,7 @@ class TaskRunner:
         self._executor = executor
         self._max_workers = max_workers
         self._running = False
+        self._draining = False
         self._semaphore: asyncio.Semaphore | None = None
         self._worker_task: asyncio.Task[None] | None = None
         self._active_tasks: set[asyncio.Task[None]] = set()
@@ -69,6 +70,27 @@ class TaskRunner:
 
         await logger.ainfo("task_runner_stopped")
 
+    async def drain(self, timeout: int = 30) -> None:
+        """Graceful shutdown: stop accepting new tasks, wait for current tasks."""
+        self._draining = True
+        self._running = False
+        await logger.ainfo("task_runner_draining", timeout=timeout, active_count=len(self._active_tasks))
+
+        if self._active_tasks:
+            _, pending = await asyncio.wait(self._active_tasks, timeout=timeout)
+            for t in pending:
+                t.cancel()
+            if pending:
+                await logger.awarning("task_runner_drain_timeout", cancelled=len(pending))
+
+        if self._worker_task:
+            self._worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._worker_task
+
+        self._draining = False
+        await logger.ainfo("task_runner_stopped")
+
     async def _dispatcher_loop(self) -> None:
         """Dispatch tasks to workers, limited by semaphore."""
         while self._running:
@@ -92,6 +114,12 @@ class TaskRunner:
         assert self._semaphore is not None
         try:
             await self._execute_task(task_id)
+        except asyncio.CancelledError:
+            # Graceful shutdown — mark task as failed rather than leaving it stuck
+            await self._queue.update_status(task_id, TaskStatus.FAILED)
+            self._queue.set_result(
+                task_id, TaskResult(error="Task cancelled during shutdown")
+            )
         except Exception:
             await logger.aexception("task_execution_failed", task_id=task_id)
         finally:
@@ -103,50 +131,38 @@ class TaskRunner:
             return
 
         async with self._queue.claim(task_id):
+            # Planning phase
+            await self._queue.update_status(task_id, TaskStatus.PLANNING)
+            self._queue.update_progress(
+                task_id, TaskProgress(current="Analyzing task and creating plan...")
+            )
+
             request = TaskCreate(
                 description=task.description,
                 workspace=task.workspace,
                 tier=task.tier,
             )
-            result = await self._run_pipeline(task_id, request)
-            self._finalize(task_id, result)
 
-    async def _run_pipeline(self, task_id: str, request: TaskCreate) -> ConductorOutput:
-        """Execute the plan → code → review pipeline phases."""
-        self._queue.update_status(task_id, TaskStatus.PLANNING)
-        self._queue.update_progress(
-            task_id, TaskProgress(current="Analyzing task and creating plan...")
-        )
-
-        self._queue.update_status(task_id, TaskStatus.CODING)
-        self._queue.update_progress(
-            task_id, TaskProgress(current="Generating implementation...")
-        )
-
-        return await self._executor(request)
-
-    def _finalize(self, task_id: str, result: ConductorOutput) -> None:
-        """Transition through review/test phases and record the result."""
-        if result.success:
-            self._queue.update_status(task_id, TaskStatus.REVIEWING)
+            # Run conductor (single-pass: plan + code in one LLM call)
+            await self._queue.update_status(task_id, TaskStatus.CODING)
             self._queue.update_progress(
-                task_id, TaskProgress(current="Reviewing implementation...")
+                task_id, TaskProgress(current="Generating implementation...")
             )
-            self._queue.update_status(task_id, TaskStatus.TESTING)
-            self._queue.update_progress(
-                task_id, TaskProgress(current="Running tests...")
-            )
-            self._queue.update_status(task_id, TaskStatus.COMPLETED)
-            self._queue.set_result(
-                task_id,
-                TaskResult(
-                    files_changed=result.code.files_changed if result.code else [],
-                    review_score=result.review.score if result.review else None,
-                ),
-            )
-        else:
-            self._queue.update_status(task_id, TaskStatus.FAILED)
-            self._queue.set_result(
-                task_id,
-                TaskResult(error=result.final_answer),
-            )
+
+            result = await self._executor(request)
+
+            # Phase 1 is single-pass — transition to COMPLETED or FAILED directly
+            if result.success:
+                await self._queue.update_status(task_id, TaskStatus.COMPLETED)
+                self._queue.set_result(
+                    task_id,
+                    TaskResult(
+                        files_changed=result.code.files_changed if result.code else [],
+                    ),
+                )
+            else:
+                await self._queue.update_status(task_id, TaskStatus.FAILED)
+                self._queue.set_result(
+                    task_id,
+                    TaskResult(error=result.final_answer),
+                )

@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 from datetime import UTC, datetime
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
 
-from maistro.config.settings import get_settings
-from maistro.security.secret_equal import secret_equal
+from maistro.config.settings import Settings, get_settings
 from maistro.tasks.models import TaskResponse
 from maistro.tasks.queue import TaskQueue, get_task_queue
 
@@ -77,17 +77,25 @@ def _is_terminal(status: str) -> bool:
     return status in _TERMINAL_STATUSES
 
 
+def _verify_ws_token(token: str, settings: Settings) -> bool:
+    """Verify a WebSocket auth token against configured API keys."""
+    if not settings.api_keys:
+        return not settings.require_auth
+    return any(hmac.compare_digest(token.encode(), k.encode()) for k in settings.api_keys)
+
+
 @router.websocket("/stream/{task_id}")
 async def stream_task(
     websocket: WebSocket,
     task_id: str,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
+    settings: Annotated[Settings, Depends(get_settings)],
     token: str | None = Query(None),
 ) -> None:
-    settings = get_settings()
+    # Authenticate WebSocket connections
     if settings.api_keys:
-        if not token or not any(secret_equal(token, key) for key in settings.api_keys):
-            await websocket.close(code=4001, reason="Unauthorized")
+        if not token or not _verify_ws_token(token, settings):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
     await websocket.accept()

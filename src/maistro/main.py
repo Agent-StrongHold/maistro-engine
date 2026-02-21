@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.metadata
+import signal
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,7 +17,7 @@ from fastapi.responses import JSONResponse
 from maistro.api import chat_completions, health, metrics, models, tasks, webhooks, ws
 from maistro.api.rate_limit import RateLimitMiddleware
 from maistro.api.schemas import ErrorDetail, ErrorResponse
-from maistro.config.settings import get_settings
+from maistro.config.settings import Settings, get_settings
 from maistro.observability.logging import configure_logging
 from maistro.observability.middleware import RequestIDMiddleware
 from maistro.tasks.queue import get_task_queue
@@ -36,6 +38,15 @@ except importlib.metadata.PackageNotFoundError:
 SHUTDOWN_DRAIN_TIMEOUT = 30.0
 
 
+def _validate_startup(settings: Settings) -> None:
+    """Fail-fast startup checks. Raises RuntimeError if critical config is missing."""
+    if settings.require_auth and not settings.api_keys:
+        raise RuntimeError(
+            "CRITICAL: No API keys configured and REQUIRE_AUTH is true. "
+            "Set API_KEYS env var or set REQUIRE_AUTH=false for local development."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Start/stop the background task runner with the app lifecycle."""
@@ -45,6 +56,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(debug=settings.debug, json_output=not settings.debug)
 
+    # Fail-fast startup validation
+    _validate_startup(settings)
+
     # Wire executor via import — the runner no longer imports conductor directly
     from maistro.agents.conductor import run_task
 
@@ -52,6 +66,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _runner = TaskRunner(queue, executor=run_task)
     await _runner.start()
     await logger.ainfo("maistro_engine_started", version=APP_VERSION)
+
+    # Register graceful shutdown handler
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(_graceful_shutdown(s)))
 
     yield
 
@@ -70,6 +89,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await logger.ainfo("maistro_engine_stopped")
 
 
+async def _graceful_shutdown(sig: signal.Signals) -> None:
+    """Handle shutdown signals with task draining."""
+    await logger.ainfo("shutdown_signal_received", signal=sig.name)
+    if _runner:
+        await _runner.drain(timeout=30)
+
+
 app = FastAPI(
     title="Maistro Engine",
     description="Software engineering department in a box",
@@ -84,7 +110,7 @@ _settings = get_settings()
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_settings.cors_allowed_origins or (["*"] if _settings.debug else []),
+    allow_origins=_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
