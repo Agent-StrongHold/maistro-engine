@@ -16,7 +16,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 try:
     from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
 except ImportError:
-    Vector = None  # type: ignore[assignment]
+    Vector = None
 
 
 class Base(DeclarativeBase):
