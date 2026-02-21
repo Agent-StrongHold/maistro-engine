@@ -146,7 +146,7 @@ async def _run_with_retry(
 
             if use_json_mode:
                 return _parse_json_output(result.output)
-            return result.output
+            return result.output  # type: ignore[return-value]
         except TimeoutError as exc:
             last_exc = exc
             await logger.awarning(
@@ -237,6 +237,6 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         f"Task: {task.description}\n\nWorkspace: {task.workspace}\nConstraints:\n{constraints_text}"
     )
 
-    result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)
+    result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)  # type: ignore[arg-type]
     await logger.ainfo("conductor_complete", success=result.success)
     return result
