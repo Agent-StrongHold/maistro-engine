@@ -25,14 +25,14 @@ async def test_submit_and_get(queue: TaskQueue):
 
 async def test_status_transition(queue: TaskQueue):
     task = await queue.submit(TaskCreate(description="test"))
-    assert queue.update_status(task.task_id, TaskStatus.PLANNING)
+    assert await queue.update_status(task.task_id, TaskStatus.PLANNING)
     assert queue.get(task.task_id).status == TaskStatus.PLANNING
 
 
 async def test_invalid_transition_rejected(queue: TaskQueue):
     task = await queue.submit(TaskCreate(description="test"))
     # Can't go from QUEUED directly to COMPLETED
-    assert not queue.update_status(task.task_id, TaskStatus.COMPLETED)
+    assert not await queue.update_status(task.task_id, TaskStatus.COMPLETED)
 
 
 async def test_event_notification(queue: TaskQueue):
@@ -47,7 +47,7 @@ async def test_event_notification(queue: TaskQueue):
 
     asyncio.create_task(waiter())
     await asyncio.sleep(0.01)
-    queue.update_status(task.task_id, TaskStatus.PLANNING)
+    await queue.update_status(task.task_id, TaskStatus.PLANNING)
     await asyncio.sleep(0.01)
     assert notified
 
@@ -67,7 +67,7 @@ async def test_cursor_pagination(queue: TaskQueue):
 
 async def test_cancel(queue: TaskQueue):
     task = await queue.submit(TaskCreate(description="test"))
-    assert queue.cancel(task.task_id)
+    assert await queue.cancel(task.task_id)
     assert queue.get(task.task_id).status == TaskStatus.CANCELLED
 
 
@@ -76,16 +76,14 @@ async def test_get_nonexistent(queue: TaskQueue):
 
 
 async def test_full_lifecycle(queue: TaskQueue):
-    """Test a task through all phases: queued → planning → coding → reviewing → testing → completed."""
+    """Test a task through all phases: queued -> planning -> coding -> completed."""
     task = await queue.submit(TaskCreate(description="full lifecycle"))
     for status in [
         TaskStatus.PLANNING,
         TaskStatus.CODING,
-        TaskStatus.REVIEWING,
-        TaskStatus.TESTING,
         TaskStatus.COMPLETED,
     ]:
-        assert queue.update_status(task.task_id, status), f"Failed to transition to {status}"
+        assert await queue.update_status(task.task_id, status), f"Failed to transition to {status}"
     assert queue.get(task.task_id).status == TaskStatus.COMPLETED
     assert queue.get(task.task_id).completed_at is not None
 
@@ -95,12 +93,10 @@ async def test_cancel_not_possible_after_completion(queue: TaskQueue):
     for status in [
         TaskStatus.PLANNING,
         TaskStatus.CODING,
-        TaskStatus.REVIEWING,
-        TaskStatus.TESTING,
         TaskStatus.COMPLETED,
     ]:
-        queue.update_status(task.task_id, status)
-    assert not queue.cancel(task.task_id)
+        await queue.update_status(task.task_id, status)
+    assert not await queue.cancel(task.task_id)
 
 
 async def test_list_empty_queue(queue: TaskQueue):

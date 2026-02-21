@@ -114,7 +114,6 @@ async def _stream_conductor_response(
     yield f"data: {role_chunk.model_dump_json()}\n\n"
 
     # For Phase 1, run the conductor and stream the final_answer in chunks.
-    # Phase 2 will stream real-time progress from sub-agents.
     user_msg = _extract_user_message(request)
 
     try:

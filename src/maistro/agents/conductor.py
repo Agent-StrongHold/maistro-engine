@@ -2,12 +2,18 @@
 
 Phase 1: Single Pydantic AI agent that handles plan/code/review in one pass.
 Phase 2 will split this into sub-agents (planner, coder, reviewer, scout).
+
+For Ollama models that don't support complex tool schemas, the conductor falls
+back to JSON-prompt mode: it instructs the model to return JSON directly and
+parses/validates the response with Pydantic.
 """
 
 from __future__ import annotations
 
 import asyncio
 import functools
+import json
+import os
 import random
 
 import httpx
@@ -33,6 +39,22 @@ logger = structlog.get_logger()
 # HTTP status codes that indicate transient failures worth retrying
 _RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 
+# JSON schema appended to the system prompt for Ollama JSON-mode fallback
+_CONDUCTOR_JSON_SCHEMA = """\
+
+You MUST respond with valid JSON matching this exact schema (no markdown, no extra text):
+{
+  "plan": {
+    "summary": "string — brief plan summary",
+    "subtasks": [
+      {"title": "string", "description": "string"}
+    ]
+  },
+  "final_answer": "string — concise summary of what you would implement",
+  "success": true
+}
+"""
+
 
 def _get_tier_config(tier: int | None) -> TierConfig:
     t = Tier(tier) if tier and tier in [e.value for e in Tier] else Tier.STANDARD
@@ -43,27 +65,44 @@ def _get_tier_config(tier: int | None) -> TierConfig:
 def build_conductor(
     model: str | KnownModelName | None = None,
     base_url: str | None = None,
-) -> Agent[None, ConductorOutput]:
+    use_json_mode: bool = False,
+) -> Agent[None, ConductorOutput] | Agent[None, str]:
     """Build a conductor agent with the given model.
 
-    Agents are cached by (model, base_url) to avoid re-compiling schemas.
+    When use_json_mode=True (for Ollama models), returns a str-output agent
+    that uses JSON response_format. The caller must parse the JSON into
+    ConductorOutput manually.
+
+    Agents are cached by (model, base_url, use_json_mode) to avoid re-compiling schemas.
     """
+    system_prompt = CONDUCTOR_SYSTEM
+    output_type: type = ConductorOutput
+
+    litellm_key = os.environ.get("LITELLM_MASTER_KEY", "")
+    api_key = litellm_key if litellm_key else "ollama"
+
+    if use_json_mode:
+        system_prompt = CONDUCTOR_SYSTEM + _CONDUCTOR_JSON_SCHEMA
+        output_type = str
+
     if base_url:
-        # Use OpenAI-compatible provider with custom base_url (for Ollama / LiteLLM)
         model_name = (model or "openai:maistro-default").removeprefix("openai:")
-        provider = OpenAIProvider(base_url=base_url, api_key="ollama")
+        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
         openai_model = OpenAIChatModel(model_name, provider=provider)
         return Agent(
             model=openai_model,
-            system_prompt=CONDUCTOR_SYSTEM,
-            output_type=ConductorOutput,
+            system_prompt=system_prompt,
+            output_type=output_type,
             retries=3,
+            model_settings={
+                "extra_body": {"response_format": {"type": "json_object"}},
+            } if use_json_mode else None,
         )
 
     return Agent(
         model=model or "openai:maistro-default",
-        system_prompt=CONDUCTOR_SYSTEM,
-        output_type=ConductorOutput,
+        system_prompt=system_prompt,
+        output_type=output_type,
         retries=3,
     )
 
@@ -79,10 +118,17 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
+def _parse_json_output(raw: str) -> ConductorOutput:
+    """Parse raw JSON string from Ollama into a validated ConductorOutput."""
+    data = json.loads(raw)
+    return ConductorOutput.model_validate(data)
+
+
 async def _run_with_retry(
-    agent: Agent[None, ConductorOutput],
+    agent: Agent,
     prompt: str,
     tier_config: TierConfig,
+    use_json_mode: bool = False,
 ) -> ConductorOutput:
     """Run the agent with timeout and retry logic for transient failures."""
     if not llm_circuit.allow_request():
@@ -97,6 +143,9 @@ async def _run_with_retry(
                 agent.run(prompt), timeout=tier_config.timeout
             )
             llm_circuit.record_success()
+
+            if use_json_mode:
+                return _parse_json_output(result.output)
             return result.output
         except (TimeoutError, asyncio.TimeoutError) as exc:
             last_exc = exc
@@ -154,36 +203,32 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
             plan=PlanOutput(
                 summary=f"[DRY RUN] Plan for: {task.description}",
                 subtasks=[
-                    SubTask(
-                        title="Analyze requirements",
-                        description=task.description,
-                    ),
-                    SubTask(
-                        title="Implement solution",
-                        description="Write the code changes",
-                    ),
-                    SubTask(
-                        title="Add tests",
-                        description="Write test coverage",
-                    ),
+                    SubTask(title="Analyze requirements", description=task.description),
+                    SubTask(title="Implement solution", description="Write the code changes"),
+                    SubTask(title="Add tests", description="Write test coverage"),
                 ],
             ),
             final_answer=f"[DRY RUN] Task planned: {task.description}",
             success=True,
         )
 
+    # MAJ-08: Enforce token budget from settings
+    max_tokens = settings.max_tokens_per_task
+
     tier_config = _get_tier_config(task.tier)
-    resolved_model, base_url = resolve_model(tier_config.model)
+    resolved_model, base_url, use_json_mode = resolve_model(tier_config.model)
 
     await logger.ainfo(
         "conductor_start",
         tier=tier_config.tier,
         model=resolved_model,
         base_url=base_url or "default",
+        json_mode=use_json_mode,
+        max_tokens=max_tokens,
         description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN],
     )
 
-    agent = build_conductor(model=resolved_model, base_url=base_url)
+    agent = build_conductor(model=resolved_model, base_url=base_url, use_json_mode=use_json_mode)
 
     constraints_text = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
     prompt = (
@@ -192,6 +237,6 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         f"Constraints:\n{constraints_text}"
     )
 
-    result = await _run_with_retry(agent, prompt, tier_config)
+    result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)
     await logger.ainfo("conductor_complete", success=result.success)
     return result

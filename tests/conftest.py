@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 
 import pytest
 
@@ -15,14 +16,36 @@ os.environ.setdefault("RATE_LIMIT_BURST", "1000")
 
 
 @pytest.fixture(autouse=True)
-def _reset_singletons() -> None:
-    """Reset global singletons between tests to prevent state leakage."""
-    import maistro.tasks.queue as queue_module
-    queue_module._queue = None
-
+def _reset_singletons() -> Iterator[None]:
+    """Reset all global singletons between tests to prevent state leakage."""
     # Clear cached settings so test env vars are picked up
     from maistro.config.settings import get_settings
     get_settings.cache_clear()
+
+    yield
+
+    # Task queue
+    import maistro.tasks.queue as queue_module
+    queue_module._queue = None
+
+    # Sandbox containers
+    import maistro.tools.sandbox.server as sandbox_server
+    sandbox_server._containers.clear()
+
+    # Langfuse tracing
+    import maistro.observability.tracing as tracing_module
+    tracing_module._langfuse = None
+    tracing_module._langfuse_checked = False
+
+    # Task runner
+    import maistro.main as main_module
+    main_module._runner = None
+
+
+@pytest.fixture(autouse=True)
+def _disable_auth_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable auth requirement for tests (unless test explicitly configures it)."""
+    monkeypatch.setenv("REQUIRE_AUTH", "false")
 
 
 @pytest.fixture()

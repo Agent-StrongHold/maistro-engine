@@ -10,6 +10,8 @@ This FastMCP server provides tools for:
 
 from __future__ import annotations
 
+import asyncio
+import shlex
 from typing import Any
 
 import structlog
@@ -26,35 +28,38 @@ mcp = FastMCP("sandbox", instructions="Docker sandbox for isolated code executio
 
 # Active sandbox containers, keyed by workspace path
 _containers: dict[str, SandboxContainer] = {}
+_container_lock = asyncio.Lock()
 
 
 async def _get_or_create(workspace: str) -> SandboxContainer:
     """Get an existing container for this workspace or create one."""
-    existing = _containers.get(workspace)
-    if existing is not None:
-        if existing.expired:
-            logger.info("sandbox_ttl_expired", workspace=workspace)
-            await existing.destroy()
-            del _containers[workspace]
-        else:
-            return existing
+    async with _container_lock:
+        existing = _containers.get(workspace)
+        if existing is not None:
+            if existing.expired:
+                logger.info("sandbox_ttl_expired", workspace=workspace)
+                await existing.destroy()
+                del _containers[workspace]
+            else:
+                return existing
 
-    container = await create_sandbox(workspace)
-    _containers[workspace] = container
-    sandbox_containers_active.set(len(_containers))
-    return container
+        container = await create_sandbox(workspace)
+        _containers[workspace] = container
+        sandbox_containers_active.set(len(_containers))
+        return container
 
 
 async def cleanup_all_containers() -> None:
     """Destroy all active sandbox containers. Called during shutdown."""
-    count = len(_containers)
-    for workspace, container in list(_containers.items()):
-        try:
-            await container.destroy()
-        except Exception:
-            logger.exception("sandbox_cleanup_error", workspace=workspace)
-    _containers.clear()
-    sandbox_containers_active.set(0)
+    async with _container_lock:
+        count = len(_containers)
+        for workspace, container in list(_containers.items()):
+            try:
+                await container.destroy()
+            except Exception:
+                logger.exception("sandbox_cleanup_error", workspace=workspace)
+        _containers.clear()
+        sandbox_containers_active.set(0)
     logger.info("all_sandboxes_cleaned_up", count=count)
 
 
@@ -110,8 +115,9 @@ async def sandbox_glob(workspace: str, pattern: str) -> dict[str, Any]:
     if err := _check_path(pattern):
         return err
     container = await _get_or_create(workspace)
+    safe_pattern = shlex.quote(f"/workspace/{pattern}")
     exit_code, output = await container.exec(
-        f"find /workspace -path '/workspace/{pattern}' -type f 2>/dev/null | head -100"
+        f"find /workspace -path {safe_pattern} -type f 2>/dev/null | head -100"
     )
     files = [f for f in output.strip().splitlines() if f] if output else []
     return ok(stdout=output or "No files found", files=files)
@@ -123,8 +129,10 @@ async def sandbox_grep(workspace: str, pattern: str, path: str = ".") -> dict[st
     if err := _check_path(path):
         return err
     container = await _get_or_create(workspace)
+    safe_pattern = shlex.quote(pattern)
+    safe_path = shlex.quote(f"/workspace/{path}")
     exit_code, output = await container.exec(
-        f"grep -rn '{pattern}' /workspace/{path} 2>/dev/null | head -50"
+        f"grep -rn -- {safe_pattern} {safe_path} 2>/dev/null | head -50"
     )
     return ok(stdout=output or "No matches found", match_count=output.count("\n") if output else 0)
 
@@ -132,8 +140,10 @@ async def sandbox_grep(workspace: str, pattern: str, path: str = ".") -> dict[st
 @mcp.tool()
 async def sandbox_destroy(workspace: str) -> dict[str, Any]:
     """Destroy the sandbox container for a workspace."""
-    container = _containers.pop(workspace, None)
+    async with _container_lock:
+        container = _containers.pop(workspace, None)
     if container:
         await container.destroy()
+        sandbox_containers_active.set(len(_containers))
         return ok(stdout=f"Sandbox destroyed for {workspace}")
     return fail(stdout="No sandbox found for this workspace")

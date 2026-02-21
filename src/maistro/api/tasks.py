@@ -63,7 +63,7 @@ async def cancel_task(
     _auth: RequireAuth,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
 ) -> TaskCancelledResponse:
-    cancelled = queue.cancel(task_id)
+    cancelled = await queue.cancel(task_id)
     if not cancelled:
         raise HTTPException(status_code=400, detail="Cannot cancel task in current state")
     return TaskCancelledResponse(cancelled=True)
