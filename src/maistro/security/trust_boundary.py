@@ -27,8 +27,8 @@ class PermissionGrant(BaseModel):
 
     grant_id: str = Field(default_factory=lambda: f"grant-{int(time.time())}-{secure_id(6)}")
     grantee: str  # Agent role or ID
-    read_paths: list[str] = Field(default_factory=list)   # Glob patterns
-    write_paths: list[str] = Field(default_factory=list)   # Glob patterns
+    read_paths: list[str] = Field(default_factory=list)  # Glob patterns
+    write_paths: list[str] = Field(default_factory=list)  # Glob patterns
     can_execute: bool = False
     allowed_commands: list[str] = Field(default_factory=list)  # Regex patterns
     expires_at: float = Field(default_factory=lambda: time.time() + PERMISSION_TTL)
@@ -96,10 +96,8 @@ def check_permission(
             return False
         if command and grant.allowed_commands:
             import re
-            return any(
-                re.search(pattern, command)
-                for pattern in grant.allowed_commands
-            )
+
+            return any(re.search(pattern, command) for pattern in grant.allowed_commands)
         return grant.can_execute
 
     return False

@@ -40,13 +40,22 @@ class TestTaskStateMachine:
 
     def test_any_state_can_cancel(self) -> None:
         """Evidence: Any non-terminal state can be cancelled."""
-        for status in [TaskStatus.QUEUED, TaskStatus.PLANNING, TaskStatus.CODING,
-                       TaskStatus.REVIEWING, TaskStatus.TESTING]:
+        for status in [
+            TaskStatus.QUEUED,
+            TaskStatus.PLANNING,
+            TaskStatus.CODING,
+            TaskStatus.REVIEWING,
+            TaskStatus.TESTING,
+        ]:
             assert can_transition(status, TaskStatus.CANCELLED), f"{status} should be cancellable"
 
     def test_any_active_state_can_fail(self) -> None:
-        for status in [TaskStatus.PLANNING, TaskStatus.CODING,
-                       TaskStatus.REVIEWING, TaskStatus.TESTING]:
+        for status in [
+            TaskStatus.PLANNING,
+            TaskStatus.CODING,
+            TaskStatus.REVIEWING,
+            TaskStatus.TESTING,
+        ]:
             assert can_transition(status, TaskStatus.FAILED), f"{status} should allow failure"
 
     def test_terminal_states_have_no_transitions(self) -> None:
@@ -54,8 +63,9 @@ class TestTaskStateMachine:
         for terminal in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]:
             for target in TaskStatus:
                 if target != terminal:
-                    assert not can_transition(terminal, target), \
+                    assert not can_transition(terminal, target), (
                         f"{terminal} should not transition to {target}"
+                    )
 
     def test_invalid_skip_transitions(self) -> None:
         """Evidence: Can't skip phases (e.g., queued → completed)."""

@@ -8,6 +8,7 @@ from maistro.tasks.models import TaskResponse
 
 # --- Error envelope (Item 30) ---
 
+
 class ErrorDetail(BaseModel):
     type: str
     message: str
@@ -19,6 +20,7 @@ class ErrorResponse(BaseModel):
 
 
 # --- Task API response models (Item 29, 35) ---
+
 
 class TaskCreatedResponse(BaseModel):
     """Response for POST /tasks — returns full task with status."""
@@ -44,6 +46,7 @@ class PaginatedTasks(BaseModel):
 
 # --- Webhook response models (Item 29) ---
 
+
 class WebhookAccepted(BaseModel):
     """Webhook accepted and task queued."""
 
@@ -67,6 +70,7 @@ class CIWebhookIgnored(BaseModel):
 
 
 # --- Health response (Item 36) ---
+
 
 class HealthResponse(BaseModel):
     status: str

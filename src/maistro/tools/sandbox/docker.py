@@ -74,8 +74,12 @@ class SandboxContainer:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "exec", self.container_id,
-                "bash", "-c", command,
+                "docker",
+                "exec",
+                self.container_id,
+                "bash",
+                "-c",
+                command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -126,7 +130,10 @@ class SandboxContainer:
     async def destroy(self) -> None:
         """Stop and remove the container."""
         proc = await asyncio.create_subprocess_exec(
-            "docker", "rm", "-f", self.container_id,
+            "docker",
+            "rm",
+            "-f",
+            self.container_id,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -160,8 +167,11 @@ async def create_sandbox(
     container_name = f"maistro-sandbox-{uuid.uuid4().hex[:12]}"
 
     cmd = [
-        "docker", "run", "-d",
-        "--name", container_name,
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        container_name,
         f"--memory={settings.memory_limit}",
         f"--cpus={settings.cpu_count}",
         # Security hardening
@@ -173,8 +183,10 @@ async def create_sandbox(
         "--pids-limit=256",
         "--tmpfs=/tmp:rw,noexec,nosuid,size=64m",
         # Filesystem
-        "-v", f"{host_path}:{CONTAINER_WORKSPACE}",
-        "-w", CONTAINER_WORKSPACE,
+        "-v",
+        f"{host_path}:{CONTAINER_WORKSPACE}",
+        "-w",
+        CONTAINER_WORKSPACE,
     ]
 
     # Network isolation

@@ -82,10 +82,13 @@ class ChatCompletionChunk(BaseModel):
 
 def _extract_user_message(request: ChatCompletionRequest) -> str:
     """Extract the last user message from the chat request."""
-    return next(
-        (m.content for m in reversed(request.messages) if m.role == "user" and m.content),
-        "",
-    ) or "No task specified"
+    return (
+        next(
+            (m.content for m in reversed(request.messages) if m.role == "user" and m.content),
+            "",
+        )
+        or "No task specified"
+    )
 
 
 async def _run_conductor(user_msg: str) -> str:

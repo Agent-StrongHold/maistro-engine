@@ -24,7 +24,11 @@ class TestPlanOutput:
         plan = PlanOutput(
             summary="Add user login",
             subtasks=[
-                SubTask(title="Create login route", description="POST /login", file_paths=["src/api/login.py"]),
+                SubTask(
+                    title="Create login route",
+                    description="POST /login",
+                    file_paths=["src/api/login.py"],
+                ),
                 SubTask(title="Add tests", description="Test login flow"),
             ],
         )

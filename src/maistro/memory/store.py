@@ -74,6 +74,4 @@ class KnowledgeNode(Base):
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
-    __table_args__ = (
-        Index("ix_knowledge_workspace_type", "workspace", "node_type"),
-    )
+    __table_args__ = (Index("ix_knowledge_workspace_type", "workspace", "node_type"),)

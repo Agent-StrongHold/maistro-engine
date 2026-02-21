@@ -74,7 +74,9 @@ class TaskRunner:
         """Graceful shutdown: stop accepting new tasks, wait for current tasks."""
         self._draining = True
         self._running = False
-        await logger.ainfo("task_runner_draining", timeout=timeout, active_count=len(self._active_tasks))
+        await logger.ainfo(
+            "task_runner_draining", timeout=timeout, active_count=len(self._active_tasks)
+        )
 
         if self._active_tasks:
             _, pending = await asyncio.wait(self._active_tasks, timeout=timeout)
@@ -117,9 +119,7 @@ class TaskRunner:
         except asyncio.CancelledError:
             # Graceful shutdown — mark task as failed rather than leaving it stuck
             await self._queue.update_status(task_id, TaskStatus.FAILED)
-            self._queue.set_result(
-                task_id, TaskResult(error="Task cancelled during shutdown")
-            )
+            self._queue.set_result(task_id, TaskResult(error="Task cancelled during shutdown"))
         except Exception:
             await logger.aexception("task_execution_failed", task_id=task_id)
         finally:

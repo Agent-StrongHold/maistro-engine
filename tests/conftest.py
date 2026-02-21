@@ -20,25 +20,30 @@ def _reset_singletons() -> Iterator[None]:
     """Reset all global singletons between tests to prevent state leakage."""
     # Clear cached settings so test env vars are picked up
     from maistro.config.settings import get_settings
+
     get_settings.cache_clear()
 
     yield
 
     # Task queue
     import maistro.tasks.queue as queue_module
+
     queue_module._queue = None
 
     # Sandbox containers
     import maistro.tools.sandbox.server as sandbox_server
+
     sandbox_server._containers.clear()
 
     # Langfuse tracing
     import maistro.observability.tracing as tracing_module
+
     tracing_module._langfuse = None
     tracing_module._langfuse_checked = False
 
     # Task runner
     import maistro.main as main_module
+
     main_module._runner = None
 
 
@@ -52,6 +57,7 @@ def _disable_auth_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
 def task_queue():
     """Create a fresh TaskQueue instance for testing."""
     from maistro.tasks.queue import TaskQueue
+
     return TaskQueue()
 
 
@@ -69,4 +75,5 @@ def mock_executor():
             final_answer=f"[TEST] Done: {task.description}",
             success=True,
         )
+
     return executor

@@ -29,10 +29,12 @@ def get_langfuse() -> Any | None:
     _langfuse_checked = True
     try:
         import os
+
         # Only initialize if keys are actually configured
         if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
             return None
         from langfuse import Langfuse
+
         _langfuse = Langfuse()
         # Verify it actually works by checking the attribute exists
         if not hasattr(_langfuse, "trace"):

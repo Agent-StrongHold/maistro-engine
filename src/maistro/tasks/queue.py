@@ -112,7 +112,9 @@ class TaskQueue:
         async with self._lock:
             task = self._tasks.get(task_id)
             if task is None:
-                logger.warning("update_status_missing_task", task_id=task_id, requested=status.value)
+                logger.warning(
+                    "update_status_missing_task", task_id=task_id, requested=status.value
+                )
                 return False
             if not can_transition(task.status, status):
                 logger.warning(

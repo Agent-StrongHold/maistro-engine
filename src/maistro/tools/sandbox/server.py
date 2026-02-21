@@ -80,7 +80,11 @@ async def sandbox_exec(workspace: str, command: str, timeout: int = 60) -> dict[
 
     container = await _get_or_create(workspace)
     exit_code, output = await container.exec(command, timeout=timeout)
-    return ok(stdout=output, exit_code=exit_code) if exit_code == 0 else fail(stdout=output, exit_code=exit_code)
+    return (
+        ok(stdout=output, exit_code=exit_code)
+        if exit_code == 0
+        else fail(stdout=output, exit_code=exit_code)
+    )
 
 
 @mcp.tool()

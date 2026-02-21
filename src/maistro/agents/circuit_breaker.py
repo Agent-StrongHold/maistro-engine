@@ -44,7 +44,10 @@ class CircuitBreaker:
 
     @property
     def state(self) -> CircuitState:
-        if self._state == CircuitState.OPEN and time.monotonic() - self._last_failure_time >= self.recovery_timeout:
+        if (
+            self._state == CircuitState.OPEN
+            and time.monotonic() - self._last_failure_time >= self.recovery_timeout
+        ):
             self._state = CircuitState.HALF_OPEN
             logger.info("circuit_half_open", name=self.name)
         return self._state
