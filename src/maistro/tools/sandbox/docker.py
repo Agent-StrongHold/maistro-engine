@@ -7,6 +7,10 @@ network isolation, and environment sanitization.
 from __future__ import annotations
 
 import asyncio
+import base64
+import posixpath
+import shlex
+import uuid
 
 import structlog
 
@@ -15,6 +19,11 @@ from maistro.tools.sandbox.env_sanitize import sanitize_env
 from maistro.tools.sandbox.workspace import CONTAINER_WORKSPACE, ensure_workspace
 
 logger = structlog.get_logger()
+
+
+def _shell_quote(s: str) -> str:
+    """Shell-quote a string for safe interpolation into bash commands."""
+    return shlex.quote(s)
 
 
 class SandboxContainer:
@@ -47,24 +56,34 @@ class SandboxContainer:
         except Exception as exc:
             return 1, f"Exec error: {exc}"
 
+    @staticmethod
+    def _safe_path(workspace: str, path: str) -> str:
+        """Resolve a path safely within the workspace, blocking escapes."""
+        if posixpath.isabs(path):
+            raise ValueError(f"Absolute paths are not allowed: {path}")
+        normalized = posixpath.normpath(path)
+        if normalized.startswith("..") or "/../" in f"/{normalized}/":
+            raise ValueError(f"Path traversal detected: {path}")
+        return f"{workspace}/{normalized}"
+
     async def read_file(self, path: str) -> str:
         """Read a file from the container workspace."""
-        full_path = f"{self.workspace_container}/{path}" if not path.startswith("/") else path
-        exit_code, output = await self.exec(f"cat '{full_path}'")
+        full_path = self._safe_path(self.workspace_container, path)
+        exit_code, output = await self.exec(f"cat -- {_shell_quote(full_path)}")
         if exit_code != 0:
             raise FileNotFoundError(f"Cannot read {path}: {output}")
         return output
 
     async def write_file(self, path: str, content: str) -> None:
         """Write a file in the container workspace."""
-        full_path = f"{self.workspace_container}/{path}" if not path.startswith("/") else path
-        # Ensure parent directory exists
+        full_path = self._safe_path(self.workspace_container, path)
         parent = "/".join(full_path.rsplit("/", 1)[:-1])
         if parent:
-            await self.exec(f"mkdir -p '{parent}'")
-        # Use heredoc to write content safely
+            await self.exec(f"mkdir -p -- {_shell_quote(parent)}")
+        # Use base64 encoding to safely transfer arbitrary content
+        encoded = base64.b64encode(content.encode()).decode()
         exit_code, output = await self.exec(
-            f"cat > '{full_path}' << 'MAISTRO_EOF'\n{content}\nMAISTRO_EOF"
+            f"echo {_shell_quote(encoded)} | base64 -d > {_shell_quote(full_path)}"
         )
         if exit_code != 0:
             raise OSError(f"Cannot write {path}: {output}")
@@ -100,7 +119,7 @@ async def create_sandbox(
 
     cmd = [
         "docker", "run", "-d",
-        "--name", f"maistro-sandbox-{id(workspace) % 100000}",
+        "--name", f"maistro-sandbox-{uuid.uuid4().hex[:12]}",
         # Resource limits
         f"--memory={settings.memory_limit}",
         f"--cpus={settings.cpu_count}",
