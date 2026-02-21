@@ -6,8 +6,8 @@ No external dependency — uses a simple registry so Prometheus can scrape.
 
 from __future__ import annotations
 
-import time
 import threading
+import time
 from collections import defaultdict
 from typing import Any
 
@@ -103,6 +103,7 @@ class _Histogram:
                     "buckets": dict(zip(
                         [str(b) for b in self.buckets],
                         self._counts.get(key, [0] * len(self.buckets)),
+                        strict=True,
                     )),
                 })
             return results

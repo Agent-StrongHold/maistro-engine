@@ -116,7 +116,7 @@ async def sandbox_glob(workspace: str, pattern: str) -> dict[str, Any]:
         return err
     container = await _get_or_create(workspace)
     safe_pattern = shlex.quote(f"/workspace/{pattern}")
-    exit_code, output = await container.exec(
+    _exit_code, output = await container.exec(
         f"find /workspace -path {safe_pattern} -type f 2>/dev/null | head -100"
     )
     files = [f for f in output.strip().splitlines() if f] if output else []
@@ -131,7 +131,7 @@ async def sandbox_grep(workspace: str, pattern: str, path: str = ".") -> dict[st
     container = await _get_or_create(workspace)
     safe_pattern = shlex.quote(pattern)
     safe_path = shlex.quote(f"/workspace/{path}")
-    exit_code, output = await container.exec(
+    _exit_code, output = await container.exec(
         f"grep -rn -- {safe_pattern} {safe_path} 2>/dev/null | head -50"
     )
     return ok(stdout=output or "No matches found", match_count=output.count("\n") if output else 0)

@@ -45,11 +45,12 @@ async def test_event_notification(queue: TaskQueue):
         await queue.wait_for_update(task.task_id)
         notified = True
 
-    asyncio.create_task(waiter())
+    bg_task = asyncio.create_task(waiter())
     await asyncio.sleep(0.01)
     await queue.update_status(task.task_id, TaskStatus.PLANNING)
     await asyncio.sleep(0.01)
     assert notified
+    assert bg_task.done()
 
 
 async def test_cursor_pagination(queue: TaskQueue):
@@ -60,7 +61,7 @@ async def test_cursor_pagination(queue: TaskQueue):
     assert len(items) == 2
     assert cursor is not None
 
-    items2, cursor2 = queue.list_tasks(limit=2, cursor=cursor)
+    items2, _cursor2 = queue.list_tasks(limit=2, cursor=cursor)
     assert len(items2) == 2
     assert items2[0].task_id != items[0].task_id
 

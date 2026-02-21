@@ -44,20 +44,15 @@ class CircuitBreaker:
 
     @property
     def state(self) -> CircuitState:
-        if self._state == CircuitState.OPEN:
-            if time.monotonic() - self._last_failure_time >= self.recovery_timeout:
-                self._state = CircuitState.HALF_OPEN
-                logger.info("circuit_half_open", name=self.name)
+        if self._state == CircuitState.OPEN and time.monotonic() - self._last_failure_time >= self.recovery_timeout:
+            self._state = CircuitState.HALF_OPEN
+            logger.info("circuit_half_open", name=self.name)
         return self._state
 
     def allow_request(self) -> bool:
         """Check if a request should be allowed through."""
         current = self.state
-        if current == CircuitState.CLOSED:
-            return True
-        if current == CircuitState.HALF_OPEN:
-            return True  # Allow one test request
-        return False  # OPEN — fast fail
+        return current in (CircuitState.CLOSED, CircuitState.HALF_OPEN)
 
     def record_success(self) -> None:
         """Record a successful call."""

@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 from maistro.tasks.models import TaskResponse
 
-
 # --- Error envelope (Item 30) ---
 
 class ErrorDetail(BaseModel):

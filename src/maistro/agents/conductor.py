@@ -147,7 +147,7 @@ async def _run_with_retry(
             if use_json_mode:
                 return _parse_json_output(result.output)
             return result.output
-        except (TimeoutError, asyncio.TimeoutError) as exc:
+        except TimeoutError as exc:
             last_exc = exc
             await logger.awarning(
                 "llm_timeout",

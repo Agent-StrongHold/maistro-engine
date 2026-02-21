@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hmac
 from datetime import UTC, datetime
 from typing import Annotated
@@ -93,10 +94,9 @@ async def stream_task(
     token: str | None = Query(None),
 ) -> None:
     # Authenticate WebSocket connections
-    if settings.api_keys:
-        if not token or not _verify_ws_token(token, settings):
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
+    if settings.api_keys and (not token or not _verify_ws_token(token, settings)):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
 
     await websocket.accept()
 
@@ -125,22 +125,16 @@ async def stream_task(
                         await websocket.send_json(result_msg.model_dump())
                     break
 
-                try:
+                with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(queue.wait_for_update(task_id), timeout=5.0)
-                except TimeoutError:
-                    pass
 
     except WebSocketDisconnect:
         logger.info("ws_client_disconnected", task_id=task_id)
     except TimeoutError:
         logger.warning("ws_session_timeout", task_id=task_id)
-        try:
+        with contextlib.suppress(Exception):
             await websocket.close(code=4008, reason="Session timeout")
-        except Exception:
-            pass
     except Exception:
         logger.exception("ws_unexpected_error", task_id=task_id)
-        try:
+        with contextlib.suppress(Exception):
             await websocket.close(code=4500, reason="Internal error")
-        except Exception:
-            pass

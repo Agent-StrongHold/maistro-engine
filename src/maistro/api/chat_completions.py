@@ -6,7 +6,6 @@ Supports streaming SSE responses.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
@@ -118,7 +117,7 @@ async def _stream_conductor_response(
 
     try:
         response_text = await _run_conductor(user_msg)
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         logger.error("chat_completions_timeout", user_msg=user_msg[:100])
         error_event = {"error": {"type": "timeout", "message": "LLM call timed out"}}
         yield f"data: {json.dumps(error_event)}\n\n"
@@ -177,15 +176,15 @@ async def chat_completions(
 
     try:
         response_text = await _run_conductor(user_msg)
-    except (asyncio.TimeoutError, TimeoutError):
+    except TimeoutError:
         logger.error("chat_completions_timeout", user_msg=user_msg[:100])
-        raise HTTPException(status_code=504, detail="LLM call timed out")
+        raise HTTPException(status_code=504, detail="LLM call timed out") from None
     except LLMProviderError as exc:
         logger.exception("chat_completions_llm_error", user_msg=user_msg[:100])
-        raise HTTPException(status_code=502, detail=str(exc))
-    except Exception:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
         logger.exception("chat_completions_error", user_msg=user_msg[:100])
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     return ChatCompletionResponse(
         model=request.model,

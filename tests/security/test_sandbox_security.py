@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from maistro.security.dangerous_tools import is_dangerous_command, is_blocked_path
-from maistro.tools.sandbox.env_sanitize import sanitize_env, is_allowed_name
+from maistro.security.dangerous_tools import is_blocked_path, is_dangerous_command
+from maistro.tools.sandbox.env_sanitize import is_allowed_name, sanitize_env
 
 
 class TestDangerousCommandDetection:
