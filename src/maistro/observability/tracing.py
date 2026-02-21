@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import functools
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar
@@ -27,10 +29,12 @@ def get_langfuse() -> Any | None:
     _langfuse_checked = True
     try:
         import os
+
         # Only initialize if keys are actually configured
         if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
             return None
         from langfuse import Langfuse
+
         _langfuse = Langfuse()
         # Verify it actually works by checking the attribute exists
         if not hasattr(_langfuse, "trace"):
@@ -51,27 +55,26 @@ def trace_agent(name: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
             langfuse = get_langfuse()
 
             if langfuse is None:
-                return await fn(*args, **kwargs)  # type: ignore[misc]
+                return await fn(*args, **kwargs)  # type: ignore[misc,no-any-return]
 
             try:
                 trace = langfuse.trace(name=name)
                 span = trace.span(name=f"{name}.run")
             except Exception:
                 # If tracing setup fails, run without tracing
-                return await fn(*args, **kwargs)  # type: ignore[misc]
+                return await fn(*args, **kwargs)  # type: ignore[misc,no-any-return]
 
             try:
                 result = await fn(*args, **kwargs)  # type: ignore[misc]
                 span.end(output=str(result)[:500])
-                return result
+                return result  # type: ignore[no-any-return]
             except Exception as exc:
                 span.end(output=f"error: {exc}", level="ERROR")
                 raise
             finally:
-                try:
-                    langfuse.flush()
-                except Exception:
-                    pass
+                # Non-blocking flush — run in thread to avoid blocking the event loop
+                with contextlib.suppress(Exception):
+                    asyncio.get_running_loop().run_in_executor(None, langfuse.flush)
 
         return wrapper  # type: ignore[return-value]
 

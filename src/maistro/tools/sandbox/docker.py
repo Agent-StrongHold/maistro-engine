@@ -10,6 +10,8 @@ import asyncio
 import base64
 import posixpath
 import shlex
+import subprocess
+import time
 import uuid
 
 import structlog
@@ -28,21 +30,38 @@ def _shell_quote(s: str) -> str:
 
 
 class SandboxContainer:
-    """Manages a Docker container for sandboxed code execution."""
+    """Manages a Docker container for sandboxed code execution.
+
+    Supports use as an async context manager for automatic cleanup.
+    """
 
     def __init__(
         self,
         container_id: str,
         workspace_host: str,
         workspace_container: str = CONTAINER_WORKSPACE,
+        ttl: int = 3600,
     ) -> None:
         self.container_id = container_id
         self.workspace_host = workspace_host
         self.workspace_container = workspace_container
+        self.created_at = time.monotonic()
+        self.ttl = ttl
+
+    @property
+    def expired(self) -> bool:
+        """Check if container has exceeded its TTL."""
+        return (time.monotonic() - self.created_at) > self.ttl
+
+    async def __aenter__(self) -> SandboxContainer:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        await self.destroy()
 
     async def exec(self, command: str, timeout: int = 60) -> tuple[int, str]:
         """Execute a command in the container. Returns (exit_code, output)."""
-        # MAJ-04: Check for dangerous commands before execution
+        # Check for dangerous commands before execution
         dangers = is_dangerous_command(command)
         if dangers:
             await logger.awarn(
@@ -55,8 +74,12 @@ class SandboxContainer:
 
         try:
             proc = await asyncio.create_subprocess_exec(
-                "docker", "exec", self.container_id,
-                "bash", "-c", command,
+                "docker",
+                "exec",
+                self.container_id,
+                "bash",
+                "-c",
+                command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
@@ -65,7 +88,11 @@ class SandboxContainer:
             return proc.returncode or 0, output
         except TimeoutError:
             return 124, f"Command timed out after {timeout}s"
-        except Exception as exc:
+        except FileNotFoundError:
+            raise  # Docker binary not installed
+        except PermissionError:
+            raise  # Docker socket inaccessible
+        except (OSError, subprocess.SubprocessError) as exc:
             return 1, f"Exec error: {exc}"
 
     @staticmethod
@@ -103,12 +130,25 @@ class SandboxContainer:
     async def destroy(self) -> None:
         """Stop and remove the container."""
         proc = await asyncio.create_subprocess_exec(
-            "docker", "rm", "-f", self.container_id,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
+            "docker",
+            "rm",
+            "-f",
+            self.container_id,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        await proc.wait()
-        await logger.ainfo("sandbox_destroyed", container_id=self.container_id[:12])
+        _, stderr = await proc.communicate()
+        rc = proc.returncode or 0
+        if rc != 0:
+            err = stderr.decode() if stderr else ""
+            await logger.awarning(
+                "sandbox_destroy_error",
+                container_id=self.container_id[:12],
+                exit_code=rc,
+                error=err[:200],
+            )
+        else:
+            await logger.ainfo("sandbox_destroyed", container_id=self.container_id[:12])
 
 
 async def create_sandbox(
@@ -123,24 +163,33 @@ async def create_sandbox(
     host_path = ensure_workspace(workspace)
     safe_env = sanitize_env(env or {})
 
-    # MIN-02: Use UUID for unique, unpredictable container names
+    # Use UUID for unique, unpredictable container names
     container_name = f"maistro-sandbox-{uuid.uuid4().hex[:12]}"
 
     cmd = [
-        "docker", "run", "-d",
-        "--name", container_name,
+        "docker",
+        "run",
+        "-d",
+        "--name",
+        container_name,
         f"--memory={settings.memory_limit}",
         f"--cpus={settings.cpu_count}",
+        # Security hardening
         "--security-opt=no-new-privileges",
         "--cap-drop=ALL",
         "--cap-add=CHOWN",
         "--cap-add=SETUID",
         "--cap-add=SETGID",
-        "-v", f"{host_path}:{CONTAINER_WORKSPACE}",
-        "-w", CONTAINER_WORKSPACE,
+        "--pids-limit=256",
+        "--tmpfs=/tmp:rw,noexec,nosuid,size=64m",
+        # Filesystem
+        "-v",
+        f"{host_path}:{CONTAINER_WORKSPACE}",
+        "-w",
+        CONTAINER_WORKSPACE,
     ]
 
-    # Network isolation (MAJ-05: now defaults to True in settings)
+    # Network isolation
     if settings.network_disabled:
         cmd.append("--network=none")
 
@@ -166,4 +215,5 @@ async def create_sandbox(
     return SandboxContainer(
         container_id=container_id,
         workspace_host=str(host_path),
+        ttl=settings.timeout,
     )

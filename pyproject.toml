@@ -27,12 +27,6 @@ dependencies = [
     "pgvector>=0.3",
     "alembic>=1.14",
 
-    # Browser
-    "playwright>=1.49",
-
-    # Scheduling
-    "apscheduler>=3.11",
-
     # Utilities
     "pydantic-settings>=2.7",
     "structlog>=24.4",
@@ -48,6 +42,8 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
 ]
+browser = ["playwright>=1.49"]
+scheduling = ["apscheduler>=3.11"]
 
 [build-system]
 requires = ["hatchling"]
@@ -62,8 +58,11 @@ line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "C90", "C4"]
 ignore = ["E501"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

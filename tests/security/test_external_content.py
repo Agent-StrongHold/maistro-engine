@@ -57,9 +57,9 @@ class TestInjectionDetection:
     ) -> None:
         matches = detect_injection(text)
         assert len(matches) > 0, f"Should detect injection in: {text}"
-        assert any(
-            expected_fragment in m for m in matches
-        ), f"Expected pattern containing '{expected_fragment}' in {matches}"
+        assert any(expected_fragment in m for m in matches), (
+            f"Expected pattern containing '{expected_fragment}' in {matches}"
+        )
 
     def test_clean_text_no_matches(self) -> None:
         """Evidence: Normal engineering text should not trigger false positives."""

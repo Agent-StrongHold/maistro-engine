@@ -12,6 +12,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from maistro.constants import PERMISSION_MAX_INPUT, PERMISSION_TTL
 from maistro.security.secure_random import secure_id
 
 
@@ -26,11 +27,11 @@ class PermissionGrant(BaseModel):
 
     grant_id: str = Field(default_factory=lambda: f"grant-{int(time.time())}-{secure_id(6)}")
     grantee: str  # Agent role or ID
-    read_paths: list[str] = Field(default_factory=list)   # Glob patterns
-    write_paths: list[str] = Field(default_factory=list)   # Glob patterns
+    read_paths: list[str] = Field(default_factory=list)  # Glob patterns
+    write_paths: list[str] = Field(default_factory=list)  # Glob patterns
     can_execute: bool = False
     allowed_commands: list[str] = Field(default_factory=list)  # Regex patterns
-    expires_at: float = Field(default_factory=lambda: time.time() + 3600)  # 1 hour default
+    expires_at: float = Field(default_factory=lambda: time.time() + PERMISSION_TTL)
 
 
 class TaskSpec(BaseModel):
@@ -48,7 +49,7 @@ class TaskSpec(BaseModel):
         if not self.task_id:
             violations.append("Task ID is required")
 
-        if len(self.description) > 50_000:
+        if len(self.description) > PERMISSION_MAX_INPUT:
             violations.append("Description exceeds 50,000 char limit (prompt stuffing prevention)")
 
         # Check for path traversal in write scopes
@@ -95,10 +96,8 @@ def check_permission(
             return False
         if command and grant.allowed_commands:
             import re
-            return any(
-                re.search(pattern, command)
-                for pattern in grant.allowed_commands
-            )
+
+            return any(re.search(pattern, command) for pattern in grant.allowed_commands)
         return grant.can_execute
 
     return False
@@ -107,7 +106,7 @@ def check_permission(
 def create_grant_for_task(
     grantee: str,
     workspace: str,
-    ttl_seconds: int = 3600,
+    ttl_seconds: int = PERMISSION_TTL,
     can_execute: bool = True,
 ) -> PermissionGrant:
     """Create a standard permission grant for a task execution."""

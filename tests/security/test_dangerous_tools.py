@@ -45,9 +45,9 @@ class TestDangerousCommands:
     ) -> None:
         matches = is_dangerous_command(command)
         assert len(matches) > 0, f"Should detect: {command}"
-        assert any(
-            expected_pattern_fragment in m for m in matches
-        ), f"Expected pattern containing '{expected_pattern_fragment}' in {matches}"
+        assert any(expected_pattern_fragment in m for m in matches), (
+            f"Expected pattern containing '{expected_pattern_fragment}' in {matches}"
+        )
 
     def test_safe_commands(self) -> None:
         """Evidence: Normal engineering commands should not trigger detection."""
@@ -70,8 +70,17 @@ class TestDangerousTools:
 
     @pytest.mark.parametrize(
         "tool",
-        ["exec", "spawn", "shell", "sessions_spawn", "sessions_send",
-         "fs_delete", "fs_move", "apply_patch", "sandbox_destroy"],
+        [
+            "exec",
+            "spawn",
+            "shell",
+            "sessions_spawn",
+            "sessions_send",
+            "fs_delete",
+            "fs_move",
+            "apply_patch",
+            "sandbox_destroy",
+        ],
     )
     def test_dangerous_tools_detected(self, tool: str) -> None:
         assert is_dangerous_tool(tool)
@@ -90,18 +99,28 @@ class TestBlockedPaths:
 
     @pytest.mark.parametrize(
         "path",
-        ["/etc", "/proc", "/sys", "/dev", "/root", "/boot",
-         "/var/run/docker.sock", "/run/docker.sock",
-         "/etc/passwd", "/proc/1/environ", "/sys/kernel",
-         "/dev/sda", "/root/.ssh"],
+        [
+            "/etc",
+            "/proc",
+            "/sys",
+            "/dev",
+            "/root",
+            "/boot",
+            "/var/run/docker.sock",
+            "/run/docker.sock",
+            "/etc/passwd",
+            "/proc/1/environ",
+            "/sys/kernel",
+            "/dev/sda",
+            "/root/.ssh",
+        ],
     )
     def test_blocked_paths(self, path: str) -> None:
         assert is_blocked_path(path), f"{path} should be blocked"
 
     @pytest.mark.parametrize(
         "path",
-        ["/workspace", "/tmp/maistro-workspace", "/repos/myrepo",
-         "/workspace/src/main.py"],
+        ["/workspace", "/tmp/maistro-workspace", "/repos/myrepo", "/workspace/src/main.py"],
     )
     def test_allowed_paths(self, path: str) -> None:
         assert not is_blocked_path(path), f"{path} should be allowed"

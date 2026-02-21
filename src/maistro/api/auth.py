@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import hmac
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from maistro.config.settings import Settings, get_settings
+from maistro.security.secret_equal import secret_equal
 
 security_scheme = HTTPBearer(auto_error=False)
 
@@ -35,7 +35,7 @@ def verify_api_key(
 
     token = credentials.credentials
     for key in settings.api_keys:
-        if hmac.compare_digest(token.encode(), key.encode()):
+        if secret_equal(token, key):
             return token
 
     raise HTTPException(

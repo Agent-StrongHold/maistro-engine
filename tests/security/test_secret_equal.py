@@ -58,12 +58,14 @@ class TestSecretEqual:
         """Evidence: The implementation must use hmac.compare_digest, not ==.
         A mutation replacing compare_digest with == must be caught."""
         source = inspect.getsource(secret_equal)
-        assert "compare_digest" in source, \
+        assert "compare_digest" in source, (
             "secret_equal must use hmac.compare_digest for constant-time comparison"
+        )
 
     def test_uses_hmac_hashing(self) -> None:
         """Evidence: Inputs are HMAC-hashed before comparison to prevent
         length leakage via early-exit."""
         source = inspect.getsource(secret_equal)
-        assert "hmac.new" in source or "hmac.HMAC" in source, \
+        assert "hmac.new" in source or "hmac.HMAC" in source, (
             "secret_equal must HMAC-hash inputs before comparison"
+        )

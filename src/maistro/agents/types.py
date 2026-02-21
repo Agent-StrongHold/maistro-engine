@@ -7,6 +7,10 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
+class LLMProviderError(Exception):
+    """Raised when the LLM provider fails after exhausting retries."""
+
+
 class AgentRole(StrEnum):
     CONDUCTOR = "conductor"
     PLANNER = "planner"
