@@ -53,7 +53,7 @@ async def cancel_task(
     _auth: RequireAuth,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
 ) -> dict[str, bool]:
-    cancelled = queue.cancel(task_id)
+    cancelled = await queue.cancel(task_id)
     if not cancelled:
         raise HTTPException(status_code=400, detail="Cannot cancel task in current state")
     return {"cancelled": True}
@@ -67,4 +67,4 @@ async def list_tasks(
     offset: int = 0,
 ) -> list[TaskResponse]:
     """List tasks with pagination."""
-    return queue.list_tasks(limit=limit, offset=offset)
+    return await queue.list_tasks(limit=limit, offset=offset)

@@ -7,6 +7,8 @@ network isolation, and environment sanitization.
 from __future__ import annotations
 
 import asyncio
+import base64
+import posixpath
 import shlex
 import uuid
 
@@ -18,6 +20,11 @@ from maistro.tools.sandbox.env_sanitize import sanitize_env
 from maistro.tools.sandbox.workspace import CONTAINER_WORKSPACE, ensure_workspace
 
 logger = structlog.get_logger()
+
+
+def _shell_quote(s: str) -> str:
+    """Shell-quote a string for safe interpolation into bash commands."""
+    return shlex.quote(s)
 
 
 class SandboxContainer:
@@ -61,32 +68,34 @@ class SandboxContainer:
         except Exception as exc:
             return 1, f"Exec error: {exc}"
 
+    @staticmethod
+    def _safe_path(workspace: str, path: str) -> str:
+        """Resolve a path safely within the workspace, blocking escapes."""
+        if posixpath.isabs(path):
+            raise ValueError(f"Absolute paths are not allowed: {path}")
+        normalized = posixpath.normpath(path)
+        if normalized.startswith("..") or "/../" in f"/{normalized}/":
+            raise ValueError(f"Path traversal detected: {path}")
+        return f"{workspace}/{normalized}"
+
     async def read_file(self, path: str) -> str:
         """Read a file from the container workspace."""
-        # MAJ-01: Sanitize path to prevent injection
-        if path.startswith("/") and not path.startswith(self.workspace_container):
-            raise ValueError(f"Path must be within workspace: {path}")
-        full_path = f"{self.workspace_container}/{path}" if not path.startswith("/") else path
-        safe_path = shlex.quote(full_path)
-        exit_code, output = await self.exec(f"cat {safe_path}")
+        full_path = self._safe_path(self.workspace_container, path)
+        exit_code, output = await self.exec(f"cat -- {_shell_quote(full_path)}")
         if exit_code != 0:
             raise FileNotFoundError(f"Cannot read {path}: {output}")
         return output
 
     async def write_file(self, path: str, content: str) -> None:
-        """Write a file in the container workspace via docker cp stdin."""
-        if path.startswith("/") and not path.startswith(self.workspace_container):
-            raise ValueError(f"Path must be within workspace: {path}")
-        full_path = f"{self.workspace_container}/{path}" if not path.startswith("/") else path
-        safe_path = shlex.quote(full_path)
-        # Ensure parent directory exists
+        """Write a file in the container workspace."""
+        full_path = self._safe_path(self.workspace_container, path)
         parent = "/".join(full_path.rsplit("/", 1)[:-1])
         if parent:
-            await self.exec(f"mkdir -p {shlex.quote(parent)}")
-        # MAJ-02: Use randomized heredoc delimiter to prevent injection
-        delimiter = f"MAISTRO_EOF_{uuid.uuid4().hex[:8]}"
+            await self.exec(f"mkdir -p -- {_shell_quote(parent)}")
+        # Use base64 encoding to safely transfer arbitrary content
+        encoded = base64.b64encode(content.encode()).decode()
         exit_code, output = await self.exec(
-            f"cat > {safe_path} << '{delimiter}'\n{content}\n{delimiter}"
+            f"echo {_shell_quote(encoded)} | base64 -d > {_shell_quote(full_path)}"
         )
         if exit_code != 0:
             raise OSError(f"Cannot write {path}: {output}")
@@ -107,13 +116,7 @@ async def create_sandbox(
     settings: SandboxSettings | None = None,
     env: dict[str, str] | None = None,
 ) -> SandboxContainer:
-    """Create and start a new sandbox container.
-
-    Args:
-        workspace: Host path to mount as /workspace
-        settings: Sandbox configuration (image, limits, etc.)
-        env: Environment variables to pass (will be sanitized)
-    """
+    """Create and start a new sandbox container."""
     if settings is None:
         settings = SandboxSettings()
 
@@ -126,16 +129,13 @@ async def create_sandbox(
     cmd = [
         "docker", "run", "-d",
         "--name", container_name,
-        # Resource limits
         f"--memory={settings.memory_limit}",
         f"--cpus={settings.cpu_count}",
-        # Security
         "--security-opt=no-new-privileges",
         "--cap-drop=ALL",
         "--cap-add=CHOWN",
         "--cap-add=SETUID",
         "--cap-add=SETGID",
-        # Filesystem
         "-v", f"{host_path}:{CONTAINER_WORKSPACE}",
         "-w", CONTAINER_WORKSPACE,
     ]
@@ -144,11 +144,9 @@ async def create_sandbox(
     if settings.network_disabled:
         cmd.append("--network=none")
 
-    # Environment variables
     for k, v in safe_env.items():
         cmd.extend(["-e", f"{k}={v}"])
 
-    # Image and keep-alive command
     cmd.extend([settings.image, "sleep", str(settings.timeout)])
 
     proc = await asyncio.create_subprocess_exec(
