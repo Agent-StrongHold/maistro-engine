@@ -16,7 +16,12 @@ from datetime import UTC, datetime
 import structlog
 
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
-from maistro.observability.metrics import active_tasks, tasks_completed_total, tasks_failed_total, tasks_submitted_total
+from maistro.observability.metrics import (
+    active_tasks,
+    tasks_completed_total,
+    tasks_failed_total,
+    tasks_submitted_total,
+)
 from maistro.tasks.models import TaskCreate, TaskProgress, TaskResponse, TaskResult, TaskStatus
 from maistro.tasks.status import can_transition
 

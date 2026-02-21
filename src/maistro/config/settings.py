@@ -121,6 +121,6 @@ class Settings(BaseSettings):
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
 
 
-@functools.lru_cache()
+@functools.lru_cache
 def get_settings() -> Settings:
     return Settings()
