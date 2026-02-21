@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,9 +17,16 @@ class DatabaseSettings(BaseSettings):
     user: str = "maistro"
     password: str = "maistro"
 
+    # Connection pooling (Item 66)
+    pool_size: int = 5
+    max_overflow: int = 10
+    pool_recycle: int = 1800  # seconds
+
     @property
     def url(self) -> str:
-        return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        return (
+            f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        )
 
     @property
     def sync_url(self) -> str:
@@ -50,6 +59,12 @@ class SandboxSettings(BaseSettings):
     network_disabled: bool = True
 
 
+class OllamaSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="OLLAMA_")
+
+    base_url: str = "http://localhost:11434/v1"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -69,6 +84,8 @@ class Settings(BaseSettings):
         default=True,
         description="Refuse to start without API keys. Set REQUIRE_AUTH=false for local dev only.",
     )
+    github_webhook_secret: str = ""
+    ci_webhook_secret: str = ""
 
     # CORS
     cors_origins: list[str] = Field(
@@ -82,11 +99,22 @@ class Settings(BaseSettings):
     # LLM cost controls
     max_tokens_per_task: int = Field(default=100_000, description="Max LLM tokens per task")
 
-    # GitHub webhook secret for signature verification
-    github_webhook_secret: str = ""
+    # LLM model routing — consolidated from os.environ.get() calls
+    ollama_base_url: str = "http://localhost:11434/v1"
+    maistro_dry_run: bool = False
 
-    # CI webhook shared secret
-    ci_webhook_secret: str = ""
+    # Per-tier model overrides
+    tier_1_model: str = ""
+    tier_2_model: str = ""
+    tier_3_model: str = ""
+    tier_4_model: str = ""
+
+    # Request limits
+    max_webhook_body_bytes: int = 1_048_576  # 1 MB
+
+    # Rate limiting
+    rate_limit_per_minute: int = 60  # per-client requests/minute
+    rate_limit_burst: int = 10  # burst allowance
 
     # Sub-configs
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
@@ -95,5 +123,6 @@ class Settings(BaseSettings):
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
 
 
+@functools.lru_cache
 def get_settings() -> Settings:
     return Settings()

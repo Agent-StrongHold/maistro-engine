@@ -1,32 +1,84 @@
-"""In-memory task queue with PostgreSQL persistence.
+"""In-memory task queue (Phase 1).
 
-For Phase 1, tasks are stored in-memory with async persistence to PostgreSQL.
-This avoids needing Redis while still surviving restarts via DB recovery.
+All task state is held in memory. A process restart loses all tasks.
+Phase 2 will add PostgreSQL persistence via TaskRecord.
 """
 
 from __future__ import annotations
 
 import asyncio
+import itertools
+from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import structlog
 
+from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
+from maistro.observability.metrics import (
+    active_tasks,
+    tasks_completed_total,
+    tasks_failed_total,
+    tasks_submitted_total,
+)
 from maistro.tasks.models import TaskCreate, TaskProgress, TaskResponse, TaskResult, TaskStatus
 from maistro.tasks.status import can_transition
 
 logger = structlog.get_logger()
 
+# Maximum number of tasks stored in memory before pruning terminal tasks
+MAX_TASK_STORE_SIZE = 10_000
+# Prune down to this size when limit is hit
+PRUNE_TARGET = 8_000
+
+# Terminal statuses that can be pruned
+_TERMINAL = frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED})
+
 
 class TaskQueue:
-    """In-memory task queue. Single-node only (Phase 1)."""
+    """In-memory task queue with event-based notification and async lock."""
 
     def __init__(self) -> None:
-        self._tasks: dict[str, TaskResponse] = {}
+        self._tasks: OrderedDict[str, TaskResponse] = OrderedDict()
         self._pending: asyncio.Queue[str] = asyncio.Queue()
         self._lock = asyncio.Lock()
         self._claimed: set[str] = set()
+        self._events: dict[str, asyncio.Event] = {}
+
+    def _get_event(self, task_id: str) -> asyncio.Event:
+        """Get or create an asyncio.Event for a task."""
+        if task_id not in self._events:
+            self._events[task_id] = asyncio.Event()
+        return self._events[task_id]
+
+    async def wait_for_update(self, task_id: str) -> None:
+        """Wait until the task status or progress changes."""
+        event = self._get_event(task_id)
+        event.clear()
+        await event.wait()
+
+    def _notify(self, task_id: str) -> None:
+        """Signal waiters that a task has been updated."""
+        event = self._events.get(task_id)
+        if event:
+            event.set()
+
+    def _maybe_prune(self) -> None:
+        """Remove oldest terminal tasks when store exceeds max size."""
+        if len(self._tasks) <= MAX_TASK_STORE_SIZE:
+            return
+        to_remove: list[str] = []
+        for tid, task in self._tasks.items():
+            if len(self._tasks) - len(to_remove) <= PRUNE_TARGET:
+                break
+            if task.status in _TERMINAL:
+                to_remove.append(tid)
+        for tid in to_remove:
+            del self._tasks[tid]
+            self._events.pop(tid, None)
+        if to_remove:
+            logger.info("task_store_pruned", removed=len(to_remove), remaining=len(self._tasks))
 
     async def submit(self, request: TaskCreate) -> TaskResponse:
         task_id = TaskResponse.new_id()
@@ -42,8 +94,15 @@ class TaskQueue:
         )
         async with self._lock:
             self._tasks[task_id] = task
+            self._maybe_prune()
         await self._pending.put(task_id)
-        await logger.ainfo("task_queued", task_id=task_id, description=request.description[:80])
+        tasks_submitted_total.inc()
+        active_tasks.inc()
+        await logger.ainfo(
+            "task_queued",
+            task_id=task_id,
+            description=request.description[:DESCRIPTION_LOG_PREVIEW_LEN],
+        )
         return task
 
     def get(self, task_id: str) -> TaskResponse | None:
@@ -53,8 +112,17 @@ class TaskQueue:
         async with self._lock:
             task = self._tasks.get(task_id)
             if task is None:
+                logger.warning(
+                    "update_status_missing_task", task_id=task_id, requested=status.value
+                )
                 return False
             if not can_transition(task.status, status):
+                logger.warning(
+                    "invalid_state_transition",
+                    task_id=task_id,
+                    current=task.status.value,
+                    requested=status.value,
+                )
                 return False
 
             task.status = status
@@ -62,20 +130,28 @@ class TaskQueue:
 
             if status == TaskStatus.PLANNING:
                 task.started_at = datetime.now(UTC)
-            elif status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED):
+            elif status in _TERMINAL:
                 task.completed_at = datetime.now(UTC)
+                active_tasks.dec()
+                if status == TaskStatus.COMPLETED:
+                    tasks_completed_total.inc()
+                elif status == TaskStatus.FAILED:
+                    tasks_failed_total.inc()
 
+        self._notify(task_id)
         return True
 
     def update_progress(self, task_id: str, progress: TaskProgress) -> None:
         task = self._tasks.get(task_id)
         if task:
             task.progress = progress
+            self._notify(task_id)
 
     def set_result(self, task_id: str, result: TaskResult) -> None:
         task = self._tasks.get(task_id)
         if task:
             task.result = result
+            self._notify(task_id)
 
     async def cancel(self, task_id: str) -> bool:
         return await self.update_status(task_id, TaskStatus.CANCELLED)
@@ -84,11 +160,31 @@ class TaskQueue:
         """Block until a task is available, return its ID."""
         return await self._pending.get()
 
-    async def list_tasks(self, limit: int = 50, offset: int = 0) -> list[TaskResponse]:
-        """List tasks with pagination support."""
-        async with self._lock:
-            all_tasks = list(self._tasks.values())
-        return all_tasks[offset : offset + limit]
+    def list_tasks(
+        self,
+        limit: int = 50,
+        cursor: str | None = None,
+    ) -> tuple[list[TaskResponse], str | None]:
+        """Return a page of tasks with cursor-based pagination.
+
+        Returns (items, next_cursor) where next_cursor is None if no more pages.
+        """
+        if cursor:
+            found = False
+            items: list[TaskResponse] = []
+            for tid, task in self._tasks.items():
+                if not found:
+                    if tid == cursor:
+                        found = True
+                    continue
+                items.append(task)
+                if len(items) >= limit:
+                    break
+        else:
+            items = list(itertools.islice(self._tasks.values(), limit))
+
+        next_cursor = items[-1].task_id if len(items) == limit else None
+        return items, next_cursor
 
     @asynccontextmanager
     async def claim(self, task_id: str) -> AsyncIterator[TaskResponse]:

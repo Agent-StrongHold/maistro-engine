@@ -5,7 +5,7 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 COPY src/ src/
 
 # Install only production dependencies (no dev extras)
@@ -32,7 +32,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY src/ src/
 COPY alembic/ alembic/
 COPY alembic.ini .
-COPY pyproject.toml .
+COPY pyproject.toml README.md ./
 
 # Re-install in editable mode (for entry points)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv

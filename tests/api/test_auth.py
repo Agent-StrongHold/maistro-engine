@@ -93,9 +93,12 @@ class TestSecretComparison:
             verify_api_key(None, settings)
         assert exc_info.value.status_code == 401
 
-    def test_uses_hmac_compare_digest(self) -> None:
-        """Evidence: The implementation must use hmac.compare_digest, not ==."""
+    def test_uses_constant_time_comparison(self) -> None:
+        """Evidence: The implementation must use constant-time comparison, not ==."""
         source = inspect.getsource(verify_api_key)
-        assert "compare_digest" in source, "verify_api_key must use hmac.compare_digest"
-        assert "==" not in source or "status_code ==" in source or "== 401" in source, \
+        assert "secret_equal" in source or "compare_digest" in source, (
+            "verify_api_key must use secret_equal or hmac.compare_digest"
+        )
+        assert "==" not in source or "status_code ==" in source or "== 401" in source, (
             "verify_api_key should not use == for token comparison"
+        )
