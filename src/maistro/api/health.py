@@ -36,6 +36,7 @@ async def _check_postgres(settings: Settings) -> ProbeResult:
     """Check PostgreSQL connectivity."""
     try:
         import asyncpg
+
         conn = await asyncio.wait_for(
             asyncpg.connect(
                 host=settings.db.host,
@@ -57,7 +58,10 @@ async def _check_docker() -> ProbeResult:
     t0 = time.monotonic()
     try:
         proc = await asyncio.create_subprocess_exec(
-            "docker", "info", "--format", "{{.ServerVersion}}",
+            "docker",
+            "info",
+            "--format",
+            "{{.ServerVersion}}",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -65,7 +69,9 @@ async def _check_docker() -> ProbeResult:
         latency = (time.monotonic() - t0) * 1000
         if proc.returncode == 0:
             return ProbeResult(status="ok", latency_ms=round(latency, 1))
-        return ProbeResult(status="error", latency_ms=round(latency, 1), detail="docker info failed")
+        return ProbeResult(
+            status="error", latency_ms=round(latency, 1), detail="docker info failed"
+        )
     except FileNotFoundError:
         return ProbeResult(status="error", detail="docker binary not found")
     except TimeoutError:

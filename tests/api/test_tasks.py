@@ -20,33 +20,42 @@ def client() -> TestClient:
 
 class TestCreateTask:
     def test_create_returns_202(self, client: TestClient) -> None:
-        response = client.post("/tasks", json={
-            "description": "Add hello world endpoint",
-            "workspace": "/tmp/maistro-workspace/test",
-        })
+        response = client.post(
+            "/tasks",
+            json={
+                "description": "Add hello world endpoint",
+                "workspace": "/tmp/maistro-workspace/test",
+            },
+        )
         assert response.status_code == 202
         data = response.json()
         assert "task_id" in data
         assert data["status"] == "queued"
 
     def test_create_with_constraints(self, client: TestClient) -> None:
-        response = client.post("/tasks", json={
-            "description": "Implement auth",
-            "workspace": "/tmp/maistro-workspace/test",
-            "tier": 3,
-            "branch": "feature/auth",
-            "constraints": ["Use bcrypt", "Add tests"],
-        })
+        response = client.post(
+            "/tasks",
+            json={
+                "description": "Implement auth",
+                "workspace": "/tmp/maistro-workspace/test",
+                "tier": 3,
+                "branch": "feature/auth",
+                "constraints": ["Use bcrypt", "Add tests"],
+            },
+        )
         assert response.status_code == 202
 
 
 class TestGetTask:
     def test_get_existing_task(self, client: TestClient) -> None:
         # Create first
-        create_resp = client.post("/tasks", json={
-            "description": "Test task",
-            "workspace": "/tmp/maistro-workspace/test",
-        })
+        create_resp = client.post(
+            "/tasks",
+            json={
+                "description": "Test task",
+                "workspace": "/tmp/maistro-workspace/test",
+            },
+        )
         task_id = create_resp.json()["task_id"]
 
         # Then retrieve
@@ -64,10 +73,13 @@ class TestGetTask:
 
 class TestCancelTask:
     def test_cancel_queued_task(self, client: TestClient) -> None:
-        create_resp = client.post("/tasks", json={
-            "description": "Cancel me",
-            "workspace": "/tmp/maistro-workspace/test",
-        })
+        create_resp = client.post(
+            "/tasks",
+            json={
+                "description": "Cancel me",
+                "workspace": "/tmp/maistro-workspace/test",
+            },
+        )
         task_id = create_resp.json()["task_id"]
 
         delete_resp = client.delete(f"/tasks/{task_id}")

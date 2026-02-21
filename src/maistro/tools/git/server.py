@@ -23,14 +23,19 @@ async def _git(workspace: str, *args: str, timeout: int = 60) -> dict[str, Any]:
     """Run a git command in the given workspace. Returns structured result."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "git", "-C", workspace, *args,
+            "git",
+            "-C",
+            workspace,
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         output = stdout.decode("utf-8", errors="replace") if stdout else ""
         code = proc.returncode or 0
-        return ok(stdout=output, exit_code=code) if code == 0 else fail(stdout=output, exit_code=code)
+        return (
+            ok(stdout=output, exit_code=code) if code == 0 else fail(stdout=output, exit_code=code)
+        )
     except FileNotFoundError:
         return fail(stdout="git binary not found")
     except TimeoutError:
@@ -42,14 +47,20 @@ async def git_clone(url: str, dest: str, timeout: int = GIT_CLONE_TIMEOUT) -> di
     """Clone a git repository."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "git", "clone", "--depth=1", url, dest,
+            "git",
+            "clone",
+            "--depth=1",
+            url,
+            dest,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         output = stdout.decode() if stdout else "Cloned"
         code = proc.returncode or 0
-        return ok(stdout=output, exit_code=code) if code == 0 else fail(stdout=output, exit_code=code)
+        return (
+            ok(stdout=output, exit_code=code) if code == 0 else fail(stdout=output, exit_code=code)
+        )
     except FileNotFoundError:
         return fail(stdout="git binary not found")
     except TimeoutError:
@@ -66,9 +77,19 @@ async def git_branch(workspace: str, name: str, checkout: bool = True) -> dict[s
 
 # File patterns that should never be staged
 _SENSITIVE_PATTERNS = (
-    ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx",
-    "credentials.json", "service-account.json", "secrets.yaml",
-    "id_rsa", "id_ed25519", ".npmrc", ".pypirc",
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "credentials.json",
+    "service-account.json",
+    "secrets.yaml",
+    "id_rsa",
+    "id_ed25519",
+    ".npmrc",
+    ".pypirc",
 )
 
 
@@ -84,7 +105,9 @@ async def git_commit(workspace: str, message: str, add_all: bool = True) -> dict
 
 
 @mcp.tool()
-async def git_push(workspace: str, branch: str | None = None, set_upstream: bool = True) -> dict[str, Any]:
+async def git_push(
+    workspace: str, branch: str | None = None, set_upstream: bool = True
+) -> dict[str, Any]:
     """Push commits to remote."""
     args = ["push"]
     if set_upstream:
@@ -117,7 +140,11 @@ async def git_log(workspace: str, limit: int = 10) -> dict[str, Any]:
 
 @mcp.tool()
 async def github_create_pr(
-    repo: str, branch: str, title: str, body: str, base: str = "main",
+    repo: str,
+    branch: str,
+    title: str,
+    body: str,
+    base: str = "main",
 ) -> dict[str, Any]:
     """Create a GitHub pull request."""
     return await create_pr(repo, branch, title, body, base)

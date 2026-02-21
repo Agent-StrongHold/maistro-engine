@@ -82,6 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Flush observability
     from maistro.observability.tracing import get_langfuse
+
     langfuse = get_langfuse()
     if langfuse:
         langfuse.flush()

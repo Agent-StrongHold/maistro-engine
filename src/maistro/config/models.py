@@ -10,10 +10,10 @@ from pydantic import BaseModel
 class Tier(IntEnum):
     """Compute tiers — higher tier = more capable model + more retries."""
 
-    QUICK = 1      # Fast, cheap — single-shot with small model
-    STANDARD = 2   # Default — good model, moderate retries
-    THOROUGH = 3   # Multi-attempt with voting/ensemble
-    ULTRA = 4      # Parallel generation + consensus voting (Ultra Think)
+    QUICK = 1  # Fast, cheap — single-shot with small model
+    STANDARD = 2  # Default — good model, moderate retries
+    THOROUGH = 3  # Multi-attempt with voting/ensemble
+    ULTRA = 4  # Parallel generation + consensus voting (Ultra Think)
 
 
 class TierConfig(BaseModel):

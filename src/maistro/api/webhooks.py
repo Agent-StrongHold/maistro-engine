@@ -91,7 +91,9 @@ async def github_webhook(
 
         raw_description = f"Review PR #{number}: {title} in {repo}"
         wrapped = wrap_external_content(
-            raw_description, ContentSource.WEBHOOK, sender=f"github/{repo}",
+            raw_description,
+            ContentSource.WEBHOOK,
+            sender=f"github/{repo}",
         )
         injections = detect_injection(title)
         if injections:
@@ -114,7 +116,9 @@ async def github_webhook(
 
         raw_description = f"Investigate issue #{number}: {title}\n\n{body_text[:500]}"
         wrapped = wrap_external_content(
-            raw_description, ContentSource.WEBHOOK, sender=f"github/{repo}",
+            raw_description,
+            ContentSource.WEBHOOK,
+            sender=f"github/{repo}",
         )
         injections = detect_injection(title) + detect_injection(body_text[:500])
         if injections:
@@ -165,7 +169,9 @@ async def ci_webhook(
 
     if payload.status == "failure":
         log_ref = _sanitize(payload.log_url) if payload.log_url else "no log"
-        raw_description = f"Fix CI failure on {payload.branch} in {payload.repository}. Log: {log_ref}"
+        raw_description = (
+            f"Fix CI failure on {payload.branch} in {payload.repository}. Log: {log_ref}"
+        )
         wrapped = wrap_external_content(raw_description, ContentSource.WEBHOOK, sender="ci")
 
         task = TaskCreate(

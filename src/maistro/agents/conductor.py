@@ -96,7 +96,9 @@ def build_conductor(
             retries=3,
             model_settings={
                 "extra_body": {"response_format": {"type": "json_object"}},
-            } if use_json_mode else None,
+            }
+            if use_json_mode
+            else None,
         )
 
     return Agent(
@@ -139,9 +141,7 @@ async def _run_with_retry(
     for attempt in range(tier_config.max_llm_retries):
         try:
             llm_requests_total.inc()
-            result = await asyncio.wait_for(
-                agent.run(prompt), timeout=tier_config.timeout
-            )
+            result = await asyncio.wait_for(agent.run(prompt), timeout=tier_config.timeout)
             llm_circuit.record_success()
 
             if use_json_mode:
@@ -174,7 +174,7 @@ async def _run_with_retry(
 
         # Exponential backoff with jitter before retry
         if attempt < tier_config.max_llm_retries - 1:
-            delay = tier_config.initial_backoff * (2 ** attempt) + random.uniform(0, 1)
+            delay = tier_config.initial_backoff * (2**attempt) + random.uniform(0, 1)
             await asyncio.sleep(delay)
 
     raise LLMProviderError(
@@ -198,7 +198,9 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
 
     # Dry-run mode — return mock result without LLM call
     if settings.maistro_dry_run:
-        await logger.ainfo("conductor_dry_run", description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN])
+        await logger.ainfo(
+            "conductor_dry_run", description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN]
+        )
         return ConductorOutput(
             plan=PlanOutput(
                 summary=f"[DRY RUN] Plan for: {task.description}",
@@ -232,9 +234,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
 
     constraints_text = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
     prompt = (
-        f"Task: {task.description}\n\n"
-        f"Workspace: {task.workspace}\n"
-        f"Constraints:\n{constraints_text}"
+        f"Task: {task.description}\n\nWorkspace: {task.workspace}\nConstraints:\n{constraints_text}"
     )
 
     result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)

@@ -29,8 +29,7 @@ class _Counter:
     def collect(self) -> list[dict[str, Any]]:
         with self._lock:
             return [
-                {"name": self.name, "labels": dict(k), "value": v}
-                for k, v in self._values.items()
+                {"name": self.name, "labels": dict(k), "value": v} for k, v in self._values.items()
             ]
 
 
@@ -61,8 +60,7 @@ class _Gauge:
     def collect(self) -> list[dict[str, Any]]:
         with self._lock:
             return [
-                {"name": self.name, "labels": dict(k), "value": v}
-                for k, v in self._values.items()
+                {"name": self.name, "labels": dict(k), "value": v} for k, v in self._values.items()
             ]
 
 
@@ -95,17 +93,21 @@ class _Histogram:
         with self._lock:
             results = []
             for key in self._totals:
-                results.append({
-                    "name": self.name,
-                    "labels": dict(key),
-                    "sum": self._sums[key],
-                    "count": self._totals[key],
-                    "buckets": dict(zip(
-                        [str(b) for b in self.buckets],
-                        self._counts.get(key, [0] * len(self.buckets)),
-                        strict=True,
-                    )),
-                })
+                results.append(
+                    {
+                        "name": self.name,
+                        "labels": dict(key),
+                        "sum": self._sums[key],
+                        "count": self._totals[key],
+                        "buckets": dict(
+                            zip(
+                                [str(b) for b in self.buckets],
+                                self._counts.get(key, [0] * len(self.buckets)),
+                                strict=True,
+                            )
+                        ),
+                    }
+                )
             return results
 
 
@@ -126,7 +128,9 @@ class MetricsRegistry:
             self._metrics[name] = _Gauge(name, help_text)
         return self._metrics[name]  # type: ignore[return-value]
 
-    def histogram(self, name: str, help_text: str = "", buckets: tuple[float, ...] | None = None) -> _Histogram:
+    def histogram(
+        self, name: str, help_text: str = "", buckets: tuple[float, ...] | None = None
+    ) -> _Histogram:
         if name not in self._metrics:
             self._metrics[name] = _Histogram(name, help_text, buckets)
         return self._metrics[name]  # type: ignore[return-value]
@@ -143,33 +147,15 @@ class MetricsRegistry:
 registry = MetricsRegistry()
 
 # Pre-defined application metrics
-http_requests_total = registry.counter(
-    "http_requests_total", "Total HTTP requests"
-)
-http_request_duration = registry.histogram(
-    "http_request_duration_seconds", "HTTP request latency"
-)
-tasks_submitted_total = registry.counter(
-    "tasks_submitted_total", "Total tasks submitted"
-)
-tasks_completed_total = registry.counter(
-    "tasks_completed_total", "Total tasks completed"
-)
-tasks_failed_total = registry.counter(
-    "tasks_failed_total", "Total tasks failed"
-)
-active_tasks = registry.gauge(
-    "active_tasks", "Currently running tasks"
-)
-llm_requests_total = registry.counter(
-    "llm_requests_total", "Total LLM API calls"
-)
-llm_errors_total = registry.counter(
-    "llm_errors_total", "Total LLM API errors"
-)
+http_requests_total = registry.counter("http_requests_total", "Total HTTP requests")
+http_request_duration = registry.histogram("http_request_duration_seconds", "HTTP request latency")
+tasks_submitted_total = registry.counter("tasks_submitted_total", "Total tasks submitted")
+tasks_completed_total = registry.counter("tasks_completed_total", "Total tasks completed")
+tasks_failed_total = registry.counter("tasks_failed_total", "Total tasks failed")
+active_tasks = registry.gauge("active_tasks", "Currently running tasks")
+llm_requests_total = registry.counter("llm_requests_total", "Total LLM API calls")
+llm_errors_total = registry.counter("llm_errors_total", "Total LLM API errors")
 circuit_breaker_state = registry.gauge(
     "circuit_breaker_state", "Circuit breaker state (0=closed, 1=open, 2=half_open)"
 )
-sandbox_containers_active = registry.gauge(
-    "sandbox_containers_active", "Active sandbox containers"
-)
+sandbox_containers_active = registry.gauge("sandbox_containers_active", "Active sandbox containers")

@@ -21,26 +21,52 @@ class TestAllowlistNames:
 
     @pytest.mark.parametrize(
         "name",
-        ["PATH", "LANG", "LANGUAGE", "TZ", "TERM", "SHELL", "EDITOR",
-         "PYTHONDONTWRITEBYTECODE", "PIP_NO_CACHE_DIR", "VIRTUAL_ENV",
-         "GOPATH", "CI", "DEBIAN_FRONTEND"],
+        [
+            "PATH",
+            "LANG",
+            "LANGUAGE",
+            "TZ",
+            "TERM",
+            "SHELL",
+            "EDITOR",
+            "PYTHONDONTWRITEBYTECODE",
+            "PIP_NO_CACHE_DIR",
+            "VIRTUAL_ENV",
+            "GOPATH",
+            "CI",
+            "DEBIAN_FRONTEND",
+        ],
     )
     def test_allowed_exact_names(self, name: str) -> None:
         assert is_allowed_name(name), f"{name} should be allowed"
 
     @pytest.mark.parametrize(
         "name",
-        ["LC_ALL", "LC_CTYPE", "NPM_CONFIG_REGISTRY", "CONDA_PREFIX",
-         "CARGO_HOME", "RUSTUP_HOME", "PYTHONPATH"],
+        [
+            "LC_ALL",
+            "LC_CTYPE",
+            "NPM_CONFIG_REGISTRY",
+            "CONDA_PREFIX",
+            "CARGO_HOME",
+            "RUSTUP_HOME",
+            "PYTHONPATH",
+        ],
     )
     def test_allowed_prefix_names(self, name: str) -> None:
         assert is_allowed_name(name), f"{name} should be allowed by prefix"
 
     @pytest.mark.parametrize(
         "name",
-        ["AWS_SECRET_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-         "DATABASE_URL", "GITHUB_TOKEN", "MY_CUSTOM_VAR",
-         "STRIPE_API_KEY", "COMPANY_INTERNAL_TOKEN"],
+        [
+            "AWS_SECRET_KEY",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "DATABASE_URL",
+            "GITHUB_TOKEN",
+            "MY_CUSTOM_VAR",
+            "STRIPE_API_KEY",
+            "COMPANY_INTERNAL_TOKEN",
+        ],
     )
     def test_non_allowlisted_blocked(self, name: str) -> None:
         assert not is_allowed_name(name), f"{name} should NOT be allowed"
@@ -52,9 +78,14 @@ class TestBlockedNames:
     @pytest.mark.parametrize(
         "name",
         [
-            "API_KEY", "SECRET_TOKEN", "PASSWORD",
-            "AWS_ACCESS_KEY_ID", "OPENAI_API_KEY",
-            "GITHUB_TOKEN", "DB_PASSWORD", "DATABASE_URL",
+            "API_KEY",
+            "SECRET_TOKEN",
+            "PASSWORD",
+            "AWS_ACCESS_KEY_ID",
+            "OPENAI_API_KEY",
+            "GITHUB_TOKEN",
+            "DB_PASSWORD",
+            "DATABASE_URL",
         ],
     )
     def test_blocked_prefixes(self, name: str) -> None:
@@ -81,8 +112,7 @@ class TestLooksLikeSecret:
 
     @pytest.mark.parametrize(
         "value",
-        ["hello", "true", "8080", "/usr/local/bin", "production",
-         "INFO", "utf-8", "en_US.UTF-8"],
+        ["hello", "true", "8080", "/usr/local/bin", "production", "INFO", "utf-8", "en_US.UTF-8"],
     )
     def test_normal_values_not_flagged(self, value: str) -> None:
         assert not looks_like_secret(value)
