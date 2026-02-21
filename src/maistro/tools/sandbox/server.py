@@ -10,23 +10,27 @@ This FastMCP server provides tools for:
 
 from __future__ import annotations
 
+import asyncio
 import shlex
 
 from fastmcp import FastMCP
 
+from maistro.security.dangerous_tools import is_dangerous_command
 from maistro.tools.sandbox.docker import SandboxContainer, create_sandbox
 
 mcp = FastMCP("sandbox", instructions="Docker sandbox for isolated code execution")
 
 # Active sandbox containers, keyed by workspace path
 _containers: dict[str, SandboxContainer] = {}
+_container_lock = asyncio.Lock()
 
 
 async def _get_or_create(workspace: str) -> SandboxContainer:
     """Get an existing container for this workspace or create one."""
-    if workspace not in _containers:
-        _containers[workspace] = await create_sandbox(workspace)
-    return _containers[workspace]
+    async with _container_lock:
+        if workspace not in _containers:
+            _containers[workspace] = await create_sandbox(workspace)
+        return _containers[workspace]
 
 
 @mcp.tool()
@@ -38,6 +42,10 @@ async def sandbox_exec(workspace: str, command: str, timeout: int = 60) -> str:
         command: Shell command to execute
         timeout: Maximum execution time in seconds
     """
+    dangers = is_dangerous_command(command)
+    if dangers:
+        return f"[blocked] Command rejected as dangerous: {', '.join(dangers)}"
+
     container = await _get_or_create(workspace)
     exit_code, output = await container.exec(command, timeout=timeout)
     return f"[exit {exit_code}]\n{output}"
@@ -78,7 +86,6 @@ async def sandbox_glob(workspace: str, pattern: str) -> str:
         pattern: Glob pattern (e.g., '**/*.py', 'src/**/*.ts')
     """
     container = await _get_or_create(workspace)
-    # MAJ-01: Sanitize pattern to prevent shell injection
     safe_pattern = shlex.quote(f"/workspace/{pattern}")
     _, output = await container.exec(
         f"find /workspace -path {safe_pattern} -type f 2>/dev/null | head -100"
@@ -96,11 +103,10 @@ async def sandbox_grep(workspace: str, pattern: str, path: str = ".") -> str:
         path: Directory or file to search in (relative to workspace)
     """
     container = await _get_or_create(workspace)
-    # MAJ-01: Sanitize pattern and path to prevent shell injection
     safe_pattern = shlex.quote(pattern)
     safe_path = shlex.quote(f"/workspace/{path}")
     _, output = await container.exec(
-        f"grep -rn {safe_pattern} {safe_path} 2>/dev/null | head -50"
+        f"grep -rn -- {safe_pattern} {safe_path} 2>/dev/null | head -50"
     )
     return output or "No matches found"
 
@@ -112,7 +118,8 @@ async def sandbox_destroy(workspace: str) -> str:
     Args:
         workspace: Path to the workspace directory
     """
-    container = _containers.pop(workspace, None)
+    async with _container_lock:
+        container = _containers.pop(workspace, None)
     if container:
         await container.destroy()
         return f"Sandbox destroyed for {workspace}"

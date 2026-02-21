@@ -71,8 +71,17 @@ class TaskRunner:
                 break
 
             self._current_task_id = task_id
-            await self._execute_task(task_id)
-            self._current_task_id = None
+            try:
+                await self._execute_task(task_id)
+            except asyncio.CancelledError:
+                # Graceful shutdown — mark task as failed rather than leaving it stuck
+                await self._queue.update_status(task_id, TaskStatus.FAILED)
+                self._queue.set_result(
+                    task_id, TaskResult(error="Task cancelled during shutdown")
+                )
+                break
+            finally:
+                self._current_task_id = None
 
     async def _execute_task(self, task_id: str) -> None:
         task = self._queue.get(task_id)
@@ -81,7 +90,7 @@ class TaskRunner:
 
         async with self._queue.claim(task_id):
             # Planning phase
-            self._queue.update_status(task_id, TaskStatus.PLANNING)
+            await self._queue.update_status(task_id, TaskStatus.PLANNING)
             self._queue.update_progress(
                 task_id, TaskProgress(current="Analyzing task and creating plan...")
             )
@@ -94,7 +103,7 @@ class TaskRunner:
             )
 
             # Run the conductor (single-pass: plan + code in one LLM call)
-            self._queue.update_status(task_id, TaskStatus.CODING)
+            await self._queue.update_status(task_id, TaskStatus.CODING)
             self._queue.update_progress(
                 task_id, TaskProgress(current="Generating implementation...")
             )
@@ -104,16 +113,15 @@ class TaskRunner:
             # MAJ-16: Report honestly — Phase 1 is single-pass, no independent
             # review or test execution. Only transition to COMPLETED or FAILED.
             if result.success:
-                self._queue.update_status(task_id, TaskStatus.COMPLETED)
+                await self._queue.update_status(task_id, TaskStatus.COMPLETED)
                 self._queue.set_result(
                     task_id,
                     TaskResult(
                         files_changed=result.code.files_changed if result.code else [],
-                        # review_score omitted: no independent review in Phase 1
                     ),
                 )
             else:
-                self._queue.update_status(task_id, TaskStatus.FAILED)
+                await self._queue.update_status(task_id, TaskStatus.FAILED)
                 self._queue.set_result(
                     task_id,
                     TaskResult(error=result.final_answer),
