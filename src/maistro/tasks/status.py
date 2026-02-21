@@ -8,7 +8,7 @@ from maistro.tasks.models import TaskStatus
 TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
     TaskStatus.QUEUED: {TaskStatus.PLANNING, TaskStatus.CANCELLED},
     TaskStatus.PLANNING: {TaskStatus.CODING, TaskStatus.FAILED, TaskStatus.CANCELLED},
-    TaskStatus.CODING: {TaskStatus.REVIEWING, TaskStatus.FAILED, TaskStatus.CANCELLED},
+    TaskStatus.CODING: {TaskStatus.REVIEWING, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED},
     TaskStatus.REVIEWING: {
         TaskStatus.TESTING,
         TaskStatus.CODING,  # reviewer rejects → back to coding

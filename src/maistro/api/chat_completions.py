@@ -100,8 +100,10 @@ async def _stream_conductor_response(
     try:
         result = await run_task(task)
         response_text = result.final_answer or "Task completed successfully."
-    except Exception as exc:
-        response_text = f"Error: {exc}"
+    except Exception:
+        import structlog
+        await structlog.get_logger().aexception("chat_completion_stream_error")
+        response_text = "An internal error occurred while processing your request."
 
     # Stream content in small chunks for responsive feel
     chunk_size = 20
@@ -152,8 +154,10 @@ async def chat_completions(
     try:
         result = await run_task(task)
         response_text = result.final_answer or "Task completed successfully."
-    except Exception as exc:
-        response_text = f"Error: {exc}"
+    except Exception:
+        import structlog
+        await structlog.get_logger().aexception("chat_completion_error")
+        response_text = "An internal error occurred while processing your request."
 
     return ChatCompletionResponse(
         model=request.model,
