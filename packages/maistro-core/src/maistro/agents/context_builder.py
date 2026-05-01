@@ -1,0 +1,191 @@
+"""Context builder: assembles prompt from soul + tools + learnings + episodic.
+
+Order matters: soul -> tool prompts -> promoted learnings -> matched learnings -> episodic memories.
+Token budget enforcement prevents context overflow -- learnings are dropped (lowest priority first)
+before soul prompt, which is never truncated.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from maistro.protocols.memory import LearningStore
+    from maistro.protocols.prompts import PromptManager
+    from maistro.types.agent import AgentIdentity
+
+logger = logging.getLogger("maistro.context_builder")
+
+_LEARNINGS_BOUNDARY = "<maistro:corrections"
+
+_CHARS_PER_TOKEN = 4
+
+_DEFAULT_SYSTEM_TOKEN_BUDGET = 4096
+
+
+def _estimate_tokens(text: str) -> int:
+    return len(text) // _CHARS_PER_TOKEN
+
+
+class ContextBuilder:
+    """Assembles the full prompt context for an agent."""
+
+    async def build(
+        self,
+        messages: list[dict[str, Any]],
+        identity: AgentIdentity,
+        *,
+        prompt_manager: PromptManager,
+        learning_store: LearningStore | None = None,
+        agent_id: str = "",
+        user_id: str = "",
+        org_id: str = "",
+        team_id: str = "",
+        system_token_budget: int = _DEFAULT_SYSTEM_TOKEN_BUDGET,
+        enable_cache_breakpoints: bool = False,
+    ) -> tuple[list[dict[str, Any]], list[int]]:
+        system_parts: list[str] = []
+        budget_chars = system_token_budget * _CHARS_PER_TOKEN
+        kept_ids: list[int] = []
+
+        soul_name = identity.soul_prompt_name or f"agent.{identity.name}.soul"
+        soul = await prompt_manager.get(soul_name)
+        if soul:
+            system_parts.append(soul)
+            budget_chars -= len(soul)
+            if budget_chars < 0:
+                logger.warning(
+                    "Soul prompt exceeds token budget: soul=%d chars, budget=%d tokens. "
+                    "Learnings will be dropped.",
+                    len(soul),
+                    system_token_budget,
+                )
+
+        if learning_store and identity.memory_config.get("learnings") and budget_chars > 0:
+            promoted = await learning_store.get_promoted(org_id=org_id)
+            if promoted:
+                header = '<maistro:corrections type="promoted">'
+                footer = "</maistro:corrections>"
+                overhead = len(header) + len(footer) + 2
+                lines: list[str] = [header]
+                used = overhead
+                added = 0
+                for lr in promoted:
+                    prefix = f"[{lr.rca_category}] " if lr.rca_category else ""
+                    entry = f"- {prefix}{lr.learning}"
+                    if used + len(entry) + 1 > budget_chars:
+                        break
+                    lines.append(entry)
+                    used += len(entry) + 1
+                    added += 1
+                    if lr.id is not None:
+                        kept_ids.append(lr.id)
+                if added > 0:
+                    lines.append(footer)
+                    block = "\n".join(lines)
+                    system_parts.append(block)
+                    budget_chars -= len(block)
+                if added < len(promoted):
+                    logger.debug(
+                        "Token budget: dropped %d/%d promoted learnings",
+                        len(promoted) - added,
+                        len(promoted),
+                    )
+
+        user_text = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                user_text = str(msg.get("content", ""))
+                break
+
+        if (
+            learning_store
+            and user_text
+            and identity.memory_config.get("learnings")
+            and budget_chars > 0
+        ):
+            relevant = await learning_store.find_relevant(
+                user_text,
+                agent_id=agent_id,
+                org_id=org_id,
+            )
+            if relevant:
+                header = '<maistro:corrections type="matched">'
+                footer = "</maistro:corrections>"
+                overhead = len(header) + len(footer) + 2
+                lines = [header]
+                used = overhead
+                added = 0
+                for lr in relevant:
+                    entry = f"- {lr.learning}"
+                    if used + len(entry) + 1 > budget_chars:
+                        break
+                    lines.append(entry)
+                    used += len(entry) + 1
+                    added += 1
+                    if lr.id is not None:
+                        kept_ids.append(lr.id)
+                if added > 0:
+                    lines.append(footer)
+                    block = "\n".join(lines)
+                    system_parts.append(block)
+                    budget_chars -= len(block)
+                if added < len(relevant):
+                    logger.debug(
+                        "Token budget: dropped %d/%d matched learnings",
+                        len(relevant) - added,
+                        len(relevant),
+                    )
+
+        assembled = "\n\n".join(system_parts)
+        result_messages = list(messages)
+
+        if assembled:
+            if result_messages and result_messages[0].get("role") == "system":
+                result_messages[0] = {
+                    "role": "system",
+                    "content": assembled + "\n\n" + result_messages[0]["content"],
+                }
+            else:
+                result_messages.insert(0, {"role": "system", "content": assembled})
+
+        if enable_cache_breakpoints:
+            result_messages = inject_cache_breakpoints(result_messages)
+
+        return result_messages, kept_ids
+
+
+def inject_cache_breakpoints(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result = list(messages)
+    if not result or result[0].get("role") != "system":
+        return result
+
+    system_msg = dict(result[0])
+    content = system_msg["content"]
+
+    if isinstance(content, str):
+        idx = content.find(_LEARNINGS_BOUNDARY)
+        if idx > 0:
+            stable = content[:idx].rstrip()
+            dynamic = content[idx:]
+            blocks: list[dict[str, Any]] = [
+                {"type": "text", "text": stable, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": dynamic},
+            ]
+        else:
+            blocks = [
+                {"type": "text", "text": content, "cache_control": {"type": "ephemeral"}},
+            ]
+        system_msg["content"] = blocks
+    elif isinstance(content, list):
+        blocks = []
+        for i, block in enumerate(content):
+            new_block = dict(block)
+            if i == 0 and "cache_control" not in new_block:
+                new_block["cache_control"] = {"type": "ephemeral"}
+            blocks.append(new_block)
+        system_msg["content"] = blocks
+
+    result[0] = system_msg
+    return result

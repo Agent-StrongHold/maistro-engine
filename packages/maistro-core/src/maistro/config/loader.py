@@ -1,0 +1,152 @@
+"""Config loader: YAML file -> validated MaistroYamlConfig with env overrides."""
+
+from __future__ import annotations
+
+import ipaddress
+import logging
+import os
+import socket
+from pathlib import Path
+from urllib.parse import urlparse
+
+import yaml
+
+from maistro.config.settings import MaistroYamlConfig, set_yaml_config
+
+logger = logging.getLogger(__name__)
+
+
+def _validate_url_not_private(url: str, field_name: str) -> None:
+    parsed = urlparse(url)
+
+    if parsed.scheme != "https":
+        msg = f"{field_name} must use HTTPS scheme, got {parsed.scheme!r}: {url}"
+        raise ValueError(msg)
+
+    hostname = parsed.hostname
+    if not hostname:
+        msg = f"{field_name} has no hostname: {url}"
+        raise ValueError(msg)
+
+    try:
+        addrinfo = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        logger.warning(
+            "%s hostname %r could not be resolved — "
+            "skipping private-IP check (will be enforced at connect time)",
+            field_name,
+            hostname,
+        )
+        return
+
+    for _family, _type, _proto, _canonname, sockaddr in addrinfo:
+        ip_str = sockaddr[0]
+        ip = ipaddress.ip_address(ip_str)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            msg = f"{field_name} resolves to private/loopback/link-local address {ip_str}: {url}"
+            raise ValueError(msg)
+
+
+def load_yaml_config(path: str | Path | None = None) -> MaistroYamlConfig:
+    config_path = path or os.getenv("MAISTRO_CONFIG", "config/maistro.yaml")
+    config_path = Path(str(config_path))
+
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                raw: dict = yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            msg = f"Invalid YAML in {config_path}: {e}"
+            raise ValueError(msg) from e
+    else:
+        raw = {}
+
+    env_overrides: dict[str, str | None] = {
+        "database_url": os.getenv("DATABASE_URL"),
+        "litellm_url": os.getenv("LITELLM_URL"),
+        "litellm_key": os.getenv("LITELLM_MASTER_KEY"),
+        "router_api_key": os.getenv("ROUTER_API_KEY"),
+        "jwt_secret": os.getenv("JWT_SECRET"),
+        "phoenix_endpoint": os.getenv("PHOENIX_COLLECTOR_ENDPOINT"),
+        "webhook_secret": os.getenv("MAISTRO_WEBHOOK_SECRET"),
+    }
+    for key, val in env_overrides.items():
+        if val is not None:
+            raw[key] = val
+
+    router_key = env_overrides.get("router_api_key")
+    if router_key and len(router_key) < 32:
+        logger.warning(
+            "ROUTER_API_KEY is shorter than 32 characters (%d) — "
+            "this is insecure and may be rejected in a future version",
+            len(router_key),
+        )
+
+    jwt_secret = env_overrides.get("jwt_secret")
+    if jwt_secret and len(jwt_secret) < 32:
+        msg = f"JWT_SECRET must be at least 32 characters, got {len(jwt_secret)}"
+        raise ValueError(msg)
+
+    webhook_secret = env_overrides.get("webhook_secret")
+    if webhook_secret and len(webhook_secret) < 16:
+        msg = f"MAISTRO_WEBHOOK_SECRET must be at least 16 characters, got {len(webhook_secret)}"
+        raise ValueError(msg)
+
+    cors_origins = os.getenv("MAISTRO_CORS_ORIGINS")
+    if cors_origins:
+        origins = [o.strip() for o in cors_origins.split(",")]
+        for origin in origins:
+            if origin == "*":
+                msg = "CORS_ORIGINS must not contain '*' — use exact origins"
+                raise ValueError(msg)
+            if origin.startswith("javascript:") or origin.startswith("data:"):
+                msg = f"CORS_ORIGINS contains unsafe origin: {origin!r}"
+                raise ValueError(msg)
+            is_local = origin.startswith("http://localhost")
+            if origin and not origin.startswith("https://") and not is_local:
+                logger.warning("CORS origin %r is not HTTPS — use HTTPS in production", origin)
+        raw.setdefault("cors", {})["allowed_origins"] = origins
+
+    rate_limit_rpm = os.getenv("MAISTRO_RATE_LIMIT_RPM")
+    if rate_limit_rpm:
+        raw.setdefault("rate_limit", {})["requests_per_minute"] = int(rate_limit_rpm)
+
+    max_body = os.getenv("MAISTRO_MAX_REQUEST_BODY_BYTES")
+    if max_body:
+        raw["max_request_body_bytes"] = int(max_body)
+
+    jwks_url = os.getenv("MAISTRO_JWKS_URL")
+    if jwks_url:
+        _validate_url_not_private(jwks_url, "MAISTRO_JWKS_URL")
+        raw.setdefault("auth", {})["jwks_url"] = jwks_url
+
+    auth_issuer = os.getenv("MAISTRO_AUTH_ISSUER")
+    if auth_issuer:
+        _validate_url_not_private(auth_issuer, "MAISTRO_AUTH_ISSUER")
+        raw.setdefault("auth", {})["issuer"] = auth_issuer
+
+    auth_audience = os.getenv("MAISTRO_AUTH_AUDIENCE")
+    if auth_audience:
+        raw.setdefault("auth", {})["audience"] = auth_audience
+
+    auth_client_id = os.getenv("MAISTRO_AUTH_CLIENT_ID")
+    if auth_client_id:
+        raw.setdefault("auth", {})["client_id"] = auth_client_id
+
+    auth_authorization_url = os.getenv("MAISTRO_AUTH_AUTHORIZATION_URL")
+    if auth_authorization_url:
+        _validate_url_not_private(auth_authorization_url, "MAISTRO_AUTH_AUTHORIZATION_URL")
+        raw.setdefault("auth", {})["authorization_url"] = auth_authorization_url
+
+    auth_token_url = os.getenv("MAISTRO_AUTH_TOKEN_URL")
+    if auth_token_url:
+        _validate_url_not_private(auth_token_url, "MAISTRO_AUTH_TOKEN_URL")
+        raw.setdefault("auth", {})["token_url"] = auth_token_url
+
+    auth_client_secret = os.getenv("MAISTRO_AUTH_CLIENT_SECRET")
+    if auth_client_secret:
+        raw.setdefault("auth", {})["client_secret"] = auth_client_secret
+
+    config = MaistroYamlConfig(**raw)
+    set_yaml_config(config)
+    return config
