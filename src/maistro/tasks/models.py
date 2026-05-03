@@ -8,6 +8,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from maistro.agents.types import ExecutionMode
+
 
 class TaskStatus(StrEnum):
     QUEUED = "queued"
@@ -28,6 +30,7 @@ class TaskCreate(BaseModel):
     tier: int | None = None
     branch: str | None = None
     constraints: list[str] = Field(default_factory=list)
+    execution_mode: ExecutionMode = ExecutionMode.WORKFLOW
 
 
 class TaskProgress(BaseModel):
