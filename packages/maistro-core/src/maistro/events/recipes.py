@@ -1,6 +1,6 @@
 """Pre-built trigger recipes for common cross-service integrations.
 
-Single-tenant: services trust each other. No auth complexity.
+Service key auth handled by ServiceKeyClient (set via handlers.set_service_client).
 Import and register what you need, or use as templates.
 """
 
