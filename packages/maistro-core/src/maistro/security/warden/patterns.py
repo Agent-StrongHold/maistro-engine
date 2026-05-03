@@ -6,7 +6,10 @@ Uses `regex` library instead of `re` for built-in timeout support (ReDoS-safe).
 
 from __future__ import annotations
 
-import regex
+try:
+    import regex
+except ImportError:
+    import re as regex
 
 REJECT_PATTERNS: list[tuple[regex.Pattern[str], str]] = [
     (

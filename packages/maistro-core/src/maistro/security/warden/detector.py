@@ -11,6 +11,7 @@ Four layers (cheap to expensive, short-circuit on detection):
 from __future__ import annotations
 
 import logging
+import signal
 import unicodedata
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,18 @@ if TYPE_CHECKING:
 logger = logging.getLogger("maistro.warden")
 
 _PATTERN_TIMEOUT_S = 0.5
+
+_HAS_REGEX_TIMEOUT = hasattr(REJECT_PATTERNS[0][0].search, "__code__") if REJECT_PATTERNS else False
+
+
+def _pattern_search(pattern: object, text: str) -> bool:
+    import re as _re
+
+    p: _re.Pattern[str] = pattern  # type: ignore[assignment]
+    try:
+        return bool(p.search(text))
+    except Exception:
+        return False
 
 
 class Warden:
@@ -57,11 +70,11 @@ class Warden:
             scan_content = unicodedata.normalize("NFKD", content)
         for pattern, description in REJECT_PATTERNS:
             try:
-                if pattern.search(scan_content, timeout=_PATTERN_TIMEOUT_S):
+                if _pattern_search(pattern, scan_content):
                     flags.append(description)
-            except TimeoutError:
-                logger.warning("Regex timeout on pattern: %s", description)
-                flags.append(f"regex_timeout:{description}")
+            except Exception:
+                logger.warning("Regex error on pattern: %s", description)
+                flags.append(f"regex_error:{description}")
 
         if flags:
             return WardenVerdict(
