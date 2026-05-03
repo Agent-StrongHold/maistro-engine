@@ -30,7 +30,7 @@ from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
-from maistro.observability.metrics import llm_errors_total, llm_requests_total
+from maistro.observability.metrics import llm_errors_total, llm_requests_total, llm_tokens_used
 from maistro.observability.tracing import trace_agent
 from maistro.tasks.models import TaskCreate
 
@@ -144,6 +144,15 @@ async def _run_with_retry(
             result = await asyncio.wait_for(agent.run(prompt), timeout=tier_config.timeout)
             llm_circuit.record_success()
 
+            try:
+                usage = result.usage()
+                if usage.total_tokens:
+                    llm_tokens_used.observe(
+                        float(usage.total_tokens), tier=str(tier_config.tier.value)
+                    )
+            except Exception:
+                pass
+
             if use_json_mode:
                 return _parse_json_output(result.output)
             return result.output  # type: ignore[return-value]
@@ -227,6 +236,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         base_url=base_url or "default",
         json_mode=use_json_mode,
         max_tokens=max_tokens,
+        execution_mode=task.execution_mode,
         description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN],
     )
 
@@ -238,5 +248,15 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
     )
 
     result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)  # type: ignore[arg-type]
-    await logger.ainfo("conductor_complete", success=result.success)
+
+    # Trajectory log — captures the agent's decision path for auditing.
+    await logger.ainfo(
+        "conductor_trajectory",
+        success=result.success,
+        execution_mode=task.execution_mode,
+        subtask_count=len(result.plan.subtasks) if result.plan else 0,
+        files_changed=result.code.files_changed if result.code else [],
+        review_approved=result.review.approved if result.review else None,
+        review_score=result.review.score if result.review else None,
+    )
     return result

@@ -11,6 +11,24 @@ class LLMProviderError(Exception):
     """Raised when the LLM provider fails after exhausting retries."""
 
 
+class ExecutionMode(StrEnum):
+    """Anthropic's three-tier taxonomy for LLM control flow.
+
+    TASK     — single model call; predictable cost, bounded failure modes.
+    WORKFLOW — multiple calls in a predetermined sequence; developer controls flow.
+    AGENT    — autonomous loop; model decides its own trajectory at runtime.
+
+    Prefer TASK or WORKFLOW when the steps are known in advance ("if you can
+    map it, build it"). Reserve AGENT for genuinely ambiguous problems where
+    the model must adapt mid-execution — coding is the canonical example because
+    outputs are verifiable via unit tests.
+    """
+
+    TASK = "task"
+    WORKFLOW = "workflow"
+    AGENT = "agent"
+
+
 class AgentRole(StrEnum):
     CONDUCTOR = "conductor"
     PLANNER = "planner"
