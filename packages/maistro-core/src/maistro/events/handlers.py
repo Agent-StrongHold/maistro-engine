@@ -1,6 +1,7 @@
 """Built-in action handlers for the event bus.
 
-Single-tenant: no auth between services. Direct HTTP calls on local network.
+Uses ServiceKeyClient for authenticated cross-service calls when available.
+Falls back to raw httpx when no service client is configured (backward compat).
 """
 
 from __future__ import annotations
@@ -10,15 +11,28 @@ from typing import Any
 
 import httpx
 
+from maistro.auth.client import ServiceKeyClient
 from maistro.events.bus import Event, Trigger
 
 logger = logging.getLogger("maistro.events.handlers")
+
+_global_client: ServiceKeyClient | None = None
+
+
+def set_service_client(client: ServiceKeyClient | None) -> None:
+    """Set the global ServiceKeyClient for all handlers to use."""
+    global _global_client
+    _global_client = client
+
+
+def _get_client() -> ServiceKeyClient | None:
+    return _global_client
 
 
 async def webhook_action(trigger: Trigger, event: Event) -> None:
     url = trigger.action_config.get("url", "")
     method = trigger.action_config.get("method", "POST").upper()
-    headers = trigger.action_config.get("headers", {})
+    extra_headers = trigger.action_config.get("headers", {})
     timeout = trigger.action_config.get("timeout", 10)
 
     body = {
@@ -34,17 +48,18 @@ async def webhook_action(trigger: Trigger, event: Event) -> None:
         },
     }
 
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    headers.update(extra_headers)
     if "Authorization" not in headers and trigger.action_config.get("bearer_token"):
         headers["Authorization"] = f"Bearer {trigger.action_config['bearer_token']}"
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        response = await client.request(method, url, json=body, headers=headers)
-        logger.info(
-            "Webhook %s %s → %d",
-            method,
-            url,
-            response.status_code,
-        )
+    svc = _get_client()
+    if svc:
+        resp = await svc.request(method, url, json=body, headers=headers, timeout=timeout)
+    else:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.request(method, url, json=body, headers=headers)
+    logger.info("Webhook %s %s → %d", method, url, resp.status_code)
 
 
 async def conductor_chat_action(trigger: Trigger, event: Event) -> None:
@@ -68,21 +83,23 @@ async def conductor_chat_action(trigger: Trigger, event: Event) -> None:
         "stream": False,
     }
 
-    headers = {"Content-Type": "application/json"}
+    headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            f"{base_url}/v1/chat/completions",
-            json=payload,
-            headers=headers,
+    svc = _get_client()
+    if svc:
+        resp = await svc.post(
+            f"{base_url}/v1/chat/completions", json=payload, headers=headers, timeout=30
         )
-        logger.info(
-            "Conductor action %s → %d",
-            trigger.name,
-            response.status_code,
-        )
+    else:
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{base_url}/v1/chat/completions",
+                json=payload,
+                headers=headers,
+            )
+    logger.info("Conductor action %s → %d", trigger.name, resp.status_code)
 
 
 async def coinswarm_action(trigger: Trigger, event: Event) -> None:
@@ -95,14 +112,13 @@ async def coinswarm_action(trigger: Trigger, event: Event) -> None:
     }
 
     url = f"{base_url}{endpoint}"
-    async with httpx.AsyncClient(timeout=15) as client:
-        response = await client.post(url, json=resolved_params)
-        logger.info(
-            "CoinSwarm action %s %s → %d",
-            trigger.name,
-            endpoint,
-            response.status_code,
-        )
+    svc = _get_client()
+    if svc:
+        resp = await svc.post(url, json=resolved_params, timeout=15)
+    else:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, json=resolved_params)
+    logger.info("CoinSwarm action %s %s → %d", trigger.name, endpoint, resp.status_code)
 
 
 async def ha_action(trigger: Trigger, event: Event) -> None:
@@ -112,7 +128,7 @@ async def ha_action(trigger: Trigger, event: Event) -> None:
     service = trigger.action_config.get("service", "trigger")
     entity_id = trigger.action_config.get("entity_id", "")
 
-    headers = {
+    headers: dict[str, str] = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
@@ -122,15 +138,13 @@ async def ha_action(trigger: Trigger, event: Event) -> None:
     payload.update(trigger.action_config.get("service_data", {}))
 
     url = f"{base_url}/api/services/{domain}/{service}"
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.post(url, json=payload, headers=headers)
-        logger.info(
-            "HA action %s %s.%s → %d",
-            trigger.name,
-            domain,
-            service,
-            response.status_code,
-        )
+    svc = _get_client()
+    if svc:
+        resp = await svc.post(url, json=payload, headers=headers, timeout=10)
+    else:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+    logger.info("HA action %s %s.%s → %d", trigger.name, domain, service, resp.status_code)
 
 
 async def log_action(trigger: Trigger, event: Event) -> None:
