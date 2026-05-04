@@ -78,8 +78,13 @@ class ModelPricing:
     # Benchmark scores
     swe_bench_verified: float | None = None  # % of SWE-bench Verified resolved
     swe_bench_note: str | None = None
-    mmlu: float | None = None  # %
-    gpqa_diamond: float | None = None  # %
+    mmlu: float | None = None  # % — broad knowledge (57 subjects)
+    gpqa_diamond: float | None = None  # % — PhD-level science Q&A
+    humanity_last_exam: float | None = None  # % — HLE: hardest multi-discipline exam
+    terminal_bench: float | None = None  # % — terminal/shell task completion (agentic)
+    humaneval: float | None = None  # % pass@1 — classic code generation
+    live_code_bench: float | None = None  # % — coding on post-cutoff problems (harder)
+    arena_elo: int | None = None  # Chatbot Arena Elo (human preference; lmarena.ai)
 
     # Composite intelligence index (Artificial Analysis v4, higher = smarter)
     intelligence_index: float | None = None
@@ -92,6 +97,14 @@ class ModelPricing:
     knowledge_cutoff: str | None = None  # "YYYY-MM"
     pricing_url: str = ""
     notes: str | None = None
+
+    # Rate limits — None = unknown/dynamic; verify at provider console
+    # These are the LOWEST published limits for that tier; actual limits vary by model.
+    free_tier_rpm: int | None = None  # free tier: requests per minute
+    free_tier_tpm: int | None = None  # free tier: tokens per minute
+    free_tier_tpd: int | None = None  # free tier: tokens per day (used where TPM not stated)
+    paid_tier_rpm: int | None = None  # paid/dev tier: requests per minute
+    paid_tier_tpm: int | None = None  # paid/dev tier: tokens per minute
 
     # ── Derived metrics ───────────────────────────────────────────────────
 
@@ -271,6 +284,35 @@ PROVIDERS: dict[str, dict] = {
         "api_docs_url": "https://inference-docs.cerebras.ai/",
         "is_inference_platform": True,
     },
+    # Azure OpenAI mirrors OpenAI model pricing but draws from Azure credits.
+    # Stronghold + BookCreator startups have ~$4K combined Azure for Startups credits.
+    # Not all credits go to inference — reserve headroom for compute/storage infra.
+    "azure_openai": {
+        "name": "Azure OpenAI (Microsoft; draws from Azure for Startups credits)",
+        "pricing_url": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        "api_docs_url": "https://learn.microsoft.com/en-us/azure/ai-services/openai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Pricing matches OpenAI direct. Value here is using Azure credits "
+            "rather than paying cash. Azure for Startups: $2.5K-$25K credits depending on tier. "
+            "Stronghold approved; BookCreator applying. Not all credits go to inference."
+        ),
+    },
+    # OpenRouter is an inference aggregator — one API key, 200+ models.
+    # Markup is minimal (typically 5-10% over provider cost).
+    # Has a small free allowance for new accounts; also hosts genuinely free $0 models.
+    "openrouter": {
+        "name": "OpenRouter (aggregator — routes to 200+ providers via one API)",
+        "pricing_url": "https://openrouter.ai/models",
+        "api_docs_url": "https://openrouter.ai/docs",
+        "is_inference_platform": True,
+        "notes": (
+            "Single API key for Anthropic, OpenAI, Google, DeepSeek, Mistral, xAI, etc. "
+            "Useful for fallback routing and provider comparison. "
+            "Free models available at openrouter.ai/models?q=free. "
+            "Rate-limit endpoint: GET https://openrouter.ai/api/v1/auth/key"
+        ),
+    },
 }
 
 
@@ -303,6 +345,7 @@ MODELS: list[ModelPricing] = [
         swe_bench_note="High-compute scaffold; standard: 72.5%",
         mmlu=87.4,
         gpqa_diamond=74.9,
+        terminal_bench=43.2,  # source: anthropic.com/news/claude-4
         intelligence_index=57,
         supports_thinking=False,  # adaptive thinking auto-engages; not user-toggled
         knowledge_cutoff="2026-01",
@@ -540,15 +583,67 @@ MODELS: list[ModelPricing] = [
     # ══════════════════════════════════════════════════════════════════════
     # MISTRAL AI
     # Source: https://mistral.ai/pricing and openrouter.ai/mistralai
-    # Free tier: free tier on La Plateforme for Codestral (code completion model)
+    #
+    # FREE TIER — La Plateforme has a genuinely generous developer free tier:
+    #   - Mistral Small, Mistral NeMo, open-weight models: free with rate limits
+    #   - Codestral: FREE for individual/IDE use at codestral.mistral.ai
+    #     (separate endpoint + key from main API; for VS Code, Continue, etc.)
+    #   - Typical free limits: ~1 req/s, ~500K tokens/month on eligible models
+    #   - No credit card required to start
+    #   - 7 people/entities each get their own free key with full quota
     # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="mistral",
+        model_id="codestral-latest",
+        input_mtok=0.30,
+        output_mtok=0.90,
+        context_window=256_000,
+        free_tier=(
+            "FREE for individual developers at codestral.mistral.ai "
+            "(separate API key; no credit card; for IDE integrations)"
+        ),
+        free_tier_rpm=30,
+        supports_tool_use=True,
+        supports_vision=False,
+        knowledge_cutoff="2024-12",
+        pricing_url="https://mistral.ai/pricing",
+        notes=(
+            "Dedicated code completion + instruction model. "
+            "Free at codestral.mistral.ai for individuals/IDEs (VS Code, Continue, Cursor). "
+            "Paid API available at api.mistral.ai for production."
+        ),
+    ),
+    ModelPricing(
+        provider="mistral",
+        model_id="mistral-small-latest",
+        input_mtok=0.10,
+        output_mtok=0.30,
+        context_window=128_000,
+        free_tier="La Plateforme free tier — eligible model (~1 req/s, ~500K tok/month)",
+        free_tier_rpm=6,
+        free_tier_tpm=500_000,  # approximate monthly cap converted, verify at console
+        knowledge_cutoff="2024-10",
+        pricing_url="https://mistral.ai/pricing",
+        notes="Fastest Mistral. Strong for classification, extraction. On free dev tier.",
+    ),
+    ModelPricing(
+        provider="mistral",
+        model_id="mistral-medium-latest",
+        input_mtok=0.40,
+        output_mtok=2.00,
+        context_window=128_000,
+        free_tier="La Plateforme free tier — check console for current eligibility",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://mistral.ai/pricing",
+        notes="Mid-tier Mistral. Good balance of cost and quality.",
+    ),
     ModelPricing(
         provider="mistral",
         model_id="devstral-medium",
         input_mtok=0.40,
         output_mtok=2.00,
         context_window=131_072,
-        free_tier="La Plateforme free tier available for Codestral (separate model)",
+        free_tier="La Plateforme free tier — check console; coding model may have separate quota",
         swe_bench_verified=61.6,
         swe_bench_note="SWE-Bench Verified; claimed to beat Gemini 2.5 Pro and GPT-4.1",
         knowledge_cutoff="2025-06",
@@ -596,9 +691,14 @@ MODELS: list[ModelPricing] = [
         output_mtok=1.00,
         context_window=200_000,
         free_tier=None,
+        free_tier_rpm=50,  # Tier 0: 50 RPM on standard Sonar models
+        paid_tier_rpm=4000,  # Tier 4+
         supports_vision=False,
         pricing_url="https://docs.perplexity.ai/guides/pricing",
-        notes="Web-search grounded. Input and output priced equally at $1/MTok. +$0.005/search call.",
+        notes=(
+            "Web-search grounded. Flat $1/$1 pricing. "
+            "+$0.005/search call on top of tokens. Tier 0 free: 50 RPM."
+        ),
     ),
     ModelPricing(
         provider="perplexity",
@@ -621,7 +721,22 @@ MODELS: list[ModelPricing] = [
         supports_thinking=True,
         supports_vision=False,
         pricing_url="https://docs.perplexity.ai/guides/pricing",
-        notes="Search + reasoning. Chain-of-thought reasoning on top of live web data.",
+        notes="Search + reasoning. CoT on top of live web data. +$0.005/search call.",
+    ),
+    ModelPricing(
+        provider="perplexity",
+        model_id="sonar-deep-research",
+        input_mtok=2.00,
+        output_mtok=8.00,
+        context_window=200_000,
+        free_tier=None,
+        free_tier_rpm=5,  # Tier 0: only 5 RPM — very limited
+        supports_vision=False,
+        pricing_url="https://docs.perplexity.ai/guides/pricing",
+        notes=(
+            "Autonomous multi-step research (many web searches per query). "
+            "+$2/1K citation tokens. Tier 0 free: only 5 RPM."
+        ),
     ),
     # ══════════════════════════════════════════════════════════════════════
     # AMAZON (AWS Bedrock — Nova family)
@@ -833,9 +948,13 @@ MODELS: list[ModelPricing] = [
         output_mtok=0.08,
         context_window=128_000,
         inference_speed_tps=840,
-        free_tier="Free API key with rate limits (no credit card required)",
+        free_tier="Free API key — no credit card; rate-limited (30 RPM / 6K TPM)",
+        free_tier_rpm=30,
+        free_tier_tpm=6_000,
         pricing_url="https://groq.com/pricing/",
-        notes="Fastest cheap model on Groq. 840 t/s. Great for latency-critical pipelines.",
+        notes=(
+            "Fastest cheap model on Groq. 840 t/s. Cached tokens excluded from rate limit counters."
+        ),
     ),
     ModelPricing(
         provider="groq",
@@ -844,7 +963,9 @@ MODELS: list[ModelPricing] = [
         output_mtok=0.34,
         context_window=128_000,
         inference_speed_tps=594,
-        free_tier="Free API key with rate limits",
+        free_tier="Free API key — 30 RPM / 6K TPM",
+        free_tier_rpm=30,
+        free_tier_tpm=6_000,
         pricing_url="https://groq.com/pricing/",
         notes="Llama 4 Scout on Groq. 594 t/s. Good quality/speed/cost balance.",
     ),
@@ -855,9 +976,11 @@ MODELS: list[ModelPricing] = [
         output_mtok=0.79,
         context_window=128_000,
         inference_speed_tps=394,
-        free_tier="Free API key with rate limits",
+        free_tier="Free API key — 30 RPM / 12K TPM",
+        free_tier_rpm=30,
+        free_tier_tpm=12_000,
         pricing_url="https://groq.com/pricing/",
-        notes="Full-power 70B on Groq at 394 t/s. Comparable quality to GPT-4o at 4x lower cost.",
+        notes="Full-power 70B on Groq at 394 t/s. GPT-4o quality at ~4x lower cost.",
     ),
     ModelPricing(
         provider="groq",
@@ -866,9 +989,11 @@ MODELS: list[ModelPricing] = [
         output_mtok=0.60,
         context_window=128_000,
         inference_speed_tps=500,
-        free_tier="Free API key with rate limits",
+        free_tier="Free API key — 30 RPM / 6K TPM",
+        free_tier_rpm=30,
+        free_tier_tpm=6_000,
         pricing_url="https://groq.com/pricing/",
-        notes="OpenAI open-source 120B model on Groq. 500 t/s. Strong quality at low price.",
+        notes="OpenAI open-source 120B on Groq. 500 t/s. Strong quality at low price.",
     ),
     # ══════════════════════════════════════════════════════════════════════
     # FIREWORKS AI  (inference platform)
@@ -991,6 +1116,75 @@ MODELS: list[ModelPricing] = [
         pricing_url="https://cloud.cerebras.ai/platform/pricing",
         notes="3,000 t/s — fastest 120B inference available. Pricing approximate.",
     ),
+    # ══════════════════════════════════════════════════════════════════════
+    # AZURE OPENAI
+    # Pricing mirrors OpenAI direct. Value = drawing from Azure for Startups credits
+    # instead of paying cash. Stronghold: ~$2.5K approved. BookCreator: applying.
+    # litellm model prefix: "azure/<deployment-name>"
+    # Important: reserve credit headroom for compute/storage infra, not just inference.
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="azure_openai",
+        model_id="azure/gpt-4.1",
+        input_mtok=2.00,
+        output_mtok=8.00,
+        context_window=1_047_576,
+        free_tier="Covered by Azure for Startups credits ($2.5K-$25K)",
+        knowledge_cutoff="2024-06",
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes=(
+            "Same model as OpenAI gpt-4.1. Costs draw from Azure credits not cash. "
+            "Deploy via Azure AI Studio. litellm: model='azure/YOUR_DEPLOYMENT_NAME'."
+        ),
+    ),
+    ModelPricing(
+        provider="azure_openai",
+        model_id="azure/gpt-4o",
+        input_mtok=2.50,
+        output_mtok=10.00,
+        context_window=128_000,
+        free_tier="Covered by Azure for Startups credits",
+        knowledge_cutoff="2023-10",
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes="Azure-hosted GPT-4o. Good for multimodal tasks on startup credits.",
+    ),
+    ModelPricing(
+        provider="azure_openai",
+        model_id="azure/o4-mini",
+        input_mtok=1.10,
+        output_mtok=4.40,
+        context_window=200_000,
+        free_tier="Covered by Azure for Startups credits",
+        supports_thinking=True,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes="Best cost-effective reasoning model on Azure credits. 200K context.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # OPENROUTER  (aggregator — single key for 200+ models)
+    # Source: https://openrouter.ai/docs
+    # Free tier: small credit on signup + genuinely free $0/tok models
+    # Useful for: fallback routing, model comparison, accessing free-tier models
+    # litellm provider prefix: "openrouter/<provider>/<model>"
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="openrouter",
+        model_id="openrouter/auto",
+        input_mtok=0.00,  # routing meta-model; actual cost = underlying model price
+        output_mtok=0.00,
+        context_window=200_000,
+        free_tier=(
+            "Small free credit on signup + free $0 models (filter at openrouter.ai/models?q=free)"
+        ),
+        pricing_url="https://openrouter.ai/models",
+        notes=(
+            "Routes automatically to best available model. "
+            "Input/output price = underlying model. Add ~5-10% OpenRouter markup. "
+            "Free models include: Llama-3.1-8B, Gemma, Qwen, Mistral-7B variants. "
+            "GET /api/v1/auth/key for rate-limit status. "
+            "litellm: model='openrouter/anthropic/claude-opus-4-7' etc."
+        ),
+    ),
 ]
 
 
@@ -1024,6 +1218,8 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "together": "https://docs.together.ai/docs/serverless-models",
     "novita": "https://novita.ai/model-api/pricing",
     "cerebras": "https://cloud.cerebras.ai/platform/pricing",
+    "azure_openai": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+    "openrouter": "https://openrouter.ai/api/v1/models",
 }
 
 
@@ -1055,6 +1251,102 @@ def cost_for_tokens(
     else:
         input_cost = m.input_mtok * input_tokens / 1_000_000
     return input_cost + m.output_mtok * output_tokens / 1_000_000
+
+
+def benchmark_table() -> str:
+    """
+    Markdown table of benchmark scores sorted by SWE-bench % (best first).
+    Only includes models with at least one benchmark score populated.
+    """
+    scored = [
+        m
+        for m in MODELS
+        if any(
+            [
+                m.swe_bench_verified,
+                m.terminal_bench,
+                m.humaneval,
+                m.live_code_bench,
+                m.mmlu,
+                m.gpqa_diamond,
+                m.humanity_last_exam,
+                m.arena_elo,
+            ]
+        )
+    ]
+    scored.sort(key=lambda m: m.swe_bench_verified or 0, reverse=True)
+
+    def f(v: float | None) -> str:
+        return f"{v:.1f}%" if v is not None else "-"
+
+    def fi(v: int | None) -> str:
+        return str(v) if v is not None else "-"
+
+    rows = [
+        f"| {m.provider:<14} | {m.model_id:<30} "
+        f"| {f(m.swe_bench_verified):>11} "
+        f"| {f(m.terminal_bench):>11} "
+        f"| {f(m.humaneval):>9} "
+        f"| {f(m.live_code_bench):>12} "
+        f"| {f(m.mmlu):>6} "
+        f"| {f(m.gpqa_diamond):>12} "
+        f"| {f(m.humanity_last_exam):>8} "
+        f"| {fi(m.arena_elo):>9} |"
+        for m in scored
+    ]
+    header = (
+        "| Provider       | Model                          "
+        "| SWE-bench % | Terminal-B% |  HumanEv% | LiveCodeB % "
+        "|   MMLU | GPQA Diamond | HLE % | Arena Elo |\n"
+        "|----------------|--------------------------------"
+        "|-------------|-------------|-----------|------------"
+        "|--------|--------------|-------|----------|\n"
+    )
+    footer = (
+        "\nSWE-bench Verified: https://swebench.com\n"
+        "Terminal-bench: terminal/shell task completion (agentic)\n"
+        "HumanEval: classic code generation pass@1\n"
+        "LiveCodeBench: post-cutoff coding problems (harder to overfit)\n"
+        "HLE: Humanity's Last Exam (PhD-level multi-discipline)\n"
+        "Arena Elo: Chatbot Arena human preference rank (lmarena.ai)\n"
+        "'-' = score not yet populated; contributions welcome\n"
+    )
+    return header + "\n".join(rows) + "\n" + footer
+
+
+def limits_table() -> str:
+    """
+    Markdown table of rate limits sorted by provider.
+    Shows free tier RPM/TPM and notes. Only models with free tier data shown.
+    """
+    has_data = [m for m in MODELS if m.free_tier is not None or m.free_tier_rpm is not None]
+    has_data.sort(key=lambda m: (m.provider, m.model_id))
+
+    def fi(v: int | None) -> str:
+        return str(v) if v is not None else "?"
+
+    rows = [
+        f"| {m.provider:<14} | {m.model_id[:30]:<30} "
+        f"| {fi(m.free_tier_rpm):>8} "
+        f"| {fi(m.free_tier_tpm):>10} "
+        f"| {(m.free_tier or '')[:60]:<60} |"
+        for m in has_data
+    ]
+    header = (
+        "| Provider       | Model                          "
+        "| Free RPM | Free TPM  | Free Tier Description                                       |\n"
+        "|----------------|--------------------------------"
+        "|----------|-----------|-------------------------------------------------------------|\n"
+    )
+    footer = (
+        "\n? = available but limit not confirmed; check provider console\n"
+        "Rate limits change frequently — always verify at source before production use\n"
+        "Groq limits source: https://console.groq.com/docs/rate-limits\n"
+        "Perplexity limits source: https://docs.perplexity.ai/guides/rate-limits\n"
+        "Google limits: personalized per project at aistudio.google.com/rate-limit\n"
+        "Mistral limits: https://console.mistral.ai (account dashboard)\n"
+    )
+    return header + "\n".join(rows) + "\n" + footer
 
 
 def comparison_table() -> str:
