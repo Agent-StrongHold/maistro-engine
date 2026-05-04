@@ -49,6 +49,8 @@ different amounts across platforms.
 
 from __future__ import annotations
 
+import json
+import urllib.request
 from dataclasses import dataclass
 
 
@@ -89,6 +91,10 @@ class ModelPricing:
     # Berkeley Function Calling Leaderboard — % overall accuracy on tool-call tasks
     # Critical for agentic systems; source: gorilla.cs.berkeley.edu/leaderboard.html
     bfcl: float | None = None
+
+    # AIME 2024 — % correct on American Invitational Math Examination (0-100 scale)
+    # Primary benchmark for separating reasoning/thinking models on hard math
+    aime_2024: float | None = None
 
     # Composite intelligence index (Artificial Analysis v4, higher = smarter)
     intelligence_index: float | None = None
@@ -288,25 +294,60 @@ PROVIDERS: dict[str, dict] = {
         "api_docs_url": "https://inference-docs.cerebras.ai/",
         "is_inference_platform": True,
     },
-    # Azure OpenAI mirrors OpenAI model pricing but draws from Azure credits.
-    # Azure for Startups tier structure:
-    #   Tier 1: $1,000 (initial approval — easier)
-    #   Tier 2: +$5,000 more after additional verification (prove legitimate business)
-    #   Total per entity: up to ~$6,000
-    # Stronghold: Tier 1 approved (~$1K). BookCreator: applying (~$1K Tier 1 expected).
-    # Combined near-term: ~$2K. If both reach Tier 2: ~$12K total.
-    # Not all credits go to inference — reserve headroom for compute/storage infra.
+    # Azure OpenAI mirrors OpenAI model pricing but draws from Azure startup credits.
+    # NOTE: "Founders Hub" was RETIRED on July 2, 2025. Two tracks now exist:
+    #   Self-service: $1K immediate + up to $4K after business verification = $5K/entity
+    #     Credits valid 90 days ($1K tranche) / 180 days ($4K tranche)
+    #     No investor required — just a registered legal business with a software product.
+    #   Investor Offer: $100K+ via VC/accelerator referral (invite-only)
+    # Stronghold: $1K approved (self-service track). BookCreator: applying.
+    # Near-term combined (both at $5K): ~$10K. Reserve headroom for infra.
+    # GitHub Copilot can be funded via Azure credits if Azure sub linked to GitHub.
+    # Sources: learn.microsoft.com/en-us/startups/changes-microsoft-for-startups
     "azure_openai": {
-        "name": "Azure OpenAI (Microsoft; draws from Azure for Startups credits)",
+        "name": "Azure OpenAI (Microsoft; draws from Azure startup credits)",
         "pricing_url": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
         "api_docs_url": "https://learn.microsoft.com/en-us/azure/ai-services/openai/",
         "is_inference_platform": False,
         "notes": (
-            "Tier 1: $1K (initial). Tier 2: +$5K after extra business verification. "
-            "Stronghold: Tier 1 approved. BookCreator: applying. "
-            "Near-term combined: ~$2K. Full Tier 2 both: ~$12K. "
-            "Reserve headroom for infra (compute, storage) not just inference."
+            "Self-service startup track: $1K immediate + $4K after business verification = $5K/entity. "
+            "Stronghold: $1K approved. BookCreator: applying. "
+            "Near-term combined (both reach $5K): ~$10K. "
+            "Investor Offer (VC-backed): $100K+. "
+            "GitHub Copilot can draw from Azure credits if Azure sub linked to GitHub."
         ),
+    },
+    # Zhipu AI — Chinese frontier models; GLM series; coding plans
+    "zhipu": {
+        "name": "Zhipu AI (GLM series — Chinese frontier models)",
+        "pricing_url": "https://open.bigmodel.cn/pricing",
+        "api_docs_url": "https://open.bigmodel.cn/dev/api",
+        "is_inference_platform": False,
+        "notes": (
+            "GLM Coding Plan: heavily discounted GLM-4-AirX for dev use; "
+            "free trial credits on signup at open.bigmodel.cn; strong multilingual/Chinese. "
+            "OpenAI-compatible API. GLM-Z1 is the reasoning model series."
+        ),
+    },
+    # Hugging Face — Serverless Inference API for open-weight models
+    "huggingface": {
+        "name": "Hugging Face (Serverless Inference API — 200K+ models)",
+        "pricing_url": "https://huggingface.co/pricing",
+        "api_docs_url": "https://huggingface.co/docs/api-inference",
+        "is_inference_platform": True,
+        "notes": (
+            "Free tier: serverless inference on popular models (rate-limited). "
+            "PRO plan ($9/mo): higher limits, priority inference. "
+            "Inference Endpoints: pay-per-hour GPU hosting ($0.60-$3.20/hr on A10G)."
+        ),
+    },
+    # DeepInfra — ultra-cheap open-weight inference
+    "deepinfra": {
+        "name": "DeepInfra (inference platform — cheapest open-weight hosting)",
+        "pricing_url": "https://deepinfra.com/pricing",
+        "api_docs_url": "https://deepinfra.com/docs",
+        "is_inference_platform": True,
+        "notes": "Often cheapest per-token for Llama, Qwen, Mistral variants. Free trial credits.",
     },
     # Inference platform; ultra-fast CoE architecture
     "sambanova": {
@@ -315,13 +356,20 @@ PROVIDERS: dict[str, dict] = {
         "api_docs_url": "https://community.sambanova.ai/",
         "is_inference_platform": True,
     },
-    # NVIDIA Inference Microservices — access to NVIDIA-optimised open models
+    # NVIDIA NIM — inference microservices; GPU-optimised open models
+    # Free tier: NIM API at build.nvidia.com — free prototyping (rate-limited, DGX Cloud backend)
+    # NVIDIA Inception program: free to join, < 10 years old startup; no VC required;
+    #   apply at programs.nvidia.com/phoenix/application; contact inceptionprogram@nvidia.com
     "nvidia": {
         "name": "NVIDIA NIM (inference microservices; GPU-optimised open models)",
         "pricing_url": "https://build.nvidia.com/",
         "api_docs_url": "https://docs.api.nvidia.com/",
         "is_inference_platform": True,
-        "notes": "1000 free API credits on signup. Hosts Llama, Mistral, Qwen, and other models on A100/H100.",
+        "notes": (
+            "Free prototyping NIM API at build.nvidia.com (rate-limited, no credit card). "
+            "NVIDIA Inception program: free membership, no VC required, SDKs/DLI courses/co-marketing. "
+            "Apply: programs.nvidia.com/phoenix/application"
+        ),
     },
     # AI21 Labs — Jamba hybrid SSM-Transformer models; enterprise-focused
     "ai21": {
@@ -449,6 +497,10 @@ MODELS: list[ModelPricing] = [
         output_mtok=8.00,
         context_window=1_047_576,
         free_tier=None,
+        swe_bench_verified=54.6,
+        mmlu=90.2,
+        gpqa_diamond=66.3,
+        arena_elo=1381,
         knowledge_cutoff="2024-06",
         pricing_url="https://openrouter.ai/openai/gpt-4.1",
         notes="OpenAI long-context flagship. ~1M context. Strong advanced coding and reasoning.",
@@ -470,6 +522,23 @@ MODELS: list[ModelPricing] = [
     ),
     ModelPricing(
         provider="openai",
+        model_id="codex-mini-latest",
+        input_mtok=1.50,
+        output_mtok=6.00,
+        context_window=200_000,
+        free_tier=None,
+        supports_thinking=True,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://platform.openai.com/docs/models/codex",
+        notes=(
+            "OpenAI Codex agent model (2025 launch) — autonomous software engineering. "
+            "Based on o4-mini, tuned for SWE tasks in cloud sandboxes. "
+            "Available in ChatGPT Plus ($20/mo) and Pro ($200/mo) with usage quotas. "
+            "API: model='codex-mini-latest'; runs file-editing agentic loops autonomously."
+        ),
+    ),
+    ModelPricing(
+        provider="openai",
         model_id="gpt-4o",
         input_mtok=2.50,
         output_mtok=10.00,
@@ -486,6 +555,11 @@ MODELS: list[ModelPricing] = [
         output_mtok=8.00,
         context_window=200_000,
         free_tier=None,
+        swe_bench_verified=69.1,
+        mmlu=91.6,
+        gpqa_diamond=87.7,
+        humanity_last_exam=20.3,
+        arena_elo=1424,
         supports_thinking=True,
         knowledge_cutoff="2024-06",
         pricing_url="https://openrouter.ai/openai/o3",
@@ -498,6 +572,10 @@ MODELS: list[ModelPricing] = [
         output_mtok=4.40,
         context_window=200_000,
         free_tier=None,
+        swe_bench_verified=68.1,
+        gpqa_diamond=81.4,
+        live_code_bench=74.9,
+        arena_elo=1362,
         supports_thinking=True,
         knowledge_cutoff="2024-06",
         pricing_url="https://openrouter.ai/openai/o4-mini",
@@ -533,7 +611,13 @@ MODELS: list[ModelPricing] = [
         output_mtok=10.00,
         context_window=1_000_000,
         free_tier="AI Studio free tier (rate-limited)",
-        arena_elo=1358,  # lmarena.ai leaderboard May 2026
+        swe_bench_verified=63.8,
+        swe_bench_note="Custom agent setup",
+        mmlu=90.0,
+        gpqa_diamond=84.0,
+        live_code_bench=70.4,
+        humanity_last_exam=18.8,
+        arena_elo=1460,  # lmarena.ai mid-2025 peak; settled lower as newer models launched
         knowledge_cutoff="2025-01",
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Tiered: >200K costs $2.50/$15. Strong coding; available on Vertex AI + AI Studio.",
@@ -561,6 +645,11 @@ MODELS: list[ModelPricing] = [
         output_mtok=2.50,
         context_window=1_000_000,
         free_tier="AI Studio free tier (rate-limited); also free on Google AI Studio",
+        swe_bench_verified=60.4,
+        mmlu=86.6,
+        gpqa_diamond=82.8,
+        arena_elo=1412,
+        knowledge_cutoff="2025-02",
         supports_thinking=True,
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Best Gemini value. 1M context. Thinking mode supported. Generous free quota.",
@@ -600,6 +689,12 @@ MODELS: list[ModelPricing] = [
         max_output=384_000,
         cache_read_mtok=0.0028,  # cache hit = input/50
         free_tier="Trial credits on signup",
+        swe_bench_verified=79.0,
+        swe_bench_note="Max reasoning mode; non-think: 73.7%",
+        mmlu=88.7,
+        gpqa_diamond=88.1,
+        live_code_bench=91.6,
+        humanity_last_exam=34.8,
         supports_thinking=True,
         pricing_url="https://api-docs.deepseek.com/quick_start/pricing/",
         notes=(
@@ -616,6 +711,12 @@ MODELS: list[ModelPricing] = [
         max_output=384_000,
         cache_read_mtok=0.003625,
         free_tier="Trial credits on signup",
+        swe_bench_verified=80.6,
+        swe_bench_note="Max reasoning mode; non-think: 73.6%",
+        mmlu=90.1,
+        gpqa_diamond=90.1,
+        live_code_bench=93.5,
+        humanity_last_exam=37.7,
         supports_thinking=True,
         arena_elo=1432,  # lmarena.ai leaderboard May 2026
         knowledge_cutoff="2024-11",
@@ -633,6 +734,13 @@ MODELS: list[ModelPricing] = [
         output_mtok=2.15,
         context_window=163_840,
         free_tier="Trial credits on signup",
+        swe_bench_verified=57.6,
+        mmlu=93.4,
+        gpqa_diamond=81.0,
+        live_code_bench=73.3,
+        humanity_last_exam=17.7,
+        aime_2024=87.5,  # AIME 2025 score (no 2024 score available; model released 2025)
+        arena_elo=1426,
         supports_thinking=True,
         knowledge_cutoff="2024-07",
         pricing_url="https://openrouter.ai/deepseek/deepseek-r1-0528",
@@ -650,8 +758,16 @@ MODELS: list[ModelPricing] = [
         output_mtok=15.00,
         context_window=256_000,
         free_tier="Limited free credits for new accounts",
+        swe_bench_verified=73.0,
+        swe_bench_note="Grok-4 Code variant; range 72-75% across evals",
+        mmlu=92.1,
+        gpqa_diamond=87.5,
+        humaneval=97.0,
+        live_code_bench=79.0,
+        humanity_last_exam=25.4,
+        terminal_bench=60.0,
         supports_thinking=True,  # reasoning always on; cannot disable
-        arena_elo=1397,  # lmarena.ai leaderboard May 2026 (approx)
+        arena_elo=1442,  # lmarena.ai leaderboard May 2026
         knowledge_cutoff="2025-07",
         pricing_url="https://docs.x.ai/docs/models",
         notes=(
@@ -912,7 +1028,10 @@ MODELS: list[ModelPricing] = [
         context_window=131_072,
         free_tier="Trial credits on signup",
         swe_bench_verified=65.8,
-        swe_bench_note="SWE-bench Verified; strong agentic coding",
+        swe_bench_note="Single attempt agentic; multi-attempt: 71.6%",
+        mmlu=89.5,
+        gpqa_diamond=75.1,
+        live_code_bench=53.7,
         arena_elo=1426,  # lmarena.ai leaderboard May 2026
         knowledge_cutoff="2025-07",
         pricing_url="https://openrouter.ai/moonshotai/kimi-k2",
@@ -961,6 +1080,12 @@ MODELS: list[ModelPricing] = [
         output_mtok=0.60,
         context_window=1_048_576,
         free_tier="Free on many providers (Groq free tier, Cloudflare Workers AI free tier)",
+        mmlu=85.5,
+        gpqa_diamond=69.8,
+        humaneval=90.0,
+        live_code_bench=43.4,
+        arena_elo=1292,
+        knowledge_cutoff="2024-10",
         pricing_url="https://openrouter.ai/meta-llama/llama-4-maverick",
         notes="Open weights. ~1M context. Prices vary: Groq, Together, Fireworks all host it.",
     ),
@@ -1003,7 +1128,14 @@ MODELS: list[ModelPricing] = [
         output_mtok=1.82,
         context_window=131_072,
         free_tier="Alibaba Cloud free trial credits on signup",
+        mmlu=87.8,
+        gpqa_diamond=81.1,
+        humaneval=77.6,
+        live_code_bench=70.7,
+        arena_elo=1369,
+        aime_2024=81.5,  # AIME 2025 score (model too recent for 2024)
         supports_thinking=True,
+        knowledge_cutoff="2025-06",
         pricing_url="https://openrouter.ai/qwen/qwen3-235b-a22b",
         notes="MoE 235B total / 22B active. Thinking mode available. Open weights.",
     ),
@@ -1223,6 +1355,89 @@ MODELS: list[ModelPricing] = [
         notes="3,000 t/s — fastest 120B inference available. Pricing approximate.",
     ),
     # ══════════════════════════════════════════════════════════════════════
+    # ZHIPU AI  (GLM series — Chinese frontier; strong coding + multilingual)
+    # Source: https://open.bigmodel.cn/pricing
+    # Free tier: trial credits on signup at open.bigmodel.cn
+    # GLM Coding Plan: GLM-4-AirX at ~60% discount for developer/coding workloads
+    # API is OpenAI-compatible — litellm prefix: "zhipuai/"
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="zhipu",
+        model_id="glm-4-plus",
+        input_mtok=0.70,
+        output_mtok=0.70,
+        context_window=128_000,
+        free_tier="Trial credits on signup at open.bigmodel.cn",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://open.bigmodel.cn/pricing",
+        notes=(
+            "Zhipu AI flagship. Strong Chinese + English. OpenAI-compatible API. "
+            "Flat $0.70/$0.70 pricing. Multimodal (vision)."
+        ),
+    ),
+    ModelPricing(
+        provider="zhipu",
+        model_id="glm-4-air",
+        input_mtok=0.14,
+        output_mtok=0.14,
+        context_window=128_000,
+        free_tier="Trial credits on signup; GLM Coding Plan reduces to ~$0.06/MTok",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://open.bigmodel.cn/pricing",
+        notes=(
+            "GLM Coding Plan: ~60% discount for dev/coding use = effectively $0.05-$0.06/MTok. "
+            "Very fast, very cheap. Strong at structured tasks and code generation."
+        ),
+    ),
+    ModelPricing(
+        provider="zhipu",
+        model_id="glm-z1-plus",
+        input_mtok=0.70,
+        output_mtok=0.70,
+        context_window=128_000,
+        free_tier="Trial credits on signup",
+        supports_thinking=True,
+        knowledge_cutoff="2024-12",
+        pricing_url="https://open.bigmodel.cn/pricing",
+        notes="GLM-Z1 reasoning series. CoT thinking mode. Strong at math, science, coding.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # DEEPINFRA  (inference platform — ultra-cheap open-weight hosting)
+    # Source: https://deepinfra.com/pricing
+    # Free tier: trial API credits on signup
+    # Often the cheapest per-token for Llama, Qwen, Mistral open-weight models
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="deepinfra",
+        model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        input_mtok=0.055,
+        output_mtok=0.055,
+        context_window=131_072,
+        free_tier="Trial API credits on signup",
+        pricing_url="https://deepinfra.com/meta-llama/Meta-Llama-3.1-8B-Instruct",
+        notes="Often cheapest 8B serving. Flat rate. Great for high-volume lightweight tasks.",
+    ),
+    ModelPricing(
+        provider="deepinfra",
+        model_id="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        input_mtok=0.23,
+        output_mtok=0.40,
+        context_window=131_072,
+        free_tier="Trial API credits on signup",
+        pricing_url="https://deepinfra.com/meta-llama/Llama-3.3-70B-Instruct",
+        notes="One of the cheapest 70B hosting options. Good for high-quality open-weight at scale.",
+    ),
+    ModelPricing(
+        provider="deepinfra",
+        model_id="deepseek-ai/DeepSeek-V3",
+        input_mtok=0.14,
+        output_mtok=0.28,
+        context_window=163_840,
+        free_tier="Trial API credits on signup",
+        pricing_url="https://deepinfra.com/deepseek-ai/DeepSeek-V3",
+        notes="DeepSeek-V3 on DeepInfra. Very cheap. Good general-purpose performance.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
     # AI21 LABS  (Jamba — hybrid SSM-Transformer architecture)
     # Source: https://www.ai21.com/pricing
     # Free tier: $10 in credits on signup; trial access to Jamba models
@@ -1434,7 +1649,309 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "nvidia": "https://build.nvidia.com/",
     "moonshot": "https://platform.moonshot.ai/docs/pricing/chat",
     "minimax": "https://www.minimax.io/pricing",
+    "zhipu": "https://open.bigmodel.cn/pricing",
+    "huggingface": "https://huggingface.co/pricing",
+    "deepinfra": "https://deepinfra.com/pricing",
 }
+
+
+# ---------------------------------------------------------------------------
+# Startup / cloud credit programs
+# ---------------------------------------------------------------------------
+#
+# Data as of May 2026.  Sources: learn.microsoft.com/en-us/startups, cloud.google.com/startup,
+# aws.amazon.com/startups, cloudvisor.co/aws-activate-program, nvidia.com/en-us/startups.
+#
+# KEY for "funding_required":
+#   False  = bootstrapped / no investor needed
+#   "seed" = seed or later funding required (or accelerator)
+#   "vc"   = VC-backed or invite-only referral
+#
+# NOTE: "Microsoft Founders Hub" was retired July 2, 2025. Two new tracks exist.
+
+STARTUP_PROGRAMS: dict[str, dict] = {
+    # ── Microsoft ─────────────────────────────────────────────────────────
+    "microsoft_self_service": {
+        "name": "Microsoft Azure Startup Credit (Self-Service)",
+        "provider": "Microsoft / Azure",
+        "credits_usd": 5_000,
+        "credit_detail": "$1K immediately (valid 90 days) + up to $4K after business verification (valid 180 days)",
+        "duration_note": "90 days / 180 days after each tranche",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Azure OpenAI Service (all models) + Azure AI Foundry covered",
+        "other_perks": "GitHub Copilot can draw from Azure credits if Azure sub linked to GitHub",
+        "url": "https://azure.microsoft.com/en-us/free/startups/",
+        "docs_url": "https://learn.microsoft.com/en-us/startups/changes-microsoft-for-startups",
+        "notes": (
+            "Must be a new Azure customer with no prior Azure account. "
+            "Signed in via personal MSA. Registered legal business, owns software product. "
+            "Cannot be consultancy / agency / gov / edu / crypto. "
+            "Stronghold: $1K approved (self-service track). BookCreator: applying. "
+            "Both reaching full $5K = $10K combined near-term."
+        ),
+    },
+    "microsoft_investor_offer": {
+        "name": "Microsoft for Startups Investor Offer",
+        "provider": "Microsoft / Azure",
+        "credits_usd": 100_000,  # starting value; can go higher
+        "credit_detail": "Starts at $100K; up to $150K+ depending on investor/cohort",
+        "duration_note": "Varies by cohort and investor agreement",
+        "funding_required": "vc",
+        "multiple_entities_ok": False,
+        "ai_inference_covered": True,
+        "ai_detail": "Azure OpenAI + Azure AI Foundry + GPU VM access for AI workloads",
+        "other_perks": (
+            "GitHub Enterprise (20 users), M365 Business Premium (50 seats), "
+            "Visual Studio Enterprise (5 users), Dynamics 365, Power Platform, "
+            "Azure Standard Support, go-to-market co-selling"
+        ),
+        "url": "https://www.microsoft.com/en-us/startups",
+        "docs_url": "https://learn.microsoft.com/en-us/microsoft-for-startups/benefits",
+        "notes": "Requires referral code from VC/accelerator in Microsoft's Investor Network. Pre-Series C only.",
+    },
+    # ── Google ────────────────────────────────────────────────────────────
+    "google_cloud_start": {
+        "name": "Google for Startups Cloud Program — Start",
+        "provider": "Google Cloud",
+        "credits_usd": 2_000,
+        "credit_detail": "$2,000 in Google Cloud credits",
+        "duration_note": "1 year",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Vertex AI (Gemini), Google AI Studio",
+        "other_perks": "$200 Google Cloud Skill Boost training credits",
+        "url": "https://cloud.google.com/startup",
+        "notes": "No institutional funding needed. Founded within last 5 years. No prior Google Cloud credits (beyond free trial).",
+    },
+    "google_cloud_scale_ai": {
+        "name": "Google for Startups Cloud Program — Scale AI",
+        "provider": "Google Cloud",
+        "credits_usd": 350_000,
+        "credit_detail": "Up to $250K Year 1 (100%) + up to $100K Year 2 (20% discount) = $350K over 2 years",
+        "duration_note": "2 years",
+        "funding_required": "seed",
+        "multiple_entities_ok": False,
+        "ai_inference_covered": True,
+        "ai_detail": "Vertex AI + Gemini + Anthropic Claude (up to $10K partner credit) + Fireworks AI",
+        "other_perks": "Dedicated Startup Success Manager, frontier model access, enablement resources",
+        "url": "https://cloud.google.com/startup",
+        "notes": "AI-first startup required. Seed to Series A (Series A must be within last 12 months). Founded within 10 years. Cap: not yet received $5K+ in Google Cloud credits.",
+    },
+    # ── AWS ───────────────────────────────────────────────────────────────
+    "aws_activate_founders": {
+        "name": "AWS Activate — Founders",
+        "provider": "Amazon Web Services",
+        "credits_usd": 1_000,
+        "credit_detail": "$1,000 AWS credits + $350 Developer Support credits",
+        "duration_note": "12 months",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Amazon Bedrock (Nova models, Claude, Llama, Mistral, Cohere via Bedrock)",
+        "other_perks": "$350 AWS Developer Support",
+        "url": "https://aws.amazon.com/activate/founders/",
+        "notes": (
+            "Self-funded / bootstrapped. No Activate Provider affiliation needed. "
+            "New to Activate Credits (never received before). "
+            "Each separate legal entity can apply independently."
+        ),
+    },
+    "aws_activate_portfolio": {
+        "name": "AWS Activate — Portfolio",
+        "provider": "Amazon Web Services",
+        "credits_usd": 100_000,
+        "credit_detail": "Up to $100K credits; varies by Activate Provider (YC = $25K, others vary)",
+        "duration_note": "12-24 months depending on provider",
+        "funding_required": "seed",
+        "multiple_entities_ok": False,
+        "ai_inference_covered": True,
+        "ai_detail": "Amazon Bedrock (same coverage as Founders, but higher limit)",
+        "other_perks": "Up to $10,000 Business Support (24/7 cloud engineers)",
+        "url": "https://aws.amazon.com/activate/",
+        "notes": (
+            "Must have Seed or Series A funding + valid Org ID from an Activate Provider. "
+            "Apply within 12 months of most recent funding. Pre-Series B only. "
+            "Cannot double-dip for same entity (can only upgrade, not re-apply for same amount)."
+        ),
+    },
+    # ── NVIDIA ────────────────────────────────────────────────────────────
+    "nvidia_inception": {
+        "name": "NVIDIA Inception",
+        "provider": "NVIDIA",
+        "credits_usd": None,  # not publicly stated; disclosed after acceptance
+        "credit_detail": "Free NIM API access for prototyping (rate-limited); partner discounts; credit amounts vary",
+        "duration_note": "Ongoing membership (no fixed term)",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "NVIDIA NIM prototyping API (build.nvidia.com), DGX Cloud access (amount varies)",
+        "other_perks": (
+            "NVIDIA DLI free courses + discounted workshops, "
+            "SDKs (CUDA, TensorRT, NeMo, Triton), co-marketing, "
+            "Inception Capital Connect (VC introductions), global events"
+        ),
+        "url": "https://www.nvidia.com/en-us/startups/",
+        "apply_url": "https://programs.nvidia.com/phoenix/application",
+        "notes": (
+            "Free to join. < 10 years old, at least one developer, incorporated, active website. "
+            "Disqualifiers: consulting, crypto, cloud reseller, publicly traded. "
+            "Two separate incorporated startups can each apply independently. "
+            "Contact: inceptionprogram@nvidia.com for credit specifics."
+        ),
+    },
+    # ── Cloudflare ────────────────────────────────────────────────────────
+    "cloudflare_for_startups": {
+        "name": "Cloudflare for Startups — Bootstrap",
+        "provider": "Cloudflare",
+        "credits_usd": 5_000,
+        "credit_detail": "$5K Bootstrap (no investor); $25K Early Stage (<$1M raised); $100K Seed ($1-5M); $250K High Growth (Tier 1 VC)",
+        "duration_note": "~12 months",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Workers AI (10K Neurons/day free for all; startup program expands quota), R2, Pages",
+        "other_perks": "CDN, DDoS, DNS, Pages, Workers, R2 storage, Zero Trust, Cache Reserve (capped at $10K)",
+        "url": "https://www.cloudflare.com/forstartups/",
+        "notes": (
+            "Bootstrap tier: no investor needed — bootstrapped/stealth, founded < 5 years, building software. "
+            "Workers AI 10K Neurons/day is already free on all plans; program expands this. "
+            "Multiple separate legal entities can each apply independently."
+        ),
+    },
+    # ── OpenAI ────────────────────────────────────────────────────────────
+    "openai_for_startups": {
+        "name": "OpenAI for Startups — Direct Apply",
+        "provider": "OpenAI",
+        "credits_usd": 2_500,
+        "credit_detail": "$2,500 API credits (direct); $100K+ with OpenAI partner VC referral",
+        "duration_note": "Not publicly specified",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Full OpenAI API access (GPT-4.1, o3, o4-mini, Codex, etc.)",
+        "other_perks": "Partner network introductions, early model access",
+        "url": "https://openai.com/startups/",
+        "notes": (
+            "Direct apply (no investor): $2,500. < 5 years old from incorporation; "
+            "functional product/prototype; formally incorporated (no sole proprietors); API meaningfully integrated. "
+            "Partner VC referral path: $100K. OpenAI Grove cohort: $50K + 5-week mentorship (cohort-based, check for availability)."
+        ),
+    },
+    # ── Anthropic ─────────────────────────────────────────────────────────
+    "anthropic_for_startups": {
+        "name": "Anthropic for Startups (Claude)",
+        "provider": "Anthropic",
+        "credits_usd": None,  # not publicly disclosed
+        "credit_detail": "Undisclosed; priority rate limits + API credits + founder events",
+        "duration_note": "Not publicly specified",
+        "funding_required": "vc",  # requires Anthropic partner VC backing
+        "multiple_entities_ok": False,
+        "ai_inference_covered": True,
+        "ai_detail": "Claude API (all models)",
+        "other_perks": "Priority rate limits (highest published tier), Anthropic team office hours, exclusive events",
+        "url": "https://claude.com/programs/startups",
+        "notes": (
+            "REQUIRES VC partner backing — no direct open-apply path. "
+            "Must be backed by an Anthropic partner VC to receive a program link. "
+            "Bootstrapped founders: standard API + pay-as-you-go; no startup credit program without VC partner."
+        ),
+    },
+    # ── Mistral ───────────────────────────────────────────────────────────
+    "mistralship": {
+        "name": "Mistralship (Mistral AI startup program)",
+        "provider": "Mistral AI",
+        "credits_usd": 33_000,  # ~EUR 30K
+        "credit_detail": "EUR 30,000 (~$33K USD) on La Plateforme",
+        "duration_note": "~6 months (cohort-based)",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "La Plateforme API (all Mistral models — codestral, mistral-large, devstral, etc.)",
+        "other_perks": "1-on-1 support from Mistral Solutions & Science team; early access to new models",
+        "url": "https://mistral.ai/",
+        "notes": (
+            "Pre-Series B required (can be bootstrapped). Founded < 7 years. Business email + website. "
+            "COHORT-BASED — check mistral.ai for current cohort status (Cohort 1 closed Jan 2025; Cohort 2 TBD). "
+            "Separate from the already-generous free dev tier (2 RPM, 1B tokens/month)."
+        ),
+    },
+    # ── GitHub ────────────────────────────────────────────────────────────
+    "github_for_startups": {
+        "name": "GitHub for Startups",
+        "provider": "GitHub / Microsoft",
+        "credits_usd": 10_000,
+        "credit_detail": "$10,000 in GitHub platform credits (12 months)",
+        "duration_note": "12 months",
+        "funding_required": "seed",
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "GitHub Copilot (Business + premium models + agentic), 50K Actions minutes, Advanced Security",
+        "other_perks": "GitHub Enterprise (20 seats), GitHub Actions credits, GitHub Packages, Advanced Security",
+        "url": "https://github.com/enterprise/startups",
+        "notes": (
+            "Requires funding (Series B or earlier) OR GitHub for Startups partner affiliation. "
+            "Covers GitHub Copilot Business licenses + premium models (Claude, GPT-4, etc.). "
+            "Azure credits can also fund Copilot if Azure sub linked to GitHub. "
+            "Apply via partner or email startups@github.com"
+        ),
+    },
+    # ── Fireworks AI ──────────────────────────────────────────────────────
+    "fireworks_for_startups": {
+        "name": "Fireworks AI for Startups",
+        "provider": "Fireworks AI",
+        "credits_usd": 5_000,
+        "credit_detail": "Up to $5,000 in Fireworks inference credits",
+        "duration_note": "Not publicly specified",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Fireworks serverless inference (DeepSeek, Llama, Qwen, Mixtral, etc.)",
+        "other_perks": "Higher rate limits, startup community access, product roadmap sessions, meetups/hackathons",
+        "url": "https://fireworks.ai/startup-program",
+        "notes": (
+            "Review-based, no stated funding requirement. "
+            "Positioned for AI builders needing fast reliable inference. "
+            "Fireworks is particularly strong for DeepSeek-V4-Pro and open-weight models at scale."
+        ),
+    },
+}
+
+
+def startup_programs_table() -> str:
+    """
+    Markdown table of startup credit programs, sorted by credits (highest first).
+    Includes only programs where funding_required=False (no investor needed).
+    """
+    no_funding = {k: v for k, v in STARTUP_PROGRAMS.items() if not v["funding_required"]}
+    sorted_programs = sorted(
+        no_funding.items(),
+        key=lambda kv: kv[1]["credits_usd"] or 0,
+        reverse=True,
+    )
+
+    rows = []
+    for _, prog in sorted_programs:
+        cred = f"${prog['credits_usd']:,}" if prog["credits_usd"] else "varies"
+        ai = "yes" if prog["ai_inference_covered"] else "no"
+        multi = "yes" if prog["multiple_entities_ok"] else "no"
+        rows.append(
+            f"| {prog['name'][:45]:<45} | {cred:>8} | {ai:^4} | {multi:^5} | {prog['url']} |"
+        )
+
+    header = (
+        "### No-Funding-Required AI Cloud Startup Programs\n\n"
+        "| Program                                       |  Credits | AI  | Multi | URL |\n"
+        "|-----------------------------------------------|----------|-----|-------|-----|\n"
+    )
+    footer = (
+        "\nAI = AI/LLM inference covered by credits\n"
+        "Multi = multiple separate legal entities can each apply independently\n"
+        "Data as of May 2026 — always verify at program URL before applying\n"
+    )
+    return header + "\n".join(rows) + "\n" + footer
 
 
 # ---------------------------------------------------------------------------
@@ -1467,9 +1984,94 @@ def cost_for_tokens(
     return input_cost + m.output_mtok * output_tokens / 1_000_000
 
 
+def fetch_openrouter_prices(timeout: int = 15) -> dict[str, dict]:
+    """
+    Fetch live model prices from the OpenRouter public API.
+
+    Returns a dict keyed by model id (e.g. "anthropic/claude-sonnet-4-6").
+    Each value contains at minimum "prompt" and "completion" prices as USD/token strings.
+
+    No authentication required.  Source: https://openrouter.ai/api/v1/models
+
+    Example:
+        prices = fetch_openrouter_prices()
+        claude = prices.get("anthropic/claude-sonnet-4-6")
+        if claude:
+            input_per_mtok = float(claude["prompt"]) * 1_000_000
+    """
+    url = PRICING_UPDATE_SOURCES["openrouter_api"]
+    req = urllib.request.Request(url, headers={"User-Agent": "maistro-model-pricing/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read())
+    return {m["id"]: m.get("pricing", {}) for m in data.get("data", [])}
+
+
+def fetch_litellm_prices(timeout: int = 20) -> dict[str, dict]:
+    """
+    Fetch model prices from the LiteLLM model database (GitHub raw JSON).
+
+    Returns the full dict keyed by model name.  Each entry includes:
+      input_cost_per_token, output_cost_per_token, max_input_tokens,
+      max_output_tokens, litellm_provider, and more.
+
+    Updated with each LiteLLM release.
+    Source: https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json
+
+    Example:
+        prices = fetch_litellm_prices()
+        entry = prices.get("claude-sonnet-4-6")
+        if entry:
+            input_per_mtok = entry["input_cost_per_token"] * 1_000_000
+    """
+    url = PRICING_UPDATE_SOURCES["litellm_model_db"]
+    req = urllib.request.Request(url, headers={"User-Agent": "maistro-model-pricing/1.0"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def price_diff_report(timeout: int = 15) -> str:
+    """
+    Compare MODELS list prices against live OpenRouter prices.
+    Returns a Markdown report highlighting models where our stored price differs.
+    """
+    try:
+        live = fetch_openrouter_prices(timeout=timeout)
+    except Exception as exc:
+        return f"Could not fetch OpenRouter prices: {exc}"
+
+    lines = [
+        "## Price freshness vs OpenRouter live API\n",
+        "| Model | Stored In $/MTok | Live In $/MTok | Drift |\n",
+        "|-------|-----------------|----------------|-------|\n",
+    ]
+    found_any = False
+    for m in MODELS:
+        # OpenRouter uses "provider/model" format; try a few key models
+        or_key = f"{m.provider}/{m.model_id}".lower()
+        entry = live.get(or_key)
+        if entry is None:
+            continue
+        try:
+            live_in = float(entry.get("prompt", 0)) * 1_000_000
+        except (ValueError, TypeError):
+            continue
+        drift = ((live_in - m.input_mtok) / m.input_mtok * 100) if m.input_mtok else 0
+        flag = " **STALE**" if abs(drift) > 10 else ""
+        lines.append(
+            f"| {m.model_id} | ${m.input_mtok:.4f} | ${live_in:.4f} | {drift:+.1f}%{flag} |\n"
+        )
+        found_any = True
+    if not found_any:
+        lines.append(
+            "| (no matching models found — model IDs may differ from OpenRouter format) |\n"
+        )
+    return "".join(lines)
+
+
 def benchmark_table() -> str:
     """
-    Markdown table of benchmark scores sorted by SWE-bench % (best first).
+    Two Markdown tables of benchmark scores sorted by SWE-bench % (best first).
+    Table 1: coding/agentic benchmarks. Table 2: general intelligence benchmarks.
     Only includes models with at least one benchmark score populated.
     """
     scored = [
@@ -1486,6 +2088,7 @@ def benchmark_table() -> str:
                 m.humanity_last_exam,
                 m.arena_elo,
                 m.bfcl,
+                m.aime_2024,
             ]
         )
     ]
@@ -1497,38 +2100,63 @@ def benchmark_table() -> str:
     def fi(v: int | None) -> str:
         return str(v) if v is not None else "-"
 
-    rows = [
+    coding_rows = [
         f"| {m.provider:<14} | {m.model_id:<30} "
         f"| {f(m.swe_bench_verified):>11} "
-        f"| {f(m.terminal_bench):>11} "
-        f"| {f(m.humaneval):>9} "
+        f"| {f(m.terminal_bench):>12} "
+        f"| {f(m.humaneval):>10} "
         f"| {f(m.live_code_bench):>12} "
-        f"| {f(m.mmlu):>6} "
-        f"| {f(m.gpqa_diamond):>12} "
-        f"| {f(m.humanity_last_exam):>8} "
-        f"| {fi(m.arena_elo):>9} "
-        f"| {f(m.bfcl):>7} |"
+        f"| {f(m.bfcl):>9} |"
         for m in scored
     ]
-    header = (
+    coding_header = (
+        "### Coding & Agentic Benchmarks\n\n"
         "| Provider       | Model                          "
-        "| SWE-bench % | Terminal-B% |  HumanEv% | LiveCodeB % "
-        "|   MMLU | GPQA Diamond | HLE % | Arena Elo |  BFCL % |\n"
+        "| SWE-bench % | Terminal-Bench | HumanEval% | LiveCodeBench |  BFCL % |\n"
         "|----------------|--------------------------------"
-        "|-------------|-------------|-----------|------------"
-        "|--------|--------------|-------|-----------|--------|\n"
+        "|-------------|----------------|------------|---------------|---------|\n"
     )
+
+    intel_rows = [
+        f"| {m.provider:<14} | {m.model_id:<30} "
+        f"| {f(m.mmlu):>7} "
+        f"| {f(m.gpqa_diamond):>12} "
+        f"| {f(m.humanity_last_exam):>9} "
+        f"| {f(m.aime_2024):>11} "
+        f"| {fi(m.arena_elo):>9} "
+        f"| {fi(m.intelligence_index):>8} |"
+        for m in scored
+    ]
+    intel_header = (
+        "\n### General Intelligence Benchmarks\n\n"
+        "| Provider       | Model                          "
+        "|    MMLU | GPQA Diamond |   HLE % |  AIME 2024 | Arena Elo | AI-Idx |\n"
+        "|----------------|--------------------------------"
+        "|---------|--------------|---------|------------|-----------|--------|\n"
+    )
+
     footer = (
-        "\nSWE-bench Verified: https://swebench.com\n"
-        "Terminal-bench: terminal/shell task completion (agentic)\n"
-        "HumanEval: classic code generation pass@1\n"
-        "LiveCodeBench: post-cutoff coding problems (harder to overfit)\n"
-        "HLE: Humanity's Last Exam (PhD-level multi-discipline)\n"
-        "Arena Elo: Chatbot Arena human preference rank (lmarena.ai)\n"
-        "BFCL: Berkeley Function Calling Leaderboard (tool use; gorilla.cs.berkeley.edu)\n"
+        "\nSWE-bench Verified: % of SWE-bench Verified issues resolved (swebench.com)\n"
+        "Terminal-bench: terminal/shell task completion rate (agentic coding)\n"
+        "HumanEval: classic pass@1 code generation benchmark\n"
+        "LiveCodeBench: post-training-cutoff competitive coding problems\n"
+        "BFCL: Berkeley Function Calling Leaderboard (gorilla.cs.berkeley.edu)\n"
+        "MMLU: Massive Multitask Language Understanding (57 subjects)\n"
+        "GPQA Diamond: PhD-level science Q&A (graduate-level)\n"
+        "HLE: Humanity's Last Exam (hardest multi-discipline PhD-level exam)\n"
+        "AIME 2024: American Invitational Math Exam 2024 (0-100 scale)\n"
+        "Arena Elo: Chatbot Arena human preference ranking (lmarena.ai)\n"
+        "AI-Idx: Artificial Analysis Intelligence Index v4 (artificialanalysis.ai)\n"
         "'-' = score not yet populated; contributions welcome\n"
     )
-    return header + "\n".join(rows) + "\n" + footer
+    return (
+        coding_header
+        + "\n".join(coding_rows)
+        + intel_header
+        + "\n".join(intel_rows)
+        + "\n"
+        + footer
+    )
 
 
 def limits_table() -> str:
