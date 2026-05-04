@@ -20,11 +20,11 @@ and on each ModelPricing instance.
 
 Rough real-world task token budgets (input + output):
 
-  One-shot chat reply           ~2K–5K tokens
-  Code review (single file)     ~5K–10K tokens
-  SWE-bench issue resolution    ~15K–25K tokens   (avg from leaderboard traces)
-  Full repo summarisation       ~50K–200K tokens
-  Long document Q&A             ~100K–500K tokens
+  One-shot chat reply           ~2K-5K tokens
+  Code review (single file)     ~5K-10K tokens
+  SWE-bench issue resolution    ~15K-25K tokens   (avg from leaderboard traces)
+  Full repo summarisation       ~50K-200K tokens
+  Long document Q&A             ~100K-500K tokens
 
 cost_per_typical_task_usd uses 8K input + 2K output as a simple normalised unit.
 swe_bench_per_dollar = SWE-bench % ÷ typical_task_cost, so higher is better value.
@@ -42,42 +42,41 @@ per-word cost is higher than the nominal per-token price implies.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
 class ModelPricing:
     provider: str
-    model_id: str          # canonical API identifier
-    input_mtok: float      # USD per 1M input tokens (cache miss / standard)
-    output_mtok: float     # USD per 1M output tokens
-    context_window: int    # max input tokens
-    max_output: Optional[int] = None  # max output tokens
+    model_id: str  # canonical API identifier
+    input_mtok: float  # USD per 1M input tokens (cache miss / standard)
+    output_mtok: float  # USD per 1M output tokens
+    context_window: int  # max input tokens
+    max_output: int | None = None  # max output tokens
 
     # Prompt caching (where offered)
-    cache_write_mtok: Optional[float] = None   # cost to populate cache
-    cache_read_mtok: Optional[float] = None    # cost to read from cache (huge saving)
+    cache_write_mtok: float | None = None  # cost to populate cache
+    cache_read_mtok: float | None = None  # cost to read from cache (huge saving)
 
     # Tokenizer quirks that affect real-world cost
-    tokenizer_note: Optional[str] = None
+    tokenizer_note: str | None = None
 
     # Benchmark scores
-    swe_bench_verified: Optional[float] = None   # % of SWE-bench Verified resolved
-    swe_bench_note: Optional[str] = None
-    mmlu: Optional[float] = None                 # %
-    gpqa_diamond: Optional[float] = None         # %
+    swe_bench_verified: float | None = None  # % of SWE-bench Verified resolved
+    swe_bench_note: str | None = None
+    mmlu: float | None = None  # %
+    gpqa_diamond: float | None = None  # %
 
     # Composite intelligence index (Artificial Analysis v4, higher = smarter)
-    intelligence_index: Optional[float] = None
+    intelligence_index: float | None = None
 
     # Capabilities
-    supports_thinking: bool = False   # extended / reasoning mode available
+    supports_thinking: bool = False  # extended / reasoning mode available
     supports_vision: bool = True
     supports_tool_use: bool = True
 
-    knowledge_cutoff: Optional[str] = None   # "YYYY-MM"
+    knowledge_cutoff: str | None = None  # "YYYY-MM"
     pricing_url: str = ""
-    notes: Optional[str] = None
+    notes: str | None = None
 
     # ── Derived metrics ───────────────────────────────────────────────────
 
@@ -95,7 +94,7 @@ class ModelPricing:
         return (self.input_mtok * 8_000 + self.output_mtok * 2_000) / 1_000_000
 
     @property
-    def swe_bench_per_dollar(self) -> Optional[float]:
+    def swe_bench_per_dollar(self) -> float | None:
         """
         SWE-bench % points per dollar of typical-task cost.
         Captures 'how much problem-solving power per dollar'.
@@ -154,11 +153,9 @@ PROVIDERS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 MODELS: list[ModelPricing] = [
-
     # ── Anthropic Claude ────────────────────────────────────────────────────
-    # Prompt caching: write = input_price × 1.25 ; read = input_price × 0.10
+    # Prompt caching: write = input_price x 1.25 ; read = input_price x 0.10
     # Sources: https://platform.claude.com/docs/en/docs/about-claude/models/overview
-
     ModelPricing(
         provider="anthropic",
         model_id="claude-opus-4-7",
@@ -166,8 +163,8 @@ MODELS: list[ModelPricing] = [
         output_mtok=25.00,
         context_window=1_000_000,
         max_output=128_000,
-        cache_write_mtok=6.25,   # 1.25 × $5
-        cache_read_mtok=0.50,    # 0.10 × $5
+        cache_write_mtok=6.25,  # 1.25 x $5
+        cache_read_mtok=0.50,  # 0.10 x $5
         tokenizer_note=(
             "New tokenizer: 1M tokens ≈ 555K words (vs 750K words on older models). "
             "The same English prose costs ~35% MORE tokens, raising effective per-word cost "
@@ -177,7 +174,7 @@ MODELS: list[ModelPricing] = [
         swe_bench_note="High-compute scaffold; standard (no scaffold): 72.5%",
         mmlu=87.4,
         gpqa_diamond=74.9,
-        intelligence_index=57,   # Artificial Analysis Intelligence Index v4
+        intelligence_index=57,  # Artificial Analysis Intelligence Index v4
         supports_thinking=False,  # Adaptive thinking (auto-engage), not user-toggled
         knowledge_cutoff="2026-01",
         pricing_url="https://platform.claude.com/docs/en/docs/about-claude/models/overview",
@@ -187,7 +184,6 @@ MODELS: list[ModelPricing] = [
             "New tokenizer means higher effective cost for long prose vs nominal price."
         ),
     ),
-
     ModelPricing(
         provider="anthropic",
         model_id="claude-sonnet-4-6",
@@ -195,8 +191,8 @@ MODELS: list[ModelPricing] = [
         output_mtok=15.00,
         context_window=1_000_000,
         max_output=64_000,
-        cache_write_mtok=3.75,   # 1.25 × $3
-        cache_read_mtok=0.30,    # 0.10 × $3
+        cache_write_mtok=3.75,  # 1.25 x $3
+        cache_read_mtok=0.30,  # 0.10 x $3
         tokenizer_note="Old tokenizer: 1M tokens ≈ 750K words.",
         swe_bench_verified=80.2,
         swe_bench_note="High-compute; standard (Claude Sonnet 4 baseline): 72.7%",
@@ -210,7 +206,6 @@ MODELS: list[ModelPricing] = [
             "1M context at a lower price than Opus 4.7."
         ),
     ),
-
     ModelPricing(
         provider="anthropic",
         model_id="claude-haiku-4-5-20251001",
@@ -228,7 +223,6 @@ MODELS: list[ModelPricing] = [
             "Ideal for high-volume routing, classification, and simple agentic steps."
         ),
     ),
-
     ModelPricing(
         provider="anthropic",
         model_id="claude-opus-4-6",
@@ -246,10 +240,8 @@ MODELS: list[ModelPricing] = [
             "Still solid for extended thinking workloads."
         ),
     ),
-
     # ── OpenAI ──────────────────────────────────────────────────────────────
     # Sources: https://openrouter.ai/openai/* (OpenAI's own pricing page returns 403)
-
     ModelPricing(
         provider="openai",
         model_id="gpt-4.1",
@@ -263,7 +255,6 @@ MODELS: list[ModelPricing] = [
             "Strong at advanced coding and long-context reasoning."
         ),
     ),
-
     ModelPricing(
         provider="openai",
         model_id="gpt-4o",
@@ -277,15 +268,13 @@ MODELS: list[ModelPricing] = [
             "Smaller context window than flagship competitors."
         ),
     ),
-
     # ── Google Gemini ────────────────────────────────────────────────────────
     # Sources: https://ai.google.dev/gemini-api/docs/pricing
-
     ModelPricing(
         provider="google",
         model_id="gemini-3.1-pro-preview",
-        input_mtok=2.00,     # ≤200K prompt
-        output_mtok=12.00,   # ≤200K prompt
+        input_mtok=2.00,  # ≤200K prompt
+        output_mtok=12.00,  # ≤200K prompt
         context_window=1_000_000,
         intelligence_index=57,
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
@@ -294,12 +283,11 @@ MODELS: list[ModelPricing] = [
             "Preview model; production availability not guaranteed."
         ),
     ),
-
     ModelPricing(
         provider="google",
         model_id="gemini-2.5-pro",
-        input_mtok=1.25,     # ≤200K
-        output_mtok=10.00,   # ≤200K
+        input_mtok=1.25,  # ≤200K
+        output_mtok=10.00,  # ≤200K
         context_window=1_000_000,
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes=(
@@ -307,7 +295,6 @@ MODELS: list[ModelPricing] = [
             "Competitive coding performance; available via Vertex AI and AI Studio."
         ),
     ),
-
     ModelPricing(
         provider="google",
         model_id="gemini-2.5-flash",
@@ -320,7 +307,6 @@ MODELS: list[ModelPricing] = [
             "Supports thinking mode and 1M context."
         ),
     ),
-
     ModelPricing(
         provider="google",
         model_id="gemini-2.5-flash-lite",
@@ -333,7 +319,6 @@ MODELS: list[ModelPricing] = [
             "Good for structured extraction and classification at massive scale."
         ),
     ),
-
     ModelPricing(
         provider="google",
         model_id="gemini-3.1-flash-lite-preview",
@@ -343,37 +328,34 @@ MODELS: list[ModelPricing] = [
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Preview. Batch API available at 50% discount.",
     ),
-
     # ── DeepSeek ─────────────────────────────────────────────────────────────
     # Sources: https://api-docs.deepseek.com/quick_start/pricing/
     # Cache hit price was cut to 1/10 of launch price on 2026-04-26.
-
     ModelPricing(
         provider="deepseek",
         model_id="deepseek-v4-flash",
-        input_mtok=0.14,          # cache miss (standard)
+        input_mtok=0.14,  # cache miss (standard)
         output_mtok=0.28,
         context_window=1_000_000,
         max_output=384_000,
-        cache_read_mtok=0.0028,   # cache hit = input/50 — extreme KV cache savings
-        supports_thinking=True,   # thinking mode toggle available (non-thinking by default)
+        cache_read_mtok=0.0028,  # cache hit = input/50 — extreme KV cache savings
+        supports_thinking=True,  # thinking mode toggle available (non-thinking by default)
         pricing_url="https://api-docs.deepseek.com/quick_start/pricing/",
         notes=(
-            "Extraordinary value. Cache hits at $0.0028/MTok (50× cheaper than miss). "
+            "Extraordinary value. Cache hits at $0.0028/MTok (50x cheaper than miss). "
             "Largest max_output (384K) of any model listed. "
             "Non-thinking mode default; thinking mode optionally enabled."
         ),
     ),
-
     ModelPricing(
         provider="deepseek",
         model_id="deepseek-v4-pro",
-        input_mtok=0.435,         # 75% launch discount active until 2026-05-31
-        output_mtok=0.87,         # post-discount standard: ~$1.74 / $3.48
+        input_mtok=0.435,  # 75% launch discount active until 2026-05-31
+        output_mtok=0.87,  # post-discount standard: ~$1.74 / $3.48
         context_window=1_000_000,
         max_output=384_000,
-        cache_read_mtok=0.003625, # discounted; standard: ~$0.0145
-        supports_thinking=True,   # reasoning/thinking mode on by default
+        cache_read_mtok=0.003625,  # discounted; standard: ~$0.0145
+        supports_thinking=True,  # reasoning/thinking mode on by default
         pricing_url="https://api-docs.deepseek.com/quick_start/pricing/",
         notes=(
             "75% launch discount runs through 2026-05-31. "
@@ -381,10 +363,8 @@ MODELS: list[ModelPricing] = [
             "Reasoning (thinking) mode is default. Replaces deepseek-reasoner."
         ),
     ),
-
     # ── xAI Grok ─────────────────────────────────────────────────────────────
     # Sources: https://openrouter.ai/x-ai/grok-4
-
     ModelPricing(
         provider="xai",
         model_id="grok-4",
@@ -396,13 +376,11 @@ MODELS: list[ModelPricing] = [
         notes=(
             "Reasoning always active; cannot be disabled or adjusted. "
             "Pricing escalates when a single request exceeds 128K total tokens. "
-            "Batch API offers 20–50% discount. Supports vision and parallel tool calling."
+            "Batch API offers 20-50% discount. Supports vision and parallel tool calling."
         ),
     ),
-
     # ── Mistral AI ────────────────────────────────────────────────────────────
     # Sources: https://openrouter.ai/mistralai/devstral-medium-2507
-
     ModelPricing(
         provider="mistral",
         model_id="devstral-medium",
@@ -420,10 +398,8 @@ MODELS: list[ModelPricing] = [
             "Best known SWE-bench score at this price point."
         ),
     ),
-
     # ── Meta Llama (open weights; prices via inference provider) ─────────────
     # Prices reflect OpenRouter / Groq market rates; may vary by provider.
-
     ModelPricing(
         provider="meta",
         model_id="llama-4-maverick",
@@ -436,7 +412,6 @@ MODELS: list[ModelPricing] = [
             "Prices are inference-provider market rates and vary (Groq, Together, Fireworks, etc.)."
         ),
     ),
-
     ModelPricing(
         provider="meta",
         model_id="llama-3.3-70b",
@@ -480,7 +455,8 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
 # Utility helpers
 # ---------------------------------------------------------------------------
 
-def get_model(model_id: str) -> Optional[ModelPricing]:
+
+def get_model(model_id: str) -> ModelPricing | None:
     return next((m for m in MODELS if m.model_id == model_id), None)
 
 
@@ -489,7 +465,7 @@ def cost_for_tokens(
     input_tokens: int,
     output_tokens: int,
     use_cache_read: bool = False,
-) -> Optional[float]:
+) -> float | None:
     """Return total USD cost for a specific token usage on a given model."""
     m = get_model(model_id)
     if m is None:
@@ -512,16 +488,10 @@ def comparison_table() -> str:
     rows = []
     for m in sorted(MODELS, key=lambda x: x.input_mtok):
         ctx = "1M" if m.context_window >= 1_000_000 else f"{m.context_window // 1_000}K"
-        max_out = (
-            f"{m.max_output // 1_000}K" if m.max_output else "—"
-        )
+        max_out = f"{m.max_output // 1_000}K" if m.max_output else "—"
         swe = f"{m.swe_bench_verified:.1f}%" if m.swe_bench_verified is not None else "—"
         task = f"${m.cost_per_typical_task_usd:.4f}"
-        val = (
-            f"{m.swe_bench_per_dollar:.0f}"
-            if m.swe_bench_per_dollar is not None
-            else "—"
-        )
+        val = f"{m.swe_bench_per_dollar:.0f}" if m.swe_bench_per_dollar is not None else "—"
         rows.append(
             f"| {m.provider:<12} | {m.model_id:<30} | ${m.input_mtok:>7.4f} "
             f"| ${m.output_mtok:>8.4f} | {ctx:>7} | {max_out:>7} "
