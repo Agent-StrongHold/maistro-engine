@@ -86,6 +86,10 @@ class ModelPricing:
     live_code_bench: float | None = None  # % — coding on post-cutoff problems (harder)
     arena_elo: int | None = None  # Chatbot Arena Elo (human preference; lmarena.ai)
 
+    # Berkeley Function Calling Leaderboard — % overall accuracy on tool-call tasks
+    # Critical for agentic systems; source: gorilla.cs.berkeley.edu/leaderboard.html
+    bfcl: float | None = None
+
     # Composite intelligence index (Artificial Analysis v4, higher = smarter)
     intelligence_index: float | None = None
 
@@ -304,6 +308,29 @@ PROVIDERS: dict[str, dict] = {
             "Reserve headroom for infra (compute, storage) not just inference."
         ),
     },
+    # Inference platform; ultra-fast CoE architecture
+    "sambanova": {
+        "name": "SambaNova Systems (inference platform; ultra-fast CoE architecture)",
+        "pricing_url": "https://cloud.sambanova.ai/apis",
+        "api_docs_url": "https://community.sambanova.ai/",
+        "is_inference_platform": True,
+    },
+    # NVIDIA Inference Microservices — access to NVIDIA-optimised open models
+    "nvidia": {
+        "name": "NVIDIA NIM (inference microservices; GPU-optimised open models)",
+        "pricing_url": "https://build.nvidia.com/",
+        "api_docs_url": "https://docs.api.nvidia.com/",
+        "is_inference_platform": True,
+        "notes": "1000 free API credits on signup. Hosts Llama, Mistral, Qwen, and other models on A100/H100.",
+    },
+    # AI21 Labs — Jamba hybrid SSM-Transformer models; enterprise-focused
+    "ai21": {
+        "name": "AI21 Labs (Jamba hybrid SSM-Transformer models)",
+        "pricing_url": "https://www.ai21.com/pricing",
+        "api_docs_url": "https://docs.ai21.com/",
+        "is_inference_platform": False,
+        "notes": "Free tier: $10 in API credits on signup. Jamba uses SSM+Transformer hybrid for long-context efficiency.",
+    },
     # OpenRouter is an inference aggregator — one API key, 200+ models.
     # Markup is minimal (typically 5-10% over provider cost).
     # Has a small free allowance for new accounts; also hosts genuinely free $0 models.
@@ -352,6 +379,7 @@ MODELS: list[ModelPricing] = [
         mmlu=87.4,
         gpqa_diamond=74.9,
         terminal_bench=43.2,  # source: anthropic.com/news/claude-4
+        arena_elo=1491,  # lmarena.ai leaderboard May 2026
         intelligence_index=57,
         supports_thinking=False,  # adaptive thinking auto-engages; not user-toggled
         knowledge_cutoff="2026-01",
@@ -371,6 +399,9 @@ MODELS: list[ModelPricing] = [
         tokenizer_note="Old tokenizer: 1M tokens ~ 750K words.",
         swe_bench_verified=80.2,
         swe_bench_note="High-compute; standard (Sonnet 4 baseline): 72.7%",
+        mmlu=85.4,
+        gpqa_diamond=70.0,
+        arena_elo=1439,  # lmarena.ai leaderboard May 2026
         supports_thinking=True,
         knowledge_cutoff="2025-08",
         pricing_url="https://platform.claude.com/docs/en/docs/about-claude/models/overview",
@@ -424,6 +455,21 @@ MODELS: list[ModelPricing] = [
     ),
     ModelPricing(
         provider="openai",
+        model_id="gpt-4o-mini",
+        input_mtok=0.15,
+        output_mtok=0.60,
+        context_window=128_000,
+        cache_read_mtok=0.075,
+        free_tier=None,
+        knowledge_cutoff="2023-10",
+        pricing_url="https://openrouter.ai/openai/gpt-4o-mini",
+        notes=(
+            "Most popular OpenAI model by volume. Cached reads at $0.075/MTok. "
+            "Great for classification, extraction, and structured output at scale."
+        ),
+    ),
+    ModelPricing(
+        provider="openai",
         model_id="gpt-4o",
         input_mtok=2.50,
         output_mtok=10.00,
@@ -469,7 +515,14 @@ MODELS: list[ModelPricing] = [
         output_mtok=12.00,
         context_window=1_000_000,
         free_tier="AI Studio free tier (rate-limited; not for production)",
+        swe_bench_verified=80.6,
+        swe_bench_note="With tools; non-tool: ~72%",
+        mmlu=92.6,
+        gpqa_diamond=94.3,
+        humanity_last_exam=51.4,
+        arena_elo=1493,  # lmarena.ai leaderboard May 2026
         intelligence_index=57,
+        knowledge_cutoff="2025-11",
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Tiered: >200K prompt costs $4/$18 input/output. Preview only — not yet GA.",
     ),
@@ -480,8 +533,26 @@ MODELS: list[ModelPricing] = [
         output_mtok=10.00,
         context_window=1_000_000,
         free_tier="AI Studio free tier (rate-limited)",
+        arena_elo=1358,  # lmarena.ai leaderboard May 2026
+        knowledge_cutoff="2025-01",
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Tiered: >200K costs $2.50/$15. Strong coding; available on Vertex AI + AI Studio.",
+    ),
+    ModelPricing(
+        provider="google",
+        model_id="gemini-2.0-flash",
+        input_mtok=0.10,
+        output_mtok=0.40,
+        context_window=1_000_000,
+        free_tier="Free on AI Studio (generous rate limits; audio/image input included)",
+        free_tier_rpm=15,
+        free_tier_tpm=1_000_000,
+        knowledge_cutoff="2024-08",
+        pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
+        notes=(
+            "Latest generation Flash. Very fast; multimodal (image, audio, video). "
+            "Experimental thinking mode in gemini-2.0-flash-thinking-exp variant."
+        ),
     ),
     ModelPricing(
         provider="google",
@@ -546,6 +617,8 @@ MODELS: list[ModelPricing] = [
         cache_read_mtok=0.003625,
         free_tier="Trial credits on signup",
         supports_thinking=True,
+        arena_elo=1432,  # lmarena.ai leaderboard May 2026
+        knowledge_cutoff="2024-11",
         pricing_url="https://api-docs.deepseek.com/quick_start/pricing/",
         notes=(
             "75% launch discount until 2026-05-31. "
@@ -578,6 +651,7 @@ MODELS: list[ModelPricing] = [
         context_window=256_000,
         free_tier="Limited free credits for new accounts",
         supports_thinking=True,  # reasoning always on; cannot disable
+        arena_elo=1397,  # lmarena.ai leaderboard May 2026 (approx)
         knowledge_cutoff="2025-07",
         pricing_url="https://docs.x.ai/docs/models",
         notes=(
@@ -642,6 +716,29 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2024-12",
         pricing_url="https://mistral.ai/pricing",
         notes="Mid-tier Mistral. Good balance of cost and quality.",
+    ),
+    ModelPricing(
+        provider="mistral",
+        model_id="mistral-large-latest",
+        input_mtok=2.00,
+        output_mtok=6.00,
+        context_window=131_072,
+        free_tier="La Plateforme free tier — check console for eligibility",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://mistral.ai/pricing",
+        notes="Mistral's flagship general-purpose model. Strong reasoning, multilingual, tool use.",
+    ),
+    ModelPricing(
+        provider="mistral",
+        model_id="mistral-nemo",
+        input_mtok=0.15,
+        output_mtok=0.15,
+        context_window=128_000,
+        free_tier="La Plateforme free tier — eligible; very low cost",
+        free_tier_rpm=6,
+        knowledge_cutoff="2024-07",
+        pricing_url="https://mistral.ai/pricing",
+        notes="12B param. Apache 2.0 licence. Flat $0.15/$0.15. Multilingual. On free dev tier.",
     ),
     ModelPricing(
         provider="mistral",
@@ -814,6 +911,9 @@ MODELS: list[ModelPricing] = [
         output_mtok=2.30,
         context_window=131_072,
         free_tier="Trial credits on signup",
+        swe_bench_verified=65.8,
+        swe_bench_note="SWE-bench Verified; strong agentic coding",
+        arena_elo=1426,  # lmarena.ai leaderboard May 2026
         knowledge_cutoff="2025-07",
         pricing_url="https://openrouter.ai/moonshotai/kimi-k2",
         notes="1T-param MoE (32B active). Competitive with frontier models at mid-range cost.",
@@ -1123,6 +1223,109 @@ MODELS: list[ModelPricing] = [
         notes="3,000 t/s — fastest 120B inference available. Pricing approximate.",
     ),
     # ══════════════════════════════════════════════════════════════════════
+    # AI21 LABS  (Jamba — hybrid SSM-Transformer architecture)
+    # Source: https://www.ai21.com/pricing
+    # Free tier: $10 in credits on signup; trial access to Jamba models
+    # SSM (State Space Model) hybrid: faster, cheaper at long context vs pure Transformer
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="ai21",
+        model_id="jamba-1.6-ultra",
+        input_mtok=0.50,
+        output_mtok=0.70,
+        context_window=256_000,
+        free_tier="$10 in API credits on signup",
+        knowledge_cutoff="2024-06",
+        pricing_url="https://www.ai21.com/pricing",
+        notes=(
+            "256K context SSM+Transformer hybrid. Excellent cost at long context due to SSM. "
+            "Strong at RAG, summarisation, structured extraction. Enterprise-focused."
+        ),
+    ),
+    ModelPricing(
+        provider="ai21",
+        model_id="jamba-1.6-mini",
+        input_mtok=0.20,
+        output_mtok=0.40,
+        context_window=256_000,
+        free_tier="$10 in API credits on signup",
+        knowledge_cutoff="2024-06",
+        pricing_url="https://www.ai21.com/pricing",
+        notes=(
+            "Smaller Jamba variant. Best value for long-context tasks. "
+            "256K context with efficient SSM hybrid architecture."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # SAMBANOVA  (inference platform — Composition of Experts ultra-fast)
+    # Source: https://cloud.sambanova.ai/apis
+    # Free tier: free tier with rate limits at cloud.sambanova.ai
+    # Note: SambaNova runs open-weight models on custom RDU wafer-scale chips
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="sambanova",
+        model_id="Meta-Llama-3.3-70B-Instruct",
+        input_mtok=0.60,
+        output_mtok=0.60,
+        context_window=131_072,
+        inference_speed_tps=2200,
+        free_tier="Free tier at cloud.sambanova.ai (rate-limited; no credit card required)",
+        pricing_url="https://cloud.sambanova.ai/apis",
+        notes=(
+            "2,200 t/s — among the fastest 70B inference available. "
+            "SambaNova RDU wafer-scale hardware. Flat $0.60/$0.60 pricing."
+        ),
+    ),
+    ModelPricing(
+        provider="sambanova",
+        model_id="Qwen3-235B-A22B",
+        input_mtok=1.30,
+        output_mtok=1.30,
+        context_window=131_072,
+        inference_speed_tps=600,
+        free_tier="Free tier at cloud.sambanova.ai (rate-limited)",
+        supports_thinking=True,
+        pricing_url="https://cloud.sambanova.ai/apis",
+        notes=(
+            "235B MoE on SambaNova RDU at ~600 t/s. "
+            "Thinking mode supported. Flat input/output pricing."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # NVIDIA NIM  (inference microservices — GPU-optimised open models)
+    # Source: https://build.nvidia.com/
+    # Free tier: 1000 free API credits on signup; available at build.nvidia.com
+    # OpenAI-compatible API; runs on A100/H100 fleets
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="nvidia",
+        model_id="meta/llama-3.3-70b-instruct",
+        input_mtok=0.23,
+        output_mtok=0.42,
+        context_window=131_072,
+        free_tier="1000 API credits free on signup at build.nvidia.com",
+        knowledge_cutoff="2023-12",
+        pricing_url="https://build.nvidia.com/meta/llama-3_3-70b-instruct",
+        notes=(
+            "NVIDIA-optimised Llama 3.3 70B via NIM microservice. "
+            "OpenAI-compatible API. Strong throughput on H100 clusters."
+        ),
+    ),
+    ModelPricing(
+        provider="nvidia",
+        model_id="nvidia/llama-3.1-nemotron-ultra-253b-v1",
+        input_mtok=0.55,
+        output_mtok=0.55,
+        context_window=131_072,
+        free_tier="1000 API credits free on signup at build.nvidia.com",
+        supports_thinking=True,
+        pricing_url="https://build.nvidia.com/nvidia/llama-3_1-nemotron-ultra-253b-v1",
+        notes=(
+            "NVIDIA-tuned 253B Llama derivative. Thinking mode available. "
+            "Strong coding and reasoning. Optimised for NVIDIA hardware."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
     # AZURE OPENAI
     # Pricing mirrors OpenAI direct. Value = drawing from Azure for Startups credits
     # instead of paying cash. Stronghold: ~$2.5K approved. BookCreator: applying.
@@ -1226,6 +1429,11 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "cerebras": "https://cloud.cerebras.ai/platform/pricing",
     "azure_openai": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
     "openrouter": "https://openrouter.ai/api/v1/models",
+    "ai21": "https://www.ai21.com/pricing",
+    "sambanova": "https://cloud.sambanova.ai/apis",
+    "nvidia": "https://build.nvidia.com/",
+    "moonshot": "https://platform.moonshot.ai/docs/pricing/chat",
+    "minimax": "https://www.minimax.io/pricing",
 }
 
 
@@ -1277,6 +1485,7 @@ def benchmark_table() -> str:
                 m.gpqa_diamond,
                 m.humanity_last_exam,
                 m.arena_elo,
+                m.bfcl,
             ]
         )
     ]
@@ -1297,16 +1506,17 @@ def benchmark_table() -> str:
         f"| {f(m.mmlu):>6} "
         f"| {f(m.gpqa_diamond):>12} "
         f"| {f(m.humanity_last_exam):>8} "
-        f"| {fi(m.arena_elo):>9} |"
+        f"| {fi(m.arena_elo):>9} "
+        f"| {f(m.bfcl):>7} |"
         for m in scored
     ]
     header = (
         "| Provider       | Model                          "
         "| SWE-bench % | Terminal-B% |  HumanEv% | LiveCodeB % "
-        "|   MMLU | GPQA Diamond | HLE % | Arena Elo |\n"
+        "|   MMLU | GPQA Diamond | HLE % | Arena Elo |  BFCL % |\n"
         "|----------------|--------------------------------"
         "|-------------|-------------|-----------|------------"
-        "|--------|--------------|-------|----------|\n"
+        "|--------|--------------|-------|-----------|--------|\n"
     )
     footer = (
         "\nSWE-bench Verified: https://swebench.com\n"
@@ -1315,6 +1525,7 @@ def benchmark_table() -> str:
         "LiveCodeBench: post-cutoff coding problems (harder to overfit)\n"
         "HLE: Humanity's Last Exam (PhD-level multi-discipline)\n"
         "Arena Elo: Chatbot Arena human preference rank (lmarena.ai)\n"
+        "BFCL: Berkeley Function Calling Leaderboard (tool use; gorilla.cs.berkeley.edu)\n"
         "'-' = score not yet populated; contributions welcome\n"
     )
     return header + "\n".join(rows) + "\n" + footer
