@@ -285,7 +285,12 @@ PROVIDERS: dict[str, dict] = {
         "is_inference_platform": True,
     },
     # Azure OpenAI mirrors OpenAI model pricing but draws from Azure credits.
-    # Stronghold + BookCreator startups have ~$4K combined Azure for Startups credits.
+    # Azure for Startups tier structure:
+    #   Tier 1: $1,000 (initial approval — easier)
+    #   Tier 2: +$5,000 more after additional verification (prove legitimate business)
+    #   Total per entity: up to ~$6,000
+    # Stronghold: Tier 1 approved (~$1K). BookCreator: applying (~$1K Tier 1 expected).
+    # Combined near-term: ~$2K. If both reach Tier 2: ~$12K total.
     # Not all credits go to inference — reserve headroom for compute/storage infra.
     "azure_openai": {
         "name": "Azure OpenAI (Microsoft; draws from Azure for Startups credits)",
@@ -293,9 +298,10 @@ PROVIDERS: dict[str, dict] = {
         "api_docs_url": "https://learn.microsoft.com/en-us/azure/ai-services/openai/",
         "is_inference_platform": False,
         "notes": (
-            "Pricing matches OpenAI direct. Value here is using Azure credits "
-            "rather than paying cash. Azure for Startups: $2.5K-$25K credits depending on tier. "
-            "Stronghold approved; BookCreator applying. Not all credits go to inference."
+            "Tier 1: $1K (initial). Tier 2: +$5K after extra business verification. "
+            "Stronghold: Tier 1 approved. BookCreator: applying. "
+            "Near-term combined: ~$2K. Full Tier 2 both: ~$12K. "
+            "Reserve headroom for infra (compute, storage) not just inference."
         ),
     },
     # OpenRouter is an inference aggregator — one API key, 200+ models.
@@ -1129,7 +1135,7 @@ MODELS: list[ModelPricing] = [
         input_mtok=2.00,
         output_mtok=8.00,
         context_window=1_047_576,
-        free_tier="Covered by Azure for Startups credits ($2.5K-$25K)",
+        free_tier="Covered by Azure for Startups credits (Tier 1: $1K; Tier 2: +$5K per entity)",
         knowledge_cutoff="2024-06",
         pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
         notes=(
