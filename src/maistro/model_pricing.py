@@ -3774,6 +3774,417 @@ MODELS: list[ModelPricing] = [
         pricing_url="https://github.com/features/copilot/plans",
         notes="Claude Sonnet via Copilot API — $0 marginal cost. 30+ models available in same subscription.",
     ),
+    # ══════════════════════════════════════════════════════════════════════
+    # FIREWORKS AI — additional representative models (268 total in LiteLLM)
+    # Pricing tiers: $0.10 (≤3B), $0.20 (7-14B), $0.90 (70B), custom MoE
+    # Source: fireworks.ai/pricing
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="fireworks",
+        model_id="accounts/fireworks/models/qwen3-30b-a3b",
+        input_mtok=0.15,
+        output_mtok=0.60,
+        context_window=131_072,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://fireworks.ai/pricing",
+        notes="Qwen3 30B MoE (3B active params). Best value on Fireworks — near-70B quality at 15¢/MTok input.",
+    ),
+    ModelPricing(
+        provider="fireworks",
+        model_id="accounts/fireworks/models/llama4-maverick-instruct-basic",
+        input_mtok=0.22,
+        output_mtok=0.88,
+        context_window=131_072,
+        supports_vision=True,
+        pricing_url="https://fireworks.ai/pricing",
+        notes="Llama 4 Maverick MoE on Fireworks. Multimodal. Fast inference — Fireworks H100 cluster.",
+    ),
+    ModelPricing(
+        provider="fireworks",
+        model_id="accounts/fireworks/models/qwen3-235b-a22b",
+        input_mtok=0.22,
+        output_mtok=0.88,
+        context_window=131_072,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://fireworks.ai/pricing",
+        notes="Qwen3 235B MoE (22B active). Near-GPT-4o quality at a fraction of the price.",
+    ),
+    ModelPricing(
+        provider="fireworks",
+        model_id="accounts/fireworks/models/deepseek-v3p2",
+        input_mtok=0.56,
+        output_mtok=1.68,
+        context_window=163_840,
+        supports_vision=False,
+        pricing_url="https://fireworks.ai/pricing",
+        notes="DeepSeek V3 latest (v3p2) on Fireworks. 163K context. Strong coding at competitive price.",
+    ),
+    ModelPricing(
+        provider="fireworks",
+        model_id="accounts/fireworks/models/llama-v3p3-70b-instruct",
+        input_mtok=0.90,
+        output_mtok=0.90,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://fireworks.ai/pricing",
+        notes="Llama 3.3 70B on Fireworks. Flat rate. Fast — Fireworks specialises in high-throughput 70B inference.",
+    ),
+    ModelPricing(
+        provider="fireworks",
+        model_id="accounts/fireworks/models/deepseek-r1",
+        input_mtok=3.00,
+        output_mtok=8.00,
+        context_window=128_000,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://fireworks.ai/pricing",
+        notes="Full DeepSeek R1 671B on Fireworks. Lower latency than many providers due to H100 cluster.",
+    ),
+    ModelPricing(
+        provider="fireworks",
+        model_id="accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+        input_mtok=0.45,
+        output_mtok=1.80,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://fireworks.ai/pricing",
+        notes="Qwen3 Coder 480B MoE (35B active). 262K context. State-of-the-art open-weight coding model.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # GOOGLE GEMMA — open weights; free tier via OpenRouter
+    # Source: openrouter.ai/google
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="google-gemma",
+        model_id="google/gemma-3-4b-it:free",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=32_768,
+        free_tier="Free via OpenRouter (rate-limited)",
+        supports_vision=True,
+        pricing_url="https://openrouter.ai/google/gemma-3-4b-it:free",
+        notes="Smallest Gemma 3. Free tier has 32K context limit. Good for edge/local via Ollama too.",
+    ),
+    ModelPricing(
+        provider="google-gemma",
+        model_id="google/gemma-3-4b-it",
+        input_mtok=0.04,
+        output_mtok=0.08,
+        context_window=131_072,
+        supports_vision=True,
+        pricing_url="https://openrouter.ai/google/gemma-3-4b-it",
+        notes="Paid tier unlocks full 131K context. Multimodal. Strongest 4B-class model.",
+    ),
+    ModelPricing(
+        provider="google-gemma",
+        model_id="google/gemma-3-12b-it:free",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=32_768,
+        free_tier="Free via OpenRouter (rate-limited)",
+        supports_vision=True,
+        pricing_url="https://openrouter.ai/google/gemma-3-12b-it:free",
+        notes="Mid-tier Gemma 3. Free for prototyping. Strong instruction-following at 12B.",
+    ),
+    ModelPricing(
+        provider="google-gemma",
+        model_id="google/gemma-3-12b-it",
+        input_mtok=0.04,
+        output_mtok=0.13,
+        context_window=131_072,
+        supports_vision=True,
+        pricing_url="https://openrouter.ai/google/gemma-3-12b-it",
+        notes="Full 131K context. Better than 4B for multi-step reasoning tasks.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # MICROSOFT PHI — additional models from Azure AI (phi-4 family)
+    # Source: azure.microsoft.com/pricing + LiteLLM azure_ai/ prefix
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="microsoft",
+        model_id="Phi-4-mini-instruct",
+        input_mtok=0.075,
+        output_mtok=0.300,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes="3.8B model. Cheapest phi-4 family. Extraordinary reasoning for size — matches 7B+ on many tasks.",
+    ),
+    ModelPricing(
+        provider="microsoft",
+        model_id="Phi-4-multimodal-instruct",
+        input_mtok=0.080,
+        output_mtok=0.320,
+        context_window=131_072,
+        supports_vision=True,
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes="Phi-4 with vision. 131K context. Cheapest multimodal option from a major lab.",
+    ),
+    ModelPricing(
+        provider="microsoft",
+        model_id="Phi-4-mini-reasoning",
+        input_mtok=0.080,
+        output_mtok=0.320,
+        context_window=131_072,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes="Phi-4 mini with reasoning mode. Cheapest reasoning model available. Strong for STEM.",
+    ),
+    ModelPricing(
+        provider="microsoft",
+        model_id="Phi-4-reasoning",
+        input_mtok=0.125,
+        output_mtok=0.500,
+        context_window=32_768,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes="Full Phi-4 14B with reasoning. Matches 70B+ models on MATH/GPQA at a fraction of the cost.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # MINIMAX — additional models; free M2.5 tier; 1M context M1
+    # Source: openrouter.ai/minimax
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="minimax",
+        model_id="minimax/minimax-m2.5:free",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=196_608,
+        free_tier="Free via OpenRouter (rate-limited); 196K context",
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/minimax/minimax-m2.5:free",
+        notes="196K context at $0. Useful for long-document tasks during dev / budget runs.",
+    ),
+    ModelPricing(
+        provider="minimax",
+        model_id="minimax/minimax-m2.5",
+        input_mtok=0.15,
+        output_mtok=1.15,
+        context_window=196_608,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/minimax/minimax-m2.5",
+        notes="Paid M2.5 — no rate limits. 196K context at $0.15/$1.15. Strong long-document tasks.",
+    ),
+    ModelPricing(
+        provider="minimax",
+        model_id="minimax/minimax-01",
+        input_mtok=0.20,
+        output_mtok=1.10,
+        context_window=1_000_192,
+        supports_vision=True,
+        pricing_url="https://openrouter.ai/minimax/minimax-01",
+        notes="1M context window. MiniMax-01 uses linear-attention hybrid for ultra-long documents.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # MOONSHOT — additional Kimi models; long-context specialists
+    # Source: openrouter.ai/moonshotai
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="moonshot",
+        model_id="moonshotai/kimi-k2-0905",
+        input_mtok=0.40,
+        output_mtok=2.00,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/moonshotai/kimi-k2-0905",
+        notes="Stable Kimi K2 snapshot (Sep 2025). 262K context. Cheaper than base K2 for budget runs.",
+    ),
+    ModelPricing(
+        provider="moonshot",
+        model_id="moonshotai/kimi-k2.5",
+        input_mtok=0.44,
+        output_mtok=2.00,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/moonshotai/kimi-k2.5",
+        notes="Kimi K2.5 — incremental improvement over K2. 262K context. Strong long-context reasoning.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # NOUS RESEARCH — additional Hermes models across sizes
+    # Source: openrouter.ai/nousresearch
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="nous-research",
+        model_id="nousresearch/hermes-2-pro-llama-3-8b",
+        input_mtok=0.14,
+        output_mtok=0.14,
+        context_window=8_192,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/nousresearch/hermes-2-pro-llama-3-8b",
+        notes="Hermes 2 Pro fine-tune on Llama 3 8B. Flat rate. Best small Hermes for tool use / JSON.",
+    ),
+    ModelPricing(
+        provider="nous-research",
+        model_id="nousresearch/hermes-4-70b",
+        input_mtok=0.13,
+        output_mtok=0.40,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/nousresearch/hermes-4-70b",
+        notes="Hermes 4 on Llama 3.3 70B. Best price/quality in the Hermes family. Strong function calling.",
+    ),
+    ModelPricing(
+        provider="nous-research",
+        model_id="nousresearch/hermes-3-llama-3.1-70b",
+        input_mtok=0.30,
+        output_mtok=0.30,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/nousresearch/hermes-3-llama-3.1-70b",
+        notes="Hermes 3 on Llama 3.1 70B. Flat rate. Proven function-calling and agentic reliability.",
+    ),
+    ModelPricing(
+        provider="nous-research",
+        model_id="nousresearch/hermes-3-llama-3.1-405b:free",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=131_072,
+        free_tier="Free via OpenRouter (rate-limited)",
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/nousresearch/hermes-3-llama-3.1-405b:free",
+        notes="405B Hermes 3 at $0. Rate-limited but exceptional for testing agentic pipelines without cost.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # NOVITA AI — additional models; 85 total in LiteLLM; ultra-cheap
+    # Source: novita.ai/model-api/pricing
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="novita",
+        model_id="meta-llama/llama-3.2-3b-instruct",
+        input_mtok=0.03,
+        output_mtok=0.05,
+        context_window=32_768,
+        supports_vision=False,
+        pricing_url="https://novita.ai/model-api/pricing",
+        notes="Cheapest Novita option. Tiny model for classification/routing at sub-penny-per-1K-tokens.",
+    ),
+    ModelPricing(
+        provider="novita",
+        model_id="qwen/qwen3-8b-fp8",
+        input_mtok=0.035,
+        output_mtok=0.138,
+        context_window=128_000,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://novita.ai/model-api/pricing",
+        notes="Qwen3 8B FP8 — thinking mode enabled. 128K context. Strong reasoning at ultra-low cost.",
+    ),
+    ModelPricing(
+        provider="novita",
+        model_id="qwen/qwen3-coder-30b-a3b-instruct",
+        input_mtok=0.07,
+        output_mtok=0.27,
+        context_window=160_000,
+        supports_vision=False,
+        pricing_url="https://novita.ai/model-api/pricing",
+        notes="Qwen3 Coder 30B MoE. 160K context. Strong code generation at mid-tier price.",
+    ),
+    ModelPricing(
+        provider="novita",
+        model_id="meta-llama/llama-3.3-70b-instruct",
+        input_mtok=0.135,
+        output_mtok=0.400,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://novita.ai/model-api/pricing",
+        notes="Llama 3.3 70B on Novita. Competitive rate vs Fireworks/Together for this model.",
+    ),
+    ModelPricing(
+        provider="novita",
+        model_id="qwen/qwen3-235b-a22b-instruct-2507",
+        input_mtok=0.09,
+        output_mtok=0.58,
+        context_window=131_072,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://novita.ai/model-api/pricing",
+        notes="Qwen3 235B MoE on Novita. Cheaper input than Fireworks ($0.09 vs $0.22). Thinking mode.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # OPENROUTER — free routing endpoint + :free model tier
+    # Source: openrouter.ai/docs
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="openrouter",
+        model_id="openrouter/free",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=200_000,
+        free_tier="Always free — routes to a currently-free model automatically",
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/openrouter/free",
+        notes="Routing-only endpoint: OpenRouter picks whichever :free model is available. 200K context cap.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # UPSTAGE — solar-pro-3 (new generation)
+    # Source: openrouter.ai/upstage
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="upstage",
+        model_id="upstage/solar-pro-3",
+        input_mtok=0.15,
+        output_mtok=0.60,
+        context_window=128_000,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/upstage/solar-pro-3",
+        notes="Solar Pro 3 — 3rd gen. Matches 70B+ models on MMLU/MATH at 22B scale. 128K context.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # HUGGING FACE — Serverless Inference API; free rate-limited access
+    # No per-token pricing — billed via PRO plan ($9/mo) or pay-per-hour Endpoints
+    # Source: huggingface.co/pricing
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="huggingface",
+        model_id="meta-llama/Llama-3.1-8B-Instruct",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=128_000,
+        free_tier="Free tier: rate-limited serverless inference (HF free account). PRO $9/mo = higher limits.",
+        supports_vision=False,
+        pricing_url="https://huggingface.co/pricing",
+        notes=(
+            "Access via HF Inference API: POST to api-inference.huggingface.co/models/<model>. "
+            "Free tier has strict RPM limits. Dedicated Inference Endpoints: ~$0.60/hr A10G."
+        ),
+    ),
+    ModelPricing(
+        provider="huggingface",
+        model_id="Qwen/Qwen2.5-72B-Instruct",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=128_000,
+        free_tier="Free tier: rate-limited (popular model — may queue). PRO $9/mo = priority.",
+        supports_vision=False,
+        pricing_url="https://huggingface.co/pricing",
+        notes="One of the most popular HF serverless models. Free but rate-limited; use Nebius for volume.",
+    ),
+    ModelPricing(
+        provider="huggingface",
+        model_id="mistralai/Mistral-7B-Instruct-v0.3",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=32_768,
+        free_tier="Free tier: rate-limited serverless inference",
+        supports_vision=False,
+        pricing_url="https://huggingface.co/pricing",
+        notes="Classic free-to-use reference model. 32K context. Good for rapid prototyping before committing to a provider.",
+    ),
+    ModelPricing(
+        provider="huggingface",
+        model_id="google/gemma-3-27b-it:free",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=131_072,
+        free_tier="Free via HF Serverless Inference API and OpenRouter free tier",
+        supports_vision=True,
+        pricing_url="https://huggingface.co/pricing",
+        notes="Multimodal Gemma 3 27B. Free on both HF and OpenRouter. 131K context.",
+    ),
 ]
 
 
