@@ -4108,6 +4108,191 @@ STARTUP_PROGRAMS: dict[str, dict] = {
             "Fireworks is particularly strong for DeepSeek-V4-Pro and open-weight models at scale."
         ),
     },
+    # ── Modal ─────────────────────────────────────────────────────────────
+    "modal_for_startups": {
+        "name": "Modal for Startups",
+        "provider": "Modal",
+        "credits_usd": 10_000,
+        "credit_detail": "$10,000 in Modal compute credits",
+        "duration_note": "Not publicly specified; typically 12 months",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "All Modal GPU compute (A10G, A100, H100) — custom inference and training",
+        "other_perks": "$30/mo free compute already included for all accounts before applying",
+        "url": "https://modal.com/startups",
+        "notes": (
+            "No equity, no investor required. Apply at modal.com/startups. "
+            "Useful specifically for BookCreator: host per-child LoRA inference endpoints, "
+            "batch upscaling pipeline, custom fine-tuning jobs — all on Modal compute credits. "
+            "Stack with AWS Activate: Modal covers custom deployment; AWS covers standard infra."
+        ),
+    },
+    # ── Together AI ────────────────────────────────────────────────────────
+    "together_for_startups": {
+        "name": "Together AI for Startups (AI Accelerate)",
+        "provider": "Together AI",
+        "credits_usd": 25_000,
+        "credit_detail": "$25,000 in Together AI inference credits",
+        "duration_note": "Not publicly specified",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Together AI serverless inference (DeepSeek-V3, Llama-3.3-70B, Qwen, Flux, SDXL, etc.)",
+        "other_perks": "Priority support, access to Together Research team, community events",
+        "url": "https://www.together.ai/startups",
+        "notes": (
+            "Together AI hosts both LLMs and image gen models under one API. "
+            "$25K covers: ~125M Llama-3.3-70B tokens, or ~13M Flux Schnell images. "
+            "No equity required. Apply at together.ai/startups. "
+            "Combined with $1 signup credit and free Flux Schnell tier for prototyping."
+        ),
+    },
+    # ── IBM Build ──────────────────────────────────────────────────────────
+    "ibm_build": {
+        "name": "IBM Build — Startup Program",
+        "provider": "IBM",
+        "credits_usd": 6_000,
+        "credit_detail": "$6,000 in IBM Cloud credits + free watsonx.ai access",
+        "duration_note": "12 months",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "watsonx.ai (Granite 3.3 series) + IBM Cloud services",
+        "other_perks": (
+            "1-on-1 IBM technical advisor, go-to-market co-selling, "
+            "IBM partner ecosystem access, IBM Developer community"
+        ),
+        "url": "https://www.ibm.com/partnerplus/isv",
+        "notes": (
+            "IBM Build targets ISVs (Independent Software Vendors) building on IBM platforms. "
+            "Best reason to apply: FedRAMP/HIPAA/SOC 2 compliance via watsonx.ai at no cost. "
+            "If targeting healthcare, finance, or government customers, IBM credentials add credibility. "
+            "No equity required. Founded < 10 years, building a software product."
+        ),
+    },
+    # ── Databricks ────────────────────────────────────────────────────────
+    "databricks_startups": {
+        "name": "Databricks Startup Program",
+        "provider": "Databricks",
+        "credits_usd": 10_000,
+        "credit_detail": "$10,000 in Databricks DBU credits (Data Bundle Units)",
+        "duration_note": "12 months",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Databricks Foundation Model APIs (DBRX, Llama, Mistral) + Mosaic AI",
+        "other_perks": "Databricks Ventures consideration, partner ecosystem, go-to-market support",
+        "url": "https://www.databricks.com/company/partner-program",
+        "notes": (
+            "DBUs cover: Foundation Model API (DBRX, Llama 3.3 70B), "
+            "Delta Lake storage, Spark compute, MLflow experiment tracking. "
+            "No equity required. Early-stage (pre-Series B). "
+            "Stronger if your data pipeline already uses Spark/Delta — "
+            "calling DBRX from inside a Databricks notebook is zero-egress, zero-latency."
+        ),
+    },
+    # ── Groq ──────────────────────────────────────────────────────────────
+    "groq_for_startups": {
+        "name": "Groq for Startups",
+        "provider": "Groq",
+        "credits_usd": 5_000,
+        "credit_detail": "$5,000 in GroqCloud inference credits",
+        "duration_note": "Not publicly specified",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "GroqCloud inference (Llama-3.3-70B at 2000+ tok/s, Mixtral, Gemma, DeepSeek-R1-distil)",
+        "other_perks": "Priority rate limits, Groq engineering support",
+        "url": "https://groq.com/startups/",
+        "notes": (
+            "Groq's LPU (Language Processing Unit) is 10-100x faster than GPU inference. "
+            "Llama 3.3 70B at 2000+ tok/s — near-instant responses. "
+            "Primary use case: latency-critical agentic chains, real-time voice/chat features. "
+            "For BookCreator: story generation in <1s vs 5-10s on other providers. "
+            "No equity required."
+        ),
+    },
+    # ── Cerebras ──────────────────────────────────────────────────────────
+    "cerebras_for_startups": {
+        "name": "Cerebras for Startups",
+        "provider": "Cerebras Systems",
+        "credits_usd": 5_000,
+        "credit_detail": "$5,000 in Cerebras Cloud inference credits",
+        "duration_note": "Not publicly specified",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Cerebras Cloud inference (Llama 3.3 70B at 2000+ tok/s on wafer-scale chip)",
+        "other_perks": "Engineering support, early access to new Cerebras chip generations",
+        "url": "https://cloud.cerebras.ai/",
+        "notes": (
+            "Cerebras wafer-scale engine: single chip the size of a dinner plate, "
+            "850K AI cores. Llama 3.3 70B at 2100+ tokens/sec — fastest available. "
+            "Similar pitch to Groq: ultra-low latency for interactive applications. "
+            "No equity required. Apply via cloud.cerebras.ai."
+        ),
+    },
+    # ── Replicate ─────────────────────────────────────────────────────────
+    "replicate_for_startups": {
+        "name": "Replicate Growth Program",
+        "provider": "Replicate",
+        "credits_usd": 2_500,
+        "credit_detail": "$2,500 in Replicate compute credits",
+        "duration_note": "Not publicly specified",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Replicate GPU-second compute (LLM inference + image gen + LoRA fine-tuning)",
+        "other_perks": "Priority support, Replicate team introductions",
+        "url": "https://replicate.com/",
+        "notes": (
+            "Apply via replicate.com (contact support for startup program details — not publicly listed). "
+            "Most valuable for: LoRA fine-tune pipeline ($1.50/run) + inference hosting for trained models. "
+            "$2.5K = ~1,666 LoRA training runs OR ~833K image gen calls. "
+            "Stack with other programs: use Replicate for fine-tuning, AWS/GCP/Azure for raw compute."
+        ),
+    },
+    # ── Baseten ───────────────────────────────────────────────────────────
+    "baseten_for_startups": {
+        "name": "Baseten Startup Program",
+        "provider": "Baseten",
+        "credits_usd": 5_000,
+        "credit_detail": "$5,000 in Baseten compute credits",
+        "duration_note": "Not publicly specified",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "Baseten GPU compute (A10G, A100, H100) for custom model serving",
+        "other_perks": "Dedicated ML engineer support, production deployment guidance",
+        "url": "https://www.baseten.co/startups/",
+        "notes": (
+            "Focused on production ML serving — not just prototyping. "
+            "Best use: deploy custom fine-tuned models (e.g. Whisper for audio input, "
+            "SDXL+LoRA for image gen) with hot replicas and autoscaling SLAs. "
+            "No equity required. Apply at baseten.co/startups."
+        ),
+    },
+    # ── Voyage AI ─────────────────────────────────────────────────────────
+    "voyage_ai_free_tier": {
+        "name": "Voyage AI — 200M Free Embedding Tokens",
+        "provider": "Voyage AI",
+        "credits_usd": 12,  # 200M tokens x $0.06/MTok = $12 equivalent
+        "credit_detail": "200M embedding tokens free on signup (no credit card)",
+        "duration_note": "One-time on signup; no expiry stated",
+        "funding_required": False,
+        "multiple_entities_ok": True,
+        "ai_inference_covered": True,
+        "ai_detail": "voyage-3, voyage-code-3, voyage-3-lite, voyage-3-large embeddings",
+        "other_perks": "Access to voyage-rerank-2 reranker",
+        "url": "https://dash.voyageai.com/",
+        "notes": (
+            "200M free tokens = enough to embed ~150K average-length documents. "
+            "For BookCreator RAG: embed your entire book template library + user preference history. "
+            "Not a large dollar amount but covers early-stage embedding pipeline entirely. "
+            "No startup program beyond this — but 200M tokens is generous for a seed-stage app."
+        ),
+    },
 }
 
 
