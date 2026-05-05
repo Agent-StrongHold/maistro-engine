@@ -722,6 +722,166 @@ IMAGE_GEN_MODELS: list[ImageGenPricing] = [
             "$0.01/edit for image transforms."
         ),
     ),
+    # ══════════════════════════════════════════════════════════════════════
+    # AZURE AI FOUNDRY  — Model Catalog serverless endpoints
+    # signup: ai.azure.com  |  sdk: azure-ai-inference (pip install azure-ai-inference)
+    # api_key_env: AZURE_INFERENCE_CREDENTIAL
+    # api_base: https://<project>.services.ai.azure.com/models
+    #
+    # IMPORTANT — credit eligibility:
+    #   Third-party Marketplace models (FLUX, Stability AI) are billed via
+    #   Azure Marketplace, NOT Azure consumption — startup credits do NOT cover them.
+    #   Only Azure OpenAI (Microsoft-owned) models are credit-eligible.
+    #   Self-hosted VMs ARE credit-eligible (see azure_selfhosted entries above).
+    # ══════════════════════════════════════════════════════════════════════
+    ImageGenPricing(
+        provider="azure_foundry",
+        model_id="black-forest-labs/flux-1-pro",
+        price_per_image=0.055,  # Azure Marketplace rate; verify at ai.azure.com
+        billing_model="per_image",
+        resolution_options=["1024x1024", "1440x1440", "1920x1080"],
+        supports_lora=False,
+        latency_seconds=8.0,
+        signup_url="https://ai.azure.com",
+        pricing_url="https://ai.azure.com/explore/models/flux-1-pro/pulaski/BlackForestLabs",
+        credit_programs=[],  # Azure Marketplace billing — startup credits NOT applicable
+        notes=(
+            "FLUX.1 [pro] via Azure AI Foundry Model Catalog serverless endpoint. "
+            "SDK: pip install azure-ai-inference. "
+            "Billed via Azure Marketplace — NOT covered by Azure startup credits. "
+            "Endpoint: https://<project>.services.ai.azure.com/models. "
+            "For credit-eligible image gen on Azure: use azure_selfhosted SDXL instead."
+        ),
+    ),
+    ImageGenPricing(
+        provider="azure_foundry",
+        model_id="black-forest-labs/flux-1-1-pro",
+        price_per_image=0.04,  # Azure Marketplace rate; verify at ai.azure.com
+        billing_model="per_image",
+        resolution_options=["1024x1024", "1440x1440", "1920x1080"],
+        supports_lora=False,
+        latency_seconds=6.0,
+        signup_url="https://ai.azure.com",
+        pricing_url="https://ai.azure.com/explore/models/flux-1-1-pro/pulaski/BlackForestLabs",
+        credit_programs=[],  # Azure Marketplace billing — startup credits NOT applicable
+        notes=(
+            "FLUX.1.1 [pro] via Azure AI Foundry serverless. Faster than FLUX.1 [pro]. "
+            "Billed via Azure Marketplace — NOT covered by Azure startup credits. "
+            "Use for quality-critical pages where Runware/Together quality is insufficient."
+        ),
+    ),
+    ImageGenPricing(
+        provider="azure_foundry",
+        model_id="black-forest-labs/flux-1-kontext",
+        price_per_image=0.04,  # Azure Marketplace rate; verify at ai.azure.com
+        billing_model="per_image",
+        resolution_options=["1024x1024", "1440x1440"],
+        supports_inpainting=True,
+        supports_lora=False,  # no LoRA needed — in-context character reference
+        latency_seconds=8.0,
+        signup_url="https://ai.azure.com",
+        pricing_url="https://ai.azure.com/explore/models/flux-kontext-pro/pulaski/BlackForestLabs",
+        credit_programs=[],  # Azure Marketplace billing — startup credits NOT applicable
+        notes=(
+            "FLUX.1 Kontext: multimodal in-context image editing — PIPELINE SIMPLIFICATION OPPORTUNITY. "
+            "Pass a reference photo of the child + prompt; model edits/generates with consistent character "
+            "WITHOUT requiring LoRA fine-tuning. ~8x faster than prior FLUX at 1024x1024. "
+            "Could replace per-child LoRA for Book 1 and 2 (before character-specific LoRA matures). "
+            "Inpainting: re-run with masked region + edit instruction (no separate inpaint model needed). "
+            "Billed via Azure Marketplace — NOT covered by Azure startup credits. "
+            "CRITICAL: test character consistency across 20 pages before committing to this path."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # AZURE OPENAI  — GPT-image-1 (Microsoft-owned, startup-credit-eligible)
+    # signup: portal.azure.com  |  sdk: openai (pip install openai)
+    # api_key_env: AZURE_OPENAI_API_KEY
+    # api_base: https://<resource>.cognitiveservices.azure.com/openai/deployments/
+    #           <deployment>/images/generations?api-version=2025-04-01-preview
+    #
+    # CREDIT NOTE: Azure OpenAI is Microsoft-owned — covered by startup credits.
+    # ══════════════════════════════════════════════════════════════════════
+    ImageGenPricing(
+        provider="azure_openai",
+        model_id="gpt-image-1",
+        price_per_image=0.04,  # standard quality 1024x1024; HD = $0.17/image
+        billing_model="per_image",
+        resolution_options=["1024x1024", "1792x1024", "1024x1792"],
+        supports_inpainting=True,
+        latency_seconds=10.0,
+        signup_url="https://portal.azure.com",
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        credit_programs=["microsoft_self_service", "microsoft_co_sell"],
+        notes=(
+            "GPT-image-1 via Azure OpenAI — covered by Azure startup credits. "
+            "Same model as OpenAI's gpt-image-1 but billed against Azure credits. "
+            "Pricing: low-quality $0.01, standard $0.04, HD $0.17 (1024x1024). "
+            "SDK: standard openai Python package with AzureOpenAI client. "
+            "API: https://<resource>.cognitiveservices.azure.com/openai/deployments/"
+            "<deployment>/images/generations?api-version=2025-04-01-preview. "
+            "$5K credits = 125K standard images. $10K (both entities) = 250K images. "
+            "Inpainting supported. Strong photorealism, no LoRA."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # UPSCALING / BATCH PRINT PREP  — final proof-to-print-ready pipeline
+    # Used AFTER variant selection, BEFORE sending to printer.
+    # Batch upscaling amortises GPU cost: run overnight / off-peak.
+    # ══════════════════════════════════════════════════════════════════════
+    ImageGenPricing(
+        provider="google",
+        model_id="imagen-upscaler-batch",
+        price_per_image=0.003,  # Vertex AI upscaling; verify at cloud.google.com/vertex-ai/generative-ai/pricing
+        billing_model="per_image",
+        resolution_options=["2048x2048", "4096x4096"],
+        latency_seconds=15.0,
+        signup_url="https://cloud.google.com/free",
+        pricing_url="https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        credit_programs=["google_cloud_start", "google_cloud_scale_ai"],
+        notes=(
+            "Vertex AI Imagen upscaler for batch print-ready upscaling. "
+            "Run after user approves final page selection — not in the hot path. "
+            "GCP credits eligible: $0.003/image x 20 pages = $0.06/book for print prep. "
+            "Batch API: submit all 20 pages as a job → retrieve when done (no latency pressure). "
+            "Output: 4096x4096 suitable for 8x10in print at 300dpi."
+        ),
+    ),
+    ImageGenPricing(
+        provider="replicate",
+        model_id="nightmareai/real-esrgan",
+        price_per_image=0.002,  # per-second GPU billing; ~0.5s typical
+        billing_model="per_second",
+        resolution_options=["2x", "4x", "8x upscale"],
+        latency_seconds=2.0,
+        signup_url="https://replicate.com/signin",
+        pricing_url="https://replicate.com/nightmareai/real-esrgan",
+        notes=(
+            "Real-ESRGAN upscaler on Replicate. 4x upscale: 1024 -> 4096px. "
+            "~$0.002/image at standard resolution — cheaper than Imagen upscaler. "
+            "No credit programs — pay-as-you-go only. "
+            "Batch-friendly: call async via webhook, no timeout pressure. "
+            "Use for final proof-to-print-ready upscaling before sending to print partner."
+        ),
+    ),
+    ImageGenPricing(
+        provider="aws_selfhosted",
+        model_id="real-esrgan-on-g5xlarge-batch",
+        price_per_image=0.0008,  # g5.xlarge spot $0.30/hr / ~375 upscales/hr
+        billing_model="per_second",
+        resolution_options=["2x", "4x upscale"],
+        latency_seconds=8.0,
+        signup_url="https://aws.amazon.com/ec2/",
+        pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
+        notes=(
+            "Self-hosted Real-ESRGAN batch upscaler on g5.xlarge spot via AWS credits. "
+            "~375 upscales/hr on A10G = $0.0008/image. "
+            "$100K AWS credits = 125M upscale ops (more than enough for entire print run). "
+            "Run as SQS-triggered Lambda or batch job: approved pages queued after user sign-off, "
+            "GPU spins up, processes all 20 pages, pushes hi-res to S3, triggers print order. "
+            "Zero latency pressure — user never waits for upscaling in the UI."
+        ),
+    ),
 ]
 
 
