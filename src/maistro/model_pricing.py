@@ -2165,6 +2165,280 @@ def startup_programs_table() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Accelerator programs — low to medium barrier, researched for BookCreator
+# (AI-powered book creation startup, pre-seed, no revenue, small team)
+# ---------------------------------------------------------------------------
+#
+# equity_pct: approximate founder dilution from the accelerator itself
+#             (not counting future VC rounds).  0 = no equity taken.
+# barrier: "low" = essentially auto-approved if eligible
+#           "medium" = competitive but realistic for early-stage
+#           "high" = <5% acceptance or hard in-person/revenue gate
+# remote: True = can participate from home; False = in-person relocation required
+# revenue_required: None = not required; string = minimum threshold
+# deadline_2026: next known application deadline (None = rolling)
+# credits_usd_approx: cloud/tool credits included (approximate)
+# STATUS: "active" / "inactive" / "pivoted" — VERIFY before applying
+
+ACCELERATOR_PROGRAMS: dict[str, dict] = {
+    # ── Tier 1: Apply now — no revenue, high fit, low-medium barrier ──────
+    "cdl_ai": {
+        "name": "Creative Destruction Lab — AI Stream",
+        "equity_pct": 0,
+        "cash_usd": 0,
+        "facilitated_investment": "$100K-$1M (from mentors/VCs who choose to invest; not guaranteed)",
+        "barrier": "medium",
+        "remote": True,
+        "remote_note": "1 full-day in-person session every ~8 weeks at chosen site (16 global sites)",
+        "revenue_required": None,
+        "deadline_2026": "2026-07-24",
+        "credits_usd_approx": 0,
+        "status": "active",
+        "apply_url": "https://creativedestructionlab.com/streams/ai/",
+        "selection_criteria": (
+            "Science/tech-based venture with massively scalable trajectory. "
+            "Objectives-based review every 8 weeks — teams that miss objectives are removed. "
+            "No revenue or team size minimum. Strong AI-first product required."
+        ),
+        "bookcreator_fit": "Very high",
+        "fit_reason": "0% equity, free, world-class AI mentorship, remote-friendly. Best value program globally.",
+        "cloud_credits": "No direct credits — value is mentor network and facilitated investor introductions.",
+    },
+    "ai2_incubator": {
+        "name": "AI2 Incubator (Allen Institute for AI)",
+        "equity_pct": 6.0,
+        "cash_usd": 600_000,
+        "barrier": "medium",
+        "remote": True,
+        "remote_note": "Explicitly remote-friendly; quarterly Seattle visits optional or full relocation",
+        "revenue_required": None,
+        "deadline_2026": None,  # rolling admissions year-round
+        "credits_usd_approx": 1_000_000,
+        "status": "active",
+        "apply_url": "https://apply.ai2incubator.com/apply",
+        "selection_criteria": (
+            "AI-first startups; ~15 companies/year. No revenue required. "
+            "Technical depth and AI model expertise are key differentiators. "
+            "Strong bias toward startups with proprietary AI capabilities."
+        ),
+        "bookcreator_fit": "Very high",
+        "fit_reason": (
+            "$1M in cloud credits (non-dilutive) for AI training. Remote-friendly. "
+            "Track record: 90%+ raise follow-on VC; acquisitions by Apple, Thomson Reuters."
+        ),
+        "cloud_credits": "Up to $1M combined AWS/GCP/Azure non-dilutive credits for AI model work.",
+    },
+    "techstars_anywhere": {
+        "name": "Techstars Anywhere",
+        "equity_pct": 5.0,
+        "cash_usd": 220_000,
+        "cash_note": "$200K uncapped MFN SAFE + $20K Post-Money Convertible Equity",
+        "barrier": "high",  # ~1% acceptance rate
+        "remote": True,
+        "remote_note": "Fully remote; 3 optional in-person meetings",
+        "revenue_required": None,
+        "deadline_2026": "2026-06-10",
+        "credits_usd_approx": 600_000,
+        "status": "active",
+        "apply_url": "https://www.techstars.com/accelerators/anywhere",
+        "selection_criteria": (
+            "~1% acceptance rate. Industry-agnostic. Strong team and large market required. "
+            "Solo founders accepted. No revenue required. "
+            "Fall 2026 cohort starts Sept 14, 2026."
+        ),
+        "bookcreator_fit": "High",
+        "fit_reason": "Fully remote, no revenue required, industry-agnostic. $600K+ in perks.",
+        "cloud_credits": "Up to $100K AWS Activate + up to $350K GCP + up to $150K Azure + $2.5K+ OpenAI.",
+    },
+    "entrepreneur_first": {
+        "name": "Entrepreneur First (EF)",
+        "equity_pct": 8.5,
+        "cash_usd": 250_000,
+        "cash_note": "Up to $250K at ~8-9%; equity-free $10K exploration grant + housing in FORM phase for pre-idea founders",
+        "barrier": "medium",
+        "remote": False,
+        "remote_note": "In-person required: SF, London, or Bangalore",
+        "revenue_required": None,
+        "deadline_2026": None,  # rolling admissions
+        "credits_usd_approx": 600_000,
+        "status": "active",
+        "apply_url": "https://apply.joinef.com/",
+        "selection_criteria": (
+            "Solo individuals accepted (EF builds teams from scratch). "
+            "Strong bias toward technical founders with deep domain expertise (AI/ML preferred). "
+            "Pre-idea is fine — EF is specifically designed for this stage."
+        ),
+        "bookcreator_fit": "High (solo technical founders especially)",
+        "fit_reason": (
+            "Best program for solo technical founders. Co-founder matching built in. "
+            "$600K+ in AI/cloud credits: $350K Azure + $250K+ OpenAI + Anthropic + GitHub + ElevenLabs."
+        ),
+        "cloud_credits": "$350K Azure + $250K+ OpenAI + Anthropic + GitHub + ElevenLabs + PostHog.",
+    },
+    # ── Tier 2: Strong fit, higher bar or in-person requirement ───────────
+    "betaworks_camp": {
+        "name": "Betaworks Camp — Agent Systems",
+        "equity_pct": 5.0,
+        "cash_usd": 500_000,
+        "cash_note": "Up to $500K: $250K from Betaworks (uncapped SAFE, 25% discount) + $250K syndicate match",
+        "barrier": "medium",
+        "remote": False,
+        "remote_note": "NYC-based; international founders must relocate for part of 12-week program",
+        "revenue_required": None,
+        "deadline_2026": "2026-07-01",  # approximate; Fall 2026 window opens June-July
+        "credits_usd_approx": None,
+        "status": "active",
+        "apply_url": "https://www.betaworks.com/camp/application",
+        "selection_criteria": (
+            "~10 companies per cohort. Very early-stage focus; no revenue required. "
+            "Spring 2026 theme: 'Agent Systems' — agentic AI delivering work across domains. "
+            "Fall 2026 theme TBD. Strong concept fit with AI book creation as an agent-delivered workflow."
+        ),
+        "bookcreator_fit": "Very high (theme fit)",
+        "fit_reason": (
+            "'Agent Systems' theme maps directly to an AI agent that takes a brief and produces a publishable book. "
+            "$500K for 5% is a competitive deal. Watch for Fall 2026 application window June-July."
+        ),
+        "cloud_credits": "Via NYC network and partner introductions; no fixed published amount.",
+    },
+    "antler_us": {
+        "name": "Antler (US — Austin / NYC / SF)",
+        "equity_pct": 9.1,
+        "cash_usd": 250_000,
+        "cash_note": "$250K at $2.75M post-money (9.1%); some cohorts up to $500K. $2,500 relocation grant.",
+        "barrier": "low",
+        "remote": False,
+        "remote_note": "6-week in-person residency required (Austin, NYC, or SF)",
+        "revenue_required": None,
+        "deadline_2026": None,  # rolling
+        "credits_usd_approx": 4_000_000,
+        "status": "active",
+        "apply_url": "https://www.antler.co/residency",
+        "selection_criteria": (
+            "Solo founders accepted; co-founder matching is Antler's core value-add. "
+            "Pre-idea is fine. <3% acceptance from 100K+ applications — but low bar if technical. "
+            "20-45% of each residency cohort actually receives investment (IC decision at end of 6 weeks)."
+        ),
+        "bookcreator_fit": "High (especially for solo founders)",
+        "fit_reason": (
+            "Best for solo founders needing a co-founder. $4M+ in credits including NVIDIA + OpenAI. "
+            "No equity taken if IC doesn't invest — risk-free to try if you can relocate 6 weeks."
+        ),
+        "cloud_credits": "$4M+ total: NVIDIA DGX credits, OpenAI credits, AWS, GCP, Azure.",
+    },
+    # ── Tier 3: Apply once MVP + early traction exist ─────────────────────
+    "500_global": {
+        "name": "500 Global Flagship",
+        "equity_pct": 6.0,
+        "cash_usd": 150_000,
+        "barrier": "high",
+        "remote": False,
+        "remote_note": "Palo Alto in-person required for ~4 months",
+        "revenue_required": "Soft preference for post-revenue / working MVP with traction",
+        "deadline_2026": None,  # rolling admissions
+        "credits_usd_approx": 1_000_000,
+        "status": "active",
+        "apply_url": "https://flagship.aplica.500.co/",
+        "selection_criteria": (
+            "Rolling admissions. ~1-3% acceptance from ~3,000 apps/batch. "
+            "At least one full-time founder required. MVP or working prototype expected. "
+            "Global founders welcome but must relocate to Palo Alto."
+        ),
+        "bookcreator_fit": "Medium",
+        "fit_reason": "Strong brand. $1M+ credits via FounderHub. Wait until MVP ships.",
+        "cloud_credits": "$1M+ total via 500 FounderHub (AWS, GCP, Azure, AI tools).",
+    },
+    "a16z_speedrun": {
+        "name": "a16z Speedrun",
+        "equity_pct": 10.0,
+        "cash_usd": 500_000,
+        "cash_note": "$500K upfront (10% SAFE, uncapped) + $500K pro-rata reserved = up to $1M",
+        "barrier": "high",
+        "remote": False,
+        "remote_note": "12-week in-person SF program (one structured day/week)",
+        "revenue_required": None,
+        "deadline_2026": "2026-05-17",  # SR007 closed; SR008 expected late 2026
+        "credits_usd_approx": 5_000_000,
+        "status": "active",
+        "apply_url": "https://speedrun.a16z.com/apply",
+        "selection_criteria": (
+            "Sub-0.4% acceptance rate. 60-70 teams per cohort. "
+            "Strong preference for teams with shipping product and early user metrics. "
+            "Creative tech, AI, prosumer tools, and entertainment are strong fits thematically."
+        ),
+        "bookcreator_fit": "Medium (aspirational until traction)",
+        "fit_reason": "$1M + $5M credits for 10%. Target once product has active users.",
+        "cloud_credits": "$5M+ across 250+ partner tools including all major cloud + AI providers.",
+    },
+    # ── Dead ends — do not apply ──────────────────────────────────────────
+    "newchip": {
+        "name": "Newchip Accelerator",
+        "status": "CLOSED — bankrupt May 2023. Do not apply.",
+        "equity_pct": None,
+        "cash_usd": None,
+        "barrier": None,
+        "remote": None,
+        "revenue_required": None,
+        "deadline_2026": None,
+        "credits_usd_approx": None,
+        "apply_url": None,
+        "bookcreator_fit": "N/A — defunct",
+        "fit_reason": "Program no longer exists.",
+        "cloud_credits": None,
+    },
+    "matter_vc": {
+        "name": "Matter Media Accelerator",
+        "status": "INACTIVE — last cohort was 2018. Website now promotes Columbia journalism fellowship only.",
+        "equity_pct": None,
+        "cash_usd": None,
+        "barrier": None,
+        "remote": None,
+        "revenue_required": None,
+        "deadline_2026": None,
+        "credits_usd_approx": None,
+        "apply_url": None,
+        "bookcreator_fit": "N/A — inactive",
+        "fit_reason": "No active accelerator cohort as of May 2026.",
+        "cloud_credits": None,
+    },
+}
+
+
+def bookcreator_accelerator_table() -> str:
+    """
+    Markdown table of accelerator programs for BookCreator, sorted by barrier then fit.
+    Excludes dead/inactive programs.
+    """
+    active = {k: v for k, v in ACCELERATOR_PROGRAMS.items() if v.get("status") == "active"}
+    tier_order = {"low": 0, "medium": 1, "high": 2}
+    sorted_programs = sorted(active.items(), key=lambda kv: tier_order.get(kv[1]["barrier"], 3))
+
+    rows = []
+    for _, p in sorted_programs:
+        equity = f"{p['equity_pct']}%" if p["equity_pct"] is not None else "0%"
+        cash = f"${p['cash_usd']:,}" if p.get("cash_usd") else "-"
+        remote = "yes" if p.get("remote") else "no"
+        rev = p.get("revenue_required") or "none"
+        deadline = p.get("deadline_2026") or "rolling"
+        rows.append(
+            f"| {p['name'][:38]:<38} | {equity:>6} | {cash:>10} | {p['barrier']:^6} "
+            f"| {remote:^6} | {rev[:20]:<20} | {deadline} |"
+        )
+
+    header = (
+        "### BookCreator — Accelerator Roadmap (May 2026)\n\n"
+        "| Program                                | Equity | Cash invest |Barrier| Remote | Revenue req          | Deadline |\n"
+        "|----------------------------------------|--------|-------------|-------|--------|----------------------|----------|\n"
+    )
+    footer = (
+        "\nBarrier: low=auto-approved if eligible, medium=competitive, high=<5% acceptance\n"
+        "Apply Tier 1 now: CDL (July 24) + AI2 (rolling) + Techstars Anywhere (June 10)\n"
+        "Watch for: Betaworks Fall 2026 window (June-July)\n"
+    )
+    return header + "\n".join(rows) + "\n" + footer
+
+
+# ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
 
