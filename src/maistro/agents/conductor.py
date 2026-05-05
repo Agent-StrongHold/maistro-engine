@@ -25,7 +25,14 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from maistro.agents.circuit_breaker import CircuitOpenError, llm_circuit
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
-from maistro.agents.types import ConductorOutput, LLMProviderError, PlanOutput, SubTask
+from maistro.agents.types import (
+    ConductorOutput,
+    GraphNodeResult,
+    HyperagentOutput,
+    LLMProviderError,
+    PlanOutput,
+    SubTask,
+)
 from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.config.settings import get_settings
@@ -249,7 +256,35 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
 
     result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)  # type: ignore[arg-type]
 
-    # Trajectory log — captures the agent's decision path for auditing.
+    if task.execution_mode == "graph" and task.graph_config is not None:
+        # Wrap in HyperagentOutput and emit a graph-specific trajectory log.
+        hyperagent_result = HyperagentOutput(
+            plan=result.plan,
+            code=result.code,
+            review=result.review,
+            final_answer=result.final_answer,
+            success=result.success,
+            graph_config=task.graph_config,
+        )
+        await logger.ainfo(
+            "conductor_trajectory",
+            success=hyperagent_result.success,
+            execution_mode=task.execution_mode,
+            hyperagent=task.graph_config.hyperagent,
+            nodes=task.graph_config.nodes,
+            edges=[
+                {"from": e.from_role, "to": e.to_role, "condition": e.condition}
+                for e in task.graph_config.edges
+            ],
+            max_cycles=task.graph_config.max_cycles,
+            subtask_count=len(result.plan.subtasks) if result.plan else 0,
+            files_changed=result.code.files_changed if result.code else [],
+            review_approved=result.review.approved if result.review else None,
+            review_score=result.review.score if result.review else None,
+        )
+        return hyperagent_result  # type: ignore[return-value]
+
+    # Standard trajectory log for TASK / WORKFLOW / AGENT modes.
     await logger.ainfo(
         "conductor_trajectory",
         success=result.success,

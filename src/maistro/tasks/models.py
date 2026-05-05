@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from maistro.agents.types import ExecutionMode
+from maistro.agents.types import ExecutionMode, GraphConfig
 
 
 class TaskStatus(StrEnum):
@@ -31,6 +31,7 @@ class TaskCreate(BaseModel):
     branch: str | None = None
     constraints: list[str] = Field(default_factory=list)
     execution_mode: ExecutionMode = ExecutionMode.WORKFLOW
+    graph_config: GraphConfig | None = None  # required when execution_mode=GRAPH
 
 
 class TaskProgress(BaseModel):
