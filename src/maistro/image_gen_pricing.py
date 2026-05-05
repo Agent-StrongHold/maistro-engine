@@ -1597,6 +1597,105 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
 
 
 # ---------------------------------------------------------------------------
+# Batch-first pipeline strategy
+# ---------------------------------------------------------------------------
+# Golden rule: anything NOT in the user's direct wait path should be batched.
+# Batching reduces cost by: (a) enabling spot/preemptible instances, (b) allowing
+# off-peak scheduling, (c) reducing per-job cold-start amortisation overhead.
+#
+# Operations that CAN be batched (user does not wait):
+#   - LoRA training            → SQS → async Replicate webhook
+#   - Batch upscaling          → SQS → g5.xlarge spot job (after approval)
+#   - Preview email generation → overnight batch (new template release)
+#   - S3 cleanup               → S3 lifecycle rule (free)
+#   - LoRA weight backup       → S3 event → async replication
+#
+# Operations that CANNOT be batched (user waits in browser):
+#   - Initial variant generation  → must be <30s (parallel async calls help)
+#   - Inpainting refinement       → must be <15s (single call, per user action)
+#
+# Spot instance strategy for batch jobs:
+#   - Keep instance at 0 during off hours
+#   - SQS triggers auto-start via Lambda → EC2 RunInstances
+#   - Interruption handler: checkpoint job state → requeue to SQS → terminate
+#   - AWS g5.xlarge spot $0.30/hr vs $1.19 on-demand = 75% savings on batch
+# ---------------------------------------------------------------------------
+
+BATCH_PIPELINE: dict[str, dict] = {
+    "lora_training": {
+        "trigger": "after_book1_payment",
+        "queue": "SQS",
+        "worker": "replicate_webhook",
+        "provider": "replicate",
+        "model": "replicate/fast-flux-trainer",
+        "latency": "async_2min",
+        "batchable": True,
+        "user_waits": False,
+        "spot_eligible": True,
+        "cost_per_job": 1.50,
+        "notes": "Train per-child LoRA after Book 1 delivered. Use for Book 2+ generation.",
+    },
+    "variant_generation": {
+        "trigger": "user_opens_page_review",
+        "queue": "parallel_async",
+        "provider": "runware",
+        "model": "runware:101@1",  # SDXL + LoRA
+        "latency": "realtime_30s",
+        "batchable": False,  # user waits — parallel API calls, not batch queue
+        "user_waits": True,
+        "spot_eligible": False,
+        "cost_per_job": 0.0026 * 80,  # 20 pages x 4 variants
+        "notes": "80 parallel image calls. Fire all at once; await all; render grid.",
+    },
+    "inpainting_refinement": {
+        "trigger": "user_clicks_refine",
+        "queue": "direct_api",
+        "provider": "fal_ai",
+        "model": "fal-ai/flux/dev/image-to-image",
+        "latency": "realtime_15s",
+        "batchable": False,  # synchronous with user action
+        "user_waits": True,
+        "spot_eligible": False,
+        "cost_per_job": 0.025,
+        "notes": "Only for users who click Refine. Optional upgrade flow.",
+    },
+    "batch_upscaling": {
+        "trigger": "all_pages_approved",
+        "queue": "SQS",
+        "worker": "g5xlarge_spot_job",
+        "provider": "aws_selfhosted",
+        "model": "real-esrgan-on-g5xlarge-batch",
+        "latency": "async_5min_for_20pages",
+        "batchable": True,
+        "user_waits": False,
+        "spot_eligible": True,
+        "cost_per_job": 0.0008 * 20,  # 20 pages x $0.0008/upscale
+        "notes": (
+            "4x upscale 1024->4096px per page. Spin up spot GPU, process all 20 pages, "
+            "push hi-res to S3, trigger print order, terminate instance. "
+            "User gets 'Your book is being printed!' notification, not 'please wait'."
+        ),
+    },
+    "preview_email_gen": {
+        "trigger": "new_template_published",
+        "queue": "SQS_fanout",
+        "worker": "lambda_batch",
+        "provider": "runware",
+        "model": "runware:101@1",
+        "latency": "async_overnight",
+        "batchable": True,
+        "user_waits": False,
+        "spot_eligible": True,
+        "cost_per_job": 0.0026,  # 1 preview page per child per template
+        "notes": (
+            "For each new book template: generate 1 personalized preview page per saved character. "
+            "Send email with preview image + 'Finish your book' CTA. "
+            "Run overnight at batch rates. SQS fan-out: 1 message per child."
+        ),
+    },
+}
+
+# ---------------------------------------------------------------------------
 # Table rendering functions
 # ---------------------------------------------------------------------------
 
