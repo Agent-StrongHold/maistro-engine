@@ -768,6 +768,189 @@ PROVIDERS: dict[str, dict] = {
             "Not competitive with frontier models on creative/code — specialised for data workloads."
         ),
     },
+    # Nebius AI — European inference cloud; cheapest EU-based open-weight hosting (H100)
+    "nebius": {
+        "name": "Nebius AI (EU inference cloud — cheapest EU H100 hosting for open weights)",
+        "pricing_url": "https://nebius.com/prices",
+        "api_docs_url": "https://nebius.com/docs/ai-studio",
+        "is_inference_platform": True,
+        "notes": (
+            "Yandex-spun-off EU AI cloud (Amsterdam HQ, Netherlands data residency). "
+            "30+ open-weight models from $0.01/MTok. H100 GPU cluster. "
+            "OpenAI-compatible API. GDPR-compliant EU data processing. "
+            "Best option for EU-region open-weight inference at lowest cost."
+        ),
+    },
+    # Lambda Labs — GPU cloud; serverless LLM inference API + on-demand GPU instances
+    "lambda_ai": {
+        "name": "Lambda Labs (GPU cloud — serverless inference API + on-demand H100 instances)",
+        "pricing_url": "https://lambdalabs.com/service/gpu-cloud",
+        "api_docs_url": "https://docs.lambdalabs.com/inference/",
+        "is_inference_platform": True,
+        "notes": (
+            "Lambda Inference API: 20+ LLMs from $0.015/MTok (Llama, Qwen, Hermes). "
+            "Also GPU rental: H100 SXM5 $2.49/hr on-demand, 8x H100 $14.32/hr. "
+            "OpenAI-compatible API. Free trial available. "
+            "Strong for teams that need both managed inference and raw GPU access."
+        ),
+    },
+    # Ollama — local inference runtime; run 100+ models fully offline on consumer hardware
+    "ollama": {
+        "name": "Ollama (local inference — run 100+ open models on consumer hardware for free)",
+        "pricing_url": "https://ollama.com/library",
+        "api_docs_url": "https://github.com/ollama/ollama/blob/main/docs/api.md",
+        "is_inference_platform": True,
+        "notes": (
+            "Run Llama, Qwen, Mistral, Gemma, Phi, DeepSeek etc. locally — $0 inference cost. "
+            "OpenAI-compatible REST API on localhost:11434. Single binary, auto-downloads model weights. "
+            "GPU-accelerated on NVIDIA/AMD/Apple Silicon. No network latency, full data privacy. "
+            "Ideal for dev/test without spending credits. Not suitable for production user-facing APIs."
+        ),
+    },
+    # Alibaba DashScope — direct Qwen API from Alibaba; includes free qwen-flash tier
+    "dashscope": {
+        "name": "Alibaba DashScope (direct Qwen API — 34+ models; free flash tier)",
+        "pricing_url": "https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-qianwen-7b-14b-72b-metering-and-billing",
+        "api_docs_url": "https://help.aliyun.com/zh/dashscope/",
+        "is_inference_platform": False,
+        "notes": (
+            "Alibaba's official Qwen inference endpoint. 34+ models including Qwen3, QwQ. "
+            "qwen-flash: free up to 1M tokens/day (rate-limited). "
+            "OpenAI-compatible API via DashScope SDK or openai with base_url override. "
+            "Requires Aliyun account (Alibaba Cloud). Primarily used for Chinese market."
+        ),
+    },
+    # Allen Institute for AI — OLMo series; fully open (weights + data + code)
+    "allenai": {
+        "name": "Allen Institute for AI (OLMo — fully open models: weights + data + training code)",
+        "pricing_url": "https://openrouter.ai/allenai",
+        "api_docs_url": "https://huggingface.co/allenai",
+        "is_inference_platform": False,
+        "notes": (
+            "OLMo (Open Language Model): fully transparent — weights, data, training code all Apache 2.0. "
+            "OLMo-3.1-32B: competitive with Llama 3.3 70B on reasoning, best-in-class for research. "
+            "OLMo 2 Think: reasoning variant with chain-of-thought. "
+            "Served via OpenRouter. Ideal when full model provenance is required."
+        ),
+    },
+    # Inflection AI — Pi model; conversational AI; emotional intelligence focus
+    "inflection": {
+        "name": "Inflection AI (Pi — emotionally intelligent conversational AI)",
+        "pricing_url": "https://openrouter.ai/inflection",
+        "api_docs_url": "https://developers.inflection.ai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Pi-3 (Productivity + Pi): conversational model tuned for helpfulness and EQ. "
+            "Inflection-3-Productivity: business/work tasks. Inflection-3-Pi: personal AI companion. "
+            "Available via OpenRouter. Not a coding-focused model — strong at nuanced dialogue. "
+            "Higher price ($2.50/$10/MTok) reflects small market footprint."
+        ),
+    },
+    # Arcee AI — distillation/compression specialists; efficient models via speculative decoding
+    "arcee_ai": {
+        "name": "Arcee AI (distillation specialists — efficient compressed models via speculative decoding)",
+        "pricing_url": "https://openrouter.ai/arcee-ai",
+        "api_docs_url": "https://docs.arcee.ai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Specialist in model distillation and merging. Trinity-mini: 7B model compressed from Llama-3 family. "
+            "Maestro-reasoning: frontier reasoning at lower inference cost than o1-class. "
+            "Arcee Spotlight: document understanding specialist. "
+            "Models available via OpenRouter. Apache 2.0 weights on HuggingFace."
+        ),
+    },
+    # Poolside AI — enterprise code generation; trained on proprietary code corpus
+    "poolside": {
+        "name": "Poolside AI (enterprise code generation — proprietary code corpus; free preview)",
+        "pricing_url": "https://openrouter.ai/poolside",
+        "api_docs_url": "https://www.poolside.ai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Laguna model family: trained on proprietary enterprise code corpus, not public GitHub. "
+            "Free preview tier via OpenRouter (no cost during beta). "
+            "Laguna-XS.2 and Laguna-M.1 both 131K context. "
+            "Strong for enterprise codebases where models trained on public code underfit."
+        ),
+    },
+    # StepFun AI — Chinese frontier; long context (262K); competitive coding + math
+    "stepfun": {
+        "name": "StepFun AI (Chinese frontier — 262K context; strong coding + math)",
+        "pricing_url": "https://openrouter.ai/stepfun-ai",
+        "api_docs_url": "https://platform.stepfun.com/docs",
+        "is_inference_platform": False,
+        "notes": (
+            "Step series by StepFun (Kuaishou subsidiary). Step-3.5-Flash: 262K context at $0.10/$0.30. "
+            "Strong on Chinese-language tasks, math, and code generation. "
+            "Available via OpenRouter. OpenAI-compatible API on platform.stepfun.com. "
+            "Free trial credits on signup."
+        ),
+    },
+    # Xiaomi — MiMo math reasoning models; optimised for STEM
+    "xiaomi": {
+        "name": "Xiaomi (MiMo — math and STEM reasoning specialist; up to 1M context)",
+        "pricing_url": "https://openrouter.ai/xiaomi",
+        "api_docs_url": "https://github.com/XiaoMi/MiMo",
+        "is_inference_platform": False,
+        "notes": (
+            "MiMo: Xiaomi's math-reasoning-optimised models. "
+            "MiMo-v2.5: 1M context window; strong on AIME / competition math. "
+            "MiMo-v2-Flash: fast 262K context at $0.09/$0.29. "
+            "Available via OpenRouter. Open weights on HuggingFace (Apache 2.0)."
+        ),
+    },
+    # Morph Labs — Fast Apply: code editing specialist; insert/replace diffs
+    "morph": {
+        "name": "Morph Labs (Fast Apply — code diff/edit specialist; not a general chat model)",
+        "pricing_url": "https://openrouter.ai/morph",
+        "api_docs_url": "https://morphlabs.ai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Morph Fast Apply: designed to apply code diffs/edits — not a general chat model. "
+            "Takes (original file, edit instruction) and outputs the patched file. "
+            "Morph-v3-Fast: $0.80/$1.20; Morph-v3-Large: $0.90/$1.90. Up to 262K context. "
+            "Best-in-class for agentic coding pipelines that need to apply generated diffs reliably."
+        ),
+    },
+    # Inclusion AI — Ling-2.6: 1 trillion parameter MoE; free public tier
+    "inclusionai": {
+        "name": "Inclusion AI (Ling-2.6 — 1T parameter MoE; free public tier)",
+        "pricing_url": "https://openrouter.ai/inclusion-ai",
+        "api_docs_url": "https://inclusionai.github.io/ling/",
+        "is_inference_platform": False,
+        "notes": (
+            "Ling-2.6: 1 trillion parameter MoE model released by Inclusion AI (Chinese lab). "
+            "Ling-2.6-1T: free via OpenRouter during public preview. 262K context. "
+            "Ling-2.6-Flash: paid at $0.08/$0.24. Strong coding and reasoning. "
+            "Open weights planned post-preview."
+        ),
+    },
+    # ByteDance Seed — research lab wing of ByteDance; separate from Doubao/Skylark product
+    "bytedance_seed": {
+        "name": "ByteDance Seed (research models — separate from Doubao product line)",
+        "pricing_url": "https://openrouter.ai/bytedance-research",
+        "api_docs_url": "https://github.com/ByteDance-Seed",
+        "is_inference_platform": False,
+        "notes": (
+            "ByteDance Seed is the research arm (not the Doubao product). "
+            "Seed-1.6-Flash: ultra-fast 262K context at $0.075/$0.30. "
+            "Seed-2.0-Mini: compact 262K context at $0.10/$0.40. "
+            "Available via OpenRouter. Research-license weights; commercial use via ByteDance API."
+        ),
+    },
+    # GitHub Copilot API — LLM access covered by GitHub Copilot subscription ($0 inference cost)
+    "github_copilot": {
+        "name": "GitHub Copilot API (GPT-4o/Claude/Gemini access covered by Copilot subscription)",
+        "pricing_url": "https://github.com/features/copilot/plans",
+        "api_docs_url": "https://docs.github.com/en/copilot/using-github-copilot/using-extensions-to-integrate-external-tools-with-copilot-chat",
+        "is_inference_platform": True,
+        "notes": (
+            "GitHub Copilot Individual $10/mo or Business $19/user/mo. "
+            "API access to 30+ models (GPT-4o, Claude, Gemini, o3) — all included in subscription. "
+            "Per-token inference cost is $0 — covered by Copilot subscription. "
+            "Azure subscription required; can draw from Azure startup credits. "
+            "Useful: if team already has Copilot, use it for agentic tasks at no extra marginal cost."
+        ),
+    },
 }
 
 
@@ -3045,6 +3228,397 @@ MODELS: list[ModelPricing] = [
             "Deploy custom fine-tuned Whisper for noisy audio / child voices via Truss."
         ),
     ),
+    # ══════════════════════════════════════════════════════════════════════
+    # NEBIUS AI — EU H100 inference cloud; cheapest EU open-weight hosting
+    # Source: https://nebius.com/prices  (via LiteLLM model DB)
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="nebius",
+        model_id="Qwen/Qwen2.5-Coder-7B-Instruct",
+        input_mtok=0.01,
+        output_mtok=0.03,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://nebius.com/prices",
+        notes="Cheapest coding model on EU infrastructure. Great for high-volume code generation at pennies.",
+    ),
+    ModelPricing(
+        provider="nebius",
+        model_id="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        input_mtok=0.02,
+        output_mtok=0.06,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://nebius.com/prices",
+        notes="Cheapest Llama 3.1 8B with EU data residency. Netherlands region.",
+    ),
+    ModelPricing(
+        provider="nebius",
+        model_id="meta-llama/Llama-3.3-70B-Instruct",
+        input_mtok=0.08,
+        output_mtok=0.08,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://nebius.com/prices",
+        notes="Flat in/out pricing. Llama 3.3 70B on EU H100s. Strong general-purpose at low EU cost.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # LAMBDA LABS — GPU cloud; serverless inference API
+    # Source: https://lambdalabs.com/inference  (via LiteLLM model DB)
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="lambda_ai",
+        model_id="llama3.2-3b-instruct",
+        input_mtok=0.015,
+        output_mtok=0.025,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://lambdalabs.com/service/gpu-cloud",
+        notes="Cheapest Lambda inference option. Sub-cent per 1K tokens.",
+    ),
+    ModelPricing(
+        provider="lambda_ai",
+        model_id="llama3.3-70b-instruct-fp8",
+        input_mtok=0.04,
+        output_mtok=0.04,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://lambdalabs.com/service/gpu-cloud",
+        notes="Flat in/out rate. FP8 quantized Llama 3.3 70B — minimal quality loss, fast throughput.",
+    ),
+    ModelPricing(
+        provider="lambda_ai",
+        model_id="llama4-maverick-instruct-17b-128e",
+        input_mtok=0.05,
+        output_mtok=0.10,
+        context_window=524_288,
+        supports_vision=True,
+        pricing_url="https://lambdalabs.com/service/gpu-cloud",
+        notes="Llama 4 Maverick MoE (17B active / 128 experts). Multimodal, 524K context.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # OLLAMA — local inference; $0 cost; runs 100+ models offline
+    # Source: https://ollama.com/library
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="ollama",
+        model_id="llama3.3",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=131_072,
+        free_tier="All models free — runs locally on your hardware",
+        supports_vision=False,
+        pricing_url="https://ollama.com/library/llama3.3",
+        notes="Run locally: ollama pull llama3.3 && ollama run llama3.3. OpenAI-compat on localhost:11434.",
+    ),
+    ModelPricing(
+        provider="ollama",
+        model_id="qwen3:32b",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=128_000,
+        free_tier="All models free — runs locally on your hardware",
+        supports_vision=False,
+        pricing_url="https://ollama.com/library/qwen3",
+        notes="Qwen3 32B locally. Requires ~20GB VRAM (or CPU offload). Best local reasoning model.",
+    ),
+    ModelPricing(
+        provider="ollama",
+        model_id="phi4",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=16_384,
+        free_tier="All models free — runs locally on your hardware",
+        supports_vision=False,
+        pricing_url="https://ollama.com/library/phi4",
+        notes="Microsoft Phi-4 14B locally. 8GB VRAM sufficient. Best small-model local reasoning.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # ALIBABA DASHSCOPE — direct Qwen API; free flash tier
+    # Source: https://help.aliyun.com/zh/dashscope/ (via LiteLLM model DB)
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="dashscope",
+        model_id="qwen-flash",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=997_952,
+        free_tier="Free up to 1M tokens/day (rate-limited)",
+        supports_vision=False,
+        pricing_url="https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-qianwen-7b-14b-72b-metering-and-billing",
+        notes="Almost-1M context at $0. Useful for long-document processing during dev. Chinese market only.",
+    ),
+    ModelPricing(
+        provider="dashscope",
+        model_id="qwen-turbo-latest",
+        input_mtok=0.14,
+        output_mtok=0.60,
+        context_window=1_000_000,
+        supports_vision=False,
+        pricing_url="https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-qianwen-7b-14b-72b-metering-and-billing",
+        notes="Qwen Turbo direct from Alibaba. 1M context. Cheaper than via OpenRouter for high volume.",
+    ),
+    ModelPricing(
+        provider="dashscope",
+        model_id="qwen-max-latest",
+        input_mtok=1.60,
+        output_mtok=4.80,
+        context_window=32_768,
+        supports_vision=False,
+        pricing_url="https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-qianwen-7b-14b-72b-metering-and-billing",
+        notes="Qwen Max flagship — highest quality in the Qwen family. Strong coding and math.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # ALLEN INSTITUTE FOR AI — OLMo (fully open: weights + data + code)
+    # Source: https://openrouter.ai/allenai
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="allenai",
+        model_id="OLMo-2-0325-32B-Instruct",
+        input_mtok=0.20,
+        output_mtok=0.60,
+        context_window=65_536,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/allenai/olmo-2-0325-32b-instruct",
+        notes="Fully open (weights + data + code). Best research-transparency model. Apache 2.0.",
+    ),
+    ModelPricing(
+        provider="allenai",
+        model_id="OLMo-2-0325-32B-Think",
+        input_mtok=0.15,
+        output_mtok=0.50,
+        context_window=65_536,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/allenai/olmo-2-0325-32b-think",
+        notes="OLMo reasoning variant with chain-of-thought. Cheaper than base for thinking tasks.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # INFLECTION AI — Pi conversational / productivity models
+    # Source: https://openrouter.ai/inflection
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="inflection",
+        model_id="inflection-3-pi",
+        input_mtok=2.50,
+        output_mtok=10.00,
+        context_window=8_000,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/inflection/inflection-3-pi",
+        notes="Personal AI companion model. High EQ / empathetic tone. Not suitable for coding tasks.",
+    ),
+    ModelPricing(
+        provider="inflection",
+        model_id="inflection-3-productivity",
+        input_mtok=2.50,
+        output_mtok=10.00,
+        context_window=8_000,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/inflection/inflection-3-productivity",
+        notes="Business/productivity-tuned variant of Pi. Strong at structured task completion and summarisation.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # ARCEE AI — distillation/merging specialists; efficient compressed models
+    # Source: https://openrouter.ai/arcee-ai
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="arcee_ai",
+        model_id="arcee-ai/arcee-spotlight",
+        input_mtok=0.18,
+        output_mtok=0.18,
+        context_window=131_072,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/arcee-ai/arcee-spotlight",
+        notes="Document understanding specialist. Flat rate. Strong for PDF/report extraction tasks.",
+    ),
+    ModelPricing(
+        provider="arcee_ai",
+        model_id="arcee-ai/maestro-reasoning",
+        input_mtok=0.90,
+        output_mtok=3.30,
+        context_window=131_072,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/arcee-ai/maestro-reasoning",
+        notes="Frontier-class reasoning via distillation. o1-class capability at lower cost.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # POOLSIDE AI — enterprise code generation; proprietary code corpus
+    # Source: https://openrouter.ai/poolside (free preview pricing)
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="poolside",
+        model_id="poolside-ai/laguna-xs.2",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=131_072,
+        free_tier="Free during public preview",
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/poolside-ai/laguna-xs.2",
+        notes="Fast code-focused model. Trained on proprietary enterprise code, not public GitHub.",
+    ),
+    ModelPricing(
+        provider="poolside",
+        model_id="poolside-ai/laguna-m.1",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=131_072,
+        free_tier="Free during public preview",
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/poolside-ai/laguna-m.1",
+        notes="Medium-size Laguna model. Better quality than XS.2 for complex enterprise code tasks.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # STEPFUN AI — Chinese frontier; 262K context; competitive coding + math
+    # Source: https://openrouter.ai/stepfun-ai
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="stepfun",
+        model_id="step-3-5-flash",
+        input_mtok=0.10,
+        output_mtok=0.30,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/stepfun-ai/step-3-5-flash",
+        notes="Fast Chinese frontier model. 262K context. Strong Chinese + coding at $0.10/$0.30.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # XIAOMI — MiMo math reasoning; up to 1M context
+    # Source: https://openrouter.ai/xiaomi
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="xiaomi",
+        model_id="xiaomi/mimo-vl-7b-rl",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=131_072,
+        free_tier="Free during preview",
+        supports_vision=True,
+        pricing_url="https://openrouter.ai/xiaomi",
+        notes="MiMo multimodal 7B. Free during preview. Math + vision reasoning.",
+    ),
+    ModelPricing(
+        provider="xiaomi",
+        model_id="xiaomi/mimo-v2-flash",
+        input_mtok=0.09,
+        output_mtok=0.29,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/xiaomi/mimo-v2-flash",
+        notes="Fast MiMo variant. 262K context. STEM-optimised at sub-$0.30/MTok output.",
+    ),
+    ModelPricing(
+        provider="xiaomi",
+        model_id="xiaomi/mimo-v2.5",
+        input_mtok=0.40,
+        output_mtok=2.00,
+        context_window=1_048_576,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/xiaomi/mimo-v2.5",
+        notes="Full MiMo v2.5 with 1M context and reasoning mode. Designed for AIME / competition math.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # MORPH LABS — Fast Apply: code diff application specialist
+    # Source: https://openrouter.ai/morph
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="morph",
+        model_id="morph/morph-v3-fast",
+        input_mtok=0.80,
+        output_mtok=1.20,
+        context_window=81_920,
+        supports_vision=False,
+        supports_tool_use=False,
+        pricing_url="https://openrouter.ai/morph/morph-v3-fast",
+        notes="Fast Apply model: input=original file + edit instruction, output=patched file. Not a general LLM.",
+    ),
+    ModelPricing(
+        provider="morph",
+        model_id="morph/morph-v3-large",
+        input_mtok=0.90,
+        output_mtok=1.90,
+        context_window=262_144,
+        supports_vision=False,
+        supports_tool_use=False,
+        pricing_url="https://openrouter.ai/morph/morph-v3-large",
+        notes="Larger Fast Apply model with 262K context — handles bigger files than v3-fast.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # INCLUSION AI — Ling-2.6: 1 trillion parameter MoE; free public tier
+    # Source: https://openrouter.ai/inclusion-ai
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="inclusionai",
+        model_id="inclusion-ai/ling-2.6-1t",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=262_144,
+        free_tier="Free during public preview",
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/inclusion-ai/ling-2.6-1t",
+        notes="1 trillion parameter MoE — largest freely accessible model. Free via OpenRouter preview.",
+    ),
+    ModelPricing(
+        provider="inclusionai",
+        model_id="inclusion-ai/ling-2.6-flash",
+        input_mtok=0.08,
+        output_mtok=0.24,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/inclusion-ai/ling-2.6-flash",
+        notes="Fast paid variant of Ling-2.6. $0.08/$0.24 for latency-sensitive applications.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # BYTEDANCE SEED — research arm models (separate from Doubao product)
+    # Source: https://openrouter.ai/bytedance-research
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="bytedance_seed",
+        model_id="bytedance-research/seed-1.6-flash",
+        input_mtok=0.075,
+        output_mtok=0.30,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/bytedance-research/seed-1.6-flash",
+        notes="ByteDance Seed research model (not Doubao). Fast, cheap, 262K context.",
+    ),
+    ModelPricing(
+        provider="bytedance_seed",
+        model_id="bytedance-research/seed-2.0-mini",
+        input_mtok=0.10,
+        output_mtok=0.40,
+        context_window=262_144,
+        supports_vision=False,
+        pricing_url="https://openrouter.ai/bytedance-research/seed-2.0-mini",
+        notes="Seed 2.0 mini — improved quality over 1.6 at similar price point.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # GITHUB COPILOT API — LLM access included in Copilot subscription ($0 marginal)
+    # Source: https://docs.github.com/en/copilot
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="github_copilot",
+        model_id="gpt-4o",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=128_000,
+        free_tier="Covered by GitHub Copilot Individual ($10/mo) or Business ($19/user/mo)",
+        supports_vision=True,
+        pricing_url="https://github.com/features/copilot/plans",
+        notes="GPT-4o via Copilot API — $0 per token if team has Copilot subscription. Also Claude + Gemini.",
+    ),
+    ModelPricing(
+        provider="github_copilot",
+        model_id="claude-sonnet-4-6",
+        input_mtok=0.0,
+        output_mtok=0.0,
+        context_window=200_000,
+        free_tier="Covered by GitHub Copilot Individual ($10/mo) or Business ($19/user/mo)",
+        supports_vision=True,
+        pricing_url="https://github.com/features/copilot/plans",
+        notes="Claude Sonnet via Copilot API — $0 marginal cost. 30+ models available in same subscription.",
+    ),
 ]
 
 
@@ -3113,6 +3687,20 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "exaone": "https://huggingface.co/LGAI-EXAONE",
     "ai71": "https://ai71.ai/pricing",
     "baseten": "https://www.baseten.co/pricing/",
+    "nebius": "https://nebius.com/prices",
+    "lambda_ai": "https://lambdalabs.com/service/gpu-cloud",
+    "ollama": "https://ollama.com/library",
+    "dashscope": "https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-qianwen-7b-14b-72b-metering-and-billing",
+    "allenai": "https://openrouter.ai/allenai",
+    "inflection": "https://openrouter.ai/inflection",
+    "arcee_ai": "https://openrouter.ai/arcee-ai",
+    "poolside": "https://openrouter.ai/poolside-ai",
+    "stepfun": "https://openrouter.ai/stepfun-ai",
+    "xiaomi": "https://openrouter.ai/xiaomi",
+    "morph": "https://openrouter.ai/morph",
+    "inclusionai": "https://openrouter.ai/inclusion-ai",
+    "bytedance_seed": "https://openrouter.ai/bytedance-research",
+    "github_copilot": "https://github.com/features/copilot/plans",
 }
 
 
@@ -3807,6 +4395,207 @@ API_QUICKSTART: dict[str, dict] = {
             "Each deployed model gets its own endpoint URL. "
             "Truss framework: define model class in Python, push to Baseten, auto-containerised. "
             "Hot replicas available — always-on GPU for zero cold starts."
+        ),
+    },
+    "nebius": {
+        "signup_url": "https://nebius.com/auth/sign-up",
+        "api_key_url": "https://console.nebius.com/folders/*/credentials",
+        "api_base_url": "https://api.studio.nebius.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "NEBIUS_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "nebius/",
+        "usage_url": "https://console.nebius.com/billing",
+        "docs_url": "https://nebius.com/docs/ai-studio",
+        "models_url": "https://nebius.com/prices",
+        "free_trial": "Trial credits on signup",
+        "notes": "Netherlands HQ, GDPR compliant. 30+ models from $0.01/MTok. H100 SXM5 cluster.",
+    },
+    "lambda_ai": {
+        "signup_url": "https://lambdalabs.com/",
+        "api_key_url": "https://cloud.lambdalabs.com/api-keys",
+        "api_base_url": "https://api.lambdalabs.com/v1",
+        "openai_compat": True,
+        "api_key_env": "LAMBDA_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://cloud.lambdalabs.com/billing",
+        "docs_url": "https://docs.lambdalabs.com/inference/",
+        "models_url": "https://lambdalabs.com/service/gpu-cloud",
+        "free_trial": "Trial available",
+        "notes": "Also rents GPU instances: H100 SXM5 $2.49/hr on-demand. Same key works for both inference API and GPU.",
+    },
+    "ollama": {
+        "signup_url": "https://ollama.com/",
+        "api_key_url": None,
+        "api_base_url": "http://localhost:11434/v1",
+        "openai_compat": True,
+        "api_key_env": None,
+        "python_sdk": "curl -fsSL https://ollama.com/install.sh | sh  # then: pip install openai",
+        "litellm_prefix": "ollama/",
+        "usage_url": None,
+        "docs_url": "https://github.com/ollama/ollama/blob/main/docs/api.md",
+        "models_url": "https://ollama.com/library",
+        "free_trial": "All models free — runs locally",
+        "notes": "ollama pull <model> && ollama serve. No API key — local only. Supports NVIDIA/AMD/Apple Silicon.",
+    },
+    "dashscope": {
+        "signup_url": "https://dashscope.aliyuncs.com/",
+        "api_key_url": "https://dashscope.console.aliyun.com/apiKey",
+        "api_base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "openai_compat": True,
+        "api_key_env": "DASHSCOPE_API_KEY",
+        "python_sdk": "pip install dashscope  # or: pip install openai with base_url override",
+        "litellm_prefix": "dashscope/",
+        "usage_url": "https://dashscope.console.aliyun.com/billing",
+        "docs_url": "https://help.aliyun.com/zh/dashscope/",
+        "models_url": "https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-qianwen-7b-14b-72b-metering-and-billing",
+        "free_trial": "qwen-flash: 1M tokens/day free",
+        "notes": "Requires Aliyun (Alibaba Cloud) account. Compatible-mode base URL for OpenAI SDK.",
+    },
+    "allenai": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://huggingface.co/allenai",
+        "models_url": "https://openrouter.ai/allenai",
+        "free_trial": None,
+        "notes": "OLMo weights also on HuggingFace (Apache 2.0). Self-host or use via OpenRouter.",
+    },
+    "inflection": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://developers.inflection.ai/",
+        "models_url": "https://openrouter.ai/inflection",
+        "free_trial": None,
+        "notes": "Pi also available directly at pi.ai (consumer product). API via OpenRouter.",
+    },
+    "arcee_ai": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://docs.arcee.ai/",
+        "models_url": "https://openrouter.ai/arcee-ai",
+        "free_trial": None,
+        "notes": "Direct Arcee API also available at arcee.ai — same models, check for startup discounts.",
+    },
+    "poolside": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://www.poolside.ai/",
+        "models_url": "https://openrouter.ai/poolside-ai",
+        "free_trial": "Free during public preview",
+        "notes": "Contact poolside.ai for enterprise API access with SLA. OpenRouter is the public preview path.",
+    },
+    "stepfun": {
+        "signup_url": "https://platform.stepfun.com/",
+        "api_key_url": "https://platform.stepfun.com/account/api-key",
+        "api_base_url": "https://api.stepfun.com/v1",
+        "openai_compat": True,
+        "api_key_env": "STEPFUN_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://platform.stepfun.com/billing",
+        "docs_url": "https://platform.stepfun.com/docs",
+        "models_url": "https://openrouter.ai/stepfun-ai",
+        "free_trial": "Trial credits on signup",
+        "notes": "Direct API at api.stepfun.com/v1. Also available via OpenRouter.",
+    },
+    "xiaomi": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://github.com/XiaoMi/MiMo",
+        "models_url": "https://openrouter.ai/xiaomi",
+        "free_trial": "MiMo VL free during preview",
+        "notes": "Open weights on HuggingFace (Apache 2.0). Self-host or use via OpenRouter.",
+    },
+    "morph": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://morphlabs.ai/",
+        "models_url": "https://openrouter.ai/morph",
+        "free_trial": None,
+        "notes": "Specialised for diff application — pipe LLM-generated edits through Morph before writing to disk.",
+    },
+    "inclusionai": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://inclusionai.github.io/ling/",
+        "models_url": "https://openrouter.ai/inclusion-ai",
+        "free_trial": "Ling-2.6-1T free during public preview",
+        "notes": "1T MoE free tier is extremely valuable for long-context tasks during preview period.",
+    },
+    "bytedance_seed": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base=openrouter.ai/api/v1",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/credits",
+        "docs_url": "https://github.com/ByteDance-Seed",
+        "models_url": "https://openrouter.ai/bytedance-research",
+        "free_trial": None,
+        "notes": "Research arm of ByteDance. Distinct from Doubao/Skylark product API (console.volcengine.com).",
+    },
+    "github_copilot": {
+        "signup_url": "https://github.com/features/copilot",
+        "api_key_url": "https://github.com/settings/copilot",
+        "api_base_url": "https://api.githubcopilot.com",
+        "openai_compat": True,
+        "api_key_env": "GITHUB_TOKEN",
+        "python_sdk": "pip install openai  # use GITHUB_TOKEN + api_base https://api.githubcopilot.com",
+        "litellm_prefix": None,
+        "usage_url": "https://github.com/settings/billing/summary",
+        "docs_url": "https://docs.github.com/en/copilot/using-github-copilot",
+        "models_url": "https://github.com/features/copilot/plans",
+        "free_trial": "Free for verified students/teachers/OSS maintainers (copilot.github.com)",
+        "notes": (
+            "Use GITHUB_TOKEN (OAuth or fine-grained PAT). "
+            "30+ models (GPT-4o, Claude Sonnet, Gemini) — all $0 marginal cost if on Copilot plan. "
+            "Copilot Individual $10/mo; Business $19/user/mo. "
+            "Rate limits apply per subscription tier."
         ),
     },
 }
