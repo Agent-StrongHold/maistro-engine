@@ -81,6 +81,11 @@ class ImageGenPricing:
     pricing_url: str = ""
     notes: str | None = None
 
+    # Startup credit programs that cover this model's inference cost.
+    # Values match keys in STARTUP_PROGRAMS in model_pricing.py.
+    # e.g. ["aws_activate", "google_cloud_start"] means costs are creditable.
+    credit_programs: list[str] = field(default_factory=list)
+
 
 # ---------------------------------------------------------------------------
 # LoRA / fine-tuning pricing
@@ -134,6 +139,9 @@ class GPUInstancePricing:
 
     pricing_url: str = ""
     notes: str | None = None
+
+    # Startup credit programs whose compute credits cover this instance.
+    credit_programs: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -440,10 +448,12 @@ IMAGE_GEN_MODELS: list[ImageGenPricing] = [
         latency_seconds=8.0,
         signup_url="https://cloud.google.com/free",
         pricing_url="https://cloud.google.com/vertex-ai/generative-ai/pricing",
+        credit_programs=["google_cloud_start", "google_cloud_scale_ai"],
         notes=(
             "Inpainting: $0.02/image. Upscaling: $0.003/image. "
-            "Requires Vertex AI project. "
-            "Eligible for Google Startup credits ($2K-$350K depending on program)."
+            "Google Startup Start credits ($2K): 50K images. "
+            "Google Startup Scale AI credits ($350K): 8.75M images. "
+            "Best quality image gen API covered by GCP credits."
         ),
     ),
     ImageGenPricing(
@@ -455,7 +465,62 @@ IMAGE_GEN_MODELS: list[ImageGenPricing] = [
         latency_seconds=3.0,
         signup_url="https://cloud.google.com/free",
         pricing_url="https://cloud.google.com/vertex-ai/generative-ai/pricing",
-        notes="Speed-optimised Imagen 3. Good for variant generation in refinement loop.",
+        credit_programs=["google_cloud_start", "google_cloud_scale_ai"],
+        notes=(
+            "Speed-optimised Imagen 3. Good for variant generation in refinement loop. "
+            "GCP Start credits ($2K): 100K images. Scale AI ($350K): 17.5M images."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # SELF-HOSTED ON GCP CREDITS
+    # g2-standard-4 (L4 24GB) spot ~$0.21/hr: ~200 imgs/hr SDXL = $0.001/image
+    # $2K GCP credits = 2M images; $350K = 350M images
+    # ══════════════════════════════════════════════════════════════════════
+    ImageGenPricing(
+        provider="gcp_selfhosted",
+        model_id="sdxl-on-g2-standard-4-spot",
+        price_per_image=0.0011,  # g2-standard-4 L4 spot ~$0.21/hr / ~200 imgs/hr
+        billing_model="per_second",
+        resolution_options=["512x512", "768x768", "1024x1024"],
+        supports_inpainting=True,
+        supports_lora=True,
+        supports_controlnet=True,
+        latency_seconds=18.0,
+        signup_url="https://cloud.google.com/free",
+        pricing_url="https://cloud.google.com/compute/gpus-pricing",
+        credit_programs=["google_cloud_start", "google_cloud_scale_ai"],
+        notes=(
+            "Self-hosted SDXL on GCP g2-standard-4 (L4 24GB) spot using GCP credits. "
+            "L4 spot: ~$0.21/hr. ~200 imgs/hr = $0.001/image effective. "
+            "$2K GCP Start credits = 2M images. $350K Scale AI = 350M images. "
+            "Full LoRA + ControlNet + inpainting. Same GPU serves all."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # SELF-HOSTED ON AZURE CREDITS
+    # NC24ads A100 v4 spot ($0.68/hr): ~600 imgs/hr SDXL = $0.0011/image
+    # $5K Azure credits per entity = 4.5M images; $10K both entities = 9M images
+    # ══════════════════════════════════════════════════════════════════════
+    ImageGenPricing(
+        provider="azure_selfhosted",
+        model_id="sdxl-on-nc24ads-a100-spot",
+        price_per_image=0.0011,  # NC24ads A100 spot $0.68/hr / ~600 imgs/hr
+        billing_model="per_second",
+        resolution_options=["512x512", "768x768", "1024x1024"],
+        supports_inpainting=True,
+        supports_lora=True,
+        supports_controlnet=True,
+        latency_seconds=6.0,  # A100 is 3x faster than T4/L4
+        signup_url="https://azure.microsoft.com/en-us/free/startups/",
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/virtual-machines/",
+        credit_programs=["microsoft_self_service"],
+        notes=(
+            "Self-hosted SDXL on Azure NC24ads A100 v4 spot using Azure Startup credits. "
+            "A100 spot: $0.68/hr. ~600 imgs/hr = $0.0011/image effective. "
+            "$5K credits (self-service) = 4.5M images. Both entities = 9M images. "
+            "Azure has no native image gen API — self-hosting is the only credit path. "
+            "A100 handles batch efficiently; latency ~6s vs 18s on T4."
+        ),
     ),
     # ══════════════════════════════════════════════════════════════════════
     # AMAZON TITAN IMAGE GENERATOR v2  (via AWS Bedrock)
@@ -472,10 +537,56 @@ IMAGE_GEN_MODELS: list[ImageGenPricing] = [
         latency_seconds=6.0,
         signup_url="https://aws.amazon.com/bedrock/",
         pricing_url="https://aws.amazon.com/bedrock/pricing/",
+        credit_programs=["aws_activate"],
         notes=(
             "Inpainting and outpainting supported. "
-            "Covered by AWS Activate credits. "
+            "Covered by AWS Activate credits — $100K credits = 8.3M images. "
             "Background removal: $0.002/image. Colour-guided: $0.012/image."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # SELF-HOSTED ON AWS CREDITS  — best images-per-credit-dollar
+    # g5.xlarge spot ($0.30/hr) with SDXL: ~200 imgs/hr = $0.0015/image
+    # $100K AWS Activate credits = ~66M images at this rate
+    # ══════════════════════════════════════════════════════════════════════
+    ImageGenPricing(
+        provider="aws_selfhosted",
+        model_id="sdxl-on-g5xlarge-spot",
+        price_per_image=0.0015,  # g5.xlarge spot $0.30/hr / ~200 imgs/hr
+        billing_model="per_second",
+        resolution_options=["512x512", "768x768", "1024x1024"],
+        supports_inpainting=True,
+        supports_lora=True,
+        supports_controlnet=True,
+        latency_seconds=18.0,
+        signup_url="https://aws.amazon.com/ec2/",
+        pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
+        notes=(
+            "Self-hosted SDXL on g5.xlarge spot instance using AWS Activate credits. "
+            "Effective cost: ~$0.0015/image ($0.30/hr spot / ~200 imgs/hr). "
+            "$25K credits = 16.7M images. $100K credits = 66M images. "
+            "Full LoRA + ControlNet support. Inpainting on same GPU. "
+            "Setup: Docker image with diffusers + FastAPI; ~15min cold start. "
+            "Best images-per-credit-dollar of any approach."
+        ),
+    ),
+    ImageGenPricing(
+        provider="aws_selfhosted",
+        model_id="flux-dev-on-g5xlarge-spot",
+        price_per_image=0.005,  # g5.xlarge spot $0.30/hr / ~60 imgs/hr (Flux is slower)
+        billing_model="per_second",
+        resolution_options=["512x512", "1024x1024"],
+        supports_lora=True,
+        latency_seconds=30.0,
+        signup_url="https://aws.amazon.com/ec2/",
+        pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
+        notes=(
+            "Self-hosted Flux Dev on g5.xlarge spot using AWS Activate credits. "
+            "Flux is slower than SDXL but higher quality. ~60 imgs/hr. "
+            "$100K credits = 20M images. "
+            "LoRA support. Use for final page renders after variant selection."
         ),
     ),
     # ══════════════════════════════════════════════════════════════════════
@@ -962,6 +1073,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=16,
         suitable_for="SDXL, SD3 Medium, small Flux variants (≤16GB VRAM)",
         pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
         notes="Entry-level GPU. Spot saves 70%. Good for SDXL at moderate volume.",
     ),
     GPUInstancePricing(
@@ -975,10 +1087,11 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=16,
         suitable_for="SDXL, Flux Dev, SD3 (≤24GB VRAM) — best price/performance for BookCreator",
         pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
         notes=(
             "Best AWS instance for BookCreator self-hosting. "
-            "Spot: $0.30/hr = ~3.3K images/hr at 10s/image. "
-            "24GB VRAM handles Flux Dev + SDXL inpainting simultaneously."
+            "Spot: $0.30/hr = ~200 imgs/hr SDXL = $0.0015/image effective. "
+            "$100K AWS Activate = 66M images. 24GB VRAM handles Flux Dev + inpainting."
         ),
     ),
     GPUInstancePricing(
@@ -992,6 +1105,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=32,
         suitable_for="Same as g5.xlarge but more CPU for preprocessing + postprocessing",
         pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
         notes="Use when CPU-bound (image resizing, face detection, order processing) alongside GPU.",
     ),
     GPUInstancePricing(
@@ -1005,6 +1119,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=61,
         suitable_for="SDXL, legacy models — prefer g5 for new deployments",
         pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
         notes="Older hardware; g5.xlarge gives better price/performance for inference.",
     ),
     GPUInstancePricing(
@@ -1019,6 +1134,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=1152,
         suitable_for="Multi-model serving, Flux full-precision, enterprise batch (needs ≥24GB)",
         pricing_url="https://aws.amazon.com/ec2/pricing/on-demand/",
+        credit_programs=["aws_activate"],
         notes=(
             "33% price reduction in June 2025. "
             "Spot: $9.83/hr for 8x A100 = $1.23/A100-hr. "
@@ -1039,6 +1155,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=15,
         suitable_for="SDXL, SD3 (≤16GB VRAM)",
         pricing_url="https://cloud.google.com/compute/gpus-pricing",
+        credit_programs=["google_cloud_start", "google_cloud_scale_ai"],
         notes="T4 + n1 instance. Spot: 60-91% discount varies by region.",
     ),
     GPUInstancePricing(
@@ -1052,7 +1169,12 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=16,
         suitable_for="SDXL, Flux Dev (≤24GB) — best GCP price/performance",
         pricing_url="https://cloud.google.com/compute/gpus-pricing",
-        notes="Newer L4 architecture. ~30% cheaper than g5.xlarge AWS equivalent.",
+        credit_programs=["google_cloud_start", "google_cloud_scale_ai"],
+        notes=(
+            "Newer L4 architecture. ~30% cheaper than g5.xlarge AWS equivalent. "
+            "Spot $0.21/hr / ~200 imgs/hr = $0.001/image. "
+            "$2K GCP Start credits = 2M images."
+        ),
     ),
     GPUInstancePricing(
         provider="gcp",
@@ -1065,6 +1187,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=85,
         suitable_for="Flux full-precision, multi-model, large batch (≥24GB)",
         pricing_url="https://cloud.google.com/compute/gpus-pricing",
+        credit_programs=["google_cloud_start", "google_cloud_scale_ai"],
         notes="Google Startup Scale credits ($350K) can cover significant A2 usage.",
     ),
     GPUInstancePricing(
@@ -1078,6 +1201,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=234,
         suitable_for="Flux full, enterprise multi-model, LoRA training at scale",
         pricing_url="https://cloud.google.com/compute/gpus-pricing",
+        credit_programs=["google_cloud_scale_ai"],
         notes="H100 SXM5 on GCP. Use for training — overkill for SDXL inference.",
     ),
     # ══════════════════════════════════════════════════════════════════════
@@ -1094,6 +1218,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=28,
         suitable_for="SDXL, SD3 (≤16GB VRAM)",
         pricing_url="https://azure.microsoft.com/en-us/pricing/details/virtual-machines/",
+        credit_programs=["microsoft_self_service", "microsoft_investor_offer"],
         notes="Azure T4. Spot: ~80% discount. Good use of $5K Azure startup credits.",
     ),
     GPUInstancePricing(
@@ -1106,6 +1231,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=56,
         suitable_for="SDXL, legacy models — prefer NC_T4 for new deployments",
         pricing_url="https://azure.microsoft.com/en-us/pricing/details/virtual-machines/",
+        credit_programs=["microsoft_self_service", "microsoft_investor_offer"],
         notes="Older V100; use startup credits here as last resort.",
     ),
     GPUInstancePricing(
@@ -1119,10 +1245,12 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
         ram_gb=220,
         suitable_for="Flux full, multi-model, LoRA training (≥24GB)",
         pricing_url="https://azure.microsoft.com/en-us/pricing/details/virtual-machines/",
+        credit_programs=["microsoft_self_service", "microsoft_investor_offer"],
         notes=(
-            "Best Azure GPU. Spot: $0.68/hr — very competitive vs AWS/GCP. "
-            "AMD EPYC 7V13 Milan CPU. "
-            "Scale up to 4x A100 with NC96ads A100 v4 for batch workloads."
+            "Best Azure GPU for image gen. Spot: $0.68/hr. "
+            "~600 imgs/hr SDXL = $0.0011/image. "
+            "$5K Azure credits = 4.5M images. Both entities ($10K) = 9M images. "
+            "Azure has no native image gen API — self-hosting is the only credits path."
         ),
     ),
     # ══════════════════════════════════════════════════════════════════════
@@ -1413,6 +1541,89 @@ def gpu_cloud_table(
         )
     lines.append("")
     lines.append("SDXL: ≥8GB. Flux Dev: ≥12GB. Flux full-precision: ≥24GB. Multi-model: ≥40GB.")
+    return "\n".join(lines)
+
+
+def startup_credits_image_gen_analysis() -> str:
+    """
+    Show how far startup cloud credits stretch for image generation.
+
+    Compares API-based image gen vs self-hosted GPU inference for each
+    credit program, ranked by images-per-credit-dollar.
+    """
+    # (program_label, credit_usd, description)
+    programs = [
+        ("AWS Activate (NVIDIA Inception)", 100_000, "aws_activate"),
+        ("AWS Activate (Portfolio tier)", 25_000, "aws_activate"),
+        ("GCP Scale AI", 350_000, "google_cloud_scale_ai"),
+        ("GCP Start", 2_000, "google_cloud_start"),
+        ("Azure (both entities)", 10_000, "microsoft_self_service"),
+        ("Azure (one entity)", 5_000, "microsoft_self_service"),
+    ]
+
+    # (label, price_per_image, notes)
+    approaches: list[tuple[str, float, str]] = [
+        ("AWS: SDXL self-hosted on g5.xlarge spot", 0.0015, "~200 imgs/hr; full LoRA+inpainting"),
+        ("AWS: Flux Dev self-hosted on g5.xlarge spot", 0.005, "~60 imgs/hr; better quality"),
+        ("AWS: Titan Image v2 (Bedrock API)", 0.012, "no LoRA; simple API call"),
+        (
+            "GCP: SDXL self-hosted on g2-standard-4 spot",
+            0.0011,
+            "~200 imgs/hr; full LoRA+inpainting",
+        ),
+        ("GCP: Imagen 3 Fast (Vertex AI)", 0.02, "no LoRA; Google quality"),
+        ("GCP: Imagen 3 Standard (Vertex AI)", 0.04, "inpainting; best GCP quality"),
+        (
+            "Azure: SDXL self-hosted on NC24ads A100 spot",
+            0.0011,
+            "~600 imgs/hr; fastest self-hosted",
+        ),
+    ]
+
+    lines = [
+        "### Startup Credits → Image Generation Capacity",
+        "",
+        "Self-hosted on cloud GPU is 8-36x more images-per-credit-dollar than using API.",
+        "AWS g5.xlarge spot + SDXL is the recommended default: full features, lowest cost.",
+        "",
+    ]
+
+    for prog_label, credits, prog_key in programs:
+        lines.append(f"  {prog_label}  (${credits:,} credits)")
+        relevant = [
+            (lbl, ppi, note)
+            for lbl, ppi, note in approaches
+            if prog_key in lbl.lower()
+            or (prog_key == "aws_activate" and "aws" in lbl.lower())
+            or (prog_key == "google_cloud_scale_ai" and "gcp" in lbl.lower())
+            or (prog_key == "google_cloud_start" and "gcp" in lbl.lower())
+            or (prog_key == "microsoft_self_service" and "azure" in lbl.lower())
+        ]
+        if not relevant:
+            relevant = [(lbl, ppi, note) for lbl, ppi, note in approaches]
+        for lbl, ppi, note in relevant:
+            if prog_key == "aws_activate" and "aws" not in lbl.lower():
+                continue
+            if (
+                prog_key in ("google_cloud_start", "google_cloud_scale_ai")
+                and "gcp" not in lbl.lower()
+            ):
+                continue
+            if prog_key == "microsoft_self_service" and "azure" not in lbl.lower():
+                continue
+            n_images = int(credits / ppi)
+            lines.append(f"    {lbl:<50}  {n_images:>12,} images  (${ppi:.4f}/img) — {note}")
+        lines.append("")
+
+    lines += [
+        "  Strategy recommendation (May 2026):",
+        "  1. Apply for AWS Activate via NVIDIA Inception (no equity, ~$25K-100K)",
+        "  2. Self-host SDXL on g5.xlarge spot → $0.0015/image from credits",
+        "  3. Use Titan Image v2 (Bedrock) for simplicity before infra is set up",
+        "  4. GCP Start ($2K) → Imagen 3 Fast for quality variants, self-hosted for volume",
+        "  5. Azure credits ($5K x2 entities) → A100 spot self-hosted = 9M images total",
+        "  6. Reserve Runware ($0.0006/image cash) as overflow when credits run out",
+    ]
     return "\n".join(lines)
 
 
