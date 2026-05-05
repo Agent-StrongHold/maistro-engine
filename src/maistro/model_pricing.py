@@ -487,8 +487,20 @@ MODELS: list[ModelPricing] = [
     ),
     # ══════════════════════════════════════════════════════════════════════
     # OPENAI
-    # Source: https://openrouter.ai/openai (openai.com/pricing returns 403)
+    # Source: https://openrouter.ai/openai ; platform.openai.com/docs/models
     # Free tier: none — requires credit card
+    #
+    # API USAGE TIERS (auto-advance when spend + age both met):
+    #   Tier 1:  $5  cumulative           — codex-mini-latest, gpt-4o available
+    #   Tier 2:  $50 cumulative, 7 days   — higher rate limits
+    #   Tier 3:  $100 cumulative, 7 days  — o4-mini unlocked
+    #   Tier 4:  $250 cumulative, 14 days — o3 unlocked
+    #   Tier 5:  $1K  cumulative, 30 days — all models, max limits
+    #
+    # ChatGPT subscription tiers (GPT-5.x generation as of Feb 2026):
+    #   Plus $20/mo  — base model + Codex 10-60 cloud tasks/5hr window
+    #   Pro  $100/mo — 5x limits, o3-pro, 256K context; promo 10x until May 31 2026
+    #   Pro  $200/mo — 20x limits, 1M context, ~250 Deep Research/month
     # ══════════════════════════════════════════════════════════════════════
     ModelPricing(
         provider="openai",
@@ -525,16 +537,18 @@ MODELS: list[ModelPricing] = [
         model_id="codex-mini-latest",
         input_mtok=1.50,
         output_mtok=6.00,
+        cache_read_mtok=0.375,
         context_window=200_000,
+        max_output=100_000,
         free_tier=None,
         supports_thinking=True,
         knowledge_cutoff="2024-06",
-        pricing_url="https://platform.openai.com/docs/models/codex",
+        pricing_url="https://developers.openai.com/codex/pricing",
         notes=(
-            "OpenAI Codex agent model (2025 launch) — autonomous software engineering. "
-            "Based on o4-mini, tuned for SWE tasks in cloud sandboxes. "
-            "Available in ChatGPT Plus ($20/mo) and Pro ($200/mo) with usage quotas. "
-            "API: model='codex-mini-latest'; runs file-editing agentic loops autonomously."
+            "OpenAI Codex agent model — autonomous SWE tasks in cloud sandboxes. "
+            "ChatGPT Plus: 10-60 cloud tasks/5hr. Pro $100: 50-300. Pro $200: 200-1200. "
+            "API: available from Tier 1+ ($5 cumulative spend). No model gating. "
+            "Cached input $0.375/MTok. Supports function calling, structured output, streaming."
         ),
     ),
     ModelPricing(
