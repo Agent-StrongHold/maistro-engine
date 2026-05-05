@@ -937,6 +937,47 @@ PROVIDERS: dict[str, dict] = {
             "Available via OpenRouter. Research-license weights; commercial use via ByteDance API."
         ),
     },
+    # LlamaGate — inference platform; small 7-8B models only; very cheap; context ≤16K
+    "llamagate": {
+        "name": "LlamaGate (inference platform — 7-8B models only; ultra-cheap; 16K context max)",
+        "pricing_url": "https://llamagate.com/pricing",
+        "api_docs_url": "https://llamagate.com/docs",
+        "is_inference_platform": True,
+        "notes": (
+            "Budget inference for 7-8B models: Llama 3.1/3.2, Qwen3, DeepSeek-R1 distill, Gemma3. "
+            "From $0.03/MTok. Context capped at 16K — not suitable for long-document tasks. "
+            "OpenAI-compatible API. Includes embeddings (nomic-embed) and vision (llava-7b, qwen3-vl). "
+            "Best for: cheap high-volume batch tasks where 8B model quality is sufficient."
+        ),
+    },
+    # Oracle Cloud Infrastructure (OCI) Generative AI — enterprise cloud; Llama + Cohere + Mistral
+    "oci": {
+        "name": "Oracle Cloud (OCI Generative AI — Llama, Cohere, Mistral; enterprise SLAs)",
+        "pricing_url": "https://www.oracle.com/artificial-intelligence/generative-ai/pricing/",
+        "api_docs_url": "https://docs.oracle.com/en-us/iaas/Content/generative-ai/overview.htm",
+        "is_inference_platform": True,
+        "notes": (
+            "OCI Generative AI Service hosts Meta Llama 3.x, Cohere Command, Mistral. "
+            "Flat per-token billing. Hosted in Oracle's FedRAMP-authorized regions (US, EU, AP). "
+            "Strong for enterprises already in OCI (Oracle ERP/DB customers). "
+            "Oracle for Startups program offers up to $300K in OCI credits. "
+            "OpenAI-compatible via OCI SDK or direct REST. Requires OCI tenancy."
+        ),
+    },
+    # OVH Cloud — French EU cloud; GDPR; competitive open-weight LLM hosting
+    "ovhcloud": {
+        "name": "OVH Cloud (EU inference — GDPR; French data residency; competitive open-weight pricing)",
+        "pricing_url": "https://endpoints.ai.cloud.ovh.net/",
+        "api_docs_url": "https://docs.ovh.com/gb/en/publiccloud/ai/",
+        "is_inference_platform": True,
+        "notes": (
+            "OVH AI Endpoints: Llama, DeepSeek, Mistral hosted in French/EU datacenters. "
+            "GDPR-compliant by design; data never leaves EU. "
+            "DeepSeek-R1-Distill-Llama-70B: $0.67/MTok flat. Llama-3.1-8B: $0.10/MTok flat. "
+            "OVH is Europe's largest independent cloud. OpenAI-compatible API. "
+            "Good choice for EU-based applications requiring GDPR + cost efficiency."
+        ),
+    },
     # GitHub Copilot API — LLM access covered by GitHub Copilot subscription ($0 inference cost)
     "github_copilot": {
         "name": "GitHub Copilot API (GPT-4o/Claude/Gemini access covered by Copilot subscription)",
@@ -3597,6 +3638,120 @@ MODELS: list[ModelPricing] = [
     # GITHUB COPILOT API — LLM access included in Copilot subscription ($0 marginal)
     # Source: https://docs.github.com/en/copilot
     # ══════════════════════════════════════════════════════════════════════
+    # ══════════════════════════════════════════════════════════════════════
+    # LLAMAGATE — ultra-cheap 7-8B inference; ≤16K context
+    # Source: LiteLLM model DB
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="llamagate",
+        model_id="llama-3.1-8b",
+        input_mtok=0.03,
+        output_mtok=0.05,
+        context_window=8_192,
+        supports_vision=False,
+        pricing_url="https://llamagate.com/pricing",
+        notes="Cheapest Llama 3.1 8B available. 8K context only. Good for bulk classification/routing.",
+    ),
+    ModelPricing(
+        provider="llamagate",
+        model_id="qwen3-8b",
+        input_mtok=0.04,
+        output_mtok=0.14,
+        context_window=8_192,
+        supports_vision=False,
+        pricing_url="https://llamagate.com/pricing",
+        notes="Qwen3 8B at $0.04/$0.14. Strong reasoning for size. 8K context limit.",
+    ),
+    ModelPricing(
+        provider="llamagate",
+        model_id="deepseek-r1-8b",
+        input_mtok=0.10,
+        output_mtok=0.20,
+        context_window=16_384,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://llamagate.com/pricing",
+        notes="DeepSeek-R1 distill at 8B. Cheapest reasoning model. 16K context.",
+    ),
+    ModelPricing(
+        provider="llamagate",
+        model_id="qwen3-vl-8b",
+        input_mtok=0.15,
+        output_mtok=0.55,
+        context_window=8_192,
+        supports_vision=True,
+        pricing_url="https://llamagate.com/pricing",
+        notes="Cheapest multimodal option on the platform. 8K context.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # OCI (Oracle Cloud) — Generative AI Service; enterprise; Llama + Cohere + Mistral
+    # Source: LiteLLM model DB / oracle.com/artificial-intelligence/generative-ai/pricing/
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="oci",
+        model_id="meta.llama-3.3-70b-instruct",
+        input_mtok=0.72,
+        output_mtok=0.72,
+        context_window=128_000,
+        supports_vision=False,
+        pricing_url="https://www.oracle.com/artificial-intelligence/generative-ai/pricing/",
+        notes="Flat in/out rate. Llama 3.3 70B on OCI. FedRAMP-authorized US/EU regions.",
+    ),
+    ModelPricing(
+        provider="oci",
+        model_id="meta.llama-3.2-90b-vision-instruct",
+        input_mtok=2.00,
+        output_mtok=2.00,
+        context_window=128_000,
+        supports_vision=True,
+        pricing_url="https://www.oracle.com/artificial-intelligence/generative-ai/pricing/",
+        notes="Vision-capable Llama 3.2 90B on OCI. Flat rate.",
+    ),
+    ModelPricing(
+        provider="oci",
+        model_id="meta.llama-3.1-405b-instruct",
+        input_mtok=10.68,
+        output_mtok=10.68,
+        context_window=128_000,
+        supports_vision=False,
+        pricing_url="https://www.oracle.com/artificial-intelligence/generative-ai/pricing/",
+        notes="Llama 405B on OCI — premium tier. Flat rate, likely for enterprise regulated workloads.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # OVH CLOUD — EU-based open-weight inference; GDPR; French data residency
+    # Source: LiteLLM model DB / endpoints.ai.cloud.ovh.net
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="ovhcloud",
+        model_id="Llama-3.1-8B-Instruct",
+        input_mtok=0.10,
+        output_mtok=0.10,
+        context_window=128_000,
+        supports_vision=False,
+        pricing_url="https://endpoints.ai.cloud.ovh.net/",
+        notes="Flat rate. EU-hosted Llama 8B. Good for GDPR-sensitive bulk workloads.",
+    ),
+    ModelPricing(
+        provider="ovhcloud",
+        model_id="Meta-Llama-3_1-70B-Instruct",
+        input_mtok=0.67,
+        output_mtok=0.67,
+        context_window=128_000,
+        supports_vision=False,
+        pricing_url="https://endpoints.ai.cloud.ovh.net/",
+        notes="Flat rate. EU-hosted Llama 70B. French datacenter, GDPR-compliant.",
+    ),
+    ModelPricing(
+        provider="ovhcloud",
+        model_id="DeepSeek-R1-Distill-Llama-70B",
+        input_mtok=0.67,
+        output_mtok=0.67,
+        context_window=128_000,
+        supports_thinking=True,
+        supports_vision=False,
+        pricing_url="https://endpoints.ai.cloud.ovh.net/",
+        notes="EU-hosted DeepSeek-R1 distill at 70B. GDPR-compliant reasoning model.",
+    ),
     ModelPricing(
         provider="github_copilot",
         model_id="gpt-4o",
@@ -3701,6 +3856,9 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "inclusionai": "https://openrouter.ai/inclusion-ai",
     "bytedance_seed": "https://openrouter.ai/bytedance-research",
     "github_copilot": "https://github.com/features/copilot/plans",
+    "llamagate": "https://llamagate.com/pricing",
+    "oci": "https://www.oracle.com/artificial-intelligence/generative-ai/pricing/",
+    "ovhcloud": "https://endpoints.ai.cloud.ovh.net/",
 }
 
 
@@ -4597,6 +4755,52 @@ API_QUICKSTART: dict[str, dict] = {
             "Copilot Individual $10/mo; Business $19/user/mo. "
             "Rate limits apply per subscription tier."
         ),
+    },
+    "llamagate": {
+        "signup_url": "https://llamagate.com/",
+        "api_key_url": "https://llamagate.com/dashboard",
+        "api_base_url": "https://api.llamagate.com/v1",
+        "openai_compat": True,
+        "api_key_env": "LLAMAGATE_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "llamagate/",
+        "usage_url": "https://llamagate.com/dashboard",
+        "docs_url": "https://llamagate.com/docs",
+        "models_url": "https://llamagate.com/pricing",
+        "free_trial": None,
+        "notes": "Budget 7-8B inference only. Context ≤16K. Good for bulk classification/routing/embedding tasks.",
+    },
+    "oci": {
+        "signup_url": "https://signup.cloud.oracle.com/",
+        "api_key_url": "https://cloud.oracle.com/identity/domains/my-profile/auth-tokens",
+        "api_base_url": "https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130",
+        "openai_compat": False,
+        "api_key_env": "OCI_API_KEY",
+        "python_sdk": "pip install oci  # OCI Python SDK; or: pip install openai for compat endpoint",
+        "litellm_prefix": "oci/",
+        "usage_url": "https://cloud.oracle.com/usage-reports",
+        "docs_url": "https://docs.oracle.com/en-us/iaas/Content/generative-ai/overview.htm",
+        "models_url": "https://www.oracle.com/artificial-intelligence/generative-ai/pricing/",
+        "free_trial": "Oracle for Startups: up to $300K in OCI credits",
+        "notes": (
+            "Region in URL: us-chicago-1, eu-frankfurt-1, ap-osaka-1, etc. "
+            "Requires OCI tenancy + API key (RSA key pair, not bearer token). "
+            "FedRAMP authorized (US Gov). Oracle for Startups program: apply at oracle.com/startups."
+        ),
+    },
+    "ovhcloud": {
+        "signup_url": "https://www.ovhcloud.com/en/public-cloud/ai-machine-learning/",
+        "api_key_url": "https://www.ovh.com/manager/#/dedicated/tokens",
+        "api_base_url": "https://api.ai.cloud.ovh.net/v1",
+        "openai_compat": True,
+        "api_key_env": "OVH_AI_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://www.ovh.com/manager/#/billing",
+        "docs_url": "https://docs.ovh.com/gb/en/publiccloud/ai/",
+        "models_url": "https://endpoints.ai.cloud.ovh.net/",
+        "free_trial": None,
+        "notes": "French HQ, EU data residency, GDPR. AI Endpoints: pay-per-token, no GPU management needed.",
     },
 }
 
