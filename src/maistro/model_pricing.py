@@ -618,6 +618,143 @@ PROVIDERS: dict[str, dict] = {
             "No hosted API from TII directly; use inference platforms."
         ),
     },
+    # Replicate — inference + fine-tuning platform; widely used by ML devs
+    # Primary use: host custom fine-tuned LoRA models; run open-weight models via API
+    "replicate": {
+        "name": "Replicate (inference + fine-tuning platform — open-weight models)",
+        "pricing_url": "https://replicate.com/pricing",
+        "api_docs_url": "https://replicate.com/docs",
+        "is_inference_platform": True,
+        "notes": (
+            "Per-GPU-second billing. ~$0.00115/s on H100. "
+            "Fine-tune Flux/SDXL/Llama via API → deploy trained model to endpoint. "
+            "Key for BookCreator: train LoRA per child character, host for inference. "
+            "Python SDK: pip install replicate. Webhooks for async training completion."
+        ),
+    },
+    # Modal — serverless GPU Python platform; deploy custom inference in pure Python
+    "modal": {
+        "name": "Modal (serverless GPU Python platform — custom inference deployment)",
+        "pricing_url": "https://modal.com/pricing",
+        "api_docs_url": "https://modal.com/docs",
+        "is_inference_platform": True,
+        "notes": (
+            "Write Python functions, decorate with @modal.gpu('A100'), deploy instantly. "
+            "Per-GPU-second billing: A10G $0.000306/s, A100 $0.00122/s, H100 $0.00195/s. "
+            "Free tier: $30/mo included. No cold-start penalty — keep-warm option. "
+            "Ideal for deploying custom fine-tuned models (e.g. per-child LoRA inference). "
+            "Persistent volumes for weights storage. Cron + queue support built-in."
+        ),
+    },
+    # IBM watsonx.ai — enterprise compliance, Granite series, EU/US data residency options
+    "ibm_watsonx": {
+        "name": "IBM watsonx.ai (Granite series — enterprise compliance, data residency)",
+        "pricing_url": "https://www.ibm.com/products/watsonx-ai/pricing",
+        "api_docs_url": "https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-api.html",
+        "is_inference_platform": False,
+        "notes": (
+            "Granite 3.3 Instruct (2B, 8B, 128K context) — Apache 2.0 open weights. "
+            "FedRAMP authorized; HIPAA-eligible; SOC 2 Type II. "
+            "EU/US data residency options. IBM Lite plan: 50K tokens/mo free. "
+            "Strong for regulated industries (healthcare, finance, government)."
+        ),
+    },
+    # Databricks — DBRX; enterprise data + ML platform; Mosaic ML acquisition
+    "databricks": {
+        "name": "Databricks (DBRX — enterprise data/ML; runs inside Databricks workspace)",
+        "pricing_url": "https://www.databricks.com/product/pricing",
+        "api_docs_url": "https://docs.databricks.com/en/machine-learning/foundation-models/index.html",
+        "is_inference_platform": False,
+        "notes": (
+            "DBRX (132B MoE) + Meta Llama + Mistral via Foundation Model APIs. "
+            "Billed in DBUs (Data Bundle Units) inside workspace — credit-based. "
+            "Also serves Llama/Mistral at competitive rates via serving endpoints. "
+            "Key advantage: models run inside your Databricks workspace (data never leaves). "
+            "OpenAI-compatible endpoint available."
+        ),
+    },
+    # Liquid AI — LFM (Liquid Foundation Models); efficient recurrent architecture
+    "liquid_ai": {
+        "name": "Liquid AI (LFM series — efficient recurrent architecture; smaller = fast)",
+        "pricing_url": "https://www.liquid.ai/liquid-foundation-models",
+        "api_docs_url": "https://docs.liquid.ai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Liquid Foundation Models (LFM): novel architecture (liquid time-constant networks). "
+            "LFM-40B-MoE outperforms Llama 3.3 70B at 40% fewer active params. "
+            "LFM-7B matches Llama 3 8B at higher throughput. "
+            "Extremely memory-efficient — strong for edge/on-device. "
+            "OpenAI-compatible API. Free tier credits on signup."
+        ),
+    },
+    # Meta Llama API — Meta's official managed Llama inference endpoint (launched 2025)
+    "llama_api": {
+        "name": "Meta Llama API (official managed Llama inference — llama.developer.meta.com)",
+        "pricing_url": "https://llama.developer.meta.com/docs/overview",
+        "api_docs_url": "https://llama.developer.meta.com/docs/api",
+        "is_inference_platform": False,
+        "notes": (
+            "Meta's own managed inference for Llama 3.3 70B and 3.1 405B. "
+            "OpenAI-compatible API. Free trial tier available. "
+            "Advantage: guaranteed to run the exact reference model implementation. "
+            "Same Llama you'd self-host — no quantization, no provider variation."
+        ),
+    },
+    # Voyage AI — best-in-class text and code embeddings for RAG pipelines
+    "voyage_ai": {
+        "name": "Voyage AI (embeddings — voyage-3 / voyage-code-3; best-in-class RAG)",
+        "pricing_url": "https://docs.voyageai.com/docs/pricing",
+        "api_docs_url": "https://docs.voyageai.com/",
+        "is_inference_platform": False,
+        "notes": (
+            "voyage-3 consistently ranks #1 on MTEB embedding leaderboard. "
+            "voyage-code-3: specialised for code retrieval (code search, autocomplete context). "
+            "voyage-3-large: highest quality, 2x cost. voyage-3-lite: 10x cheaper for bulk. "
+            "Input-only billing (no output tokens — embeddings are vectors). "
+            "Reranker also available: voyage-rerank-2 ($0.05/1K queries)."
+        ),
+    },
+    # LG AI Research — EXAONE 3.5; Korean frontier; strong coding and reasoning
+    "exaone": {
+        "name": "LG AI Research (EXAONE 3.5 — Korean frontier; strong coding + reasoning)",
+        "pricing_url": "https://huggingface.co/LGAI-EXAONE",
+        "api_docs_url": "https://huggingface.co/LGAI-EXAONE/EXAONE-3.5-32B-Instruct",
+        "is_inference_platform": False,
+        "notes": (
+            "EXAONE 3.5 (2.4B, 7.8B, 32B) — Research license (non-commercial free, commercial via LG). "
+            "Best Korean-language open model. Strong coding (HumanEval 80+%) and instruction following. "
+            "Served via Together AI, SiliconFlow, and HuggingFace Inference Endpoints. "
+            "Weights on HuggingFace. Contact LG AI Research for commercial licensing."
+        ),
+    },
+    # AI71 — G42/MBZUAI Jais Arabic-English frontier models; best Arabic LLM available
+    "ai71": {
+        "name": "AI71 (Jais — G42/MBZUAI Arabic-English frontier; best Arabic open LLM)",
+        "pricing_url": "https://ai71.ai/pricing",
+        "api_docs_url": "https://docs.ai71.ai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Jais-30b-chat: best Arabic-English bilingual open LLM. Apache 2.0. "
+            "Pre-trained on Arabic + English corpus (178B tokens Arabic). "
+            "AI71 is the commercialisation arm of G42/MBZUAI (Abu Dhabi). "
+            "OpenAI-compatible API. UAE data residency. "
+            "Best choice for Arabic NLP — outperforms GPT-3.5 on Arabic benchmarks."
+        ),
+    },
+    # Baseten — production model serving; truss framework; hot replicas; SLA-backed
+    "baseten": {
+        "name": "Baseten (model serving platform — truss framework; production SLAs)",
+        "pricing_url": "https://www.baseten.co/pricing/",
+        "api_docs_url": "https://docs.baseten.co/",
+        "is_inference_platform": True,
+        "notes": (
+            "Deploy any model (HuggingFace, custom) with the Truss framework. "
+            "Autoscaling + hot replicas (zero cold starts). Pay per compute-second. "
+            "Pre-built deployments for Llama, Mistral, Whisper, Stable Diffusion. "
+            "Stronger SLAs than Replicate — better for production API traffic. "
+            "GPU options: A10G ($0.90/hr), A100 ($2.45/hr), H100 ($3.30/hr)."
+        ),
+    },
     # Snowflake Arctic — 480B dense MoE; open weights; SQL/data analytics focus
     "snowflake": {
         "name": "Snowflake (Arctic — 480B MoE; enterprise data/SQL focus; open weights)",
@@ -2512,6 +2649,402 @@ MODELS: list[ModelPricing] = [
             "Self-serve via Together AI. Very short context (4K) limits document-level use."
         ),
     ),
+    # ══════════════════════════════════════════════════════════════════════
+    # REPLICATE  — per-GPU-second billing; best LoRA/fine-tune API ecosystem
+    # signup: replicate.com  |  api_key_env: REPLICATE_API_TOKEN
+    # Key for BookCreator: train LoRA → host endpoint → inference per child
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="replicate",
+        model_id="meta/meta-llama-3-3-70b-instruct",
+        input_mtok=0.23,  # effective rate at ~$0.00115/s H100; varies with length
+        output_mtok=0.23,
+        context_window=128_000,
+        mmlu=86.0,
+        mmlu_pro=58.0,
+        ifeval=83.4,
+        free_tier="Free for cold-start public models (slow queue)",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://replicate.com/pricing",
+        notes=(
+            "Per-GPU-second billing (~$0.00115/s on H100); effective rate varies with length. "
+            "Use Replicate for fine-tuning (fast-flux-trainer, ostris/flux-dev-lora-trainer). "
+            "Trained LoRA weights stay on Replicate — serve at same per-second rate."
+        ),
+    ),
+    ModelPricing(
+        provider="replicate",
+        model_id="mistralai/mixtral-8x7b-instruct-v0.1",
+        input_mtok=0.30,
+        output_mtok=1.00,
+        context_window=32_768,
+        mmlu=71.2,
+        knowledge_cutoff="2024-01",
+        pricing_url="https://replicate.com/pricing",
+        notes="Mixtral 8x7B on Replicate. Cheaper than 70B for bulk tasks. Fast on A40.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # MODAL  — serverless GPU Python; deploy custom fine-tuned models
+    # signup: modal.com  |  sdk: pip install modal  |  Free $30/mo included
+    # Ideal for: hosting per-child LoRA inference endpoint, batch upscaling
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="modal",
+        model_id="custom/llama-3-3-70b-instruct-a100",
+        input_mtok=0.40,  # A100 $0.00122/s; ~300 tok/s; ~$0.40/MTok effective
+        output_mtok=0.40,
+        context_window=128_000,
+        free_tier="$30/mo free compute included (no credit card for first 30 days)",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://modal.com/pricing",
+        notes=(
+            "Self-deployed Llama 3.3 70B on Modal A100 ($0.00122/s). "
+            "Effective rate ~$0.40/MTok at ~300 tok/s. "
+            "Deploy with @modal.gpu('A100-40GB') decorator — pure Python, no k8s. "
+            "Keep-warm option: pay $0.00122/s idle to eliminate cold starts. "
+            "H100 option: $0.00195/s (~2x throughput)."
+        ),
+    ),
+    ModelPricing(
+        provider="modal",
+        model_id="custom/sdxl-lora-inference-a10g",
+        input_mtok=0.0,  # image gen workload — not token-based; see image_gen_pricing.py
+        output_mtok=0.0,
+        context_window=0,
+        free_tier="$30/mo free compute included",
+        pricing_url="https://modal.com/pricing",
+        notes=(
+            "SDXL + LoRA image gen on Modal A10G ($0.000306/s). "
+            "~$0.001/image effective (~0.3 img/s on A10G). "
+            "Keep custom LoRA weights on Modal Volume — instant swap per child character. "
+            "See image_gen_pricing.py for full image gen cost analysis."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # IBM WATSONX.AI  — Granite 3.3 series; enterprise compliance
+    # signup: ibm.com/watsonx  |  sdk: pip install ibm-watsonx-ai
+    # FedRAMP, HIPAA, SOC 2 — best for regulated industry deployments
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="ibm_watsonx",
+        model_id="ibm/granite-3-3-8b-instruct",
+        input_mtok=0.60,
+        output_mtok=1.80,
+        context_window=128_000,
+        mmlu=73.2,
+        mmlu_pro=52.0,
+        ifeval=78.0,
+        humaneval=68.0,
+        supports_vision=False,
+        free_tier="Lite plan: 50K tokens/month free",
+        knowledge_cutoff="2025-03",
+        pricing_url="https://www.ibm.com/products/watsonx-ai/pricing",
+        notes=(
+            "128K context. Apache 2.0 open weights. FedRAMP authorized; HIPAA-eligible; SOC 2. "
+            "EU/US data residency options. Granite 3.3 series is IBM's best instruction-tuned family. "
+            "Strongest choice when regulatory compliance is a hard requirement."
+        ),
+    ),
+    ModelPricing(
+        provider="ibm_watsonx",
+        model_id="ibm/granite-3-3-2b-instruct",
+        input_mtok=0.20,
+        output_mtok=0.60,
+        context_window=128_000,
+        mmlu=62.5,
+        supports_vision=False,
+        free_tier="Lite plan: 50K tokens/month free",
+        knowledge_cutoff="2025-03",
+        pricing_url="https://www.ibm.com/products/watsonx-ai/pricing",
+        notes=(
+            "2B variant. Extremely cheap for classification + extraction pipelines. "
+            "Apache 2.0. Same compliance posture as 8B. Run locally or on watsonx. "
+            "Useful for high-volume document processing in regulated environments."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # DATABRICKS  — DBRX + Foundation Model APIs; runs inside Databricks workspace
+    # signup: databricks.com  |  sdk: openai (compat) or databricks-sdk
+    # Key advantage: models run inside your Databricks workspace (data sovereignty)
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="databricks",
+        model_id="databricks/dbrx-instruct",
+        input_mtok=0.60,
+        output_mtok=0.60,
+        context_window=32_768,
+        mmlu=73.7,
+        mmlu_pro=52.0,
+        humaneval=70.1,
+        mgsm=66.0,
+        supports_vision=False,
+        free_tier=None,
+        knowledge_cutoff="2023-12",
+        pricing_url="https://www.databricks.com/product/pricing/foundation-model-serving",
+        notes=(
+            "132B MoE (36B active). Priced ~$0.60/MTok via Databricks Foundation Model API. "
+            "Also available on Together AI at same rate. "
+            "Key: if your data is already in Databricks, DBRX avoids data-leaving-warehouse risk. "
+            "Apache 2.0 open weights."
+        ),
+    ),
+    ModelPricing(
+        provider="databricks",
+        model_id="meta-llama/llama-3-3-70b-instruct",
+        input_mtok=0.30,
+        output_mtok=0.30,
+        context_window=128_000,
+        mmlu=86.0,
+        ifeval=83.4,
+        free_tier=None,
+        knowledge_cutoff="2024-12",
+        pricing_url="https://www.databricks.com/product/pricing/foundation-model-serving",
+        notes=(
+            "Llama 3.3 70B via Databricks Foundation Model API. "
+            "Competitive pricing; stays within Databricks workspace security perimeter. "
+            "Good option if already paying for Databricks for data engineering."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # LIQUID AI  — LFM series; novel recurrent architecture; memory-efficient
+    # signup: liquid.ai  |  api_key_env: LIQUID_API_KEY
+    # LFMs use liquid time-constant networks — different compute profile than Transformers
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="liquid_ai",
+        model_id="liquid/lfm-40b",
+        input_mtok=0.50,
+        output_mtok=1.50,
+        context_window=32_768,
+        mmlu=80.4,
+        mmlu_pro=60.0,
+        ifeval=82.0,
+        free_tier="Trial credits on signup at liquid.ai",
+        knowledge_cutoff="2024-09",
+        pricing_url="https://www.liquid.ai/liquid-foundation-models",
+        notes=(
+            "40B MoE parameters. Outperforms Llama 3.3 70B at 40% fewer active params. "
+            "Novel architecture: liquid time-constant (LTC) recurrent networks. "
+            "Dramatically lower memory bandwidth vs Transformers of equivalent quality. "
+            "Strong on long sequences where quadratic attention cost hurts other models."
+        ),
+    ),
+    ModelPricing(
+        provider="liquid_ai",
+        model_id="liquid/lfm-7b",
+        input_mtok=0.10,
+        output_mtok=0.30,
+        context_window=32_768,
+        mmlu=68.5,
+        mmlu_pro=48.0,
+        free_tier="Trial credits on signup at liquid.ai",
+        knowledge_cutoff="2024-09",
+        pricing_url="https://www.liquid.ai/liquid-foundation-models",
+        notes=(
+            "7B LFM. Competitive with Llama 3 8B at higher throughput and lower memory. "
+            "Good for edge/on-device deployment (very memory-efficient). "
+            "Run locally or via Liquid AI API."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # META LLAMA API  — Meta's official managed Llama inference (launched 2025)
+    # signup: llama.developer.meta.com  |  api_key_env: LLAMA_API_KEY
+    # Reference implementation — guaranteed exact model, no quantization variance
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="llama_api",
+        model_id="meta-llama/Llama-3.3-70B-Instruct",
+        input_mtok=0.20,
+        output_mtok=0.20,
+        context_window=128_000,
+        mmlu=86.0,
+        mmlu_pro=58.0,
+        ifeval=83.4,
+        mgsm=78.5,
+        free_tier="Free tier: limited daily tokens for testing",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://llama.developer.meta.com/docs/overview",
+        notes=(
+            "Official Meta-hosted Llama. Guaranteed reference implementation — no quantization, "
+            "no provider variation. Useful for eval baselines and compliance scenarios. "
+            "OpenAI-compatible API. Pricing competitive with top inference providers."
+        ),
+    ),
+    ModelPricing(
+        provider="llama_api",
+        model_id="meta-llama/Llama-3.1-405B-Instruct",
+        input_mtok=0.80,
+        output_mtok=0.80,
+        context_window=131_072,
+        mmlu=88.6,
+        mmlu_pro=73.0,
+        ifeval=88.0,
+        mgsm=89.0,
+        free_tier=None,
+        knowledge_cutoff="2024-07",
+        pricing_url="https://llama.developer.meta.com/docs/overview",
+        notes=(
+            "Largest publicly available Llama. 405B dense. "
+            "Best open-weight model for complex reasoning and long-context synthesis. "
+            "Official Meta endpoint. Also available via Together AI, Hyperbolic, Replicate."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # VOYAGE AI  — text + code embeddings; #1 on MTEB leaderboard
+    # signup: voyageai.com  |  api_key_env: VOYAGE_API_KEY
+    # IMPORTANT: embeddings only — no output tokens; input_mtok = embedding cost
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="voyage_ai",
+        model_id="voyage-3",
+        input_mtok=0.06,  # cost per 1M input tokens to embed; output = vector, not tokens
+        output_mtok=0.0,
+        context_window=32_000,
+        supports_vision=False,
+        supports_tool_use=False,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://docs.voyageai.com/docs/pricing",
+        notes=(
+            "EMBEDDINGS MODEL — input_mtok is embedding cost; there are no output tokens. "
+            "#1 on MTEB retrieval leaderboard. 1024-dim vectors. "
+            "Best for RAG pipelines: document chunking → embed → vector search → LLM context. "
+            "voyage-3-lite: $0.02/MTok (10x cheaper; marginal quality loss for bulk use). "
+            "voyage-3-large: $0.18/MTok (highest quality). "
+            "Reranker: voyage-rerank-2 at $0.05/1K queries."
+        ),
+    ),
+    ModelPricing(
+        provider="voyage_ai",
+        model_id="voyage-code-3",
+        input_mtok=0.06,
+        output_mtok=0.0,
+        context_window=32_000,
+        supports_vision=False,
+        supports_tool_use=False,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://docs.voyageai.com/docs/pricing",
+        notes=(
+            "EMBEDDINGS MODEL — specialised for code search and code context retrieval. "
+            "#1 on code retrieval benchmarks. Understands code structure beyond token overlap. "
+            "Use in IDE autocomplete context pipelines, code search, issue→PR matching. "
+            "Same $0.06/MTok as voyage-3."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # LG AI RESEARCH  — EXAONE 3.5 series; Korean frontier; Apache-adjacent license
+    # signup: no direct API — served via Together AI, SiliconFlow, HF Endpoints
+    # Best Korean-language open model; strong coding; research license
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="exaone",
+        model_id="LGAI-EXAONE/EXAONE-3.5-32B-Instruct",
+        input_mtok=0.25,
+        output_mtok=0.25,
+        context_window=32_768,
+        mmlu=82.9,
+        mmlu_pro=61.0,
+        humaneval=80.2,
+        ifeval=80.0,
+        supports_vision=False,
+        knowledge_cutoff="2024-12",
+        pricing_url="https://www.together.ai/pricing",
+        notes=(
+            "32B instruction-tuned. Best Korean-language open model. "
+            "HumanEval 80.2% — competitive with Llama 3.3 70B on coding. "
+            "Research license: free non-commercial; commercial use requires LG agreement. "
+            "Served via Together AI. Weights on HuggingFace."
+        ),
+    ),
+    ModelPricing(
+        provider="exaone",
+        model_id="LGAI-EXAONE/EXAONE-3.5-7.8B-Instruct",
+        input_mtok=0.08,
+        output_mtok=0.08,
+        context_window=32_768,
+        mmlu=75.1,
+        humaneval=70.8,
+        supports_vision=False,
+        knowledge_cutoff="2024-12",
+        pricing_url="https://siliconflow.cn/pricing",
+        notes=(
+            "7.8B instruction-tuned. Strong Korean + English bilingual. "
+            "Cheapest EXAONE variant. Via SiliconFlow or HuggingFace Inference Endpoints. "
+            "Research license (non-commercial free)."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # AI71 / JAIS  — G42 + MBZUAI Arabic-English frontier; best Arabic open LLM
+    # signup: ai71.ai  |  api_key_env: AI71_API_KEY
+    # Apache 2.0; UAE data residency; outperforms GPT-3.5 on Arabic benchmarks
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="ai71",
+        model_id="tiiuae/jais-30b-chat",
+        input_mtok=0.60,
+        output_mtok=0.60,
+        context_window=8_192,
+        mmlu=70.8,  # English; Arabic MMLU higher (Arabic-native)
+        supports_vision=False,
+        knowledge_cutoff="2023-09",
+        pricing_url="https://ai71.ai/pricing",
+        notes=(
+            "30B Arabic-English bilingual. Apache 2.0. "
+            "Best Arabic-language open model — trained on 178B Arabic tokens. "
+            "Outperforms GPT-3.5 on Arabic NLP benchmarks. "
+            "AI71 API: OpenAI-compatible. UAE data residency. "
+            "Also available via HuggingFace. Context is limited (8K) — consider chunking."
+        ),
+    ),
+    ModelPricing(
+        provider="ai71",
+        model_id="tiiuae/jais-13b-chat",
+        input_mtok=0.25,
+        output_mtok=0.25,
+        context_window=8_192,
+        supports_vision=False,
+        knowledge_cutoff="2023-09",
+        pricing_url="https://ai71.ai/pricing",
+        notes="13B Arabic-English. Cheaper than 30B. Good for bulk Arabic classification/summarisation.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # BASETEN  — production model serving; truss framework; hot replicas
+    # signup: baseten.co  |  sdk: pip install baseten
+    # Better SLAs than Replicate; good for production API traffic
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="baseten",
+        model_id="llama-3-3-70b-instruct-a100",
+        input_mtok=0.35,  # A100 $2.45/hr; ~280 tok/s; ~$0.35/MTok effective
+        output_mtok=0.35,
+        context_window=128_000,
+        mmlu=86.0,
+        free_tier=None,
+        knowledge_cutoff="2024-12",
+        pricing_url="https://www.baseten.co/pricing/",
+        notes=(
+            "Llama 3.3 70B deployed on Baseten A100 ($2.45/hr). "
+            "Effective rate ~$0.35/MTok at ~280 tok/s. "
+            "Hot replicas: zero cold start for production traffic. "
+            "Truss framework: deploy any custom fine-tuned model in minutes. "
+            "Better latency SLA than Replicate for production APIs."
+        ),
+    ),
+    ModelPricing(
+        provider="baseten",
+        model_id="whisper-large-v3-a10g",
+        input_mtok=0.0,  # audio transcription — price is per audio minute, not tokens
+        output_mtok=0.0,
+        context_window=0,
+        supports_vision=False,
+        supports_tool_use=False,
+        pricing_url="https://www.baseten.co/pricing/",
+        notes=(
+            "Whisper large-v3 on Baseten A10G. ~$0.006/audio minute effective. "
+            "Hot replica option: always-on, ~$50/mo for a single A10G keep-warm. "
+            "Good for BookCreator: parent voice-to-text for book customisation input. "
+            "Deploy custom fine-tuned Whisper for noisy audio / child voices via Truss."
+        ),
+    ),
 ]
 
 
@@ -2570,6 +3103,16 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "phi": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
     "falcon_tii": "https://huggingface.co/tiiuae",
     "snowflake": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions",
+    "replicate": "https://replicate.com/pricing",
+    "modal": "https://modal.com/pricing",
+    "ibm_watsonx": "https://www.ibm.com/products/watsonx-ai/pricing",
+    "databricks": "https://www.databricks.com/product/pricing/foundation-model-serving",
+    "liquid_ai": "https://www.liquid.ai/liquid-foundation-models",
+    "llama_api": "https://llama.developer.meta.com/docs/overview",
+    "voyage_ai": "https://docs.voyageai.com/docs/pricing",
+    "exaone": "https://huggingface.co/LGAI-EXAONE",
+    "ai71": "https://ai71.ai/pricing",
+    "baseten": "https://www.baseten.co/pricing/",
 }
 
 
@@ -3116,6 +3659,154 @@ API_QUICKSTART: dict[str, dict] = {
             "Arctic served via Together AI (external). "
             "Inside Snowflake: use SNOWFLAKE.CORTEX.COMPLETE('snowflake-arctic', ...) SQL UDF. "
             "No API key needed inside Snowflake — billed to Snowflake credits."
+        ),
+    },
+    "replicate": {
+        "signup_url": "https://replicate.com/signin",
+        "api_key_url": "https://replicate.com/account/api-tokens",
+        "api_base_url": "https://api.replicate.com/v1",
+        "openai_compat": False,
+        "api_key_env": "REPLICATE_API_TOKEN",
+        "python_sdk": "pip install replicate",
+        "litellm_prefix": "replicate/",
+        "usage_url": "https://replicate.com/account/billing",
+        "rate_limits_url": "https://replicate.com/docs/reference/http#rate-limits",
+        "docs_url": "https://replicate.com/docs",
+        "models_url": "https://replicate.com/explore",
+        "free_trial": "Free for public model cold-start queue (slow); credit card for priority",
+        "notes": "Per-GPU-second billing. Fine-tune API: POST /trainings. Webhook on job complete.",
+    },
+    "modal": {
+        "signup_url": "https://modal.com/signup",
+        "api_key_url": "https://modal.com/settings/tokens",
+        "api_base_url": "https://api.modal.com",
+        "openai_compat": False,
+        "api_key_env": "MODAL_TOKEN_ID + MODAL_TOKEN_SECRET",
+        "python_sdk": "pip install modal && modal setup",
+        "litellm_prefix": None,
+        "usage_url": "https://modal.com/settings/billing",
+        "docs_url": "https://modal.com/docs",
+        "models_url": "https://modal.com/pricing",
+        "free_trial": "$30/mo free compute (no credit card for first 30 days)",
+        "notes": (
+            "Write pure Python; deploy with @app.function(gpu='A100'). "
+            "Not a traditional LLM API — you deploy custom inference code. "
+            "Best for: hosting fine-tuned LoRA models, batch upscaling pipelines, custom inference."
+        ),
+    },
+    "ibm_watsonx": {
+        "signup_url": "https://www.ibm.com/products/watsonx-ai",
+        "api_key_url": "https://cloud.ibm.com/iam/apikeys",
+        "api_base_url": "https://us-south.ml.cloud.ibm.com/ml/v1/text/generation",
+        "openai_compat": False,
+        "api_key_env": "IBM_CLOUD_API_KEY",
+        "python_sdk": "pip install ibm-watsonx-ai",
+        "litellm_prefix": "watsonx/",
+        "usage_url": "https://cloud.ibm.com/billing",
+        "docs_url": "https://dataplatform.cloud.ibm.com/docs/content/wsj/analyze-data/fm-api.html",
+        "models_url": "https://www.ibm.com/products/watsonx-ai/foundation-models",
+        "free_trial": "Lite plan: 50K tokens/month free",
+        "notes": "Region in URL: us-south, eu-de, jp-tok, etc. Also requires project_id in body.",
+    },
+    "databricks": {
+        "signup_url": "https://www.databricks.com/try-databricks",
+        "api_key_url": "https://<workspace>.azuredatabricks.net/settings/user/developer/access-tokens",
+        "api_base_url": "https://<workspace>.azuredatabricks.net/serving-endpoints",
+        "openai_compat": True,
+        "api_key_env": "DATABRICKS_TOKEN",
+        "python_sdk": "pip install databricks-sdk  # or: pip install openai with workspace URL",
+        "litellm_prefix": "databricks/",
+        "usage_url": "https://<workspace>.azuredatabricks.net/sql/warehouses",
+        "docs_url": "https://docs.databricks.com/en/machine-learning/foundation-models/index.html",
+        "models_url": "https://www.databricks.com/product/pricing/foundation-model-serving",
+        "free_trial": None,
+        "notes": "Workspace URL varies by cloud (AWS/Azure/GCP). OpenAI-compat via /serving-endpoints/<name>/invocations.",
+    },
+    "liquid_ai": {
+        "signup_url": "https://liquid.ai/",
+        "api_key_url": "https://liquid.ai/",
+        "api_base_url": "https://api.liquid.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "LIQUID_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://liquid.ai/",
+        "docs_url": "https://docs.liquid.ai/",
+        "models_url": "https://www.liquid.ai/liquid-foundation-models",
+        "free_trial": "Trial credits on signup",
+    },
+    "llama_api": {
+        "signup_url": "https://llama.developer.meta.com/",
+        "api_key_url": "https://llama.developer.meta.com/dashboard",
+        "api_base_url": "https://api.llama.com/v1",
+        "openai_compat": True,
+        "api_key_env": "LLAMA_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://llama.developer.meta.com/dashboard",
+        "docs_url": "https://llama.developer.meta.com/docs/api",
+        "models_url": "https://llama.developer.meta.com/docs/overview",
+        "free_trial": "Free tier: limited daily tokens",
+        "notes": "Official Meta-hosted reference implementation. No quantization variance vs other providers.",
+    },
+    "voyage_ai": {
+        "signup_url": "https://dash.voyageai.com/",
+        "api_key_url": "https://dash.voyageai.com/api-keys",
+        "api_base_url": "https://api.voyageai.com/v1",
+        "openai_compat": False,
+        "api_key_env": "VOYAGE_API_KEY",
+        "python_sdk": "pip install voyageai",
+        "litellm_prefix": "voyage/",
+        "usage_url": "https://dash.voyageai.com/billing",
+        "docs_url": "https://docs.voyageai.com/",
+        "models_url": "https://docs.voyageai.com/docs/pricing",
+        "free_trial": "200M tokens free on signup",
+        "notes": "Embeddings only. POST /embeddings with input=[text list], model=voyage-3. Returns float32 vectors.",
+    },
+    "exaone": {
+        "signup_url": "https://www.together.ai/",
+        "api_key_url": "https://api.together.ai/settings/api-keys",
+        "api_base_url": "https://api.together.xyz/v1",
+        "openai_compat": True,
+        "api_key_env": "TOGETHER_API_KEY",
+        "python_sdk": "pip install together",
+        "litellm_prefix": "together_ai/",
+        "usage_url": "https://api.together.ai/settings/billing",
+        "docs_url": "https://huggingface.co/LGAI-EXAONE",
+        "models_url": "https://www.together.ai/pricing",
+        "free_trial": "$1 free credit on signup (Together AI)",
+        "notes": "EXAONE models served via Together AI. Research license — confirm commercial use with LG AI Research.",
+    },
+    "ai71": {
+        "signup_url": "https://ai71.ai/",
+        "api_key_url": "https://ai71.ai/dashboard",
+        "api_base_url": "https://api.ai71.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "AI71_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://ai71.ai/dashboard",
+        "docs_url": "https://docs.ai71.ai/",
+        "models_url": "https://ai71.ai/pricing",
+        "free_trial": "Trial credits on signup",
+        "notes": "UAE data residency. Best Arabic-English bilingual API. G42 / MBZUAI venture.",
+    },
+    "baseten": {
+        "signup_url": "https://app.baseten.co/signup",
+        "api_key_url": "https://app.baseten.co/settings/api_keys",
+        "api_base_url": "https://model-<model-id>.api.baseten.co/production/predict",
+        "openai_compat": False,
+        "api_key_env": "BASETEN_API_KEY",
+        "python_sdk": "pip install baseten",
+        "litellm_prefix": None,
+        "usage_url": "https://app.baseten.co/settings/billing",
+        "docs_url": "https://docs.baseten.co/",
+        "models_url": "https://www.baseten.co/pricing/",
+        "free_trial": None,
+        "notes": (
+            "Each deployed model gets its own endpoint URL. "
+            "Truss framework: define model class in Python, push to Baseten, auto-containerised. "
+            "Hot replicas available — always-on GPU for zero cold starts."
         ),
     },
 }
