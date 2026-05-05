@@ -96,6 +96,14 @@ class ModelPricing:
     # Primary benchmark for separating reasoning/thinking models on hard math
     aime_2024: float | None = None
 
+    # MATH-500 — % correct on 500 competition math problems (hendrycks/MATH subset)
+    # Covers algebra, geometry, number theory, calculus. Lower ceiling than AIME.
+    math_500: float | None = None
+
+    # BigCodeBench — % pass@1 on 1140 real-world coding tasks using scientific/web libs
+    # Harder than HumanEval; includes pandas, PIL, requests, scikit-learn, etc.
+    bigcodebench: float | None = None
+
     # Composite intelligence index (Artificial Analysis v4, higher = smarter)
     intelligence_index: float | None = None
 
@@ -392,6 +400,67 @@ PROVIDERS: dict[str, dict] = {
             "Useful for fallback routing and provider comparison. "
             "Free models available at openrouter.ai/models?q=free. "
             "Rate-limit endpoint: GET https://openrouter.ai/api/v1/auth/key"
+        ),
+    },
+    # Upstage — Korean AI lab; Solar models benchmark extremely well per-dollar
+    # Solar Pro is a 22B model competitive with much larger models on MMLU/MATH
+    "upstage": {
+        "name": "Upstage (Solar models — high benchmark efficiency per dollar)",
+        "pricing_url": "https://console.upstage.ai/pricing",
+        "api_docs_url": "https://developers.upstage.ai/docs/getting-started",
+        "is_inference_platform": False,
+        "notes": (
+            "OpenAI-compatible API. Free $10 credit on signup. "
+            "Solar Pro: strong math/reasoning performance vs 70B-class models. "
+            "Document OCR/parsing also available (Solar OCR). "
+        ),
+    },
+    # 01.AI — Yi series; Li Kai-Fu's lab; ultra-cheap inference, solid quality
+    "01ai": {
+        "name": "01.AI (Yi series — ultra-cheap, solid general-purpose)",
+        "pricing_url": "https://platform.01.ai/pricing",
+        "api_docs_url": "https://platform.01.ai/docs",
+        "is_inference_platform": False,
+        "notes": (
+            "Yi-Lightning: $0.14/MTok flat in/out — one of cheapest mid-quality options. "
+            "OpenAI-compatible API. Free trial credits on signup. "
+            "Models available on OpenRouter: openrouter.ai/01-ai"
+        ),
+    },
+    # LeptonAI — cheap inference platform; serverless open-weight hosting
+    "lepton": {
+        "name": "LeptonAI (inference platform — cheap serverless open-weight hosting)",
+        "pricing_url": "https://www.lepton.ai/pricing",
+        "api_docs_url": "https://www.lepton.ai/docs",
+        "is_inference_platform": True,
+        "notes": (
+            "Serverless and dedicated GPU inference. "
+            "Free $10 credit on signup. OpenAI-compatible API. "
+            "Focuses on Llama, Mistral, Qwen open-weight models. Low cold-start latency."
+        ),
+    },
+    # Baidu — ERNIE series; dominant Chinese LLM; strong on Chinese language tasks
+    "baidu": {
+        "name": "Baidu (ERNIE series — dominant Chinese frontier model)",
+        "pricing_url": "https://qianfan.cloud.baidu.com/pricing",
+        "api_docs_url": "https://cloud.baidu.com/doc/WENXINWORKSHOP/",
+        "is_inference_platform": False,
+        "notes": (
+            "ERNIE 4.0 Turbo: strong Chinese-language, reasoning, and coding. "
+            "Available via Baidu Qianfan platform. Free trial credits. "
+            "Less accessible outside China; OpenRouter lists some ERNIE variants."
+        ),
+    },
+    # Reka AI — multimodal frontier model lab; native video/image/audio understanding
+    "reka": {
+        "name": "Reka AI (multimodal frontier models — native video/image/audio)",
+        "pricing_url": "https://platform.reka.ai/pricing",
+        "api_docs_url": "https://docs.reka.ai/",
+        "is_inference_platform": False,
+        "notes": (
+            "Reka Core, Flash, Edge family. Native multimodal (video, image, audio, text). "
+            "Free trial credits on signup. OpenAI-compatible API. "
+            "Strong at document understanding and long-video QA."
         ),
     },
 }
@@ -1623,6 +1692,312 @@ MODELS: list[ModelPricing] = [
             "litellm: model='openrouter/anthropic/claude-opus-4-7' etc."
         ),
     ),
+    # ══════════════════════════════════════════════════════════════════════
+    # OPENAI — additional models
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="openai",
+        model_id="gpt-4.1-mini",
+        input_mtok=0.40,
+        output_mtok=1.60,
+        cache_read_mtok=0.10,
+        context_window=1_047_576,
+        free_tier=None,
+        swe_bench_verified=23.0,
+        mmlu=85.0,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://openai.com/api/pricing/",
+        notes=(
+            "Smarter and cheaper than gpt-4o-mini. ~1M context. "
+            "Cached reads at $0.10/MTok. Best OpenAI value for general production use."
+        ),
+    ),
+    ModelPricing(
+        provider="openai",
+        model_id="o1",
+        input_mtok=15.00,
+        output_mtok=60.00,
+        cache_read_mtok=7.50,
+        context_window=200_000,
+        max_output=100_000,
+        free_tier=None,
+        swe_bench_verified=48.9,
+        gpqa_diamond=78.0,
+        aime_2024=83.3,
+        math_500=96.4,
+        supports_thinking=True,
+        knowledge_cutoff="2023-10",
+        pricing_url="https://openai.com/api/pricing/",
+        notes=(
+            "Full o1 reasoning model. Much more expensive than o4-mini but higher quality. "
+            "Thinking tokens are billed. Cached reads at $7.50/MTok. "
+            "Requires Tier 5 ($1K cumulative spend) for full access."
+        ),
+    ),
+    ModelPricing(
+        provider="openai",
+        model_id="o1-mini",
+        input_mtok=3.00,
+        output_mtok=12.00,
+        context_window=128_000,
+        free_tier=None,
+        aime_2024=56.7,
+        supports_thinking=True,
+        knowledge_cutoff="2023-10",
+        pricing_url="https://openai.com/api/pricing/",
+        notes="Smaller reasoning model. Good for math/coding reasoning without full o1 cost.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # xAI GROK — additional models
+    # Source: https://docs.x.ai/docs/models
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="xai",
+        model_id="grok-3",
+        input_mtok=3.00,
+        output_mtok=15.00,
+        context_window=131_072,
+        free_tier="Limited free credits for new accounts",
+        mmlu=87.5,
+        gpqa_diamond=84.4,
+        humaneval=88.9,
+        knowledge_cutoff="2025-03",
+        pricing_url="https://docs.x.ai/docs/models",
+        notes=(
+            "Full Grok-3 without reasoning mode. "
+            "Available via api.x.ai (OpenAI-compat) or OpenRouter. "
+            "Strong coding and instruction following."
+        ),
+    ),
+    ModelPricing(
+        provider="xai",
+        model_id="grok-3-mini",
+        input_mtok=0.30,
+        output_mtok=0.50,
+        context_window=131_072,
+        free_tier="Limited free credits for new accounts",
+        gpqa_diamond=79.0,
+        aime_2024=81.0,
+        supports_thinking=True,
+        knowledge_cutoff="2025-03",
+        pricing_url="https://docs.x.ai/docs/models",
+        notes=(
+            "Compact reasoning model. Exceptional AIME/GPQA for price. "
+            "Thinking mode on by default. Cheapest xAI option with CoT."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # COHERE — additional models
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="cohere",
+        model_id="command-a",
+        input_mtok=2.50,
+        output_mtok=10.00,
+        context_window=256_000,
+        free_tier="Trial API key (non-commercial; rate-limited)",
+        swe_bench_verified=60.1,
+        knowledge_cutoff="2025-01",
+        pricing_url="https://cohere.com/pricing",
+        notes=(
+            "Cohere's latest flagship command model. 256K context. "
+            "Strong at enterprise RAG, tool use, structured outputs. "
+            "Optimised for agentic pipelines."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # QWEN — additional models
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="qwen",
+        model_id="qwen3-32b",
+        input_mtok=0.30,
+        output_mtok=1.20,
+        context_window=131_072,
+        free_tier="Alibaba Cloud free trial credits on signup",
+        mmlu=86.0,
+        gpqa_diamond=79.0,
+        aime_2024=72.9,
+        math_500=90.8,
+        supports_thinking=True,
+        knowledge_cutoff="2025-06",
+        pricing_url="https://openrouter.ai/qwen/qwen3-32b",
+        notes=(
+            "32B dense model with thinking mode. Cheaper and faster than Qwen3-235B. "
+            "Strong coding and math. Apache 2.0 open weights."
+        ),
+    ),
+    ModelPricing(
+        provider="qwen",
+        model_id="qwen2.5-coder-32b-instruct",
+        input_mtok=0.07,
+        output_mtok=0.07,
+        context_window=131_072,
+        free_tier="Alibaba Cloud free trial credits on signup",
+        humaneval=92.7,
+        bigcodebench=55.7,
+        live_code_bench=46.1,
+        knowledge_cutoff="2024-10",
+        pricing_url="https://openrouter.ai/qwen/qwen2.5-coder-32b-instruct",
+        notes=(
+            "Dedicated coding model. Exceptional HumanEval (92.7%). "
+            "Very cheap at $0.07/$0.07 flat. Open weights (Apache 2.0). "
+            "Good drop-in code completion model for agentic SWE pipelines."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # UPSTAGE  (Solar — high benchmark efficiency per dollar)
+    # Source: https://console.upstage.ai/pricing
+    # Free tier: $10 credit on signup; OpenAI-compatible API
+    # Solar Pro: 22B model with benchmark scores rivalling 70B-class models
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="upstage",
+        model_id="solar-pro",
+        input_mtok=1.50,
+        output_mtok=1.50,
+        context_window=32_768,
+        free_tier="$10 credit on signup at console.upstage.ai",
+        mmlu=79.9,
+        math_500=74.0,
+        humaneval=86.8,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://console.upstage.ai/pricing",
+        notes=(
+            "22B model with outsized benchmark performance for its size. "
+            "Strong math/reasoning vs cost. OpenAI-compatible API. "
+            "Shorter context (32K) — best for focused single-doc tasks."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # 01.AI  (Yi series — ultra-cheap, solid quality)
+    # Source: https://platform.01.ai/pricing
+    # Free tier: trial credits on signup; OpenAI-compatible API
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="01ai",
+        model_id="yi-lightning",
+        input_mtok=0.14,
+        output_mtok=0.14,
+        context_window=16_384,
+        free_tier="Trial credits on signup at platform.01.ai",
+        mmlu=77.0,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://platform.01.ai/pricing",
+        notes=(
+            "Flat $0.14/$0.14 — one of cheapest capable mid-tier models. "
+            "Good for classification, extraction, simple RAG. "
+            "OpenAI-compatible. Also on OpenRouter: 01-ai/yi-lightning."
+        ),
+    ),
+    ModelPricing(
+        provider="01ai",
+        model_id="yi-large",
+        input_mtok=3.00,
+        output_mtok=3.00,
+        context_window=32_768,
+        free_tier="Trial credits on signup at platform.01.ai",
+        mmlu=82.0,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://platform.01.ai/pricing",
+        notes=(
+            "Yi-Large flagship. Flat $3/$3. 200B-class quality. "
+            "Strong multilingual (Chinese + English). 32K context."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # REKA AI  (multimodal frontier — native video/image/audio)
+    # Source: https://platform.reka.ai
+    # Free tier: trial credits on signup; OpenAI-compatible API
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="reka",
+        model_id="reka-core",
+        input_mtok=3.00,
+        output_mtok=15.00,
+        context_window=128_000,
+        free_tier="Trial credits on signup at platform.reka.ai",
+        mmlu=83.0,
+        gpqa_diamond=53.0,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://platform.reka.ai/pricing",
+        notes=(
+            "Reka's frontier model. Native multimodal: text, image, video, audio. "
+            "128K context. Strong at long-video QA and document understanding. "
+            "OpenAI-compatible API."
+        ),
+    ),
+    ModelPricing(
+        provider="reka",
+        model_id="reka-flash",
+        input_mtok=0.80,
+        output_mtok=2.00,
+        context_window=128_000,
+        free_tier="Trial credits on signup at platform.reka.ai",
+        knowledge_cutoff="2024-06",
+        pricing_url="https://platform.reka.ai/pricing",
+        notes="Mid-tier Reka. Cheaper multimodal inference. Good image/doc Q&A at lower cost.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # LEPTON AI  (inference platform — cheap serverless open-weight hosting)
+    # Source: https://www.lepton.ai/pricing
+    # Free tier: $10 credit on signup; OpenAI-compatible API
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="lepton",
+        model_id="llama3-1-8b",
+        input_mtok=0.07,
+        output_mtok=0.07,
+        context_window=128_000,
+        free_tier="$10 credit on signup at lepton.ai",
+        pricing_url="https://www.lepton.ai/pricing",
+        notes="Cheap 8B inference on Lepton. Flat $0.07/$0.07. OpenAI-compatible.",
+    ),
+    ModelPricing(
+        provider="lepton",
+        model_id="llama3-1-70b",
+        input_mtok=0.55,
+        output_mtok=0.55,
+        context_window=128_000,
+        free_tier="$10 credit on signup at lepton.ai",
+        pricing_url="https://www.lepton.ai/pricing",
+        notes="70B on Lepton. Flat rate. Good for high-quality open-weight at mid-range cost.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # BAIDU  (ERNIE series — dominant Chinese LLM)
+    # Source: https://qianfan.cloud.baidu.com/pricing
+    # Free tier: trial credits on signup (Qianfan platform)
+    # Note: less accessible outside China; some ERNIE variants on OpenRouter
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="baidu",
+        model_id="ernie-4.0-turbo-128k",
+        input_mtok=0.37,
+        output_mtok=1.10,
+        context_window=128_000,
+        free_tier="Trial credits on signup at qianfan.cloud.baidu.com",
+        mmlu=84.0,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://qianfan.cloud.baidu.com/pricing",
+        notes=(
+            "ERNIE 4.0 Turbo — Baidu's fast flagship. Strong Chinese language + coding. "
+            "128K context. Qianfan platform API. Restricted outside mainland China without VPN/proxy."
+        ),
+    ),
+    ModelPricing(
+        provider="baidu",
+        model_id="ernie-speed-128k",
+        input_mtok=0.004,
+        output_mtok=0.008,
+        context_window=128_000,
+        free_tier="Free tier available on Qianfan with rate limits",
+        knowledge_cutoff="2024-06",
+        pricing_url="https://qianfan.cloud.baidu.com/pricing",
+        notes=(
+            "Baidu's cheapest Chinese-optimised model. Extremely cheap. "
+            "Good for high-volume Chinese-language tasks. Free tier available."
+        ),
+    ),
 ]
 
 
@@ -1666,6 +2041,417 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "zhipu": "https://open.bigmodel.cn/pricing",
     "huggingface": "https://huggingface.co/pricing",
     "deepinfra": "https://deepinfra.com/pricing",
+    "upstage": "https://console.upstage.ai/pricing",
+    "01ai": "https://platform.01.ai/pricing",
+    "lepton": "https://www.lepton.ai/pricing",
+    "baidu": "https://qianfan.cloud.baidu.com/pricing",
+    "reka": "https://platform.reka.ai/pricing",
+}
+
+
+# ---------------------------------------------------------------------------
+# API quickstart reference — signup, keys, base URL, SDK, usage dashboard
+# ---------------------------------------------------------------------------
+#
+# openai_compat = True  →  use the OpenAI Python SDK / LiteLLM with the given
+#                          api_base_url and api_key_env. No provider-specific SDK needed.
+#
+# litellm_prefix          →  prefix to use in LiteLLM model strings, e.g.
+#                             "anthropic/claude-sonnet-4-6" or "gemini/gemini-2.5-pro"
+
+API_QUICKSTART: dict[str, dict] = {
+    "anthropic": {
+        "signup_url": "https://console.anthropic.com/",
+        "api_key_url": "https://console.anthropic.com/settings/keys",
+        "api_base_url": "https://api.anthropic.com/v1",
+        "openai_compat": False,
+        "api_key_env": "ANTHROPIC_API_KEY",
+        "python_sdk": "pip install anthropic",
+        "litellm_prefix": "anthropic/",
+        "usage_url": "https://console.anthropic.com/settings/billing",
+        "rate_limits_url": "https://docs.anthropic.com/en/api/rate-limits",
+        "docs_url": "https://docs.anthropic.com/en/api/getting-started",
+        "models_url": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+        "free_trial": None,
+    },
+    "openai": {
+        "signup_url": "https://platform.openai.com/signup",
+        "api_key_url": "https://platform.openai.com/api-keys",
+        "api_base_url": "https://api.openai.com/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENAI_API_KEY",
+        "python_sdk": "pip install openai",
+        "litellm_prefix": "",
+        "usage_url": "https://platform.openai.com/usage",
+        "rate_limits_url": "https://platform.openai.com/account/limits",
+        "docs_url": "https://platform.openai.com/docs",
+        "models_url": "https://platform.openai.com/docs/models",
+        "free_trial": None,
+    },
+    "google": {
+        "signup_url": "https://aistudio.google.com/",
+        "api_key_url": "https://aistudio.google.com/app/apikey",
+        "api_base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "openai_compat": True,
+        "openai_compat_base": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "api_key_env": "GEMINI_API_KEY",
+        "python_sdk": "pip install google-generativeai",
+        "litellm_prefix": "gemini/",
+        "usage_url": "https://aistudio.google.com/app/apikey",
+        "rate_limits_url": "https://ai.google.dev/gemini-api/docs/rate-limits",
+        "docs_url": "https://ai.google.dev/gemini-api/docs",
+        "models_url": "https://ai.google.dev/gemini-api/docs/models",
+        "free_trial": "Free tier on AI Studio (all Gemini models, rate-limited)",
+    },
+    "deepseek": {
+        "signup_url": "https://platform.deepseek.com/",
+        "api_key_url": "https://platform.deepseek.com/api_keys",
+        "api_base_url": "https://api.deepseek.com/v1",
+        "openai_compat": True,
+        "api_key_env": "DEEPSEEK_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "deepseek/",
+        "usage_url": "https://platform.deepseek.com/usage",
+        "rate_limits_url": "https://api-docs.deepseek.com/quick_start/rate_limit",
+        "docs_url": "https://api-docs.deepseek.com/",
+        "models_url": "https://api-docs.deepseek.com/quick_start/pricing/",
+        "free_trial": "Trial credits on signup",
+    },
+    "xai": {
+        "signup_url": "https://console.x.ai/",
+        "api_key_url": "https://console.x.ai/team/default/api-keys",
+        "api_base_url": "https://api.x.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "XAI_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "xai/",
+        "usage_url": "https://console.x.ai/team/default/usage",
+        "rate_limits_url": "https://docs.x.ai/docs/rate-limits",
+        "docs_url": "https://docs.x.ai/docs",
+        "models_url": "https://docs.x.ai/docs/models",
+        "free_trial": "Limited free credits for new accounts",
+    },
+    "mistral": {
+        "signup_url": "https://console.mistral.ai/",
+        "api_key_url": "https://console.mistral.ai/api-keys/",
+        "api_base_url": "https://api.mistral.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "MISTRAL_API_KEY",
+        "python_sdk": "pip install mistralai",
+        "litellm_prefix": "mistral/",
+        "usage_url": "https://console.mistral.ai/billing/",
+        "rate_limits_url": "https://docs.mistral.ai/deployment/laplateforme/rate_limits/",
+        "docs_url": "https://docs.mistral.ai/",
+        "models_url": "https://docs.mistral.ai/getting-started/models/",
+        "free_trial": "Free tier on La Plateforme (no credit card; rate-limited)",
+        "notes": (
+            "Codestral FREE for individuals at https://codestral.mistral.ai "
+            "(separate API key from main; use for IDE integrations)"
+        ),
+    },
+    "cohere": {
+        "signup_url": "https://dashboard.cohere.com/",
+        "api_key_url": "https://dashboard.cohere.com/api-keys",
+        "api_base_url": "https://api.cohere.ai/v1",
+        "openai_compat": False,
+        "api_key_env": "COHERE_API_KEY",
+        "python_sdk": "pip install cohere",
+        "litellm_prefix": "cohere/",
+        "usage_url": "https://dashboard.cohere.com/billing",
+        "rate_limits_url": "https://docs.cohere.com/docs/rate-limits",
+        "docs_url": "https://docs.cohere.com/",
+        "models_url": "https://docs.cohere.com/docs/models",
+        "free_trial": "Trial API key (non-commercial, rate-limited)",
+    },
+    "perplexity": {
+        "signup_url": "https://www.perplexity.ai/settings/api",
+        "api_key_url": "https://www.perplexity.ai/settings/api",
+        "api_base_url": "https://api.perplexity.ai",
+        "openai_compat": True,
+        "api_key_env": "PERPLEXITY_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "perplexity/",
+        "usage_url": "https://www.perplexity.ai/settings/api",
+        "rate_limits_url": "https://docs.perplexity.ai/guides/rate-limits",
+        "docs_url": "https://docs.perplexity.ai/",
+        "models_url": "https://docs.perplexity.ai/models/model-cards",
+        "free_trial": None,
+        "notes": "+$0.005/search call on top of token cost for Sonar models",
+    },
+    "amazon": {
+        "signup_url": "https://aws.amazon.com/bedrock/",
+        "api_key_url": "https://console.aws.amazon.com/iam/home#/security_credentials",
+        "api_base_url": "https://bedrock-runtime.<region>.amazonaws.com",
+        "openai_compat": False,
+        "api_key_env": "AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + AWS_REGION",
+        "python_sdk": "pip install boto3  # or: pip install anthropic[bedrock]",
+        "litellm_prefix": "bedrock/",
+        "usage_url": "https://console.aws.amazon.com/billing/home",
+        "rate_limits_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html",
+        "docs_url": "https://docs.aws.amazon.com/bedrock/",
+        "models_url": "https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html",
+        "free_trial": "AWS Free Tier: limited Nova Micro/Lite calls in first 12 months",
+    },
+    "groq": {
+        "signup_url": "https://console.groq.com/",
+        "api_key_url": "https://console.groq.com/keys",
+        "api_base_url": "https://api.groq.com/openai/v1",
+        "openai_compat": True,
+        "api_key_env": "GROQ_API_KEY",
+        "python_sdk": "pip install groq",
+        "litellm_prefix": "groq/",
+        "usage_url": "https://console.groq.com/usage",
+        "rate_limits_url": "https://console.groq.com/docs/rate-limits",
+        "docs_url": "https://console.groq.com/docs/openai",
+        "models_url": "https://console.groq.com/docs/models",
+        "free_trial": "Free API key — no credit card required",
+    },
+    "fireworks": {
+        "signup_url": "https://fireworks.ai/login",
+        "api_key_url": "https://fireworks.ai/account/api-keys",
+        "api_base_url": "https://api.fireworks.ai/inference/v1",
+        "openai_compat": True,
+        "api_key_env": "FIREWORKS_API_KEY",
+        "python_sdk": "pip install fireworks-ai",
+        "litellm_prefix": "fireworks_ai/",
+        "usage_url": "https://fireworks.ai/account/billing",
+        "rate_limits_url": "https://docs.fireworks.ai/guides/rate-limits",
+        "docs_url": "https://docs.fireworks.ai/",
+        "models_url": "https://fireworks.ai/models",
+        "free_trial": "$1 free credit on signup",
+    },
+    "cloudflare": {
+        "signup_url": "https://dash.cloudflare.com/sign-up",
+        "api_key_url": "https://dash.cloudflare.com/profile/api-tokens",
+        "api_base_url": "https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/run/",
+        "openai_compat": True,
+        "openai_compat_base": "https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1",
+        "api_key_env": "CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "cloudflare/",
+        "usage_url": "https://dash.cloudflare.com/?to=/:account/ai/workers-ai",
+        "rate_limits_url": "https://developers.cloudflare.com/workers-ai/platform/limits/",
+        "docs_url": "https://developers.cloudflare.com/workers-ai/",
+        "models_url": "https://developers.cloudflare.com/workers-ai/models/",
+        "free_trial": "10K Neurons/day free on ALL plans (resets daily)",
+    },
+    "together": {
+        "signup_url": "https://api.together.ai/",
+        "api_key_url": "https://api.together.ai/settings/api-keys",
+        "api_base_url": "https://api.together.xyz/v1",
+        "openai_compat": True,
+        "api_key_env": "TOGETHER_API_KEY",
+        "python_sdk": "pip install together",
+        "litellm_prefix": "together_ai/",
+        "usage_url": "https://api.together.ai/settings/billing",
+        "rate_limits_url": "https://docs.together.ai/docs/rate-limits",
+        "docs_url": "https://docs.together.ai/",
+        "models_url": "https://docs.together.ai/docs/serverless-models",
+        "free_trial": "$1 free credit on signup",
+    },
+    "cerebras": {
+        "signup_url": "https://cloud.cerebras.ai/",
+        "api_key_url": "https://cloud.cerebras.ai/platform/apikeys",
+        "api_base_url": "https://api.cerebras.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "CEREBRAS_API_KEY",
+        "python_sdk": "pip install cerebras-cloud-sdk",
+        "litellm_prefix": "cerebras/",
+        "usage_url": "https://cloud.cerebras.ai/platform/billing",
+        "rate_limits_url": "https://inference-docs.cerebras.ai/api-reference/chat",
+        "docs_url": "https://inference-docs.cerebras.ai/",
+        "models_url": "https://cloud.cerebras.ai/platform/models",
+        "free_trial": "Free trial tier (no credit card required)",
+    },
+    "sambanova": {
+        "signup_url": "https://cloud.sambanova.ai/",
+        "api_key_url": "https://cloud.sambanova.ai/apis",
+        "api_base_url": "https://api.sambanova.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "SAMBANOVA_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "sambanova/",
+        "usage_url": "https://cloud.sambanova.ai/",
+        "rate_limits_url": "https://community.sambanova.ai/t/rate-limits/",
+        "docs_url": "https://community.sambanova.ai/",
+        "models_url": "https://cloud.sambanova.ai/apis",
+        "free_trial": "Free tier at cloud.sambanova.ai (no credit card)",
+    },
+    "openrouter": {
+        "signup_url": "https://openrouter.ai/",
+        "api_key_url": "https://openrouter.ai/settings/keys",
+        "api_base_url": "https://openrouter.ai/api/v1",
+        "openai_compat": True,
+        "api_key_env": "OPENROUTER_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openrouter/",
+        "usage_url": "https://openrouter.ai/settings/billing",
+        "rate_limits_url": "https://openrouter.ai/api/v1/auth/key",
+        "docs_url": "https://openrouter.ai/docs",
+        "models_url": "https://openrouter.ai/models",
+        "free_trial": "Small free credit + free $0/tok models",
+        "notes": (
+            "Single key for 200+ providers. "
+            "Useful headers: HTTP-Referer and X-Title for leaderboard attribution. "
+            "Free models: openrouter.ai/models?q=free"
+        ),
+    },
+    "nvidia": {
+        "signup_url": "https://build.nvidia.com/",
+        "api_key_url": "https://build.nvidia.com/settings/api-key",
+        "api_base_url": "https://integrate.api.nvidia.com/v1",
+        "openai_compat": True,
+        "api_key_env": "NVIDIA_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "nvidia_nim/",
+        "usage_url": "https://build.nvidia.com/settings/usage",
+        "rate_limits_url": "https://docs.api.nvidia.com/nim/reference/rate-limits",
+        "docs_url": "https://docs.api.nvidia.com/",
+        "models_url": "https://build.nvidia.com/explore/discover",
+        "free_trial": "1000 free API credits on signup",
+    },
+    "mistral_codestral": {
+        "signup_url": "https://codestral.mistral.ai/",
+        "api_key_url": "https://codestral.mistral.ai/",
+        "api_base_url": "https://codestral.mistral.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "CODESTRAL_API_KEY",
+        "python_sdk": "pip install mistralai",
+        "usage_url": "https://codestral.mistral.ai/",
+        "docs_url": "https://docs.mistral.ai/capabilities/code_generation/",
+        "free_trial": "FREE for individuals — no credit card, no rate-limit issues for IDE use",
+        "notes": (
+            "Separate endpoint + API key from main Mistral API. "
+            "Use for IDE integrations: VS Code Copilot, Continue, Cursor. "
+            "model_id = 'codestral-latest'"
+        ),
+    },
+    "zhipu": {
+        "signup_url": "https://open.bigmodel.cn/",
+        "api_key_url": "https://open.bigmodel.cn/usercenter/apikeys",
+        "api_base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "openai_compat": True,
+        "api_key_env": "ZHIPUAI_API_KEY",
+        "python_sdk": "pip install zhipuai",
+        "litellm_prefix": "zhipuai/",
+        "usage_url": "https://open.bigmodel.cn/usercenter/recharge",
+        "docs_url": "https://open.bigmodel.cn/dev/api",
+        "models_url": "https://open.bigmodel.cn/pricing",
+        "free_trial": "Trial credits on signup",
+    },
+    "deepinfra": {
+        "signup_url": "https://deepinfra.com/dash/deployments",
+        "api_key_url": "https://deepinfra.com/dash/api_keys",
+        "api_base_url": "https://api.deepinfra.com/v1/openai",
+        "openai_compat": True,
+        "api_key_env": "DEEPINFRA_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "deepinfra/",
+        "usage_url": "https://deepinfra.com/dash/billing",
+        "docs_url": "https://deepinfra.com/docs",
+        "models_url": "https://deepinfra.com/models",
+        "free_trial": "Trial API credits on signup",
+    },
+    "upstage": {
+        "signup_url": "https://console.upstage.ai/",
+        "api_key_url": "https://console.upstage.ai/api-keys",
+        "api_base_url": "https://api.upstage.ai/v1/solar",
+        "openai_compat": True,
+        "api_key_env": "UPSTAGE_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "usage_url": "https://console.upstage.ai/billing",
+        "docs_url": "https://developers.upstage.ai/docs/getting-started",
+        "models_url": "https://console.upstage.ai/pricing",
+        "free_trial": "$10 credit on signup",
+    },
+    "01ai": {
+        "signup_url": "https://platform.01.ai/",
+        "api_key_url": "https://platform.01.ai/apikeys",
+        "api_base_url": "https://api.01.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "YI_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "usage_url": "https://platform.01.ai/usage",
+        "docs_url": "https://platform.01.ai/docs",
+        "models_url": "https://platform.01.ai/pricing",
+        "free_trial": "Trial credits on signup",
+    },
+    "reka": {
+        "signup_url": "https://platform.reka.ai/",
+        "api_key_url": "https://platform.reka.ai/api-keys",
+        "api_base_url": "https://api.reka.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "REKA_API_KEY",
+        "python_sdk": "pip install reka-api",
+        "usage_url": "https://platform.reka.ai/billing",
+        "docs_url": "https://docs.reka.ai/",
+        "models_url": "https://platform.reka.ai/pricing",
+        "free_trial": "Trial credits on signup",
+    },
+    "lepton": {
+        "signup_url": "https://www.lepton.ai/",
+        "api_key_url": "https://www.lepton.ai/dashboard/settings",
+        "api_base_url": "https://llama3-1-8b.lepton.run/api/v1",
+        "openai_compat": True,
+        "api_key_env": "LEPTON_API_TOKEN",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "usage_url": "https://www.lepton.ai/dashboard/billing",
+        "docs_url": "https://www.lepton.ai/docs",
+        "models_url": "https://www.lepton.ai/pricing",
+        "free_trial": "$10 credit on signup",
+        "notes": "Each model has its own subdomain base URL: <model-slug>.lepton.run/api/v1",
+    },
+    "ai21": {
+        "signup_url": "https://studio.ai21.com/",
+        "api_key_url": "https://studio.ai21.com/account/api-key",
+        "api_base_url": "https://api.ai21.com/studio/v1",
+        "openai_compat": False,
+        "api_key_env": "AI21_API_KEY",
+        "python_sdk": "pip install ai21",
+        "litellm_prefix": "ai21/",
+        "usage_url": "https://studio.ai21.com/account/billing",
+        "docs_url": "https://docs.ai21.com/",
+        "models_url": "https://www.ai21.com/pricing",
+        "free_trial": "$10 free credit on signup",
+    },
+    "huggingface": {
+        "signup_url": "https://huggingface.co/join",
+        "api_key_url": "https://huggingface.co/settings/tokens",
+        "api_base_url": "https://api-inference.huggingface.co/models/<model-id>",
+        "openai_compat": True,
+        "openai_compat_base": "https://api-inference.huggingface.co/v1",
+        "api_key_env": "HF_TOKEN",
+        "python_sdk": "pip install huggingface_hub",
+        "litellm_prefix": "huggingface/",
+        "usage_url": "https://huggingface.co/settings/billing",
+        "docs_url": "https://huggingface.co/docs/api-inference",
+        "models_url": "https://huggingface.co/models?pipeline_tag=text-generation",
+        "free_trial": "Free serverless inference for popular models (rate-limited); PRO $9/mo for higher limits",
+    },
+    "novita": {
+        "signup_url": "https://novita.ai/",
+        "api_key_url": "https://novita.ai/settings/key-management",
+        "api_base_url": "https://api.novita.ai/v3/openai",
+        "openai_compat": True,
+        "api_key_env": "NOVITA_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "usage_url": "https://novita.ai/settings/billing",
+        "docs_url": "https://novita.ai/docs",
+        "models_url": "https://novita.ai/model-api/pricing",
+        "free_trial": "Some models permanently free; batch 50% off",
+    },
+    "moonshot": {
+        "signup_url": "https://platform.moonshot.ai/",
+        "api_key_url": "https://platform.moonshot.ai/console/api-keys",
+        "api_base_url": "https://api.moonshot.ai/v1",
+        "openai_compat": True,
+        "api_key_env": "MOONSHOT_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "usage_url": "https://platform.moonshot.ai/console/billing",
+        "docs_url": "https://platform.moonshot.ai/docs",
+        "models_url": "https://platform.moonshot.ai/docs/pricing/chat",
+        "free_trial": "Trial credits on signup",
+    },
 }
 
 
