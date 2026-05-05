@@ -12,21 +12,27 @@ class LLMProviderError(Exception):
 
 
 class ExecutionMode(StrEnum):
-    """Anthropic's three-tier taxonomy for LLM control flow.
+    """Control-flow tier for a task.
 
-    TASK     — single model call; predictable cost, bounded failure modes.
-    WORKFLOW — multiple calls in a predetermined sequence; developer controls flow.
-    AGENT    — autonomous loop; model decides its own trajectory at runtime.
+    TASK      — single model call; predictable cost, bounded failure modes.
+    WORKFLOW  — fixed sequence of model calls; developer controls flow.
+    AGENT     — autonomous loop; model decides its own trajectory at runtime.
+    GRAPH     — hyperagent orchestrates a directed graph of sub-agents; topology
+                is set by the developer, routing decisions are made dynamically
+                by the hyperagent node based on intermediate outputs. This is the
+                primary pattern for complex multi-role tasks (plan → code →
+                review → retry cycles).
 
-    Prefer TASK or WORKFLOW when the steps are known in advance ("if you can
-    map it, build it"). Reserve AGENT for genuinely ambiguous problems where
-    the model must adapt mid-execution — coding is the canonical example because
-    outputs are verifiable via unit tests.
+    Prefer TASK or WORKFLOW when steps are fully known in advance. Use AGENT
+    for ambiguous single-actor problems with verifiable outputs (coding). Use
+    GRAPH when multiple specialized roles collaborate and routing between them
+    depends on runtime results.
     """
 
     TASK = "task"
     WORKFLOW = "workflow"
     AGENT = "agent"
+    GRAPH = "graph"
 
 
 class AgentRole(StrEnum):
@@ -35,6 +41,49 @@ class AgentRole(StrEnum):
     CODER = "coder"
     REVIEWER = "reviewer"
     SCOUT = "scout"
+
+
+# ---------------------------------------------------------------------------
+# Graph / hyperagent models
+# ---------------------------------------------------------------------------
+
+
+class GraphEdge(BaseModel):
+    """Directed edge between two sub-agent nodes in a graph execution.
+
+    `condition` is an optional free-text predicate evaluated by the hyperagent
+    (e.g. "review.approved is False") to decide whether to traverse this edge.
+    A None condition means the edge is always traversed.
+    """
+
+    from_role: AgentRole
+    to_role: AgentRole
+    condition: str | None = None
+
+
+class GraphConfig(BaseModel):
+    """Topology of a hyperagent graph execution.
+
+    Defines which sub-agent nodes participate, how they are connected, where
+    execution starts, which node acts as the hyperagent orchestrator, and a
+    cycle cap to prevent runaway loops.
+    """
+
+    nodes: list[AgentRole]
+    edges: list[GraphEdge] = Field(default_factory=list)
+    entry: AgentRole = AgentRole.PLANNER
+    hyperagent: AgentRole = AgentRole.CONDUCTOR
+    max_cycles: int = Field(default=5, ge=1, le=20)
+
+
+class GraphNodeResult(BaseModel):
+    """Output produced by a single sub-agent node during graph execution."""
+
+    role: AgentRole
+    success: bool
+    output: str
+    tokens_used: int = 0
+    next_node: AgentRole | None = None  # hyperagent's routing decision
 
 
 class SubTask(BaseModel):
@@ -78,3 +127,16 @@ class ConductorOutput(BaseModel):
     review: ReviewOutput | None = None
     final_answer: str = ""
     success: bool = True
+
+
+class HyperagentOutput(ConductorOutput):
+    """Output from a GRAPH-mode execution.
+
+    Extends ConductorOutput with the per-node trace produced by each sub-agent
+    and the graph config that was used so callers can correlate routing decisions
+    with results.
+    """
+
+    graph_config: GraphConfig | None = None
+    node_results: list[GraphNodeResult] = Field(default_factory=list)
+    total_cycles: int = 0

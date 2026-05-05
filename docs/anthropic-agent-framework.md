@@ -1,108 +1,163 @@
-# Anthropic Agent Framework — Research & Architecture Alignment
+# Agent Architecture — Research & Design Reference
 
-Source: [How Anthropic Thinks About Agents, Workflows, and Tasks](https://shellypalmer.com/2026/04/how-anthropic-thinks-about-agents-workflows-and-tasks/)
-
----
-
-## Anthropic's Three-Tier Taxonomy
-
-| Tier | Definition | Cost Profile | Failure Mode |
-|------|-----------|--------------|--------------|
-| **Task** | Single model call (summarization, classification, extraction) | Predictable, bounded | Contained to one call |
-| **Workflow** | Multiple sequential model calls within a predetermined control flow | Linear with call count | Bounded by design |
-| **Agent** | Model operating autonomously in a loop; uses tools to decide its own trajectory at runtime | Potentially unbounded | Errors compound through iterations |
-
-The critical distinction: in a **workflow** the developer controls the flow; in an **agent** the model controls the flow.
+Sources:
+- [How Anthropic Thinks About Agents, Workflows, and Tasks](https://shellypalmer.com/2026/04/how-anthropic-thinks-about-agents-workflows-and-tasks/) (Barry Zhang / Shelly Palmer, April 2026)
+- Meta agent graph / hyperagent patterns
 
 ---
 
-## When to Build an Agent (Barry Zhang's Criteria)
+## Primary Pattern: Hyperagent Graph
 
-1. **Task Ambiguity** — if the steps can be fully mapped in advance, build a workflow for better accuracy, lower cost, and tighter failure bounds.
-2. **Token Economics** — a $0.10 budget covers roughly 30K–50K tokens (workflow territory). Choosing an agent pattern for a high-volume, low-ambiguity workload wastes proportionally; at 1M support tickets/month with 5× agent overhead that is ~$1.5M/year in avoidable spend.
-3. **Capability Reliability** — the model's core competency for each subtask must be solid before looping; errors inside an agent loop compound on every iteration.
-4. **Error Cost** — high-stakes actions (deploys, financial writes, infra changes) require human oversight and an audit trail, which caps how much autonomy an agent should have.
+Maistro's primary execution model is a **hyperagent graph**: a directed graph of
+specialized sub-agent nodes orchestrated by a top-level hyperagent (the conductor).
 
-### Why Coding Is the Canonical Agent Use Case
+```
+                    ┌─────────────┐
+                    │  CONDUCTOR  │  ← hyperagent: owns routing decisions
+                    │ (hyperagent)│
+                    └──────┬──────┘
+          ┌────────────────┼────────────────┐
+          ▼                ▼                ▼
+     ┌─────────┐     ┌─────────┐     ┌──────────┐
+     │ PLANNER │────▶│  CODER  │────▶│ REVIEWER │
+     └─────────┘     └─────────┘     └──────────┘
+                           ▲                │
+                           │  retry edge    │ approved=False
+                           └────────────────┘
+```
 
-Coding satisfies all four criteria:
-- Ambiguous by nature — requirements rarely specify every file and function to touch.
-- Strong model performance on code generation.
-- Outputs are self-verifiable — unit tests provide a deterministic pass/fail signal.
-- Error cost is moderate — a bad diff is visible and reversible.
+**Key distinctions from Anthropic's single-agent loop:**
 
----
-
-## Essential Agent Components
-
-1. **Operational environment** — the sandbox/workspace the agent can act on.
-2. **Available tools** — what the model can call (file I/O, shell, search).
-3. **System prompt** — objectives, constraints, and safety rails.
-
-Caching and other optimizations are secondary; get these three right first.
-
----
-
-## Maistro Architecture Mapping
-
-| Anthropic Concept | Maistro Implementation | Status |
+| Property | Single agent (AGENT mode) | Hyperagent graph (GRAPH mode) |
 |---|---|---|
-| Task | Direct LLM call returning `ConductorOutput` | ✅ supported via `ExecutionMode.TASK` |
-| Workflow | PLANNING → CODING → REVIEWING → TESTING pipeline | ✅ encoded in `TaskStatus` enum; default `ExecutionMode.WORKFLOW` |
-| Agent | Autonomous tool-loop (Phase 2 sub-agents) | 🔄 planned (`conductor.py` comment: "Phase 2 will split into sub-agents") |
-| Operational environment | `/workspace` sandbox (Docker, `SandboxSettings`) | ✅ |
-| Available tools | `tools/` — browser, git, media, sandbox | ✅ |
-| System prompt with constraints | `CONDUCTOR_SYSTEM` with explicit `SAFETY CONSTRAINTS` section | ✅ |
-| Token budget | `max_tokens_per_task` in `Settings` | ✅ |
-| Token cost monitoring (p50/p95) | `llm_tokens_used_total` histogram in metrics | ✅ added |
-| Trajectory logging | `conductor_trajectory` structured log event | ✅ added |
-| Capability reliability gate | Circuit breaker (`circuit_breaker.py`) + retry with backoff | ✅ |
+| Who decides what to do next | The model (one actor) | Hyperagent node (routing oracle) |
+| Parallelism | Sequential | Nodes can run in parallel branches |
+| Role specialization | One prompt, many responsibilities | Each node has a scoped prompt + tools |
+| Failure isolation | One error can abort the loop | Failed node surfaced per-node; hyperagent can reroute |
+| Topology | Implicit (model decides) | Explicit (`GraphConfig.edges`) |
+| Audit trail | Single trajectory | Per-node `GraphNodeResult` trace |
+
+The hyperagent is **not** a full agent in the loop sense — it does not execute
+work. It receives the output of a completed node and emits the `next_node`
+routing decision. This keeps the hyperagent's context small and its decisions
+auditable.
 
 ---
 
-## Gaps and Recommendations
+## Execution Modes (`ExecutionMode`)
 
-### 1. Enforce `ExecutionMode` at the Runner Layer
+| Mode | Control flow owner | When to use |
+|---|---|---|
+| `TASK` | n/a — single call | Summarization, classification, extraction. Predictable cost. |
+| `WORKFLOW` | Developer (fixed sequence) | Known steps that don't require mid-run adaptation. Default. |
+| `AGENT` | Model (autonomous loop) | Single-role ambiguous problems with verifiable outputs (e.g. coding with tests). |
+| `GRAPH` | Hyperagent node (dynamic routing) | Multi-role tasks: plan → code → review → retry cycles. Primary maistro pattern. |
 
-`TaskCreate.execution_mode` is now surfaced to callers but the runner and
-conductor currently treat every task identically. A future improvement is to
-short-circuit the plan/code/review pipeline for `TASK` mode (single call,
-return immediately) and reserve the autonomous sub-agent loop for `AGENT` mode.
-
-### 2. Expose Token p50/p95 in `/metrics`
-
-`llm_tokens_used_total` now records per-call token counts in the histogram.
-The `/metrics` endpoint already emits all histogram data. Operators should
-alert when p95 token usage exceeds the `max_tokens_per_task` ceiling — a
-sustained breach signals a runaway agent loop or an unexpectedly complex task
-class that should be downgraded to a workflow.
-
-### 3. Add a Pre-Deployment Trajectory Review Step
-
-The `conductor_trajectory` log event (added in this change) emits subtask
-count, files changed, review score, and execution mode for every completed
-task. Before promoting the agent-mode path to production, review a sample of
-trajectory logs to verify the model's decision path is sensible and does not
-expand scope unexpectedly.
-
-### 4. Audit Projects Mislabelled as Agents
-
-Using `ExecutionMode.WORKFLOW` as the default (rather than `AGENT`) ensures
-new tasks are conservatively routed. Callers that explicitly opt in to
-`ExecutionMode.AGENT` surface themselves in logs, making periodic audits
-straightforward.
+`WORKFLOW` is the conservative default in `TaskCreate`. `GRAPH` requires a
+`graph_config` in the request body.
 
 ---
 
-## Token Economics Quick Reference
+## Graph Topology Models
 
-| Tier | Model size | Approx. tokens / $0.10 | Recommended mode |
-|------|-----------|------------------------|-----------------|
-| QUICK (1) | 7B | 150K–300K | TASK or WORKFLOW |
-| STANDARD (2) | 32B | 30K–80K | WORKFLOW |
-| THOROUGH (3) | 70B+ | 15K–40K | WORKFLOW or AGENT |
-| ULTRA (4) | 70B+ (parallel) | 8K–20K per generation | AGENT (verified outputs only) |
+### `GraphConfig`
+```python
+class GraphConfig(BaseModel):
+    nodes: list[AgentRole]          # participating sub-agent nodes
+    edges: list[GraphEdge]          # directed edges, optionally conditional
+    entry: AgentRole                # first node to activate (default: PLANNER)
+    hyperagent: AgentRole           # orchestrating node (default: CONDUCTOR)
+    max_cycles: int                 # loop cap — prevents runaway graphs (1–20)
+```
 
-At ULTRA tier with an agent loop the per-task cost can easily be 5–10× a
-workflow. Reserve it for tasks with strong verifiability signals (unit tests,
-linters, type checkers).
+### `GraphEdge`
+```python
+class GraphEdge(BaseModel):
+    from_role: AgentRole
+    to_role: AgentRole
+    condition: str | None           # e.g. "review.approved is False"
+                                    # None = always traverse
+```
+
+### `GraphNodeResult`
+Emitted per node during graph execution. Carries `role`, `success`, `output`,
+`tokens_used`, and the hyperagent's `next_node` decision.
+
+### `HyperagentOutput`
+Extends `ConductorOutput` with `graph_config`, `node_results: list[GraphNodeResult]`,
+and `total_cycles`. Returned by the conductor when `execution_mode=GRAPH`.
+
+---
+
+## Example: Standard Engineering Task Graph
+
+```json
+{
+  "description": "Add rate limiting to the /tasks endpoint",
+  "execution_mode": "graph",
+  "graph_config": {
+    "nodes": ["planner", "coder", "reviewer"],
+    "edges": [
+      {"from_role": "planner",   "to_role": "coder"},
+      {"from_role": "coder",     "to_role": "reviewer"},
+      {"from_role": "reviewer",  "to_role": "coder", "condition": "review.approved is False"},
+      {"from_role": "reviewer",  "to_role": null}
+    ],
+    "entry": "planner",
+    "hyperagent": "conductor",
+    "max_cycles": 3
+  }
+}
+```
+
+The reviewer→coder back-edge fires only when `review.approved is False`, capped
+at 3 full cycles. The hyperagent evaluates the condition against the reviewer's
+`ReviewOutput` and emits the routing decision.
+
+---
+
+## Anthropic Framework Reference
+
+Barry Zhang's four criteria remain valid for deciding *whether* to build a
+graph at all (vs. a simpler workflow):
+
+1. **Task ambiguity** — if every step is known, a `WORKFLOW` is cheaper and
+   more reliable. Use `GRAPH` when intermediate outputs determine the next step.
+2. **Token economics** — each additional node in the graph multiplies token
+   spend. `max_cycles` is the primary cost control; set it conservatively.
+3. **Capability reliability** — errors inside a node propagate to the hyperagent's
+   routing decision. Weak sub-agents produce bad routing signals.
+4. **Error cost** — high-stakes nodes (deploy, infra writes) should have a human
+   approval edge, not an automatic back-edge.
+
+---
+
+## Observability
+
+| Signal | Where | What it tells you |
+|---|---|---|
+| `conductor_start` log | conductor.py | execution_mode, tier, model |
+| `conductor_trajectory` log | conductor.py | For GRAPH: full edge list, nodes, cycle count. For others: subtask count, review score. |
+| `GraphNodeResult.tokens_used` | HyperagentOutput | Per-node token cost — use to find expensive nodes |
+| `llm_tokens_used_total` histogram | metrics.py | p50/p95 total tokens per call; alert when p95 > `max_tokens_per_task` |
+
+---
+
+## Remaining Gaps
+
+1. **Graph execution engine** — `conductor.py` currently runs a single-pass agent.
+   Phase 2 (per the existing comment) should implement the actual node-dispatch
+   loop: iterate nodes, call the appropriate sub-agent, pass output to the
+   hyperagent for routing, repeat up to `max_cycles`.
+
+2. **Parallel branch support** — `GraphConfig.edges` can model fan-out (one node
+   → multiple nodes) but the executor doesn't yet run branches concurrently.
+   Use `asyncio.gather` over outgoing edges with no conditions.
+
+3. **`GraphNodeResult` population** — the current `HyperagentOutput` is built at
+   the end of a single conductor run. Once Phase 2 dispatches per-node, each
+   `AgentRole` call should append a `GraphNodeResult` to the list.
+
+4. **Condition evaluation** — edge conditions are free-text strings today. A
+   structured `ConditionExpr` (field, operator, value) would make evaluation
+   deterministic and auditable without relying on the hyperagent to parse prose.
