@@ -1752,7 +1752,18 @@ STARTUP_PROGRAMS: dict[str, dict] = {
         "ai_detail": "Vertex AI + Gemini + Anthropic Claude (up to $10K partner credit) + Fireworks AI",
         "other_perks": "Dedicated Startup Success Manager, frontier model access, enablement resources",
         "url": "https://cloud.google.com/startup",
-        "notes": "AI-first startup required. Seed to Series A (Series A must be within last 12 months). Founded within 10 years. Cap: not yet received $5K+ in Google Cloud credits.",
+        "no_equity_path": (
+            "HARD WALL — no no-equity path exists. "
+            "Google's own free accelerator does NOT qualify alone. "
+            "Requires institutional equity investment (VC SAFE or priced round). "
+            "Angel, friends/family, grants, prizes, crowdfunding all explicitly EXCLUDED. "
+            "Only path without traditional VC: raise a SAFE from a micro-VC or institutional angel."
+        ),
+        "notes": (
+            "AI-first startup required. Seed to Series A (Series A must be within last 12 months). "
+            "Founded within 10 years. Cap: not yet received $5K+ in Google Cloud credits. "
+            "Includes $10K Anthropic partner credit via Vertex AI marketplace."
+        ),
     },
     # ── AWS ───────────────────────────────────────────────────────────────
     "aws_activate_founders": {
@@ -1777,18 +1788,26 @@ STARTUP_PROGRAMS: dict[str, dict] = {
         "name": "AWS Activate — Portfolio",
         "provider": "Amazon Web Services",
         "credits_usd": 100_000,
-        "credit_detail": "Up to $100K credits; varies by Activate Provider (YC = $25K, others vary)",
+        "credit_detail": "Up to $100K; AI/FM tier (2026): up to $300K for foundational AI startups on Bedrock/Trainium",
         "duration_note": "12-24 months depending on provider",
-        "funding_required": "seed",
-        "multiple_entities_ok": False,
+        "funding_required": "seed",  # OR: membership in a confirmed Activate Provider program
+        "multiple_entities_ok": True,  # each legal entity applies independently
         "ai_inference_covered": True,
-        "ai_detail": "Amazon Bedrock (same coverage as Founders, but higher limit)",
+        "ai_detail": "Amazon Bedrock (Claude, Llama, Mistral, Cohere, Nova)",
         "other_perks": "Up to $10,000 Business Support (24/7 cloud engineers)",
         "url": "https://aws.amazon.com/activate/",
+        "no_equity_path": (
+            "NVIDIA Inception is a confirmed AWS Activate Provider — gives $25K-$100K AWS credits "
+            "via the Inception benefits portal (no equity, no VC needed). "
+            "On Deck ODF fellowship also confirmed. Plug and Play strongly implied. "
+            "Provider Org IDs are private — ask your accelerator directly."
+        ),
         "notes": (
-            "Must have Seed or Series A funding + valid Org ID from an Activate Provider. "
-            "Apply within 12 months of most recent funding. Pre-Series B only. "
-            "Cannot double-dip for same entity (can only upgrade, not re-apply for same amount)."
+            "Org ID from an Activate Provider unlocks this tier (funding OR program membership). "
+            "NVIDIA Inception = best no-equity path to Portfolio tier. "
+            "Apply within 12 months of most recent funding or program start. Pre-Series B only. "
+            "Upgrade path from Founders: receive difference up to lifetime $100K cap. "
+            "AI/FM tier ($300K) requires top-tier partner referral; targets foundational AI builders."
         ),
     },
     # ── NVIDIA ────────────────────────────────────────────────────────────
@@ -1840,18 +1859,24 @@ STARTUP_PROGRAMS: dict[str, dict] = {
         "name": "OpenAI for Startups — Direct Apply",
         "provider": "OpenAI",
         "credits_usd": 2_500,
-        "credit_detail": "$2,500 API credits (direct); $100K+ with OpenAI partner VC referral",
+        "credit_detail": "$2,500 direct; $50K via OpenAI Grove (no equity, cohort); $100K+ via VC partner referral",
         "duration_note": "Not publicly specified",
         "funding_required": False,
         "multiple_entities_ok": True,
         "ai_inference_covered": True,
-        "ai_detail": "Full OpenAI API access (GPT-4.1, o3, o4-mini, Codex, etc.)",
+        "ai_detail": "Full OpenAI API access (GPT-5.x, o3, codex-mini-latest, etc.)",
         "other_perks": "Partner network introductions, early model access",
         "url": "https://openai.com/startups/",
+        "grove_url": "https://openai.com/index/openai-grove/",
+        "no_equity_path": (
+            "OpenAI Grove: $50K API credits + 5-week SF mentorship, EQUITY-FREE. "
+            "~15 spots/cohort; highly selective; Cohort 2 closed Jan 2026 — watch for Cohort 3. "
+            "$100K tier requires VC/accelerator with OpenAI partner status (200+ partners); list not public."
+        ),
         "notes": (
-            "Direct apply (no investor): $2,500. < 5 years old from incorporation; "
-            "functional product/prototype; formally incorporated (no sole proprietors); API meaningfully integrated. "
-            "Partner VC referral path: $100K. OpenAI Grove cohort: $50K + 5-week mentorship (cohort-based, check for availability)."
+            "Direct apply (no investor): $2,500. < 5 years old; formally incorporated; functional product; "
+            "API meaningfully integrated in product. Sole proprietors not eligible. "
+            "OpenAI VC Partnership network: 200+ VCs; ask your investor for referral code format PARTNER-XXXX-XXXX."
         ),
     },
     # ── Anthropic ─────────────────────────────────────────────────────────
@@ -1899,17 +1924,26 @@ STARTUP_PROGRAMS: dict[str, dict] = {
         "credits_usd": 10_000,
         "credit_detail": "$10,000 in GitHub platform credits (12 months)",
         "duration_note": "12 months",
-        "funding_required": "seed",
+        "funding_required": "seed",  # OR partner affiliation (several no-equity partners confirmed)
         "multiple_entities_ok": True,
         "ai_inference_covered": True,
         "ai_detail": "GitHub Copilot (Business + premium models + agentic), 50K Actions minutes, Advanced Security",
-        "other_perks": "GitHub Enterprise (20 seats), GitHub Actions credits, GitHub Packages, Advanced Security",
+        "other_perks": "GitHub Enterprise (20 seats), GitHub Actions, GitHub Packages, Advanced Security",
         "url": "https://github.com/enterprise/startups",
+        "partners_url": "https://github.com/enterprise/startups/partners",
+        "no_equity_path": (
+            "Multiple no-equity partners confirmed on github.com/enterprise/startups/partners: "
+            "Plug and Play Tech Center (no equity), "
+            "MassChallenge (nonprofit, no equity), "
+            "StartX / Stanford (no equity), "
+            "On Deck ODF fellowship (no equity for fellowship itself). "
+            "Founder Institute (2.5% warrants only) also confirmed partner. "
+            "Apply via partner referral OR email startups@github.com"
+        ),
         "notes": (
-            "Requires funding (Series B or earlier) OR GitHub for Startups partner affiliation. "
-            "Covers GitHub Copilot Business licenses + premium models (Claude, GPT-4, etc.). "
-            "Azure credits can also fund Copilot if Azure sub linked to GitHub. "
-            "Apply via partner or email startups@github.com"
+            "Requires Series B or earlier + never used GitHub Enterprise before. "
+            "Azure credits can also fund Copilot if Azure subscription linked to GitHub account. "
+            "YC reportedly NOT on the GitHub partners list (surprising)."
         ),
     },
     # ── Fireworks AI ──────────────────────────────────────────────────────
@@ -1932,6 +1966,168 @@ STARTUP_PROGRAMS: dict[str, dict] = {
         ),
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# No-equity accelerators that unlock higher startup credit tiers
+# ---------------------------------------------------------------------------
+#
+# "no_equity" = the accelerator itself does not take company equity.
+# Investment arms (e.g. Plug and Play Ventures, ODX) are separate opt-in.
+#
+# AWS Portfolio Org IDs and Microsoft/OpenAI partner lists are PRIVATE —
+# contact the accelerator directly and ask for their referral code/Org ID.
+#
+# Columns: program_unlocks = {program_key: credit_tier_unlocked_usd}
+
+NO_EQUITY_ACCELERATORS: dict[str, dict] = {
+    "nvidia_inception": {
+        "name": "NVIDIA Inception",
+        "equity": False,
+        "cost": "Free",
+        "eligibility": "Incorporated, <10yr old, 1+ developer, active website; no consulting/crypto/resellers",
+        "apply_url": "https://programs.nvidia.com/phoenix/application",
+        "contact": "inceptionprogram@nvidia.com",
+        "program_unlocks": {
+            "aws_activate_portfolio": "$25K-$100K (confirmed AWS Activate Provider)",
+            "microsoft_investor_offer": "Likely (confirmed Microsoft collaboration for AI startups)",
+        },
+        "notes": (
+            "Single best no-equity accelerator for cloud credits. "
+            "AWS credits claimed via Inception benefits portal after acceptance. "
+            "Two separate incorporated startups each qualify independently."
+        ),
+    },
+    "plug_and_play": {
+        "name": "Plug and Play Tech Center",
+        "equity": False,
+        "cost": "Free (investment arm Plug and Play Ventures is separate/optional)",
+        "eligibility": "Open batches by vertical (fintech, health, sustainability, etc.); global",
+        "apply_url": "https://www.plugandplaytechcenter.com/",
+        "program_unlocks": {
+            "aws_activate_portfolio": "Strongly implied (AWS partner; Org ID on request)",
+            "github_for_startups": "Confirmed GitHub partner",
+        },
+        "notes": "Largest no-equity accelerator globally. 50+ corporate partners. Batch programs 2x/year.",
+    },
+    "on_deck_odf": {
+        "name": "On Deck Founders Fellowship (ODF)",
+        "equity": False,
+        "cost": "Paid fellowship (~$3,500-$5,000/cohort)",
+        "eligibility": "Founders at any stage; cohort-based; global",
+        "apply_url": "https://www.beondeck.com/",
+        "program_unlocks": {
+            "aws_activate_portfolio": "Confirmed AWS Activate Provider",
+            "github_for_startups": "Confirmed GitHub partner",
+        },
+        "notes": (
+            "ODF fellowship = no equity. ODX follow-on fund takes 7% + $125K (separate opt-in). "
+            "Strong network for B2B SaaS founders."
+        ),
+    },
+    "masschallenge": {
+        "name": "MassChallenge",
+        "equity": False,
+        "cost": "Free (nonprofit accelerator)",
+        "eligibility": "Early-stage startups globally; multiple verticals including tech, health, energy",
+        "apply_url": "https://masschallenge.org/",
+        "program_unlocks": {
+            "github_for_startups": "Confirmed GitHub partner",
+            "aws_activate_portfolio": "Likely (major accelerator; Org ID on request)",
+        },
+        "notes": "Cash prizes up to $100K, no equity taken. Strong for impact-oriented startups.",
+    },
+    "startx_stanford": {
+        "name": "StartX (Stanford University)",
+        "equity": False,
+        "cost": "Free (Stanford-affiliated founders/alumni)",
+        "eligibility": "Stanford students, alumni, faculty, and staff",
+        "apply_url": "https://startx.com/",
+        "program_unlocks": {
+            "github_for_startups": "Confirmed GitHub partner",
+        },
+        "notes": "No equity. Stanford affiliation required. Strong West Coast network.",
+    },
+    "openai_grove": {
+        "name": "OpenAI Grove",
+        "equity": False,
+        "cost": "Free (equity-free program)",
+        "eligibility": "Pre-idea or early-stage founders; SF in-person; ~15 spots/cohort",
+        "apply_url": "https://openai.com/index/openai-grove/",
+        "program_unlocks": {
+            "openai_for_startups": "$50K API credits included in program",
+        },
+        "notes": (
+            "5-week SF-based cohort. Cohort 2 closed Jan 2026 — check for Cohort 3 announcement. "
+            "Highly selective. Best no-equity path to substantial OpenAI credits."
+        ),
+    },
+    "founder_institute": {
+        "name": "Founder Institute",
+        "equity": "2.5% warrants via Equity Collective (very low)",
+        "cost": "$899 tuition (waived for some)",
+        "eligibility": "Pre-seed founders globally; 200+ cities",
+        "apply_url": "https://fi.co/",
+        "program_unlocks": {
+            "aws_activate_portfolio": "Confirmed ($10K AWS credits; full Portfolio tier uncertain)",
+            "github_for_startups": "Confirmed GitHub partner",
+        },
+        "notes": (
+            "2.5% warrants = lowest equity of any structured accelerator. "
+            "Largest pre-seed program globally. Strong for first-time founders."
+        ),
+    },
+    "google_for_startups_accelerator": {
+        "name": "Google for Startups Accelerator",
+        "equity": False,
+        "cost": "Free (Google-run, equity-free)",
+        "eligibility": "Seed to Series A; AI-first products preferred; batches by geography/vertical",
+        "apply_url": "https://startup.google.com/programs/accelerator/",
+        "program_unlocks": {
+            "aws_activate_portfolio": "Likely (major accelerator; Org ID available on request)",
+            "microsoft_investor_offer": "Likely",
+            "google_cloud_scale_ai": (
+                "DOES NOT QUALIFY ALONE — Scale/AI tier requires separate institutional equity investment. "
+                "Being in Google's accelerator without VC funding only gets the $2K Start tier."
+            ),
+        },
+        "notes": (
+            "Intensive 10-week equity-free program with Google engineers. "
+            "IMPORTANT: Does NOT unlock Google Cloud Scale credits by itself — "
+            "institutional equity investment is still required for that tier."
+        ),
+    },
+}
+
+
+def no_equity_accelerator_table() -> str:
+    """
+    Markdown table of no-equity accelerators sorted by number of programs they unlock.
+    """
+    rows = []
+    for _key, a in NO_EQUITY_ACCELERATORS.items():
+        unlocks = ", ".join(
+            k.replace("_", " ")
+            .replace("aws activate portfolio", "AWS $100K")
+            .replace("github for startups", "GitHub $10K")
+            .replace("microsoft investor offer", "MSFT $100K")
+            .replace("openai for startups", "OpenAI $50K")
+            .replace("google cloud scale ai", "GCP Scale (needs VC)")
+            for k in a["program_unlocks"]
+        )
+        equity_str = "none" if a["equity"] is False else str(a["equity"])
+        rows.append(f"| {a['name']:<35} | {equity_str:<25} | {a['cost']:<28} | {unlocks} |")
+    header = (
+        "### No-Equity Accelerators That Unlock Higher Credit Tiers\n\n"
+        "| Accelerator                        | Equity                    | Cost                         | Unlocks |\n"
+        "|------------------------------------|---------------------------|------------------------------|---------|\n"
+    )
+    footer = (
+        "\nAll Org IDs / referral codes are private — ask your accelerator directly.\n"
+        "Google Cloud Scale tier has a HARD WALL: requires institutional equity regardless of accelerator.\n"
+        "NVIDIA Inception is the single best no-equity unlock for AWS Portfolio ($25K-$100K).\n"
+    )
+    return header + "\n".join(rows) + "\n" + footer
 
 
 def startup_programs_table() -> str:
