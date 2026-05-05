@@ -1031,6 +1031,8 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2026-01",
         pricing_url="https://platform.claude.com/docs/en/docs/about-claude/models/overview",
         notes="Most capable Claude. Step-change agentic coding vs Opus 4.6. New tokenizer raises real-world cost.",
+        paid_tier_rpm=50,
+        paid_tier_tpm=30_000,
     ),
     ModelPricing(
         provider="anthropic",
@@ -1052,6 +1054,8 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2025-08",
         pricing_url="https://platform.claude.com/docs/en/docs/about-claude/models/overview",
         notes="Best Claude speed/intelligence balance. Extended thinking up to 64K tokens. 1M context.",
+        paid_tier_rpm=50,
+        paid_tier_tpm=30_000,
     ),
     ModelPricing(
         provider="anthropic",
@@ -1067,6 +1071,8 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2025-02",
         pricing_url="https://platform.claude.com/docs/en/docs/about-claude/models/overview",
         notes="Fastest Claude. Near-frontier intelligence. Ideal for routing, classification, simple agentic steps.",
+        paid_tier_rpm=50,
+        paid_tier_tpm=30_000,
     ),
     ModelPricing(
         provider="anthropic",
@@ -1082,6 +1088,8 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2025-05",
         pricing_url="https://platform.claude.com/docs/en/docs/about-claude/models/overview",
         notes="Legacy flagship. Same price as Opus 4.7 but older tokenizer. Still capable for extended thinking.",
+        paid_tier_rpm=50,
+        paid_tier_tpm=30_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # OPENAI
@@ -1215,6 +1223,8 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2025-11",
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Tiered: >200K prompt costs $4/$18 input/output. Preview only — not yet GA.",
+        free_tier_rpm=5,
+        free_tier_tpm=250_000,
     ),
     ModelPricing(
         provider="google",
@@ -1233,6 +1243,10 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2025-01",
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Tiered: >200K costs $2.50/$15. Strong coding; available on Vertex AI + AI Studio.",
+        free_tier_rpm=5,
+        free_tier_tpm=250_000,
+        paid_tier_rpm=1_000,
+        paid_tier_tpm=2_000_000,
     ),
     ModelPricing(
         provider="google",
@@ -1265,6 +1279,10 @@ MODELS: list[ModelPricing] = [
         supports_thinking=True,
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Best Gemini value. 1M context. Thinking mode supported. Generous free quota.",
+        free_tier_rpm=15,
+        free_tier_tpm=1_000_000,
+        paid_tier_rpm=2_000,
+        paid_tier_tpm=4_000_000,
     ),
     ModelPricing(
         provider="google",
@@ -1275,6 +1293,10 @@ MODELS: list[ModelPricing] = [
         free_tier="Free of charge on AI Studio (rate-limited)",
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Cheapest production Gemini. Free tier available. Great for extraction at massive scale.",
+        free_tier_rpm=30,
+        free_tier_tpm=1_000_000,
+        paid_tier_rpm=4_000,
+        paid_tier_tpm=8_000_000,
     ),
     ModelPricing(
         provider="google",
@@ -1285,6 +1307,8 @@ MODELS: list[ModelPricing] = [
         free_tier="Free of charge on AI Studio (preview; rate-limited)",
         pricing_url="https://ai.google.dev/gemini-api/docs/pricing",
         notes="Preview. Batch API available at 50% discount on paid tier.",
+        free_tier_rpm=30,
+        free_tier_tpm=1_000_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # DEEPSEEK
@@ -1444,6 +1468,10 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2024-12",
         pricing_url="https://mistral.ai/pricing",
         notes="Mid-tier Mistral. Good balance of cost and quality.",
+        free_tier_rpm=1,
+        free_tier_tpm=10_000,
+        paid_tier_rpm=20,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="mistral",
@@ -1455,6 +1483,10 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2024-12",
         pricing_url="https://mistral.ai/pricing",
         notes="Mistral's flagship general-purpose model. Strong reasoning, multilingual, tool use.",
+        free_tier_rpm=1,
+        free_tier_tpm=10_000,
+        paid_tier_rpm=20,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="mistral",
@@ -1480,6 +1512,10 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2025-06",
         pricing_url="https://openrouter.ai/mistralai/devstral-medium-2507",
         notes="Coding specialist (Mistral + All Hands AI). Best SWE-bench at this price tier.",
+        free_tier_rpm=30,
+        free_tier_tpm=500_000,
+        paid_tier_rpm=60,
+        paid_tier_tpm=1_000_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # COHERE
@@ -1496,6 +1532,8 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2024-08",
         pricing_url="https://cohere.com/pricing",
         notes="~50% higher throughput vs Apr-2024 version. Strong at RAG and enterprise workflows.",
+        free_tier_rpm=20,
+        paid_tier_rpm=500,
     ),
     ModelPricing(
         provider="cohere",
@@ -1507,6 +1545,8 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2024-03",
         pricing_url="https://cohere.com/pricing",
         notes="Budget Command model. Good for RAG retrieval, structured extraction, grounding.",
+        free_tier_rpm=20,
+        paid_tier_rpm=500,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # PERPLEXITY AI (Sonar — search-grounded models)
@@ -1541,6 +1581,8 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://docs.perplexity.ai/guides/pricing",
         notes="Multi-step search; complex research queries. +$0.005/search call.",
+        free_tier_rpm=50,
+        paid_tier_rpm=4_000,
     ),
     ModelPricing(
         provider="perplexity",
@@ -1553,6 +1595,8 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://docs.perplexity.ai/guides/pricing",
         notes="Search + reasoning. CoT on top of live web data. +$0.005/search call.",
+        free_tier_rpm=50,
+        paid_tier_rpm=4_000,
     ),
     ModelPricing(
         provider="perplexity",
@@ -1648,6 +1692,11 @@ MODELS: list[ModelPricing] = [
         knowledge_cutoff="2025-07",
         pricing_url="https://openrouter.ai/moonshotai/kimi-k2",
         notes="1T-param MoE (32B active). Competitive with frontier models at mid-range cost.",
+        free_tier_rpm=3,
+        free_tier_tpm=500_000,
+        free_tier_tpd=1_500_000,
+        paid_tier_rpm=200,
+        paid_tier_tpm=2_000_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # MINIMAX
@@ -1865,6 +1914,10 @@ MODELS: list[ModelPricing] = [
             "Fireworks hosts DeepSeek-V4-Pro at full (non-launch-discounted) price. "
             "Cached input at 50% off. Batch API also 50% off."
         ),
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # CLOUDFLARE WORKERS AI
@@ -1882,6 +1935,8 @@ MODELS: list[ModelPricing] = [
         free_tier="10K Neurons/day free (all plans; resets daily at 00:00 UTC)",
         pricing_url="https://developers.cloudflare.com/workers-ai/platform/pricing/",
         notes="Runs at Cloudflare edge. Free daily allowance covers ~34K input tokens at zero cost.",
+        free_tier_rpm=300,
+        paid_tier_rpm=300,
     ),
     ModelPricing(
         provider="cloudflare",
@@ -1893,6 +1948,8 @@ MODELS: list[ModelPricing] = [
         free_tier="10K Neurons/day free",
         pricing_url="https://developers.cloudflare.com/workers-ai/platform/pricing/",
         notes="Smallest/cheapest Cloudflare model. Good for edge classification and triage.",
+        free_tier_rpm=300,
+        paid_tier_rpm=300,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # TOGETHER AI  (inference platform)
@@ -1954,6 +2011,11 @@ MODELS: list[ModelPricing] = [
             "2,000+ t/s — one of the fastest available inference platforms. "
             "Wafer-scale CS-3 hardware. Pricing approximate; check page for current rates."
         ),
+        free_tier_rpm=30,
+        free_tier_tpm=60_000,
+        free_tier_tpd=1_000_000,
+        paid_tier_rpm=2_000,
+        paid_tier_tpm=2_000_000,
     ),
     ModelPricing(
         provider="cerebras",
@@ -1965,6 +2027,11 @@ MODELS: list[ModelPricing] = [
         free_tier="Free trial tier at cloud.cerebras.ai (no credit card required)",
         pricing_url="https://cloud.cerebras.ai/platform/pricing",
         notes="3,000 t/s — fastest 120B inference available. Pricing approximate.",
+        free_tier_rpm=30,
+        free_tier_tpm=60_000,
+        free_tier_tpd=1_000_000,
+        paid_tier_rpm=2_000,
+        paid_tier_tpm=2_000_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # ZHIPU AI  (GLM series — Chinese frontier; strong coding + multilingual)
@@ -2102,6 +2169,9 @@ MODELS: list[ModelPricing] = [
             "2,200 t/s — among the fastest 70B inference available. "
             "SambaNova RDU wafer-scale hardware. Flat $0.60/$0.60 pricing."
         ),
+        free_tier_rpm=20,
+        free_tier_tpd=200_000,
+        paid_tier_rpm=240,
     ),
     ModelPricing(
         provider="sambanova",
@@ -2117,6 +2187,9 @@ MODELS: list[ModelPricing] = [
             "235B MoE on SambaNova RDU at ~600 t/s. "
             "Thinking mode supported. Flat input/output pricing."
         ),
+        free_tier_rpm=20,
+        free_tier_tpd=200_000,
+        paid_tier_rpm=240,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # NVIDIA NIM  (inference microservices — GPU-optimised open models)
@@ -2333,6 +2406,8 @@ MODELS: list[ModelPricing] = [
             "Strong at enterprise RAG, tool use, structured outputs. "
             "Optimised for agentic pipelines."
         ),
+        free_tier_rpm=20,
+        paid_tier_rpm=500,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # QWEN — additional models
@@ -3789,6 +3864,10 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://fireworks.ai/pricing",
         notes="Qwen3 30B MoE (3B active params). Best value on Fireworks — near-70B quality at 15¢/MTok input.",
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="fireworks",
@@ -3799,6 +3878,10 @@ MODELS: list[ModelPricing] = [
         supports_vision=True,
         pricing_url="https://fireworks.ai/pricing",
         notes="Llama 4 Maverick MoE on Fireworks. Multimodal. Fast inference — Fireworks H100 cluster.",
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="fireworks",
@@ -3810,6 +3893,10 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://fireworks.ai/pricing",
         notes="Qwen3 235B MoE (22B active). Near-GPT-4o quality at a fraction of the price.",
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="fireworks",
@@ -3820,6 +3907,10 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://fireworks.ai/pricing",
         notes="DeepSeek V3 latest (v3p2) on Fireworks. 163K context. Strong coding at competitive price.",
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="fireworks",
@@ -3830,6 +3921,10 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://fireworks.ai/pricing",
         notes="Llama 3.3 70B on Fireworks. Flat rate. Fast — Fireworks specialises in high-throughput 70B inference.",
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="fireworks",
@@ -3841,6 +3936,10 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://fireworks.ai/pricing",
         notes="Full DeepSeek R1 671B on Fireworks. Lower latency than many providers due to H100 cluster.",
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     ModelPricing(
         provider="fireworks",
@@ -3851,6 +3950,10 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://fireworks.ai/pricing",
         notes="Qwen3 Coder 480B MoE (35B active). 262K context. State-of-the-art open-weight coding model.",
+        free_tier_rpm=10,
+        free_tier_tpm=20_000,
+        paid_tier_rpm=6_000,
+        paid_tier_tpm=200_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # GOOGLE GEMMA — open weights; free tier via OpenRouter
@@ -3992,6 +4095,11 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://openrouter.ai/moonshotai/kimi-k2-0905",
         notes="Stable Kimi K2 snapshot (Sep 2025). 262K context. Cheaper than base K2 for budget runs.",
+        free_tier_rpm=3,
+        free_tier_tpm=500_000,
+        free_tier_tpd=1_500_000,
+        paid_tier_rpm=200,
+        paid_tier_tpm=2_000_000,
     ),
     ModelPricing(
         provider="moonshot",
@@ -4002,6 +4110,11 @@ MODELS: list[ModelPricing] = [
         supports_vision=False,
         pricing_url="https://openrouter.ai/moonshotai/kimi-k2.5",
         notes="Kimi K2.5 — incremental improvement over K2. 262K context. Strong long-context reasoning.",
+        free_tier_rpm=3,
+        free_tier_tpm=500_000,
+        free_tier_tpd=1_500_000,
+        paid_tier_rpm=200,
+        paid_tier_tpm=2_000_000,
     ),
     # ══════════════════════════════════════════════════════════════════════
     # NOUS RESEARCH — additional Hermes models across sizes
