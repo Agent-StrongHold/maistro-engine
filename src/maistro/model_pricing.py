@@ -104,6 +104,46 @@ class ModelPricing:
     # Harder than HumanEval; includes pandas, PIL, requests, scikit-learn, etc.
     bigcodebench: float | None = None
 
+    # MMLU Pro — 10-choice version of MMLU; harder, better ceiling for frontier models
+    # Source: tiger-lab.github.io/MMLU-Pro/  |  % correct across 12K questions
+    mmlu_pro: float | None = None
+
+    # IFEval — Instruction Following Eval; 541 verifiable instructions (strict prompt-level %)
+    # Tests precise rule-following (word count, format, avoid X). Source: github.com/google-research/google-research/tree/master/instruction_following_eval
+    ifeval: float | None = None
+
+    # TAU-bench — Tool-Agent-User bench; agentic tool-use on realistic retail/airline APIs
+    # % tasks fully completed end-to-end. Source: github.com/sierra-research/tau-bench
+    tau_bench: float | None = None
+
+    # MMMU — Massive Multitask Multimodal Understanding; vision+text across 11.5K questions
+    # % correct; requires reasoning over images, charts, diagrams. Source: mmmu-benchmark.github.io
+    mmmu: float | None = None
+
+    # MathVista — visual math problems (charts, figures, geometry diagrams); % correct
+    # Source: mathvista.github.io
+    mathvista: float | None = None
+
+    # SimpleQA — factual accuracy benchmark; 4326 short-answer questions; no abstaining allowed
+    # Models that refuse or say "I don't know" score 0 on that question. Source: openai.com/index/introducing-simpleqa
+    simple_qa: float | None = None
+
+    # FRAMES — Factual Retrieval Across Multi-document Evaluation; long-context retrieval + synthesis
+    # % correct; avg doc length 100K+ tokens. Source: research.google/blog/frames-benchmark
+    frames: float | None = None
+
+    # FrontierMath — Expert-level original math problems (post-cutoff, not on internet)
+    # Only top frontier models score >2%. Source: epoch.ai/frontiermath
+    frontier_math: float | None = None
+
+    # OSWorld — Computer-use agent on real OS tasks (Windows/macOS/Ubuntu GUI automation)
+    # % of tasks completed successfully. Source: os-world.github.io
+    osworld: float | None = None
+
+    # MGSM — Multilingual Grade School Math; mean % correct across 10 languages
+    # Evaluates multilingual reasoning beyond English. Source: github.com/google-research/url-nlp/tree/main/mgsm
+    mgsm: float | None = None
+
     # Composite intelligence index (Artificial Analysis v4, higher = smarter)
     intelligence_index: float | None = None
 
@@ -461,6 +501,134 @@ PROVIDERS: dict[str, dict] = {
             "Reka Core, Flash, Edge family. Native multimodal (video, image, audio, text). "
             "Free trial credits on signup. OpenAI-compatible API. "
             "Strong at document understanding and long-video QA."
+        ),
+    },
+    # Tencent — Hunyuan series; dominant Chinese frontier; strong coding + math + multilingual
+    "tencent": {
+        "name": "Tencent (Hunyuan series — Chinese frontier; strong multilingual + coding)",
+        "pricing_url": "https://cloud.tencent.com/product/hunyuan",
+        "api_docs_url": "https://cloud.tencent.com/document/product/1729",
+        "is_inference_platform": False,
+        "notes": (
+            "Hunyuan-Large: 389B MoE, strong Chinese/multilingual. "
+            "OpenAI-compatible API. Free trial credits on signup. "
+            "Also available via OpenRouter: openrouter.ai/tencent"
+        ),
+    },
+    # ByteDance — Doubao (Skylark) series; China's most-used LLM; strong on Chinese + coding
+    "bytedance": {
+        "name": "ByteDance (Doubao/Skylark — China's largest LLM deployment)",
+        "pricing_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model",
+        "api_docs_url": "https://www.volcengine.com/docs/82379/1182403",
+        "is_inference_platform": False,
+        "notes": (
+            "Doubao is ByteDance's LLM brand (Volcano Engine platform). "
+            "Ultra-cheap: among the lowest per-token prices of any frontier-quality model. "
+            "Strong Chinese, coding, and instruction-following. "
+            "OpenAI-compatible API. Free trial credits on signup."
+        ),
+    },
+    # Hyperbolic — inference platform; cheap H100 GPU-backed inference for frontier + open models
+    "hyperbolic": {
+        "name": "Hyperbolic (inference platform — H100-backed; frontier + open-weight)",
+        "pricing_url": "https://app.hyperbolic.xyz/models",
+        "api_docs_url": "https://docs.hyperbolic.xyz/",
+        "is_inference_platform": True,
+        "notes": (
+            "H100 GPU cluster. Hosts Meta Llama, DeepSeek, Qwen, Mistral, NovaSky. "
+            "OpenAI-compatible API. Free $1 credit on signup. "
+            "Batch API: 50% off standard rate."
+        ),
+    },
+    # SiliconFlow — Chinese inference platform; ultra-cheap; 100+ models; OpenAI-compat
+    "siliconflow": {
+        "name": "SiliconFlow (inference platform — ultra-cheap; 100+ models; China-based)",
+        "pricing_url": "https://siliconflow.cn/pricing",
+        "api_docs_url": "https://docs.siliconflow.cn/",
+        "is_inference_platform": True,
+        "notes": (
+            "Largest Chinese third-party inference platform. "
+            "Hosts Qwen, DeepSeek, InternLM, Llama, Mistral variants at very low prices. "
+            "Free tier: some models free with rate limits. OpenAI-compatible API. "
+            "Also available on OpenRouter as proxy."
+        ),
+    },
+    # InternLM / Shanghai AI Lab — strong STEM/coding; internationally competitive
+    "internlm": {
+        "name": "Shanghai AI Lab (InternLM series — strong STEM, coding, multilingual)",
+        "pricing_url": "https://internlm.intern-ai.org.cn/",
+        "api_docs_url": "https://internlm.intern-ai.org.cn/api/document",
+        "is_inference_platform": False,
+        "notes": (
+            "InternLM 3 series: 8B and 70B instruction-tuned models. "
+            "Strong on STEM, coding, and long-context Chinese tasks. "
+            "Open-weight; also served cheaply via SiliconFlow. "
+            "InternLM 2.5-VL: multimodal variant."
+        ),
+    },
+    # Aleph Alpha — European AI lab; GDPR/data-sovereignty focus; on-prem option
+    "aleph_alpha": {
+        "name": "Aleph Alpha (European AI — GDPR/data-sovereignty; Pharia models)",
+        "pricing_url": "https://www.aleph-alpha.com/pricing",
+        "api_docs_url": "https://docs.aleph-alpha.com/",
+        "is_inference_platform": False,
+        "notes": (
+            "Pharia-1 series (successor to Luminous). German-based; GDPR-compliant by design. "
+            "On-premise deployment option for regulated industries. "
+            "EU AI Act compliant. API + Python SDK available. "
+            "Best choice when European data sovereignty is a hard requirement."
+        ),
+    },
+    # nScale — UK GPU cloud; H100 clusters; serverless inference + bare-metal compute
+    "nscale": {
+        "name": "nScale (UK GPU cloud — H100 serverless inference + bare-metal)",
+        "pricing_url": "https://nscale.com/pricing",
+        "api_docs_url": "https://docs.nscale.com/",
+        "is_inference_platform": True,
+        "notes": (
+            "UK-based H100 GPU cloud. Serverless LLM inference + dedicated GPU instances. "
+            "OpenAI-compatible API. No egress fees. "
+            "Good for European-region latency with GDPR data residency guarantees. "
+            "Hosts Llama, Mistral, Qwen variants."
+        ),
+    },
+    # Microsoft Phi — small models with outsized reasoning; phi-4 beats much larger models
+    "phi": {
+        "name": "Microsoft Phi (small reasoning models — phi-4 beats 70B+ on many tasks)",
+        "pricing_url": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        "api_docs_url": "https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models",
+        "is_inference_platform": False,
+        "notes": (
+            "Phi-4 (14B): matches Llama-3 70B on many benchmarks at 5x lower cost. "
+            "Phi-4-mini (3.8B): extraordinary for size — best-in-class small model reasoning. "
+            "Available via Azure AI Foundry (startup-credit-eligible) or Ollama/local. "
+            "OpenAI-compatible endpoint on Azure. Great for edge or cost-sensitive steps."
+        ),
+    },
+    # TII UAE / Falcon — Falcon 3 series; multilingual; Arabic-first open weights
+    "falcon_tii": {
+        "name": "TII UAE (Falcon 3 series — multilingual; Arabic-first open weights)",
+        "pricing_url": "https://huggingface.co/tiiuae",
+        "api_docs_url": "https://huggingface.co/tiiuae",
+        "is_inference_platform": False,
+        "notes": (
+            "Falcon 3 (1B, 3B, 7B, 10B, 40B) — Apache 2.0 license, fully open weights. "
+            "Best Arabic-language performance among open models. Strong multilingual coverage. "
+            "Served via Hyperbolic, Together AI, Hugging Face Inference Endpoints. "
+            "No hosted API from TII directly; use inference platforms."
+        ),
+    },
+    # Snowflake Arctic — 480B dense MoE; open weights; SQL/data analytics focus
+    "snowflake": {
+        "name": "Snowflake (Arctic — 480B MoE; enterprise data/SQL focus; open weights)",
+        "pricing_url": "https://www.together.ai/pricing",
+        "api_docs_url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions",
+        "is_inference_platform": False,
+        "notes": (
+            "Arctic-Instruct: 480B parameter MoE (128 experts). Apache 2.0. "
+            "Optimised for enterprise SQL, data analysis, and instruction-following on structured data. "
+            "Hosted via Together AI and Snowflake Cortex (inside Snowflake platform). "
+            "Not competitive with frontier models on creative/code — specialised for data workloads."
         ),
     },
 }
@@ -1998,6 +2166,352 @@ MODELS: list[ModelPricing] = [
             "Good for high-volume Chinese-language tasks. Free tier available."
         ),
     ),
+    # ══════════════════════════════════════════════════════════════════════
+    # TENCENT HUNYUAN
+    # Source: https://cloud.tencent.com/product/hunyuan
+    # Free tier: trial credits on signup; also available via OpenRouter
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="tencent",
+        model_id="hunyuan-large",
+        input_mtok=0.18,
+        output_mtok=0.18,
+        context_window=256_000,
+        mmlu=88.4,
+        mmlu_pro=60.2,
+        mgsm=89.1,
+        free_tier="Trial credits on signup at cloud.tencent.com",
+        knowledge_cutoff="2025-06",
+        pricing_url="https://cloud.tencent.com/product/hunyuan",
+        notes=(
+            "389B MoE (52B active). Best Chinese multilingual model from Tencent. "
+            "Strong math, coding, and long-context reasoning. 256K context. "
+            "OpenAI-compatible API. Also routed via OpenRouter."
+        ),
+    ),
+    ModelPricing(
+        provider="tencent",
+        model_id="hunyuan-turbo",
+        input_mtok=0.14,
+        output_mtok=0.14,
+        context_window=128_000,
+        free_tier="Trial credits on signup at cloud.tencent.com",
+        knowledge_cutoff="2025-06",
+        pricing_url="https://cloud.tencent.com/product/hunyuan",
+        notes="Faster Hunyuan variant. Good balance of speed and quality for Chinese tasks.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # BYTEDANCE DOUBAO  (Volcano Engine platform)
+    # Source: https://console.volcengine.com/ark
+    # Among the cheapest frontier-quality models available; dominant in China
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="bytedance",
+        model_id="doubao-pro-32k",
+        input_mtok=0.11,
+        output_mtok=0.11,
+        context_window=32_000,
+        mmlu=84.2,
+        ifeval=86.5,
+        free_tier="Trial credits on signup at console.volcengine.com",
+        knowledge_cutoff="2025-06",
+        pricing_url="https://console.volcengine.com/ark/region:ark+cn-beijing/model",
+        notes=(
+            "ByteDance flagship — strongest general quality. OpenAI-compatible API. "
+            "Among cheapest frontier-quality options per token. Strong instruction-following."
+        ),
+    ),
+    ModelPricing(
+        provider="bytedance",
+        model_id="doubao-lite-32k",
+        input_mtok=0.04,
+        output_mtok=0.04,
+        context_window=32_000,
+        free_tier="Trial credits on signup at console.volcengine.com",
+        knowledge_cutoff="2025-06",
+        pricing_url="https://console.volcengine.com/ark/region:ark+cn-beijing/model",
+        notes="Ultra-cheap. Use for bulk Chinese-language tasks, classification, summarisation.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # HYPERBOLIC  (inference platform — H100 cluster)
+    # Source: https://app.hyperbolic.xyz/models
+    # OpenAI-compatible; $1 free credit on signup; batch 50% off
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="hyperbolic",
+        model_id="meta-llama/Llama-3.3-70B-Instruct",
+        input_mtok=0.20,
+        output_mtok=0.20,
+        context_window=128_000,
+        mmlu=86.0,
+        mmlu_pro=58.0,
+        ifeval=83.4,
+        mgsm=78.5,
+        free_tier="$1 credit on signup",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://app.hyperbolic.xyz/models",
+        notes=(
+            "Llama 3.3 70B on H100 cluster. Fast throughput, competitive pricing. "
+            "Batch API at 50% off. OpenAI-compatible."
+        ),
+    ),
+    ModelPricing(
+        provider="hyperbolic",
+        model_id="deepseek-ai/DeepSeek-V3",
+        input_mtok=0.20,
+        output_mtok=0.60,
+        context_window=128_000,
+        mmlu=88.5,
+        mmlu_pro=75.9,
+        ifeval=85.2,
+        mgsm=91.0,
+        free_tier="$1 credit on signup",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://app.hyperbolic.xyz/models",
+        notes="DeepSeek V3 on Hyperbolic H100s. Competitive pricing vs DeepSeek direct API.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # SILICONFLOW  (Chinese inference platform — ultra-cheap; 100+ models)
+    # Source: https://siliconflow.cn/pricing
+    # Free tier: several models permanently free; others very cheap
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="siliconflow",
+        model_id="Qwen/Qwen2.5-72B-Instruct",
+        input_mtok=0.13,
+        output_mtok=0.13,
+        context_window=131_072,
+        mmlu=86.1,
+        mmlu_pro=65.8,
+        mgsm=85.0,
+        free_tier="Some smaller models permanently free; $14 free credit on signup",
+        knowledge_cutoff="2024-09",
+        pricing_url="https://siliconflow.cn/pricing",
+        notes=(
+            "Qwen2.5 72B on SiliconFlow — cheapest available hosting for this model. "
+            "OpenAI-compatible. Very popular for bulk Chinese + coding tasks."
+        ),
+    ),
+    ModelPricing(
+        provider="siliconflow",
+        model_id="deepseek-ai/DeepSeek-V3",
+        input_mtok=0.14,
+        output_mtok=0.28,
+        context_window=64_000,
+        free_tier="Some smaller models permanently free",
+        knowledge_cutoff="2024-12",
+        pricing_url="https://siliconflow.cn/pricing",
+        notes="DeepSeek V3 on SiliconFlow — among cheapest DeepSeek hosting options.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # SHANGHAI AI LAB  — InternLM 3 series
+    # Source: https://internlm.intern-ai.org.cn/
+    # Open weights; cheapest inference via SiliconFlow
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="internlm",
+        model_id="internlm3-8b-instruct",
+        input_mtok=0.05,
+        output_mtok=0.10,
+        context_window=32_000,
+        mmlu=76.6,
+        mmlu_pro=55.0,
+        free_tier="Free via SiliconFlow free tier (rate-limited)",
+        knowledge_cutoff="2024-09",
+        pricing_url="https://siliconflow.cn/pricing",
+        notes=(
+            "8B instruction-tuned. Strong STEM and coding for its size. "
+            "Self-hostable (Apache 2.0). Served cheaply via SiliconFlow."
+        ),
+    ),
+    ModelPricing(
+        provider="internlm",
+        model_id="internlm3-20b-instruct",
+        input_mtok=0.12,
+        output_mtok=0.24,
+        context_window=32_000,
+        mmlu=82.4,
+        mmlu_pro=62.0,
+        knowledge_cutoff="2024-09",
+        pricing_url="https://siliconflow.cn/pricing",
+        notes=(
+            "20B instruction-tuned. Competitive with Llama-3 70B on STEM/coding at lower cost. "
+            "Strong Chinese + English bilingual. Available on SiliconFlow and HuggingFace."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # ALEPH ALPHA  — European GDPR-compliant frontier models
+    # Source: https://www.aleph-alpha.com/
+    # Pharia-1 family; on-prem option; EU data residency
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="aleph_alpha",
+        model_id="pharia-1-llm-7b-control",
+        input_mtok=0.20,
+        output_mtok=0.20,
+        context_window=4_096,
+        supports_vision=False,
+        knowledge_cutoff="2024-09",
+        pricing_url="https://www.aleph-alpha.com/pricing",
+        notes=(
+            "7B GDPR-compliant model. EU data sovereignty guaranteed. "
+            "On-prem deployment available for regulated industries (healthcare, finance, gov). "
+            "EU AI Act compliant. Strong on structured data extraction and controlled generation. "
+            "Context window is short (4K) — upgrade to larger Pharia variant for doc-level tasks."
+        ),
+    ),
+    ModelPricing(
+        provider="aleph_alpha",
+        model_id="pharia-1-llm-7b-control-aligned",
+        input_mtok=0.25,
+        output_mtok=0.25,
+        context_window=4_096,
+        supports_vision=False,
+        knowledge_cutoff="2024-09",
+        pricing_url="https://www.aleph-alpha.com/pricing",
+        notes=(
+            "Aligned / safety-tuned variant. Extra RLHF for enterprise safety requirements. "
+            "EU data residency. Best for customer-facing deployments requiring strict content control."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # NSCALE  (UK GPU cloud — H100 serverless inference)
+    # Source: https://nscale.com/
+    # European data residency; no egress fees; OpenAI-compatible
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="nscale",
+        model_id="meta-llama/Llama-3.3-70B-Instruct",
+        input_mtok=0.25,
+        output_mtok=0.25,
+        context_window=128_000,
+        mmlu=86.0,
+        ifeval=83.4,
+        free_tier=None,
+        knowledge_cutoff="2024-12",
+        pricing_url="https://nscale.com/pricing",
+        notes=(
+            "Llama 3.3 70B on UK H100 cluster. European data residency. "
+            "Good choice when GDPR + high throughput are both required. "
+            "No egress fees. OpenAI-compatible."
+        ),
+    ),
+    ModelPricing(
+        provider="nscale",
+        model_id="mistralai/Mistral-7B-Instruct-v0.3",
+        input_mtok=0.07,
+        output_mtok=0.07,
+        context_window=32_768,
+        free_tier=None,
+        knowledge_cutoff="2024-03",
+        pricing_url="https://nscale.com/pricing",
+        notes="Cheapest nScale option. EU-hosted. Good for bulk classification / simple completion.",
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # MICROSOFT PHI  — small models with outsized benchmark performance
+    # Source: https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/
+    # Available via Azure AI Foundry (startup-credit-eligible) or local/Ollama
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="phi",
+        model_id="microsoft/phi-4",
+        input_mtok=0.07,
+        output_mtok=0.14,
+        context_window=16_384,
+        mmlu=84.8,
+        mmlu_pro=64.8,
+        math_500=80.4,
+        humaneval=82.6,
+        mgsm=70.0,
+        supports_vision=False,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes=(
+            "14B dense. Matches Llama-3 70B on MMLU at 1/5th the inference cost. "
+            "Exceptional for its size on reasoning and coding. "
+            "Available via Azure AI Foundry (startup credits apply). "
+            "Also runs locally: ollama run phi4"
+        ),
+    ),
+    ModelPricing(
+        provider="phi",
+        model_id="microsoft/phi-4-mini",
+        input_mtok=0.025,
+        output_mtok=0.05,
+        context_window=16_384,
+        mmlu=72.4,
+        mmlu_pro=51.0,
+        humaneval=74.4,
+        supports_vision=False,
+        knowledge_cutoff="2024-06",
+        pricing_url="https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+        notes=(
+            "3.8B — extraordinary reasoning for its size. Best small model for edge/mobile. "
+            "Cheaper than most embedding APIs. Runs on CPU. "
+            "Azure AI Foundry serverless: startup credits eligible."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # TII UAE — Falcon 3 series  (Arabic-first open weights; Apache 2.0)
+    # Source: https://huggingface.co/tiiuae
+    # Priced via inference providers (Together AI, Hyperbolic, HF Endpoints)
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="falcon_tii",
+        model_id="tiiuae/falcon3-10b-instruct",
+        input_mtok=0.08,
+        output_mtok=0.08,
+        context_window=32_768,
+        mmlu=73.9,
+        ifeval=72.0,
+        supports_vision=False,
+        knowledge_cutoff="2024-09",
+        pricing_url="https://www.together.ai/pricing",
+        notes=(
+            "10B instruction-tuned. Apache 2.0. Best open-weight Arabic-language model. "
+            "Strong multilingual (Arabic, French, Spanish, German). "
+            "Priced via Together AI. Download weights freely from HuggingFace."
+        ),
+    ),
+    ModelPricing(
+        provider="falcon_tii",
+        model_id="tiiuae/falcon3-40b-instruct",
+        input_mtok=0.25,
+        output_mtok=0.25,
+        context_window=32_768,
+        mmlu=81.2,
+        ifeval=79.0,
+        supports_vision=False,
+        knowledge_cutoff="2024-09",
+        pricing_url="https://www.together.ai/pricing",
+        notes=(
+            "40B instruction-tuned. Competitive with Llama-3 70B on multilingual tasks. "
+            "Best choice for Arabic-heavy deployments. Apache 2.0 — fully open. "
+            "Available via Together AI and Hyperbolic."
+        ),
+    ),
+    # ══════════════════════════════════════════════════════════════════════
+    # SNOWFLAKE ARCTIC  — 480B MoE; data/SQL focus; Snowflake Cortex
+    # Source: https://www.together.ai/pricing (primary inference host)
+    # Snowflake Cortex: SQL UDF access inside Snowflake warehouses
+    # ══════════════════════════════════════════════════════════════════════
+    ModelPricing(
+        provider="snowflake",
+        model_id="snowflake/snowflake-arctic-instruct",
+        input_mtok=0.30,
+        output_mtok=0.30,
+        context_window=4_096,
+        mmlu=67.3,
+        supports_vision=False,
+        knowledge_cutoff="2024-04",
+        pricing_url="https://www.together.ai/pricing",
+        notes=(
+            "480B dense-MoE (128 experts; 17B active). Apache 2.0. "
+            "NOT competitive on general benchmarks — purpose-built for enterprise SQL/data tasks. "
+            "Key differentiator: native Snowflake Cortex integration (call as SQL UDF). "
+            "Self-serve via Together AI. Very short context (4K) limits document-level use."
+        ),
+    ),
 ]
 
 
@@ -2046,6 +2560,16 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
     "lepton": "https://www.lepton.ai/pricing",
     "baidu": "https://qianfan.cloud.baidu.com/pricing",
     "reka": "https://platform.reka.ai/pricing",
+    "tencent": "https://cloud.tencent.com/product/hunyuan",
+    "bytedance": "https://console.volcengine.com/ark/region:ark+cn-beijing/model",
+    "hyperbolic": "https://app.hyperbolic.xyz/models",
+    "siliconflow": "https://siliconflow.cn/pricing",
+    "internlm": "https://internlm.intern-ai.org.cn/",
+    "aleph_alpha": "https://www.aleph-alpha.com/pricing",
+    "nscale": "https://nscale.com/pricing",
+    "phi": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+    "falcon_tii": "https://huggingface.co/tiiuae",
+    "snowflake": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions",
 }
 
 
@@ -2451,6 +2975,148 @@ API_QUICKSTART: dict[str, dict] = {
         "docs_url": "https://platform.moonshot.ai/docs",
         "models_url": "https://platform.moonshot.ai/docs/pricing/chat",
         "free_trial": "Trial credits on signup",
+    },
+    "tencent": {
+        "signup_url": "https://cloud.tencent.com/",
+        "api_key_url": "https://console.cloud.tencent.com/hunyuan/api-key",
+        "api_base_url": "https://api.hunyuan.cloud.tencent.com/v1",
+        "openai_compat": True,
+        "api_key_env": "HUNYUAN_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://console.cloud.tencent.com/hunyuan",
+        "docs_url": "https://cloud.tencent.com/document/product/1729",
+        "models_url": "https://cloud.tencent.com/product/hunyuan",
+        "free_trial": "Trial credits on signup at cloud.tencent.com",
+    },
+    "bytedance": {
+        "signup_url": "https://console.volcengine.com/ark/",
+        "api_key_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey",
+        "api_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "openai_compat": True,
+        "api_key_env": "ARK_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/billing",
+        "docs_url": "https://www.volcengine.com/docs/82379/1182403",
+        "models_url": "https://console.volcengine.com/ark/region:ark+cn-beijing/model",
+        "free_trial": "Trial credits on signup; some models have free quota",
+        "notes": "Model ID format: endpoint ID (created in console), not model name directly",
+    },
+    "hyperbolic": {
+        "signup_url": "https://app.hyperbolic.xyz/",
+        "api_key_url": "https://app.hyperbolic.xyz/settings",
+        "api_base_url": "https://api.hyperbolic.xyz/v1",
+        "openai_compat": True,
+        "api_key_env": "HYPERBOLIC_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://app.hyperbolic.xyz/billing",
+        "docs_url": "https://docs.hyperbolic.xyz/",
+        "models_url": "https://app.hyperbolic.xyz/models",
+        "free_trial": "$1 free credit on signup",
+        "notes": "Batch API available at 50% off standard rate. H100-backed.",
+    },
+    "siliconflow": {
+        "signup_url": "https://cloud.siliconflow.cn/",
+        "api_key_url": "https://cloud.siliconflow.cn/account/ak",
+        "api_base_url": "https://api.siliconflow.cn/v1",
+        "openai_compat": True,
+        "api_key_env": "SILICONFLOW_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://cloud.siliconflow.cn/account/billing",
+        "docs_url": "https://docs.siliconflow.cn/",
+        "models_url": "https://siliconflow.cn/pricing",
+        "free_trial": "$14 free credit on signup; several models permanently free",
+    },
+    "internlm": {
+        "signup_url": "https://internlm.intern-ai.org.cn/",
+        "api_key_url": "https://internlm.intern-ai.org.cn/api/document",
+        "api_base_url": "https://internlm-chat.intern-ai.org.cn/puyu/api/v1",
+        "openai_compat": True,
+        "api_key_env": "INTERNLM_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://internlm.intern-ai.org.cn/",
+        "docs_url": "https://internlm.intern-ai.org.cn/api/document",
+        "models_url": "https://internlm.intern-ai.org.cn/",
+        "free_trial": "Free tier available; also served via SiliconFlow (free models)",
+        "notes": "Open weights also available on HuggingFace for self-hosting",
+    },
+    "aleph_alpha": {
+        "signup_url": "https://app.aleph-alpha.com/signup",
+        "api_key_url": "https://app.aleph-alpha.com/profile",
+        "api_base_url": "https://api.aleph-alpha.com",
+        "openai_compat": False,
+        "api_key_env": "AA_TOKEN",
+        "python_sdk": "pip install aleph-alpha-client",
+        "litellm_prefix": "aleph_alpha/",
+        "usage_url": "https://app.aleph-alpha.com/usage",
+        "docs_url": "https://docs.aleph-alpha.com/",
+        "models_url": "https://www.aleph-alpha.com/pricing",
+        "free_trial": None,
+        "notes": "GDPR/EU AI Act compliant. On-prem deployment available. EU data residency guaranteed.",
+    },
+    "nscale": {
+        "signup_url": "https://nscale.com/",
+        "api_key_url": "https://console.nscale.com/api-keys",
+        "api_base_url": "https://inference.nscale.com/v1",
+        "openai_compat": True,
+        "api_key_env": "NSCALE_API_KEY",
+        "python_sdk": "pip install openai  # use OpenAI SDK with api_base override",
+        "litellm_prefix": "openai/",
+        "usage_url": "https://console.nscale.com/billing",
+        "docs_url": "https://docs.nscale.com/",
+        "models_url": "https://nscale.com/pricing",
+        "free_trial": None,
+        "notes": "UK-based H100 cluster. EU/UK data residency. No egress fees.",
+    },
+    "phi": {
+        "signup_url": "https://portal.azure.com",
+        "api_key_url": "https://ai.azure.com",
+        "api_base_url": "https://<endpoint>.services.ai.azure.com/models",
+        "openai_compat": True,
+        "api_key_env": "AZURE_INFERENCE_CREDENTIAL",
+        "python_sdk": "pip install azure-ai-inference",
+        "litellm_prefix": "azure_ai/",
+        "usage_url": "https://portal.azure.com/#view/Microsoft_Azure_CostManagement",
+        "docs_url": "https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models",
+        "models_url": "https://ai.azure.com/explore/models?task=text-generation&publisher=Microsoft",
+        "free_trial": "Azure startup credits apply (Microsoft for Startups); also free via Ollama",
+        "notes": "phi-4 and phi-4-mini available via Azure AI Foundry serverless OR ollama run phi4",
+    },
+    "falcon_tii": {
+        "signup_url": "https://www.together.ai/",
+        "api_key_url": "https://api.together.ai/settings/api-keys",
+        "api_base_url": "https://api.together.xyz/v1",
+        "openai_compat": True,
+        "api_key_env": "TOGETHER_API_KEY",
+        "python_sdk": "pip install together",
+        "litellm_prefix": "together_ai/",
+        "usage_url": "https://api.together.ai/settings/billing",
+        "docs_url": "https://docs.together.ai/",
+        "models_url": "https://www.together.ai/pricing",
+        "free_trial": "$1 free credit on signup",
+        "notes": "Falcon models served via Together AI. Weights free on HuggingFace (Apache 2.0).",
+    },
+    "snowflake": {
+        "signup_url": "https://www.together.ai/",
+        "api_key_url": "https://api.together.ai/settings/api-keys",
+        "api_base_url": "https://api.together.xyz/v1",
+        "openai_compat": True,
+        "api_key_env": "TOGETHER_API_KEY",
+        "python_sdk": "pip install together",
+        "litellm_prefix": "together_ai/",
+        "usage_url": "https://api.together.ai/settings/billing",
+        "docs_url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions",
+        "models_url": "https://www.together.ai/pricing",
+        "free_trial": "$1 free credit on signup (Together AI)",
+        "notes": (
+            "Arctic served via Together AI (external). "
+            "Inside Snowflake: use SNOWFLAKE.CORTEX.COMPLETE('snowflake-arctic', ...) SQL UDF. "
+            "No API key needed inside Snowflake — billed to Snowflake credits."
+        ),
     },
 }
 
