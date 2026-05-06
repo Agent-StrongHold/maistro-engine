@@ -38,7 +38,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import structlog
@@ -52,7 +52,7 @@ _FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
 
 def _utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def _write_file(path: Path, content: str) -> None:
@@ -231,17 +231,13 @@ class ObsidianMemoryStore:
                 if data:
                     signals.append(OptimizationSignal.model_validate(data))
             except Exception as exc:
-                await logger.awarning(
-                    "obsidian_signal_load_error", path=str(path), error=str(exc)
-                )
+                await logger.awarning("obsidian_signal_load_error", path=str(path), error=str(exc))
 
         return signals
 
     # --- Node configs (JSON source of truth + Markdown for readability) --------
 
-    async def save_node_config(
-        self, task_type: str, role: AgentRole, config: NodeConfig
-    ) -> None:
+    async def save_node_config(self, task_type: str, role: AgentRole, config: NodeConfig) -> None:
         """Persist a node config as YAML frontmatter + fenced JSON + Markdown preview.
 
         File layout
@@ -269,13 +265,7 @@ class ObsidianMemoryStore:
         corrupt the loaded config.
         """
         ts = _utcnow()
-        frontmatter = (
-            f"---\n"
-            f'role: "{role}"\n'
-            f'task_type: "{task_type}"\n'
-            f'updated: "{ts}"\n'
-            f"---\n"
-        )
+        frontmatter = f'---\nrole: "{role}"\ntask_type: "{task_type}"\nupdated: "{ts}"\n---\n'
         json_block = f"```json\n{config.model_dump_json(indent=2)}\n```\n"
         md_preview = _render_config_markdown(config)
         content = frontmatter + "\n" + json_block + "\n" + md_preview
@@ -301,17 +291,13 @@ class ObsidianMemoryStore:
                 text = await asyncio.to_thread(_read_file, path)
                 data = _extract_json_block(text)
                 if data is None:
-                    await logger.awarning(
-                        "obsidian_config_no_json", path=str(path)
-                    )
+                    await logger.awarning("obsidian_config_no_json", path=str(path))
                     continue
 
                 config = NodeConfig.model_validate(data)
                 configs[config.role] = config
 
             except Exception as exc:
-                await logger.awarning(
-                    "obsidian_config_load_error", path=str(path), error=str(exc)
-                )
+                await logger.awarning("obsidian_config_load_error", path=str(path), error=str(exc))
 
         return configs

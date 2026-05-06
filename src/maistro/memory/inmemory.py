@@ -29,9 +29,7 @@ class InMemoryStore:
     async def load_signals(self, limit: int = 5) -> list[OptimizationSignal]:
         return [s for _, s in self._signals[-limit:]][::-1]
 
-    async def save_node_config(
-        self, task_type: str, role: AgentRole, config: NodeConfig
-    ) -> None:
+    async def save_node_config(self, task_type: str, role: AgentRole, config: NodeConfig) -> None:
         self._node_configs.setdefault(task_type, {})[role] = config
 
     async def load_node_configs(self, task_type: str) -> dict[AgentRole, NodeConfig]:
