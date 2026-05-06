@@ -88,6 +88,30 @@ def _trace_summary(trace: HyperagentOutput) -> str:
     )
 
 
+def _render_config_markdown(config: NodeConfig) -> str:
+    """Generate the human-readable Markdown preview section for a node config.
+
+    Called by save_node_config to regenerate the display whenever the JSON
+    changes.  load_node_configs ignores this section entirely — JSON is the
+    source of truth.
+    """
+    prompt = config.system_prompt or "_No system prompt set._"
+    temp_line = (
+        f"- **Temperature**: `{config.temperature}`"
+        if config.temperature is not None
+        else "- **Temperature**: model default"
+    )
+    return (
+        f"## System Prompt\n\n"
+        f"{prompt}\n\n"
+        f"## Configuration\n\n"
+        f"{temp_line}\n\n"
+        f"---\n"
+        f"_Markdown preview auto-generated from the JSON block above. "
+        f"Edit the JSON to change the config; this section is overwritten on the next save._\n"
+    )
+
+
 def _signal_summary(signal: OptimizationSignal) -> str:
     lines = [
         f"**Weakest node**: {signal.weakest_node}  ",
@@ -213,40 +237,59 @@ class ObsidianMemoryStore:
 
         return signals
 
-    # --- Node configs (human-editable prompts) --------------------------------
+    # --- Node configs (JSON source of truth + Markdown for readability) --------
 
     async def save_node_config(
         self, task_type: str, role: AgentRole, config: NodeConfig
     ) -> None:
-        """Write the node config as an editable markdown file.
+        """Persist a node config as YAML frontmatter + fenced JSON + Markdown preview.
 
-        The system prompt is stored as plain text body — engineers can open the
-        file in Obsidian, edit the prompt directly, and the next run picks it up.
-        The JSON block is omitted intentionally to keep the file readable.
+        File layout
+        ───────────
+        ---                          ← YAML frontmatter (metadata only)
+        role: "planner"
+        task_type: "engineering-task"
+        updated: "2026-05-06T12:00:00+00:00"
+        ---
+
+        ```json                      ← source of truth — load_node_configs reads this
+        { "role": ..., "system_prompt": ..., "temperature": ... }
+        ```
+
+        ## System Prompt             ← human-readable preview, auto-regenerated
+        ...prompt text...
+
+        ## Configuration
+        - Temperature: ...
+
+        Engineers can read and understand the config in Obsidian.  To change a
+        prompt, edit the JSON block — the Markdown preview is regenerated
+        automatically on the next save_node_config call.  load_node_configs
+        always reads from the JSON block so parse errors never silently
+        corrupt the loaded config.
         """
         ts = _utcnow()
-        temp_override = config.temperature
         frontmatter = (
             f"---\n"
             f'role: "{role}"\n'
             f'task_type: "{task_type}"\n'
             f'updated: "{ts}"\n'
-            f"temperature: {temp_override if temp_override is not None else 'null'}\n"
             f"---\n"
         )
-        prompt_body = config.system_prompt or ""
-        content = (
-            frontmatter
-            + f"\n<!-- Edit the prompt below. Changes are picked up on the next run. -->\n\n"
-            + prompt_body
-            + "\n"
-        )
+        json_block = f"```json\n{config.model_dump_json(indent=2)}\n```\n"
+        md_preview = _render_config_markdown(config)
+        content = frontmatter + "\n" + json_block + "\n" + md_preview
         path = self._config_dir(task_type) / f"{role}.md"
         await asyncio.to_thread(_write_file, path, content)
         await logger.ainfo("obsidian_config_saved", role=role, task_type=task_type, path=str(path))
 
     async def load_node_configs(self, task_type: str) -> dict[AgentRole, NodeConfig]:
-        """Read node configs, including any human edits made in Obsidian."""
+        """Read node configs from the fenced JSON block in each role file.
+
+        The JSON block is the source of truth.  The Markdown preview section is
+        ignored during loading so human annotations there don't corrupt the config.
+        Returns an empty dict when the directory doesn't exist yet (first run).
+        """
         dir_ = self._config_dir(task_type)
         if not dir_.exists():
             return {}
@@ -256,39 +299,15 @@ class ObsidianMemoryStore:
         for path in dir_.glob("*.md"):
             try:
                 text = await asyncio.to_thread(_read_file, path)
+                data = _extract_json_block(text)
+                if data is None:
+                    await logger.awarning(
+                        "obsidian_config_no_json", path=str(path)
+                    )
+                    continue
 
-                # Extract frontmatter for temperature override
-                fm_match = _FRONTMATTER.match(text)
-                temperature: float | None = None
-                role_str: str = path.stem  # filename without .md = role name
-
-                if fm_match:
-                    for line in fm_match.group(1).splitlines():
-                        if line.startswith("role:"):
-                            role_str = line.split(":", 1)[1].strip().strip('"')
-                        elif line.startswith("temperature:") and "null" not in line:
-                            try:
-                                temperature = float(line.split(":", 1)[1].strip())
-                            except ValueError:
-                                pass
-
-                # Prompt is everything after the frontmatter and the comment line
-                after_fm = _FRONTMATTER.sub("", text).strip()
-                # Strip the editor comment if present
-                prompt = re.sub(
-                    r"^<!--.*?-->\s*", "", after_fm, flags=re.DOTALL
-                ).strip()
-
-                try:
-                    role = AgentRole(role_str)
-                except ValueError:
-                    continue  # skip unrecognised role files
-
-                configs[role] = NodeConfig(
-                    role=role,
-                    system_prompt=prompt or None,
-                    temperature=temperature,
-                )
+                config = NodeConfig.model_validate(data)
+                configs[config.role] = config
 
             except Exception as exc:
                 await logger.awarning(
