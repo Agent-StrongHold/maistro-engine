@@ -11,21 +11,22 @@ executions, the optimizer:
      so it acts as a coordinated team member (aware of pipeline objective,
      upstream inputs, downstream expectations, and recent failure patterns)
      rather than an isolated agent.
-  4. Returns an updated GraphConfig with the improved NodeConfig.
-
-The caller is responsible for persisting traces and iterating — this module
-only does one optimization step per call.
+  4. Persists the improved NodeConfig via the injected WorkingMemoryProtocol.
+  5. Returns an updated GraphConfig with the improved NodeConfig.
 
 Typical usage:
 
+    store = ObsidianMemoryStore("/path/to/vault")
     optimizer = GraphOptimizer(
         task_description="Add rate limiting to /tasks",
+        task_type="engineering-task",
         model=resolved_model,
         base_url=base_url,
+        memory=store,
     )
-    signal = optimizer.extract_signal(traces)
-    new_config = await optimizer.optimize(config, traces)
-    # use new_config for the next run
+    new_config = await optimizer.optimize(config, run_id="abc123")
+    # new_config.node_configs now has the improved prompt
+    # store persisted the trace + signal + node config to the vault
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ from maistro.agents.types import (
     OptimizationSignal,
     ReviewOutput,
 )
+from maistro.memory.protocol import WorkingMemoryProtocol
 
 logger = structlog.get_logger()
 
@@ -170,10 +172,19 @@ class GraphOptimizer:
     an improved GraphConfig.
     """
 
-    def __init__(self, task_description: str, model: str, base_url: str | None = None) -> None:
+    def __init__(
+        self,
+        task_description: str,
+        model: str,
+        base_url: str | None = None,
+        task_type: str = "default",
+        memory: WorkingMemoryProtocol | None = None,
+    ) -> None:
         self.task_description = task_description
         self.model = model
         self.base_url = base_url
+        self.task_type = task_type
+        self.memory = memory
 
     # --- Public API ----------------------------------------------------------
 
@@ -244,24 +255,38 @@ class GraphOptimizer:
     async def optimize(
         self,
         config: GraphConfig,
-        traces: list[HyperagentOutput],
+        traces: list[HyperagentOutput] | None = None,
+        run_id: str | None = None,
     ) -> GraphConfig:
         """Return an updated GraphConfig with an improved prompt for the weakest node.
 
+        If `memory` was injected:
+          - Loads missing traces from the store when `traces` is None or empty.
+          - Persists the derived OptimizationSignal.
+          - Persists the improved NodeConfig (human-editable in Obsidian).
+
         The optimizer identifies the highest-bottleneck node, collects failure
-        examples from the traces, and asks the LLM to rewrite that node's system
-        prompt with full pipeline context — objective, upstream inputs, downstream
-        expectations, and observed failure patterns.
+        examples, and rewrites that node's prompt with full pipeline context.
         """
-        signal = self.extract_signal(traces)
+        # Load traces from memory if not supplied directly
+        effective_traces = traces or []
+        if not effective_traces and self.memory is not None:
+            effective_traces = await self.memory.load_traces()
+
+        if not effective_traces:
+            await logger.awarning("optimizer_no_traces", task_type=self.task_type)
+            return config
+
+        signal = self.extract_signal(effective_traces)
         target_role = signal.weakest_node
 
         current_prompt = self._current_prompt(config, target_role)
-        failure_examples = self._collect_failures(traces, target_role)
+        failure_examples = self._collect_failures(effective_traces, target_role)
 
         await logger.ainfo(
             "optimizer_start",
             target_role=target_role,
+            task_type=self.task_type,
             bottleneck_score=signal.node_metrics[0].bottleneck_score,
             total_runs=signal.total_runs,
             avg_review_score=signal.avg_review_score,
@@ -272,10 +297,15 @@ class GraphOptimizer:
             config, signal, target_role, current_prompt, failure_examples
         )
 
+        new_node_config = NodeConfig(role=target_role, system_prompt=improved_prompt)
         new_node_configs = dict(config.node_configs)
-        new_node_configs[target_role] = NodeConfig(
-            role=target_role, system_prompt=improved_prompt
-        )
+        new_node_configs[target_role] = new_node_config
+
+        # Persist signal + improved config via injected memory store
+        if self.memory is not None:
+            effective_run_id = run_id or "opt"
+            await self.memory.save_signal(effective_run_id, signal)
+            await self.memory.save_node_config(self.task_type, target_role, new_node_config)
 
         await logger.ainfo(
             "optimizer_complete",
