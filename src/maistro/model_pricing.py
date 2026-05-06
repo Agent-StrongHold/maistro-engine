@@ -52,6 +52,7 @@ from __future__ import annotations
 import json
 import urllib.request
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -194,7 +195,7 @@ class ModelPricing:
 # Provider registry
 # ---------------------------------------------------------------------------
 
-PROVIDERS: dict[str, dict] = {
+PROVIDERS: dict[str, Any] = {
     # ── Frontier model labs ──
     "anthropic": {
         "name": "Anthropic",
@@ -4402,7 +4403,7 @@ PRICING_UPDATE_SOURCES: dict[str, str] = {
 # litellm_prefix          →  prefix to use in LiteLLM model strings, e.g.
 #                             "anthropic/claude-sonnet-4-6" or "gemini/gemini-2.5-pro"
 
-API_QUICKSTART: dict[str, dict] = {
+API_QUICKSTART: dict[str, Any] = {
     "anthropic": {
         "signup_url": "https://console.anthropic.com/",
         "api_key_url": "https://console.anthropic.com/settings/keys",
@@ -5505,7 +5506,7 @@ API_QUICKSTART: dict[str, dict] = {
 #
 # NOTE: "Microsoft Founders Hub" was retired July 2, 2025. Two new tracks exist.
 
-STARTUP_PROGRAMS: dict[str, dict] = {
+STARTUP_PROGRAMS: dict[str, Any] = {
     # ── Microsoft ─────────────────────────────────────────────────────────
     "microsoft_self_service": {
         "name": "Microsoft Azure Startup Credit (Self-Service)",
@@ -5987,7 +5988,7 @@ STARTUP_PROGRAMS: dict[str, dict] = {
 #
 # Columns: program_unlocks = {program_key: credit_tier_unlocked_usd}
 
-NO_EQUITY_ACCELERATORS: dict[str, dict] = {
+NO_EQUITY_ACCELERATORS: dict[str, Any] = {
     "nvidia_inception": {
         "name": "NVIDIA Inception",
         "equity": False,
@@ -6187,7 +6188,7 @@ def startup_programs_table() -> str:
 # credits_usd_approx: cloud/tool credits included (approximate)
 # STATUS: "active" / "inactive" / "pivoted" — VERIFY before applying
 
-ACCELERATOR_PROGRAMS: dict[str, dict] = {
+ACCELERATOR_PROGRAMS: dict[str, Any] = {
     # ── Tier 1: Apply now — no revenue, high fit, low-medium barrier ──────
     "cdl_ai": {
         "name": "Creative Destruction Lab — AI Stream",
@@ -6475,7 +6476,7 @@ def cost_for_tokens(
     return input_cost + m.output_mtok * output_tokens / 1_000_000
 
 
-def fetch_openrouter_prices(timeout: int = 15) -> dict[str, dict]:
+def fetch_openrouter_prices(timeout: int = 15) -> dict[str, Any]:
     """
     Fetch live model prices from the OpenRouter public API.
 
@@ -6497,7 +6498,7 @@ def fetch_openrouter_prices(timeout: int = 15) -> dict[str, dict]:
     return {m["id"]: m.get("pricing", {}) for m in data.get("data", [])}
 
 
-def fetch_litellm_prices(timeout: int = 20) -> dict[str, dict]:
+def fetch_litellm_prices(timeout: int = 20) -> dict[str, Any]:
     """
     Fetch model prices from the LiteLLM model database (GitHub raw JSON).
 
@@ -6517,7 +6518,8 @@ def fetch_litellm_prices(timeout: int = 20) -> dict[str, dict]:
     url = PRICING_UPDATE_SOURCES["litellm_model_db"]
     req = urllib.request.Request(url, headers={"User-Agent": "maistro-model-pricing/1.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+        result: dict[str, Any] = json.loads(resp.read())
+        return result
 
 
 def price_diff_report(timeout: int = 15) -> str:
@@ -6588,7 +6590,7 @@ def benchmark_table() -> str:
     def f(v: float | None) -> str:
         return f"{v:.1f}%" if v is not None else "-"
 
-    def fi(v: int | None) -> str:
+    def fi(v: float | int | None) -> str:
         return str(v) if v is not None else "-"
 
     coding_rows = [
@@ -6658,7 +6660,7 @@ def limits_table() -> str:
     has_data = [m for m in MODELS if m.free_tier is not None or m.free_tier_rpm is not None]
     has_data.sort(key=lambda m: (m.provider, m.model_id))
 
-    def fi(v: int | None) -> str:
+    def fi(v: float | int | None) -> str:
         return str(v) if v is not None else "?"
 
     rows = [
