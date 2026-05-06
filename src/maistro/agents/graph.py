@@ -126,15 +126,20 @@ _SYSTEM_PROMPTS: dict[AgentRole, str] = {
 # ---------------------------------------------------------------------------
 
 
-@functools.lru_cache(maxsize=32)
+@functools.lru_cache(maxsize=64)
 def _build_node_agent(
     role: AgentRole,
     model: str,
     base_url: str | None,
     use_json_mode: bool,
+    system_prompt_override: str | None = None,
 ) -> Agent:
-    """Build and cache a pydantic-ai sub-agent for the given role."""
-    system_prompt = _SYSTEM_PROMPTS.get(role, PLANNER_SYSTEM)
+    """Build and cache a pydantic-ai sub-agent for the given role.
+
+    `system_prompt_override` is set by the GraphOptimizer when it has produced
+    an improved prompt for this node; None falls back to the role default.
+    """
+    system_prompt = system_prompt_override or _SYSTEM_PROMPTS.get(role, PLANNER_SYSTEM)
     output_type: type = _OUTPUT_TYPES.get(role, PlanOutput)
 
     litellm_key = os.environ.get("LITELLM_MASTER_KEY", "")
@@ -393,12 +398,13 @@ async def _dispatch_node_single(
     resolved_model: str,
     base_url: str | None,
     use_json_mode: bool,
+    system_prompt_override: str | None = None,
 ) -> tuple[_NodeOutput, int]:
     """Single completion for one node; returns (typed_output, tokens_used)."""
     if not llm_circuit.allow_request():
         raise CircuitOpenError(llm_circuit)
 
-    agent = _build_node_agent(role, resolved_model, base_url, use_json_mode)
+    agent = _build_node_agent(role, resolved_model, base_url, use_json_mode, system_prompt_override)
     last_exc: Exception | None = None
 
     for attempt in range(tier_config.max_llm_retries):
@@ -459,6 +465,7 @@ async def _dispatch_node_beam(
     resolved_model: str,
     base_url: str | None,
     use_json_mode: bool,
+    system_prompt_override: str | None = None,
 ) -> tuple[_NodeOutput, int, list[str], int]:
     """Run tier_config.parallel_generations completions concurrently.
 
@@ -472,14 +479,18 @@ async def _dispatch_node_beam(
 
     if n == 1:
         output, tokens = await _dispatch_node_single(
-            role, prompt, tier_config, resolved_model, base_url, use_json_mode
+            role, prompt, tier_config, resolved_model, base_url, use_json_mode,
+            system_prompt_override,
         )
         return output, tokens, [str(output)[:500]], 0
 
     # Launch N completions concurrently
     raw = await asyncio.gather(
         *[
-            _dispatch_node_single(role, prompt, tier_config, resolved_model, base_url, use_json_mode)
+            _dispatch_node_single(
+                role, prompt, tier_config, resolved_model, base_url, use_json_mode,
+                system_prompt_override,
+            )
             for _ in range(n)
         ],
         return_exceptions=True,
@@ -565,6 +576,12 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
         )
 
         # --- Dispatch all active nodes concurrently (fan-out + beam) ----------
+        # Resolve any optimizer-improved prompts before entering the gather
+        prompt_overrides = {
+            role: config.node_configs[role].system_prompt
+            for role in active
+            if role in config.node_configs and config.node_configs[role].system_prompt
+        }
         batch = await asyncio.gather(
             *[
                 _dispatch_node_beam(
@@ -574,6 +591,7 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
                     resolved_model,
                     base_url,
                     use_json_mode,
+                    prompt_overrides.get(role),
                 )
                 for role in active
             ],
