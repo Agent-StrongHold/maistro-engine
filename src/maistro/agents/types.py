@@ -51,14 +51,21 @@ class AgentRole(StrEnum):
 class GraphEdge(BaseModel):
     """Directed edge between two sub-agent nodes in a graph execution.
 
-    `condition` is an optional free-text predicate evaluated by the hyperagent
-    (e.g. "review.approved is False") to decide whether to traverse this edge.
-    A None condition means the edge is always traversed.
+    `condition` is an optional free-text predicate evaluated against accumulated
+    node outputs (e.g. "review.approved is False").  None means always traverse.
+
+    `parallel=True` marks the edge as a fan-out edge: all matching parallel edges
+    from the same node fire concurrently via asyncio.gather.  Sequential edges
+    (parallel=False, the default) use first-match routing — at most one fires.
+    Both types can co-exist on the same source node.
+
+    `to_role=None` is a terminal edge: reaching it stops the graph from this node.
     """
 
     from_role: AgentRole
-    to_role: AgentRole
+    to_role: AgentRole | None
     condition: str | None = None
+    parallel: bool = False
 
 
 class GraphConfig(BaseModel):
@@ -77,13 +84,24 @@ class GraphConfig(BaseModel):
 
 
 class GraphNodeResult(BaseModel):
-    """Output produced by a single sub-agent node during graph execution."""
+    """Output produced by a single sub-agent node during graph execution.
+
+    For beam-search runs (parallel_generations > 1), `candidates` holds every
+    generation's output string and `selected_candidate` is the index of the one
+    chosen by the scoring heuristic.  `output` is always the selected candidate.
+
+    `parallel_group` is set to the cycle index when multiple nodes ran in the
+    same asyncio.gather batch (fan-out), so callers can group concurrent steps.
+    """
 
     role: AgentRole
     success: bool
-    output: str
+    output: str  # selected candidate (truncated to 500 chars)
     tokens_used: int = 0
-    next_node: AgentRole | None = None  # hyperagent's routing decision
+    next_nodes: list[AgentRole] = Field(default_factory=list)
+    candidates: list[str] = Field(default_factory=list)  # all beam outputs
+    selected_candidate: int = 0  # index into candidates of the winning output
+    parallel_group: int | None = None  # cycle index if part of a fan-out batch
 
 
 class SubTask(BaseModel):
