@@ -68,12 +68,27 @@ class GraphEdge(BaseModel):
     parallel: bool = False
 
 
+class NodeConfig(BaseModel):
+    """Per-node tunable configuration — prompts become parameters the optimizer can update.
+
+    `system_prompt=None` means use the role's default from agents/prompts.py.
+    The optimizer writes improved prompts here after analysing execution traces.
+    """
+
+    role: AgentRole
+    system_prompt: str | None = None  # None = use role default
+    temperature: float | None = None  # None = use tier default
+
+
 class GraphConfig(BaseModel):
     """Topology of a hyperagent graph execution.
 
     Defines which sub-agent nodes participate, how they are connected, where
     execution starts, which node acts as the hyperagent orchestrator, and a
     cycle cap to prevent runaway loops.
+
+    `node_configs` holds per-node tunable parameters (primarily system_prompt).
+    The GraphOptimizer writes improved prompts here after analysing traces.
     """
 
     nodes: list[AgentRole]
@@ -81,6 +96,7 @@ class GraphConfig(BaseModel):
     entry: AgentRole = AgentRole.PLANNER
     hyperagent: AgentRole = AgentRole.CONDUCTOR
     max_cycles: int = Field(default=5, ge=1, le=20)
+    node_configs: dict[AgentRole, NodeConfig] = Field(default_factory=dict)
 
 
 class GraphNodeResult(BaseModel):
@@ -158,3 +174,37 @@ class HyperagentOutput(ConductorOutput):
     graph_config: GraphConfig | None = None
     node_results: list[GraphNodeResult] = Field(default_factory=list)
     total_cycles: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Optimizer signal models
+# ---------------------------------------------------------------------------
+
+
+class NodePerformanceMetrics(BaseModel):
+    """Per-node performance summary extracted from a set of execution traces.
+
+    `bottleneck_score` is a composite signal (0–1) indicating how much this
+    node limits overall pipeline quality.  Higher = higher optimization priority.
+    """
+
+    role: AgentRole
+    run_count: int
+    success_rate: float = Field(ge=0, le=1)
+    avg_tokens: float
+    avg_review_score: float | None = None  # only set when the role is REVIEWER
+    bottleneck_score: float = Field(ge=0, le=1)
+
+
+class OptimizationSignal(BaseModel):
+    """Gradient signal derived from a batch of HyperagentOutput traces.
+
+    `weakest_node` is the role with the highest bottleneck_score — the one the
+    optimizer should target first.  `avg_review_score` is the pipeline-wide
+    quality baseline the optimization is trying to improve.
+    """
+
+    node_metrics: list[NodePerformanceMetrics]
+    weakest_node: AgentRole
+    total_runs: int
+    avg_review_score: float | None = None
