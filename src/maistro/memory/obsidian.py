@@ -40,6 +40,7 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import structlog
 
@@ -64,12 +65,12 @@ def _read_file(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _extract_json_block(text: str) -> dict | None:
+def _extract_json_block(text: str) -> dict[str, Any] | None:
     m = _JSON_FENCE.search(text)
     if not m:
         return None
     try:
-        return json.loads(m.group(1))
+        return cast(dict[str, Any], json.loads(m.group(1)))
     except json.JSONDecodeError:
         return None
 
