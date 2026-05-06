@@ -225,7 +225,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
     if task.execution_mode == "graph":
         from maistro.agents.graph import run_graph_task  # lazy import avoids circular
 
-        return await run_graph_task(task)  # type: ignore[return-value]
+        return await run_graph_task(task)
 
     # MAJ-08: Enforce token budget from settings
     max_tokens = settings.max_tokens_per_task

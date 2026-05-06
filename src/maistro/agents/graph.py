@@ -30,9 +30,11 @@ import functools
 import json
 import os
 import random
+from typing import Any, cast
 
 import httpx
 import structlog
+from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -110,7 +112,7 @@ _JSON_SCHEMAS: dict[AgentRole, str] = {
     AgentRole.REVIEWER: _REVIEWER_JSON_SCHEMA,
 }
 
-_OUTPUT_TYPES: dict[AgentRole, type] = {
+_OUTPUT_TYPES: dict[AgentRole, type[BaseModel]] = {
     AgentRole.PLANNER: PlanOutput,
     AgentRole.CODER: CodeOutput,
     AgentRole.REVIEWER: ReviewOutput,
@@ -334,13 +336,13 @@ def _compare(lhs: object, op: str, rhs: object) -> bool:
         return lhs != rhs
     try:
         if stripped == "<":
-            return lhs < rhs  # type: ignore[operator]
+            return bool(lhs < rhs)  # type: ignore[operator]
         if stripped == ">":
-            return lhs > rhs  # type: ignore[operator]
+            return bool(lhs > rhs)  # type: ignore[operator]
         if stripped == "<=":
-            return lhs <= rhs  # type: ignore[operator]
+            return bool(lhs <= rhs)  # type: ignore[operator]
         if stripped == ">=":
-            return lhs >= rhs  # type: ignore[operator]
+            return bool(lhs >= rhs)  # type: ignore[operator]
     except TypeError:
         return False
     return False
@@ -431,7 +433,7 @@ def _is_retryable(exc: Exception) -> bool:
 
 def _parse_node_json(role: AgentRole, raw: str) -> _NodeOutput:
     data = json.loads(raw)
-    return _OUTPUT_TYPES.get(role, PlanOutput).model_validate(data)  # type: ignore[return-value]
+    return cast(_NodeOutput, _OUTPUT_TYPES.get(role, PlanOutput).model_validate(data))
 
 
 async def _dispatch_node_single(
@@ -548,9 +550,7 @@ async def _dispatch_node_beam(
     )
 
     successes: list[tuple[_NodeOutput, int]] = [
-        item  # type: ignore[misc]
-        for item in raw
-        if not isinstance(item, BaseException)
+        item for item in raw if not isinstance(item, BaseException)
     ]
 
     if not successes:
@@ -589,7 +589,7 @@ async def _dispatch_node_beam(
 
 def _update_state(
     active: list[AgentRole],
-    batch: list[object],
+    batch: list[Any],
     plan: PlanOutput | None,
     code: CodeOutput | None,
     review: ReviewOutput | None,
@@ -598,7 +598,7 @@ def _update_state(
     for role, result in zip(active, batch, strict=True):
         if isinstance(result, BaseException):
             continue
-        typed_output, _tokens, _candidates, _selected = result  # type: ignore[misc]
+        typed_output, _tokens, _candidates, _selected = result
         if role == AgentRole.PLANNER and isinstance(typed_output, PlanOutput):
             plan = typed_output
         elif role == AgentRole.CODER and isinstance(typed_output, CodeOutput):
@@ -610,7 +610,7 @@ def _update_state(
 
 async def _route_and_record(
     active: list[AgentRole],
-    batch: list[object],
+    batch: list[Any],
     plan: PlanOutput | None,
     code: CodeOutput | None,
     review: ReviewOutput | None,
@@ -626,15 +626,19 @@ async def _route_and_record(
     for role, result in zip(active, batch, strict=True):
         node_success = not isinstance(result, BaseException)
 
+        total_tokens: int = 0
+        selected: int = 0
+        candidates: list[str] = []
+        role_next: list[AgentRole] = []
+
         if node_success:
-            _typed_output, total_tokens, candidates, selected = result  # type: ignore[misc]
+            _typed_output, total_tokens, candidates, selected = result
             role_next = _next_nodes(config, role, plan, code, review)
             for nxt in role_next:
                 if nxt not in seen_next:
                     next_active.append(nxt)
                     seen_next.add(nxt)
         else:
-            total_tokens, candidates, selected, role_next = 0, [], 0, []
             await logger.aerror("graph_node_failed", role=role, cycle=cycle, error=str(result))
 
         new_results.append(
@@ -744,7 +748,7 @@ async def run_graph_task(
             for role in active
             if role in config.node_configs and config.node_configs[role].system_prompt
         }
-        batch: list[object] = await asyncio.gather(  # type: ignore[assignment]
+        batch: list[Any] = await asyncio.gather(
             *[
                 _dispatch_node_beam(
                     role,
