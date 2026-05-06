@@ -159,3 +159,22 @@ circuit_breaker_state = registry.gauge(
     "circuit_breaker_state", "Circuit breaker state (0=closed, 1=open, 2=half_open)"
 )
 sandbox_containers_active = registry.gauge("sandbox_containers_active", "Active sandbox containers")
+
+# Token-usage histogram for p50/p95 cost monitoring (Anthropic guidance: track at
+# these percentiles to catch runaway agent loops before they waste budget).
+_TOKEN_BUCKETS = (
+    1_000,
+    5_000,
+    10_000,
+    25_000,
+    50_000,
+    75_000,
+    100_000,
+    150_000,
+    200_000,
+)
+llm_tokens_used = registry.histogram(
+    "llm_tokens_used_total",
+    "Total LLM tokens consumed per call (request + response)",
+    buckets=_TOKEN_BUCKETS,
+)

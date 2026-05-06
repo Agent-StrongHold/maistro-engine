@@ -1,7 +1,8 @@
 """Conductor agent — top-level orchestrator for engineering tasks.
 
-Phase 1: Single Pydantic AI agent that handles plan/code/review in one pass.
-Phase 2 will split this into sub-agents (planner, coder, reviewer, scout).
+Routes GRAPH-mode tasks to the hyperagent graph executor (agents/graph.py).
+For TASK / WORKFLOW / AGENT modes, runs a single Pydantic AI agent that handles
+plan/code/review in one pass.
 
 For Ollama models that don't support complex tool schemas, the conductor falls
 back to JSON-prompt mode: it instructs the model to return JSON directly and
@@ -30,7 +31,7 @@ from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
-from maistro.observability.metrics import llm_errors_total, llm_requests_total
+from maistro.observability.metrics import llm_errors_total, llm_requests_total, llm_tokens_used
 from maistro.observability.tracing import trace_agent
 from maistro.tasks.models import TaskCreate
 
@@ -144,6 +145,15 @@ async def _run_with_retry(
             result = await asyncio.wait_for(agent.run(prompt), timeout=tier_config.timeout)
             llm_circuit.record_success()
 
+            try:
+                usage = result.usage()
+                if usage.total_tokens:
+                    llm_tokens_used.observe(
+                        float(usage.total_tokens), tier=str(tier_config.tier.value)
+                    )
+            except Exception:
+                pass
+
             if use_json_mode:
                 return _parse_json_output(result.output)
             return result.output  # type: ignore[return-value]
@@ -186,11 +196,8 @@ async def _run_with_retry(
 async def run_task(task: TaskCreate) -> ConductorOutput:
     """Execute a full engineering task through the conductor pipeline.
 
-    This is the main entry point for task execution. It:
-    1. Selects the appropriate tier/model configuration
-    2. Builds the conductor agent
-    3. Runs the agent with timeout and retry logic
-    4. Returns structured output
+    GRAPH mode is delegated to the hyperagent graph executor in agents/graph.py.
+    All other modes (TASK, WORKFLOW, AGENT) run as a single-pass conductor agent.
 
     If maistro_dry_run is set in settings, returns a mock result without calling any LLM.
     """
@@ -214,6 +221,12 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
             success=True,
         )
 
+    # GRAPH mode — delegate to the hyperagent node-dispatch loop
+    if task.execution_mode == "graph":
+        from maistro.agents.graph import run_graph_task  # lazy import avoids circular
+
+        return await run_graph_task(task)
+
     # MAJ-08: Enforce token budget from settings
     max_tokens = settings.max_tokens_per_task
 
@@ -227,6 +240,7 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         base_url=base_url or "default",
         json_mode=use_json_mode,
         max_tokens=max_tokens,
+        execution_mode=task.execution_mode,
         description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN],
     )
 
@@ -238,5 +252,14 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
     )
 
     result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)  # type: ignore[arg-type]
-    await logger.ainfo("conductor_complete", success=result.success)
+
+    await logger.ainfo(
+        "conductor_trajectory",
+        success=result.success,
+        execution_mode=task.execution_mode,
+        subtask_count=len(result.plan.subtasks) if result.plan else 0,
+        files_changed=result.code.files_changed if result.code else [],
+        review_approved=result.review.approved if result.review else None,
+        review_score=result.review.score if result.review else None,
+    )
     return result
