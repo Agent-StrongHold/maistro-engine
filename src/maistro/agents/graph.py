@@ -1,16 +1,26 @@
-"""Hyperagent graph execution engine — Phase 2 node-dispatch loop.
+"""Hyperagent graph execution engine — beam search + fan-out parallel dispatch.
 
-Executes GRAPH-mode tasks by iterating sub-agent nodes according to a
-GraphConfig, routing between them based on edge conditions evaluated against
-accumulated node outputs, and returning a HyperagentOutput that carries the
-full per-node trace.
+Execution model
+───────────────
+Each "cycle" has a set of *active* nodes.  All active nodes are dispatched
+concurrently via asyncio.gather (fan-out).  For each node:
 
-Control flow:
-    1. Start at GraphConfig.entry node.
-    2. Build a role-specific prompt from accumulated state.
-    3. Dispatch to the sub-agent for that role; collect typed output.
-    4. Evaluate outgoing edges — first matching condition wins.
-    5. Repeat until no edge matches, a node fails, or max_cycles is reached.
+  • If tier_config.parallel_generations > 1 (ULTRA tier), N independent
+    completions are requested in parallel (beam search), scored by a per-role
+    heuristic, and the highest-scoring candidate is selected.
+  • If parallel_generations == 1, a single completion is requested.
+
+After all active nodes complete, accumulated state (plan / code / review) is
+updated, then outgoing edges are evaluated against the new state to produce the
+next active set.
+
+Edge routing
+────────────
+Sequential edges (parallel=False, default): at most one fires per source node —
+  the first matching condition wins.
+Parallel edges (parallel=True): all matching ones fire concurrently.
+Both types can co-exist on the same source node.
+A terminal edge (to_role=None) stops traversal from that node.
 """
 
 from __future__ import annotations
@@ -50,11 +60,14 @@ logger = structlog.get_logger()
 
 _RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
 
-# Sentinel — distinguishes "field value is None" from "path not resolvable"
+# Sentinel — distinguishes "field value is None" from "unresolvable path"
 _MISSING = object()
 
+# Type alias for any typed node output
+_NodeOutput = PlanOutput | CodeOutput | ReviewOutput
+
 # ---------------------------------------------------------------------------
-# JSON-mode fallback schemas (for Ollama models without structured-output support)
+# JSON-mode fallback schemas (Ollama models without structured-output support)
 # ---------------------------------------------------------------------------
 
 _PLANNER_JSON_SCHEMA = """
@@ -108,7 +121,6 @@ _SYSTEM_PROMPTS: dict[AgentRole, str] = {
     AgentRole.REVIEWER: REVIEWER_SYSTEM,
 }
 
-
 # ---------------------------------------------------------------------------
 # Sub-agent builders (cached per role + model + base_url + json_mode)
 # ---------------------------------------------------------------------------
@@ -146,12 +158,7 @@ def _build_node_agent(
             else None,
         )
 
-    return Agent(
-        model=model,
-        system_prompt=system_prompt,
-        output_type=output_type,
-        retries=2,
-    )
+    return Agent(model=model, system_prompt=system_prompt, output_type=output_type, retries=2)
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +207,7 @@ def _build_node_prompt(
     role: AgentRole,
     plan: PlanOutput | None,
     code: CodeOutput | None,
-    review: ReviewOutput | None,  # noqa: ARG001 — reserved for future reviewer-retry context
+    review: ReviewOutput | None,  # reserved for reviewer-retry context
 ) -> str:
     if role == AgentRole.PLANNER:
         return _planner_prompt(task)
@@ -210,8 +217,27 @@ def _build_node_prompt(
         if code is None:
             return f"Task: {task.description}\n\nNo code output available to review."
         return _reviewer_prompt(task, plan, code)
-    # SCOUT or CONDUCTOR as a regular node — fall back to raw task description
     return f"Task: {task.description}\nWorkspace: {task.workspace}"
+
+
+# ---------------------------------------------------------------------------
+# Candidate scoring — heuristic used for beam selection
+# ---------------------------------------------------------------------------
+
+
+def _score_output(role: AgentRole, output: _NodeOutput) -> float:
+    """Return a scalar quality score for a beam candidate.
+
+    Higher is better.  These are rough heuristics — the goal is to prefer
+    richer, more complete outputs when multiple beams succeed.
+    """
+    if isinstance(output, ReviewOutput):
+        return output.score
+    if isinstance(output, PlanOutput):
+        return float(len(output.subtasks))
+    if isinstance(output, CodeOutput):
+        return float(len(output.files_changed)) + (2.0 if output.tests_added else 0.0)
+    return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -251,19 +277,19 @@ def _parse_rhs(s: str) -> object:
 
 
 def _compare(lhs: object, op: str, rhs: object) -> bool:
-    # Treat "is" / "is not" as equality — avoids identity surprises with non-singletons
-    if op.strip() in ("is", "=="):
+    stripped = op.strip()
+    if stripped in ("is", "=="):
         return lhs == rhs
-    if op.strip() in ("is not", "!="):
+    if stripped in ("is not", "!="):
         return lhs != rhs
     try:
-        if op.strip() == "<":
+        if stripped == "<":
             return lhs < rhs  # type: ignore[operator]
-        if op.strip() == ">":
+        if stripped == ">":
             return lhs > rhs  # type: ignore[operator]
-        if op.strip() == "<=":
+        if stripped == "<=":
             return lhs <= rhs  # type: ignore[operator]
-        if op.strip() == ">=":
+        if stripped == ">=":
             return lhs >= rhs  # type: ignore[operator]
     except TypeError:
         return False
@@ -278,8 +304,8 @@ def evaluate_condition(
 ) -> bool:
     """Safely evaluate a dotted-path condition string against node outputs.
 
-    Supported forms: ``review.approved is False``, ``review.score < 7.0``,
-    ``code.tests_added == True``.  Returns False if the path cannot be resolved
+    Supported: ``review.approved is False``, ``review.score < 7.0``,
+    ``code.tests_added == True``.  Returns False if the path is unresolvable
     or the condition is malformed — the edge is skipped, not crashed.
     """
     for op in _OPERATORS:
@@ -288,8 +314,7 @@ def evaluate_condition(
             lhs = _resolve_path(lhs_str.strip(), plan, code, review)
             if lhs is _MISSING:
                 return False
-            rhs = _parse_rhs(rhs_str.strip())
-            return _compare(lhs, op, rhs)
+            return _compare(lhs, op, _parse_rhs(rhs_str.strip()))
     return False
 
 
@@ -298,26 +323,46 @@ def evaluate_condition(
 # ---------------------------------------------------------------------------
 
 
-def _next_node(
+def _next_nodes(
     config: GraphConfig,
     current: AgentRole,
     plan: PlanOutput | None,
     code: CodeOutput | None,
     review: ReviewOutput | None,
-) -> AgentRole | None:
-    """Return the first outgoing edge whose condition is satisfied, or None."""
+) -> list[AgentRole]:
+    """Return the next nodes to activate after `current` completes.
+
+    Sequential edges (parallel=False): first matching condition wins — at most
+    one sequential next node is returned.
+    Parallel edges (parallel=True): all matching ones are returned.
+    Both can co-exist; the sequential winner is prepended to parallel matches.
+    Terminal edges (to_role=None) stop traversal from this node.
+    """
+    sequential: AgentRole | None = None
+    parallel: list[AgentRole] = []
+
     for edge in config.edges:
         if edge.from_role != current:
             continue
         if edge.to_role is None:
-            return None
-        if edge.condition is None or evaluate_condition(edge.condition, plan, code, review):
-            return edge.to_role
-    return None
+            continue  # terminal edge — contributes no next node
+        cond_met = edge.condition is None or evaluate_condition(
+            edge.condition, plan, code, review
+        )
+        if not cond_met:
+            continue
+        if edge.parallel:
+            parallel.append(edge.to_role)
+        elif sequential is None:
+            sequential = edge.to_role
+
+    result = [] if sequential is None else [sequential]
+    result.extend(parallel)
+    return result
 
 
 # ---------------------------------------------------------------------------
-# Node dispatch
+# Node dispatch — single call
 # ---------------------------------------------------------------------------
 
 
@@ -336,23 +381,20 @@ def _is_retryable(exc: Exception) -> bool:
     return False
 
 
-def _parse_node_json(
-    role: AgentRole, raw: str
-) -> PlanOutput | CodeOutput | ReviewOutput:
+def _parse_node_json(role: AgentRole, raw: str) -> _NodeOutput:
     data = json.loads(raw)
-    output_type = _OUTPUT_TYPES.get(role, PlanOutput)
-    return output_type.model_validate(data)  # type: ignore[return-value]
+    return _OUTPUT_TYPES.get(role, PlanOutput).model_validate(data)  # type: ignore[return-value]
 
 
-async def _dispatch_node(
+async def _dispatch_node_single(
     role: AgentRole,
     prompt: str,
     tier_config: TierConfig,
     resolved_model: str,
     base_url: str | None,
     use_json_mode: bool,
-) -> tuple[PlanOutput | CodeOutput | ReviewOutput, int]:
-    """Run one sub-agent node; return (typed_output, tokens_used)."""
+) -> tuple[_NodeOutput, int]:
+    """Single completion for one node; returns (typed_output, tokens_used)."""
     if not llm_circuit.allow_request():
         raise CircuitOpenError(llm_circuit)
 
@@ -374,13 +416,12 @@ async def _dispatch_node(
             except Exception:
                 pass
 
-            typed_output: PlanOutput | CodeOutput | ReviewOutput
-            if use_json_mode:
-                typed_output = _parse_node_json(role, result.output)
-            else:
-                typed_output = result.output  # type: ignore[assignment]
-
-            return typed_output, tokens
+            typed: _NodeOutput = (
+                _parse_node_json(role, result.output)
+                if use_json_mode
+                else result.output  # type: ignore[assignment]
+            )
+            return typed, tokens
 
         except Exception as exc:
             if _is_retryable(exc):
@@ -407,16 +448,90 @@ async def _dispatch_node(
 
 
 # ---------------------------------------------------------------------------
+# Node dispatch — beam search (N parallel completions, select best)
+# ---------------------------------------------------------------------------
+
+
+async def _dispatch_node_beam(
+    role: AgentRole,
+    prompt: str,
+    tier_config: TierConfig,
+    resolved_model: str,
+    base_url: str | None,
+    use_json_mode: bool,
+) -> tuple[_NodeOutput, int, list[str], int]:
+    """Run tier_config.parallel_generations completions concurrently.
+
+    Returns (best_output, total_tokens, candidates_str, selected_index).
+    candidates_str holds every successful generation's output (truncated).
+    selected_index is the index of the chosen candidate within candidates_str.
+
+    If parallel_generations==1, runs a single call with no overhead.
+    """
+    n = tier_config.parallel_generations
+
+    if n == 1:
+        output, tokens = await _dispatch_node_single(
+            role, prompt, tier_config, resolved_model, base_url, use_json_mode
+        )
+        return output, tokens, [str(output)[:500]], 0
+
+    # Launch N completions concurrently
+    raw = await asyncio.gather(
+        *[
+            _dispatch_node_single(role, prompt, tier_config, resolved_model, base_url, use_json_mode)
+            for _ in range(n)
+        ],
+        return_exceptions=True,
+    )
+
+    successes: list[tuple[_NodeOutput, int]] = [
+        item  # type: ignore[misc]
+        for item in raw
+        if not isinstance(item, BaseException)
+    ]
+
+    if not successes:
+        # All beams failed — re-raise the first exception
+        for item in raw:
+            if isinstance(item, BaseException):
+                raise item
+
+    # Score candidates; highest wins
+    scored = sorted(
+        range(len(successes)),
+        key=lambda i: _score_output(role, successes[i][0]),
+        reverse=True,
+    )
+    best_idx = scored[0]
+    best_output, _ = successes[best_idx]
+    total_tokens = sum(t for _, t in successes)
+    candidates_str = [str(o)[:500] for o, _ in successes]
+
+    await logger.ainfo(
+        "graph_beam_selected",
+        role=role,
+        n_beams=n,
+        n_succeeded=len(successes),
+        selected=best_idx,
+        score=_score_output(role, best_output),
+    )
+
+    return best_output, total_tokens, candidates_str, best_idx
+
+
+# ---------------------------------------------------------------------------
 # Graph executor — public entry point
 # ---------------------------------------------------------------------------
 
 
 async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
-    """Execute a task as a hyperagent graph.
+    """Execute a task as a hyperagent graph with beam search and fan-out.
 
-    Iterates sub-agent nodes per task.graph_config, routes between them by
-    evaluating edge conditions against accumulated outputs, and returns a
-    HyperagentOutput with the full per-node trace.
+    Each cycle dispatches all currently-active nodes concurrently.  Per-node
+    beam search fires parallel_generations completions and selects the best.
+    Edge conditions are evaluated against accumulated state after all nodes in
+    a cycle complete, so conditions can reference outputs from sibling nodes.
     """
     config = task.graph_config
     assert config is not None, "graph_config required for GRAPH mode"  # noqa: S101
@@ -430,6 +545,7 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
         nodes=config.nodes,
         entry=config.entry,
         max_cycles=config.max_cycles,
+        parallel_generations=tier_config.parallel_generations,
         model=resolved_model,
         description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN],
     )
@@ -439,51 +555,82 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
     code: CodeOutput | None = None
     review: ReviewOutput | None = None
 
-    current: AgentRole | None = config.entry
+    active: list[AgentRole] = [config.entry]
     cycle = 0
 
-    while current is not None and cycle < config.max_cycles:
-        await logger.ainfo("graph_node_dispatch", role=current, cycle=cycle)
-
-        prompt = _build_node_prompt(task, current, plan, code, review)
-        node_success = True
-        output_str = ""
-        tokens = 0
-        next_role: AgentRole | None = None
-
-        try:
-            raw_output, tokens = await _dispatch_node(
-                current, prompt, tier_config, resolved_model, base_url, use_json_mode
-            )
-            output_str = str(raw_output)[:500]
-
-            if current == AgentRole.PLANNER and isinstance(raw_output, PlanOutput):
-                plan = raw_output
-            elif current == AgentRole.CODER and isinstance(raw_output, CodeOutput):
-                code = raw_output
-            elif current == AgentRole.REVIEWER and isinstance(raw_output, ReviewOutput):
-                review = raw_output
-
-        except Exception as exc:
-            node_success = False
-            output_str = f"error: {exc}"
-            await logger.aerror("graph_node_failed", role=current, cycle=cycle, error=str(exc))
-
-        next_role = _next_node(config, current, plan, code, review) if node_success else None
-
-        node_results.append(
-            GraphNodeResult(
-                role=current,
-                success=node_success,
-                output=output_str,
-                tokens_used=tokens,
-                next_node=next_role,
-            )
+    while active and cycle < config.max_cycles:
+        await logger.ainfo(
+            "graph_cycle_start", cycle=cycle, active_nodes=active,
+            parallel_generations=tier_config.parallel_generations,
         )
 
-        cycle += 1
-        current = next_role
+        # --- Dispatch all active nodes concurrently (fan-out + beam) ----------
+        batch = await asyncio.gather(
+            *[
+                _dispatch_node_beam(
+                    role,
+                    _build_node_prompt(task, role, plan, code, review),
+                    tier_config,
+                    resolved_model,
+                    base_url,
+                    use_json_mode,
+                )
+                for role in active
+            ],
+            return_exceptions=True,
+        )
 
+        parallel_group = cycle if len(active) > 1 else None
+
+        # --- Pass A: update accumulated state for all successful results ------
+        for role, result in zip(active, batch):
+            if isinstance(result, BaseException):
+                continue
+            typed_output, _tokens, _candidates, _selected = result
+            if role == AgentRole.PLANNER and isinstance(typed_output, PlanOutput):
+                plan = typed_output
+            elif role == AgentRole.CODER and isinstance(typed_output, CodeOutput):
+                code = typed_output
+            elif role == AgentRole.REVIEWER and isinstance(typed_output, ReviewOutput):
+                review = typed_output
+
+        # --- Pass B: routing + record node results (uses fully-updated state) -
+        seen_next: set[AgentRole] = set()
+        next_active: list[AgentRole] = []
+
+        for role, result in zip(active, batch):
+            node_success = not isinstance(result, BaseException)
+
+            if node_success:
+                typed_output, total_tokens, candidates, selected = result  # type: ignore[misc]
+                role_next = _next_nodes(config, role, plan, code, review)
+                for nxt in role_next:
+                    if nxt not in seen_next:
+                        next_active.append(nxt)
+                        seen_next.add(nxt)
+            else:
+                total_tokens, candidates, selected, role_next = 0, [], 0, []
+                await logger.aerror(
+                    "graph_node_failed", role=role, cycle=cycle, error=str(result)
+                )
+
+            node_results.append(
+                GraphNodeResult(
+                    role=role,
+                    success=node_success,
+                    output=candidates[selected] if candidates else f"error: {result}",
+                    tokens_used=total_tokens,
+                    next_nodes=role_next,
+                    candidates=candidates,
+                    selected_candidate=selected,
+                    parallel_group=parallel_group,
+                )
+            )
+
+        active = next_active
+        cycle += 1
+
+    # --- Build final output ---------------------------------------------------
     success = bool(node_results) and all(r.success for r in node_results)
 
     if review and review.approved:
@@ -512,6 +659,7 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
         success=success,
         total_cycles=cycle,
         nodes_run=[r.role for r in node_results],
+        parallel_generations=tier_config.parallel_generations,
         review_approved=review.approved if review else None,
         review_score=review.score if review else None,
     )
