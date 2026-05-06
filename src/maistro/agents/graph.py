@@ -42,6 +42,7 @@ from maistro.agents.prompts import CODER_SYSTEM, PLANNER_SYSTEM, REVIEWER_SYSTEM
 from maistro.agents.types import (
     AgentRole,
     CodeOutput,
+    GraphBlackboard,
     GraphConfig,
     GraphNodeResult,
     HyperagentOutput,
@@ -207,22 +208,67 @@ def _reviewer_prompt(task: TaskCreate, plan: PlanOutput | None, code: CodeOutput
     )
 
 
+def _blackboard_prefix(role: AgentRole, blackboard: GraphBlackboard | None) -> str:
+    """Build the shared-context preamble prepended to every node prompt."""
+    if blackboard is None:
+        return ""
+    lines: list[str] = [f"## Pipeline Objective\n{blackboard.task_objective}\n"]
+
+    if blackboard.scout_context:
+        sc = blackboard.scout_context
+        if sc.relevant_files:
+            lines.append("## Workspace Briefing (from SCOUT)")
+            lines.append(f"Relevant files: {', '.join(sc.relevant_files[:10])}")
+        if sc.patterns:
+            lines.append(f"Patterns to follow: {sc.patterns}")
+        if sc.similar_implementations:
+            lines.append(
+                f"Similar existing implementations: "
+                f"{', '.join(sc.similar_implementations[:5])}"
+            )
+        if sc.raw_findings:
+            lines.append(f"Scout summary: {sc.raw_findings}")
+        lines.append("")
+
+    if blackboard.tool_evaluation and role == AgentRole.REVIEWER:
+        te = blackboard.tool_evaluation
+        lines.append(
+            f"## Sandbox Results\n"
+            f"Tests: {te.tests_passed} passed / {te.tests_failed} failed "
+            f"(pass rate {te.pass_rate:.0%})\n"
+            f"Lint errors: {len(te.lint_errors)}, Type errors: {len(te.type_errors)}\n"
+            f"{te.test_output[:400]}\n"
+        )
+
+    annotation = blackboard.node_annotations.get(role.value)
+    if annotation:
+        lines.append(f"## Hyperagent Note for {role.upper()}\n{annotation}\n")
+
+    if blackboard.iteration > 0:
+        lines.append(f"## Optimization Context\nIteration {blackboard.iteration}.")
+
+    return "\n".join(lines) + "\n---\n" if len(lines) > 1 else ""
+
+
 def _build_node_prompt(
     task: TaskCreate,
     role: AgentRole,
     plan: PlanOutput | None,
     code: CodeOutput | None,
     review: ReviewOutput | None,  # reserved for reviewer-retry context
+    blackboard: GraphBlackboard | None = None,
 ) -> str:
+    prefix = _blackboard_prefix(role, blackboard)
+
     if role == AgentRole.PLANNER:
-        return _planner_prompt(task)
+        return prefix + _planner_prompt(task)
     if role == AgentRole.CODER:
-        return _coder_prompt(task, plan) if plan else _planner_prompt(task)
+        return prefix + (_coder_prompt(task, plan) if plan else _planner_prompt(task))
     if role == AgentRole.REVIEWER:
         if code is None:
-            return f"Task: {task.description}\n\nNo code output available to review."
-        return _reviewer_prompt(task, plan, code)
-    return f"Task: {task.description}\nWorkspace: {task.workspace}"
+            return prefix + f"Task: {task.description}\n\nNo code output available to review."
+        return prefix + _reviewer_prompt(task, plan, code)
+    return prefix + f"Task: {task.description}\nWorkspace: {task.workspace}"
 
 
 # ---------------------------------------------------------------------------
@@ -557,9 +603,23 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
         entry=config.entry,
         max_cycles=config.max_cycles,
         parallel_generations=tier_config.parallel_generations,
+        run_scout=config.run_scout,
+        use_llm_routing=config.use_llm_routing,
         model=resolved_model,
         description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN],
     )
+
+    # Initialise the shared blackboard
+    blackboard = GraphBlackboard(
+        task_objective=task.description,
+        workspace=task.workspace,
+    )
+
+    # SCOUT pre-pass — populate blackboard before the main graph loop
+    if config.run_scout:
+        from maistro.agents.scout import run_scout
+
+        blackboard = await run_scout(task, blackboard, tier_config)
 
     node_results: list[GraphNodeResult] = []
     plan: PlanOutput | None = None
@@ -586,7 +646,7 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
             *[
                 _dispatch_node_beam(
                     role,
-                    _build_node_prompt(task, role, plan, code, review),
+                    _build_node_prompt(task, role, plan, code, review, blackboard),
                     tier_config,
                     resolved_model,
                     base_url,
@@ -670,6 +730,7 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
         graph_config=config,
         node_results=node_results,
         total_cycles=cycle,
+        blackboard=blackboard,
     )
 
     await logger.ainfo(

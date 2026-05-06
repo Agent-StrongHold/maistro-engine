@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -68,6 +69,95 @@ class GraphEdge(BaseModel):
     parallel: bool = False
 
 
+# ---------------------------------------------------------------------------
+# Blackboard — shared situational awareness across all nodes
+# ---------------------------------------------------------------------------
+
+
+class ScoutContext(BaseModel):
+    """What the SCOUT node found in the workspace.
+
+    Populated before (or concurrently with) PLANNER so all nodes start with
+    shared situational awareness of the codebase rather than working blind.
+    """
+
+    relevant_files: list[str] = Field(default_factory=list)
+    patterns: str = ""  # free-form findings: conventions, idioms, anti-patterns
+    dependency_map: dict[str, list[str]] = Field(default_factory=dict)  # file → imports
+    similar_implementations: list[str] = Field(default_factory=list)  # existing examples
+    raw_findings: str = ""  # full scout output for nodes that need more detail
+
+
+class ToolEvaluation(BaseModel):
+    """Objective evaluation produced by running the code in the sandbox.
+
+    Replaces (or supplements) model self-review with hard pass/fail signal.
+    The optimizer uses evaluation_score as its primary gradient when available.
+    """
+
+    tests_passed: int = 0
+    tests_failed: int = 0
+    test_output: str = ""
+    lint_errors: list[str] = Field(default_factory=list)
+    type_errors: list[str] = Field(default_factory=list)
+    evaluation_score: float = Field(default=0.0, ge=0, le=10)  # derived from results
+
+    @property
+    def total_tests(self) -> int:
+        return self.tests_passed + self.tests_failed
+
+    @property
+    def pass_rate(self) -> float:
+        return self.tests_passed / self.total_tests if self.total_tests else 0.0
+
+
+class GraphBlackboard(BaseModel):
+    """Shared context flowing through the entire graph execution.
+
+    Every node reads from the blackboard when building its prompt.
+    SCOUT writes scout_context; the sandbox runner writes tool_evaluation.
+    The hyperagent writes node_annotations to give specific nodes focused context
+    before they run (e.g. "match the auth pattern in src/security/middleware.py").
+
+    The blackboard is the mechanism that turns isolated agents into a coordinated
+    team: all members share the same view of the objective, the workspace, and
+    what has been learned in prior iterations.
+    """
+
+    task_objective: str
+    workspace: str
+    iteration: int = 0  # which optimization iteration (0 = first run)
+    scout_context: ScoutContext | None = None
+    tool_evaluation: ToolEvaluation | None = None
+    node_annotations: dict[str, str] = Field(default_factory=dict)  # AgentRole.value → note
+    optimization_history: list[Any] = Field(default_factory=list)  # list[OptimizationSignal]
+    metadata: dict[str, Any] = Field(default_factory=dict)  # extensible catch-all
+
+
+class ScoutOutput(BaseModel):
+    """Structured output from the SCOUT node."""
+
+    relevant_files: list[str]
+    patterns: str
+    dependency_map: dict[str, list[str]] = Field(default_factory=dict)
+    similar_implementations: list[str] = Field(default_factory=list)
+    summary: str  # one-paragraph briefing for other nodes
+
+
+class ConductorRoutingOutput(BaseModel):
+    """Output from an LLM-based CONDUCTOR routing call.
+
+    When use_llm_routing=True on GraphConfig, the CONDUCTOR makes a real LLM
+    call instead of evaluating condition strings.  It receives the full
+    blackboard and all current node outputs and returns a routing decision
+    with explicit reasoning.
+    """
+
+    next_node: AgentRole | None
+    reasoning: str
+    blackboard_update: dict[str, str] = Field(default_factory=dict)  # node_annotations to set
+
+
 class NodeConfig(BaseModel):
     """Per-node tunable configuration — prompts become parameters the optimizer can update.
 
@@ -97,6 +187,8 @@ class GraphConfig(BaseModel):
     hyperagent: AgentRole = AgentRole.CONDUCTOR
     max_cycles: int = Field(default=5, ge=1, le=20)
     node_configs: dict[AgentRole, NodeConfig] = Field(default_factory=dict)
+    use_llm_routing: bool = False  # True = CONDUCTOR makes LLM routing calls
+    run_scout: bool = False  # True = SCOUT runs before entry node to populate blackboard
 
 
 class GraphNodeResult(BaseModel):
@@ -174,6 +266,7 @@ class HyperagentOutput(ConductorOutput):
     graph_config: GraphConfig | None = None
     node_results: list[GraphNodeResult] = Field(default_factory=list)
     total_cycles: int = 0
+    blackboard: GraphBlackboard | None = None  # final state of the shared context
 
 
 # ---------------------------------------------------------------------------
