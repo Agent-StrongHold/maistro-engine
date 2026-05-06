@@ -277,7 +277,7 @@ class HyperagentOutput(ConductorOutput):
 class NodePerformanceMetrics(BaseModel):
     """Per-node performance summary extracted from a set of execution traces.
 
-    `bottleneck_score` is a composite signal (0–1) indicating how much this
+    `bottleneck_score` is a composite signal (0-1) indicating how much this
     node limits overall pipeline quality.  Higher = higher optimization priority.
     """
 

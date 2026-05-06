@@ -52,10 +52,9 @@ from maistro.agents.types import (
 )
 from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
-from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
-from maistro.observability.metrics import llm_errors_total, llm_requests_total, llm_tokens_used
 from maistro.memory.protocol import WorkingMemoryProtocol
+from maistro.observability.metrics import llm_errors_total, llm_requests_total, llm_tokens_used
 from maistro.tasks.models import TaskCreate
 
 logger = structlog.get_logger()
@@ -224,8 +223,7 @@ def _blackboard_prefix(role: AgentRole, blackboard: GraphBlackboard | None) -> s
             lines.append(f"Patterns to follow: {sc.patterns}")
         if sc.similar_implementations:
             lines.append(
-                f"Similar existing implementations: "
-                f"{', '.join(sc.similar_implementations[:5])}"
+                f"Similar existing implementations: {', '.join(sc.similar_implementations[:5])}"
             )
         if sc.raw_findings:
             lines.append(f"Scout summary: {sc.raw_findings}")
@@ -398,9 +396,7 @@ def _next_nodes(
             continue
         if edge.to_role is None:
             continue  # terminal edge — contributes no next node
-        cond_met = edge.condition is None or evaluate_condition(
-            edge.condition, plan, code, review
-        )
+        cond_met = edge.condition is None or evaluate_condition(edge.condition, plan, code, review)
         if not cond_met:
             continue
         if edge.parallel:
@@ -470,9 +466,7 @@ async def _dispatch_node_single(
                 pass
 
             typed: _NodeOutput = (
-                _parse_node_json(role, result.output)
-                if use_json_mode
-                else result.output  # type: ignore[assignment]
+                _parse_node_json(role, result.output) if use_json_mode else result.output  # type: ignore[assignment]
             )
             return typed, tokens
 
@@ -526,7 +520,12 @@ async def _dispatch_node_beam(
 
     if n == 1:
         output, tokens = await _dispatch_node_single(
-            role, prompt, tier_config, resolved_model, base_url, use_json_mode,
+            role,
+            prompt,
+            tier_config,
+            resolved_model,
+            base_url,
+            use_json_mode,
             system_prompt_override,
         )
         return output, tokens, [str(output)[:500]], 0
@@ -535,7 +534,12 @@ async def _dispatch_node_beam(
     raw = await asyncio.gather(
         *[
             _dispatch_node_single(
-                role, prompt, tier_config, resolved_model, base_url, use_json_mode,
+                role,
+                prompt,
+                tier_config,
+                resolved_model,
+                base_url,
+                use_json_mode,
                 system_prompt_override,
             )
             for _ in range(n)
@@ -579,6 +583,88 @@ async def _dispatch_node_beam(
 
 
 # ---------------------------------------------------------------------------
+# Cycle helpers — extracted to keep run_graph_task under complexity limit
+# ---------------------------------------------------------------------------
+
+
+def _update_state(
+    active: list[AgentRole],
+    batch: list[object],
+    plan: PlanOutput | None,
+    code: CodeOutput | None,
+    review: ReviewOutput | None,
+) -> tuple[PlanOutput | None, CodeOutput | None, ReviewOutput | None]:
+    """Pass A: fold successful node outputs into accumulated pipeline state."""
+    for role, result in zip(active, batch, strict=True):
+        if isinstance(result, BaseException):
+            continue
+        typed_output, _tokens, _candidates, _selected = result  # type: ignore[misc]
+        if role == AgentRole.PLANNER and isinstance(typed_output, PlanOutput):
+            plan = typed_output
+        elif role == AgentRole.CODER and isinstance(typed_output, CodeOutput):
+            code = typed_output
+        elif role == AgentRole.REVIEWER and isinstance(typed_output, ReviewOutput):
+            review = typed_output
+    return plan, code, review
+
+
+async def _route_and_record(
+    active: list[AgentRole],
+    batch: list[object],
+    plan: PlanOutput | None,
+    code: CodeOutput | None,
+    review: ReviewOutput | None,
+    config: GraphConfig,
+    cycle: int,
+    parallel_group: int | None,
+) -> tuple[list[AgentRole], list[GraphNodeResult]]:
+    """Pass B: evaluate edges with fully-updated state; record per-node results."""
+    seen_next: set[AgentRole] = set()
+    next_active: list[AgentRole] = []
+    new_results: list[GraphNodeResult] = []
+
+    for role, result in zip(active, batch, strict=True):
+        node_success = not isinstance(result, BaseException)
+
+        if node_success:
+            _typed_output, total_tokens, candidates, selected = result  # type: ignore[misc]
+            role_next = _next_nodes(config, role, plan, code, review)
+            for nxt in role_next:
+                if nxt not in seen_next:
+                    next_active.append(nxt)
+                    seen_next.add(nxt)
+        else:
+            total_tokens, candidates, selected, role_next = 0, [], 0, []
+            await logger.aerror("graph_node_failed", role=role, cycle=cycle, error=str(result))
+
+        new_results.append(
+            GraphNodeResult(
+                role=role,
+                success=node_success,
+                output=candidates[selected] if candidates else f"error: {result}",
+                tokens_used=total_tokens,
+                next_nodes=role_next,
+                candidates=candidates,
+                selected_candidate=selected,
+                parallel_group=parallel_group,
+            )
+        )
+
+    return next_active, new_results
+
+
+def _build_final_answer(review: ReviewOutput | None, plan: PlanOutput | None) -> str:
+    if review and review.approved:
+        return f"Task completed. Review score: {review.score}/10."
+    if review:
+        issues = "; ".join(review.issues[:2]) if review.issues else "unspecified issues"
+        return f"Review not approved (score: {review.score}/10): {issues}"
+    if plan:
+        return plan.summary
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # Graph executor — public entry point
 # ---------------------------------------------------------------------------
 
@@ -597,7 +683,7 @@ async def run_graph_task(
     a cycle complete, so conditions can reference outputs from sibling nodes.
     """
     config = task.graph_config
-    assert config is not None, "graph_config required for GRAPH mode"  # noqa: S101
+    assert config is not None, "graph_config required for GRAPH mode"
 
     tier_config = _get_tier_config(task.tier)
     resolved_model, base_url, use_json_mode = resolve_model(tier_config.model)
@@ -648,18 +734,17 @@ async def run_graph_task(
 
     while active and cycle < config.max_cycles:
         await logger.ainfo(
-            "graph_cycle_start", cycle=cycle, active_nodes=active,
+            "graph_cycle_start",
+            cycle=cycle,
+            active_nodes=active,
             parallel_generations=tier_config.parallel_generations,
         )
-
-        # --- Dispatch all active nodes concurrently (fan-out + beam) ----------
-        # Resolve any optimizer-improved prompts before entering the gather
         prompt_overrides = {
             role: config.node_configs[role].system_prompt
             for role in active
             if role in config.node_configs and config.node_configs[role].system_prompt
         }
-        batch = await asyncio.gather(
+        batch: list[object] = await asyncio.gather(  # type: ignore[assignment]
             *[
                 _dispatch_node_beam(
                     role,
@@ -674,69 +759,17 @@ async def run_graph_task(
             ],
             return_exceptions=True,
         )
-
         parallel_group = cycle if len(active) > 1 else None
-
-        # --- Pass A: update accumulated state for all successful results ------
-        for role, result in zip(active, batch):
-            if isinstance(result, BaseException):
-                continue
-            typed_output, _tokens, _candidates, _selected = result
-            if role == AgentRole.PLANNER and isinstance(typed_output, PlanOutput):
-                plan = typed_output
-            elif role == AgentRole.CODER and isinstance(typed_output, CodeOutput):
-                code = typed_output
-            elif role == AgentRole.REVIEWER and isinstance(typed_output, ReviewOutput):
-                review = typed_output
-
-        # --- Pass B: routing + record node results (uses fully-updated state) -
-        seen_next: set[AgentRole] = set()
-        next_active: list[AgentRole] = []
-
-        for role, result in zip(active, batch):
-            node_success = not isinstance(result, BaseException)
-
-            if node_success:
-                typed_output, total_tokens, candidates, selected = result  # type: ignore[misc]
-                role_next = _next_nodes(config, role, plan, code, review)
-                for nxt in role_next:
-                    if nxt not in seen_next:
-                        next_active.append(nxt)
-                        seen_next.add(nxt)
-            else:
-                total_tokens, candidates, selected, role_next = 0, [], 0, []
-                await logger.aerror(
-                    "graph_node_failed", role=role, cycle=cycle, error=str(result)
-                )
-
-            node_results.append(
-                GraphNodeResult(
-                    role=role,
-                    success=node_success,
-                    output=candidates[selected] if candidates else f"error: {result}",
-                    tokens_used=total_tokens,
-                    next_nodes=role_next,
-                    candidates=candidates,
-                    selected_candidate=selected,
-                    parallel_group=parallel_group,
-                )
-            )
-
-        active = next_active
+        plan, code, review = _update_state(active, batch, plan, code, review)
+        active, new_results = await _route_and_record(
+            active, batch, plan, code, review, config, cycle, parallel_group
+        )
+        node_results.extend(new_results)
         cycle += 1
 
     # --- Build final output ---------------------------------------------------
     success = bool(node_results) and all(r.success for r in node_results)
-
-    if review and review.approved:
-        final_answer = f"Task completed. Review score: {review.score}/10."
-    elif review and not review.approved:
-        issues = "; ".join(review.issues[:2]) if review.issues else "unspecified issues"
-        final_answer = f"Review not approved (score: {review.score}/10): {issues}"
-    elif plan:
-        final_answer = plan.summary
-    else:
-        final_answer = ""
+    final_answer = _build_final_answer(review, plan)
 
     result = HyperagentOutput(
         plan=plan,

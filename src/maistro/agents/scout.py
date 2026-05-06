@@ -25,7 +25,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from maistro.agents.prompts import SCOUT_SYSTEM
 from maistro.agents.types import GraphBlackboard, ScoutContext, ScoutOutput
 from maistro.config.model_resolver import resolve_model
-from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
+from maistro.config.models import TierConfig
 from maistro.observability.metrics import llm_requests_total, llm_tokens_used
 from maistro.tasks.models import TaskCreate
 
@@ -44,7 +44,9 @@ def _build_scout_agent(model: str, base_url: str | None, use_json_mode: bool) ->
     output_type: type = ScoutOutput
 
     if use_json_mode:
-        system = SCOUT_SYSTEM + """
+        system = (
+            SCOUT_SYSTEM
+            + """
 
 You MUST respond with valid JSON matching this exact schema (no markdown, no extra text):
 {
@@ -55,6 +57,7 @@ You MUST respond with valid JSON matching this exact schema (no markdown, no ext
   "summary": "string — one paragraph briefing for the team"
 }
 """
+        )
         output_type = str
 
     if base_url:

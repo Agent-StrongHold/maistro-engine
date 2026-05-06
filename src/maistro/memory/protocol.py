@@ -50,9 +50,7 @@ class WorkingMemoryProtocol(Protocol):
         """Return the most recent signals, newest first."""
         ...
 
-    async def save_node_config(
-        self, task_type: str, role: AgentRole, config: NodeConfig
-    ) -> None:
+    async def save_node_config(self, task_type: str, role: AgentRole, config: NodeConfig) -> None:
         """Persist an optimized NodeConfig (improved system prompt) for a task type.
 
         In Obsidian this becomes an editable markdown file; human edits are

@@ -72,7 +72,7 @@ _ROLE_OUTPUT_SPEC = {
     ),
     AgentRole.CODER: "CodeOutput — files_changed: list[str], description: str, tests_added: bool",
     AgentRole.REVIEWER: (
-        "ReviewOutput — approved: bool, score: float (0–10), "
+        "ReviewOutput — approved: bool, score: float (0-10), "
         "issues: list[str], suggestions: list[str]"
     ),
     AgentRole.SCOUT: "SearchOutput — findings: str, relevant_files: list[str]",
@@ -213,14 +213,11 @@ class GraphOptimizer:
                 token_sums[nr.role] += nr.tokens_used
 
         avg_tokens_per_role = {
-            role: token_sums[role] / max(run_counts[role], 1)
-            for role in run_counts
+            role: token_sums[role] / max(run_counts[role], 1) for role in run_counts
         }
         max_avg_tokens = max(avg_tokens_per_role.values(), default=1.0)
 
-        pipeline_avg_review = (
-            sum(review_scores) / len(review_scores) if review_scores else None
-        )
+        pipeline_avg_review = sum(review_scores) / len(review_scores) if review_scores else None
 
         # Build per-role metrics
         metrics: list[NodePerformanceMetrics] = []
@@ -328,9 +325,7 @@ class GraphOptimizer:
 
         return _SYSTEM_PROMPTS.get(role, "")
 
-    def _collect_failures(
-        self, traces: list[HyperagentOutput], role: AgentRole
-    ) -> list[str]:
+    def _collect_failures(self, traces: list[HyperagentOutput], role: AgentRole) -> list[str]:
         """Extract up to 5 short failure output snippets for the given role."""
         failures = []
         for trace in traces:
@@ -356,9 +351,7 @@ class GraphOptimizer:
         run_count = node_metric.run_count if node_metric else 0
         bottleneck = node_metric.bottleneck_score if node_metric else 0.0
 
-        rank = next(
-            (i + 1 for i, m in enumerate(signal.node_metrics) if m.role == role), 1
-        )
+        rank = next((i + 1 for i, m in enumerate(signal.node_metrics) if m.role == role), 1)
         rank_suffix = {1: "st", 2: "nd", 3: "rd"}.get(rank, "th")
 
         review_context = (
@@ -368,7 +361,7 @@ class GraphOptimizer:
         )
 
         failures_text = (
-            "\n\n".join(f"  [{i+1}] {f}" for i, f in enumerate(failure_examples))
+            "\n\n".join(f"  [{i + 1}] {f}" for i, f in enumerate(failure_examples))
             if failure_examples
             else "  No recorded failures — optimize for quality improvement."
         )
