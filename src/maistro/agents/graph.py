@@ -55,6 +55,7 @@ from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
 from maistro.observability.metrics import llm_errors_total, llm_requests_total, llm_tokens_used
+from maistro.memory.protocol import WorkingMemoryProtocol
 from maistro.tasks.models import TaskCreate
 
 logger = structlog.get_logger()
@@ -582,7 +583,12 @@ async def _dispatch_node_beam(
 # ---------------------------------------------------------------------------
 
 
-async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
+async def run_graph_task(
+    task: TaskCreate,
+    memory: WorkingMemoryProtocol | None = None,
+    run_id: str | None = None,
+    task_type: str = "default",
+) -> HyperagentOutput:
     """Execute a task as a hyperagent graph with beam search and fan-out.
 
     Each cycle dispatches all currently-active nodes concurrently.  Per-node
@@ -614,6 +620,17 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
         task_objective=task.description,
         workspace=task.workspace,
     )
+
+    # Pre-load optimized node configs + historical signals from memory store
+    if memory is not None:
+        stored_configs = await memory.load_node_configs(task_type)
+        if stored_configs:
+            merged = dict(stored_configs)
+            merged.update(config.node_configs)  # explicit task configs win
+            config = config.model_copy(update={"node_configs": merged})
+        recent_signals = await memory.load_signals()
+        if recent_signals:
+            blackboard = blackboard.model_copy(update={"optimization_history": recent_signals})
 
     # SCOUT pre-pass — populate blackboard before the main graph loop
     if config.run_scout:
@@ -742,5 +759,8 @@ async def run_graph_task(task: TaskCreate) -> HyperagentOutput:
         review_approved=review.approved if review else None,
         review_score=review.score if review else None,
     )
+
+    if memory is not None and run_id:
+        await memory.save_trace(run_id, result)
 
     return result
