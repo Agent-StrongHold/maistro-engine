@@ -53,6 +53,7 @@ the pricing URLs before committing to a provider.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Image generation pricing
@@ -1621,7 +1622,7 @@ GPU_CLOUD_INSTANCES: list[GPUInstancePricing] = [
 #   - AWS g5.xlarge spot $0.30/hr vs $1.19 on-demand = 75% savings on batch
 # ---------------------------------------------------------------------------
 
-BATCH_PIPELINE: dict[str, dict] = {
+BATCH_PIPELINE: dict[str, Any] = {
     "lora_training": {
         "trigger": "after_book1_payment",
         "queue": "SQS",
@@ -1738,7 +1739,7 @@ def finetune_table() -> str:
     """Render FINETUNE_MODELS sorted by typical cost per run."""
     rows = sorted(
         [r for r in FINETUNE_MODELS if r.typical_cost_usd is not None],
-        key=lambda r: r.typical_cost_usd,  # type: ignore[arg-type]
+        key=lambda r: r.typical_cost_usd or 0.0,
     )
     header = (
         f"{'Provider':<16} {'Service':<40} {'$/run':>8} {'Method':<14} {'Min imgs':>9} {'Time':>8}"
@@ -1777,7 +1778,7 @@ def gpu_cloud_table(
         rows = [r for r in rows if r.vram_gb >= min_vram_gb]
     if spot_only:
         rows = [r for r in rows if r.spot_price_per_hour is not None]
-        rows = sorted(rows, key=lambda r: r.spot_price_per_hour)  # type: ignore[arg-type]
+        rows = sorted(rows, key=lambda r: r.spot_price_per_hour or 0.0)
     else:
         rows = sorted(rows, key=lambda r: r.price_per_hour)
 
