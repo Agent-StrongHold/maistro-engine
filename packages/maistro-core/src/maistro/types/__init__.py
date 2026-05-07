@@ -10,6 +10,7 @@ from maistro.types.agent import (
     ReasoningResult,
 )
 from maistro.types.config import (
+    AgentConfig,
     AuthConfig,
     CORSConfig,
     LearningsConfig,
@@ -21,6 +22,7 @@ from maistro.types.config import (
     TaskTypeConfig,
 )
 from maistro.types.errors import (
+    AgentError,
     AuthError,
     ClassificationError,
     ConfigError,
@@ -90,6 +92,8 @@ from maistro.types.spec import (
 from maistro.types.tool import ToolCall, ToolDefinition, ToolResult
 
 __all__ = [
+    "AgentConfig",
+    "AgentError",
     "AgentIdentity",
     "AgentResponse",
     "AgentTask",
