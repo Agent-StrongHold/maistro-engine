@@ -1,6 +1,6 @@
 # CLAUDE.md — Maistro Engine
 
-**Project:** Maistro Engine — Multi-agent AI platform (monorepo)
+**Project:** Maistro Engine — Shared Python runtime for AI agent platforms
 **License:** Apache 2.0
 **Python:** 3.12+
 
@@ -8,18 +8,36 @@
 
 ## Architecture
 
-Monorepo with 3 packages. Consumers import what they need.
+Monorepo with 4 packages. The canonical shared runtime that powers Agent Conductor, Agent Stronghold, and Canvas Studio.
 
 ```
 packages/
 ├── maistro-core/      # Shared library: pip install maistro-core
-├── maistro-server/    # FastAPI app: pip install maistro-server
-└── maistro-turing/    # Self-model extensions: pip install maistro-turing
+├── maistro-canvas/    # Standalone book builder (frontend + canvas engine)
+├── maistro-server/    # FastAPI app (replaces conductor-router)
+└── maistro-turing/    # Autonoetic self-model extensions
 ```
+
+### Product relationship
+
+```
+maistro-engine (this repo)
+  │
+  ├─→ Agent Conductor (household/personal)  — maistro-server + maistro-turing
+  ├─→ Agent Stronghold (enterprise)         — pip install maistro-core + multi-tenant layer
+  └─→ Canvas Studio (standalone book builder) — maistro-canvas + P40 image gen server
+```
+
+**ADR-019** defines the canonical source split: maistro-core = shared runtime, Stronghold = multi-tenant only.
+
+### Naming convention
+
+- `AgentConfig`, `AgentError` — canonical names in maistro-core
+- `MaistroConfig`, `MaistroError`, `StrongholdError` — backwards-compat aliases
 
 ### maistro-core (the library)
 
-Every subsystem is importable. Consumers (conductor-router, Project Turing, your own app) add `maistro-core` to their requirements and import what they need.
+Every subsystem is importable. Consumers add `maistro-core` to their requirements.
 
 | Subsystem | Import | What |
 |-----------|--------|------|
@@ -35,39 +53,42 @@ Every subsystem is importable. Consumers (conductor-router, Project Turing, your
 | **Protocols** | `maistro.protocols` | Abstract interfaces for DI |
 | **Types** | `maistro.types` | Shared dataclasses |
 | **Orchestrator** | `maistro.orchestrator` | Super Planner + Master Orchestrator |
+| **Container** | `maistro.container` | DI wiring + `route_request()` |
+| **Conduit** | `maistro.conduit` | Request pipeline: classify → route → agent.handle |
+| **Auth** | `maistro.auth` | B2B service keys with scoped permissions |
+| **Events** | `maistro.events` | Bus, handlers, recipes, triggers |
+| **Quota** | `maistro.quota` | Token usage tracking per provider per billing cycle |
+| **Sessions** | `maistro.sessions` | Conversation history with TTL pruning |
+| **Intents** | `maistro.agents.intents` | task_type → agent_name routing table |
 
-### Agent Roster (renameable)
-
-Agents are data (agent.yaml), not code. Rename freely.
-
-| Default Name | Strategy | Role |
-|-------------|----------|------|
-| Code Agent (Artificer) | plan_execute | Multi-phase engineering |
-| Write Agent (Scribe) | plan_execute | Writing specialist |
-| Create Agent (Forge) | react | Tool/skill creation |
-| Control Agent (Warden-at-Arms) | react | Device/API control |
-| Review Agent (Auditor) | direct | PR review, security checks |
-| Decompose Agent (Frank) | direct | Issue analysis, spec emission |
-| Build Agent (Mason) | react | Plan execution, code generation |
-| Search Agent (Ranger) | react | Read-only search |
-| Triage Agent (Arbiter) | delegate | Clarification + delegation |
-
-### Builder Pipeline Stages
+### maistro-canvas (standalone book builder)
 
 ```
-queued → issue_analyzed → acceptance_defined → tests_written →
-implementation_started → implementation_ready → quality_checks_passed → completed
+packages/maistro-canvas/
+├── src/maistro_canvas/      # Python library
+│   ├── types.py             # Canvas types + 20 domain errors
+│   ├── protocols.py         # CanvasStore, ImageGenClient, CompositorService
+│   ├── auth.py              # Standalone API key auth
+│   └── canvas/              # Canvas engine (from Stronghold spec 1189)
+│       ├── tool.py          # In-process canvas tool (903 lines)
+│       ├── executor.py      # Canvas action executor
+│       ├── compositor.py    # PIL-based RGBA layer assembly
+│       ├── store.py         # PostgreSQL canvas store
+│       └── routes.py        # REST API routes
+├── frontend/                # React + Express POC
+│   ├── src/                 # React UI (14 components)
+│   ├── server/              # Python backend
+│   │   ├── mcp/             # Canvas pipeline, illustration, refinement
+│   │   ├── lulu/            # Lulu print-on-demand integration
+│   │   ├── models/          # SQLAlchemy models (11 tables)
+│   │   └── templates/       # Story templates
+│   └── SPEC.md
+└── agents/davinci/          # Da Vinci agent definition
 ```
 
-Builder roles: Frank (decompose), Mason (build), Auditor (review), Quartermaster (spec templates), Archie (property tests).
+### maistro-turing (autonoetic self-model)
 
-### Super Planner + Master Orchestrator
-
-The orchestrator system that can execute the consolidation plan (or any complex task) in parallel:
-
-- **Super Planner** decomposes goals into parallel-safe waves via topological sort
-- **Master Orchestrator** dispatches waves, handles retries, tracks XP, gates security
-- Both live in `maistro.orchestrator`
+Complete implementation: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security.
 
 ---
 
@@ -78,28 +99,38 @@ The orchestrator system that can execute the consolidation plan (or any complex 
 pip install -e packages/maistro-core
 pip install -e packages/maistro-server
 pip install -e packages/maistro-turing
+pip install -e packages/maistro-canvas
 
-# Run core tests
+# Run core tests (390 tests)
 PYTHONPATH=packages/maistro-core/src pytest packages/maistro-core/tests/ -q
 
-# Run server tests
-PYTHONPATH=packages/maistro-core/src:packages/maistro-server/src pytest packages/maistro-server/tests/ -q
+# Run all package tests
+PYTHONPATH=packages/maistro-core/src:packages/maistro-canvas/src:packages/maistro-turing/src \
+  pytest packages/maistro-core/tests packages/maistro-canvas/tests packages/maistro-turing/tests -q
 
 # Lint
 ruff check packages/
 mypy packages/ --strict
 
-# Verify all imports
+# Verify all core imports
 PYTHONPATH=packages/maistro-core/src python3 -c "
+from maistro.container import Container, create_container
+from maistro.conduit import Conduit
+from maistro.types import AgentConfig, AgentError
 from maistro.memory.learnings.store import InMemoryLearningStore
 from maistro.security.warden.detector import Warden
 from maistro.classifier.engine import ClassifierEngine
 from maistro.router.selector import RouterEngine
-from maistro.agents.base import Agent
-from maistro.builders import BuildersOrchestrator
-from maistro.a2a.delegate import A2ADelegator
-from maistro.skills.marketplace import SkillMarketplace
-from maistro.orchestrator import SuperPlanner, MasterOrchestrator
+from maistro.agents.intents import IntentRegistry
+from maistro.quota.tracker import InMemoryQuotaTracker
+from maistro.sessions.store import InMemorySessionStore
+print('OK')
+"
+
+# Verify canvas imports
+PYTHONPATH=packages/maistro-core/src:packages/maistro-canvas/src python3 -c "
+from maistro_canvas import CanvasRecord, CanvasStore, ImageGenClient
+from maistro_canvas.types import validate_canvas_dimensions, CanvasError
 print('OK')
 "
 ```
@@ -110,31 +141,12 @@ print('OK')
 
 1. **Library-first, app is optional.** Core is a pure Python library. FastAPI app is a thin wrapper.
 2. **Protocol-driven DI.** All business logic depends on protocols (abstract interfaces), never concrete implementations.
-3. **Agents are data.** An agent is rows in PostgreSQL, prompts in YAML. The runtime is shared. Rename via agent.yaml.
+3. **Agents are data.** An agent is rows in a store, prompts in YAML. The runtime is shared.
 4. **Scoring formula.** `quality^(qw*p) / cost^cw` with scarcity-based cost and task-type speed bonuses.
 5. **Memory must forget.** Decay without reinforcement, weight floors for wisdom/regrets.
 6. **All input is untrusted.** Warden scans at every trust boundary. Sentinel validates tool calls.
-7. **No org_id.** Multi-tenant isolation is Stronghold-specific. Scope isolation (global → team → user → agent → session) is kept.
-
----
-
-## Consumer Integration
-
-### conductor-router (homelab)
-```python
-# requirements.txt: maistro-core>=0.1
-from maistro.security.warden.detector import Warden
-from maistro.classifier.engine import ClassifierEngine
-from maistro.router.scorer import score_candidate
-```
-
-### Project Turing
-```python
-# requirements.txt: maistro-core>=0.1, maistro-turing>=0.1
-from maistro_turing.bridge import TuringMemoryBridge, TuringSecurityBridge
-from maistro_turing.self_model import Mood, PersonalityFacet
-from maistro_turing.runtime import TuringActor
-```
+7. **No org_id in maistro-core.** Multi-tenant isolation is Stronghold-specific. Scope isolation (global → team → user → agent → session) is kept.
+8. **Canvas Studio is standalone.** Runs on a mini-PC with a P40 image gen server. No Conductor or Stronghold required.
 
 ---
 
@@ -146,23 +158,40 @@ maistro-engine/
 │   ├── maistro-core/
 │   │   ├── pyproject.toml
 │   │   └── src/maistro/
-│   │       ├── agents/          # base, factory, strategies, roster
+│   │       ├── agents/          # base, factory, strategies, roster, intents
 │   │       ├── a2a/             # delegate, lifecycle, guest_peers
+│   │       ├── auth/            # B2B service keys
 │   │       ├── builders/        # contracts, runtime, orchestrator, spec, verifier
 │   │       ├── classifier/      # engine, keyword, llm_fallback, complexity
 │   │       ├── config/          # settings, loader
+│   │       ├── conduit.py       # Request pipeline
+│   │       ├── container.py     # DI wiring
+│   │       ├── events/          # bus, handlers, recipes
+│   │       ├── integrations/    # HA, CoinSwarm, Turing bridges
 │   │       ├── memory/          # learnings, episodic, scopes, outcomes
 │   │       ├── observability/   # logging, metrics, tracing
 │   │       ├── orchestrator/    # Super Planner, Master Orchestrator
 │   │       ├── persistence/     # PostgreSQL stores
 │   │       ├── protocols/       # abstract interfaces
+│   │       ├── quota/           # billing, tracker
 │   │       ├── router/          # scorer, selector, filter, scarcity, speed
-│   │       ├── scheduler/       # heartbeat, proactive autonomy
+│   │       ├── scheduler/       # placeholder
 │   │       ├── security/        # warden, sentinel, gate, auth
+│   │       ├── sessions/        # conversation history
 │   │       ├── skills/          # marketplace, forge, parser, canary, connectors
 │   │       ├── tasks/           # queue, runner, models
 │   │       ├── tools/           # sandbox, git, browser
-│   │       └── types/           # shared dataclasses
+│   │       └── types/           # AgentConfig, AgentError, shared dataclasses
+│   │
+│   ├── maistro-canvas/
+│   │   ├── pyproject.toml       # depends: maistro-core
+│   │   ├── frontend/            # React + Express book builder POC
+│   │   ├── agents/davinci/      # Da Vinci agent definition
+│   │   └── src/maistro_canvas/
+│   │       ├── types.py         # Canvas types + domain errors
+│   │       ├── protocols.py     # CanvasStore, ImageGenClient, CompositorService
+│   │       ├── auth.py          # Standalone auth
+│   │       └── canvas/          # executor, compositor, store, routes, tool
 │   │
 │   ├── maistro-server/
 │   │   ├── pyproject.toml       # depends: maistro-core
@@ -178,8 +207,7 @@ maistro-engine/
 │           ├── runtime.py       # Actor, chat, config
 │           └── producers.py     # Blog, reflection, curiosity, emotion
 │
-├── docs/adr/                    # Architecture Decision Records
-├── CONSOLIDATION-PLAN.md        # Full subsystem inventory + wave plan
-├── CLAUDE.md                    # This file
+├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-019)
+├── src/maistro/                 # Old layout (agent spec/spawner/recipes + model pricing)
 └── pyproject.toml               # Workspace root (shared tool config)
 ```
