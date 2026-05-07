@@ -1,8 +1,7 @@
 [project]
-name = "maistro"
-version = "0.1.0"
-description = "Software engineering department in a box — multi-agent AI platform"
-readme = "README.md"
+name = "maistro-workspace"
+version = "0.0.0"
+description = "Monorepo workspace root — all code lives in packages/"
 requires-python = ">=3.11"
 dependencies = [
     # API
@@ -50,13 +49,10 @@ scheduling = ["apscheduler>=3.11"]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/maistro"]
-
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["src"]
+src = ["packages/maistro-core/src", "packages/maistro-server/src", "packages/maistro-turing/src", "src/maistro"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "C90", "C4"]
@@ -66,9 +62,14 @@ ignore = ["E501"]
 max-complexity = 10
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["packages/maistro-core/tests", "packages/maistro-server/tests", "packages/maistro-turing/tests", "tests"]
 asyncio_mode = "auto"
-pythonpath = ["src"]
+pythonpath = [
+    "packages/maistro-core/src",
+    "packages/maistro-server/src",
+    "packages/maistro-turing/src",
+    "src/maistro",
+]
 
 [tool.mypy]
 python_version = "3.12"
