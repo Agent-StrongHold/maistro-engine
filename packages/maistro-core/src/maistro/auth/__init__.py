@@ -18,6 +18,7 @@ from maistro.auth._types import (
     ServiceIdentity,
     expand_scopes,
 )
+from maistro.auth.checker import ServiceKeyChecker
 from maistro.auth.client import ServiceKeyClient
 from maistro.auth.provider import ServiceKeyAuthProvider
 from maistro.auth.registry import ServiceKeyRegistry
@@ -39,8 +40,10 @@ def __getattr__(name: str):
 __all__ = [
     "Scope",
     "ScopeCategory",
+    "ServiceChecker",
     "ServiceIdentity",
     "ServiceKeyAuthProvider",
+    "ServiceKeyChecker",
     "ServiceKeyClient",
     "ServiceKeyRegistry",
     "expand_scopes",
