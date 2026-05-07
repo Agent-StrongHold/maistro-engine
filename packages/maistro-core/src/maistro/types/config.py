@@ -100,7 +100,7 @@ class AuthConfig(BaseModel):
     session_max_age: int = 3600
 
 
-class MaistroConfig(BaseModel):
+class AgentConfig(BaseModel):
     """Root configuration. Validated at startup."""
 
     providers: dict[str, dict[str, object]] = Field(default_factory=dict)
@@ -127,3 +127,6 @@ class MaistroConfig(BaseModel):
     max_request_body_bytes: int = 1_048_576
     webhook_secret: str = ""
     cache_breakpoints_enabled: bool = False
+
+
+MaistroConfig = AgentConfig

@@ -7,10 +7,10 @@ and a `detail` for human consumption.
 from __future__ import annotations
 
 
-class MaistroError(Exception):
+class AgentError(Exception):
     """Base error for all domain errors."""
 
-    code: str = "MAISTRO_ERROR"
+    code: str = "AGENT_ERROR"
 
     def __init__(self, detail: str = "", *, code: str | None = None) -> None:
         self.detail = detail
@@ -22,7 +22,7 @@ class MaistroError(Exception):
 # ── Routing ──────────────────────────────────────────────────────
 
 
-class RoutingError(MaistroError):
+class RoutingError(AgentError):
     """Model routing failure."""
 
     code = "ROUTING_ERROR"
@@ -49,7 +49,7 @@ class NoModelsError(RoutingError):
 # ── Classification ───────────────────────────────────────────────
 
 
-class ClassificationError(MaistroError):
+class ClassificationError(AgentError):
     """Intent classification failure."""
 
     code = "CLASSIFICATION_ERROR"
@@ -58,7 +58,7 @@ class ClassificationError(MaistroError):
 # ── Authentication & Authorization ───────────────────────────────
 
 
-class AuthError(MaistroError):
+class AuthError(AgentError):
     """Authentication or authorization failure."""
 
     code = "AUTH_ERROR"
@@ -79,7 +79,7 @@ class PermissionDeniedError(AuthError):
 # ── Tool Execution ───────────────────────────────────────────────
 
 
-class ToolError(MaistroError):
+class ToolError(AgentError):
     """Tool execution failure."""
 
     code = "TOOL_ERROR"
@@ -88,7 +88,7 @@ class ToolError(MaistroError):
 # ── Security ─────────────────────────────────────────────────────
 
 
-class SecurityError(MaistroError):
+class SecurityError(AgentError):
     """Security violation detected."""
 
     code = "SECURITY_ERROR"
@@ -109,7 +109,7 @@ class TrustViolationError(SecurityError):
 # ── Configuration ────────────────────────────────────────────────
 
 
-class ConfigError(MaistroError):
+class ConfigError(AgentError):
     """Configuration validation failure."""
 
     code = "CONFIG_ERROR"
@@ -118,7 +118,7 @@ class ConfigError(MaistroError):
 # ── Skills ───────────────────────────────────────────────────────
 
 
-class SkillError(MaistroError):
+class SkillError(AgentError):
     """Skill loading, parsing, or forge failure."""
 
     code = "SKILL_ERROR"
@@ -126,4 +126,5 @@ class SkillError(MaistroError):
 
 # ── Backwards compat aliases ─────────────────────────────────────
 
-StrongholdError = MaistroError
+MaistroError = AgentError
+StrongholdError = AgentError
