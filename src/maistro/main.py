@@ -62,6 +62,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Wire executor via import — the runner no longer imports conductor directly
     from maistro.agents.conductor import run_task
 
+    # Initialise database engine (no-op if DATABASE_URL unset)
+    from maistro.memory.store import get_engine
+
+    get_engine()
+
     queue = get_task_queue()
     _runner = TaskRunner(queue, executor=run_task)
     await _runner.start()
@@ -79,6 +84,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await _runner.stop(drain_timeout=SHUTDOWN_DRAIN_TIMEOUT)
 
     await cleanup_all_containers()
+
+    # Dispose database engine
+    from maistro.memory.store import get_engine, reset_engine_cache
+
+    engine = get_engine()
+    if engine:
+        await engine.dispose()
+    reset_engine_cache()
 
     # Flush observability
     from maistro.observability.tracing import get_langfuse
