@@ -8,6 +8,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from maistro_canvas.layers import (
+        AssetDefinition,
+        AssetInstance,
+        AssetSheet,
+        ChildProfile,
+        RenderStyle,
+        WorldStyle,
+    )
     from maistro_canvas.types import (
         CanvasRecord,
         CompositeResult,
@@ -83,7 +91,14 @@ class CanvasStore(Protocol):
 
 @runtime_checkable
 class ImageGenClient(Protocol):
-    """Calls an image-generation backend (LiteLLM proxy or local P40 server)."""
+    """Calls an image-generation backend (LiteLLM proxy or local P40 server).
+
+    Per ADR-039 §9, `generate` accepts optional conditioning args
+    (`world_style`, `render_style`, `asset_sheet`) that the backend
+    folds into the prompt or routes to the appropriate adapter
+    (IP-Adapter / FaceID / ControlNet etc.). Backends that don't
+    support a given conditioning ignore it.
+    """
 
     async def generate(
         self,
@@ -95,6 +110,9 @@ class ImageGenClient(Protocol):
         count: int = 1,
         seed: int | None = None,
         negative_prompt: str = "",
+        world_style: WorldStyle | None = None,
+        render_style: RenderStyle | None = None,
+        asset_sheet: AssetSheet | None = None,
     ) -> list[ImageData]: ...
 
     async def refine(
@@ -119,6 +137,66 @@ class CompositorService(Protocol):
         canvas: CanvasRecord,
         layers: list[LayerRecord],
     ) -> CompositeResult: ...
+
+
+@runtime_checkable
+class AssetSheetService(Protocol):
+    """Generates and stores reference sheets for named assets (ADR-039 §4).
+
+    A sheet is created from 3-5 reference images and used as
+    conditioning for every generation that references the asset.
+    Generalised from the original character-only workflow.
+    """
+
+    async def generate_sheet(
+        self,
+        *,
+        asset_id: str,
+        refs: tuple[str, ...],
+        prompt: str,
+        params: dict[str, Any] | None = None,
+    ) -> AssetSheet: ...
+
+    async def get_sheet(self, asset_id: str) -> AssetSheet | None: ...
+
+    async def regenerate_sheet(self, asset_id: str) -> AssetSheet: ...
+
+
+@runtime_checkable
+class AssetRegistry(Protocol):
+    """Stores named, reusable AssetDefinitions (ADR-039 §3).
+
+    Inline (anonymous) definitions live inside `AssetInstance.definition`
+    and never touch this registry. The agent (davinci) may promote an
+    inline definition to a registered one when reuse is detected; this
+    promotion is idempotent.
+    """
+
+    async def register(self, definition: AssetDefinition) -> AssetDefinition: ...
+
+    async def get(self, asset_id: str) -> AssetDefinition | None: ...
+
+    async def list_by_kind(self, kind: str) -> list[AssetDefinition]: ...
+
+    async def update(self, definition: AssetDefinition) -> AssetDefinition: ...
+
+
+@runtime_checkable
+class PersonalizationCompiler(Protocol):
+    """Compiles PersonalizationSlot intent into skin_binding (ADR-039 §5).
+
+    At render time, walks the scene graph, finds every `AssetInstance`
+    with a `personalization` slot, looks up the matching value in the
+    `ChildProfile`, and writes a `skin_binding` onto the instance for
+    the compositor to consume.
+    """
+
+    def compile(
+        self,
+        *,
+        instances: list[AssetInstance],
+        profile: ChildProfile,
+    ) -> list[AssetInstance]: ...
 
 
 class ImageData:
