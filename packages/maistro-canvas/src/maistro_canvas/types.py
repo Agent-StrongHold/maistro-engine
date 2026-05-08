@@ -321,6 +321,47 @@ class UnsupportedFormatError(CanvasError):
 
 
 # ─────────────────────────────────────────────────────────────────────
+# Layer-model domain errors (ADR-039 §9)
+# ─────────────────────────────────────────────────────────────────────
+
+
+class UnknownLayerKindError(CanvasError):
+    code = "UNKNOWN_LAYER_KIND"
+
+
+class MissingAnchorError(CanvasError):
+    code = "MISSING_ANCHOR"
+
+
+class MissingSocketError(CanvasError):
+    code = "MISSING_SOCKET"
+
+
+class OcclusionCycleError(CanvasError):
+    code = "OCCLUSION_CYCLE"
+
+
+class AssetSheetNotFoundError(CanvasError):
+    code = "ASSET_SHEET_NOT_FOUND"
+
+
+class AssetDefinitionNotFoundError(CanvasError):
+    code = "ASSET_DEFINITION_NOT_FOUND"
+
+
+class WorldStyleConflictError(CanvasError):
+    code = "WORLD_STYLE_CONFLICT"
+
+
+class SkinBindingError(CanvasError):
+    code = "SKIN_BINDING_ERROR"
+
+
+class PoseGeometryMismatchError(CanvasError):
+    code = "POSE_GEOMETRY_MISMATCH"
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Validation helpers
 # ─────────────────────────────────────────────────────────────────────
 
