@@ -1,10 +1,12 @@
-"""CLI for the registry tool: walk + validate.
+"""CLI for the registry tool: walk + validate + lint.
 
 Usage:
 
     python -m tools.registry.cli validate docs/adr/ADR-030.md
     python -m tools.registry.cli walk .
     python -m tools.registry.cli walk . --strict
+    python -m tools.registry.cli lint .
+    python -m tools.registry.cli lint . --strict
 
 No external CLI library: `argparse` from stdlib (no Click dep added).
 Conforms to `engine#ADR-039` substrate posture.
@@ -17,6 +19,12 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
+from tools.registry.dag import Cycle, find_cycles
+from tools.registry.linker import (
+    FilesystemResolver,
+    LinkResult,
+    check_links,
+)
 from tools.registry.validator import ValidationResult, validate_file
 
 # Walked file patterns. Order is for determinism, not precedence.
@@ -47,6 +55,7 @@ def _exit_status(
     *,
     strict: bool,
     quiet_ok: bool,
+    extra_errors: int = 0,
 ) -> int:
     n_files = len(results)
     n_errors = sum(1 for r in results if r.errors)
@@ -58,11 +67,12 @@ def _exit_status(
 
     print(
         f"\n{n_files} files checked: {n_clean} clean, "
-        f"{n_errors} errors, {n_warnings} warnings",
+        f"{n_errors} errors, {n_warnings} warnings, "
+        f"{extra_errors} extra (DAG / dangling refs)",
         file=sys.stderr,
     )
 
-    if n_errors:
+    if n_errors or extra_errors:
         return 1
     if n_warnings and strict:
         return 1
@@ -93,6 +103,37 @@ def cmd_walk(args: argparse.Namespace) -> int:
     return _exit_status(results, strict=args.strict, quiet_ok=args.quiet)
 
 
+def cmd_lint(args: argparse.Namespace) -> int:
+    """Walk + validate + DAG check + local link check."""
+    root = Path(args.root)
+    if not root.is_dir():
+        print(f"error: {root} is not a directory", file=sys.stderr)
+        return 2
+
+    files = list(_walk(root))
+    if not files:
+        print(f"no candidate files found under {root}", file=sys.stderr)
+        return 0
+
+    results = [validate_file(f) for f in files]
+    valid_fms = [r.front_matter for r in results if r.front_matter is not None]
+
+    cycles: list[Cycle] = (
+        find_cycles(valid_fms, "supersedes") + find_cycles(valid_fms, "blocks")
+    )
+    for c in cycles:
+        print(f"  CYCLE: {c.render()}")
+
+    resolver = FilesystemResolver(engine_root=root)
+    link_results: list[LinkResult] = check_links(valid_fms, resolver)
+    dangling = [lr for lr in link_results if not lr.resolved]
+    for lr in dangling:
+        print(f"  DANGLING: {lr.render()}")
+
+    extra = len(cycles) + len(dangling)
+    return _exit_status(results, strict=args.strict, quiet_ok=args.quiet, extra_errors=extra)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="maistro-registry",
@@ -117,12 +158,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_walk = sub.add_parser("walk", help="walk a repo root and validate found files")
     p_walk.add_argument(
-        "root",
-        nargs="?",
-        default=".",
-        help="repo root (default: cwd)",
+        "root", nargs="?", default=".", help="repo root (default: cwd)"
     )
     p_walk.set_defaults(func=cmd_walk)
+
+    p_lint = sub.add_parser(
+        "lint",
+        help="walk + validate + DAG cycle check + local link check",
+    )
+    p_lint.add_argument(
+        "root", nargs="?", default=".", help="repo root (default: cwd)"
+    )
+    p_lint.set_defaults(func=cmd_lint)
 
     return parser
 
