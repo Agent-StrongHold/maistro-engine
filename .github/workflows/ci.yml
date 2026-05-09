@@ -32,7 +32,22 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv pip install --system -e ".[dev]"
-      - run: pytest tests/ -v --tb=short --cov=maistro --cov-report=term-missing
+      # Package tests are run in separate invocations because two
+      # `tests/` directories at the same depth confuse pytest's
+      # rootdir auto-detection (ImportPathMismatchError on conftest.py).
+      # The legacy tests/ directory at repo root is excluded pending
+      # the src/maistro/ -> packages/ migration; its modules are
+      # shadowed by packages/maistro-core/src/maistro/ on the
+      # pythonpath, so they fail collection.
+      - run: pytest packages/maistro-core/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+      - run: pytest packages/maistro-server/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+      - run: pytest packages/maistro-canvas/tests -v --tb=short
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"

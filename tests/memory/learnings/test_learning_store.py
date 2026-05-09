@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.memory.learnings.store import InMemoryLearningStore
 from maistro.memory.types import Learning, MemoryScope
 
