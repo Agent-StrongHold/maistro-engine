@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-
 from tools.registry.schema import FrontMatter, Status
 
 
@@ -84,9 +83,7 @@ def test_extra_fields_forbidden() -> None:
 
 def test_blocked_by_alias_works() -> None:
     """YAML key `blocked-by` populates the `blocked_by` Python attribute."""
-    fm = FrontMatter.model_validate(
-        _valid_dict() | {"blocked-by": ["maistro-engine#ADR-019"]}
-    )
+    fm = FrontMatter.model_validate(_valid_dict() | {"blocked-by": ["maistro-engine#ADR-019"]})
     assert fm.blocked_by == ["maistro-engine#ADR-019"]
 
 

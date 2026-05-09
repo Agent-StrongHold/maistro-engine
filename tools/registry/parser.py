@@ -46,6 +46,13 @@ def parse_file(path: Path | str) -> ParsedFile:
         return ParsedFile(path=p, front_matter=None, body=text)
 
     rest = text[len(_DELIM) :]
+
+    # Empty front-matter: opening "---\n" immediately followed by closing
+    # "---\n" (no content between). Returns front_matter={} per the
+    # docstring contract, not None.
+    if rest.startswith(_DELIM):
+        return ParsedFile(path=p, front_matter={}, body=rest[len(_DELIM) :])
+
     closing = rest.find(_CLOSE)
     if closing == -1:
         # opening but no closing delimiter — treat as no front-matter

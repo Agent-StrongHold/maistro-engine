@@ -78,27 +78,25 @@ def test_multiple_fields_each_checked() -> None:
         related=["maistro-engine#ADR-020", "maistro-engine#ADR-021"],
         supersedes=["maistro-engine#ADR-022"],
     )
-    resolver = FakeResolver(
-        known={
-            "maistro-engine": {"ADR-019", "ADR-020", "ADR-021", "ADR-022"}
-        }
-    )
+    resolver = FakeResolver(known={"maistro-engine": {"ADR-019", "ADR-020", "ADR-021", "ADR-022"}})
     results = check_links([fm], resolver)
     assert len(results) == 4
     assert all(r.resolved for r in results)
 
 
 def test_cross_repo_refs() -> None:
+    # Legacy `ADR-K8S-NNN` form is deprecated per ADR-031 §3 (renumber
+    # on touch); the schema's _REF_PATTERN only accepts `(ADR|SPEC)-\d{3}`.
     fm = _make_fm(
         "ADR-030",
         related=[
-            "AgentTuring#ADR-K8S-001",
+            "AgentTuring#ADR-001",
             "stronghold#ADR-001",
         ],
     )
     resolver = FakeResolver(
         known={
-            "AgentTuring": {"ADR-K8S-001"},
+            "AgentTuring": {"ADR-001"},
             "stronghold": {"ADR-001"},
         }
     )
