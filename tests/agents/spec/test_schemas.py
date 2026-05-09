@@ -6,27 +6,17 @@ import sys
 import types
 
 import pytest
-from pydantic import ValidationError
-
 from maistro.agents.spec.schemas import (
-    ArchitectMapping,
-    ArchitectNewFile,
-    ArchitectOutput,
-    CheckpointArchitectureOutput,
-    CodeOutput,
-    ExtractorOutput,
-    FileChange,
+    SCHEMA_REGISTRY,
     PlanOutput,
     PlanSubtask,
     ReviewOutput,
     ReviewScores,
-    SCHEMA_REGISTRY,
     ScoutFile,
     ScoutOutput,
-    ValidatorCheck,
-    ValidatorOutput,
     resolve_schema,
 )
+from pydantic import ValidationError
 
 
 class TestImports:
@@ -113,9 +103,7 @@ class TestRoundtrips:
 
     def test_review_output_roundtrip(self) -> None:
         review = ReviewOutput(
-            scores=ReviewScores(
-                correctness=8, quality=8, safety=9, completeness=7, overall=8
-            ),
+            scores=ReviewScores(correctness=8, quality=8, safety=9, completeness=7, overall=8),
             approved=True,
         )
         restored = ReviewOutput.model_validate_json(review.model_dump_json())

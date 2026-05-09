@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.memory.store import get_async_session_factory, get_engine, reset_engine_cache
 
 

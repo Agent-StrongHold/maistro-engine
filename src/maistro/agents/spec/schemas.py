@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 # ── Planner ───────────────────────────────────────────────────────
 
+
 class PlanSubtask(BaseModel):
     id: str
     description: str
@@ -26,6 +27,7 @@ PlanOutput.model_rebuild()
 
 # ── Coder ─────────────────────────────────────────────────────────
 
+
 class FileChange(BaseModel):
     path: str
     action: str
@@ -42,6 +44,7 @@ CodeOutput.model_rebuild()
 
 
 # ── Reviewer ──────────────────────────────────────────────────────
+
 
 class ReviewScores(BaseModel):
     correctness: float = Field(ge=0, le=10)
@@ -63,6 +66,7 @@ ReviewOutput.model_rebuild()
 
 # ── Scout ─────────────────────────────────────────────────────────
 
+
 class ScoutFile(BaseModel):
     path: str
     lines: int
@@ -83,6 +87,7 @@ ScoutOutput.model_rebuild()
 
 
 # ── Architect ─────────────────────────────────────────────────────
+
 
 class ArchitectMapping(BaseModel):
     source: str
@@ -123,6 +128,7 @@ CheckpointArchitectureOutput.model_rebuild()
 
 # ── Extractor ─────────────────────────────────────────────────────
 
+
 class ExtractorOutput(BaseModel):
     files_written: list[FileChange] = Field(default_factory=list)
     renames_applied: list[str] = Field(default_factory=list)
@@ -132,6 +138,7 @@ class ExtractorOutput(BaseModel):
 
 
 # ── Validator ─────────────────────────────────────────────────────
+
 
 class ValidatorCheck(BaseModel):
     name: str
