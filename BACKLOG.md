@@ -1,26 +1,28 @@
-# maistro-engine — BACKLOG
+# Backlog (Four-Repo Canonical)
 
-The queue of substrate work the three products need.
-Maintained per [`ADR-030`](docs/adr/ADR-030-four-repo-governance.md). Items here are engine-level. Product-only work belongs in the product BACKLOGs.
+**Identical copies live in every repo of the four-repo system.** Companion to [`ROADMAP.md`](ROADMAP.md). Items are tagged by owning repo:
 
-## How this BACKLOG is structured
+- `engine-NNN` — `maistro-engine`
+- `maistro-NNN` — `Project_mAIstro`
+- `turing-NNN` — `AgentTuring`
+- `sh-NNN` — `stronghold`
 
-Each item is `[id] <title> — <status> — <milestone>` followed by 1–5 bullets of detail.
+Cross-repo references use `[repo#item-id]` notation.
 
-- **id** — stable slug (`engine-NNN`) used in PR titles and front-matter `related:` fields. Renumbering is on-touch per [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md).
-- **status** — `Proposed | Accepted | Implemented | Superseded | Blocked | Abandoned` per [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md).
-- **milestone** — `M1`…`M5` for v1.0; `v1.1`…`v2.0` beyond.
+Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-030-four-repo-governance.md). Status follows [`engine#ADR-031`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-031-front-matter-and-registry.md) lifecycle. Gap markers per [`docs/INVENTORY-ADRS-SPECS.md`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/INVENTORY-ADRS-SPECS.md). External-library adoption per [`engine#ADR-039`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-039-external-library-adoption-policy.md).
 
-## Status legend (per ADR-031)
+## Status legend
 
 | Marker | Meaning |
 |---|---|
 | Proposed | Open for discussion; not yet binding |
 | Accepted | Decision binding; implementation may follow |
 | Implemented | Decision shipped; production code matches |
+| Superseded | Replaced by a successor (named in `supersedes:` of successor) |
 | Blocked | A `blocked-by:` dependency is unmet |
+| Abandoned | Decision deliberately not taken (kept for traceability) |
 
-## Gap legend (per INVENTORY)
+## Gap legend
 
 | Marker | Meaning |
 |---|---|
@@ -30,11 +32,11 @@ Each item is `[id] <title> — <status> — <milestone>` followed by 1–5 bulle
 
 ---
 
-## v1.0 critical path
+## `maistro-engine` items
 
-### M1 — Conventions enforced
+### Foundation (M1 — weeks 1–4)
 
-**[engine-001] Registry CI tooling — Accepted; `gap-impl` — M1**
+**[engine-001] Registry CI tooling — Accepted; `gap-impl` — v1.0 M1**
 - Front-matter YAML validator (Pydantic schema from ADR-031)
 - Cross-repo link checker via GitHub MCP / API: every `<repo>#<id>` resolves
 - Registry generator: emits `registry/registry.json` and `registry.md`
@@ -42,183 +44,427 @@ Each item is `[id] <title> — <status> — <milestone>` followed by 1–5 bulle
 - GitHub Action wiring: warn-only mode, hard-fail flip after day 30
 - Tests: contract `boundary | unit` for the validator; `behavioral | property` for the DAG check
 
-**[engine-002] INVENTORY auto-regeneration — Proposed — M1**
+**[engine-002] INVENTORY auto-regenerated — Proposed — v1.0 M1**
 - Hand-edits to `docs/INVENTORY-ADRS-SPECS.md` fail CI once tooling lands
-- The file becomes the registry's human-readable rendering
 - Blocked-by: `engine-001`
 
-**[engine-003] Front-matter migration of existing engine ADRs — Accepted; gradual — M1**
-- ADRs 000–029 (30 files) lack front-matter
-- Per ADR-031: renumber-on-touch; not a bulk migration
-- Each PR that edits an existing ADR adds front-matter in the same commit
-- ADR-000 template regenerated to match the new schema (one-shot, separate PR)
+**[engine-003] Front-matter on existing engine ADRs — Accepted; gradual — v1.0 M1**
+- ADRs 000–029 (30 files); renumber-on-touch per ADR-031
+- ADR-000 template regenerated to match the new schema
 
-**[engine-004] CONTRIBUTING.md and convention docs — Proposed — M1**
-- Author-facing summary of ADR-031 (front-matter), ADR-032 (contracts), ADR-001 (branching)
-- One-page "how to add an ADR" + "how to add a spec" + "how to cite substrate"
-- Linked from README; linked from product repos' READMEs
+**[engine-004] CONTRIBUTING.md and convention docs — Proposed — v1.0 M1**
+- Author-facing summary of ADR-031 / 032 / 001 / **039**
+- Linked from product repos' READMEs
 
-### M2 — Templates bootstrapped
+### Templates (M2 — weeks 2–6)
 
-**[engine-010] Copier template — single-tenant-multi-user — Accepted; `gap-impl` — M2**
-- Knobs: `users_max`, `auth_backend (keycloak | local)`, `channels (web | voice | email)`, `host_target (podman | docker | systemd)`
-- Generates `pyproject.toml` pinning engine version, `docker-compose.yml`, `src/` overlay, `docs/adr/` seed with substrate refs filled, test scaffold wired to `pytest.mark.contract` / `pytest.mark.scope`
-- Round-trip: `copier copy` against fresh dir matches `Project_mAIstro` current shape, modulo product-specific files
+**[engine-010] Copier template `single-tenant-multi-user` — Accepted; `gap-impl` — v1.0 M2**
+- Knobs: `users_max`, `auth_backend`, `channels`, `host_target`. Round-trip vs `Project_mAIstro`
 
-**[engine-011] Copier template — autonoetic — Accepted; `gap-impl` — M2**
-- Knobs: `awareness_loop_hz`, `self_model (hexaco | minimal)`, `memory_consolidator (on | off)`, `dossier_store (obsidian | fs)`
-- Round-trip against `AgentTuring`
+**[engine-011] Copier template `autonoetic` — Accepted; `gap-impl` — v1.0 M2**
+- Knobs: `awareness_loop_hz`, `self_model`, `memory_consolidator`, `dossier_store`. Round-trip vs `AgentTuring`
 
-**[engine-012] Copier template — multi-tenant — Accepted; `gap-impl` — M2**
-- Knobs: `tenants_max`, `policy_engine (opa | cedar | sentinel)`, `deploy_target (k8s | on-prem | hybrid)`, `compliance_pack (owasp | nist | euaiact | all)`
-- Round-trip against `stronghold`
+**[engine-012] Copier template `multi-tenant` — Accepted; `gap-impl` — v1.0 M2**
+- Knobs: `tenants_max`, `policy_engine`, `deploy_target`, `compliance_pack`. Round-trip vs `stronghold`
 
-**[engine-013] Two-stream release pipeline — Proposed — M2**
-- `pkg/v*` tags publish the Python package
-- `template/v*` tags publish Copier template snapshots
-- Each engine ADR that affects templates must bump the right one
-- Blocked-by: `engine-010`, `engine-011`, `engine-012`
+**[engine-013] Two-stream release pipeline — Proposed — v1.0 M2**
+- `pkg/v*` + `template/v*` tags. Blocked-by 010/011/012
 
-### M3 — Drift items closed
+### Drift closure (M3 — weeks 3–7)
 
-**[engine-020] K8S-* ADR migration AT → stronghold — Accepted; `gap-impl` — M3**
-- 31 records currently in `AgentTuring/docs/adr/`
-- Move all to `stronghold/docs/adr/`, renumber to unified scheme on touch
-- Catalog-related ones (K8S-021, K8S-022, K8S-023, K8S-027) gain `substrate:` refs to engine ADR-006/009 per ADR-035
-- A2A-related ones (K8S-028, K8S-029) may stay engine-side if the protocol is engine-canonical
-- See INVENTORY §2 for the table
+**[engine-020] K8S-* ADR migration AT → stronghold (coordinator) — Accepted; `gap-impl` — v1.0 M3**
 
-**[engine-021] Memory spec dedup across products — Accepted; `gap-impl` — M3**
-- AgentTuring: `turing-dossier`, `turing-memory-consolidator`, `turing-notebook-live-vault`, `turing-obsidian-store`, `epic-12-memory-v2` recast
-- Project_mAIstro: `S-008`, `S-009`, `S-032`, `S-033` recast
-- Each becomes `Substrate: [maistro-engine#ADR-NNN]` plus product-specific tenancy/UX/adapter content
-- Specs without `substrate:` after rollout fail CI
+**[engine-021] Memory spec dedup (coordinator) — Accepted; `gap-impl` — v1.0 M3**
 
-**[engine-022] Catalog spec dedup across products — Accepted; `gap-impl` — M3**
-- Project_mAIstro: `S-005`, `S-138` recast against engine ADR-006/009
-- AgentTuring catalog references audit—expected to consume engine simple form, no spec needed
+**[engine-022] Catalog spec dedup (coordinator) — Accepted; `gap-impl` — v1.0 M3**
 
-### M4 — Substrate code parity
+### Substrate code parity (M4 — weeks 4–9)
 
-**[engine-030] Ontology Semantic facet — Accepted; `gap-impl` — M4**
-- Implement `OntologyEntity`, `Ontology` protocol per [`ADR-036`](docs/adr/ADR-036-ontology-semantic-object-layer.md)
-- Pydantic + SQLAlchemy persistence
-- In-process registry; products register their domain entities at boot
-- Memory record gains optional `entity_id: UUID | None` field
-- Tests: boundary `Pydantic`; behavioral `register idempotency`, `query consistency`
+**[engine-030] Ontology Semantic facet — Accepted; `gap-impl` — v1.0 M4**
+- Per `[engine#ADR-036]`. v1.0 ships Semantic only
 
-**[engine-031] Observability spans + metrics + events — Accepted; `gap-impl` — M4**
-- Required spans on the 12 engine entry points listed in [`ADR-037`](docs/adr/ADR-037-observability-taxonomy.md)
-- Six required metrics emitted with the documented label sets
-- Five required event topics on the engine event bus
-- Sampling defaults configurable per service-key
-- Tests: contract on metric labels and event topic shape
+**[engine-031] Observability primitives — Accepted; `gap-impl` — v1.0 M4**
+- Per `[engine#ADR-037]`. 12 spans, 6 metrics, 5 event topics
+- See also `[engine-094]` for janitor-style signal files extending event topics
 
-**[engine-032] Reliability primitives — Accepted; `gap-impl` — M4**
-- `retry()` decorator with exponential backoff (`2s, 4s, 8s, 16s`, max 4) for idempotent IO; refuses non-idempotent without `idempotency_key`
-- `CircuitBreaker` per dependency: `closed → open (5/60s) → half-open (30s) → closed`
-- `Fallback[T]` type with `cached | default | alternate-agent` variants
-- `/health/{live,ready,startup}` blueprint generators
-- Tests: Hypothesis property test on state machine; unit on retry timing
+**[engine-032] Reliability primitives — Accepted; `gap-impl` — v1.0 M4**
+- Per `[engine#ADR-038]`. retry / circuit-breaker / fallback / SLO / healthchecks
+- See also Khamel83/oneshot lane-fallback-chain pattern in `INSPIRATIONS.md`
 
-### M5 — Contracts as the bar
+### Contracts (M5 — weeks 6–12)
 
-**[engine-040] Pydantic boundary contracts on all public types — Proposed — M5**
-- Audit `src/maistro/types/` for non-Pydantic public types; convert
-- Generate JSON Schemas from Pydantic for stable wire types
-- 95% mutation kill rate at v1.0
+**[engine-040] Pydantic boundary contracts on all public types — Proposed — v1.0 M5**
 
-**[engine-041] Hypothesis property tests on accepted behavioral ADRs — Proposed — M5**
-- Adopt stronghold's `Spec` type pattern in the engine
-- Every accepted ADR with behavioural AC gains a property test
-- 80% mutation kill rate at v1.0
+**[engine-041] Hypothesis property tests on accepted behavioral ADRs — Proposed — v1.0 M5**
+- Possible service-boundary integration with **Promptfoo** for prompt regression
 
-**[engine-042] Pact-style contracts on A2A + MCP edges — Proposed — M5**
-- Choose tooling (`pact-python` vs hand-rolled) — separate ADR
-- Consumer-driven: each consumer publishes; provider runs against all consumers
-- 75% mutation kill rate at v1.0
+**[engine-042] Pact-style contracts on A2A + MCP edges — Proposed — v1.0 M5**
 
-**[engine-043] Mutation-testing CI wiring — Proposed — M5**
-- Adopt stronghold's `mutmut` config
-- Nightly + on-`main`-merge schedule (not every PR)
-- Per-tier kill-rate thresholds enforced
+**[engine-043] Mutation-testing CI wiring — Proposed — v1.0 M5**
+
+### v1.1–v2.0 (engine — original)
+
+**[engine-050] Cross-product agent portability proof — Proposed — v1.1**
+
+**[engine-051] Forge iteration loop primitive — Proposed — v1.1**
+
+**[engine-052] Compliance gap audit on accepted ADRs — Proposed — v1.1**
+
+**[engine-060] Memory v2 (if surfaced) — Proposed — v1.2**
+
+**[engine-061] DSPy-style task signatures evaluation — Proposed — v1.2**
+
+**[engine-062] Mid-session model switching primitive — Proposed — v1.2**
+
+**[engine-070] Ontology Kinetic facet — Proposed — v2.0**
+
+**[engine-071] Ontology Dynamic facet — Proposed — v2.0**
+
+**[engine-072] Cross-tenant ontology sharing — Proposed — v2.0**
+
+**[engine-073] Tournament-based agent evolution wired to production routing — Proposed — v2.0**
+
+### Discovered gaps (engine — original)
+
+**[engine-080] Pact tooling choice — Proposed**
+
+**[engine-081] Mutation-testing exclusion list per repo — Proposed**
+
+**[engine-082] Backup / export semantics for memory — Proposed**
+
+**[engine-083] Disaster-recovery / backup-restore primitives — Proposed**
+
+**[engine-084] Chaos-engineering harness — Proposed**
+
+**[engine-085] Trace export to long-term storage — Proposed**
+
+### NEW — from May 2026 catalog review (engine)
+
+**[engine-090] Chat-UI integration contract — Proposed; `gap-spec` — v1.1**
+- OpenAI-compatible chat completions (LiteLLM gateway already exposes) **+ A2UI for rich UI generation + MCP for tools**
+- Substrate: `BlakeMatthews-dev/A2UI` (Apache 2.0, v0.8 preview) — see INSPIRATIONS.md "Adjacent products"
+- Tested against OWUI, LibreChat, Lobe Chat as render targets
+- Defuses Open WebUI 50-user attribution clause for stronghold tenants by allowing alternative UI per tenant
+
+**[engine-091] A2UI version-pin substrate confirmation — Proposed — v1.1**
+- Pin A2UI to a specific tag in engine's Copier templates (`[engine-010/011/012]`)
+- Substrate: `BlakeMatthews-dev/A2UI`
+
+**[engine-092] CLI-Anything skills bundle — Proposed; `gap-impl` — v1.1**
+- Adopt 35+ HKUDS/CLI-Anything pre-generated harnesses (GIMP, Blender, LibreOffice, OBS, etc.) as engine skills with manifests + sandbox profiles
+- Apache 2.0; service-boundary (subprocess) per `engine#ADR-039`
+- Substrate: `engine#ADR-006` (recipe-registry), `engine#ADR-035` (catalog split)
+
+**[engine-093] Self-CLI generation — Proposed — v1.2**
+- Run CLI-Anything against our own packages: produce `maistro-cli`, `turing-cli`, `stronghold-cli`, `engine-cli`
+- Pattern reference: `Khamel83/oneshot` `bin/oneshot` CLI-first surface
+- Replaces ad-hoc admin scripts; agents and operators share the same surface
+
+**[engine-094] MCP server registry survey + catalog seed — Proposed — v1.0 M3**
+- Periodic survey of `punkpeye/awesome-mcp-servers` for new candidates passing the maintainer-signal gate (`engine#ADR-039` §3)
+- Tier 1 (vendor-official: Microsoft, AWS, HashiCorp, LocalStack) and Tier 2 (org-backed) populate the engine simple catalog
+- Stronghold's multi-tenant catalog (`[sh-001]`) inherits the same baseline
+
+**[engine-095] Default skills bundle — Proposed; `gap-impl` — v1.0 M3**
+- Standard CLI tools wrapped as versioned skills with manifests, sandbox profiles, and policy bindings
+- Categories: search (rg, fd, fzf), data (jq, yq, dasel), HTTP (curl, httpie), git (gh, lazygit), files (yazi, dust, eza), k8s (kubectl, k9s), containers (docker, podman, lazydocker), DBs (pgcli, redis-cli)
+- Seeds `engine#ADR-035` simple catalog for mAIstro and Turing; multi-tenant variant for stronghold
+
+**[engine-096] Tournament training-data labeling pipeline — Proposed; `gap-spec` — v1.2**
+- Produces (agent_a_output, agent_b_output, intent, verdict) triples at scale for tournament evolution
+- Pattern reference: Adala (data-labeling agents)
+- Engine-side substrate for `[sh-102]` and `[turing-062]` tournament evolution
+
+**[engine-097] Hyperagent graph runtime substrate — Proposed; `gap-impl` — v1.2**
+- Graph execution primitive (was implicit in `[maistro-200]` hyperagent-graph-runtime); promote to engine substrate
+- Single substrate consumed by mAIstro low-code designer and stronghold multi-tenant low-code surface
+
+**[engine-098] Memory drift detection — Proposed; `gap-spec` — v1.1**
+- Detect retrieval-quality degradation independent of decay (`engine#ADR-013`)
+- Pattern reference: `compemperor/engram` drift-detection
+- Engine-side; products inherit
 
 ---
 
-## v1.1 (3–6 months)
+## `Project_mAIstro` items
 
-**[engine-050] Cross-product agent portability proof — Proposed — v1.1**
-- Serialise an agent from `Project_mAIstro` simple catalog
-- Import into `stronghold` tenant catalog
-- Agent runs without code changes; only catalog wrapper differs
-- Demonstrates the two-tier catalog split (ADR-035) works in practice
+### v1.0 — multi-user with hard isolation + setup wizard
 
-**[engine-051] Forge iteration loop primitive — Proposed — v1.1**
-- Generalise stronghold's planned Forge test→iterate loop into an engine primitive
-- Available to mAIstro and AgentTuring if they want
+**[maistro-001] Setup wizard — Proposed — v1.0** — `S-139`. v1.0 critical path. Acceptance: < 30 min for new household
 
-**[engine-052] Compliance gap audit on accepted ADRs — Proposed — v1.1**
-- For each accepted ADR, verify code + tests match
-- Outputs an engine-side audit doc; feeds stronghold COMPLIANCE.md control claims
+**[maistro-002] Per-user memory isolation — Proposed — v1.0** — Property test: cross-user retrieval is structurally impossible
 
-## v1.2 (6–9 months)
+**[maistro-003] Multi-user auth (Keycloak / JWT) — Proposed — v1.0** — Specs: `S-018`, `S-019`, `S-024`. Possible AuthX integration if not Keycloak (passes `engine#ADR-039` maintainer-signal gate)
 
-**[engine-060] Memory v2 (if surfaced) — Proposed — v1.2**
-- A product spec must propose the engine ADR; engine does not anticipate memory-v2 unilaterally
+**[maistro-004] Native install + Podman + systemd — Proposed — v1.0** — Specs: `S-147`, `S-148`
 
-**[engine-061] DSPy-style task signatures evaluation — Proposed — v1.2**
-- AgentTuring's `epic-07-dspy-task-signatures` is the driver
-- Engine evaluates whether to adopt as a substrate primitive
+**[maistro-005] Tailscale-native networking — Proposed — v1.0** — Spec: `S-153`
 
-**[engine-062] Mid-session model switching primitive — Proposed — v1.2**
-- AgentTuring's `epic-10-midsession-model-switching` is the driver
-- Generalise if it cleanly substrates
+**[maistro-006] Setup-wizard property test — Proposed — v1.0**
 
-## v2.0 (12 months) — inventory-clear
+**[maistro-007] Per-user isolation property test — Proposed — v1.0**
 
-**[engine-070] Ontology Kinetic facet — Proposed — v2.0**
-- Actions an entity exposes, with pre/post-condition contracts
+### Documentation hygiene
 
-**[engine-071] Ontology Dynamic facet — Proposed — v2.0**
-- State transitions, version history, derivation lineage
-- Requires schema migration policy ADR
+**[maistro-090] Front-matter on mAIstro specs — Proposed; `gap-spec` — v1.0 (warn-only)** — 91 specs; `S-NNN` → `SPEC-NNN` on touch
 
-**[engine-072] Cross-tenant ontology sharing primitive — Proposed — v2.0**
-- Stronghold-driven; engine support
+**[maistro-091] Memory specs `Substrate:` recast — Proposed; `gap-impl` — v1.0 M3** — `S-008/009/032/033` → engine ADR substrate
 
-**[engine-073] Tournament-based agent evolution wired to production routing — Proposed — v2.0**
-- Substrate piece for stronghold v2.0 + AgentTuring v2.0
+**[maistro-092] Catalog specs `Substrate:` recast — Proposed; `gap-impl` — v1.0 M3** — `S-005/138` → engine ADR substrate
 
-## Discovered gaps (not yet milestoned)
+**[maistro-095] Copier bootstrap — Proposed; `gap-impl` — v1.0 M2**
 
-**[engine-080] Pact tooling choice — Proposed**
-- ADR-032 is silent on `pact-python` vs hand-rolled; one separate ADR resolves it
+### v1.1–v2.0 (mAIstro — original)
 
-**[engine-081] Mutation-testing exclusion list per repo — Proposed**
-- Equivalent mutants and unavoidable survivors need a curated list per ADR-032
+**[maistro-100] Voice + email + Alexa channels — Proposed — v1.1**
 
-**[engine-082] Backup / export semantics for memory — Proposed**
-- Out-of-scope of ADR-034; needs its own ADR before any product spec asks for it
+**[maistro-101] Hardware-signing integration — Proposed — v1.1** — `S-150` (substrate `engine#ADR-022`)
 
-**[engine-083] Disaster-recovery / backup-restore primitives — Proposed**
-- Out-of-scope of ADR-038; stronghold v1.x will need it
+**[maistro-102] Internal trust root — Proposed — v1.1** — `S-155` (substrate `engine#ADR-026`)
 
-**[engine-084] Chaos-engineering harness — Proposed**
-- Out-of-scope of ADR-038; would feed stronghold red-team CI (W5 in stronghold ROADMAP-v1.0)
+**[maistro-103] DID/VC agent identity — Proposed — v1.1** — `S-152` (substrate `engine#ADR-024`)
 
-**[engine-085] Trace export to long-term storage — Proposed**
-- Out-of-scope of ADR-037; relevant for compliance evidence retention
+**[maistro-200] Hyperagent graph runtime — Proposed — v1.2** — `S-145`. Updated: substrate is `[engine-097]`
 
-## Items deferred / abandoned
+**[maistro-201] Node-graph designer (low-code) — Proposed — v1.2** — `S-159`. Updated: **adopt Flowise via service bridge** (Apache 2.0 — passes `engine#ADR-039`); custom Flowise nodes call mAIstro Conductor agents. Native build deferred unless Flowise bridge proves insufficient.
 
-*(empty at present)*
+**[maistro-202] Human-as-node HITL primitive — Proposed — v1.2** — `S-158`
+
+**[maistro-300] Cross-self portability for households — Proposed — v2.0** — If `[turing-080]` substrates cleanly
+
+### NEW — from May 2026 catalog review (mAIstro)
+
+**[maistro-150] Prediction-pool feature for Conductor-to-Conductor play — Proposed — v1.2**
+- Two households' Conductors play prediction-pool games between their users
+- Wraps `Khamel83/vig` (TypeScript / Cloudflare; service-boundary) OR reimplements as Python skill
+- First user-facing exercise of cross-deployment A2A
+
+**[maistro-151] Cross-deployment A2A test scenario — Proposed — v1.1**
+- Friends/families across deployments; companion to `[maistro-150]`
+
+**[maistro-400] Davinci-canvas backend expansion — Proposed; `gap-impl` — v1.1**
+- `fal-mcp-server` (FLUX, SD, MusicGen) for generation
+- `cli-anything-gimp` for editing (per `[engine-092]`)
+- `cli-anything-libreoffice` for book-builder layout (Lulu integration)
+- All service-boundary per `engine#ADR-039`
+
+**[maistro-401] Davinci-canvas frontend completion — Proposed; `gap-impl` — v1.1**
+- React + Express POC → production-shape
+- Design tooling, asset library
+
+---
+
+## `AgentTuring` items
+
+Full v1.0 detail in [`AgentTuring/ROADMAP-v1.0.md`](https://github.com/BlakeMatthews-dev/AgentTuring/blob/main/ROADMAP-v1.0.md).
+
+### v1.0 — measurable autonoesis
+
+**[turing-001] HEXACO-24 + weekly retest — Proposed; `gap-impl` — v1.0 M1**
+
+**[turing-002] Mood vector with decay + bounded delta — Proposed; `gap-impl` — v1.0 M1**
+
+**[turing-003] Drive store with reinforcement and decay — Proposed; `gap-impl` — v1.0 M1**
+
+**[turing-004] SelfModel/Mood/Drive ontology registration — Proposed; `gap-impl` — v1.0 M1** — Blocked-by: `[engine-030]`
+
+**[turing-010] 7-tier memory implementation — Proposed; `gap-impl` — v1.0 M2** — Substrate: `[engine#ADR-016/017]`
+
+**[turing-011] Weight floors REGRET (≥0.6) WISDOM (≥0.9) — Proposed; `gap-impl` — v1.0 M2**
+
+**[turing-012] Activation graph with self-authored edges — Proposed; `gap-impl` — v1.0 M2**
+
+**[turing-013] Todo → episode provenance enforcement — Proposed; `gap-impl` — v1.0 M2**
+
+**[turing-020] Continuous self-talk loop — Accepted (spec); `gap-impl` — v1.0 M3**
+
+**[turing-021] Awareness loop hz tunable — Proposed — v1.0 M3**
+
+**[turing-022] Memory consolidation at idle — Accepted (spec); `gap-impl` — v1.0 M3**
+
+**[turing-023] Dossier generation — Accepted (spec); `gap-impl` — v1.0 M3**
+
+**[turing-030..034] Five property tests — Proposed — v1.0 M4**
+
+**[turing-035] 30-day staging run (acceptance gate) — Proposed — v1.0 M4** — Depends on `[engine-032]`
+
+**[turing-040] Reading-order docs aligned with template — Proposed — v1.0 M5**
+
+**[turing-041] Strip Stronghold-only content — Proposed; `gap-impl` — v1.0 M5** — Coordinated with `[sh-021]`
+
+**[turing-042] Migrate K8S-* records out — Accepted; `gap-impl` — v1.0 M5**
+
+**[turing-043] Bootstrap into autonoetic Copier template — Proposed; `gap-impl` — v1.0 M5**
+
+### Documentation hygiene (Turing)
+
+**[turing-090] Front-matter on Turing specs — Proposed; `gap-spec` — v1.0 (warn-only)**
+
+**[turing-091] Memory specs `Substrate:` recast — Accepted; `gap-impl` — v1.0 M3**
+
+**[turing-092] Project Turing research consolidation — Proposed — v1.0**
+
+**[turing-095] Adopt contract markers — Proposed — v1.0 M5**
+
+### v1.1–v2.0 (Turing)
+
+**[turing-050] Lineage queries — Proposed — v1.1**
+
+**[turing-051] Dream loop — Proposed — v1.1**
+
+**[turing-052] Phantom execution — Proposed — v1.1**
+
+**[turing-053] Adversarial hardening of self-model — Proposed — v1.1** — Uses `[engine-084]` chaos primitives if shipped
+
+**[turing-060] `epic-13-hyperagents-meta-level` formalised — Proposed — v1.2**
+
+**[turing-061] RASO inner cycle wired to self-talk — Proposed — v1.2**
+
+**[turing-062] Tournament evolution scaffolding (internal-only) — Proposed — v1.2** — Substrate: `[engine-096]` data labeling
+
+**[turing-070] Meta-agent that modifies activation graph — Proposed — v1.3**
+
+**[turing-071] Parameter-sensitivity learner — Proposed — v1.3**
+
+**[turing-072] Self-modification gate — Proposed — v1.3**
+
+**[turing-080] Self-model export / import — Proposed — v2.0**
+
+**[turing-081] Long-horizon recall with confidence calibration — Proposed — v2.0**
+
+**[turing-082] Synthesised mood + drives from imported episodic record — Proposed — v2.0**
+
+**[turing-083] Confidence-calibrated routing — Proposed — v2.0**
+
+### Discovered gaps (Turing)
+
+**[turing-100] HEXACO drift bound calibration — Proposed — v1.0 M1**
+
+**[turing-101] Narrative recall idiom decision — Proposed — v1.0 M4**
+
+**[turing-102] Sleep / off-hours behavior — Proposed — v1.x**
+
+### Items deferred / abandoned (Turing)
+
+**[turing-200] Production deployment — Abandoned**
+
+**[turing-201] Multi-tenant Turing — Abandoned**
+
+---
+
+## `stronghold` items
+
+Full v1.0 detail in [`stronghold/ROADMAP-v1.0.md`](https://github.com/agent-stronghold/stronghold/blob/main/ROADMAP-v1.0.md).
+
+### v1.0 — compliance-first
+
+**[sh-001] Multi-tenant catalog wrapper — Proposed; `gap-impl` — v1.0 W1** — Wraps engine simple form per `[engine#ADR-035]`
+
+**[sh-002] Tenant-scoped namespacing — Proposed — v1.0 W1**
+
+**[sh-003] Cross-tenant catalog import (with consent) — Proposed — v1.0 W1**
+
+**[sh-010] OPA / Rego policy adapter — Proposed; `gap-impl` — v1.0 W2** — Hot-reload, < 1ms p99 at 1000 RPS
+
+**[sh-011] Cedar policy adapter — Proposed; `gap-impl` — v1.0 W2**
+
+**[sh-012] Sentinel policy bridge — Proposed — v1.0 W2**
+
+**[sh-020] Receive K8S-* records (renumbered, with substrate refs) — Accepted; `gap-impl` — v1.0 W3**
+
+**[sh-021] Absorb stronghold-only content from AgentTuring strip — Proposed — v1.0 W3**
+
+**[sh-030] COMPLIANCE.md OWASP Agentic Top 10 — Proposed; `gap-impl` — v1.0 W4** — AT-10 anchored to `[engine#ADR-039]`
+
+**[sh-031] COMPLIANCE.md NIST AI RMF stub — Proposed — v1.0 W4**
+
+**[sh-032] COMPLIANCE.md EU AI Act stub — Proposed — v1.0 W4**
+
+**[sh-040] Two-tenant red-team CI — Proposed; `gap-impl` — v1.0 W5**
+
+**[sh-050] On-prem (OKD) + cloud (AKS) parity — Proposed; `gap-impl` — v1.0 W6**
+
+**[sh-060] Append-only audit chain — Proposed; `gap-impl` — v1.0 W7**
+
+**[sh-070] v1.0 acceptance suite green — Proposed — v1.0 W8**
+
+**[sh-080] Bootstrap into multi-tenant Copier template — Proposed; `gap-impl` — v1.0 W8** — Blocked-by: `[engine-012]`
+
+### Documentation hygiene (Stronghold)
+
+**[sh-090] Front-matter on Stronghold specs — Proposed; `gap-spec` — v1.0 (warn-only)**
+
+**[sh-095] Adopt contract markers — Proposed — v1.0 M5**
+
+### v1.1–v2.0 (Stronghold — original)
+
+**[sh-100] Trust-tier auto-promotion gates — Proposed — v1.1**
+
+**[sh-101] Forge iteration loop (stronghold side) — Proposed — v1.1** — Wires `[engine-051]`
+
+**[sh-102] Tournament evolution wired to internal-only routing — Proposed — v1.1** — Substrate: `[engine-096]` data labeling
+
+**[sh-200] Forge test→iterate loop — Proposed — v1.2**
+
+**[sh-201] Memory decay function in learnings — Proposed — v1.2**
+
+**[sh-300] Agent marketplace — Proposed — v1.3**
+
+**[sh-301] Multi-region failover — Proposed — v1.3**
+
+**[sh-400] SOC 2 Type II audit — Proposed — v2.0**
+
+**[sh-401] ISO 27001 readiness — Proposed — v2.0**
+
+**[sh-402] Sectoral regulators (HIPAA, FedRAMP) — Proposed — v2.0**
+
+### Discovered gaps (Stronghold)
+
+**[sh-500] Policy evaluation latency under load — Proposed — v1.0 W2**
+
+**[sh-501] K8S-* migration churn — Proposed — v1.0 W3**
+
+**[sh-502] Cross-tenant catalog consent flow design — Proposed — v1.0 W1**
+
+**[sh-503] OWASP Agentic Top 10 evidence completeness — Proposed — v1.0 W4**
+
+### NEW — from May 2026 catalog review (Stronghold)
+
+**[sh-600] CLI-Hub federation — Proposed; `gap-impl` — v1.1**
+- Multi-tenant catalog ingests from `clianything.cc` (HKUDS) with tenant-scoped enable/disable + audit
+- Substrate: `[engine#ADR-035]`, `[sh-001]`, `[engine-092]`
+
+**[sh-601] Forge × CLI-Anything pairing — Proposed; `gap-impl` — v1.2**
+- Forge invokes CLI-Anything when a skill request maps to existing software
+- Output skills are source-derived, not LLM-confabulated
+- Improves `[sh-200]` Forge test→iterate loop
+
+**[sh-602] A2UI render layer for stronghold tenants — Proposed — v1.0 W4**
+- Implements `[engine-090]` chat-UI integration contract for tenants
+- Resolves Open WebUI 50-user attribution clause concern
+- Substrate: `BlakeMatthews-dev/A2UI`, `[engine-090]`, `[engine-091]`
+
+**[sh-603] Default skills bundle for tenants — Proposed; `gap-impl` — v1.0 W1**
+- Inherits `[engine-095]` plus tenant-scoping + policy bindings
+- Tier 1 + Tier 2 MCP servers federated per `[sh-600]`
+
+**[sh-604] Promptfoo as eval-substrate CI tool — Proposed — v1.0 W5**
+- Service-boundary tool per `engine#ADR-039`
+- Complements Hypothesis property tests (`[sh-095]`) for prompt regression
+- Strong fit for compliance-first v1.0 eval story
+
+**[sh-605] Open Interpreter as sandboxed code execution — Proposed — v1.0 W2**
+- Service-boundary candidate via MCP for stronghold sandbox isolation
+- Alternative to building from scratch; passes `engine#ADR-039` maintainer-signal gate
 
 ---
 
 ## Maintenance
 
-- New items get appended; status changes happen in-place.
+- This file is **identical across all four repos**. Any edit lands in all four.
 - IDs are stable. Items never get renumbered.
 - When an item is shipped, mark `Implemented` and link the PR.
 - When an item is no longer relevant, mark `Abandoned` with a one-line reason. Don't delete.
-- Once registry CI lands (`engine-001`), this BACKLOG is regenerated from front-matter; hand-edits during the warn window are fine.
+- Once `engine-001` (registry CI) ships, this BACKLOG is regenerated from front-matter; hand-edits then fail CI.
+- Per-product `ROADMAP-v1.0.md` files contain v1.0 acceptance test detail (workstreams, property-test contracts) that doesn't duplicate here.
+- External-library decisions (which to import, which to service-boundary, which to pattern-reference, which to reject) follow `engine#ADR-039`.
