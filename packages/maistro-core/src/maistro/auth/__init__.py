@@ -18,21 +18,32 @@ from maistro.auth._types import (
     ServiceIdentity,
     expand_scopes,
 )
+from maistro.auth.checker import ServiceKeyChecker
 from maistro.auth.client import ServiceKeyClient
-from maistro.auth.middleware import (
-    extract_service_identity,
-    require_any_scope,
-    require_scope,
-    setup_service_auth,
-)
 from maistro.auth.provider import ServiceKeyAuthProvider
 from maistro.auth.registry import ServiceKeyRegistry
+
+
+def __getattr__(name: str):
+    if name in (
+        "extract_service_identity",
+        "require_any_scope",
+        "require_scope",
+        "setup_service_auth",
+    ):
+        from maistro.auth import middleware as _m
+
+        return getattr(_m, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "Scope",
     "ScopeCategory",
+    "ServiceChecker",
     "ServiceIdentity",
     "ServiceKeyAuthProvider",
+    "ServiceKeyChecker",
     "ServiceKeyClient",
     "ServiceKeyRegistry",
     "expand_scopes",

@@ -1,0 +1,64 @@
+name: Registry CI
+
+# Validate ADR/spec front-matter per engine#ADR-031.
+# Warn-only during the rollout window (until 2026-06-07);
+# flip to --strict (hard fail on warnings) after day 30.
+
+on:
+  pull_request:
+    paths:
+      - 'docs/adr/**'
+      - 'docs/specs/**'
+      - 'specs/**'
+      - 'tools/registry/**'
+      - 'tests/tools/registry/**'
+      - 'pyproject.toml'
+      - '.github/workflows/registry.yml'
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: registry-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate ADR/spec front-matter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal deps
+        # Only what the registry tool needs; keeps CI fast and the
+        # supply-chain surface small per engine#ADR-039.
+        # httpx is required by tools/registry/linker.py for cross-repo
+        # link checking.
+        run: pip install pydantic pyyaml pytest httpx
+
+      - name: Run unit tests
+        # --confcutdir prevents pytest from discovering the root
+        # tests/conftest.py (which imports the engine and pulls in
+        # pydantic_settings + the rest of the engine dep tree). The
+        # registry tests are deliberately decoupled per ADR-039;
+        # this guard plus the local tests/tools/registry/conftest.py
+        # ensures the engine never gets imported here.
+        run: |
+          pytest tests/tools/registry/ \
+            --confcutdir=tests/tools/registry \
+            -p no:cacheprovider \
+            -v
+
+      - name: Validate ADR/spec front-matter (warn-only window)
+        # Until 2026-06-07: do NOT pass --strict; warnings (missing
+        # front-matter) are advisory. After 2026-06-07: add --strict
+        # to fail the job on warnings as well as errors.
+        run: python -m tools.registry.cli walk .

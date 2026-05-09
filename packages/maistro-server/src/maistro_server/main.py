@@ -13,6 +13,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from maistro_server.api import chat_completions, health, metrics, models, tasks, webhooks, ws
 from maistro_server.api.rate_limit import RateLimitMiddleware
@@ -193,3 +194,10 @@ app.include_router(chat_completions.router)
 app.include_router(models.router)
 app.include_router(webhooks.router)
 app.include_router(ws.router)
+
+# Dashboard — static HTML/JS served at /dashboard/
+import pathlib as _pathlib
+
+_dashboard_dir = _pathlib.Path(__file__).resolve().parent.parent.parent / "dashboard"
+if _dashboard_dir.is_dir():
+    app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")

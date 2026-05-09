@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
+from maistro.memory.scopes import build_scope_filter, matches_scope
 from maistro.memory.types import (
     WEIGHT_BOUNDS,
     EpisodicMemory,
@@ -12,7 +11,6 @@ from maistro.memory.types import (
     MemoryTier,
     Outcome,
 )
-from maistro.memory.scopes import build_scope_filter, matches_scope
 
 
 class TestWeightBounds:
@@ -66,14 +64,23 @@ class TestBuildScopeFilter:
 class TestMatchesScope:
     def _global_mem(self, org_id: str = "") -> EpisodicMemory:
         return EpisodicMemory(
-            memory_id="m1", scope=MemoryScope.GLOBAL, content="x",
-            tier=MemoryTier.OBSERVATION, weight=0.3, org_id=org_id,
+            memory_id="m1",
+            scope=MemoryScope.GLOBAL,
+            content="x",
+            tier=MemoryTier.OBSERVATION,
+            weight=0.3,
+            org_id=org_id,
         )
 
     def _team_mem(self, team_id: str, org_id: str) -> EpisodicMemory:
         return EpisodicMemory(
-            memory_id="m2", scope=MemoryScope.TEAM, content="x",
-            tier=MemoryTier.LESSON, weight=0.6, team_id=team_id, org_id=org_id,
+            memory_id="m2",
+            scope=MemoryScope.TEAM,
+            content="x",
+            tier=MemoryTier.LESSON,
+            weight=0.6,
+            team_id=team_id,
+            org_id=org_id,
         )
 
     def test_global_memory_visible_without_org(self) -> None:

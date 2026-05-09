@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import BaseModel, ValidationError
-
 from maistro.agents.spec.structured_output import StructuredOutputParser
+from pydantic import BaseModel, ValidationError
 
 
 class _Simple(BaseModel):
