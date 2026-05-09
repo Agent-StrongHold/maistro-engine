@@ -40,23 +40,36 @@ jobs:
       - name: Install minimal deps
         # Only what the registry tool needs; keeps CI fast and the
         # supply-chain surface small per engine#ADR-039.
-        run: pip install pydantic pyyaml pytest
+        run: pip install pydantic pyyaml httpx pytest
 
       - name: Run unit tests
         # --confcutdir prevents pytest from discovering the root
         # tests/conftest.py (which imports the engine and pulls in
-        # pydantic_settings + the rest of the engine dep tree). The
-        # registry tests are deliberately decoupled per ADR-039;
-        # this guard plus the local tests/tools/registry/conftest.py
-        # ensures the engine never gets imported here.
+        # pydantic_settings + the rest of the engine dep tree).
+        # The local tests/tools/registry/conftest.py is a second guard.
         run: |
           pytest tests/tools/registry/ \
             --confcutdir=tests/tools/registry \
             -p no:cacheprovider \
             -v
 
-      - name: Validate ADR/spec front-matter (warn-only window)
-        # Until 2026-06-07: do NOT pass --strict; warnings (missing
-        # front-matter) are advisory. After 2026-06-07: add --strict
-        # to fail the job on warnings as well as errors.
-        run: python -m tools.registry.cli walk .
+      - name: Lint ADR/spec front-matter (warn-only window)
+        # `lint` runs: walk + validate + DAG cycle check + local link
+        # check (FilesystemResolver). Until 2026-06-07: do NOT pass
+        # --strict; warnings (missing front-matter) are advisory.
+        # After 2026-06-07: add --strict to fail the job on warnings.
+        run: python -m tools.registry.cli lint .
+
+      - name: Generate registry artifacts (dry-run)
+        # Generate registry.json + registry.md to a tmp directory to
+        # confirm the generator works end-to-end against current ADR
+        # set. We don't commit the generated artifacts here; that
+        # lands in [engine-002] (auto-regen on merge to main).
+        run: |
+          python -m tools.registry.cli generate . \
+            --output /tmp/registry-dryrun \
+            --allow-errors
+          echo "Generated artifacts:"
+          ls -la /tmp/registry-dryrun/
+          echo "Entry count:"
+          python -c "import json; d=json.load(open('/tmp/registry-dryrun/registry.json')); print(len(d), 'entries')"
