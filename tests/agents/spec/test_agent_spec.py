@@ -2,26 +2,24 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.agents.spec.agent_spec import (
+    DEFAULT_TOOLS,
+    RECOVERABLE_ERRORS,
     AgentOutput,
     AgentRole,
     AgentSpec,
-    DEFAULT_TOOLS,
-    RECOVERABLE_ERRORS,
     ErrorType,
     Lane,
 )
 
 
 def _minimal_spec(**kwargs) -> AgentSpec:
-    defaults = dict(
-        role=AgentRole.CODER,
-        task_id="task-1",
-        subtask_id="sub-1",
-        description="Write a function",
-    )
+    defaults = {
+        "role": AgentRole.CODER,
+        "task_id": "task-1",
+        "subtask_id": "sub-1",
+        "description": "Write a function",
+    }
     defaults.update(kwargs)
     return AgentSpec(**defaults)
 

@@ -32,7 +32,8 @@ class InMemoryOutcomeStore:
     ) -> dict[str, Any]:
         cutoff = datetime.now(UTC) - timedelta(days=days)
         filtered = [
-            o for o in self._outcomes
+            o
+            for o in self._outcomes
             if o.created_at >= cutoff
             and (not task_type or o.task_type == task_type)
             and self._org_matches(o.org_id, org_id)

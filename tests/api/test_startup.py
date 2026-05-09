@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from maistro.main import _validate_startup
 
 from maistro.config.settings import Settings
-from maistro.main import _validate_startup
 
 
 class TestStartupValidation:

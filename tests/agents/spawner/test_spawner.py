@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import pytest
-
-from maistro.agents.spec.agent_spec import AgentOutput, AgentRole, AgentSpec, ErrorType, Lane
-from maistro.agents.spec.schemas import CodeOutput
-from maistro.agents.spawner.spawner import LLMCaller, Spawner
+from maistro.agents.spawner.spawner import Spawner
+from maistro.agents.spec.agent_spec import AgentOutput, AgentRole, AgentSpec, ErrorType
 
 
 class FakeLLMCaller:
     """Test double for LLMCaller protocol."""
 
-    def __init__(self, content: str = '{"files_modified": [], "summary": "done", "tests_added": false}') -> None:
+    def __init__(
+        self, content: str = '{"files_modified": [], "summary": "done", "tests_added": false}'
+    ) -> None:
         self.content = content
         self.calls: list[dict] = []
 
@@ -23,17 +23,16 @@ class FakeLLMCaller:
 
 class TimeoutLLMCaller:
     async def call(self, system: str, user: str, **kwargs) -> dict:
-        import asyncio
-        raise asyncio.TimeoutError("connection timed out")
+        raise TimeoutError("connection timed out")
 
 
 def _spec(**kwargs) -> AgentSpec:
-    defaults = dict(
-        role=AgentRole.CODER,
-        task_id="t1",
-        subtask_id="s1",
-        description="Write a hello world function",
-    )
+    defaults = {
+        "role": AgentRole.CODER,
+        "task_id": "t1",
+        "subtask_id": "s1",
+        "description": "Write a hello world function",
+    }
     defaults.update(kwargs)
     return AgentSpec(**defaults)
 
