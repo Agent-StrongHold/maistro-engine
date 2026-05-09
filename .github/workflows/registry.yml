@@ -40,12 +40,20 @@ jobs:
       - name: Install minimal deps
         # Only what the registry tool needs; keeps CI fast and the
         # supply-chain surface small per engine#ADR-039.
-        run: pip install pydantic pyyaml
+        run: pip install pydantic pyyaml pytest
 
       - name: Run unit tests
+        # --confcutdir prevents pytest from discovering the root
+        # tests/conftest.py (which imports the engine and pulls in
+        # pydantic_settings + the rest of the engine dep tree). The
+        # registry tests are deliberately decoupled per ADR-039;
+        # this guard plus the local tests/tools/registry/conftest.py
+        # ensures the engine never gets imported here.
         run: |
-          pip install pytest
-          pytest tests/tools/registry/ -v
+          pytest tests/tools/registry/ \
+            --confcutdir=tests/tools/registry \
+            -p no:cacheprovider \
+            -v
 
       - name: Validate ADR/spec front-matter (warn-only window)
         # Until 2026-06-07: do NOT pass --strict; warnings (missing
