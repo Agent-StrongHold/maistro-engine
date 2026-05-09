@@ -7,7 +7,6 @@ specs/self-todos.md, specs/mood.md, specs/activation-graph.md.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum

@@ -13,15 +13,13 @@ the interface Turing expects.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from maistro.protocols.classifier import IntentClassifier
     from maistro.protocols.llm import LLMClient
     from maistro.protocols.memory import EpisodicStore, LearningStore
-    from maistro.protocols.classifier import IntentClassifier
-    from maistro.types.memory import EpisodicMemory, Learning
 
 logger = logging.getLogger("maistro_turing.bridge")
 
@@ -264,7 +262,7 @@ class TuringProviderBridge:
             max_tokens=max_tokens,
         )
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             import concurrent.futures
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
