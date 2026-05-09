@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import random
 
-import pytest
-
 from maistro.agents.recipes import AgentRecipe
-from maistro.agents.spec.agent_spec import AgentRole
 from maistro.agents.spawner.variant_selector import VariantSelector
+from maistro.agents.spec.agent_spec import AgentRole
 
 
 def _recipe(variants: list[str], min_samples: int = 20) -> AgentRecipe:

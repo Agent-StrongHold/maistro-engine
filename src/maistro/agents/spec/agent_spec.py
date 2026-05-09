@@ -40,18 +40,26 @@ class ErrorType(StrEnum):
     DEPENDENCY_FAILED = "dependency_failed"
 
 
-RECOVERABLE_ERRORS: frozenset[ErrorType] = frozenset({
-    ErrorType.TIMEOUT,
-    ErrorType.PARSE_FAILURE,
-    ErrorType.MODEL_ERROR,
-    ErrorType.LOW_SCORE,
-})
+RECOVERABLE_ERRORS: frozenset[ErrorType] = frozenset(
+    {
+        ErrorType.TIMEOUT,
+        ErrorType.PARSE_FAILURE,
+        ErrorType.MODEL_ERROR,
+        ErrorType.LOW_SCORE,
+    }
+)
 
 DEFAULT_TOOLS: dict[AgentRole, list[str]] = {
     AgentRole.PLANNER: ["file_ops.read", "file_ops.list", "shell.run_read_only"],
     AgentRole.CODER: ["file_ops.read", "file_ops.write", "file_ops.list", "shell.run"],
     AgentRole.REVIEWER: ["file_ops.read", "file_ops.list"],
-    AgentRole.SCOUT: ["file_ops.read", "file_ops.list", "shell.run_read_only", "git.log", "git.diff"],
+    AgentRole.SCOUT: [
+        "file_ops.read",
+        "file_ops.list",
+        "shell.run_read_only",
+        "git.log",
+        "git.diff",
+    ],
     AgentRole.ARCHITECT: ["file_ops.read", "file_ops.list"],
     AgentRole.EXTRACTOR: ["file_ops.read", "file_ops.write", "file_ops.list"],
     AgentRole.VALIDATOR: ["file_ops.read", "file_ops.list", "shell.run_read_only"],
