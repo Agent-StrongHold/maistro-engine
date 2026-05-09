@@ -1,8 +1,30 @@
+---
+id: ADR-019
+title: Canonical Source Split — maistro-engine vs Stronghold
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-05-06
+accepted: 2026-05-06
+substrate: []
+implements: []
+related:
+  - maistro-engine#ADR-030
+supersedes: []
+blocks: []
+blocked-by: []
+contracts: []
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-019: Canonical Source Split — maistro-engine vs Stronghold
 
-**Status:** Accepted
-**Date:** 2026-05-06
 **Context:** Three codebases share one Python runtime architecture. Need a rule for where new code lands.
+
+Extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) (Four-Repo Governance) which adds AgentTuring and Project_mAIstro to the picture and formalises the Copier-templated-product relationship.
 
 ## Decision
 
@@ -31,7 +53,6 @@
 | Observability (logging, metrics, tracing) | |
 | Canvas protocols (CanvasStore, ImageGenClient, Compositor) | |
 | Da Vinci agent definition | |
-| Da Vinci agent definition | |
 
 ### Products
 
@@ -59,3 +80,7 @@
 - Stronghold's dependency on maistro-core is explicit (`pip install maistro-core`)
 - Canvas Studio can ship independently without pulling in Conductor or Stronghold
 - Future products (mobile app, CLI tool, etc.) get the same shared runtime
+
+## Note on the four-repo system
+
+The "Products" framing in this ADR was extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) to four templated peers — `Project_mAIstro` (single-tenant secure multi-user), `AgentTuring` (autonoetic experiment), `agent-stronghold/stronghold` (multi-tenant enterprise), all rebasing from engine templates per [`engine#ADR-033`](ADR-033-templates-and-copier-workflow.md). The Canvas Studio and Project Turing entries above predate the formal four-repo split; their canonical homes are now noted in the engine `README.md` and `INVENTORY-ADRS-SPECS.md`.
