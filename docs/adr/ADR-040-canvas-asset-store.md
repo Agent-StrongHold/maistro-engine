@@ -1,12 +1,12 @@
 ---
 id: ADR-040
-title: Canvas Asset Store — Persistence for ADR-039 Layer Model
+title: Canvas Asset Store — Persistence for ADR-041 Layer Model
 repo: maistro-engine
 kind: adr
 status: Proposed
 created: 2026-05-09
 substrate:
-  - maistro-engine#ADR-039
+  - maistro-engine#ADR-041
   - maistro-engine#ADR-005
   - maistro-engine#ADR-031
   - maistro-engine#ADR-032
@@ -30,7 +30,7 @@ owners:
 
 ## Context
 
-ADR-039 ships the typed scene-graph layer model in `layers.py` but is
+ADR-041 ships the typed scene-graph layer model in `layers.py` but is
 explicitly contracts-only — no implementation. Without a persistence
 layer the model is unobservable; the agent (davinci) and the future
 FastAPI surface have no way to load or save AssetDefinitions, asset
@@ -39,14 +39,21 @@ sheets, instances, child profiles, or the book-level WorldStyle.
 The existing canvas `store.py` persists `CanvasRecord`, `LayerRecord`,
 `GenerationJobRecord`, `CompositeResult`. Those are not the new model:
 their `LayerRecord` is the deprecated flat `LayerType` shape, not the
-ADR-039 `AssetInstance`.
+ADR-041 `AssetInstance`.
+
+> **Note (2026-05-09):** This ADR was originally written against ADR-039
+> (Canvas Layer Taxonomy), which has since been renumbered to ADR-041 to
+> resolve a numbering collision with ADR-039 (External Library Adoption
+> Policy). All references in this document are updated accordingly. The
+> follow-up ADRs at the bottom are bumped from ADR-041..043 to
+> ADR-042..044.
 
 ## Decision
 
 Engine ships **`maistro_canvas.canvas.asset_store`** alongside the
 existing `store.py`. Both coexist while the migration from `LayerRecord`
 to `AssetInstance` is figured out (a separate ADR). The new module
-implements the protocols added in ADR-039:
+implements the protocols added in ADR-041:
 
 - `AssetRegistry` — CRUD for `AssetDefinition`s
 - `AssetSheetService` — generate/get/regenerate sheets (the actual
@@ -154,7 +161,7 @@ CREATE TABLE books (
 
 The existing `canvases` table is unchanged; a future migration may add
 a nullable `book_id` foreign key to associate a canvas with a book and
-its world style. That's deferred until the compositor (ADR-041) needs
+its world style. That's deferred until the compositor (ADR-042) needs
 it.
 
 ### Module surface
@@ -201,7 +208,7 @@ async def update_book(self, book: Book) -> Book
 
 - `register_definition` is **idempotent** on `asset_id`: re-registering
   a definition with identical canonical fields is a no-op; with
-  differing canonical fields it raises `ValueError` (ADR-039 EC-04).
+  differing canonical fields it raises `ValueError` (ADR-041 EC-04).
 - `upsert_instance` validates the embedded inline definition (if any)
   against the same Pydantic schema as a registered one.
 - `regenerate_sheet` increments `revision` atomically; concurrent
@@ -225,14 +232,14 @@ async def update_book(self, book: Book) -> Book
 - `remove_instance` cascades `parent_id` references to NULL on
   child rows; children become orphans, not deleted (a render-time
   validation step would catch this and raise `MissingSocketError`
-  per ADR-039).
+  per ADR-041).
 
 ## Consequences
 
-- ADR-041 (compositor) gets a real persistence to walk: the scene
+- ADR-042 (compositor) gets a real persistence to walk: the scene
   graph is reconstructed by joining `asset_instances` with their
   parent rows.
-- ADR-042 (FastAPI routes) gets concrete CRUD methods to wrap.
+- ADR-043 (FastAPI routes) gets concrete CRUD methods to wrap.
 - The legacy `LayerRecord` model in `store.py` continues to work; the
   data-migration ADR (TBD) handles the move from `layers` to
   `asset_instances`.
@@ -241,9 +248,9 @@ async def update_book(self, book: Book) -> Book
 
 ## Out of scope
 
-- Image rendering / compositing — ADR-041.
-- HTTP routes — ADR-042.
-- Agent / tool integration — ADR-043.
+- Image rendering / compositing — ADR-042.
+- HTTP routes — ADR-043.
+- Agent / tool integration — ADR-044.
 - Migrating existing `LayerRecord` rows to `AssetInstance` — separate
   ADR after the compositor lands.
 - Tenant-scoped ontology entries (per ADR-036 Dynamic facet) — v2.0.
@@ -261,5 +268,6 @@ async def update_book(self, book: Book) -> Book
 ## Links
 
 - PR: (this PR)
-- Follow-up ADRs: ADR-041 (compositor), ADR-042 (routes), ADR-043
-  (executor + tool).
+- Follow-up ADRs: ADR-042 (compositor), ADR-043 (routes), ADR-044
+  (executor + tool). Bumped from ADR-041..043 due to the ADR-039 →
+  ADR-041 renumbering.
