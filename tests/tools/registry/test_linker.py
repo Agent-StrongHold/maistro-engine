@@ -85,16 +85,18 @@ def test_multiple_fields_each_checked() -> None:
 
 
 def test_cross_repo_refs() -> None:
+    # Legacy `ADR-K8S-NNN` form is deprecated per ADR-031 §3 (renumber
+    # on touch); the schema's _REF_PATTERN only accepts `(ADR|SPEC)-\d{3}`.
     fm = _make_fm(
         "ADR-030",
         related=[
-            "AgentTuring#ADR-K8S-001",
+            "AgentTuring#ADR-001",
             "stronghold#ADR-001",
         ],
     )
     resolver = FakeResolver(
         known={
-            "AgentTuring": {"ADR-K8S-001"},
+            "AgentTuring": {"ADR-001"},
             "stronghold": {"ADR-001"},
         }
     )
