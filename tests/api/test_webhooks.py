@@ -8,9 +8,9 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
+from maistro.main import app
 
 from maistro.config.settings import Settings, get_settings
-from maistro.main import app
 from maistro.tasks.queue import get_task_queue
 
 
