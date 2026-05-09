@@ -110,11 +110,14 @@ The registry CI is in **warn-only mode** during the front-matter rollout window 
 
 ## Contributing
 
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full author-facing guide. Quick reminders:
+
 1. Branch off `main` as `claude/<topic>-<slug>` (per [`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
 2. ADRs live in `docs/adr/ADR-NNN-<slug>.md` with required front-matter (per [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md)).
 3. Tests carry `pytest.mark.contract(...)` and `pytest.mark.scope(...)` (per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md)).
 4. Mutation-testing kill rate is the quality bar; coverage is reported but not gating.
 5. Cross-repo work uses the same branch name across repos when feasible.
+6. External library adoption follows [`ADR-039`](docs/adr/ADR-039-external-library-adoption-policy.md) — import / service-boundary / pattern reference / reject.
 
 ## Layout
 
@@ -138,6 +141,7 @@ maistro-engine/
 ├── docker-compose.yml                # Local dev stack
 ├── litellm_config.yaml               # Model gateway config
 ├── pyproject.toml                    # uv workspace root
+├── CONTRIBUTING.md                   # Author-facing how-to
 └── README.md                         # this file
 ```
 
