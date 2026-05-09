@@ -35,8 +35,7 @@ class StructuredOutputParser:
         extracted = _extract_json(raw)
         if extracted is None:
             raise ValueError(
-                f"Could not extract JSON from response. "
-                f"Raw output starts with: {raw[:200]!r}"
+                f"Could not extract JSON from response. Raw output starts with: {raw[:200]!r}"
             )
         return result_type.model_validate_json(extracted)
 
@@ -48,8 +47,7 @@ class StructuredOutputParser:
             ]
             return (
                 "Your previous response had validation errors. "
-                "Please fix these issues and respond with valid JSON only:\n"
-                + "\n".join(details)
+                "Please fix these issues and respond with valid JSON only:\n" + "\n".join(details)
             )
         return (
             f"Your previous response could not be parsed as JSON. "
