@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from tools.registry.parser import parse_file
 
 
@@ -61,6 +60,4 @@ def test_yaml_list_of_strings_in_value_works(tmp_path: Path) -> None:
         "---\nrelated:\n  - maistro-engine#ADR-001\n  - maistro-engine#ADR-002\n---\nbody",
     )
     result = parse_file(p)
-    assert result.front_matter == {
-        "related": ["maistro-engine#ADR-001", "maistro-engine#ADR-002"]
-    }
+    assert result.front_matter == {"related": ["maistro-engine#ADR-001", "maistro-engine#ADR-002"]}
