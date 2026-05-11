@@ -1,5 +1,5 @@
 ---
-id: ADR-039
+id: ADR-041
 title: Canvas Layer Taxonomy, Scene Graph, and World Style
 repo: maistro-engine
 kind: adr
@@ -14,6 +14,7 @@ implements: []
 related:
   - maistro-engine#ADR-019
   - maistro-engine#ADR-030
+  - maistro-engine#ADR-040
 supersedes: []
 blocks: []
 blocked-by: []
@@ -26,7 +27,13 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-039: Canvas Layer Taxonomy, Scene Graph, and World Style
+# ADR-041: Canvas Layer Taxonomy, Scene Graph, and World Style
+
+> **Renumbering note (2026-05-09):** Originally filed as ADR-039 in PR #12.
+> Renumbered to ADR-041 to resolve a numbering collision with
+> `ADR-039-external-library-adoption-policy.md`. ADR-040 is
+> `canvas-asset-store`. The follow-up ADRs referenced at the bottom of
+> this document are renumbered accordingly.
 
 ## Context
 
@@ -68,7 +75,7 @@ shapes lets us delete bespoke vocabulary in exchange for one with a
 
 ## Decision
 
-Engine ships ADR-039 as the canvas's typed layer model, scene graph,
+Engine ships ADR-041 as the canvas's typed layer model, scene graph,
 asset model, personalisation model, and world-style model, in
 `packages/maistro-canvas/src/maistro_canvas/types.py` and
 `packages/maistro-canvas/src/maistro_canvas/protocols.py`. The POC's
@@ -440,8 +447,8 @@ their parent's transform and don't define their own pose.
 
 ## Links
 
-- PR: (this PR)
+- PR: PR #12 (originally filed) and PR resolving the ADR-039 collision
 - Issue: (none)
-- Follow-up ADRs: ADR-040 (compositor), ADR-041 (store), ADR-042
-  (routes), ADR-043 (executor + tool) — to be filed when implementation
-  begins.
+- Follow-up ADRs: ADR-042 (compositor), ADR-043 (store), ADR-044
+  (routes), ADR-045 (executor + tool) — to be filed when implementation
+  begins. Bumped from ADR-040..043 due to this renumbering.
