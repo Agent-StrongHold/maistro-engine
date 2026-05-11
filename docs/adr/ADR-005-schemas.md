@@ -1,8 +1,31 @@
+---
+id: ADR-005
+title: Pydantic schemas + SCHEMA_REGISTRY
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-004
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests:
+  - tests/agents/spec/test_schemas.py
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-005: Pydantic schemas + SCHEMA_REGISTRY
 
-**Status:** Accepted  
-**Date:** 2026-04-26  
-**Tranche:** T1  
+**Status:** Accepted
+**Date:** 2026-04-26
+**Tranche:** T1
 **Depends on:** ADR-004
 
 ---
