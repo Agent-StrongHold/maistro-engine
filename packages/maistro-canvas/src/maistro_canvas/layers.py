@@ -1,41 +1,12 @@
 """Canvas layer model — ADR-039.
 
 Adds a typed scene-graph layer model on top of the existing
-`maistro_canvas.types` primitives:
+`maistro_canvas.types` primitives.
 
-- `LayerKind`        — 7-kind taxonomy (BACKGROUND/STRUCTURE/VEHICLE/PROP/
-                       CHARACTER/FX/TEXT). Replaces the older `LayerType`,
-                       which is kept as a deprecated alias.
-- `Anchor`           — small subset of anchors (ground, horizon, floating).
-                       Most attachment moves to `parent_id + parent_socket`.
-- `Slot`             — normalised rectangular bounding hint.
-- `Socket`           — named attachment point on an `AssetDefinition`.
-- `OcclusionHint`    — typed in-front-of / behind constraints between
-                       sibling instances.
-- `GroundPlane`      — horizon + perspective on a `BackgroundComposition`.
-- `BackgroundComposition` — sky / mid / foreground triplet plus ground
-                       plane.
-- `PersonalizationSlot` + `ChildProfile` — declarative personalisation
-                       intent that compiles to a skin binding at render
-                       time.
-- `AssetSheet`       — generalised reference sheet for any named asset.
-- `AssetDefinition`  — kind + base prompt + sheet + sockets + skin set
-                       + default style. Either registered (named,
-                       reusable) or inline (anonymous, one-off).
-- `AssetInstance`    — placement of a definition on a canvas. Carries
-                       parent_id + parent_socket, transform, slot,
-                       anchor, occlusion, personalisation, skin binding,
-                       prompt nudge, history.
-- `WorldStyle`, `WorldStylePartial`, `RenderStyle`, `StyleVolume` —
-                       book-level world style with per-image overrides
-                       and page-range volumes (dream sequences,
-                       flashbacks).
-- `FoundationFootprint`, `WheelAnchors`, `CharacterPose` — pose
-                       geometry discriminated by `LayerKind`.
-- `Transform`        — 2D transform on an `AssetInstance`.
-
-This module is types-only; behaviour (compositing, scene-graph walking,
-asset-sheet generation) lands with the implementation ADRs.
+POC modifications (book-maker-poc branch):
+  - ChildProfile: likeness_refs capped at 5 via __post_init__
+    (SPEC invariant photo_count_capped_at_5)
+  - AssetInstance.history mirrors the per-layer version history from SPEC
 """
 
 from __future__ import annotations
@@ -44,7 +15,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal
 
-from maistro_canvas.types import LayerType
+from maistro_canvas.types import LayerType, _MAX_REFERENCE_PHOTOS
 
 # ─────────────────────────────────────────────────────────────────────
 # Enums
@@ -64,19 +35,16 @@ class LayerKind(StrEnum):
 
 
 class Anchor(StrEnum):
-    """Per ADR-039 §2. Small set; everything else is parent_id + socket."""
+    """Per ADR-039 §2. Small subset; everything else uses parent_id + socket."""
 
     GROUND_CONTACT = "ground_contact"
     HORIZON = "horizon"
     FLOATING = "floating"
 
 
-# Migration map for the old `LayerType`. Per ADR-039 §1.
 _LAYER_TYPE_TO_KIND: dict[str, LayerKind] = {
     LayerType.BACKGROUND: LayerKind.BACKGROUND,
     LayerType.CHARACTER: LayerKind.CHARACTER,
-    # OBJECT defaults to PROP. STRUCTURE promotion requires an explicit
-    # `metadata.role: "structure"` flag and human review.
     LayerType.OBJECT: LayerKind.PROP,
     LayerType.TEXT: LayerKind.TEXT,
 }
@@ -189,9 +157,6 @@ class CharacterPose:
 
 PoseGeometry = FoundationFootprint | WheelAnchors | CharacterPose
 
-
-# Mapping of which pose-geometry shape is allowed per LayerKind.
-# PROP, FX, BACKGROUND, TEXT reject pose geometry.
 POSE_GEOMETRY_FOR_KIND: dict[LayerKind, type] = {
     LayerKind.STRUCTURE: FoundationFootprint,
     LayerKind.VEHICLE: WheelAnchors,
@@ -217,13 +182,7 @@ PersonalizationKind = Literal[
 
 @dataclass(frozen=True)
 class PersonalizationSlot:
-    """Declarative personalisation intent.
-
-    `kind` says what role this slot plays in the book; `binding` is the
-    key into `ChildProfile` / `BookVariables` that populates it. At
-    render time the engine compiles this into a `skin_binding` on the
-    parent `AssetDefinition`'s `skin_set`.
-    """
+    """Declarative personalisation intent."""
 
     kind: PersonalizationKind
     binding: str
@@ -233,9 +192,12 @@ class PersonalizationSlot:
 class ChildProfile:
     """The personalisation key for a book render.
 
-    `accommodations` follows the storybook-series shape from the design
-    bundle — fidget, headphones, AAC tablet, comfort objects — so the
-    art can include them when the parent wants them visible.
+    likeness_refs holds data URLs or file paths for reference photos.
+    Capped at _MAX_REFERENCE_PHOTOS (5) per SPEC invariant
+    photo_count_capped_at_5.
+
+    `accommodations` follows the storybook-series shape: fidget,
+    headphones, AAC tablet, comfort objects.
     """
 
     profile_id: str
@@ -246,6 +208,14 @@ class ChildProfile:
     age_range: str | None = None
     reading_level: str | None = None
 
+    def __post_init__(self) -> None:
+        if len(self.likeness_refs) > _MAX_REFERENCE_PHOTOS:
+            object.__setattr__(
+                self,
+                "likeness_refs",
+                self.likeness_refs[:_MAX_REFERENCE_PHOTOS],
+            )
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Asset model — definition / instance split with inline support
@@ -254,14 +224,7 @@ class ChildProfile:
 
 @dataclass(frozen=True)
 class AssetSheet:
-    """Generalised reference sheet for any named asset.
-
-    v1 retains the existing 3-5 refs → IP-Adapter / FaceID conditioning →
-    multi-pose sheet workflow that today serves only characters,
-    extending it to any asset with a stable `asset_id`. A per-asset
-    LoRA fine-tune is an opt-in `revision` graduation when sample count
-    permits.
-    """
+    """Generalised reference sheet for any named asset."""
 
     asset_id: str
     refs: tuple[str, ...]
@@ -284,14 +247,9 @@ class WorldStylePartial:
 
 @dataclass(frozen=True)
 class AssetDefinition:
-    """Per ADR-039 §3. Either registered (named, reusable) or inline.
+    """Per ADR-039 §3. Either registered (named, reusable) or inline."""
 
-    For inline anonymous use, `asset_id` may be empty; the definition
-    travels embedded inside the `AssetInstance`. The agent may promote
-    an inline definition to a registered one when reuse is detected.
-    """
-
-    asset_id: str  # empty string allowed for inline definitions
+    asset_id: str
     kind: LayerKind
     base_prompt: str
     asset_sheet: AssetSheet | None = None
