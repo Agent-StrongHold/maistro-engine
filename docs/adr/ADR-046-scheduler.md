@@ -1,10 +1,29 @@
-# ADR-046: Scheduler — Recurring agent tasks
-
-**Status:** Proposed
-**Date:** 2026-05-13
-**Depends on:** ADR-018 (Task Record Persistence), ADR-021 (Conductor Seed)
-
 ---
+id: ADR-046
+title: Scheduler — Recurring agent tasks
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-13
+substrate:
+  - maistro-engine#ADR-018
+  - maistro-engine#ADR-021
+implements: []
+related:
+  - maistro-engine#ADR-047
+  - maistro-engine#ADR-048
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Orchestration
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-046: Scheduler — Recurring agent tasks
 
 ## Context
 
