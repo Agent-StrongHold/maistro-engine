@@ -1,10 +1,30 @@
-# ADR-047: Outbound Delivery Gateway — Multi-channel notifier
-
-**Status:** Proposed
-**Date:** 2026-05-13
-**Depends on:** ADR-014 (Memory Protocols — protocol pattern reference), ADR-018 (Task Record Persistence), ADR-046 (Scheduler)
-
 ---
+id: ADR-047
+title: Outbound Delivery Gateway — Multi-channel notifier
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-13
+substrate:
+  - maistro-engine#ADR-014
+  - maistro-engine#ADR-018
+  - maistro-engine#ADR-046
+implements: []
+related:
+  - maistro-engine#ADR-046
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - cross-service
+tests: []
+layer: Tools
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-047: Outbound Delivery Gateway — Multi-channel notifier
 
 ## Context
 

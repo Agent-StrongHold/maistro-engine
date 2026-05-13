@@ -1,10 +1,27 @@
-# ADR-048: Session Search — Episodic memory inspector endpoint
-
-**Status:** Proposed
-**Date:** 2026-05-13
-**Depends on:** ADR-016 (Episodic Store), ADR-034 (Memory Canonical Ownership)
-
 ---
+id: ADR-048
+title: Session Search — Episodic memory inspector endpoint
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-13
+substrate:
+  - maistro-engine#ADR-016
+  - maistro-engine#ADR-034
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Memory
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-048: Session Search — Episodic memory inspector endpoint
 
 ## Context
 
