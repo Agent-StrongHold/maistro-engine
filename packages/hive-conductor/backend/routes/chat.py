@@ -11,6 +11,7 @@ from models.schemas import ChatCompletionRequest, ChatMessage, ChatSession, Chat
 
 import stores
 from services.chat_completion import run_chat_completion
+from services.engine import get_engine, EngineService
 
 router = APIRouter(tags=["chat"])
 
@@ -89,5 +90,8 @@ def append_message(session_id: str, body: AppendMessageBody) -> ChatMessage:
 
 @router.post("/complete", response_model=dict)
 async def complete(req: ChatCompletionRequest) -> dict:
-    """Non-streaming completion via :class:`protocols.llm.LLMPort` + optional :class:`protocols.telemetry.TelemetryPort`."""
+    """Non-streaming completion — routes through maistro-core agents when configured."""
+    engine: EngineService = get_engine()
+    if engine.is_configured:
+        return await engine.route_request(req.messages)
     return await run_chat_completion(req)

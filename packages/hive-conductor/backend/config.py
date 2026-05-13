@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     # Prefer OpenAI Responses when the gateway supports it; ``auto`` falls back to chat.completions.
     llm_http_variant: Literal["auto", "responses", "chat_completions"] = "auto"
 
+    # maistro-core integration (embed mode — one process, one port)
+    # Set MAISTRO_ROUTER_API_KEY to enable real agent routing; omit to run in stub mode.
+    maistro_router_api_key: str | None = None
+    maistro_agents_dir: str = "agents"
+    maistro_llm_base_url: str | None = None  # e.g. http://litellm:4000/v1
+    maistro_llm_api_key: SecretStr | None = None
+    maistro_model: str = "gpt-4o"
+
 
 @lru_cache
 def get_settings() -> Settings:
