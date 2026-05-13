@@ -1,15 +1,22 @@
 """Tests for workspace path validation.
 
 Evidence: Sandbox containers must only mount from allowed host prefixes
-to prevent arbitrary filesystem access. This mirrors OpenClaw's
+to prevent arbitrary filesystem access. This mirrors the reference gateway
 validate-sandbox-security.ts path validation.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from maistro.tools.sandbox.workspace import validate_workspace_path
+
+
+def _resolved_tmp_workspace_root() -> str:
+    """Host-specific real path for the tmp workspace mount (macOS uses /private/tmp)."""
+    return str(Path("/tmp/maistro-workspace").resolve())
 
 
 class TestWorkspaceValidation:
@@ -18,7 +25,7 @@ class TestWorkspaceValidation:
 
     def test_allowed_tmp_path(self) -> None:
         path = validate_workspace_path("/tmp/maistro-workspace/myrepo")
-        assert str(path).startswith("/tmp/maistro-workspace")
+        assert str(path).startswith(_resolved_tmp_workspace_root())
 
     def test_allowed_repos_path(self) -> None:
         path = validate_workspace_path("/repos/my-org/my-repo")
@@ -57,6 +64,6 @@ class TestPathTraversal:
     def test_resolved_path_stays_within_prefix(self) -> None:
         """Traversal within the allowed tree is fine — resolve() normalizes it."""
         path = validate_workspace_path("/tmp/maistro-workspace/a/../b")
-        assert str(path).startswith("/tmp/maistro-workspace")
+        assert str(path).startswith(_resolved_tmp_workspace_root())
         # '..' was resolved, so 'a' is gone
         assert "/a/" not in str(path)

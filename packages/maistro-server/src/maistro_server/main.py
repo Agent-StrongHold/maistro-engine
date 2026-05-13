@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.metadata
+import pathlib
 import signal
 import uuid
 from collections.abc import AsyncIterator
@@ -15,15 +16,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from maistro_server.api import chat_completions, health, metrics, models, tasks, webhooks, ws
-from maistro_server.api.rate_limit import RateLimitMiddleware
-from maistro_server.api.schemas import ErrorDetail, ErrorResponse
 from maistro.config.settings import Settings, get_settings
 from maistro.observability.logging import configure_logging
 from maistro.observability.middleware import RequestIDMiddleware
+from maistro.tasks.progress_webhook import ProgressWebhookNotifier
 from maistro.tasks.queue import get_task_queue
 from maistro.tasks.runner import TaskRunner
 from maistro.tools.sandbox.server import cleanup_all_containers
+from maistro_server.api import chat_completions, health, metrics, models, tasks, webhooks, ws
+from maistro_server.api.rate_limit import RateLimitMiddleware
+from maistro_server.api.schemas import ErrorDetail, ErrorResponse
 
 logger = structlog.get_logger()
 
@@ -69,7 +71,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_engine()
 
     queue = get_task_queue()
-    _runner = TaskRunner(queue, executor=run_task)
+
+    progress_wh: ProgressWebhookNotifier | None = None
+    if settings.task_progress_webhook_url.strip():
+        progress_wh = ProgressWebhookNotifier(
+            post_url=settings.task_progress_webhook_url.strip(),
+            api_key=settings.task_progress_webhook_api_key,
+        )
+
+    _runner = TaskRunner(queue, executor=run_task, progress_webhook=progress_wh)
     await _runner.start()
     await logger.ainfo("maistro_engine_started", version=APP_VERSION)
 
@@ -195,9 +205,20 @@ app.include_router(models.router)
 app.include_router(webhooks.router)
 app.include_router(ws.router)
 
-# Dashboard — static HTML/JS served at /dashboard/
-import pathlib as _pathlib
+# Static UIs (see packages/maistro-server/README.md)
+_pkg_root = pathlib.Path(__file__).resolve().parent.parent.parent
+_legacy_dashboard_dir = _pkg_root / "dashboard"
+if _legacy_dashboard_dir.is_dir():
+    app.mount(
+        "/dashboard",
+        StaticFiles(directory=str(_legacy_dashboard_dir), html=True),
+        name="dashboard",
+    )
 
-_dashboard_dir = _pathlib.Path(__file__).resolve().parent.parent.parent / "dashboard"
-if _dashboard_dir.is_dir():
-    app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
+_hive_conductor_dir = pathlib.Path(__file__).resolve().parent / "static" / "hive"
+if _hive_conductor_dir.is_dir():
+    app.mount(
+        "/conductor",
+        StaticFiles(directory=str(_hive_conductor_dir), html=True),
+        name="hive_conductor",
+    )
