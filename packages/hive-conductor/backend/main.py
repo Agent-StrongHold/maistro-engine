@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from config import get_settings
 from routes import (
     agents,
     chat,
@@ -19,15 +22,24 @@ from routes import (
     missions,
     schedules,
     skills,
+    ws,
 )
 from routes import settings as settings_r
+from services import engine as engine_service
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "frontend" / "dist"
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await engine_service.start_engine(get_settings())
+    yield
+    await engine_service.stop_engine()
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title="Hive Conductor", version="0.1.0")
+    app = FastAPI(title="Hive Conductor", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -48,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(containers.router, prefix="/v1/containers")
     app.include_router(memory.router, prefix="/v1/memory")
     app.include_router(settings_r.router, prefix="/v1/settings")
+    app.include_router(ws.router, prefix="/v1/ws")
 
     if STATIC_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
