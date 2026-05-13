@@ -1,7 +1,7 @@
 """Trust boundary and per-agent permission system.
 
 Implements permission grants that control what agents can read, write,
-and execute. Ported from OpenClaw's trust-boundary.ts.
+and execute. Ported from the gateway product TypeScript trust-boundary module.
 """
 
 from __future__ import annotations

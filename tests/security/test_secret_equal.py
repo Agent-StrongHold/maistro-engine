@@ -1,6 +1,6 @@
 """Tests for constant-time secret comparison.
 
-Evidence source: OpenClaw's secret-equal.ts uses HMAC-SHA256 before
+Evidence source: The reference implementation's secret-equal.ts uses HMAC-SHA256 before
 timingSafeEqual to prevent timing attacks via length leakage.
 """
 
@@ -12,7 +12,7 @@ from maistro.security.secret_equal import secret_equal
 
 
 class TestSecretEqual:
-    """Evidence: OpenClaw's implementation hashes both inputs with HMAC-SHA256
+    """Evidence: The reference implementation hashes both inputs with HMAC-SHA256
     before comparison, producing fixed-length 32-byte digests regardless of
     input length. This prevents timing attacks that could leak length info."""
 
@@ -38,7 +38,7 @@ class TestSecretEqual:
         assert secret_equal("héllo", "hello") is False
 
     def test_type_confusion_int(self) -> None:
-        """Evidence: OpenClaw defends against type confusion by performing
+        """Evidence: The reference implementation defends against type confusion by performing
         a dummy comparison for non-string inputs."""
         assert secret_equal(123, "123") is False  # type: ignore[arg-type]
 

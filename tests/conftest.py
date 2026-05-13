@@ -42,7 +42,7 @@ def _reset_singletons() -> Iterator[None]:
     tracing_module._langfuse_checked = False
 
     # Task runner
-    import maistro.main as main_module
+    import maistro_server.main as main_module
 
     main_module._runner = None
 

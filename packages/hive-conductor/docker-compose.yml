@@ -1,0 +1,10 @@
+services:
+  hive-conductor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8101:8101"
+    environment:
+      # Stub API has no DB; keep LiteLLM DATABASE_URL separate if you add a sidecar.
+      - PYTHONUNBUFFERED=1

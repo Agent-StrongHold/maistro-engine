@@ -1,6 +1,6 @@
 """Tests for dangerous command and tool detection.
 
-Evidence source: OpenClaw's dangerous-tools.ts defines gateway denial lists,
+Evidence source: The reference implementation's dangerous-tools.ts defines gateway denial lists,
 ACP dangerous tool sets, and 28 blocked host paths.
 """
 
@@ -16,7 +16,7 @@ from maistro.security.dangerous_tools import (
 
 
 class TestDangerousCommands:
-    """Evidence: OpenClaw's trust-boundary.ts blocks destructive commands
+    """Evidence: The reference implementation's trust-boundary.ts blocks destructive commands
     including rm -rf /, sudo, chmod 777, pipe-to-shell, and raw disk ops."""
 
     @pytest.mark.parametrize(
@@ -66,7 +66,7 @@ class TestDangerousCommands:
 
 
 class TestDangerousTools:
-    """Evidence: OpenClaw defines ACP dangerous tools that require explicit approval."""
+    """Evidence: The reference implementation defines ACP dangerous tools that require explicit approval."""
 
     @pytest.mark.parametrize(
         "tool",
@@ -94,7 +94,7 @@ class TestDangerousTools:
 
 
 class TestBlockedPaths:
-    """Evidence: OpenClaw's validate-sandbox-security.ts blocks 28 critical
+    """Evidence: The reference implementation's validate-sandbox-security.ts blocks 28 critical
     host paths from being mounted into sandbox containers."""
 
     @pytest.mark.parametrize(
