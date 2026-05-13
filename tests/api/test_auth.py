@@ -12,9 +12,9 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
-from maistro.api.auth import verify_api_key
-from maistro.api.health import router as health_router
-from maistro.api.tasks import router as tasks_router
+from maistro_server.api.auth import verify_api_key
+from maistro_server.api.health import router as health_router
+from maistro_server.api.tasks import router as tasks_router
 
 from maistro.config.settings import Settings, get_settings
 
@@ -35,7 +35,7 @@ class TestDevMode:
     """Evidence: When no API keys are configured, all requests are allowed."""
 
     def test_no_keys_allows_all(self) -> None:
-        from maistro.main import app
+        from maistro_server.main import app
 
         client = TestClient(app)
         response = client.get("/health")

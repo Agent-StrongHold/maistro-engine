@@ -1,5 +1,7 @@
 # Maistro Engine — Consolidation Master Plan
 
+**Canonical shape (2026-05):** `maistro-engine` is the primary substrate monorepo; wholesale absorption of sibling product trees (older mega-merge drafts) stays **deferred**. Prefer additive `packages/*` and `apps/*`, registry/spec pulls, and Copier rebases over flattening repos.
+
 **Date:** 2026-05-01
 **Status:** Active
 **Target:** `/root/github/maistro-engine/`
@@ -95,6 +97,24 @@ maistro-engine/                          # Monorepo root
 | **Forge** | `app/forge.py` | `skills/forge.py` | Skill creation |
 | **Tools** | `app/tools.py` | `tools/` | HA control, browser, chores |
 | **Security** | `app/security/` | `security/` | Warden subset |
+
+---
+
+## Sibling product specs (`Project_mAIstro/specs/`)
+
+The **canonical product + gateway backlog** lives in the **sibling repo** (same parent directory as `maistro-engine` by default):
+
+| Location | Role |
+|----------|------|
+| `../Project_mAIstro/specs/` | Numbered `S-NNN-*.md` and area folders (`conductor/`, `security/`, `tools/`, `channels/`, `infra/`, …). **Not copied** into this monorepo. |
+
+**Workflow (must be pulled in, not ignored):**
+
+1. Keep `Project_mAIstro` cloned **beside** `maistro-engine` (or set `MAISTRO_PRODUCT_REPO` to an absolute path).
+2. Before engine / Flutter / protocol work that traces to product behavior, run **`./scripts/pull-sibling-product-specs.sh`** (or `git -C "$MAISTRO_PRODUCT_REPO" pull --ff-only`) so your checkout matches what you are implementing.
+3. In **maistro-engine PRs**, link the driving spec(s): e.g. `Project_mAIstro/specs/conductor/S-158-*.md` (path + commit SHA or branch). Paste short excerpts only when the link is not enough for reviewers.
+
+**Engine-only specs** remain under `maistro-engine/docs/specs/SPEC-*.md` (substrate, bootstrap, Hive, Flutter node acceptance, etc.).
 
 ---
 

@@ -1,7 +1,7 @@
 """Constant-time secret comparison.
 
 Uses HMAC-based comparison to prevent timing attacks. Ported from
-OpenClaw's secret-equal.ts pattern: both inputs are HMAC-SHA256 hashed
+TypeScript secret-equal pattern: both inputs are HMAC-SHA256 hashed
 with a fixed key before comparison, producing fixed-length digests
 regardless of input length.
 """

@@ -1,0 +1,8 @@
+Source directory: /Users/blake.matthews.-nd/Conductor
+Copied into maistro-engine: 2026-05-13
+
+Method: rsync -a --delete --delete-excluded
+
+Excluded: .git, .venv, venv, __pycache__, .mypy_cache, .pytest_cache, .ruff_cache, node_modules, .env, .env.local, .env.save, .DS_Store, dist, .coverage
+
+Standalone local-first conductor + gateway (Python). Reference snapshot only.
