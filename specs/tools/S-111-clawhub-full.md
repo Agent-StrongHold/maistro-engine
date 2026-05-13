@@ -1,18 +1,30 @@
 ---
-id: S-111
+id: SPEC-005
 title: "Medley full — publish, versions, signed VC trust chain, dependency resolution"
-domain: tools
-status: draft
-priority: P2
-effort: "~300 lines"
+repo: maistro-engine
+kind: spec
+status: Proposed
 created: 2026-03-23
-completed: ""
-owner: conductor
-commits: []
-supersedes: "S-037 (extends Medley basics)"
+substrate:
+  - maistro-engine#ADR-024
+implements:
+  - Project_mAIstro#S-111
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests: []
+layer: Tools
+owners:
+  - '@BlakeMatthews-dev'
 ---
 
-# S-111: Medley full
+# SPEC-005: Medley full
+
+See `blakematthews-dev/project_maistro` specs/tools/S-111-clawhub-full.md for full spec.
 
 ## Acceptance Criteria
 
@@ -23,6 +35,4 @@ supersedes: "S-037 (extends Medley basics)"
 - [ ] Unsigned plugin install blocked unless `--allow-unsigned` + admin signature
 - [ ] Revocation re-check on each `medley install` / `medley update` / `medley trust` invocation is the default; opt-in daily background re-check (`medley.daily_revocation_check = true`) covers plugins not recently touched; detected revocations emit a `PLUGIN_VC_REVOKED` alert to the dashboard and block further use of the plugin pending operator review
 - [ ] `medley info <name>` displays publisher DID, VC fingerprint, content hash, install date, version, trust tier
-- [ ] Lockfile is operator-readable + version-controlled (sovereignty: operator can audit what's pinned)
-
-See `blakematthews-dev/project_maistro` specs/tools/S-111-clawhub-full.md for full spec.
+- [ ] Lockfile is operator-readable + version-controlled
