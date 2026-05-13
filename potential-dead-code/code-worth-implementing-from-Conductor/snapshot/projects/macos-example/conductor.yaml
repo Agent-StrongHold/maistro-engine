@@ -1,0 +1,25 @@
+# Conductor config for macOS (16GB MacBook Air)
+# Reduced settings for limited hardware
+
+project_id: "macos-example"
+project_dir: "."  # Set to your actual project path
+obsidian_vault: ""  # Optional: set to your Obsidian vault path
+gateway_url: "http://localhost:9090"
+inference_url: "http://localhost:8080"
+
+# Reduced retries for faster feedback on limited hardware
+max_retries: 2
+accept_threshold: 6.5  # Slightly lower threshold
+max_working_memory_tokens: 4000  # Half of default
+
+layer0_path: "./constraints.md"
+training_data_dir: "./training-data"
+exemplar_library_dir: "./exemplars"
+
+toolchains:
+  python:
+    enabled: true
+    package_manager: "pip"
+
+tests:
+  command: "pytest -x -q"  # Stop on first failure, quiet output

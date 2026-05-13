@@ -10,7 +10,7 @@ on:
       - 'docs/adr/**'
       - 'docs/specs/**'
       - 'specs/**'
-      - 'tools/registry/**'
+      - 'packages/maistro-registry/**'
       - 'tests/tools/registry/**'
       - 'pyproject.toml'
       - '.github/workflows/registry.yml'
@@ -40,9 +40,7 @@ jobs:
       - name: Install minimal deps
         # Only what the registry tool needs; keeps CI fast and the
         # supply-chain surface small per engine#ADR-039.
-        # httpx is required by tools/registry/linker.py for cross-repo
-        # link checking.
-        run: pip install pydantic pyyaml pytest httpx
+        run: pip install -e ./packages/maistro-registry pytest
 
       - name: Run unit tests
         # --confcutdir prevents pytest from discovering the root
@@ -61,4 +59,4 @@ jobs:
         # Until 2026-06-07: do NOT pass --strict; warnings (missing
         # front-matter) are advisory. After 2026-06-07: add --strict
         # to fail the job on warnings as well as errors.
-        run: python -m tools.registry.cli walk .
+        run: python -m maistro_registry.cli walk .

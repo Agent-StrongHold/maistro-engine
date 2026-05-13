@@ -5,11 +5,14 @@ WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-COPY pyproject.toml README.md ./
-COPY src/ src/
+COPY pyproject.toml uv.lock README.md ./
+COPY packages/maistro-core packages/maistro-core
+COPY packages/maistro-server packages/maistro-server
 
-# Install only production dependencies (no dev extras)
-RUN uv pip install --system -e "."
+# Production API: editable core (with extras used by the server) + server
+RUN uv pip install --system \
+    -e "./packages/maistro-core[llm,sandbox,observability]" \
+    -e "./packages/maistro-server"
 
 
 # ─── Production stage ─────────────────────────────────
@@ -28,15 +31,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY src/ src/
+# Application sources (editable installs reference these paths)
+COPY packages/maistro-core packages/maistro-core
+COPY packages/maistro-server packages/maistro-server
 COPY alembic/ alembic/
 COPY alembic.ini .
-COPY pyproject.toml README.md ./
+COPY pyproject.toml uv.lock README.md ./
 
-# Re-install in editable mode (for entry points)
+# Re-resolve editable installs against copied trees
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-RUN uv pip install --system -e "."
+RUN uv pip install --system \
+    -e "./packages/maistro-core[llm,sandbox,observability]" \
+    -e "./packages/maistro-server" \
+    "alembic>=1.14"
 
 EXPOSE 8000
 
@@ -45,4 +52,4 @@ STOPSIGNAL SIGTERM
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8000/health/live || exit 1
 
-CMD ["uvicorn", "maistro.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "maistro_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

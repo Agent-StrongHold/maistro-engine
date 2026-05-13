@@ -17,7 +17,7 @@ Maistro Engine has a solid foundation of ~141 fast unit tests covering security 
 | Layer | Score | Justification |
 |-------|-------|---------------|
 | **Property Testing** | 0/10 | Zero Hypothesis tests exist; all 14 security-critical functions rely solely on hardcoded example inputs against effectively infinite adversarial input spaces. |
-| **Evidence Grounding** | 5/10 | Tests reference real threat models (OpenClaw patterns, known injection payloads) via excellent evidence-based docstrings, but use static examples rather than production-observed data or fuzz-generated inputs. |
+| **Evidence Grounding** | 5/10 | Tests reference real threat models (reference-runtime patterns, known injection payloads) via excellent evidence-based docstrings, but use static examples rather than production-observed data or fuzz-generated inputs. |
 | **Contract Testing** | 2/10 | Pydantic models enforce some schema constraints and API tests check status codes and basic response shapes, but zero explicit contract tests exist for any of the 17 consumer-provider boundaries. |
 | **Chaos / Resilience** | 0/10 | Zero fault injection tests across all 48 identified failure modes. No circuit breakers, no retry-with-backoff tests, no timeout enforcement tests, no degradation tests for any external dependency. |
 | **Observability** | 1/10 | Structured logging exists for key lifecycle events and Langfuse tracing decorator is implemented, but the decorator is applied to zero functions, there are zero metrics, the health endpoint is shallow liveness-only, and zero behavioral assertions exist. |

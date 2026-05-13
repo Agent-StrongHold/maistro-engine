@@ -12,6 +12,7 @@ import structlog
 from maistro.agents.types import ConductorOutput
 from maistro.constants import WORKER_POLL_TIMEOUT
 from maistro.tasks.models import TaskCreate, TaskProgress, TaskResult, TaskStatus
+from maistro.tasks.progress_webhook import ProgressWebhookSink, payload_from_task
 from maistro.tasks.queue import TaskQueue
 
 logger = structlog.get_logger()
@@ -35,10 +36,12 @@ class TaskRunner:
         queue: TaskQueue,
         executor: TaskExecutor,
         max_workers: int = DEFAULT_MAX_WORKERS,
+        progress_webhook: ProgressWebhookSink | None = None,
     ) -> None:
         self._queue = queue
         self._executor = executor
         self._max_workers = max_workers
+        self._progress_webhook = progress_webhook
         self._running = False
         self._draining = False
         self._semaphore: asyncio.Semaphore | None = None
@@ -68,6 +71,9 @@ class TaskRunner:
             if pending:
                 await logger.awarning("tasks_cancelled_on_shutdown", count=len(pending))
 
+        if self._progress_webhook:
+            await self._progress_webhook.aclose()
+
         await logger.ainfo("task_runner_stopped")
 
     async def drain(self, timeout: int = 30) -> None:
@@ -89,6 +95,9 @@ class TaskRunner:
             self._worker_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await self._worker_task
+
+        if self._progress_webhook:
+            await self._progress_webhook.aclose()
 
         self._draining = False
         await logger.ainfo("task_runner_stopped")
@@ -120,10 +129,26 @@ class TaskRunner:
             # Graceful shutdown — mark task as failed rather than leaving it stuck
             await self._queue.update_status(task_id, TaskStatus.FAILED)
             self._queue.set_result(task_id, TaskResult(error="Task cancelled during shutdown"))
+            await self._emit_progress_webhook(task_id)
         except Exception:
             await logger.aexception("task_execution_failed", task_id=task_id)
         finally:
             self._semaphore.release()
+
+    async def _emit_progress_webhook(self, task_id: str) -> None:
+        if self._progress_webhook is None:
+            return
+        snap = self._queue.get(task_id)
+        if snap is None:
+            return
+        try:
+            await self._progress_webhook.notify(payload_from_task(snap))
+        except Exception:
+            await logger.adebug(
+                "progress_webhook_notify_failed",
+                task_id=task_id,
+                exc_info=True,
+            )
 
     async def _execute_task(self, task_id: str) -> None:
         task = self._queue.get(task_id)
@@ -136,6 +161,7 @@ class TaskRunner:
             self._queue.update_progress(
                 task_id, TaskProgress(current="Analyzing task and creating plan...")
             )
+            await self._emit_progress_webhook(task_id)
 
             request = TaskCreate(
                 description=task.description,
@@ -148,6 +174,7 @@ class TaskRunner:
             self._queue.update_progress(
                 task_id, TaskProgress(current="Generating implementation...")
             )
+            await self._emit_progress_webhook(task_id)
 
             result = await self._executor(request)
 
@@ -160,9 +187,11 @@ class TaskRunner:
                         files_changed=result.code.files_changed if result.code else [],
                     ),
                 )
+                await self._emit_progress_webhook(task_id)
             else:
                 await self._queue.update_status(task_id, TaskStatus.FAILED)
                 self._queue.set_result(
                     task_id,
                     TaskResult(error=result.final_answer),
                 )
+                await self._emit_progress_webhook(task_id)

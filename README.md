@@ -51,19 +51,25 @@ The three products are **Copier-templated peers**, not a hierarchy. Each rebases
 ```bash
 # Requires Python 3.12 and uv (https://github.com/astral-sh/uv)
 uv sync                               # install all packages in the workspace
+uv sync --extra bootstrap             # optional: maistro-install TUI / answers-file planner
+uv run maistro-install --dry-run      # print uv/docker/copier commands (see docs/install/)
 uv run pytest                         # run the test suite
 uv run alembic upgrade head           # apply migrations (needs Postgres)
 docker compose up -d                  # full local stack (Postgres + LiteLLM + Langfuse)
 ```
 
-The repo is a `uv` workspace with four packages:
+The repo is a `uv` workspace: **six published Python packages**, plus **`packages/hive-conductor`** (reference app stack) and **`apps/maistro-gateway-node-flutter`** (planned native node; see [`SPEC-179`](docs/specs/SPEC-179-flutter-gateway-node.md)).
 
-| Package | Purpose |
+| Package / tree | Purpose |
 |---|---|
 | `maistro-core` | The library: orchestration, agents, memory, security, skills, tools |
 | `maistro-server` | FastAPI HTTP surface around `maistro-core` |
 | `maistro-turing` | Autonoetic self-model package consumed by `AgentTuring` |
 | `maistro-canvas` | Book-builder package consumed by Canvas Studio |
+| `maistro-bootstrap` | `maistro-install` TUI and answers-file planner (`uv sync --extra bootstrap`) |
+| `maistro-registry` | Front-matter validation, link checks, registry generation |
+| `packages/hive-conductor/` | Hive Conductor reference: Vite frontend, FastAPI backend, Docker |
+| `apps/maistro-gateway-node-flutter/` | Flutter gateway node (bootstrap with `flutter create`; see app README) |
 
 ## Architecture at a glance
 
@@ -87,6 +93,7 @@ request ──► conduit ──► classifier ──► orchestrator ──► 
 
 ## ADRs and specs
 
+- **Legacy reference archives** (frozen snapshots, not importable product code) live under [`potential-dead-code/`](potential-dead-code/README.md); retention and deletion sequencing are defined in [`docs/specs/SPEC-178-legacy-snapshot-retention.md`](docs/specs/SPEC-178-legacy-snapshot-retention.md).
 - All architectural decisions are recorded as ADRs under `docs/adr/`.
 - The cross-repo inventory of every ADR and spec lives at [`docs/INVENTORY-ADRS-SPECS.md`](docs/INVENTORY-ADRS-SPECS.md).
 - Front-matter and cross-reference conventions are defined in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md).
@@ -123,18 +130,26 @@ maistro-engine/
 ├── docs/
 │   ├── adr/                          # Architectural Decision Records
 │   ├── analysis/                     # Cross-framework comparisons
+│   ├── specs/                        # Numbered engine specs (SPEC-17x)
 │   └── INVENTORY-ADRS-SPECS.md       # Cross-repo ADR/spec inventory
+├── potential-dead-code/              # Frozen legacy snapshots (not on PYTHONPATH; SPEC-178)
 ├── packages/
 │   ├── maistro-core/                 # The library
 │   ├── maistro-server/               # FastAPI surface
 │   ├── maistro-turing/               # Autonoetic self-model package
-│   └── maistro-canvas/               # Canvas Studio package
+│   ├── maistro-canvas/               # Canvas Studio package
+│   ├── maistro-bootstrap/            # maistro-install planner
+│   ├── maistro-registry/             # Registry / front-matter CI helpers
+│   └── hive-conductor/               # Reference app (frontend + backend + Docker)
+├── apps/
+│   └── maistro-gateway-node-flutter/ # Native gateway node (Flutter; see SPEC-179)
+├── scripts/                          # e.g. sibling spec pull, layout verify
 ├── templates/                        # Copier templates (per ADR-033)
 │   ├── single-tenant-multi-user/     # Project_mAIstro shape
 │   ├── autonoetic/                   # AgentTuring shape
 │   └── multi-tenant/                 # stronghold shape
 ├── alembic/                          # DB migrations
-├── tests/
+├── tests/                            # Legacy / shared pytest (see CI comments)
 ├── docker-compose.yml                # Local dev stack
 ├── litellm_config.yaml               # Model gateway config
 ├── pyproject.toml                    # uv workspace root
