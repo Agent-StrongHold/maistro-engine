@@ -1,17 +1,26 @@
 ---
-id: S-115
+id: SPEC-008
 title: "Agent-to-agent networking"
-domain: intelligence
-status: research
-priority: P3
-effort: "~500 lines"
+repo: maistro-engine
+kind: spec
+status: Proposed
 created: 2026-03-23
-completed: ""
-owner: conductor
-commits: []
+substrate: []
+implements:
+  - Project_mAIstro#S-115
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Orchestration
+owners:
+  - '@BlakeMatthews-dev'
 ---
 
-# S-115: Agent-to-agent networking
+# SPEC-008: Agent-to-agent networking
 
 ## Problem
 Agents can't directly delegate to or query each other. All coordination goes through the conductor orchestrator.
@@ -21,11 +30,11 @@ Direct agent-to-agent RPC layer. Agent A can spawn Agent B and await its result 
 
 ## Open questions
 
-- **Authority delegation (RESOLVED → S-145 §6):** privilege escalation through agent chains is prevented by the capability envelope model. Each conductor in the chain enforces the initiator's original permission envelope; adding wraps can only narrow the scope, never widen it. The Bouncer (S-022) screens every incoming edge before the target node runs; no edge bypasses it regardless of how the delegation chain was constructed.
+- **Authority delegation (RESOLVED → SPEC-015 §6):** privilege escalation through agent chains is prevented by the capability envelope model. Each conductor in the chain enforces the initiator's original permission envelope; adding wraps can only narrow the scope, never widen it.
 
-- **Deadlock / circular delegation (RESOLVED → S-145 §6):** depth budget (default 16 hops), latency budget (default 60 s), and token-spend budget (default 1M tokens) are tracked per chain. A→B→A cycles hit the depth budget and fail with a structured error from the conductor whose budget is crossed; no explicit cycle detection algorithm is required.
+- **Deadlock / circular delegation (RESOLVED → SPEC-015 §6):** depth budget (default 16 hops), latency budget (default 60 s), and token-spend budget (default 1M tokens) are tracked per chain.
 
-- **Observability (RESOLVED → S-145 §6 + S-021 + S-152):** initiator identity and acting-via provenance propagate through all chains as required fields in every audit-log VC (S-152). Langfuse trace IDs (S-021) are threaded through all edges. Cross-agent calls are visible in the Dashboard Intel chain view with per-hop latency and token spend.
+- **Observability (RESOLVED → SPEC-015 §6 + ADR-037 + ADR-024):** initiator identity and acting-via provenance propagate through all chains as required fields in every audit-log VC.
 
 ## Key files
 - `conductor/orchestrator/agents/agent_spec.py` (networking extension)

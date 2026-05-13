@@ -1,18 +1,30 @@
 ---
-id: S-140
+id: SPEC-010
 title: "SQLite singleton writer — the invariant that protects state under the reactor"
-domain: infra
-status: draft
-priority: P1
-effort: ""
+repo: maistro-engine
+kind: spec
+status: Proposed
 created: 2026-04-25
-completed: ""
-owner: conductor
-commits: []
-supersedes: ""
+substrate:
+  - maistro-engine#ADR-018
+implements:
+  - Project_mAIstro#S-140
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
 ---
 
-# S-140: SQLite Singleton Writer
+# SPEC-010: SQLite Singleton Writer
+
+See `blakematthews-dev/project_maistro` specs/infra/S-140-sqlite-singleton.md for full spec.
 
 ## Acceptance Criteria
 
@@ -23,9 +35,5 @@ supersedes: ""
 - [ ] Queue is bounded; overflow applies backpressure (submit blocks) rather than dropping or OOMing
 - [ ] Concurrent reads from many subsystems + Console + external `sqlite3` CLI work without contention while the writer is active
 - [ ] WAL checkpoint runs periodically; database file does not grow unboundedly
-- [ ] Conductor crash: SQLite state remains consistent; in-flight queue entries are lost (documented; subsystems that need durability journal first)
-- [ ] State database backups are encrypted with the admin keypair (S-141-style age encryption) before writing to disk; no plaintext copy of `state.db` is ever written to `~/.conductor/backups/`; backup files use the `.db.age` suffix and are importable via `maistro db restore`
+- [ ] State database backups are encrypted with the admin keypair (SPEC-011-style age encryption) before writing to disk; no plaintext copy of `state.db` is ever written to `~/.conductor/backups/`; backup files use the `.db.age` suffix and are importable via `maistro db restore`
 - [ ] Schema migrations run atomically at startup; a failed migration rolls back completely and conductor refuses to start with a `MIGRATION_FAILED` error naming the failing migration; conductor never starts with a partially-migrated schema
-- [ ] Migration path to libSQL / Turso documented (drop-in upgrade for replication)
-
-See `blakematthews-dev/project_maistro` specs/infra/S-140-sqlite-singleton.md for full spec.

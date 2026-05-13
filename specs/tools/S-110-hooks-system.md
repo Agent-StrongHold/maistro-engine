@@ -1,17 +1,26 @@
 ---
-id: S-110
+id: SPEC-004
 title: "General hooks system — event-driven shell commands"
-domain: tools
-status: draft
-priority: P2
-effort: "~250 lines"
+repo: maistro-engine
+kind: spec
+status: Proposed
 created: 2026-03-23
-completed: ""
-owner: conductor
-commits: []
+substrate: []
+implements:
+  - Project_mAIstro#S-110
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Tools
+owners:
+  - '@BlakeMatthews-dev'
 ---
 
-# S-110: General hooks system
+# SPEC-004: General hooks system
 
 ## Problem
 No way to trigger custom shell commands on conductor events (task complete, memory update, heartbeat, etc.) without modifying conductor code.
@@ -24,5 +33,5 @@ No way to trigger custom shell commands on conductor events (task complete, memo
 - [ ] Hook scripts receive event payload as env vars
 - [ ] Failed hooks log to board (don't crash conductor)
 - [ ] Security: hooks must be owned by the conductor user (no world-writable)
-- [ ] Hook execution timeout: hooks have a configurable timeout (`hooks.timeout_seconds`, default 30 s); hooks exceeding the timeout are killed and the event is logged to the board as `HOOK_TIMEOUT`; a timed-out hook never blocks event delivery on the reactor (S-143)
+- [ ] Hook execution timeout: hooks have a configurable timeout (`hooks.timeout_seconds`, default 30 s); hooks exceeding the timeout are killed and the event is logged to the board as `HOOK_TIMEOUT`; a timed-out hook never blocks event delivery on the reactor (SPEC-013)
 - [ ] Environment sanitization: hook scripts execute in a clean environment containing only the documented event env vars plus a minimal POSIX set (PATH, HOME, USER, TMPDIR); the conductor process environment — including API keys, vault credentials, LLM provider tokens, and session state — is NOT inherited by hook scripts
