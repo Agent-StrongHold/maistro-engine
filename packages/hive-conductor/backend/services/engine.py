@@ -8,8 +8,9 @@ Exposes two surfaces:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -109,11 +110,10 @@ class EngineService:
         else:
             self._agent_port = StubAgentPort()
 
-        # Set up TaskQueue + TaskRunner regardless (used for mission tracking)
         try:
+            from maistro.agents.conductor import run_task
             from maistro.tasks.queue import TaskQueue
             from maistro.tasks.runner import TaskRunner
-            from maistro.agents.conductor import run_task
 
             self._queue = TaskQueue()
             self._runner = TaskRunner(self._queue, executor=run_task)
@@ -124,12 +124,33 @@ class EngineService:
                 "TaskRunner failed to start (%s) — mission dispatch disabled", exc
             )
 
+        self._wire_reactor()
+
     async def stop(self) -> None:
         if self._runner is not None:
-            try:
+            with contextlib.suppress(Exception):
                 await self._runner.stop()
-            except Exception:
-                pass
+
+    def _wire_reactor(self) -> None:
+        try:
+            from services.foundation import get_foundation
+
+            f = get_foundation()
+            if not f.reactor_available or f.reactor is None:
+                return
+
+            async def on_task_event(event: Any) -> None:
+                import logging
+                logging.getLogger("hive.engine.reactor").info(
+                    "Reactor event: %s", getattr(event, "type", "unknown")
+                )
+
+            f.reactor.on("task.*", on_task_event)  # type: ignore[union-attr]
+        except Exception as exc:
+            import logging
+            logging.getLogger("hive.engine").debug(
+                "Reactor wiring skipped (%s)", exc
+            )
 
     # --- Chat surface ---
 
@@ -184,10 +205,8 @@ class EngineService:
             }
             if rec.mission_status in _TERMINAL:
                 return
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._queue.wait_for_update(task_id), timeout=30.0)
-            except asyncio.TimeoutError:
-                pass
 
 
 # Module-level singleton

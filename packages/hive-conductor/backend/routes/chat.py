@@ -4,14 +4,12 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
-
-from models.schemas import ChatCompletionRequest, ChatMessage, ChatSession, ChatSessionSummary
-
 import stores
+from fastapi import APIRouter, HTTPException
+from models.schemas import ChatCompletionRequest, ChatMessage, ChatSession, ChatSessionSummary
+from pydantic import BaseModel, ConfigDict
 from services.chat_completion import run_chat_completion
-from services.engine import get_engine, EngineService
+from services.engine import EngineService, get_engine
 
 router = APIRouter(tags=["chat"])
 
@@ -85,6 +83,7 @@ def append_message(session_id: str, body: AppendMessageBody) -> ChatMessage:
     )
     session.messages.append(msg)
     session.updated_at = _now()
+    stores.chat_sessions.persist(session_id)
     return msg
 
 
