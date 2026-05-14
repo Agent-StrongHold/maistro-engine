@@ -6,10 +6,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from config import get_settings
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from config import get_settings
+from middleware.privilege import PrivilegeMiddleware
 from routes import (
     agents,
     chat,
@@ -21,11 +22,13 @@ from routes import (
     memory,
     missions,
     schedules,
+    setup,
     skills,
     ws,
 )
 from routes import settings as settings_r
 from services import engine as engine_service
+from services import foundation as foundation_service
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "frontend" / "dist"
@@ -33,9 +36,11 @@ STATIC_DIR = ROOT / "frontend" / "dist"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await foundation_service.start_foundation(get_settings())
     await engine_service.start_engine(get_settings())
     yield
     await engine_service.stop_engine()
+    await foundation_service.stop_foundation()
 
 
 def create_app() -> FastAPI:
@@ -47,6 +52,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(PrivilegeMiddleware)
 
     app.include_router(health.router)
     app.include_router(install.router, prefix="/v1/install")
@@ -61,6 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(memory.router, prefix="/v1/memory")
     app.include_router(settings_r.router, prefix="/v1/settings")
     app.include_router(ws.router, prefix="/v1/ws")
+    app.include_router(setup.router, prefix="/v1/setup")
 
     if STATIC_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
