@@ -129,7 +129,9 @@ async def test_ntfy_action_posts_formatted_message(monkeypatch: pytest.MonkeyPat
         async def __aexit__(self, *a: Any) -> None:
             return None
 
-        async def post(self, url: str, *, content: bytes, headers: dict[str, str]) -> httpx.Response:
+        async def post(
+            self, url: str, *, content: bytes, headers: dict[str, str]
+        ) -> httpx.Response:
             captured["url"] = url
             captured["body"] = content.decode()
             captured["headers"] = headers
