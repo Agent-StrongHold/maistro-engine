@@ -8,6 +8,7 @@ from maistro.protocols.classifier import IntentClassifier
 from maistro.protocols.embeddings import EmbeddingClient
 from maistro.protocols.feedback import FeedbackExtractor, ViolationStore
 from maistro.protocols.llm import LLMClient
+from maistro.protocols.notification import Notification, NotificationClient
 from maistro.protocols.memory import (
     AuditLog,
     EpisodicStore,
@@ -39,6 +40,8 @@ __all__ = [
     "LearningExtractor",
     "LearningStore",
     "ModelRouter",
+    "Notification",
+    "NotificationClient",
     "OutcomeStore",
     "PromptManager",
     "QuotaTracker",
