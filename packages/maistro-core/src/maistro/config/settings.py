@@ -65,6 +65,14 @@ class OllamaSettings(BaseSettings):
     base_url: str = "http://localhost:11434/v1"
 
 
+class NtfySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="NTFY_")
+
+    base_url: str = ""
+    default_topic: str = ""
+    access_token: str = ""
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -120,6 +128,7 @@ class Settings(BaseSettings):
     litellm: LiteLLMSettings = Field(default_factory=LiteLLMSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
+    ntfy: NtfySettings = Field(default_factory=NtfySettings)
 
 
 class RoutingConfig(BaseModel):

@@ -147,6 +147,43 @@ async def ha_action(trigger: Trigger, event: Event) -> None:
     logger.info("HA action %s %s.%s → %d", trigger.name, domain, service, resp.status_code)
 
 
+async def ntfy_action(trigger: Trigger, event: Event) -> None:
+    base_url = trigger.action_config.get("ntfy_url", "").rstrip("/")
+    topic = trigger.action_config.get("topic", "")
+    token = trigger.action_config.get("access_token", "")
+    if not base_url or not topic:
+        logger.warning("ntfy action %s missing ntfy_url or topic", trigger.name)
+        return
+
+    message_template = trigger.action_config.get("message", "")
+    title_template = trigger.action_config.get("title", "")
+    message = (
+        message_template.format(**event.payload)
+        if message_template
+        else f"[{trigger.name}] {event.event_type} from {event.source}: {event.payload}"
+    )
+    title = title_template.format(**event.payload) if title_template else trigger.name
+
+    headers: dict[str, str] = {"Title": title}
+    priority = trigger.action_config.get("priority")
+    if isinstance(priority, int) and 1 <= priority <= 5 and priority != 3:
+        headers["Priority"] = str(priority)
+    tags = trigger.action_config.get("tags")
+    if isinstance(tags, list) and tags:
+        headers["Tags"] = ",".join(str(t) for t in tags)
+    click = trigger.action_config.get("click", "")
+    if click:
+        headers["Click"] = click
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    url = f"{base_url}/{topic}"
+    content = message.encode("utf-8")
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(url, content=content, headers=headers)
+    logger.info("ntfy action %s → %d", trigger.name, resp.status_code)
+
+
 async def log_action(trigger: Trigger, event: Event) -> None:
     logger.info(
         "TRIGGER [%s] event=%s/%s source=%s payload=%s",
@@ -163,5 +200,6 @@ BUILTIN_HANDLERS = {
     "conductor_chat": conductor_chat_action,
     "coinswarm": coinswarm_action,
     "ha": ha_action,
+    "ntfy": ntfy_action,
     "log": log_action,
 }
