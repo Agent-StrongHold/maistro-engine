@@ -222,8 +222,16 @@ def remove_edge(dag_id: str, edge_id: str) -> dict:
 
 
 @router.post("/{dag_id}/run")
-def run_dag(dag_id: str) -> dict:
+async def run_dag(dag_id: str) -> dict:
     if dag_id not in stores.dags:
         raise HTTPException(status_code=404, detail="dag not found")
+    dag_data = stores.dags[dag_id]
     log_audit("dag_run", "system", target=dag_id)
-    return {"status": "started", "execution_id": str(uuid4())}
+    try:
+        from services.graph_runner import execute_dag
+        result = await execute_dag(dag_data)
+        return {"status": "completed", "execution_id": str(uuid4()), "result": result}
+    except Exception as exc:
+        import logging
+        logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)
+        return {"status": "failed", "execution_id": str(uuid4()), "error": str(exc)}
