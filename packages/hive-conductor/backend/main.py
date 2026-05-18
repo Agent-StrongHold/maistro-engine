@@ -66,8 +66,15 @@ async def respond_to_confirm(confirm_id: str, body: ConfirmResponseBody):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    await foundation_service.start_foundation(get_settings())
-    await engine_service.start_engine(get_settings())
+    try:
+        await foundation_service.start_foundation(get_settings())
+    except Exception:
+        import stores
+        stores.initialize_stores()
+    try:
+        await engine_service.start_engine(get_settings())
+    except Exception:
+        pass
     yield
     await engine_service.stop_engine()
     await foundation_service.stop_foundation()
