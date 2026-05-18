@@ -113,3 +113,66 @@ def _build_llm_call():
             return data["choices"][0]["message"]["content"]
 
     return _httpx_llm
+
+
+async def execute_dag_streaming(dag_data: dict):
+    """Yield progress events as the DAG executes, one per node completion."""
+    from maistro.graph.executor import run_graph
+    from maistro.graph.types import GraphBlackboard, GraphConfig, GraphEdge, NodeConfig
+
+    nodes_cfg = {}
+    for n in dag_data.get("nodes", []):
+        nodes_cfg[n["id"]] = NodeConfig(
+            role=n.get("role", "worker"),
+            name=n.get("name", n["id"]),
+            model=n.get("model"),
+            system_prompt=n.get("prompt"),
+            temperature=0.3,
+            max_tokens=4096,
+        )
+
+    edges = []
+    for e in dag_data.get("edges", []):
+        edges.append(GraphEdge(
+            from_node=e["from_node"],
+            to_node=e.get("to_node"),
+            condition=e.get("condition"),
+        ))
+
+    entry_node = dag_data.get("entry_node") or (dag_data["nodes"][0]["id"] if dag_data.get("nodes") else "")
+
+    config = GraphConfig(
+        nodes=nodes_cfg,
+        edges=edges,
+        entry=entry_node,
+        max_cycles=dag_data.get("max_cycles", 10),
+        run_scout=dag_data.get("run_scout", False),
+    )
+
+    blackboard = GraphBlackboard(task_objective=dag_data.get("name", "Unnamed DAG"))
+    llm_call = _build_llm_call()
+
+    yield {"status": "started", "node_count": len(nodes_cfg), "entry": entry_node}
+
+    try:
+        result = await run_graph(
+            task=dag_data.get("description", dag_data.get("name", "")),
+            config=config,
+            blackboard=blackboard,
+            llm_call=llm_call,
+        )
+        for nr in result.node_results:
+            yield {
+                "status": "node_complete",
+                "node_id": nr.node_id,
+                "role": nr.role,
+                "response": nr.selected_candidate or "",
+                "success": nr.success,
+            }
+        yield {
+            "status": "completed",
+            "cycles": result.total_cycles,
+            "annotations": dict(blackboard.node_annotations) if blackboard.node_annotations else {},
+        }
+    except Exception as exc:
+        yield {"status": "failed", "error": str(exc)}
