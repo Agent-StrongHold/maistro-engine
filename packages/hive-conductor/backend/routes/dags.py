@@ -169,7 +169,7 @@ def add_node(dag_id: str, body: AddNodeBody) -> dict:
                    strategy=body.strategy, prompt=body.prompt, config=body.config)
     dag = dag.model_copy(update={"nodes": [*dag.nodes, node], "updated_at": _now()})
     stores.dags[dag_id] = dag.model_dump(mode="json")
-    return dag.model_dump(mode="json")
+    return node.model_dump(mode="json")
 
 
 @router.delete("/{dag_id}/nodes/{node_id}")
@@ -177,11 +177,14 @@ def remove_node(dag_id: str, node_id: str) -> dict:
     if dag_id not in stores.dags:
         raise HTTPException(status_code=404, detail="dag not found")
     dag = DAGFile(**stores.dags[dag_id])
+    removed = [n for n in dag.nodes if n.id == node_id]
+    if not removed:
+        raise HTTPException(status_code=404, detail="node not found")
     new_nodes = [n for n in dag.nodes if n.id != node_id]
     new_edges = [e for e in dag.edges if e.from_node != node_id and e.to_node != node_id]
     dag = dag.model_copy(update={"nodes": new_nodes, "edges": new_edges, "updated_at": _now()})
     stores.dags[dag_id] = dag.model_dump(mode="json")
-    return dag.model_dump(mode="json")
+    return removed[0].model_dump(mode="json")
 
 
 class AddEdgeBody(BaseModel):
@@ -201,7 +204,7 @@ def add_edge(dag_id: str, body: AddEdgeBody) -> dict:
                    to_node=body.to_node, condition=body.condition)
     dag = dag.model_copy(update={"edges": [*dag.edges, edge], "updated_at": _now()})
     stores.dags[dag_id] = dag.model_dump(mode="json")
-    return dag.model_dump(mode="json")
+    return edge.model_dump(mode="json")
 
 
 @router.delete("/{dag_id}/edges/{edge_id}")
@@ -209,10 +212,13 @@ def remove_edge(dag_id: str, edge_id: str) -> dict:
     if dag_id not in stores.dags:
         raise HTTPException(status_code=404, detail="dag not found")
     dag = DAGFile(**stores.dags[dag_id])
+    removed = [e for e in dag.edges if e.id == edge_id]
+    if not removed:
+        raise HTTPException(status_code=404, detail="edge not found")
     new_edges = [e for e in dag.edges if e.id != edge_id]
     dag = dag.model_copy(update={"edges": new_edges, "updated_at": _now()})
     stores.dags[dag_id] = dag.model_dump(mode="json")
-    return dag.model_dump(mode="json")
+    return removed[0].model_dump(mode="json")
 
 
 @router.post("/{dag_id}/run")
