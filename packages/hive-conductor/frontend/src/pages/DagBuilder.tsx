@@ -145,6 +145,7 @@ export default function DagBuilder() {
   const [editPrompt, setEditPrompt] = useState("");
   const [editAgentId, setEditAgentId] = useState<string>("");
   const [addEdgeTarget, setAddEdgeTarget] = useState<string | null>(null);
+  const [execState, setExecState] = useState<{ running: boolean; nodeId: string | null; log: string[] }>({ running: false, nodeId: null, log: [] });
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ nodeId: string; offX: number; offY: number } | null>(null);
 
@@ -303,14 +304,43 @@ export default function DagBuilder() {
     }
   }, [dag, selectedNode, toast]);
 
-  const handleRun = useCallback(async () => {
+  const handleRun = useCallback(() => {
     if (!dag) return;
-    try {
-      await apiPost(`/v1/dags/${dag.id}/run`);
-      toast("Execution started");
-    } catch {
-      toast("Run failed", "error");
-    }
+    const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProto}//${location.host}/v1/ws/dags/${dag.id}/run`;
+    const ws = new WebSocket(wsUrl);
+    setExecState({ running: true, nodeId: null, log: ["Connecting..."] });
+    ws.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data.error) {
+          setExecState((prev) => ({ ...prev, running: false, log: [...prev.log, `Error: ${data.error}`] }));
+          return;
+        }
+        if (data.status === "started") {
+          setExecState((prev) => ({ ...prev, log: [...prev.log, `Started (${data.node_count} nodes)`] }));
+        } else if (data.status === "node_complete") {
+          setExecState((prev) => ({
+            ...prev,
+            nodeId: data.node_id,
+            log: [...prev.log, `${data.role} (${data.node_id.slice(0, 8)}): ${data.success ? "OK" : "FAIL"}`],
+          }));
+        } else if (data.status === "completed") {
+          setExecState((prev) => ({ ...prev, running: false, nodeId: null, log: [...prev.log, `Completed in ${data.cycles} cycles`] }));
+          toast("DAG execution completed");
+        } else if (data.status === "failed") {
+          setExecState((prev) => ({ ...prev, running: false, log: [...prev.log, `Failed: ${data.error}`] }));
+          toast("DAG execution failed", "error");
+        }
+      } catch { /* ignore parse errors */ }
+    };
+    ws.onerror = () => {
+      setExecState((prev) => ({ ...prev, running: false, log: [...prev.log, "Connection error"] }));
+      toast("WebSocket error", "error");
+    };
+    ws.onclose = () => {
+      setExecState((prev) => prev.running ? { ...prev, running: false, log: [...prev.log, "Connection closed"] } : prev);
+    };
   }, [dag, toast]);
 
   const handleActivate = useCallback(async () => {
@@ -446,6 +476,7 @@ export default function DagBuilder() {
     const entry = isEntry(node.id);
     const terminal = isTerminal(node.id);
     const selected = selectedNode === node.id;
+    const executing = execState.nodeId === node.id;
     return (
       <g
         key={node.id}
@@ -455,7 +486,7 @@ export default function DagBuilder() {
       >
         <rect
           x={pos.x} y={pos.y} width={NODE_W} height={NODE_H} rx={8}
-          fill="var(--paper)"
+          fill={executing ? "var(--accent)" : "var(--paper)"}
           stroke={selected ? "var(--accent)" : entry ? "var(--accent)" : terminal ? "var(--pencil)" : "var(--rule)"}
           strokeWidth={selected ? 2.5 : entry ? 2 : 1.3}
           strokeDasharray={terminal ? "4 3" : undefined}
@@ -471,7 +502,7 @@ export default function DagBuilder() {
         </text>
         <text
           x={pos.x + 30} y={pos.y + 22}
-          style={{ fontFamily: "var(--hand)", fontSize: 12, fontWeight: 700, fill: "var(--ink)" }}
+          style={{ fontFamily: "var(--hand)", fontSize: 12, fontWeight: 700, fill: executing ? "var(--paper)" : "var(--ink)" }}
         >
           {node.name.length > 12 ? node.name.slice(0, 11) + "\u2026" : node.name}
         </text>
@@ -575,9 +606,16 @@ export default function DagBuilder() {
                   <button onClick={handleAddNode} style={{ ...btn, background: "var(--paper)", color: "var(--ink)", borderColor: "var(--rule)" }}>
                     + Add Node
                   </button>
-                  <button onClick={handleRun} style={{ ...btn, background: "var(--accent)", color: "var(--paper)", borderColor: "var(--accent)" }}>
-                    \u25B6 Run DAG
+                  <button onClick={handleRun} disabled={execState.running} style={{ ...btn, background: execState.running ? "var(--pencil)" : "var(--accent)", color: "var(--paper)", borderColor: execState.running ? "var(--pencil)" : "var(--accent)", cursor: execState.running ? "not-allowed" : "pointer" }}>
+                    {execState.running ? "\u23F3 Running..." : "\u25B6 Run DAG"}
                   </button>
+                  {execState.log.length > 0 && (
+                    <div style={{ position: "absolute", top: 38, right: 0, width: 320, maxHeight: 200, overflow: "auto", background: "var(--paper)", border: "1px solid var(--rule)", borderRadius: 4, padding: 6, zIndex: 10, fontFamily: "var(--mono)", fontSize: 9 }}>
+                      {execState.log.map((line, i) => (
+                        <div key={i} style={{ color: line.startsWith("Error") || line.startsWith("Failed") ? "var(--danger, #c4452a)" : "var(--ink)" }}>{line}</div>
+                      ))}
+                    </div>
+                  )}
                   {dag.status !== "active" && (
                     <button onClick={handleActivate} style={{ ...btn, background: "#5a9a4a", color: "var(--paper)", borderColor: "#5a9a4a" }}>
                       Activate
