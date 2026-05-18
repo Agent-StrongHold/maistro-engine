@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 
 from .types import (
     DAGEdgeGenome,
-    DAGTopology,
     EvalWeights,
     NodeGenome,
     PipelineGenome,

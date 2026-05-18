@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from .diversity import population_diversity
 from .types import FitnessComponents, PipelineGenome
 
 

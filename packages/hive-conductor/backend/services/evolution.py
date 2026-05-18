@@ -75,8 +75,7 @@ class _EvolutionService:
         from maistro_evolve.harness import EvalHarness
 
         config = EvolutionConfig()
-        harness = EvalHarness()
-        harness.register_defaults()
+        harness = EvalHarness(use_real_benchmarks=True)
 
         cycle = EvolutionCycle(harness=harness)
         await cycle.run_cycle(
