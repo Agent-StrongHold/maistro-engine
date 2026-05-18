@@ -63,12 +63,16 @@ const AGENT_STATUS_MAP: Record<AgentStatus, "running" | "idle" | "error" | "busy
   error: "error",
 };
 
-const STUB_QUOTAS = [
-  { provider: "OpenAI", used: 0.62, limit: 100, color: "#5a9a4a" },
-  { provider: "Anthropic", used: 0.34, limit: 50, color: "#d4a017" },
-  { provider: "Google", used: 0.81, limit: 75, color: "#3a6a9a" },
-  { provider: "Groq", used: 0.15, limit: 200, color: "#7a5af5" },
-];
+type QuotaProvider = {
+  provider: string;
+  used_tokens: number;
+  free_tokens: number;
+  remaining_tokens: number;
+  usage_pct: number;
+  status: string;
+};
+
+const QUOTA_COLORS = ["#5a9a4a", "#d4a017", "#3a6a9a", "#7a5af5", "#c4452a", "#e8a03a", "#5a4a9a"];
 
 const PULSE_CSS_ID = "hc-dash-pulse";
 
@@ -122,18 +126,21 @@ export default function Dashboard() {
   const [hoveredHex, setHoveredHex] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [pendingConfirms, setPendingConfirms] = useState<PendingConfirm[]>([]);
+  const [quotas, setQuotas] = useState<QuotaProvider[]>([]);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [a, t, h] = await Promise.all([
+      const [a, t, h, q] = await Promise.all([
         apiGet<Agent[]>("/v1/agents"),
         apiGet<Mission[]>("/v1/tasks"),
         apiGet<HealthResponse>("/health"),
+        apiGet<QuotaProvider[]>("/v1/quotas/providers").catch(() => []),
       ]);
       setAgents(a);
       setMissions(t);
       setHealth(h);
+      setQuotas(q);
     } catch {
       toast("Failed to load dashboard data", "error");
     } finally {
@@ -434,19 +441,25 @@ export default function Dashboard() {
             </div>
 
             <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", textTransform: "uppercase", marginBottom: 6 }}>Provider Quotas</div>
-            {STUB_QUOTAS.map((q) => (
-              <div key={q.provider} style={{ marginBottom: 7 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--ink)" }}>{q.provider}</span>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--pencil)" }}>
-                    {Math.round(q.used * q.limit)}/{q.limit}
-                  </span>
+            {quotas.length === 0 && (
+              <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)" }}>No quota data available</div>
+            )}
+            {quotas.map((q, i) => {
+              const pct = q.usage_pct ?? 0;
+              return (
+                <div key={q.provider} style={{ marginBottom: 7 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--ink)" }}>{q.provider}</span>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--pencil)" }}>
+                      {Math.round(pct * 100)}%
+                    </span>
+                  </div>
+                  <div style={{ height: 5, background: "var(--rule)", borderRadius: 3, overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${pct * 100}%`, background: QUOTA_COLORS[i % QUOTA_COLORS.length], borderRadius: 3, transition: "width 0.3s" }} />
+                  </div>
                 </div>
-                <div style={{ height: 5, background: "var(--rule)", borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${q.used * 100}%`, background: q.color, borderRadius: 3, transition: "width 0.3s" }} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
