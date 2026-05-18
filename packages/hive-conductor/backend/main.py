@@ -75,7 +75,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine_service.start_engine(get_settings())
     except Exception:
         pass
+    try:
+        from services.scheduler import start_scheduler
+        start_scheduler()
+    except Exception:
+        pass
     yield
+    try:
+        from services.scheduler import stop_scheduler
+        stop_scheduler()
+    except Exception:
+        pass
     await engine_service.stop_engine()
     await foundation_service.stop_foundation()
 
