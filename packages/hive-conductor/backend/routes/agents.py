@@ -107,6 +107,8 @@ class ForgeAgentBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     description: str
+    strategy: str = "react"
+    model: str = "gpt-4.1"
 
 
 @router.post("/forge", response_model=Agent)
@@ -121,7 +123,7 @@ def forge_agent(body: ForgeAgentBody) -> Agent:
         id=aid,
         name=f"forge-{suffix}",
         description=body.description,
-        model="gpt-4.1",
+        model=body.model,
         status="idle",
         capabilities=[],
         skills=[],
@@ -130,7 +132,7 @@ def forge_agent(body: ForgeAgentBody) -> Agent:
         avg_response_time_ms=0.0,
         last_active=t,
         created_at=t,
-        config={},
+        config={"strategy": body.strategy, "role": "worker"},
     )
     stores.agents[aid] = agent
     return agent
