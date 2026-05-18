@@ -80,7 +80,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         start_scheduler()
     except Exception:
         pass
+    try:
+        from services.evolution import start_evolution
+        await start_evolution()
+    except Exception:
+        pass
     yield
+    try:
+        from services.evolution import stop_evolution
+        await stop_evolution()
+    except Exception:
+        pass
     try:
         from services.scheduler import stop_scheduler
         stop_scheduler()
@@ -121,6 +131,12 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
     app.include_router(_confirms_router, prefix="/v1/confirms")
+
+    try:
+        from routes.evolution import router as evolution_router
+        app.include_router(evolution_router, prefix="/v1/evolution")
+    except Exception:
+        pass
 
     if STATIC_DIR.is_dir():
         app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
