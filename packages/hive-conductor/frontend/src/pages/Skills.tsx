@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiGet } from "../lib/api";
-import { Hex } from "../components/shared";
+import { apiGet, apiPatch } from "../lib/api";
+import { Hex, useToast } from "../components/shared";
 
 type Skill = {
   id: string; name: string; description: string; version: string; category: string;
@@ -12,8 +12,20 @@ type Skill = {
 export default function Skills() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [sel, setSel] = useState<Skill | null>(null);
+  const toast = useToast();
   const load = useCallback(async () => { try { setSkills(await apiGet<Skill[]>("/v1/skills")); } catch { /* */ } }, []);
   useEffect(() => { const t = window.setTimeout(() => void load(), 0); return () => window.clearTimeout(t); }, [load]);
+
+  const toggleSkill = useCallback(async (id: string) => {
+    try {
+      const updated = await apiPatch<Skill>(`/v1/skills/${id}/toggle`);
+      setSkills((prev) => prev.map((s) => s.id === id ? updated : s));
+      setSel((prev) => prev?.id === id ? updated : prev);
+      toast(updated.enabled ? "Skill enabled" : "Skill disabled");
+    } catch {
+      toast("Toggle failed", "error");
+    }
+  }, [toast]);
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: sel ? "300px 1fr" : "1fr", gap: 0, minHeight: "calc(100vh - 60px)" }}>
@@ -44,7 +56,10 @@ export default function Skills() {
         <div style={{ padding: "0 0 0 18px", borderLeft: "1.5px dashed var(--pencil)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <h2 style={{ fontFamily: "var(--hand)", fontSize: 22, fontWeight: 600, margin: "0 0 8px" }}>{sel.name}</h2>
-            <span className="btn" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setSel(null)}>close</span>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <button className="btn" style={{ fontSize: 9, padding: "2px 10px", background: sel.enabled ? "var(--danger, #c4452a)" : "var(--ok, #5a9a4a)", color: "#fff", border: "none" }} onClick={() => void toggleSkill(sel.id)}>{sel.enabled ? "Disable" : "Enable"}</button>
+              <span className="btn" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setSel(null)}>close</span>
+            </div>
           </div>
           <div style={{ fontFamily: "var(--hand)", fontSize: 14, color: "var(--pencil)", marginBottom: 14 }}>{sel.description}</div>
 
