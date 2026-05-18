@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import logging
+
+import httpx
 import stores
+from config import get_settings
 from fastapi import APIRouter
 from models.schemas import SettingsModel
 from pydantic import BaseModel, ConfigDict
 
 from routes.audit import log_audit
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["settings"])
 
@@ -62,7 +68,29 @@ def settings_quotas() -> dict:
 
 @router.get("/models")
 def settings_models() -> dict:
-    return {"models": [stores.settings.default_model]}
+    models = _fetch_available_models()
+    return {"models": models}
+
+
+def _fetch_available_models() -> list[str]:
+    cfg = get_settings()
+    base = cfg.maistro_llm_base_url or cfg.litellm_api_base
+    key = cfg.maistro_llm_api_key or cfg.litellm_api_key
+    if not base:
+        return [stores.settings.default_model]
+    try:
+        headers = {}
+        if key:
+            raw = key.get_secret_value() if hasattr(key, "get_secret_value") else str(key)
+            headers["Authorization"] = f"Bearer {raw}"
+        resp = httpx.get(f"{base}/v1/models", headers=headers, timeout=5.0)
+        resp.raise_for_status()
+        data = resp.json()
+        model_ids = [m.get("id", m.get("model", "")) for m in data.get("data", [])]
+        return sorted(set(m for m in model_ids if m)) or [stores.settings.default_model]
+    except Exception:
+        logger.debug("model list fetch failed, returning default")
+        return [stores.settings.default_model]
 
 
 @router.get("/features")
