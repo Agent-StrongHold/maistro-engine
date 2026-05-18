@@ -73,9 +73,12 @@ export default function Chat() {
     try {
       const data = await apiGet<{ models?: string[] } | string[]>("/v1/settings/models");
       const list = Array.isArray(data) ? data : (data as { models?: string[] }).models;
-      if (list && list.length > 0) setModels(list);
+      if (list && list.length > 0) {
+        setModels(list);
+        if (!list.includes(selectedModel)) setSelectedModel(list[0]);
+      }
     } catch { /* */ }
-  }, []);
+  }, [selectedModel]);
 
   useEffect(() => { void loadSessions(); void loadModels(); ensureDotsAnim(); }, [loadSessions, loadModels]);
 
