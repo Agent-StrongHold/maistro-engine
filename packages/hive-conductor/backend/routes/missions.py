@@ -84,6 +84,8 @@ class CreateMissionBody(BaseModel):
 
     name: str
     description: str = ""
+    priority: str = "medium"
+    assigned_agents: list[str] = []
 
 
 @router.post("", response_model=Mission)
@@ -102,12 +104,13 @@ async def create_mission(body: CreateMissionBody) -> Mission:
         name=body.name,
         description=body.description or body.name,
         status="pending",
-        priority="medium",
+        priority=body.priority,
         created_at=t,
         updated_at=t,
         progress=0.0,
         steps_total=0,
         steps_completed=0,
+        assigned_agents=body.assigned_agents,
     )
     stores.missions[mid] = m
     stores.mission_steps[mid] = []
