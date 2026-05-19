@@ -235,3 +235,15 @@ async def run_dag(dag_id: str) -> dict:
         import logging
         logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)
         return {"status": "failed", "execution_id": str(uuid4()), "error": str(exc)}
+
+
+@router.post("/run-champion")
+async def run_champion() -> dict:
+    try:
+        from services.graph_runner import execute_champion
+        result = await execute_champion()
+        return {"execution_id": str(uuid4()), "result": result}
+    except Exception as exc:
+        import logging
+        logging.getLogger("hive.dags").warning("Champion execution failed: %s", exc)
+        return {"status": "failed", "error": str(exc)}
