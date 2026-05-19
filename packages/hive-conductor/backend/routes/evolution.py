@@ -1,4 +1,4 @@
-"""Evolution API routes — population, fitness, cycle control."""
+"""Evolution API routes -- population, fitness, tournament, cycle control."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def evolution_status() -> dict:
         svc = get_evolution_service()
         return svc.status()
     except RuntimeError:
-        return {"running": False, "cycle_count": 0, "population_size": 0, "last_error": None}
+        return {"running": False, "cycle_count": 0, "population_size": 0, "last_error": None, "tournament": {}}
 
 
 @router.get("/population")
@@ -73,6 +73,46 @@ def get_lineage(genome_id: str) -> list[dict]:
         return []
 
 
+@router.get("/tournament/leaderboard")
+def tournament_leaderboard(benchmark: str | None = None) -> list[dict]:
+    try:
+        from services.evolution import get_evolution_service
+        svc = get_evolution_service()
+        if svc.tournament is None:
+            return []
+        return svc.tournament.get_leaderboard(benchmark)
+    except RuntimeError:
+        return []
+
+
+@router.get("/tournament/battles")
+def tournament_battles(
+    genome_id: str | None = None,
+    benchmark: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    try:
+        from services.evolution import get_evolution_service
+        svc = get_evolution_service()
+        if svc.tournament is None:
+            return []
+        return svc.tournament.get_battle_history(genome_id, benchmark, limit)
+    except RuntimeError:
+        return []
+
+
+@router.get("/tournament/stats")
+def tournament_stats() -> dict:
+    try:
+        from services.evolution import get_evolution_service
+        svc = get_evolution_service()
+        if svc.tournament is None:
+            return {}
+        return svc.tournament.get_stats()
+    except RuntimeError:
+        return {}
+
+
 class SeedPopulationBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -88,8 +128,11 @@ async def seed_population(body: SeedPopulationBody) -> dict:
         svc = get_evolution_service()
         if svc.population is None:
             raise HTTPException(status_code=503, detail="population not initialized")
-        spawned = emergency_spawn(svc.population, body.count, prefix=body.base_name)
-        return {"seeded": len(spawned), "population_size": len(svc.population._genomes)}
+        existing = svc.population.list_all()
+        spawned = emergency_spawn(existing, body.count)
+        for g in spawned:
+            svc.population.add(g)
+        return {"seeded": len(spawned), "population_size": len(svc.population.list_all())}
     except RuntimeError:
         raise HTTPException(status_code=503, detail="evolution service not started")
 
