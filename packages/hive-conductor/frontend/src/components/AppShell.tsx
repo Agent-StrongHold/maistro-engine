@@ -17,6 +17,7 @@ const nav = [
   { to: "/audit", icon: "\uD83D\uDD12", label: "Audit" },
   { to: "/cli", icon: "\u203A_", label: "CLI" },
   { to: "/containers", icon: "\u2B21", label: "Containers" },
+  { to: "/evolution", icon: "\u26A1", label: "Evolution" },
   { to: "/memory", icon: "\u25D1", label: "Memory" },
   { to: "/settings", icon: "\u2699", label: "Settings" },
 ];

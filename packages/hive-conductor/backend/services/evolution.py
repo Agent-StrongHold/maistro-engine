@@ -1,4 +1,4 @@
-"""Evolution service — wires maistro-evolve into hive-conductor.
+"""Evolution service -- wires maistro-evolve into hive-conductor.
 
 Runs background evolution cycles, exposes the population via API,
 and provides the hyperagent self-improvement loop.
@@ -40,6 +40,7 @@ class _EvolutionService:
         self._population: Any = None
         self._cycle_count = 0
         self._last_cycle_error: str | None = None
+        self._tournament: Any = None
 
     def stop(self) -> None:
         self._running = False
@@ -52,10 +53,16 @@ class _EvolutionService:
     def population(self) -> Any:
         return self._population
 
+    @property
+    def tournament(self) -> Any:
+        return self._tournament
+
     async def run_loop(self) -> None:
         try:
             from maistro_evolve.population import PopulationStore
+            from maistro_evolve.tournament import EloTournament
             self._population = PopulationStore()
+            self._tournament = EloTournament()
         except Exception as exc:
             logger.warning("Evolution population init failed: %s", exc)
             return
@@ -74,17 +81,21 @@ class _EvolutionService:
         from maistro_evolve.cycle import EvolutionCycle, EvolutionConfig
         from maistro_evolve.harness import EvalHarness
 
-        config = EvolutionConfig()
+        config = EvolutionConfig(
+            self_improve=True,
+            self_improve_top_n=3,
+        )
         harness = EvalHarness(use_real_benchmarks=True)
 
-        cycle = EvolutionCycle(harness=harness)
+        cycle = EvolutionCycle(harness=harness, tournament=self._tournament)
         await cycle.run_cycle(
             population=self._population,
             llm_call=self._build_llm_call(),
             config=config,
         )
         self._cycle_count += 1
-        logger.info("Evolution cycle %d complete, population: %d", self._cycle_count, len(self._population._genomes))
+        pop_size = len(self._population.list_all())
+        logger.info("Evolution cycle %d complete, population: %d", self._cycle_count, pop_size)
 
     def _build_llm_call(self):
         try:
@@ -99,7 +110,6 @@ class _EvolutionService:
             raw_key = key.get_secret_value() if hasattr(key, "get_secret_value") else str(key) if key else ""
 
             async def _llm_call(messages: list[dict], **kwargs: Any) -> str:
-                import json
                 headers = {"Content-Type": "application/json"}
                 if raw_key:
                     headers["Authorization"] = f"Bearer {raw_key}"
@@ -118,9 +128,11 @@ class _EvolutionService:
             return None
 
     def status(self) -> dict:
+        tournament_stats = self._tournament.get_stats() if self._tournament else {}
         return {
             "running": self._running,
             "cycle_count": self._cycle_count,
-            "population_size": len(self._population._genomes) if self._population else 0,
+            "population_size": len(self._population.list_all()) if self._population else 0,
             "last_error": self._last_cycle_error,
+            "tournament": tournament_stats,
         }
