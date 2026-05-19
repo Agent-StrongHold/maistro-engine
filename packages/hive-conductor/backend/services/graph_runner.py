@@ -81,6 +81,67 @@ async def execute_dag(dag_data: dict) -> dict[str, Any]:
     }
 
 
+def genome_to_dag(genome: Any) -> dict[str, Any]:
+    """Convert an evolved PipelineGenome into a DAG dict for execute_dag."""
+    nodes = []
+    for n in genome.topology.nodes:
+        nodes.append({
+            "id": n.id,
+            "name": f"{n.role}-{n.id[:6]}",
+            "role": n.role,
+            "model": n.model,
+            "prompt": n.system_prompt,
+            "strategy": n.strategy,
+            "temperature": n.temperature,
+            "max_tokens": n.max_tokens,
+            "max_tool_rounds": n.max_tool_rounds,
+        })
+
+    edges = []
+    for e in genome.topology.edges:
+        edges.append({
+            "id": e.id,
+            "from_node": e.from_node,
+            "to_node": e.to_node,
+            "condition": e.condition,
+        })
+
+    return {
+        "name": genome.name,
+        "description": f"Evolved pipeline (gen={genome.generation}, fitness={genome.fitness_score})",
+        "nodes": nodes,
+        "edges": edges,
+        "entry_node": genome.topology.entry_node,
+        "max_cycles": genome.topology.max_cycles,
+        "run_scout": genome.topology.use_scout,
+        "genome_id": genome.id,
+        "evolved": True,
+    }
+
+
+async def execute_champion() -> dict[str, Any]:
+    """Run the current evolution champion's pipeline through the graph executor."""
+    try:
+        from services.evolution import get_evolution_service
+        svc = get_evolution_service()
+    except RuntimeError:
+        return {"status": "error", "error": "evolution service not started"}
+
+    if svc.population is None:
+        return {"status": "error", "error": "population not initialized"}
+
+    champion = svc.population.get_champion()
+    if champion is None:
+        return {"status": "error", "error": "no champion yet"}
+
+    dag_data = genome_to_dag(champion)
+    result = await execute_dag(dag_data)
+    result["genome_id"] = champion.id
+    result["fitness"] = champion.fitness_score
+    result["generation"] = champion.generation
+    return result
+
+
 def _build_llm_call():
     settings = get_settings()
     base = settings.maistro_llm_base_url or settings.litellm_api_base
