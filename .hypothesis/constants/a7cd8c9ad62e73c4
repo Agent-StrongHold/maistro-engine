@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/warden/detector.py
+# hypothesis_version: 6.151.10
+
+[0.5, 0.6, 0.7, 0.8, 0.9, 1024, '?', 'NFKD', '__code__', 'auto', 'label', 'maistro.warden', 'model', 'reasoning_trace', 'suspicious', 'tool_result']

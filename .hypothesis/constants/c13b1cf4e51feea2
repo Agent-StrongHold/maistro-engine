@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/types/tool.py
+# hypothesis_version: 6.152.9
+
+['object', 'properties', 'type']
