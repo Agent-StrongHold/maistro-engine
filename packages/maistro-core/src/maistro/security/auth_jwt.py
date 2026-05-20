@@ -72,6 +72,8 @@ class JWTAuthProvider:
         kind = IdentityKind.USER
         if kind_raw == "service_account":
             kind = IdentityKind.SERVICE_ACCOUNT
+        elif kind_raw == "interactive_agent":
+            kind = IdentityKind.INTERACTIVE_AGENT
 
         if not user_id:
             msg = "Token missing 'sub' claim"

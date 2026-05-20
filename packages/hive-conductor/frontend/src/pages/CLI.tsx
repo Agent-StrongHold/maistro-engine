@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { PageHeader } from "../components/shared";
 
 export default function CLI() {
   const [lines, setLines] = useState<string[]>([]);
@@ -61,10 +62,7 @@ export default function CLI() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1 style={{ fontFamily: "var(--hand)", fontSize: 26, fontWeight: 700, margin: 0 }}>CLI</h1>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)" }}>hctl</span>
-      </div>
+      <PageHeader title="CLI" subtitle="Command-line interface for quick status checks" helpHref="/docs#dashboard" />
       <div className="card" style={{ fontFamily: "var(--mono)", fontSize: 11, minHeight: 320, background: "var(--ink)", color: "var(--paper)", padding: "12px 14px", borderRadius: 6, lineHeight: 1.7 }}>
         {lines.map((line, i) => (
           <div key={i} style={{ color: line.startsWith("$") ? "var(--pencil)" : line.includes("\u2713") ? "var(--ok)" : line.includes("error") ? "var(--danger)" : "var(--paper)", whiteSpace: "pre" }}>{line}</div>

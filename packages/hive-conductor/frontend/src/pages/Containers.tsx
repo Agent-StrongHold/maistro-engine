@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "../lib/api";
-import { Hex, StatCard } from "../components/shared";
+import { Hex, PageHeader, StatCard } from "../components/shared";
 
 type Container = {
   id: string; name: string; image: string; status: string;
@@ -74,15 +74,12 @@ export default function Containers() {
   return (
     <div style={{ display: logsFor ? "grid" : "block", gridTemplateColumns: logsFor ? "1fr 420px" : "1fr", gap: 0, minHeight: "calc(100vh - 60px)" }}>
       <div>
-        <div className="page-header">
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <h1 style={{ fontFamily: "var(--hand)", fontSize: 26, fontWeight: 700, margin: 0 }}>Containers</h1>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--ok)" }}>{running} running</span>
-              {stopped > 0 && <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)" }}>{stopped} stopped</span>}
-              <button className="btn" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => void load()}>refresh</button>
-            </div>
-          </div>
+        <PageHeader
+          title="Containers"
+          subtitle={`${running} running · ${containers.length} total — Docker services powering your system`}
+          helpHref="/docs#containers"
+          actions={<button className="btn" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => void load()}>refresh</button>}
+        />
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
             <input className="input-field" placeholder="filter by name, image, label..." value={filter} onChange={(e) => setFilter(e.target.value)} style={{ flex: 1, maxWidth: 320 }} />
             <label style={{ display: "flex", gap: 4, alignItems: "center", fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", cursor: "pointer" }}>
@@ -90,7 +87,6 @@ export default function Containers() {
               show stopped
             </label>
           </div>
-        </div>
 
         {loading && containers.length === 0 ? (
           <div style={{ fontFamily: "var(--hand)", fontSize: 16, color: "var(--pencil)", padding: 20 }}>loading containers...</div>

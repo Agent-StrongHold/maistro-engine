@@ -135,7 +135,7 @@ export default function Quotas() {
 
   return (
     <div style={{ minHeight: "calc(100vh - 60px)" }}>
-      <PageHeader title="Quotas & Stats" subtitle={`${providers.length} providers · ${models.length} models`} />
+      <PageHeader title="Quotas & Stats" subtitle={`${providers.length} providers · ${models.length} models — track AI usage and costs`} helpHref="/docs#quotas" />
       <Tabs tabs={[`Providers (${providers.length})`, `Models (${models.length})`, `Outcomes (${outcomes?.total ?? 0})`]} active={tab} onChange={setTab} />
 
       {loading ? <LoadingSpinner /> : (

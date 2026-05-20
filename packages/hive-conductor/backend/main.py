@@ -6,10 +6,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from config import get_settings
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from middleware.auth import AuthMiddleware
 from pydantic import BaseModel, ConfigDict
 from routes import (
@@ -30,12 +28,15 @@ from routes import (
     schedules,
     setup,
     skills,
+    voice,
     ws,
 )
 from routes import settings as settings_r
 from services import engine as engine_service
 from services import foundation as foundation_service
 from services.ha_tools import get_all_confirms, get_pending_confirms, respond_confirm
+
+from config import get_settings
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "frontend" / "dist"
@@ -124,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(containers.router, prefix="/v1/containers")
     app.include_router(memory.router, prefix="/v1/memory")
     app.include_router(settings_r.router, prefix="/v1/settings")
+    app.include_router(voice.router, prefix="/v1/voice")
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")
     app.include_router(dags.router, prefix="/v1/dags")
@@ -139,7 +141,14 @@ def create_app() -> FastAPI:
         pass
 
     if STATIC_DIR.is_dir():
-        app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+        from starlette.responses import FileResponse
+
+        @app.get("/{full_path:path}")
+        async def spa_fallback(full_path: str):
+            fp = STATIC_DIR / full_path
+            if fp.is_file():
+                return FileResponse(fp)
+            return FileResponse(STATIC_DIR / "index.html")
 
     return app
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../lib/api";
 import {
-  Card, Hex, Modal, SearchInput, StatCard, LoadingSpinner, useToast,
+  Card, Hex, Modal, SearchInput, StatCard, LoadingSpinner, PageHeader, useToast,
   ConfirmDialog, EmptyState,
 } from "../components/shared";
 
@@ -251,7 +251,9 @@ export default function Missions() {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 0, minHeight: "calc(100vh - 60px)" }}>
+    <div style={{ minHeight: "calc(100vh - 60px)" }}>
+      <PageHeader title="Missions" subtitle="Multi-step tasks assigned to AI agents" helpHref="/docs#missions" actions={<button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setShowCreate(true)}>+ new</button>} />
+      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 0, minHeight: "calc(100vh - 120px)" }}>
       <div style={{ borderRight: "1.5px dashed var(--rule)", padding: 10, display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
         <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginBottom: 4 }}>
           {FILTER_TABS.map((tab) => (
@@ -616,6 +618,7 @@ export default function Missions() {
         title="Delete Mission"
         message={`Permanently delete "${active?.name ?? ""}"? This cannot be undone.`}
       />
+      </div>
     </div>
   );
 }

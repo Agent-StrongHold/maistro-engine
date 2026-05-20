@@ -522,7 +522,7 @@ export default function DagBuilder() {
 
   return (
     <div style={{ minHeight: "calc(100vh - 60px)" }}>
-      <PageHeader title="DAG Builder" subtitle={`${dags.length} pipelines`} />
+      <PageHeader title="DAG Builder" subtitle={`${dags.length} workflows — chain tasks into automated pipelines`} helpHref="/docs#dags" />
       {loading ? (
         <LoadingSpinner />
       ) : (

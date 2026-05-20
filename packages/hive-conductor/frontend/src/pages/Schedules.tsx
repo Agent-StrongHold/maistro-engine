@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { apiGet, apiPost, apiPatch, apiDelete } from "../lib/api";
-import { Hex, StatCard } from "../components/shared";
+import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
+import { Hex, PageHeader, StatCard, ConfirmDialog, useToast } from "../components/shared";
 
 type Schedule = {
   id: string; name: string; description: string; cron_expression: string;
@@ -9,51 +9,93 @@ type Schedule = {
   created_at: string; updated_at: string;
 };
 
+const CRON_PRESETS = [
+  { label: "Every hour", cron: "0 * * * *" },
+  { label: "Every 6 hours", cron: "0 */6 * * *" },
+  { label: "Daily midnight", cron: "0 0 * * *" },
+  { label: "Daily 3am", cron: "0 3 * * *" },
+  { label: "Weekly Sunday", cron: "0 0 * * 0" },
+  { label: "Monthly 1st", cron: "0 0 1 * *" },
+];
+
 export default function Schedules() {
+  const toast = useToast();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [tab, setTab] = useState<"schedules" | "history">("schedules");
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [newDesc, setNewDesc] = useState("");
-  const [newCron, setNewCron] = useState("0 * * * *");
+  const [editing, setEditing] = useState<Schedule | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Schedule | null>(null);
+  const [form, setForm] = useState({ name: "", description: "", cron_expression: "0 * * * *", mission_template_id: "" });
+  const [editForm, setEditForm] = useState({ name: "", description: "", cron_expression: "" });
+
   const load = useCallback(async () => { try { setSchedules(await apiGet<Schedule[]>("/v1/schedules")); } catch { /* */ } }, []);
   useEffect(() => { void load(); }, [load]);
 
   async function createSchedule() {
-    if (!newName.trim()) return;
+    if (!form.name.trim()) return;
     try {
-      await apiPost<Schedule>("/v1/schedules", { name: newName.trim(), description: newDesc.trim(), cron_expression: newCron, enabled: true });
+      await apiPost<Schedule>("/v1/schedules", { name: form.name.trim(), description: form.description.trim(), cron_expression: form.cron_expression, mission_template_id: form.mission_template_id || null, enabled: true });
       setCreating(false);
-      setNewName("");
-      setNewDesc("");
-      setNewCron("0 * * * *");
+      setForm({ name: "", description: "", cron_expression: "0 * * * *", mission_template_id: "" });
       await load();
-    } catch { /* */ }
+      toast("Schedule created", "ok");
+    } catch { toast("Failed to create schedule", "error"); }
+  }
+
+  async function updateSchedule() {
+    if (!editing) return;
+    try {
+      await apiPut<Schedule>(`/v1/schedules/${editing.id}`, editForm);
+      setEditing(null);
+      await load();
+      toast("Schedule updated", "ok");
+    } catch { toast("Failed to update schedule", "error"); }
   }
 
   async function toggleSchedule(s: Schedule) {
     try {
-      await apiPatch<Schedule>(`/v1/schedules/${s.id}`, { enabled: !s.enabled });
+      await apiPut<Schedule>(`/v1/schedules/${s.id}`, { enabled: !s.enabled });
       await load();
-    } catch { /* */ }
+      toast(s.enabled ? "Disabled" : "Enabled", "ok");
+    } catch { toast("Failed to toggle", "error"); }
   }
 
   async function deleteSchedule(id: string) {
-    try { await apiDelete(`/v1/schedules/${id}`); await load(); } catch { /* */ }
+    try {
+      await apiDelete(`/v1/schedules/${id}`);
+      await load();
+      toast("Schedule deleted", "ok");
+    } catch { toast("Failed to delete", "error"); }
+    setDeleteTarget(null);
+  }
+
+  async function runNow(s: Schedule) {
+    try {
+      await apiPost<Schedule>(`/v1/schedules/${s.id}/run`);
+      await load();
+      toast("Schedule triggered", "ok");
+    } catch { toast("Failed to trigger", "error"); }
+  }
+
+  function startEdit(s: Schedule) {
+    setEditForm({ name: s.name, description: s.description, cron_expression: s.cron_expression });
+    setEditing(s);
   }
 
   return (
     <div>
-      <div className="page-header">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h1 style={{ fontFamily: "var(--hand)", fontSize: 26, fontWeight: 700, margin: 0 }}>Schedules</h1>
-          <button className="btn" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setCreating(true)}>+ new</button>
-        </div>
-        <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--rule)", marginBottom: -8 }}>
-          {(["schedules", "history"] as const).map((t) => (
-            <div key={t} onClick={() => setTab(t)} style={{ padding: "7px 16px", fontFamily: "var(--mono)", fontSize: 10, cursor: "pointer", borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent", color: tab === t ? "var(--ink)" : "var(--pencil)", textTransform: "capitalize" }}>{t}</div>
-          ))}
-        </div>
+      <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { if (deleteTarget) void deleteSchedule(deleteTarget.id); }} title="Delete Schedule" message={`Delete "${deleteTarget?.name ?? ""}"?`} />
+
+      <PageHeader
+        title="Schedules"
+        subtitle={`${schedules.filter((s) => s.enabled).length}/${schedules.length} active — run tasks automatically on a timer`}
+        helpHref="/docs#schedules"
+        actions={<button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setCreating(true)}>+ new</button>}
+      />
+      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--rule)", marginBottom: -8 }}>
+        {(["schedules", "history"] as const).map((t) => (
+          <div key={t} onClick={() => setTab(t)} style={{ padding: "7px 16px", fontFamily: "var(--mono)", fontSize: 10, cursor: "pointer", borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent", color: tab === t ? "var(--ink)" : "var(--pencil)", textTransform: "capitalize" }}>{t}</div>
+        ))}
       </div>
 
       {tab === "schedules" && (
@@ -61,15 +103,42 @@ export default function Schedules() {
           {creating && (
             <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <input className="input-field" placeholder="schedule name" value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus />
-                <input className="input-field" placeholder="description" value={newDesc} onChange={(e) => setNewDesc(e.target.value)} />
+                <input className="input-field" placeholder="schedule name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} autoFocus />
+                <input className="input-field" placeholder="description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+                <div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", marginBottom: 3 }}>PRESETS</div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {CRON_PRESETS.map((p) => (
+                      <span key={p.cron} className={`hex-badge${form.cron_expression === p.cron ? " hex-badge-accent" : ""}`} style={{ cursor: "pointer" }} onClick={() => setForm((f) => ({ ...f, cron_expression: p.cron }))}>{p.label}</span>
+                    ))}
+                  </div>
+                </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)" }}>CRON</span>
-                  <input className="input-field" style={{ flex: 1, fontFamily: "var(--mono)" }} value={newCron} onChange={(e) => setNewCron(e.target.value)} />
+                  <input className="input-field" style={{ flex: 1, fontFamily: "var(--mono)" }} value={form.cron_expression} onChange={(e) => setForm((f) => ({ ...f, cron_expression: e.target.value }))} />
+                </div>
+                <input className="input-field" placeholder="mission template ID (optional)" value={form.mission_template_id} onChange={(e) => setForm((f) => ({ ...f, mission_template_id: e.target.value }))} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 10px" }} onClick={() => void createSchedule()} disabled={!form.name.trim()}>create</button>
+                  <button className="btn" style={{ fontSize: 9, padding: "2px 10px" }} onClick={() => setCreating(false)}>cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {editing && (
+            <div className="card" style={{ borderLeft: "3px solid var(--warn)" }}>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--warn)", marginBottom: 6, fontWeight: 600 }}>EDITING: {editing.name}</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <input className="input-field" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+                <input className="input-field" value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)" }}>CRON</span>
+                  <input className="input-field" style={{ flex: 1, fontFamily: "var(--mono)" }} value={editForm.cron_expression} onChange={(e) => setEditForm((f) => ({ ...f, cron_expression: e.target.value }))} />
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
-                  <button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 10px" }} onClick={() => void createSchedule()} disabled={!newName.trim()}>create</button>
-                  <button className="btn" style={{ fontSize: 9, padding: "2px 10px" }} onClick={() => setCreating(false)}>cancel</button>
+                  <button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 10px" }} onClick={() => void updateSchedule()}>save</button>
+                  <button className="btn" style={{ fontSize: 9, padding: "2px 10px" }} onClick={() => setEditing(null)}>cancel</button>
                 </div>
               </div>
             </div>
@@ -90,7 +159,11 @@ export default function Schedules() {
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, marginLeft: 12 }}>
                   <div className={`toggle${s.enabled ? " on" : ""}`} onClick={() => void toggleSchedule(s)} style={{ cursor: "pointer" }} />
                   <Hex variant={s.enabled ? "ok" : "muted"}>{s.enabled ? "active" : "off"}</Hex>
-                  <button className="btn" style={{ fontSize: 8, padding: "1px 6px", borderColor: "var(--danger)", color: "var(--danger)", opacity: 0.5 }} onClick={() => void deleteSchedule(s.id)}>delete</button>
+                  <div style={{ display: "flex", gap: 3 }}>
+                    <button className="btn" style={{ fontSize: 8, padding: "1px 6px" }} onClick={() => void runNow(s)}>run now</button>
+                    <button className="btn" style={{ fontSize: 8, padding: "1px 6px" }} onClick={() => startEdit(s)}>edit</button>
+                    <button className="btn" style={{ fontSize: 8, padding: "1px 6px", borderColor: "var(--danger)", color: "var(--danger)", opacity: 0.5 }} onClick={() => setDeleteTarget(s)}>delete</button>
+                  </div>
                 </div>
               </div>
             </div>

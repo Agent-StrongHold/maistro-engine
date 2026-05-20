@@ -7,10 +7,11 @@ from typing import Any
 from adapters.llm_http import HttpOpenAIProtocolLLM, StubLLMPort
 from adapters.telemetry_langfuse import LangfuseTelemetry
 from adapters.telemetry_noop import NoopTelemetry
-from config import get_settings
 from models.schemas import ChatCompletionRequest
 from protocols.llm import LLMPort
 from protocols.telemetry import TelemetryPort
+
+from config import get_settings
 
 
 def _get_secret(name: str, env_fallback: str | None = None) -> str | None:
@@ -57,16 +58,38 @@ def _effective_request(req: ChatCompletionRequest) -> ChatCompletionRequest:
     return req.model_copy(update={"model": req.model or s.chat_default_model})
 
 
-async def run_chat_completion(req: ChatCompletionRequest) -> dict[str, Any]:  # noqa: C901
+async def run_chat_completion(req: ChatCompletionRequest, return_actions: bool = False, skip_summary: bool = False, _llm: LLMPort | None = None, _model: str | None = None) -> dict[str, Any]:  # noqa: C901
     req = _effective_request(req)
-    llm = build_llm_port()
-    model = req.model
+    llm = _llm or build_llm_port()
+    model = _model or req.model
 
 
     from services.ha_tools import execute_ha_tool, fetch_devices, get_tool_definitions, ha_available
 
     tools = get_tool_definitions() if ha_available() else []
     messages = list(req.messages)
+
+    browser_agent_url = os.environ.get("BROWSER_AGENT_URL", "http://localhost:8200")
+    browser_agent_key = os.environ.get("BROWSER_AGENT_KEY", "sk-conductor-agent-2026")
+    browser_tool = {
+        "type": "function",
+        "function": {
+            "name": "browser_task",
+            "description": "Run a browser automation task using Playwright with vision AI. Can navigate websites, click buttons, fill forms, extract data, take screenshots, and interact with any web page.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task": {"type": "string", "description": "Natural language description of what to do in the browser (e.g. 'Go to example.com and find the pricing')"},
+                    "url": {"type": "string", "description": "Starting URL (optional)"},
+                    "max_steps": {"type": "integer", "description": "Max steps for the agent (default 25, max 50)"},
+                },
+                "required": ["task"],
+            },
+        },
+    }
+    tools.append(browser_tool)
+
+    executed_actions: list[dict[str, Any]] = []
 
     if tools:
         devices = await fetch_devices()
@@ -91,6 +114,8 @@ async def run_chat_completion(req: ChatCompletionRequest) -> dict[str, Any]:  # 
         tool_calls = msg.get("tool_calls")
 
         if not tool_calls:
+            if return_actions:
+                out["actions"] = executed_actions
             return out
 
         messages.append({"role": "assistant", "content": msg.get("content"), "tool_calls": tool_calls})
@@ -104,6 +129,7 @@ async def run_chat_completion(req: ChatCompletionRequest) -> dict[str, Any]:  # 
                 args = {}
             if name == "ha_control":
                 result = await execute_ha_tool(args)
+                executed_actions.append({"tool": name, "args": args, "result": result})
             elif name == "ha_announce":
                 from services.ha_tools import ha_available
                 if ha_available():
@@ -123,6 +149,7 @@ async def run_chat_completion(req: ChatCompletionRequest) -> dict[str, Any]:  # 
                         result = {"error": f"Alexa announcement failed (is alexa_media_player configured?): {_e}"}
                 else:
                     result = {"error": "HA not available"}
+                executed_actions.append({"tool": name, "args": args, "result": result})
             elif name == "ha_confirm":
                 from services.ha_tools import send_confirm
                 result = await send_confirm(
@@ -135,13 +162,76 @@ async def run_chat_completion(req: ChatCompletionRequest) -> dict[str, Any]:  # 
                 seconds = min(max(int(args.get("seconds", 1)), 1), 300)
                 await asyncio.sleep(seconds)
                 result = {"waited": seconds}
+            elif name == "browser_task":
+                import httpx as _hcx
+                task_desc = args.get("task", "")
+                if not task_desc:
+                    result = {"error": "task is required"}
+                else:
+                    try:
+                        async with _hcx.AsyncClient(timeout=120.0) as _bc:
+                            r = await _bc.post(
+                                f"{browser_agent_url}/task/browse",
+                                headers={"Authorization": f"Bearer {browser_agent_key}", "Content-Type": "application/json"},
+                                json={"task": task_desc, "url": args.get("url"), "max_steps": min(int(args.get("max_steps", 25)), 50), "use_vision": True},
+                            )
+                            if r.status_code == 200:
+                                result = r.json()
+                            else:
+                                result = {"error": f"browser agent returned {r.status_code}: {r.text[:500]}"}
+                    except Exception as _be:
+                        result = {"error": f"browser agent failed: {_be}"}
             else:
                 result = {"error": f"unknown tool: {name}"}
+            if name != "ha_control" and name != "ha_announce":
+                executed_actions.append({"tool": name, "args": args, "result": result})
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc.get("id", ""),
                 "content": json.dumps(result),
             })
 
+        if skip_summary and executed_actions:
+            break
+
+    if skip_summary and executed_actions:
+        parts = []
+        for a in executed_actions:
+            tool = a.get("tool", "")
+            result = a.get("result", {})
+            args = a.get("args", {})
+            if result.get("success"):
+                if tool == "ha_control":
+                    entity = args.get("entity_id", "").split(".")[-1].replace("_", " ")
+                    action = args.get("action", "").replace("_", " ")
+                    if action == "set percentage":
+                        action = "set speed on"
+                    elif action == "turn on":
+                        action = "turned on"
+                    elif action == "turn off":
+                        action = "turned off"
+                    elif action == "toggle":
+                        action = "toggled"
+                    parts.append(f"{action} {entity}")
+                elif tool == "browser_task":
+                    parts.append("browsed the web")
+                else:
+                    parts.append(f"executed {tool}")
+            else:
+                parts.append(f"failed: {result.get('error', 'unknown')}")
+        reply = "; ".join(parts) if parts else "done"
+        from uuid import uuid4
+        final_out = {
+            "id": str(uuid4()),
+            "model": model,
+            "choices": [{"message": {"role": "assistant", "content": reply}}],
+        }
+        if return_actions:
+            final_out["actions"] = executed_actions
+        return final_out
+
     final_req = ChatCompletionRequest(messages=messages, model=model, temperature=req.temperature)
-    return await llm.complete(final_req)
+    final_out = await llm.complete(final_req)
+    if return_actions:
+        final_out["actions"] = executed_actions
+    return final_out

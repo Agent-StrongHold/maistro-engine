@@ -18,6 +18,7 @@ logger = logging.getLogger("hive.auth_middleware")
 _PUBLIC_PREFIXES = (
     "/v1/setup/",
     "/v1/auth/login",
+    "/v1/voice/",
     "/health",
     "/docs",
     "/openapi",

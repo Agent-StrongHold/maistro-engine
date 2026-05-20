@@ -181,7 +181,8 @@ export default function MessageBoard() {
     <div style={{ minHeight: "calc(100vh - 60px)" }}>
       <PageHeader
         title="Message Board"
-        subtitle={`${unreadCount} unread`}
+        subtitle={`${unreadCount} unread — alerts and updates from your agents`}
+        helpHref="/docs#messages"
       />
       <div style={{ display: "flex", gap: 0, height: "calc(100vh - 140px)" }}>
         <div style={{
