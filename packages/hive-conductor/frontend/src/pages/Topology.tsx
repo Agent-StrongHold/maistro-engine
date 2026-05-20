@@ -260,7 +260,7 @@ export default function Topology() {
 
   return (
     <div>
-      <PageHeader title="Topology" subtitle="Agent dependency &amp; connection DAG" />
+      <PageHeader title="Topology" subtitle="Visual map of how agents, skills, and services connect" helpHref="/docs#topology" />
       <div style={{ position: "relative", width: "100%", height: "calc(100vh - 100px)", overflow: "hidden" }}>
         <svg
           width="100%"

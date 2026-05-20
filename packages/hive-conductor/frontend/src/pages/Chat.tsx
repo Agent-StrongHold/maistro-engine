@@ -20,9 +20,9 @@ type FullSession = { id: string; title: string; messages: ChatMsg[]; created_at:
 
 const SUGGESTIONS = [
   "turn off living room lights",
-  "what did the red team find?",
-  "schedule nightly dream loop",
-  "audit IAM service accounts",
+  "what agents are available?",
+  "browse the web for me",
+  "what can you do?",
 ];
 
 const DEFAULT_MODELS = [
@@ -62,6 +62,7 @@ export default function Chat() {
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
   const [clarifyChoice, setClarifyChoice] = useState<string | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
@@ -218,15 +219,16 @@ export default function Chat() {
           )}
           <PageHeader
             title="Chat"
-            subtitle={activeSessionId ? "session" : "hive conductor"}
+            subtitle="Talk to your AI assistant — control your home, browse the web, manage tasks"
+            helpHref="/docs#chat"
             actions={!showSidebar ? <button className="btn btn-accent" onClick={() => void createSession()} style={{ fontSize: 9 }}>+ new session</button> : undefined}
           />
         </div>
 
         {!messages.length && !streaming ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 20 }}>
-            <div style={{ fontFamily: "var(--hand)", fontSize: 32, textAlign: "center" }}>Hive Conductor</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)" }}>10 agents ready · model: {selectedModel}</div>
+            <div style={{ fontFamily: "var(--hand)", fontSize: 32, textAlign: "center" }}>How can I help?</div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)", textAlign: "center" }}>Control your home, browse the web, manage agents, or ask anything</div>
             <div className="grid-2" style={{ width: "100%", maxWidth: 380 }}>
               {SUGGESTIONS.map((s) => (
                 <div key={s} className="card" style={{ cursor: "pointer", fontFamily: "var(--hand)", fontSize: 13 }} onClick={() => void send(s)}>{s}</div>
@@ -335,7 +337,7 @@ export default function Chat() {
             ref={taRef}
             className="input-field"
             style={{ flex: 1, resize: "none", minHeight: 32, maxHeight: 120, padding: "6px 10px" }}
-            placeholder="message the hive..."
+            placeholder="Ask me to control your home, browse the web, or manage tasks..."
             value={input}
             rows={1}
             onChange={(e) => {
@@ -345,6 +347,7 @@ export default function Chat() {
             }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
           />
+          {showAdvanced && (
           <div style={{ position: "relative" }}>
             <button onClick={() => setModelOpen((p) => !p)} style={{
               background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 4,
@@ -371,6 +374,12 @@ export default function Chat() {
               </>
             )}
           </div>
+          )}
+          <button onClick={() => setShowAdvanced((p) => !p)} style={{
+            background: "none", border: "none", fontFamily: "var(--mono)", fontSize: 8,
+            color: showAdvanced ? "var(--accent)" : "var(--pencil)", cursor: "pointer", padding: "4px 4px",
+            textDecoration: "underline",
+          }}>{showAdvanced ? "Advanced" : "Advanced"}</button>
           <button className="btn btn-accent" onClick={() => void send()} disabled={streaming} style={{ padding: "6px 12px", fontSize: 14, lineHeight: 1 }}>↑</button>
         </div>
       </div>

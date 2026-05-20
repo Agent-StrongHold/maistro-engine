@@ -10,6 +10,7 @@ import Containers from "./pages/Containers";
 import DagBuilder from "./pages/DagBuilder";
 import Dashboard from "./pages/Dashboard";
 import DesignStudio from "./pages/DesignStudio";
+import Docs from "./pages/Docs";
 import Evolution from "./pages/Evolution";
 import Login from "./pages/Login";
 import MCP from "./pages/MCP";
@@ -110,6 +111,7 @@ export default function App() {
                   <Route path="cli" element={<CLI />} />
                   <Route path="cli/canvas" element={<DesignStudio />} />
                   <Route path="containers" element={<Containers />} />
+                  <Route path="docs" element={<Docs />} />
                   <Route path="evolution" element={<Evolution />} />
                   <Route path="memory" element={<Memory />} />
                   <Route path="settings" element={<Settings />} />

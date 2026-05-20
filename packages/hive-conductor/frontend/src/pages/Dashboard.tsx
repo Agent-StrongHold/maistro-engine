@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiGet, apiPost } from "../lib/api";
-import { LoadingSpinner, StatusDot, useToast } from "../components/shared";
+import { LoadingSpinner, PageHeader, StatusDot, useToast } from "../components/shared";
 
 type AgentStatus = "idle" | "busy" | "offline" | "error";
 type Role = "queen" | "worker" | "scout" | "drone" | "guard";
@@ -191,6 +191,11 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "calc(100vh - 60px)", paddingBottom: 40 }}>
+      <PageHeader
+        title="Dashboard"
+        subtitle="Your home base — see what's happening across your hive at a glance"
+        helpHref="/docs#dashboard"
+      />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
         <div className="stat-card">
           <div className="label">Agents</div>

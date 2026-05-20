@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPatch } from "../lib/api";
+import { PageHeader } from "../components/shared";
 
 type Settings = Record<string, unknown>;
 
@@ -57,10 +58,7 @@ export default function Settings() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1 style={{ fontFamily: "var(--hand)", fontSize: 26, fontWeight: 700, margin: 0 }}>Settings</h1>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)" }}>/v1/settings</span>
-      </div>
+      <PageHeader title="Settings" subtitle="System configuration — some changes require admin elevation" helpHref="/docs#dashboard" />
 
       {elevating && elevatingFor && (
         <div className="card" style={{ borderLeft: "3px solid var(--danger)", marginBottom: 12, maxWidth: 400 }}>

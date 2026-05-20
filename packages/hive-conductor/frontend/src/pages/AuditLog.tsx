@@ -127,7 +127,8 @@ export default function AuditLog() {
     <div style={{ minHeight: "calc(100vh - 60px)" }}>
       <PageHeader
         title="Audit Log"
-        subtitle={`${entries.length} entries`}
+        subtitle={`${entries.length} entries — a record of every action taken in the system`}
+        helpHref="/docs#audit"
         actions={[
           <button
             key="refresh"

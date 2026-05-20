@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 const API = "/v1/evolution";
 
+import { PageHeader } from "../components/shared";
+
 type Genome = {
   id: string;
   name: string;
@@ -94,9 +96,25 @@ export default function Evolution() {
 
   return (
     <div style={{ padding: 24, maxWidth: 1200 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 24 }}>
-        <h2 style={{ margin: 0 }}>Evolution Engine</h2>
+      <PageHeader title="Evolution Engine" subtitle="Automatically improve agents over time using genetic algorithms" helpHref="/docs#evolution" />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 8 }}>
+          {(["overview", "population", "tournament"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className="btn"
+              style={{
+                background: tab === t ? "var(--accent)" : "var(--card)",
+                color: tab === t ? "var(--paper)" : "var(--ink)",
+                textTransform: "capitalize",
+              }}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
           <button onClick={seedPop} disabled={loading} className="btn">
             Seed {seedCount}
           </button>
@@ -115,23 +133,6 @@ export default function Evolution() {
             Refresh
           </button>
         </div>
-      </div>
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-        {(["overview", "population", "tournament"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className="btn"
-            style={{
-              background: tab === t ? "var(--accent)" : "var(--card)",
-              color: tab === t ? "var(--paper)" : "var(--ink)",
-              textTransform: "capitalize",
-            }}
-          >
-            {t}
-          </button>
-        ))}
       </div>
 
       {tab === "overview" && (

@@ -1,12 +1,26 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) {
+export function PageHeader({ title, subtitle, actions, helpHref }: { title: string; subtitle?: string; actions?: ReactNode; helpHref?: string }) {
   return (
     <header className="page-header">
-      <div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <h1>{title}</h1>
-        {subtitle ? <div className="subtitle">{subtitle}</div> : null}
+        {helpHref && (
+          <a
+            href={helpHref}
+            onClick={(e) => { e.preventDefault(); window.location.hash = ""; window.location.href = helpHref; }}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              width: 20, height: 20, borderRadius: "50%",
+              border: "1.3px solid var(--pencil)", color: "var(--pencil)",
+              fontFamily: "var(--mono)", fontSize: 10, fontWeight: 700,
+              textDecoration: "none", lineHeight: 1, flexShrink: 0,
+            }}
+            title="Learn more"
+          >?</a>
+        )}
       </div>
+      {subtitle ? <div className="subtitle">{subtitle}</div> : null}
       {actions ? <div style={{ display: "flex", gap: 6 }}>{actions}</div> : null}
     </header>
   );

@@ -314,7 +314,8 @@ export default function Agents() {
     <div style={{ minHeight: "calc(100vh - 60px)" }}>
       <PageHeader
         title="The Hive"
-        subtitle={`${agents.length} agents`}
+        subtitle={`${agents.length} agents — AI workers that handle your tasks`}
+        helpHref="/docs#agents"
         actions={tab === 0 ? [
           <button key="c" onClick={() => setShowCreate(true)} style={{ ...btn, background: "var(--accent)", color: "var(--paper)", borderColor: "var(--accent)" }}>+ Create</button>,
         ] : undefined}

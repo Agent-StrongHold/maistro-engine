@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPatch } from "../lib/api";
-import { Hex, useToast } from "../components/shared";
+import { Hex, PageHeader, useToast } from "../components/shared";
 
 type Skill = {
   id: string; name: string; description: string; version: string; category: string;
@@ -30,10 +30,11 @@ export default function Skills() {
   return (
     <div style={{ display: "grid", gridTemplateColumns: sel ? "300px 1fr" : "1fr", gap: 0, minHeight: "calc(100vh - 60px)" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-          <h1 style={{ fontFamily: "var(--hand)", fontSize: 24, fontWeight: 600, margin: 0 }}>Skills</h1>
-          <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)" }}>{skills.length} installed</span>
-        </div>
+        <PageHeader
+          title="Skills"
+          subtitle={`${skills.length} installed — reusable tools that agents can use`}
+          helpHref="/docs#skills"
+        />
         {skills.map((s) => (
           <div key={s.id} className="card" onClick={() => setSel(s)} style={{ cursor: "pointer", opacity: s.enabled ? 1 : 0.6, borderColor: sel?.id === s.id ? "var(--accent)" : undefined }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto auto", gap: 8, alignItems: "center" }}>

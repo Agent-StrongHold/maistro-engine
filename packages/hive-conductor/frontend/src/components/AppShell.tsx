@@ -19,6 +19,7 @@ const nav = [
   { to: "/containers", icon: "\u2B21", label: "Containers" },
   { to: "/evolution", icon: "\u26A1", label: "Evolution" },
   { to: "/memory", icon: "\u25D1", label: "Memory" },
+  { to: "/docs", icon: "\u2753", label: "Docs" },
   { to: "/settings", icon: "\u2699", label: "Settings" },
 ];
 
