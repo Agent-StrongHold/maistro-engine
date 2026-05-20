@@ -8,14 +8,17 @@
 
 ## Architecture
 
-Monorepo with 4 packages. The canonical shared runtime that powers Agent Conductor, Agent Stronghold, and Canvas Studio.
+Monorepo with 6 packages + the hive-conductor app. The canonical shared runtime that powers Agent Conductor, Agent Stronghold, and Canvas Studio.
 
 ```
 packages/
 ├── maistro-core/      # Shared library: pip install maistro-core
 ├── maistro-canvas/    # Standalone book builder (frontend + canvas engine)
 ├── maistro-server/    # FastAPI app (replaces conductor-router)
-└── maistro-turing/    # Autonoetic self-model extensions
+├── maistro-turing/    # Autonoetic self-model extensions
+├── maistro-evolve/    # Elo tournament optimizer for agent self-improvement
+├── hive-conductor/    # Agent Conductor app (FastAPI backend + React frontend)
+└── maistro-bootstrap/ # Bootstrap stub (WIP)
 ```
 
 ### Product relationship
@@ -23,12 +26,12 @@ packages/
 ```
 maistro-engine (this repo)
   │
-  ├─→ Agent Conductor (household/personal)  — maistro-server + maistro-turing
+  ├─→ Agent Conductor (household/personal)  — hive-conductor (FastAPI backend + React frontend)
   ├─→ Agent Stronghold (enterprise)         — pip install maistro-core + multi-tenant layer
   └─→ Canvas Studio (standalone book builder) — maistro-canvas + P40 image gen server
 ```
 
-**ADR-019** defines the canonical source split: maistro-core = shared runtime, Stronghold = multi-tenant only.
+**ADR-019** defines the canonical source split: maistro-core = shared runtime, Stronghold = multi-tenant only. 43 ADRs total (ADR-000–ADR-042); notable recent ones: ADR-036 (ontology), ADR-038 (reliability), ADR-042 (graph execution protocol).
 
 ### Naming convention
 
@@ -60,6 +63,12 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Quota** | `maistro.quota` | Token usage tracking per provider per billing cycle |
 | **Sessions** | `maistro.sessions` | Conversation history with TTL pruning |
 | **Intents** | `maistro.agents.intents` | task_type → agent_name routing table |
+| **Graph** | `maistro.graph` | DAG execution: node types, executor, optimizer, phases (ADR-042) |
+| **Ontology** | `maistro.ontology` | Semantic object layer and registry (ADR-036) |
+| **Resilience** | `maistro.resilience` | Reliability taxonomy and circuit-breaking (ADR-038) |
+| **Identity** | `maistro.identity` | Identity management |
+| **Scheduling** | `maistro.scheduling` | Scheduling (distinct from the scheduler/ placeholder) |
+| **Prompts** | `maistro.prompts` | Prompt templates |
 
 ### maistro-canvas (standalone book builder)
 
@@ -88,27 +97,34 @@ packages/maistro-canvas/
 
 ### maistro-turing (autonoetic self-model)
 
-Complete implementation: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security.
+Implementation in progress: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security. Note: tests/ directory exists but is empty; maistro-turing is not exercised in CI.
 
 ---
 
 ## Development Commands
 
 ```bash
-# Install for development (from repo root)
+# Install for development (from repo root — uv.lock is the source of truth)
+uv sync
+# Or with pip:
 pip install -e packages/maistro-core
 pip install -e packages/maistro-server
 pip install -e packages/maistro-turing
 pip install -e packages/maistro-canvas
+pip install -e packages/maistro-evolve
 
-# Run core tests (390 tests)
+# Run core tests (~375 tests)
 PYTHONPATH=packages/maistro-core/src pytest packages/maistro-core/tests/ -q
 
-# Run all package tests
+# Run all package tests (~525 total; maistro-turing has no tests yet)
 PYTHONPATH=packages/maistro-core/src:packages/maistro-canvas/src:packages/maistro-turing/src \
-  pytest packages/maistro-core/tests packages/maistro-canvas/tests packages/maistro-turing/tests -q
+  pytest packages/maistro-core/tests packages/maistro-server/tests \
+  packages/maistro-canvas/tests packages/maistro-evolve/tests -q
 
-# Lint
+# Formal property-based conformance tests (separate CI flow — formal-conformance.yml)
+PYTHONPATH=packages/maistro-core/src pytest formal/ -q
+
+# Lint (note: CI targets root src/ only; run manually for packages/)
 ruff check packages/
 mypy packages/ --strict
 
@@ -181,7 +197,13 @@ maistro-engine/
 │   │       ├── skills/          # marketplace, forge, parser, canary, connectors
 │   │       ├── tasks/           # queue, runner, models
 │   │       ├── tools/           # sandbox, git, browser
-│   │       └── types/           # AgentConfig, AgentError, shared dataclasses
+│   │       ├── types/           # AgentConfig, AgentError, shared dataclasses
+│   │       ├── graph/           # DAG execution: node, executor, optimizer, phases (ADR-042)
+│   │       ├── ontology/        # Semantic object layer, registry (ADR-036)
+│   │       ├── resilience/      # Reliability taxonomy, circuit-breaking (ADR-038)
+│   │       ├── identity/        # Identity management
+│   │       ├── scheduling/      # Scheduling (separate from scheduler/ placeholder)
+│   │       └── prompts/         # Prompt templates
 │   │
 │   ├── maistro-canvas/
 │   │   ├── pyproject.toml       # depends: maistro-core
@@ -199,15 +221,31 @@ maistro-engine/
 │   │       ├── api/             # HTTP routes
 │   │       └── main.py          # FastAPI app
 │   │
-│   └── maistro-turing/
-│       ├── pyproject.toml       # depends: maistro-core
-│       └── src/maistro_turing/
-│           ├── bridge.py        # Adapters to maistro-core
-│           ├── self_model.py    # Autonoetic identity
-│           ├── runtime.py       # Actor, chat, config
-│           └── producers.py     # Blog, reflection, curiosity, emotion
+│   ├── maistro-turing/
+│   │   ├── pyproject.toml       # depends: maistro-core
+│   │   └── src/maistro_turing/
+│   │       ├── bridge.py        # Adapters to maistro-core
+│   │       ├── self_model.py    # Autonoetic identity
+│   │       ├── runtime.py       # Actor, chat, config
+│   │       └── producers.py     # Blog, reflection, curiosity, emotion
+│   │
+│   ├── maistro-evolve/
+│   │   ├── pyproject.toml
+│   │   └── src/maistro_evolve/  # Elo tournament optimizer (crossover, mutate, fitness, harness)
+│   │
+│   └── hive-conductor/          # Agent Conductor app (no pyproject.toml — requirements.txt)
+│       ├── backend/             # FastAPI app
+│       │   ├── main.py          # Entrypoint + route registration
+│       │   ├── routes/          # agents, audit, chat, cli, containers, dags, mcp, memory…
+│       │   ├── models/          # SQLAlchemy models
+│       │   ├── middleware/      # Auth middleware
+│       │   ├── services/        # Business logic
+│       │   ├── adapters/        # Langfuse telemetry, noop
+│       │   └── requirements.txt
+│       └── frontend/            # React SPA
 │
-├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-019)
+├── formal/                      # Property-based conformance tests (Hypothesis); separate CI flow
+├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-042)
 ├── src/maistro/                 # Old layout (agent spec/spawner/recipes + model pricing)
-└── pyproject.toml               # Workspace root (shared tool config)
+└── pyproject.toml               # uv workspace root (uv.lock is source of truth)
 ```

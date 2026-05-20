@@ -18,10 +18,10 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
-      - run: uv pip install --system -e ".[dev]"
-      - run: ruff check src/ tests/
-      - run: ruff format --check src/ tests/
-      - run: mypy src/
+      - run: uv pip install --system -e ".[dev]" -e packages/maistro-core -e packages/maistro-server -e packages/maistro-canvas -e packages/maistro-turing -e packages/maistro-evolve
+      - run: ruff check packages/ src/
+      - run: ruff format --check packages/ src/
+      - run: mypy packages/maistro-core/src packages/maistro-server/src packages/maistro-canvas/src packages/maistro-turing/src packages/maistro-evolve/src
 
   test:
     runs-on: ubuntu-latest
