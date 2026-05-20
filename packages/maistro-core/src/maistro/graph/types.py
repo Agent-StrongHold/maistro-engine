@@ -86,6 +86,7 @@ class NodeConfig(BaseModel):
     role: AgentRole
     system_prompt: str | None = None
     temperature: float | None = None
+    beam_width: int = 1
 
 
 class GraphConfig(BaseModel):
