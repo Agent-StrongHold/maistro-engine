@@ -23,6 +23,10 @@ wheels/
 .pytest_cache/
 htmlcov/
 .coverage
+.hypothesis/
+
+# Claude Code
+.claude/
 
 # Database
 *.db

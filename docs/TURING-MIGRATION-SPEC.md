@@ -204,7 +204,11 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 
 ## 5. Phased Migration Plan
 
-### Phase 0: Pre-flight (1 day)
+> **Detailed phase specs** with formal acceptance criteria, contract types (per ADR-032),
+> unit/property/integration test plans, and Hypothesis strategies are in
+> [`docs/turing-phases/`](turing-phases/README.md).
+
+### Phase 0: Pre-flight (1 day) — COMPLETE
 
 - [ ] Create migration branch on maistro-engine: `turing/full-port`
 - [ ] Verify maistro-core tests pass green: `pytest packages/maistro-core/tests/ -q`
@@ -213,7 +217,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Add `__pycache__` to `.gitignore` if missing
 - [ ] Create target directory structure (empty `__init__.py` files)
 
-### Phase 1: Core Types & Protocols (2-3 days)
+### Phase 1: Core Types & Protocols (2-3 days) — COMPLETE
 
 **Goal:** All value types and protocols in place. Tests compile and pass.
 
@@ -225,7 +229,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Port associated tests: `test_types.py`, `test_protocols.py`, `test_tiers.py`
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 2: Memory Layer (3-4 days)
+### Phase 2: Memory Layer (3-4 days) → [Detailed spec](turing-phases/phase-2-memory.md)
 
 **Goal:** Full episodic memory with SQLite (dev) and PostgreSQL (prod).
 
@@ -239,7 +243,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Port associated tests
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 3: Self-Model (4-5 days)
+### Phase 3: Self-Model (4-5 days) → [Detailed spec](turing-phases/phase-3-self-model.md)
 
 **Goal:** Complete self-model identity system with persistence.
 
@@ -265,7 +269,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Port all self-model tests
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 4: Cognitive Engine (3-4 days)
+### Phase 4: Cognitive Engine (3-4 days) → [Detailed spec](turing-phases/phase-4-cognition.md)
 
 **Goal:** Autonomous inner life — motivation, dreaming, daydreaming, drives.
 
@@ -279,7 +283,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Port all cognition tests
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 5: Producers (2 days)
+### Phase 5: Producers (2 days) → [Detailed spec](turing-phases/phase-5-producers.md)
 
 **Goal:** All 8 producers ported, upgraded from simplified versions.
 
@@ -295,7 +299,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Port all producer tests
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 6: Providers & Tools (2 days)
+### Phase 6: Providers & Tools (2 days) → [Detailed spec](turing-phases/phase-6-providers-tools.md)
 
 **Goal:** LLM providers and tool registry.
 
@@ -309,7 +313,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Port all provider + tool tests
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 7: Production Runtime (3-4 days)
+### Phase 7: Production Runtime (3-4 days) → [Detailed spec](turing-phases/phase-7-runtime.md)
 
 **Goal:** Full wiring, chat server, metrics, long-running process.
 
@@ -330,7 +334,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Port all runtime tests
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 8: Remaining Self-Model + Polish (2 days)
+### Phase 8: Remaining Self-Model + Polish (2 days) → [Detailed spec](turing-phases/phase-8-remaining-self-model.md)
 
 **Goal:** Complete all self-model modules, final integration.
 
@@ -344,7 +348,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 - [ ] Smoke test: `python -m maistro_turing` boots and responds to chat
 - [ ] Verify: `ruff check` + `mypy --strict` + `pytest` all green
 
-### Phase 9: Integration & Cleanup (1-2 days)
+### Phase 9: Integration & Cleanup (1-2 days) → [Detailed spec](turing-phases/phase-9-integration.md)
 
 - [ ] Update `maistro-engine/CLAUDE.md` with new commands
 - [ ] Update `maistro-engine/CONSOLIDATION-PLAN.md` — mark Turing tasks complete
