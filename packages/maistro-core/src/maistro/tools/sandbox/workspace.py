@@ -11,9 +11,11 @@ logger = structlog.get_logger()
 # Base directory for workspaces inside containers
 CONTAINER_WORKSPACE = "/workspace"
 
-# Allowed host paths that can be mounted into containers
+# Allowed host paths that can be mounted into containers.
+# Include `/private/tmp/...` because macOS resolves `/tmp` → `/private/tmp`.
 ALLOWED_HOST_PREFIXES = (
     "/tmp/maistro-workspace",
+    "/private/tmp/maistro-workspace",
     "/repos/",
 )
 

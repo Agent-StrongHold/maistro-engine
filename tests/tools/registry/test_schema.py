@@ -6,7 +6,8 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
-from tools.registry.schema import FrontMatter, Status
+
+from maistro_registry.schema import FrontMatter, Status
 
 
 def _valid_dict() -> dict[str, Any]:

@@ -1,6 +1,6 @@
 """Tests for secure random utilities.
 
-Evidence source: OpenClaw's secure-random.ts provides CSPRNG-based ID
+Evidence source: The reference implementation's secure-random.ts provides CSPRNG-based ID
 generation, replacing all Math.random() usage in security contexts.
 """
 
@@ -12,7 +12,7 @@ from maistro.security.secure_random import secure_base36, secure_id, secure_int,
 
 
 class TestSecureId:
-    """Evidence: OpenClaw's secureId generates hex strings from crypto.randomBytes."""
+    """Evidence: The reference implementation's secureId generates hex strings from crypto.randomBytes."""
 
     def test_default_length(self) -> None:
         """Default 16 bytes = 32 hex chars."""
@@ -48,7 +48,7 @@ class TestSecureInt:
 
 
 class TestSecureBase36:
-    """Evidence: OpenClaw's secureBase36 generates base36 tokens as
+    """Evidence: The reference implementation's secureBase36 generates base36 tokens as
     drop-in replacements for Math.random().toString(36)."""
 
     def test_default_length(self) -> None:

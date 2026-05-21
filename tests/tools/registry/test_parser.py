@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tools.registry.parser import parse_file
+
+from maistro_registry.parser import parse_file
 
 
 def _write(tmp_path: Path, name: str, content: str) -> Path:

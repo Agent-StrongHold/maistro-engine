@@ -3,6 +3,10 @@
 All runtime data flows through these types. The persistence layer
 serialises/deserialises to/from storage; the API layer serialises
 to/from JSON. Neither layer is imported here.
+
+POC additions (book-maker-poc branch):
+  - BookLayer: per-page layer with version history[], retry() + upgrade()
+    methods enforcing version_history_never_loses_images invariant.
 """
 
 from __future__ import annotations
@@ -57,6 +61,59 @@ class CanvasTier(StrEnum):
 
 
 _IMAGE_GEN_ACTIONS = frozenset({JobAction.GENERATE, JobAction.REFINE, JobAction.REFERENCE})
+
+# ─────────────────────────────────────────────────────────────────────
+# POC addition: per-page layer with version history
+# ─────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class BookLayer:
+    """Per-page layer with version history.
+
+    Enforces the SPEC invariant version_history_never_loses_images:
+    old image_url is always pushed to history[] before replacement.
+    """
+
+    name: str
+    layer_type: str  # 'background' | 'character' | 'prop' | 'text'
+    image_url: str | None = None
+    prompt: str | None = None
+    z_index: int = 0
+    visible: bool = True
+    quality: str = "draft"  # 'draft' | 'final'
+    history: list[str] = field(default_factory=list)
+    slot: dict[str, Any] | str | None = None
+    pose: dict[str, Any] | None = None
+    face_mask: str | None = None
+    head_region: dict[str, Any] | None = None
+
+    def retry(self, new_url: str) -> "BookLayer":
+        """Return new layer with new_url active and old image pushed to history."""
+        history = list(self.history)
+        if self.image_url:
+            history.append(self.image_url)
+        return BookLayer(
+            name=self.name,
+            layer_type=self.layer_type,
+            image_url=new_url,
+            prompt=self.prompt,
+            z_index=self.z_index,
+            visible=self.visible,
+            quality=self.quality,
+            history=history,
+            slot=self.slot,
+            pose=self.pose,
+            face_mask=self.face_mask,
+            head_region=self.head_region,
+        )
+
+    def upgrade(self, new_url: str) -> "BookLayer":
+        """Return new layer upgraded to final quality; history preserved."""
+        upgraded = self.retry(new_url)
+        upgraded.quality = "final"
+        return upgraded
+
 
 # ─────────────────────────────────────────────────────────────────────
 # Value objects
@@ -369,6 +426,7 @@ _MAX_LAYERS = 50
 _MIN_DIM = 64
 _MAX_DIM = 8192
 _VALID_EXPORT_FORMATS = frozenset({"png", "webp", "jpg", "jpeg"})
+_MAX_REFERENCE_PHOTOS = 5
 
 
 def validate_canvas_dimensions(width: int, height: int) -> None:

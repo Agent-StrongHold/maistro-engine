@@ -42,3 +42,18 @@ test-results/
 # OS
 .DS_Store
 Thumbs.db
+
+# Node.js — install per package with npm ci / npm install (never commit)
+node_modules/
+
+# Cursor (local overrides — keep project .cursor/ rules committed)
+.cursor/mcp.local.json
+.cursor/hooks/state/
+.cursor/hooks/*.log
+
+# Frozen snapshots — do not commit at repo root (see docs/specs/SPEC-178-legacy-snapshot-retention.md).
+# Retained reference trees live only under potential-dead-code/; these patterns block accidental re-vendor at root.
+code-worth-implementing-from-dev-ai-env/
+code-worth-implementing-from-n8n_automation/
+code-worth-implementing-from-Owui_mods/
+code-worth-implementing-from-Project-mAIstro/
