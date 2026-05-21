@@ -43,7 +43,7 @@ blob-identical state is migration debt, not a target.
 
 | Repo | ADRs | Top-level specs | Nested specs | Notes |
 |---|---:|---:|---:|---|
-| `maistro-engine` | **29** (ADR-000…029) + **9** new (ADR-030…038) | 0 | 0 | Engine-level decisions and meta-ADR ladder; no `specs/` tree |
+| `maistro-engine` | **29** (ADR-000…029) + **9** new (ADR-030…038) | 5 (`SPEC-175` … `SPEC-179` under `docs/specs/`) | 0 | Engine-level decisions and meta-ADR ladder; `docs/specs/` for numbered product-style specs |
 | `Project_mAIstro` | 0 | 2 (`SPEC-TEMPLATE`, `TIMELINE`) | 91 (`specs/<area>/S-NNN-*.md`) | `S-NNN` numbered backlog; renumber-on-touch → `SPEC-NNN` |
 | `AgentTuring` | 31 (ADR-K8S-001…031) | 22 (`specs/*.yaml`) | ~70 (`docs/specs/epic-01–14/`) | K8S-* ADRs migrate to `stronghold` per ADR-030 |
 | `stronghold` | 31 (mirror of AgentTuring) + (incoming K8S migration) | 22 (mirror) | ~70 (mirror) | Sibling fork; expect divergence post-Copier bootstrap |
@@ -74,7 +74,7 @@ Engine-internal architectural decisions. Numbering is sequential (`ADR-NNN`) and
 | ADR-000 | template | — | Superseded (by ADR-031) | Regenerated to new front-matter as follow-up |
 | ADR-001 | branching-strategy | Foundation | Accepted | |
 | ADR-002 | porting-workflow | Foundation | Accepted | |
-| ADR-003 | openclaw-gap-resolution | Orchestration | Accepted | |
+| ADR-003 | agent-runtime-gap-resolution | Orchestration | Accepted | |
 | ADR-004 | agent-spec | Agents | Accepted | |
 | ADR-005 | schemas | Orchestration | Accepted | |
 | ADR-006 | recipe-registry | Orchestration | Accepted | Canonical catalog substrate per ADR-035 |
@@ -121,6 +121,9 @@ No `specs/` tree exists in this repo (and won't — specs live in product repos 
 - `docs/quality-standards.md`
 - `docs/testing-audit.md`
 - `docs/analysis/` (cross-framework comparisons)
+- `docs/specs/SPEC-176-hive-conductor-package.md` — Hive Conductor monorepo package (`packages/hive-conductor/`)
+- `docs/specs/SPEC-180-maistro-install-bootstrap.md` — `maistro-install` answers schema, plan JSON, `--apply`, Hive `/v1/install/plan`
+- `docs/specs/SPEC-181-hive-missions-maistro-core-bridge.md` — future: Hive missions → maistro-core execution (SPEC-176 phase 2)
 
 ### Engine-level gaps after PR #4
 

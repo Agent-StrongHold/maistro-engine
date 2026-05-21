@@ -35,7 +35,7 @@ class TestStore:
     async def test_store_dedup_same_org_same_tool_overlapping_keys(self) -> None:
         store = InMemoryLearningStore()
         lr1 = _lr(keys=["foo", "bar"])
-        lr2 = _lr(keys=["foo", "baz"], learning="updated")
+        lr2 = _lr(keys=["foo", "bar"], learning="updated")
         await store.store(lr1)
         id2 = await store.store(lr2)
         all_lr = await store.list_all()

@@ -27,8 +27,12 @@ sandbox = [
 observability = [
     "langfuse>=2.60",
 ]
+tui = [
+    "typer>=0.12",
+    "rich>=13.0",
+]
 all = [
-    "maistro-core[llm,sandbox,observability]",
+    "maistro-core[llm,sandbox,observability,tui]",
 ]
 dev = [
     "pytest>=8.3",

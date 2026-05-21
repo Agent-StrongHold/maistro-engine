@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import functools
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -66,6 +65,14 @@ class OllamaSettings(BaseSettings):
     base_url: str = "http://localhost:11434/v1"
 
 
+class NtfySettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="NTFY_")
+
+    base_url: str = ""
+    default_topic: str = ""
+    access_token: str = ""
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -108,10 +115,20 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 60
     rate_limit_burst: int = 10
 
+    task_progress_webhook_url: str = Field(
+        default="",
+        description="Full URL for optional task progress POST (legacy conductor-router). Empty disables.",
+    )
+    task_progress_webhook_api_key: str = Field(
+        default="",
+        description="Bearer token sent with progress webhook requests when non-empty.",
+    )
+
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     litellm: LiteLLMSettings = Field(default_factory=LiteLLMSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
+    ntfy: NtfySettings = Field(default_factory=NtfySettings)
 
 
 class RoutingConfig(BaseModel):

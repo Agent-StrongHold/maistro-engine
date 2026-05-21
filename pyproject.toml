@@ -32,6 +32,7 @@ dependencies = [
     "httpx>=0.28",
     "docker>=7.0",
     "pyyaml>=6.0",
+    "maistro-registry",
 ]
 
 [project.optional-dependencies]
@@ -45,9 +46,12 @@ dev = [
 ]
 browser = ["playwright>=1.49"]
 scheduling = ["apscheduler>=3.11"]
+bootstrap = [
+    "maistro-bootstrap",
+]
 
 [project.scripts]
-maistro-registry = "tools.registry.cli:main"
+maistro-registry = "maistro_registry.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -62,7 +66,15 @@ bypass-selection = true
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-src = ["packages/maistro-core/src", "packages/maistro-server/src", "packages/maistro-turing/src", "packages/maistro-canvas/src", "src/maistro", "tools"]
+src = [
+    "packages/maistro-core/src",
+    "packages/maistro-server/src",
+    "packages/maistro-turing/src",
+    "packages/maistro-canvas/src",
+    "packages/maistro-bootstrap/src",
+    "packages/maistro-registry/src",
+    "packages/maistro-evolve/src",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "C90", "C4"]
@@ -72,14 +84,25 @@ ignore = ["E501"]
 max-complexity = 10
 
 [tool.pytest.ini_options]
-testpaths = ["packages/maistro-core/tests", "packages/maistro-server/tests", "packages/maistro-turing/tests", "packages/maistro-canvas/tests", "tests"]
+testpaths = [
+    "packages/maistro-core/tests",
+    "packages/maistro-server/tests",
+    "packages/maistro-turing/tests",
+    "packages/maistro-canvas/tests",
+    "packages/maistro-bootstrap/tests",
+    "packages/maistro-evolve/tests",
+    "tests",
+]
 asyncio_mode = "auto"
+markers = [
+    "contract: ADR-032 contract axis (boundary | behavioral | cross_service)",
+    "scope: test scope axis (unit | integration | e2e | property)",
+]
 pythonpath = [
     "packages/maistro-core/src",
     "packages/maistro-server/src",
     "packages/maistro-turing/src",
     "packages/maistro-canvas/src",
-    "src/maistro",
     ".",
 ]
 
@@ -87,3 +110,7 @@ pythonpath = [
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+
+[tool.uv.sources]
+maistro-bootstrap = { path = "packages/maistro-bootstrap", editable = true }
+maistro-registry = { path = "packages/maistro-registry", editable = true }

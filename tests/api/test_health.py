@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
-from maistro.main import app
+from maistro_server.main import app
 
 
 @pytest.fixture
@@ -23,7 +23,9 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "ok"
         assert data["service"] == "maistro-engine"
-        assert data["version"] == "0.1.0"
+        # Dev runs often resolve `maistro_server` from `PYTHONPATH` without a dist-info;
+        # production images expose `importlib.metadata.version("maistro-server")`.
+        assert data["version"] == "0.1.0" or data["version"] == "0.1.0-dev"
         assert "uptime_seconds" in data
 
     def test_health_uptime_is_number(self, client: TestClient) -> None:

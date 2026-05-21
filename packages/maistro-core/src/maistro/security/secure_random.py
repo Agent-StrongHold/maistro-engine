@@ -1,7 +1,7 @@
 """Cryptographically secure random utilities.
 
 Thin wrappers around Python's `secrets` module. Ported from
-OpenClaw's secure-random.ts to replace any usage of `random`
+TypeScript secure-random reference to replace any usage of `random`
 in security-sensitive contexts.
 """
 
