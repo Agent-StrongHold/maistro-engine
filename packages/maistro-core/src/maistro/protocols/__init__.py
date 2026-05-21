@@ -18,6 +18,7 @@ from maistro.protocols.memory import (
     SessionStore,
     SkillMutationStore,
 )
+from maistro.protocols.notification import Notification, NotificationClient
 from maistro.protocols.prompts import PromptManager
 from maistro.protocols.quota import QuotaTracker
 from maistro.protocols.router import ModelRouter
@@ -29,8 +30,8 @@ from maistro.protocols.tracing import Span, Trace, TracingBackend
 
 __all__ = [
     "AgentStore",
-    "AuthProvider",
     "AuditLog",
+    "AuthProvider",
     "EmbeddingClient",
     "EpisodicStore",
     "FeedbackExtractor",
@@ -39,6 +40,8 @@ __all__ = [
     "LearningExtractor",
     "LearningStore",
     "ModelRouter",
+    "Notification",
+    "NotificationClient",
     "OutcomeStore",
     "PromptManager",
     "QuotaTracker",
@@ -53,10 +56,10 @@ __all__ = [
     "Span",
     "SpecStore",
     "SpecVerifier",
-    "Trace",
-    "TracingBackend",
     "ToolExecutor",
     "ToolPlugin",
     "ToolRegistry",
+    "Trace",
+    "TracingBackend",
     "ViolationStore",
 ]
