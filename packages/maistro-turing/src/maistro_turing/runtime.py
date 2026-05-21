@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from maistro_turing.bridge import (
@@ -148,7 +148,7 @@ class TuringChatSession:
         """Process a user message and return a response."""
         self._history.append({"role": "user", "content": message})
 
-        intent = await self._classifier.classify_message(message)
+        await self._classifier.classify_message(message)
 
         prompt_parts = [f"User: {message}"]
         if self._history[:-1]:
