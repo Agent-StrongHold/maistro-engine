@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+import random
+from datetime import datetime, timezone
+from typing import Any
+
+from pydantic import BaseModel
+
+from .crossover import crossover_and_mutate
+from .diversity import emergency_spawn, population_diversity
+from .fitness import compute_fitness
+from .harness import EvalHarness
+from .optimizer import extract_signal, optimize_prompt, optimize_topology
+from .population import PopulationStore
+from .tournament import EloTournament
+from .types import PipelineGenome
+
+
+class EvolutionConfig(BaseModel):
+    population_size: int = 20
+    mutation_rate: float = 0.3
+    cull_pct: float = 0.3
+    breed_pct: float = 0.2
+    eval_batch_size: int = 5
+    target_benchmarks: list[str] = ["ifeval", "bfcl", "swebench", "tau_bench"]
+    diversity_threshold: float = 1.0
+    tournament_size: int = 3
+    self_improve: bool = True
+    self_improve_top_n: int = 3
+
+
+class EvolutionCycle:
+    def __init__(
+        self,
+        harness: EvalHarness | None = None,
+        tournament: EloTournament | None = None,
+    ) -> None:
+        self.harness = harness or EvalHarness()
+        self.tournament = tournament or EloTournament()
+
+    async def _evaluate_unevaluated(
+        self,
+        population: PopulationStore,
+        config: EvolutionConfig,
+        llm_call: Any = None,
+    ) -> None:
+        all_genomes = population.list_all()
+        unevaluated = [
+            g for g in all_genomes
+            if g.fitness_score is None or not g.eval_scores
+        ]
+        batch = unevaluated[: config.eval_batch_size]
+        for genome in batch:
+            results = await self.harness.evaluate_genome(
+                genome, config.target_benchmarks, llm_call
+            )
+            for r in results:
+                genome.eval_scores[r.benchmark] = r.score
+                genome.harness_params["total_cost_usd"] = (
+                    genome.harness_params.get("total_cost_usd", 0.0) + r.cost_usd
+                )
+                genome.harness_params["avg_latency_seconds"] = (
+                    genome.harness_params.get("avg_latency_seconds", 0.0) + r.duration_seconds
+                ) / max(len(genome.eval_scores), 1)
+            genome.updated_at = datetime.now(timezone.utc).isoformat()
+            population.add(genome)
+
+    async def _run_tournament_battles(
+        self,
+        population: PopulationStore,
+        config: EvolutionConfig,
+    ) -> None:
+        all_genomes = population.list_all()
+        if len(all_genomes) < 2:
+            return
+
+        scored = [g for g in all_genomes if g.eval_scores]
+        if len(scored) < 2:
+            return
+
+        pairs_to_battle: list[tuple[PipelineGenome, PipelineGenome]] = []
+        shuffled = list(scored)
+        random.shuffle(shuffled)
+        for i in range(0, len(shuffled) - 1, 2):
+            pairs_to_battle.append((shuffled[i], shuffled[i + 1]))
+
+        for a, b in pairs_to_battle:
+            common_benchmarks = set(a.eval_scores.keys()) & set(b.eval_scores.keys())
+            for bench in common_benchmarks:
+                self.tournament.record_battle(
+                    benchmark=bench,
+                    genome_a_id=a.id,
+                    genome_b_id=b.id,
+                    score_a=a.eval_scores[bench],
+                    score_b=b.eval_scores[bench],
+                )
+
+        for g in scored:
+            avg_elo = self.tournament.get_avg_elo(g.id)
+            if avg_elo > 0:
+                g.harness_params["avg_elo"] = avg_elo
+
+    def _compute_all_fitness(
+        self, population: PopulationStore
+    ) -> list[PipelineGenome]:
+        all_genomes = population.list_all()
+        for g in all_genomes:
+            components = compute_fitness(g, all_genomes)
+            g.fitness_score = components.total
+            g.updated_at = datetime.now(timezone.utc).isoformat()
+            population.add(g)
+        return population.list_all()
+
+    def _tournament_select_parents(
+        self,
+        population: PopulationStore,
+        config: EvolutionConfig,
+        count: int,
+    ) -> list[PipelineGenome]:
+        all_genomes = population.list_all()
+        if not all_genomes:
+            return []
+
+        parent_ids: list[str] = []
+        for _ in range(count * 2):
+            selected = self.tournament.tournament_select(
+                [g.id for g in all_genomes],
+                tournament_size=config.tournament_size,
+            )
+            if selected:
+                parent_ids.append(selected)
+
+        genome_map = {g.id: g for g in all_genomes}
+        return [genome_map[pid] for pid in parent_ids if pid in genome_map]
+
+    async def _self_improve_top(
+        self,
+        population: PopulationStore,
+        config: EvolutionConfig,
+        llm_call: Any = None,
+    ) -> None:
+        if not config.self_improve or llm_call is None:
+            return
+
+        all_genomes = population.list_all()
+        scored = [g for g in all_genomes if g.fitness_score is not None and g.fitness_score > 0]
+        if not scored:
+            return
+
+        scored.sort(key=lambda g: g.fitness_score or 0.0, reverse=True)
+        top = scored[: config.self_improve_top_n]
+
+        for genome in top:
+            from .types import EvalResult
+            eval_results = [
+                EvalResult(benchmark=k, score=v)
+                for k, v in genome.eval_scores.items()
+            ]
+            signal = extract_signal(genome, eval_results)
+            weakest_node_id = signal.get("weakest_node_id")
+            if weakest_node_id:
+                improved_prompt = await optimize_prompt(
+                    genome, weakest_node_id, signal, llm_call
+                )
+                for node in genome.topology.nodes:
+                    if node.id == weakest_node_id:
+                        node.system_prompt = improved_prompt
+                        break
+
+            topo_signal = await optimize_topology(genome, signal, llm_call)
+            genome.harness_params["last_optimization"] = {
+                "signal": signal,
+                "topology_suggestion": topo_signal,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            genome.updated_at = datetime.now(timezone.utc).isoformat()
+            population.add(genome)
+
+    async def run_cycle(
+        self,
+        population: PopulationStore,
+        llm_call: Any = None,
+        config: EvolutionConfig | None = None,
+    ) -> PopulationStore:
+        cfg = config or EvolutionConfig()
+
+        await self._evaluate_unevaluated(population, cfg, llm_call)
+
+        await self._run_tournament_battles(population, cfg)
+
+        self._compute_all_fitness(population)
+
+        population.cull_bottom(cfg.cull_pct)
+
+        if self.tournament.get_stats()["total_genomes_rated"] >= 2:
+            parents = self._tournament_select_parents(population, cfg, cfg.population_size)
+            current_count = len(population.list_all())
+            needed = max(0, cfg.population_size - current_count)
+            for i in range(0, min(needed, len(parents) - 1), 2):
+                a = parents[i]
+                b = parents[i + 1] if i + 1 < len(parents) else parents[0]
+                child = crossover_and_mutate(a, b, cfg.mutation_rate)
+                population.add(child)
+        else:
+            breeding_pool = population.get_breeding_pool(
+                max(2, int(cfg.population_size * cfg.breed_pct))
+            )
+            current_count = len(population.list_all())
+            needed = max(0, cfg.population_size - current_count)
+            for _ in range(needed):
+                if len(breeding_pool) >= 2:
+                    a, b = random.sample(breeding_pool, 2)
+                else:
+                    a = breeding_pool[0] if breeding_pool else None
+                    b = None
+                if a and b:
+                    child = crossover_and_mutate(a, b, cfg.mutation_rate)
+                    population.add(child)
+
+        await self._self_improve_top(population, cfg, llm_call)
+
+        current_genomes = population.list_all()
+        div = population_diversity(current_genomes)
+        if div < cfg.diversity_threshold:
+            spawn_count = max(2, cfg.population_size // 5)
+            spawned = emergency_spawn(current_genomes, spawn_count)
+            for g in spawned:
+                population.add(g)
+
+        return population

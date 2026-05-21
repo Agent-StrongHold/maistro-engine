@@ -41,6 +41,7 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.9",
     "mypy>=1.14",
+    "types-PyYAML>=6.0",
 ]
 browser = ["playwright>=1.49"]
 scheduling = ["apscheduler>=3.11"]
@@ -51,6 +52,12 @@ maistro-registry = "tools.registry.cli:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# The workspace root is a dependency-only meta package — every actual
+# module lives under packages/. Tell hatchling to build an empty wheel
+# rather than search for a directory matching `maistro_workspace`.
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
 
 [tool.ruff]
 target-version = "py312"

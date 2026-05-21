@@ -1,0 +1,18 @@
+From HEAD Mon Sep 17 00:00:00 2001
+From: Hypothesis 6.151.10 <no-reply@hypothesis.works>
+Date: Tue, 19 May 2026 19:29:05
+Subject: [PATCH] Hypothesis: add explicit examples
+
+---
+--- ./formal/models/test_task_policy.py
++++ ./formal/models/test_task_policy.py
+@@ -191,6 +191,9 @@
+ 
+ @given(tier=st.sampled_from(_VALID_TIERS))
+ @settings(max_examples=10)
++@example(
++    tier='P3',
++).via('discovered failure')
+ def test_set_budget_limit_enforced(tier):
+     policy = InMemoryTaskAcceptancePolicy()
+     policy.set_budget_limit(tier, max_tokens=100.0, max_cost=1.0, max_seconds=60.0)

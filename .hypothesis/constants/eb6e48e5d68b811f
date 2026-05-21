@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/constants.py
+# hypothesis_version: 6.151.10
+
+[0.5, 1.0, 500, 3600, 50000, 100000]

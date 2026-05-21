@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/types/feedback.py
+# hypothesis_version: 6.152.9
+
+[-0.5, 0.0, 0.5, 'architecture_update', 'bundled_changes', 'critical', 'di_violation', 'hardcoded_secrets', 'high', 'improving', 'insufficient_data', 'low', 'medium', 'missing_fakes', 'missing_tests', 'mock_usage', 'naming_standards', 'private_field_access', 'protocol_missing', 'regressing', 'security', 'spec_coverage_gap', 'stable', 'type_annotations']

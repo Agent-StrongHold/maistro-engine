@@ -1,8 +1,28 @@
+---
+id: ADR-001
+title: Branching strategy — integration as default PR base
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate: []
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts: []
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-001: Branching strategy — integration as default PR base
 
-**Status:** Accepted  
-**Date:** 2026-04-26  
-**Tranche:** T0  
+**Status:** Accepted
+**Date:** 2026-04-26
+**Tranche:** T0
 **Depends on:** —
 
 ---
