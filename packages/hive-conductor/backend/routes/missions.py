@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from models.schemas import Mission, MissionStep
 
 import stores
+from services.engine import get_engine
 
 router = APIRouter(tags=["missions"])
 
@@ -17,13 +18,39 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _task_to_mission(rec: object) -> Mission:
+    """Convert a TaskRecord from EngineService into a hive Mission."""
+    return Mission(
+        id=rec.id,  # type: ignore[attr-defined]
+        name=rec.name,  # type: ignore[attr-defined]
+        description=rec.description,  # type: ignore[attr-defined]
+        status=rec.mission_status,  # type: ignore[attr-defined]
+        priority="medium",
+        created_at=rec.created_at,  # type: ignore[attr-defined]
+        updated_at=rec.completed_at or rec.started_at or rec.created_at,  # type: ignore[attr-defined]
+        started_at=rec.started_at,  # type: ignore[attr-defined]
+        completed_at=rec.completed_at,  # type: ignore[attr-defined]
+        progress=rec.progress,  # type: ignore[attr-defined]
+    )
+
+
 @router.get("", response_model=list[Mission])
 def list_missions() -> list[Mission]:
+    engine = get_engine()
+    if engine.is_configured or engine._queue is not None:
+        tasks = engine.list_tasks()
+        if tasks:
+            return [_task_to_mission(t) for t in tasks]
     return list(stores.missions.values())
 
 
 @router.get("/{mission_id}", response_model=Mission)
 def get_mission(mission_id: str) -> Mission:
+    engine = get_engine()
+    if engine.is_configured or engine._queue is not None:
+        rec = engine.get_task(mission_id)
+        if rec is not None:
+            return _task_to_mission(rec)
     if mission_id not in stores.missions:
         raise HTTPException(status_code=404, detail="mission not found")
     return stores.missions[mission_id]
@@ -31,6 +58,24 @@ def get_mission(mission_id: str) -> Mission:
 
 @router.get("/{mission_id}/steps", response_model=list[MissionStep])
 def get_steps(mission_id: str) -> list[MissionStep]:
+    engine = get_engine()
+    if engine.is_configured or engine._queue is not None:
+        rec = engine.get_task(mission_id)
+        if rec is not None:
+            # Synthesise step list from current task phase
+            step_status = "running" if rec.mission_status == "running" else rec.mission_status  # type: ignore[attr-defined]
+            step: MissionStep | None = None
+            current = rec.current_step  # type: ignore[attr-defined]
+            if current:
+                step = MissionStep(
+                    id=f"{mission_id}-step-1",
+                    mission_id=mission_id,
+                    name=current,
+                    description=current,
+                    status=step_status,
+                    order=1,
+                )
+            return [step] if step else []
     return list(stores.mission_steps.get(mission_id, []))
 
 
@@ -42,7 +87,13 @@ class CreateMissionBody(BaseModel):
 
 
 @router.post("", response_model=Mission)
-def create_mission(body: CreateMissionBody) -> Mission:
+async def create_mission(body: CreateMissionBody) -> Mission:
+    engine = get_engine()
+    if engine.is_configured or engine._queue is not None:
+        rec = await engine.submit_task(body.name, body.description or body.name)
+        return _task_to_mission(rec)
+
+    # Fallback: in-memory stub (dev mode without maistro-core)
     mid = str(uuid4())[:12]
     t = _now()
     m = Mission(

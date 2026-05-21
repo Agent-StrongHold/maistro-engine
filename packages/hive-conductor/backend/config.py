@@ -14,13 +14,25 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # OpenAI-compatible LiteLLM proxy base URL (must include /v1), e.g. https://litellm.internal.example.com/v1
-    # Use the **API** host (not `*-admin*` UIs). No admin-only routes are called from Hive.
     litellm_api_base: str | None = None
     litellm_api_key: SecretStr | None = None
-    chat_default_model: str = "gpt-4o"
-    # Prefer OpenAI Responses when the gateway supports it; ``auto`` falls back to chat.completions.
+    chat_default_model: str = "mistral-large"
     llm_http_variant: Literal["auto", "responses", "chat_completions"] = "auto"
+
+    maistro_router_api_key: str | None = None
+    maistro_agents_dir: str = "agents"
+    maistro_llm_base_url: str | None = None
+    maistro_llm_api_key: SecretStr | None = None
+    maistro_model: str = "mistral-large"
+
+    conductor_data_dir: str = "~/.conductor"
+    conductor_vault_path: str | None = None
+    conductor_identity_path: str | None = None
+    conductor_state_db: str | None = None
+    conductor_admin_public_key: str | None = None
+    conductor_user_public_key: str | None = None
+
+    hardware_preset: Literal["potato", "laptop", "desktop", "beast"] = "laptop"
 
 
 @lru_cache
