@@ -40,7 +40,9 @@ jobs:
       - name: Install minimal deps
         # Only what the registry tool needs; keeps CI fast and the
         # supply-chain surface small per engine#ADR-039.
-        run: pip install pydantic pyyaml httpx pytest
+        # httpx is required by tools/registry/linker.py for cross-repo
+        # link checking.
+        run: pip install pydantic pyyaml pytest httpx
 
       - name: Run unit tests
         # --confcutdir prevents pytest from discovering the root

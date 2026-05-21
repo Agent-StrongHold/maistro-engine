@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from tools.registry.dag import Cycle, find_cycles
 from tools.registry.schema import FrontMatter
 

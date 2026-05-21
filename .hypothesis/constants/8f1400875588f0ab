@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/auth/client.py
+# hypothesis_version: 6.151.10
+
+[15.0, ',', 'DELETE', 'GET', 'POST', 'PUT', 'X-Service-Key', 'X-Service-Name', 'X-Service-Scopes', 'maistro.auth.client']
