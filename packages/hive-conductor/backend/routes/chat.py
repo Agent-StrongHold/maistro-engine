@@ -4,13 +4,12 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
-
-from models.schemas import ChatCompletionRequest, ChatMessage, ChatSession, ChatSessionSummary
-
 import stores
+from fastapi import APIRouter, HTTPException
+from models.schemas import ChatCompletionRequest, ChatMessage, ChatSession, ChatSessionSummary
+from pydantic import BaseModel, ConfigDict
 from services.chat_completion import run_chat_completion
+from services.engine import EngineService, get_engine
 
 router = APIRouter(tags=["chat"])
 
@@ -84,10 +83,14 @@ def append_message(session_id: str, body: AppendMessageBody) -> ChatMessage:
     )
     session.messages.append(msg)
     session.updated_at = _now()
+    stores.chat_sessions.persist(session_id)
     return msg
 
 
 @router.post("/complete", response_model=dict)
 async def complete(req: ChatCompletionRequest) -> dict:
-    """Non-streaming completion via :class:`protocols.llm.LLMPort` + optional :class:`protocols.telemetry.TelemetryPort`."""
+    """Non-streaming completion — routes through maistro-core agents when configured."""
+    engine: EngineService = get_engine()
+    if engine.is_configured:
+        return await engine.route_request(req.messages)
     return await run_chat_completion(req)
