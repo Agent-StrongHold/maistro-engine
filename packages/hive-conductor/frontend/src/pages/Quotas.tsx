@@ -141,7 +141,7 @@ export default function Quotas() {
       {loading ? <LoadingSpinner /> : (
         <>
           {tab === 0 && (
-            providers.length === 0 ? <EmptyState icon="\uD83D\uDCCA" title="No provider data — conductor-router unreachable" /> : (
+            providers.length === 0 ? <EmptyState icon="📊" title="No provider data — conductor-router unreachable" /> : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
                 {providers.map((p) => {
                   const tracked = p.limit !== null;
@@ -175,7 +175,7 @@ export default function Quotas() {
           )}
 
           {tab === 1 && (
-            models.length === 0 ? <EmptyState icon="\uD83E\uDDE0" title="No model data — conductor-router unreachable" /> : (
+            models.length === 0 ? <EmptyState icon="🧠" title="No model data — conductor-router unreachable" /> : (
               <div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
                   <input className="input-field" style={{ width: 200 }} placeholder="Filter models..." value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} />
@@ -235,7 +235,7 @@ export default function Quotas() {
           )}
 
           {tab === 2 && (
-            !outcomes ? <EmptyState icon="\uD83C\uDFAF" title="No outcome data" /> : (
+            !outcomes ? <EmptyState icon="🎯" title="No outcome data" /> : (
               <div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
                   <StatCard label="Total Requests" value={outcomes.total} highlight />

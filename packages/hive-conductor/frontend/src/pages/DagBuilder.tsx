@@ -504,7 +504,7 @@ export default function DagBuilder() {
           x={pos.x + 30} y={pos.y + 22}
           style={{ fontFamily: "var(--hand)", fontSize: 12, fontWeight: 700, fill: executing ? "var(--paper)" : "var(--ink)" }}
         >
-          {node.name.length > 12 ? node.name.slice(0, 11) + "\u2026" : node.name}
+          {node.name.length > 12 ? node.name.slice(0, 11) + "…" : node.name}
         </text>
         <text
           x={pos.x + 30} y={pos.y + 38}
@@ -547,7 +547,7 @@ export default function DagBuilder() {
             </div>
             <div style={{ flex: 1, overflowY: "auto" }}>
               {dags.length === 0 ? (
-                <EmptyState icon="\u25B3" title="No DAGs" action="Create One" onAction={() => setShowCreate(true)} />
+                <EmptyState icon="△" title="No DAGs" action="Create One" onAction={() => setShowCreate(true)} />
               ) : (
                 dags.map((d) => (
                   <div
@@ -820,7 +820,7 @@ export default function DagBuilder() {
                 )}
               </>
             ) : (
-              <EmptyState icon="\u25B3" title="Select a DAG or create a new one" />
+              <EmptyState icon="△" title="Select a DAG or create a new one" />
             )}
           </main>
         </div>

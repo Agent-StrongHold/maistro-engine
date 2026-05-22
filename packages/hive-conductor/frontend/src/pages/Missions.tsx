@@ -98,7 +98,7 @@ function timelineIndex(m: Mission): number {
 }
 
 function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + "\u2026" : s;
+  return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
 function fmtTime(v?: string | null): string {
@@ -380,10 +380,10 @@ export default function Missions() {
           ))}
         </div>
 
-        <SearchInput value={search} onChange={setSearch} placeholder="Filter missions\u2026" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Filter missions…" />
 
         {filtered.length === 0 && (
-          <EmptyState icon="\u{1F3AF}" title="No missions" action="Create one" onAction={() => setShowCreate(true)} />
+          <EmptyState icon="🎯" title="No missions" action="Create one" onAction={() => setShowCreate(true)} />
         )}
 
         {filtered.map((m) => {
@@ -586,7 +586,7 @@ export default function Missions() {
                   <textarea
                     value={clarifyAnswer}
                     onChange={(e) => setClarifyAnswer(e.target.value)}
-                    placeholder="Enter your guidance\u2026"
+                    placeholder="Enter your guidance…"
                     rows={3}
                     style={{ ...inputBase, resize: "vertical" }}
                   />
@@ -646,7 +646,7 @@ export default function Missions() {
                   value={threadInput}
                   onChange={(e) => setThreadInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") sendThreadMsg(); }}
-                  placeholder="Send guidance\u2026"
+                  placeholder="Send guidance…"
                   style={{ flex: 1, ...inputBase, fontSize: 10, padding: "5px 8px" }}
                 />
                 <button
@@ -666,7 +666,7 @@ export default function Missions() {
             </div>
           </>
         ) : (
-          <EmptyState icon="\u{1F3AF}" title="Select a mission" action="Create one" onAction={() => setShowCreate(true)} />
+          <EmptyState icon="🎯" title="Select a mission" action="Create one" onAction={() => setShowCreate(true)} />
         )}
       </div>
 

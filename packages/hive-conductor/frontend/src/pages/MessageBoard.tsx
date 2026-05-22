@@ -246,7 +246,7 @@ export default function MessageBoard() {
             {loading ? (
               <LoadingSpinner />
             ) : filteredMessages.length === 0 ? (
-              <EmptyState icon="\uD83D\uDC1D" title="No messages" />
+              <EmptyState icon="🐝" title="No messages" />
             ) : (
               filteredMessages.map((msg) => (
                 <div
@@ -369,7 +369,7 @@ export default function MessageBoard() {
               </Card>
             </div>
           ) : (
-            <EmptyState icon="\uD83D\uDC8C" title="Select a message" />
+            <EmptyState icon="💌" title="Select a message" />
           )}
         </div>
       </div>
