@@ -104,6 +104,17 @@ async def run_daily_status_dag(
             "source": "dag:daily-status",
         }
 
+    # Phase 5 Signal #5: fan every COMPLETED node into the metrics store
+    # so /v1/dag-runs/metrics aggregates this run's contribution to the
+    # node-kind histograms.
+    try:
+        from services.node_metrics_store import record_run_completion
+
+        record_run_completion(result)
+    except Exception as exc:  # noqa: BLE001
+        # metrics ingestion must never fail the user-facing daily report
+        logger.warning("daily_status_metrics_ingest_failed: %s", exc)
+
     return _result_to_jira_section(result, base_url=base_url, flavor=flavor)
 
 
