@@ -219,7 +219,7 @@ def test_compare_variants_groups_by_node_id_includes_thumbs() -> None:
 
     _seed_obs(dag_id="d", node_id="n-good", model="x", kind="k", latency=100)
     _seed_obs(dag_id="d", node_id="n-bad", model="x", kind="k", latency=100)
-    asyncio.get_event_loop().run_until_complete(record_thumb(
+    asyncio.run(record_thumb(
         user_id="u", project_id="p", run_id="r", thumb="down",
         node_id="n-bad", dag_id="d",
     ))
@@ -238,7 +238,7 @@ def test_compare_variants_thumbs_not_folded_for_non_node_id_group() -> None:
     from services.topology_compare import compare_variants
 
     _seed_obs(dag_id="d", node_id="n1", model="gpt-4", kind="k", latency=100)
-    asyncio.get_event_loop().run_until_complete(record_thumb(
+    asyncio.run(record_thumb(
         user_id="u", project_id="p", run_id="r", thumb="down",
         node_id="n1", dag_id="d",
     ))
@@ -270,7 +270,7 @@ def test_compare_variants_unknown_thumb_value_does_not_increment() -> None:
     from services.topology_compare import compare_variants
 
     _seed_obs(dag_id="d", node_id="n1", model="x", kind="k", latency=10)
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         get_outcome_store().record(Outcome(
             task_type="x", thumb="sideways", dag_id="d", node_id="n1",
             user_id="u",
@@ -291,7 +291,7 @@ def test_fold_in_thumbs_skips_other_dag_outcomes() -> None:
 
     _seed_obs(dag_id="d-target", node_id="n", model="x", kind="k",
               latency=10)
-    asyncio.get_event_loop().run_until_complete(record_thumb(
+    asyncio.run(record_thumb(
         user_id="u", project_id="p", run_id="r", thumb="down",
         node_id="n", dag_id="some-other-dag",
     ))
@@ -310,7 +310,7 @@ def test_fold_in_thumbs_skips_outcomes_with_blank_thumb() -> None:
 
     _seed_obs(dag_id="d-blank", node_id="n", model="x", kind="k",
               latency=10)
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         get_outcome_store().record(Outcome(
             task_type="x", thumb="", dag_id="d-blank", node_id="n",
             user_id="u",
@@ -331,7 +331,7 @@ def test_compare_variants_thumbs_for_unseeded_node_creates_bucket() -> None:
 
     # Seed a different node so the dag has observations at all
     _seed_obs(dag_id="d", node_id="n-seen", model="x", kind="k", latency=10)
-    asyncio.get_event_loop().run_until_complete(record_thumb(
+    asyncio.run(record_thumb(
         user_id="u", project_id="p", run_id="r", thumb="up",
         node_id="n-only-thumbs", dag_id="d",
     ))
