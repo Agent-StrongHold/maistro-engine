@@ -8,13 +8,14 @@ from services.mcp_client import atlassian_site_url, test_jira_rest
 from services.mcp_defaults import platform_mcp_catalog
 
 
-def test_platform_mcp_catalog_has_two_servers() -> None:
+def test_platform_mcp_catalog_seeds_atlassian_rovo_only() -> None:
+    """filesystem-local was removed from default seeding (task #29 —
+    sidecar isn't deployed, surfacing 'disconnected' confused users)."""
     servers, tools = platform_mcp_catalog()
-    assert len(servers) >= 2
     ids = {s.id for s in servers}
     assert "mcp-atlassian-rovo" in ids
-    assert "mcp-filesystem-local" in ids
-    assert len(tools) >= 8
+    assert "mcp-filesystem-local" not in ids
+    assert len(tools) >= 1
 
 
 @pytest.mark.asyncio

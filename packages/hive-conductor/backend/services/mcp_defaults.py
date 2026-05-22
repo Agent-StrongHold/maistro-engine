@@ -105,9 +105,16 @@ def filesystem_local_tools() -> list[MCPTool]:
 
 
 def platform_mcp_catalog() -> tuple[list[MCPServer], list[MCPTool]]:
-    """Built-in servers for Force Convergence (always seeded)."""
-    servers = [atlassian_rovo_server(), filesystem_local_server()]
-    tools = atlassian_rovo_tools() + filesystem_local_tools()
+    """Built-in servers for Force Convergence (always seeded).
+
+    NOTE: filesystem-local is NOT seeded by default — the sidecar isn't
+    deployed in any current environment, and surfacing it in the MCP
+    list with a permanent "disconnected" state was confusing users
+    (task #29). The server + tool helpers are kept so a future deploy
+    that DOES ship the sidecar can opt in via merge_manifest_catalog().
+    """
+    servers = [atlassian_rovo_server()]
+    tools = atlassian_rovo_tools()
     return servers, tools
 
 
