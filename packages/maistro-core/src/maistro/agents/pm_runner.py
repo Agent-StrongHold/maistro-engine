@@ -43,6 +43,94 @@ from maistro.tasks.models import TaskCreate
 from maistro.tools.atlassian import AtlassianMCPClient, AtlassianMCPError
 from maistro.tools.browser import BrowserClient, BrowserToolError
 
+# ----------------------------------------------------------------------------
+# Day 5 — self-improvement loop hooks. Hive's startup (services/foundation.py
+# v0.5 work) calls set_pm_outcome_store() + set_pm_event_bus() with the same
+# instances Container wires for the engineering path. Until that happens,
+# these stay None and the relevant code paths are no-ops — no behavior
+# regression vs v0 baseline.
+# ----------------------------------------------------------------------------
+_pm_outcome_store: object | None = None  # InMemoryOutcomeStore | OutcomeStore protocol
+_pm_event_bus: object | None = None      # EventBus
+
+
+def set_pm_outcome_store(store: object | None) -> None:
+    global _pm_outcome_store
+    _pm_outcome_store = store
+
+
+def set_pm_event_bus(bus: object | None) -> None:
+    global _pm_event_bus
+    _pm_event_bus = bus
+
+
+async def _get_experience_context(role: AgentRole) -> str:
+    """Return the 'Recent Failure Patterns' markdown for this role, or ''.
+
+    Read from outcome_store.get_experience_context(task_type=role.value).
+    If the store isn't wired or doesn't yield context, returns empty string
+    so the LLM call proceeds normally.
+    """
+    if _pm_outcome_store is None:
+        return ""
+    try:
+        ctx = await _pm_outcome_store.get_experience_context(task_type=role.value)  # type: ignore[attr-defined]
+        return str(ctx) if ctx else ""
+    except Exception:
+        # Self-improvement is best-effort — never break a live call.
+        logger.warning("experience_context_lookup_failed", role=role.value)
+        return ""
+
+
+async def _record_outcome(
+    *,
+    role: AgentRole,
+    capability: str,
+    success: bool,
+    duration_ms: int = 0,
+    error_type: str = "",
+) -> None:
+    """Append an Outcome record if the store is wired. No-op otherwise."""
+    if _pm_outcome_store is None:
+        return
+    try:
+        from maistro.memory.types import Outcome
+        await _pm_outcome_store.record(  # type: ignore[attr-defined]
+            Outcome(
+                task_type=role.value,
+                success=success,
+                model_used="claude-sonnet-4-6",
+                input_tokens=0,
+                output_tokens=0,
+                response_time_ms=duration_ms,
+                tool_calls=[{"name": capability}],
+                error_type=error_type,
+                org_id="",
+            )
+        )
+    except Exception:
+        logger.warning("outcome_record_failed", role=role.value, capability=capability)
+
+
+async def _emit_pm_event(event_type: str, payload: dict[str, Any]) -> None:
+    """Fire a PM lifecycle event onto the EventBus if wired. No-op otherwise.
+    Subscribers (eval-judge, UI live updates, etc.) consume via event_bus.subscribe().
+    """
+    if _pm_event_bus is None:
+        return
+    try:
+        from maistro.events.bus import Event, EventCategory
+        await _pm_event_bus.emit(  # type: ignore[attr-defined]
+            Event(
+                category=EventCategory.AGENT,
+                event_type=event_type,
+                source="pm_runner",
+                payload=payload,
+            )
+        )
+    except Exception:
+        logger.warning("pm_event_emit_failed", event_type=event_type)
+
 _log = logging.getLogger("hive.engine.pm")
 logger = structlog.get_logger()
 _CAPABILITY_RE = re.compile(r"\]\s+(\w+):\s")
@@ -100,9 +188,23 @@ def _resolve_capability(task: TaskCreate) -> str:
     return "unknown"
 
 
-def _build_messages(role: AgentRole, capability: str, payload: dict[str, Any]) -> list[dict[str, str]]:
-    """Construct the OpenAI-compatible messages for one PM-agent invocation."""
+def _build_messages(
+    role: AgentRole,
+    capability: str,
+    payload: dict[str, Any],
+    *,
+    experience_context: str = "",
+) -> list[dict[str, str]]:
+    """Construct the OpenAI-compatible messages for one PM-agent invocation.
+
+    If `experience_context` is non-empty, it's appended to the system prompt
+    so the LLM reads from its own past failure patterns (the v0
+    self-improvement loop — see _get_experience_context). The injection is
+    additive: persona + JSON schema + (optional) experience.
+    """
     system = DEFAULT_SYSTEM_PROMPTS[role] + JSON_OUTPUT_SCHEMAS[role]
+    if experience_context:
+        system = system + "\n\n" + experience_context
     user = build_capability_prompt(capability, payload)
     return [
         {"role": "system", "content": system},
@@ -405,6 +507,16 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     if task.program_context:
         payload["program"] = task.program_context
 
+    # --- self-improvement loop: read past outcomes BEFORE building prompts ---
+    experience_context = await _get_experience_context(role)
+    # --- emit node-started event for observability + eval-judge subscribers ---
+    import time as _time
+    _start = _time.monotonic()
+    await _emit_pm_event(
+        "pm_node_started",
+        {"role": role.value, "capability": capability, "agent_id": agent_id},
+    )
+
     # Routing:
     #   1. Jira-driven capabilities → real MCP tool call → real data into LLM
     #      synthesis (Day 3).
@@ -412,7 +524,8 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     #      search results into LLM synthesis (Day 4).
     #   3. _NO_DATA_WITHOUT_TOOLS → short-circuit to source='no_data' (Airtable
     #      etc., not wired yet — never fabricate).
-    #   4. Everything else → straight LLM call with persona + capability prompt.
+    #   4. Everything else → straight LLM call with persona + capability prompt
+    #      (+ experience_context if outcome_store is wired).
     if capability in _JIRA_DRIVEN_CAPABILITIES:
         out = await _run_jira_driven(role, capability, payload)
     elif capability in _BROWSER_DRIVEN_CAPABILITIES:
@@ -420,7 +533,9 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     elif capability in _NO_DATA_WITHOUT_TOOLS:
         out = _no_data_response(capability, payload)
     else:
-        messages = _build_messages(role, capability, payload)
+        messages = _build_messages(
+            role, capability, payload, experience_context=experience_context
+        )
         try:
             raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
         except Exception as exc:
@@ -431,8 +546,44 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
                 capability=capability,
                 error=str(exc),
             )
+            await _record_outcome(
+                role=role,
+                capability=capability,
+                success=False,
+                duration_ms=int((_time.monotonic() - _start) * 1000),
+                error_type=type(exc).__name__,
+            )
+            await _emit_pm_event(
+                "pm_node_failed",
+                {
+                    "role": role.value,
+                    "capability": capability,
+                    "error": str(exc),
+                },
+            )
             raise
         out = _parse_pm_output(raw, capability)
+
+    # --- record outcome + emit completion event ---
+    duration_ms = int((_time.monotonic() - _start) * 1000)
+    success = out.source == "llm"  # source="no_data" counts as "not a real success" for the feedback loop
+    await _record_outcome(
+        role=role,
+        capability=capability,
+        success=success,
+        duration_ms=duration_ms,
+        error_type="" if success else "no_data",
+    )
+    await _emit_pm_event(
+        "pm_node_completed",
+        {
+            "role": role.value,
+            "capability": capability,
+            "source": out.source,
+            "duration_ms": duration_ms,
+            "summary": out.summary[:200],
+        },
+    )
 
     await logger.ainfo(
         "pm_task_complete",
