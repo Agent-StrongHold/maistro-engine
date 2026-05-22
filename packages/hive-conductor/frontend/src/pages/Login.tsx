@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from "react";
+import { useNavigate } from "react-router-dom";
 import { usePmPoc } from "../context/PocMode";
 import { PM_PRODUCT_NAME, PM_PRODUCT_TAGLINE } from "../lib/pmBranding";
 
@@ -47,6 +48,7 @@ type LoginProps = {
 
 export default function Login({ onAuthenticated }: LoginProps) {
   const pmPoc = usePmPoc();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -90,6 +92,13 @@ export default function Login({ onAuthenticated }: LoginProps) {
     if (!whoData.authenticated) {
       throw new Error("Session could not be established. Try signing in again.");
     }
+    // Belt-and-suspenders: if the user landed on a stale URL (e.g. /pm/login
+    // from a previous Sign-out redirect, or any non-route path), force the
+    // SPA to the root so AuthGuard's child <Routes> can match `/` → Navigate
+    // to /agents (PM mode) or /dashboard (engineering mode). Without this,
+    // a stale /pm/login URL after re-login leaves the SPA with no matching
+    // route → blank page.
+    navigate("/", { replace: true });
   }
 
   async function handleSignup(e: React.FormEvent) {

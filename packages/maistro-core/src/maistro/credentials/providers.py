@@ -100,6 +100,34 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         help_url="https://airtable.com/create/tokens/new",
         placeholder="pat… (Airtable PAT)",
     ),
+    # Disney on-prem Git hosts. github.disney.com is GitHub Enterprise Server;
+    # gitlab.disney.com is the Disney GitLab self-hosted instance. Per the
+    # durable feedback rule ("we only WRITE to gitlab"), the GitHub token is
+    # typically READ-only scope (repo:read + workflow:read); the GitLab token
+    # gets api / write_repository scopes for the JFC repo flow.
+    CredentialProvider(
+        id="github_disney",
+        label="Disney GitHub Enterprise PAT (read-only)",
+        description=(
+            "Personal access token for github.disney.com (GitHub Enterprise "
+            "Server). Read-only by policy — JFC consumes JedAI-Agents + "
+            "wdpr-ra-genai reference repos for context; writes land on GitLab. "
+            "Scopes: read:repo + read:workflow."
+        ),
+        help_url="https://github.disney.com/settings/tokens",
+        placeholder="ghp_…",
+    ),
+    CredentialProvider(
+        id="gitlab_disney",
+        label="Disney GitLab PAT (read/write)",
+        description=(
+            "Personal access token for gitlab.disney.com. Used by JFC for "
+            "branch + MR operations on the team's launch-repo. Scopes: api + "
+            "write_repository + read_repository."
+        ),
+        help_url="https://gitlab.disney.com/-/profile/personal_access_tokens",
+        placeholder="glpat-…",
+    ),
 )
 
 
