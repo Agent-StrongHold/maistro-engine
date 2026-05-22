@@ -48,7 +48,11 @@ class DemoCookieAuthProvider:
                 sc: SimpleCookie = SimpleCookie()
                 try:
                     sc.load(cookie_header)
-                except Exception:
+                except Exception as _exc:
+                    __import__('logging').getLogger('maistro.security.auth_demo_cookie').warning(
+                        'error_swallowed file=%s line=%d: %s',
+                        'packages/maistro-core/src/maistro/security/auth_demo_cookie.py', 51, _exc,
+                    )
                     pass
                 else:
                     morsel = sc.get(self._cookie_name)

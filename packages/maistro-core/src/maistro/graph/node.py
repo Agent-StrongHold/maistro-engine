@@ -453,7 +453,9 @@ class NodeRun:
                 import asyncio as _aio
                 loop = _aio.get_running_loop()
                 loop.create_task(coro)
-            except Exception:
+            except Exception as _exc:
+                _log_b110 = __import__('structlog').get_logger('maistro.graph.node')
+                _log_b110.warning('error_swallowed', error=str(_exc), file='packages/maistro-core/src/maistro/graph/node.py', line=456)
                 pass
 
     def to_result(self) -> GraphNodeResult:

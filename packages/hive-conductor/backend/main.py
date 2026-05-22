@@ -84,15 +84,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     import stores
     from settings_defaults import apply_default_settings_if_needed
 
+    import logging as _logging
+    _lifespan_log = _logging.getLogger("hive.lifespan")
     try:
         await foundation_service.start_foundation(get_settings())
-    except Exception:
+    except Exception as exc:
+        _lifespan_log.warning("foundation_start_failed: %s", exc, exc_info=True)
         stores.initialize_stores()
     apply_default_settings_if_needed()
     try:
         await engine_service.start_engine(get_settings())
-    except Exception:
-        pass
+    except Exception as exc:
+        _lifespan_log.warning("engine_start_failed: %s", exc, exc_info=True)
     try:
         # Day 8 — wire pm_runner's event bus into the DAG-run store so
         # /v1/dag-runs/{id}/events SSE streams pick up live pm_node_*
@@ -101,31 +104,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from services.dag_run_store import install_pm_event_bridge
         install_pm_event_bridge()
     except Exception:
-        import logging as _logging
-        _logging.getLogger("hive.lifespan").warning(
+        _lifespan_log.warning(
             "pm_event_bridge_install_failed", exc_info=True
         )
     try:
         from services.scheduler import start_scheduler
         start_scheduler()
-    except Exception:
-        pass
+    except Exception as exc:
+        _lifespan_log.warning("scheduler_start_failed: %s", exc, exc_info=True)
     try:
         from services.evolution import start_evolution
         await start_evolution()
-    except Exception:
-        pass
+    except Exception as exc:
+        _lifespan_log.warning("evolution_start_failed: %s", exc, exc_info=True)
     yield
     try:
         from services.evolution import stop_evolution
         await stop_evolution()
-    except Exception:
-        pass
+    except Exception as exc:
+        _lifespan_log.warning("evolution_stop_failed: %s", exc)
     try:
         from services.scheduler import stop_scheduler
         stop_scheduler()
-    except Exception:
-        pass
+    except Exception as exc:
+        _lifespan_log.warning("scheduler_stop_failed: %s", exc)
     await engine_service.stop_engine()
     await foundation_service.stop_foundation()
 
@@ -190,8 +192,11 @@ def create_app() -> FastAPI:
     try:
         from routes.evolution import router as evolution_router
         app.include_router(evolution_router, prefix="/v1/evolution")
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger("hive.lifespan").warning(
+            "evolution_router_unavailable: %s", exc,
+        )
 
     if STATIC_DIR.is_dir():
         from starlette.responses import FileResponse

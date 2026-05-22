@@ -122,9 +122,12 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
 
     try:
         stores.settings.default_model = chosen_default_model
-    except Exception:
+    except Exception as exc:
         # best-effort — don't fail Setup over a settings shape mismatch.
-        pass
+        import logging as _logging
+        _logging.getLogger("hive.setup").warning(
+            "default_model_set_failed: %s", exc,
+        )
 
     kv = _get_kv()
     if kv is not None:

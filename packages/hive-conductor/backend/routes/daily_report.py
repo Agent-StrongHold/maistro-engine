@@ -225,7 +225,11 @@ def _research_summary(user_id: str) -> dict[str, Any]:
             try:
                 if isinstance(ts, str):
                     ts = datetime.fromisoformat(ts)
-            except Exception:
+            except Exception as _exc:
+                __import__('logging').getLogger('hive.routes.daily_report').warning(
+                    'error_swallowed file=%s line=%d: %s',
+                    'packages/hive-conductor/backend/routes/daily_report.py', 228, _exc,
+                )
                 continue
             if ts.tzinfo is None:
                 ts = ts.replace(tzinfo=UTC)

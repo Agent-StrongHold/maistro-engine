@@ -45,7 +45,11 @@ def resolve_atlassian_token(user_id: str | None) -> str | None:
             try:
                 if store.has_secret(user_id, provider):
                     return store.use_secret(user_id, provider, lambda s: s)
-            except Exception:
+            except Exception as _exc:
+                __import__('logging').getLogger('hive.services.mcp_client').warning(
+                    'error_swallowed file=%s line=%d: %s',
+                    'packages/hive-conductor/backend/services/mcp_client.py', 48, _exc,
+                )
                 continue
     except Exception as exc:
         logger.debug("credential_lookup_failed: %s", exc)

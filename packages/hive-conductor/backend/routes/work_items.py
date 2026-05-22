@@ -64,7 +64,11 @@ def _list_drafts(user_id: str) -> list[WorkItemDraft]:
     for raw in stores.work_item_drafts.values():
         try:
             d = WorkItemDraft.model_validate(raw)
-        except Exception:
+        except Exception as _exc:
+            __import__('logging').getLogger('hive.routes.work_items').warning(
+                'error_swallowed file=%s line=%d: %s',
+                'packages/hive-conductor/backend/routes/work_items.py', 67, _exc,
+            )
             continue
         if d.user_id == user_id and d.status != "cancelled":
             out.append(d)

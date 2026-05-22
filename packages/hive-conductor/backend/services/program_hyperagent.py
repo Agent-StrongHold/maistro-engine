@@ -134,7 +134,11 @@ async def run_program_pulse(user_id: str, *, max_actions: int = 4) -> dict[str, 
                     "reason": action.reason,
                 }
             )
-        except Exception:
+        except Exception as _exc:
+            __import__('logging').getLogger('hive.services.program_hyperagent').warning(
+                'error_swallowed file=%s line=%d: %s',
+                'packages/hive-conductor/backend/services/program_hyperagent.py', 137, _exc,
+            )
             continue
 
     now = datetime.now(UTC).isoformat()
