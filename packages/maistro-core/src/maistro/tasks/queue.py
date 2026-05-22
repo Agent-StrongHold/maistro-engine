@@ -80,13 +80,19 @@ class TaskQueue:
         if to_remove:
             logger.info("task_store_pruned", removed=len(to_remove), remaining=len(self._tasks))
 
-    async def submit(self, request: TaskCreate) -> TaskResponse:
+    async def submit(self, request: TaskCreate, *, user_id: str = "") -> TaskResponse:
         task_id = TaskResponse.new_id()
+        owner = user_id or request.user_id or ""
         task = TaskResponse(
             task_id=task_id,
             status=TaskStatus.QUEUED,
             description=request.description,
             workspace=request.workspace,
+            user_id=owner,
+            task_type=request.task_type,
+            agent_id=request.agent_id,
+            capability=request.capability,
+            program_context=request.program_context,
             tier=request.tier or 2,
             phase="queued",
             progress=TaskProgress(),
@@ -105,8 +111,13 @@ class TaskQueue:
         )
         return task
 
-    def get(self, task_id: str) -> TaskResponse | None:
-        return self._tasks.get(task_id)
+    def get(self, task_id: str, *, user_id: str | None = None) -> TaskResponse | None:
+        task = self._tasks.get(task_id)
+        if task is None:
+            return None
+        if user_id is not None and task.user_id and task.user_id != user_id:
+            return None
+        return task
 
     async def update_status(self, task_id: str, status: TaskStatus) -> bool:
         async with self._lock:
@@ -156,6 +167,29 @@ class TaskQueue:
     async def cancel(self, task_id: str) -> bool:
         return await self.update_status(task_id, TaskStatus.CANCELLED)
 
+    def remove(self, task_id: str) -> bool:
+        """Drop a terminal task from the in-memory store (POC cleanup)."""
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        if task.status not in _TERMINAL:
+            return False
+        del self._tasks[task_id]
+        self._events.pop(task_id, None)
+        self._claimed.discard(task_id)
+        return True
+
+    def remove_where(self, *, status: TaskStatus | None = None) -> int:
+        """Remove terminal tasks, optionally filtered by status. Returns count removed."""
+        to_remove = [
+            tid
+            for tid, task in self._tasks.items()
+            if task.status in _TERMINAL and (status is None or task.status == status)
+        ]
+        for tid in to_remove:
+            self.remove(tid)
+        return len(to_remove)
+
     async def next_task(self) -> str:
         """Block until a task is available, return its ID."""
         return await self._pending.get()
@@ -164,24 +198,30 @@ class TaskQueue:
         self,
         limit: int = 50,
         cursor: str | None = None,
+        *,
+        user_id: str | None = None,
     ) -> tuple[list[TaskResponse], str | None]:
         """Return a page of tasks with cursor-based pagination.
 
         Returns (items, next_cursor) where next_cursor is None if no more pages.
         """
+        all_tasks = list(self._tasks.values())
+        if user_id is not None:
+            all_tasks = [t for t in all_tasks if not t.user_id or t.user_id == user_id]
+
         if cursor:
             found = False
             items: list[TaskResponse] = []
-            for tid, task in self._tasks.items():
+            for task in all_tasks:
                 if not found:
-                    if tid == cursor:
+                    if task.task_id == cursor:
                         found = True
                     continue
                 items.append(task)
                 if len(items) >= limit:
                     break
         else:
-            items = list(itertools.islice(self._tasks.values(), limit))
+            items = all_tasks[:limit]
 
         next_cursor = items[-1].task_id if len(items) == limit else None
         return items, next_cursor

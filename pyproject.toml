@@ -32,6 +32,8 @@ dependencies = [
     "httpx>=0.28",
     "docker>=7.0",
     "pyyaml>=6.0",
+    "bcrypt>=4.0",
+    "argon2-cffi>=23.1",
     "maistro-registry",
 ]
 

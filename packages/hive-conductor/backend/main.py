@@ -24,6 +24,7 @@ from routes import (
     containers,
     dag_runs,
     dags,
+    daily_report,
     health,
     install,
     mcp,
@@ -33,6 +34,7 @@ from routes import (
     quotas,
     schedules,
     setup,
+    setup_checklist,
     skills,
     voice,
     ws,
@@ -155,6 +157,8 @@ def create_app() -> FastAPI:
     app.include_router(voice.router, prefix="/v1/voice")
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")
+    app.include_router(setup_checklist.router, prefix="/v1/setup-checklist")
+    app.include_router(daily_report.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
     app.include_router(messages.router, prefix="/v1/messages")

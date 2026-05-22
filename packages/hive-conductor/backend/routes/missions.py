@@ -20,6 +20,10 @@ def _now() -> datetime:
 
 def _task_to_mission(rec: object) -> Mission:
     """Convert a TaskRecord from EngineService into a hive Mission."""
+    metadata: dict[str, object] = {}
+    err = getattr(rec, "error", None)
+    if err:
+        metadata["error"] = err
     return Mission(
         id=rec.id,  # type: ignore[attr-defined]
         name=rec.name,  # type: ignore[attr-defined]
@@ -31,6 +35,7 @@ def _task_to_mission(rec: object) -> Mission:
         started_at=rec.started_at,  # type: ignore[attr-defined]
         completed_at=rec.completed_at,  # type: ignore[attr-defined]
         progress=rec.progress,  # type: ignore[attr-defined]
+        metadata=metadata,
     )
 
 
@@ -42,6 +47,23 @@ def list_missions() -> list[Mission]:
         if tasks:
             return [_task_to_mission(t) for t in tasks]
     return list(stores.missions.values())
+
+
+class ClearMissionsBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    status: str | None = None  # "failed", "completed", or None = all terminal
+
+
+@router.post("/clear")
+def clear_missions(body: ClearMissionsBody) -> dict[str, int]:
+    """Remove terminal missions from the in-memory queue (POC cleanup)."""
+    engine = get_engine()
+    if engine._queue is None:
+        return {"removed": 0}
+    removed = engine.clear_tasks(status=body.status)
+    log_audit("missions_clear", "system", detail={"status": body.status, "removed": removed})
+    return {"removed": removed}
 
 
 @router.get("/{mission_id}", response_model=Mission)
@@ -133,6 +155,19 @@ def update_mission_status(
     body: UpdateMissionStatusBody,
     request: Request,
 ) -> Mission:
+    engine = get_engine()
+    if engine._queue is not None:
+        rec = engine.get_task(mission_id)
+        if rec is not None:
+            # Maistro task runner owns lifecycle; UI status buttons are legacy stubs only.
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Engine-backed mission — status is read-only. "
+                    "Delete it or invoke a new task from Program / Agent Fleet."
+                ),
+            )
+
     if mission_id not in stores.missions:
         raise HTTPException(status_code=404, detail="mission not found")
     m = stores.missions[mission_id]
@@ -157,3 +192,47 @@ def _revoke_task_elevation(request: Request, task_id: str) -> None:
         revoke_task_elevation(session_id, task_id)
     except Exception:
         pass
+
+
+@router.delete("/{mission_id}", status_code=204)
+def delete_mission(mission_id: str, request: Request) -> None:
+    engine = get_engine()
+    if engine._queue is not None:
+        if not engine.delete_task(mission_id):
+            raise HTTPException(
+                status_code=404,
+                detail="Mission not found or still running (only completed/failed can be deleted)",
+            )
+        _revoke_task_elevation(request, mission_id)
+        log_audit("mission_delete", "system", target=mission_id)
+        return
+    if mission_id not in stores.missions:
+        raise HTTPException(status_code=404, detail="mission not found")
+    stores.missions.pop(mission_id, None)
+    stores.mission_steps.pop(mission_id, None)
+    log_audit("mission_delete", "system", target=mission_id)
+
+
+class MissionGuidanceBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    text: str
+
+
+@router.post("/{mission_id}/guidance")
+async def post_mission_guidance(
+    mission_id: str,
+    body: MissionGuidanceBody,
+    request: Request,
+) -> dict[str, object]:
+    """Human guidance on a mission — feeds the meta hyperagent."""
+    from services.program_hyperagent import apply_guidance_and_pulse, require_pm_poc, user_id_from_request
+
+    require_pm_poc()
+    if not body.text.strip():
+        raise HTTPException(status_code=422, detail="Guidance text required")
+
+    uid = user_id_from_request(request)
+    log_audit("mission_guidance", uid, target=mission_id, detail={"chars": len(body.text)})
+    result = await apply_guidance_and_pulse(uid, body.text.strip())
+    return {"ok": True, "mission_id": mission_id, **result}

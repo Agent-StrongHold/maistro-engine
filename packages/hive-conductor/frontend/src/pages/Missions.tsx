@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../lib/api";
+import { usePmPoc } from "../context/PocMode";
+import { PM_NAV_MISSIONS, PM_NAV_PROGRAM } from "../lib/pmBranding";
 import {
   Card, Hex, Modal, SearchInput, StatCard, LoadingSpinner, PageHeader, useToast,
   ConfirmDialog, EmptyState,
@@ -123,6 +126,7 @@ const inputBase: React.CSSProperties = {
 };
 
 export default function Missions() {
+  const pmPoc = usePmPoc();
   const toast = useToast();
   const [rows, setRows] = useState<Mission[]>([]);
   const [sel, setSel] = useState<Mission | null>(null);
@@ -161,6 +165,13 @@ export default function Missions() {
     ensurePulseCss();
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const hasRunning = rows.some((m) => m.status === "running" || m.status === "pending");
+    if (!hasRunning) return;
+    const id = window.setInterval(() => void load(), 3000);
+    return () => window.clearInterval(id);
+  }, [rows, load]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -229,17 +240,68 @@ export default function Missions() {
     }
   }
 
-  function sendThreadMsg() {
-    if (!threadInput.trim()) return;
-    const userMsg: ThreadMsg = { id: threadNextId.current++, role: "user", text: threadInput.trim(), ts: Date.now() };
+  async function clearFailedMissions() {
+    try {
+      const res = await apiPost<{ removed: number }>("/v1/tasks/clear", { status: "failed" });
+      setSel(null);
+      await load();
+      toast(`Cleared ${res.removed} failed mission(s)`, "ok");
+    } catch {
+      toast("Clear failed", "error");
+    }
+  }
+
+  async function clearCompletedMissions() {
+    try {
+      const res = await apiPost<{ removed: number }>("/v1/tasks/clear", { status: "completed" });
+      setSel(null);
+      await load();
+      toast(`Cleared ${res.removed} completed mission(s)`, "ok");
+    } catch {
+      toast("Clear completed failed", "error");
+    }
+  }
+
+  async function sendThreadMsg() {
+    if (!threadInput.trim() || !active) return;
+    const text = threadInput.trim();
+    const userMsg: ThreadMsg = { id: threadNextId.current++, role: "user", text, ts: Date.now() };
     setThread((prev) => [...prev, userMsg]);
     setThreadInput("");
-    setTimeout(() => {
+    try {
+      const res = await apiPost<{
+        message?: string;
+        queued_tasks?: { task_id: string }[];
+        interview?: { complete?: boolean };
+      }>("/v1/program/guidance", { text, task_id: active.id });
+      const n = res.queued_tasks?.length ?? 0;
+      const agentText =
+        res.message ??
+        (n > 0
+          ? `Recorded. Hyperagent queued ${n} follow-up task(s).`
+          : res.interview?.complete
+            ? "Recorded. The fleet updated your program context."
+            : "Recorded. Finish the Program interview to enable autonomous follow-ups.");
       setThread((prev) => [
         ...prev,
-        { id: threadNextId.current++, role: "agent", text: "Acknowledged. Processing your guidance\u2026", ts: Date.now() },
+        { id: threadNextId.current++, role: "agent", text: agentText, ts: Date.now() },
       ]);
-    }, 800);
+      toast(n > 0 ? `Guidance queued ${n} task(s)` : "Guidance saved", "ok");
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : "Guidance failed";
+      setThread((prev) => [
+        ...prev,
+        {
+          id: threadNextId.current++,
+          role: "agent",
+          text: detail.includes("PM POC")
+            ? `${detail} Restart Hive with HIVE_POC_MODE=pm.`
+            : detail,
+          ts: Date.now(),
+        },
+      ]);
+      toast(detail, "error");
+    }
   }
 
   function selectMission(m: Mission) {
@@ -252,7 +314,49 @@ export default function Missions() {
 
   return (
     <div style={{ minHeight: "calc(100vh - 60px)" }}>
-      <PageHeader title="Missions" subtitle="Multi-step tasks assigned to AI agents" helpHref="/docs#missions" actions={<button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setShowCreate(true)}>+ new</button>} />
+      <PageHeader
+        title={pmPoc ? PM_NAV_MISSIONS : "Missions"}
+        subtitle={
+          pmPoc
+            ? "Autonomous fleet tasks (poll Jira, scan risks, research). Jira writes use Jira drafts on Program."
+            : "Multi-step tasks assigned to AI agents"
+        }
+        helpHref={pmPoc ? undefined : "/docs#missions"}
+        actions={
+          <div style={{ display: "flex", gap: 6 }}>
+            {pmPoc && (
+              <Link to="/agents" className="btn" style={{ fontSize: 9, padding: "2px 8px" }}>
+                {PM_NAV_PROGRAM}
+              </Link>
+            )}
+            {pmPoc && rows.some((m) => m.status === "completed") && (
+              <button
+                type="button"
+                className="btn"
+                style={{ fontSize: 9, padding: "2px 8px" }}
+                onClick={() => void clearCompletedMissions()}
+              >
+                Clear completed
+              </button>
+            )}
+            {pmPoc && rows.some((m) => m.status === "failed") && (
+              <button
+                type="button"
+                className="btn"
+                style={{ fontSize: 9, padding: "2px 8px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                onClick={() => void clearFailedMissions()}
+              >
+                Clear failed
+              </button>
+            )}
+            {!pmPoc && (
+              <button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setShowCreate(true)}>
+                + new
+              </button>
+            )}
+          </div>
+        }
+      />
       <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 0, minHeight: "calc(100vh - 120px)" }}>
       <div style={{ borderRight: "1.5px dashed var(--rule)", padding: 10, display: "flex", flexDirection: "column", gap: 6, overflowY: "auto" }}>
         <div style={{ display: "flex", gap: 3, flexWrap: "wrap", marginBottom: 4 }}>
@@ -349,6 +453,29 @@ export default function Missions() {
                 <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)" }}>{active.id}</div>
                 <div style={{ fontFamily: "var(--hand)", fontSize: 24, fontWeight: 700, margin: "2px 0 4px" }}>{active.name}</div>
                 <div style={{ fontFamily: "var(--hand)", fontSize: 13, color: "var(--pencil)" }}>{active.description}</div>
+                {active.status === "failed" && typeof active.metadata?.error === "string" && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      padding: "8px 10px",
+                      background: "rgba(196,69,42,0.1)",
+                      border: "1px solid var(--danger)",
+                      borderRadius: 4,
+                      fontFamily: "var(--mono)",
+                      fontSize: 9,
+                      color: "var(--danger)",
+                      lineHeight: 1.4,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {active.metadata.error}
+                  </div>
+                )}
+                {active.status === "failed" && pmPoc && !active.metadata?.error && (
+                  <div style={{ marginTop: 8, fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)" }}>
+                    Likely from before the PM stub fix (no LLM). Use <strong>Clear failed</strong>, then invoke an agent again from Agent Fleet.
+                  </div>
+                )}
               </div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "flex-end", marginLeft: 12 }}>
                 {active.status === "pending" && (
@@ -363,7 +490,9 @@ export default function Missions() {
                 )}
                 {(active.status === "completed" || active.status === "failed") && (
                   <>
-                    <button onClick={() => void patchStatus(active.id, "pending")} style={{ ...btnBase, background: "var(--accent)", color: "var(--paper)", borderColor: "var(--accent)" }}>Restart</button>
+                    {!pmPoc && (
+                      <button onClick={() => void patchStatus(active.id, "pending")} style={{ ...btnBase, background: "var(--accent)", color: "var(--paper)", borderColor: "var(--accent)" }}>Restart</button>
+                    )}
                     <button onClick={() => setConfirmDelete(true)} style={{ ...btnBase, color: "#c4452a", borderColor: "#c4452a" }}>Delete</button>
                   </>
                 )}

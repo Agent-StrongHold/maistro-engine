@@ -9,22 +9,57 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from maistro.config.settings import Settings, get_settings
 from maistro.security.secret_equal import secret_equal
+from maistro_server.api.principal import AuthenticatedPrincipal
 
 security_scheme = HTTPBearer(auto_error=False)
+
+
+def resolve_token_principal(token: str, settings: Settings) -> AuthenticatedPrincipal | None:
+    """Resolve bearer secret to principal, or None if invalid."""
+    if not settings.api_keys:
+        return AuthenticatedPrincipal(user_id="dev", token="", roles=frozenset({"admin", "user"}))
+    index = _build_token_index(settings)
+    for secret, principal in index.items():
+        if secret_equal(token, secret):
+            return principal
+    return None
+
+
+def _build_token_index(settings: Settings) -> dict[str, AuthenticatedPrincipal]:
+    """Map bearer secret -> principal. Supports ``user:secret`` entries in API_KEYS."""
+    index: dict[str, AuthenticatedPrincipal] = {}
+    for entry in settings.api_keys:
+        entry = entry.strip()
+        if not entry:
+            continue
+        if ":" in entry and not entry.startswith("sk-"):
+            user_id, secret = entry.split(":", 1)
+            roles = frozenset({"user"})
+            if user_id.endswith(":admin"):
+                user_id, _ = user_id.rsplit(":", 1)
+                roles = frozenset({"admin", "user"})
+            index[secret] = AuthenticatedPrincipal(
+                user_id=user_id.strip(),
+                token=secret,
+                roles=roles,
+            )
+            index[entry] = index[secret]
+        else:
+            index[entry] = AuthenticatedPrincipal(
+                user_id="default",
+                token=entry,
+                roles=frozenset({"user"}),
+            )
+    return index
 
 
 def verify_api_key(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(security_scheme)],
     settings: Annotated[Settings, Depends(get_settings)],
-) -> str | None:
-    """Verify bearer token against configured API keys.
-
-    If no API keys are configured, authentication is disabled (dev mode).
-    Returns the validated token or None if auth is disabled.
-    """
+) -> AuthenticatedPrincipal | None:
+    """Verify bearer token. Returns None only when auth is disabled (no API keys)."""
     if not settings.api_keys:
-        # No keys configured — dev mode, allow all requests
-        return None
+        return AuthenticatedPrincipal(user_id="dev", token="", roles=frozenset({"admin", "user"}))
 
     if credentials is None:
         raise HTTPException(
@@ -33,10 +68,9 @@ def verify_api_key(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = credentials.credentials
-    for key in settings.api_keys:
-        if secret_equal(token, key):
-            return token
+    principal = resolve_token_principal(credentials.credentials, settings)
+    if principal is not None:
+        return principal
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -45,5 +79,4 @@ def verify_api_key(
     )
 
 
-# Dependency alias for route injection
-RequireAuth = Annotated[str | None, Depends(verify_api_key)]
+RequireAuth = Annotated[AuthenticatedPrincipal | None, Depends(verify_api_key)]
