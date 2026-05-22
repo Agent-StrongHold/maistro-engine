@@ -74,7 +74,10 @@ class HarnessEnvironment:
 
     async def run_graph(self, **kwargs: Any) -> HyperagentOutput:
         task_description = kwargs.pop("task_description", "test task")
-        workspace = kwargs.pop("workspace", "/tmp")
+        # This is a test-harness default — the string is consumed by GraphTask
+        # which never writes to it directly; sandbox writes are gated by
+        # tools/sandbox/workspace.validate_workspace_path. False positive.
+        workspace = kwargs.pop("workspace", "/tmp")  # nosec B108 — test fixture default, not a file op
         task = GraphTask(description=task_description, workspace=workspace)
         new_run = GraphRun(config=self._graph_config, task=task)
         env = self

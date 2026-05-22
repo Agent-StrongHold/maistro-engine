@@ -82,7 +82,10 @@ class Settings(BaseSettings):
 
     app_name: str = "maistro-engine"
     debug: bool = False
-    host: str = "0.0.0.0"
+    # Default to loopback so a careless dev-server start doesn't expose the
+    # API on every interface. Container deployments override this via the
+    # HOST env var (e.g. HOST=0.0.0.0 in docker-compose for the server svc).
+    host: str = "127.0.0.1"
     port: int = 8000
 
     api_keys: list[str] = Field(default_factory=list, description="Valid API bearer tokens")

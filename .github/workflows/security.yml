@@ -38,18 +38,21 @@ jobs:
           uv run bandit -r packages/maistro-core/src packages/hive-conductor/backend \
                           packages/maistro-server/src \
                           -ll --confidence-level=medium -f json -o bandit.json || true
-          # Fail PR if any new Medium+ finding appears against the baseline
-          # (docs/QA-BASELINE.md: 7 M in MAISTRO+ 5 M in maistro-core load-bearing).
+          # IRON gate: ZERO Medium+ findings on CI-scope source. Tasks #18-#20
+          # (B310/B104/B108) all triaged 2026-05-22 to zero; the previous
+          # baseline of 12 is now stale. Any new Medium+ MUST be addressed
+          # in the same PR — either as a code fix or with an inline
+          # # nosec <code> comment + a defended false-positive rationale.
           uv run python -c "
           import json, sys
           data = json.load(open('bandit.json'))
           new = [r for r in data.get('results', []) if r.get('issue_severity') in {'MEDIUM','HIGH'}]
-          if len(new) > 12:
-              print(f'::error::bandit Medium+ count ({len(new)}) exceeds baseline (12). New findings:')
-              for r in new[12:]:
-                  print(f'  {r[\"filename\"]}:{r[\"line_number\"]}  {r[\"issue_text\"]}')
+          if new:
+              print(f'::error::bandit found {len(new)} Medium+ finding(s) — strict 0-baseline:')
+              for r in new:
+                  print(f'  {r[\"filename\"]}:{r[\"line_number\"]} [{r[\"test_id\"]}] {r[\"issue_text\"]}')
               sys.exit(1)
-          print(f'bandit Medium+ count: {len(new)} (baseline 12)')
+          print('bandit Medium+ count: 0 (strict gate)')
           "
 
       - name: semgrep (custom + p/security-audit + p/owasp-top-ten + p/secrets)

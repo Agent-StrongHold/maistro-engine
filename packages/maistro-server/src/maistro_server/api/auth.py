@@ -17,7 +17,10 @@ security_scheme = HTTPBearer(auto_error=False)
 def resolve_token_principal(token: str, settings: Settings) -> AuthenticatedPrincipal | None:
     """Resolve bearer secret to principal, or None if invalid."""
     if not settings.api_keys:
-        return AuthenticatedPrincipal(user_id="dev", token="", roles=frozenset({"admin", "user"}))
+        # nosec B106 — auth is DISABLED (settings.api_keys is empty), so we
+        # construct a dev principal with an empty token literal. The empty
+        # string is a sentinel, not a hardcoded credential.
+        return AuthenticatedPrincipal(user_id="dev", token="", roles=frozenset({"admin", "user"}))  # nosec B106
     index = _build_token_index(settings)
     for secret, principal in index.items():
         if secret_equal(token, secret):
@@ -59,7 +62,10 @@ def verify_api_key(
 ) -> AuthenticatedPrincipal | None:
     """Verify bearer token. Returns None only when auth is disabled (no API keys)."""
     if not settings.api_keys:
-        return AuthenticatedPrincipal(user_id="dev", token="", roles=frozenset({"admin", "user"}))
+        # nosec B106 — auth is DISABLED (settings.api_keys is empty), so we
+        # construct a dev principal with an empty token literal. The empty
+        # string is a sentinel, not a hardcoded credential.
+        return AuthenticatedPrincipal(user_id="dev", token="", roles=frozenset({"admin", "user"}))  # nosec B106
 
     if credentials is None:
         raise HTTPException(

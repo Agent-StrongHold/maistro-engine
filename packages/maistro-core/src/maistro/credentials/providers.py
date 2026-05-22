@@ -14,8 +14,11 @@ class CredentialProvider:
     placeholder: str = ""
 
 
+# nosec B105 — this is the URL fragment the user follows to MINT their own
+# token; the string contains "tokens" because that's Atlassian's URL path.
+# Not a hardcoded credential.
 _ATLASSIAN_MCP_TOKEN_URL = (
-    "https://id.atlassian.com/manage-profile/security/api-tokens"
+    "https://id.atlassian.com/manage-profile/security/api-tokens"  # nosec B105
     "?autofillToken&expiryDays=max&appId=mcp&selectedScopes=all"
 )
 

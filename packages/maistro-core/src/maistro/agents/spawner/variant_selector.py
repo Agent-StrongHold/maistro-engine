@@ -60,8 +60,8 @@ class VariantSelector:
             return variants[idx % len(variants)]
 
         # Phase 2: random exploration
-        if random.random() < exploration_rate:
-            return random.choice(variants)
+        if random.random() < exploration_rate:  # nosec B311 — exploration rate, not crypto
+            return random.choice(variants)  # nosec B311 — variant pick, not crypto
 
         # Phase 3: Thompson sampling
         best_sample = -1.0
@@ -69,7 +69,7 @@ class VariantSelector:
         for variant in variants:
             vs = stats.get(variant)
             if vs is None or vs.runs == 0:
-                sample = random.random()
+                sample = random.random()  # nosec B311 — Thompson sampling cold-start, not crypto
             else:
                 sample = random.betavariate(vs.successes + 1, vs.failures + 1)
             if sample > best_sample:

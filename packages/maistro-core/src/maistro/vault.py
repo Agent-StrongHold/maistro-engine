@@ -96,7 +96,11 @@ class Vault:
             )
 
         try:
-            result = subprocess.run(
+            # Invoking the `age` decryption CLI via $PATH is the explicit
+            # trust contract: age is the cryptographic root for at-rest
+            # secrets. Args are not user-controlled (-d, -i, identity_path),
+            # stdin is the ciphertext we wrote ourselves.
+            result = subprocess.run(  # nosec — age decryption trust root (B603 + B607)
                 ["age", "-d", "-i", str(self._identity_path)],
                 input=self._vault_path.read_bytes(),
                 capture_output=True,
@@ -150,7 +154,8 @@ class Vault:
         public_key = _extract_public_key(self._identity_path)
         plaintext = _serialize_secrets(self._secrets)
         try:
-            subprocess.run(
+            # Same age-encryption trust contract as load() above.
+            subprocess.run(  # nosec — age trust root, args fully controlled (B603 + B607)
                 ["age", "-r", public_key, "-o", str(self._vault_path)],
                 input=plaintext.encode(),
                 capture_output=True,

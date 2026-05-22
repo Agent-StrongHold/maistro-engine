@@ -121,7 +121,11 @@ class State:
         encrypted_path = backup_dir / encrypted_name
 
         try:
-            subprocess.run(
+            # Invoking the `age` encryption CLI via $PATH is intentional
+            # (the binary is the trust root for at-rest encryption). All
+            # args are fully controlled by us, not user input: `-r` + admin
+            # pubkey, `-o` + dest path, stdin = db bytes.
+            subprocess.run(  # nosec — age encryption trust root (B603 + B607)
                 ["age", "-r", admin_public_key, "-o", str(encrypted_path)],
                 input=tmp_plain.read_bytes(),
                 capture_output=True,

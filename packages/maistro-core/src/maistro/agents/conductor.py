@@ -174,7 +174,7 @@ async def _run_with_retry(
 
         # Exponential backoff with jitter before retry
         if attempt < tier_config.max_llm_retries - 1:
-            delay = tier_config.initial_backoff * (2**attempt) + random.uniform(0, 1)
+            delay = tier_config.initial_backoff * (2**attempt) + random.uniform(0, 1)  # nosec B311 — retry jitter, not crypto
             await asyncio.sleep(delay)
 
     raise LLMProviderError(
