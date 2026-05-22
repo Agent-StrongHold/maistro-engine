@@ -95,7 +95,7 @@ def _seed_thumb(dag_id: str, node_id: str, thumb: str,
     import asyncio
     from services.feedback_service import record_thumb
 
-    asyncio.get_event_loop().run_until_complete(record_thumb(
+    asyncio.run(record_thumb(
         user_id="u1", project_id="p", run_id="r", thumb=thumb,
         comment=comment, node_id=node_id, dag_id=dag_id,
     ))
@@ -624,7 +624,7 @@ def test_collect_thumbs_ignores_blank_thumb_outcomes() -> None:
     from services.optimizer import _collect_thumbs
 
     store = get_outcome_store()
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         store.record(Outcome(task_type="x", thumb="", dag_id="d", node_id="n"))
     )
     out = _collect_thumbs("d")
@@ -647,7 +647,7 @@ def test_collect_thumbs_thumbs_with_no_dag_id_attribution_pass_through() -> None
     from services.feedback_service import record_thumb
     from services.optimizer import _collect_thumbs
 
-    asyncio.get_event_loop().run_until_complete(record_thumb(
+    asyncio.run(record_thumb(
         user_id="u", project_id="p", run_id="r", thumb="up",
         node_id="legacy", dag_id="",
     ))
@@ -694,7 +694,7 @@ def test_collect_thumbs_down_without_comment_skips_append() -> None:
     from services.feedback_service import record_thumb
     from services.optimizer import _collect_thumbs
 
-    asyncio.get_event_loop().run_until_complete(record_thumb(
+    asyncio.run(record_thumb(
         user_id="u", project_id="p", run_id="r", thumb="down",
         comment="", node_id="n9", dag_id="d-no-comment",
     ))
@@ -711,7 +711,7 @@ def test_collect_thumbs_unknown_value_falls_through() -> None:
     from services.feedback_service import get_outcome_store
     from services.optimizer import _collect_thumbs
 
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         get_outcome_store().record(Outcome(
             task_type="x", thumb="sideways", dag_id="d-weird",
             node_id="n", user_id="u",
