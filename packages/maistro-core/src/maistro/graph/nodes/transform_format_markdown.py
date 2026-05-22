@@ -39,7 +39,7 @@ class FormatMarkdownOut(BaseModel):
 
 
 @register_node
-class TransformFormatMarkdownNode(BaseNode):
+class TransformFormatMarkdownNode(BaseNode[FormatMarkdownIn, FormatMarkdownOut]):
     kind: ClassVar[str] = "transform.format_markdown"
     kind_category: ClassVar = "sync.transform"
     input_schema: ClassVar[type[BaseModel]] = FormatMarkdownIn

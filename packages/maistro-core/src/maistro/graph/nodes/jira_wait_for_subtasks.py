@@ -43,7 +43,7 @@ class WaitForSubtasksOut(BaseModel):
 
 
 @register_node
-class JiraWaitForSubtasksNode(BaseNode):
+class JiraWaitForSubtasksNode(BaseNode[WaitForSubtasksIn, WaitForSubtasksOut]):
     kind: ClassVar[str] = "jira.wait_for_subtasks"
     kind_category: ClassVar = "wait"
     input_schema: ClassVar[type[BaseModel]] = WaitForSubtasksIn

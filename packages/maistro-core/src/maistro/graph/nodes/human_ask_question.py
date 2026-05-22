@@ -56,7 +56,7 @@ class AskQuestionOut(BaseModel):
 
 
 @register_node
-class HumanAskQuestionNode(BaseNode):
+class HumanAskQuestionNode(BaseNode[AskQuestionIn, AskQuestionOut]):
     kind: ClassVar[str] = "human.ask_question"
     kind_category: ClassVar = "hitl"
     input_schema: ClassVar[type[BaseModel]] = AskQuestionIn

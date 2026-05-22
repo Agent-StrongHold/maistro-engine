@@ -32,7 +32,7 @@ class FilterByTypeOut(BaseModel):
 
 
 @register_node
-class TransformFilterByTypeNode(BaseNode):
+class TransformFilterByTypeNode(BaseNode[FilterByTypeIn, FilterByTypeOut]):
     kind: ClassVar[str] = "transform.filter_by_type"
     kind_category: ClassVar = "sync.transform"
     input_schema: ClassVar[type[BaseModel]] = FilterByTypeIn

@@ -44,7 +44,7 @@ class ComplianceBlockOut(BaseModel):
 
 
 @register_node
-class ComplianceBlockNode(BaseNode):
+class ComplianceBlockNode(BaseNode[ComplianceBlockIn, ComplianceBlockOut]):
     kind: ClassVar[str] = "compliance.block"
     kind_category: ClassVar = "negative_signal"
     input_schema: ClassVar[type[BaseModel]] = ComplianceBlockIn

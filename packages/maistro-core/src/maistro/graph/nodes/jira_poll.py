@@ -59,7 +59,7 @@ class JiraPollOut(BaseModel):
 
 
 @register_node
-class JiraPollNode(BaseNode):
+class JiraPollNode(BaseNode[JiraPollIn, JiraPollOut]):
     kind: ClassVar[str] = "jira.poll"
     kind_category: ClassVar = "sync.tool"
     input_schema: ClassVar[type[BaseModel]] = JiraPollIn

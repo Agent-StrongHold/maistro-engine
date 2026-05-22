@@ -26,7 +26,7 @@ class ExtractFieldOut(BaseModel):
 
 
 @register_node
-class TransformExtractFieldNode(BaseNode):
+class TransformExtractFieldNode(BaseNode[ExtractFieldIn, ExtractFieldOut]):
     kind: ClassVar[str] = "transform.extract_field"
     kind_category: ClassVar = "sync.transform"
     input_schema: ClassVar[type[BaseModel]] = ExtractFieldIn

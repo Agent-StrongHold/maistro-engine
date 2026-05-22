@@ -45,7 +45,7 @@ class AirtablePollOut(BaseModel):
 
 
 @register_node
-class AirtablePollNode(BaseNode):
+class AirtablePollNode(BaseNode[AirtablePollIn, AirtablePollOut]):
     kind: ClassVar[str] = "airtable.poll"
     kind_category: ClassVar = "sync.tool"
     input_schema: ClassVar[type[BaseModel]] = AirtablePollIn
