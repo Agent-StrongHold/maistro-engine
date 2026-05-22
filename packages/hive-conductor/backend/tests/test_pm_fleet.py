@@ -8,9 +8,16 @@ from maistro.tasks.queue import TaskQueue
 from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode, list_pm_agents
 
 
-def test_list_pm_agents_returns_five() -> None:
+def test_list_pm_agents_returns_canonical_fleet() -> None:
+    """PM fleet roster: intake, program_manager, research, delivery,
+    risk_dependency, reporting (6 agents). Test pinned to the canonical
+    set so adding a 7th is a deliberate decision."""
     agents = list_pm_agents([])
-    assert len(agents) == 5
+    ids = [a.id for a in agents]
+    assert ids == [
+        "intake", "program_manager", "research", "delivery",
+        "risk_dependency", "reporting",
+    ]
     assert agents[0].tagline
     assert agents[0].primary_capability
 

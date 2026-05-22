@@ -137,23 +137,16 @@ def test_list_missions() -> None:
     assert missions[0]["id"]
 
 
-def test_install_plan_parity() -> None:
+def test_install_plan_endpoint_retired_returns_405() -> None:
+    """POST /v1/install/plan was retired in favor of POST /v1/install/session
+    (the canonical 'kind=maistro_install_session' shape). Regression-pin
+    so nothing reintroduces it without an explicit decision."""
     c = _login()
     r = c.post(
         "/v1/install/plan",
-        json={
-            "schema_version": "1",
-            "features": ["core_lib"],
-            "stack_bringup": "none",
-        },
+        json={"schema_version": "1", "features": ["core_lib"]},
     )
-    if r.status_code == 503:
-        pytest.skip("maistro-bootstrap not adjacent (non-monorepo layout)")
-    assert r.status_code == 200
-    body = r.json()
-    assert body.get("kind") == "maistro_install_plan"
-    assert "shell_commands" in body
-    assert "compose_profile_hints" in body
+    assert r.status_code == 405
 
 
 def test_install_session_get_and_post() -> None:
