@@ -28,6 +28,13 @@ class TaskCreate(BaseModel):
     tier: int | None = None
     branch: str | None = None
     constraints: list[str] = Field(default_factory=list)
+    task_type: str | None = None
+    agent_id: str | None = None
+    capability: str | None = None
+    program_context: dict | None = None
+    session_id: str | None = None
+    # Set by API from auth — ignored if sent by client
+    user_id: str | None = None
 
 
 class TaskProgress(BaseModel):
@@ -53,6 +60,11 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     description: str
     workspace: str
+    user_id: str = ""
+    task_type: str | None = None
+    agent_id: str | None = None
+    capability: str | None = None
+    program_context: dict | None = None
     tier: int
     phase: str | None = None
     progress: TaskProgress = Field(default_factory=TaskProgress)

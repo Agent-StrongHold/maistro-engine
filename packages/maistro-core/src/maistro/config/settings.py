@@ -104,6 +104,11 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://localhost:11434/v1"
     maistro_dry_run: bool = False
+    poc_mode: str = Field(
+        default="",
+        description="POC mode: empty=engineering, pm=project-management fleet",
+        validation_alias="MAISTRO_POC_MODE",
+    )
 
     tier_1_model: str = ""
     tier_2_model: str = ""

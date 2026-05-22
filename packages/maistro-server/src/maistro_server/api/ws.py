@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import hmac
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -15,6 +14,7 @@ from pydantic import BaseModel
 from maistro.config.settings import Settings, get_settings
 from maistro.tasks.models import TaskResponse
 from maistro.tasks.queue import TaskQueue, get_task_queue
+from maistro_server.api.auth import resolve_token_principal
 
 logger = structlog.get_logger()
 
@@ -78,11 +78,14 @@ def _is_terminal(status: str) -> bool:
     return status in _TERMINAL_STATUSES
 
 
-def _verify_ws_token(token: str, settings: Settings) -> bool:
-    """Verify a WebSocket auth token against configured API keys."""
+def _ws_owner_id(token: str | None, settings: Settings) -> str | None:
+    """Return user_id for WS stream, or None when auth fails."""
     if not settings.api_keys:
-        return not settings.require_auth
-    return any(hmac.compare_digest(token.encode(), k.encode()) for k in settings.api_keys)
+        return "dev"
+    if not token:
+        return None
+    principal = resolve_token_principal(token, settings)
+    return principal.user_id if principal else None
 
 
 @router.websocket("/stream/{task_id}")
@@ -93,8 +96,8 @@ async def stream_task(
     settings: Annotated[Settings, Depends(get_settings)],
     token: str | None = Query(None),
 ) -> None:
-    # Authenticate WebSocket connections
-    if settings.api_keys and (not token or not _verify_ws_token(token, settings)):
+    owner_id = _ws_owner_id(token, settings)
+    if owner_id is None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -106,7 +109,7 @@ async def stream_task(
             last_progress: str | None = None
 
             while True:
-                task = queue.get(task_id)
+                task = queue.get(task_id, user_id=owner_id)
                 if task is None:
                     await websocket.send_json(WSErrorMessage(error="Task not found").model_dump())
                     break

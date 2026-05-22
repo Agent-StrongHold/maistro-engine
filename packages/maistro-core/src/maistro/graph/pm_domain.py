@@ -156,17 +156,23 @@ PM_PRIMARY_CAPABILITY: dict[AgentRole, str] = {
 
 
 def build_capability_prompt(capability: str, payload: dict) -> str:
-    """Inject payload into the capability prompt template."""
+    """Inject payload into the capability prompt template.
+
+    Templates use the literal sentinel ``{payload_json}`` (str.replace,
+    not str.format) so that JSON-shape examples inside the templates —
+    which contain unescaped curly braces — don't blow up the formatter.
+    """
     import json as _json
 
     template = PM_CAPABILITY_PROMPTS.get(capability)
+    payload_json = _json.dumps(payload, indent=2)
     if template is None:
         return (
             f"Capability: {capability} (no template registered)\n"
-            f"Produce a PMRoleOutput JSON for this capability based on the payload.\n"
-            f"Payload:\n{_json.dumps(payload, indent=2)}"
+            "Produce a PMRoleOutput JSON for this capability based on the payload.\n"
+            f"Payload:\n{payload_json}"
         )
-    return template.format(payload_json=_json.dumps(payload, indent=2))
+    return template.replace("{payload_json}", payload_json)
 
 
 def build_pm_graph_config(

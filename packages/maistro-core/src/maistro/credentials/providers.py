@@ -90,6 +90,16 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         help_url=_DISNEY_CONFLUENCE_PAT_URL,
         placeholder="Disney Confluence PAT",
     ),
+    CredentialProvider(
+        id="airtable",
+        label="Airtable personal access token",
+        description=(
+            "Used to poll Airtable bases for daily status updates. Create a token "
+            "scoped to data.records:read on the base(s) you want the fleet to see."
+        ),
+        help_url="https://airtable.com/create/tokens/new",
+        placeholder="pat… (Airtable PAT)",
+    ),
 )
 
 

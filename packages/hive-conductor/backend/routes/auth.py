@@ -6,12 +6,13 @@ when the task completes, fails, or is cancelled.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from routes.audit import log_audit
 
@@ -19,6 +20,8 @@ router = APIRouter(tags=["auth"])
 
 _SESSION_COOKIE = "hive_session"
 _COOKIE_MAX_AGE = 60 * 60 * 24 * 7
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9_-]{3,32}$")
+_MIN_PASSWORD_LEN = 8
 
 
 class LoginBody(BaseModel):
@@ -26,6 +29,36 @@ class LoginBody(BaseModel):
 
     username: str
     password: str
+
+
+class RegisterBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    username: str
+    password: str
+    confirm_password: str
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        name = value.strip()
+        if not _USERNAME_RE.match(name):
+            msg = "Username must be 3–32 characters (letters, numbers, underscore, hyphen)."
+            raise ValueError(msg)
+        return name
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if len(value) < _MIN_PASSWORD_LEN:
+            raise ValueError(f"Password must be at least {_MIN_PASSWORD_LEN} characters.")
+        return value
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> RegisterBody:
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match.")
+        return self
 
 
 class ElevateBody(BaseModel):
@@ -97,6 +130,50 @@ def user_has_permission(session_id: str | None, perm: str) -> bool:
     return user.has_permission(perm)
 
 
+def _registration_allowed() -> bool:
+    """Signup only after initial hive setup (at least one account exists)."""
+    import stores
+
+    return len(stores.users) > 0
+
+
+def _username_taken(username: str) -> bool:
+    import stores
+
+    return any(u.username.lower() == username.lower() for u in stores.users.values())
+
+
+def _issue_session(user: Any, response: Response) -> dict[str, Any]:
+    import stores
+
+    session_id = str(uuid4())
+    stores.sessions[session_id] = {
+        "user_id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "permissions": user.permissions,
+        "elevated_grants": {},
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    response.set_cookie(
+        key=_SESSION_COOKIE,
+        value=session_id,
+        max_age=_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+    )
+    return {
+        "ok": True,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "role": user.role,
+            "permissions": user.permissions,
+            "did": user.did,
+        },
+    }
+
+
 def revoke_task_elevation(session_id: str, task_id: str) -> None:
     import stores
 
@@ -109,41 +186,58 @@ def revoke_task_elevation(session_id: str, task_id: str) -> None:
         stores.sessions[session_id] = {**sess, "elevated_grants": grants}
 
 
+@router.post("/register")
+def register(body: RegisterBody, response: Response) -> dict[str, Any]:
+    # SECURITY-REVIEW: public signup creates role=user only; passwords hashed with Argon2id.
+    if not _registration_allowed():
+        raise HTTPException(
+            status_code=403,
+            detail="Registration is unavailable until initial hive setup is complete.",
+        )
+    if _username_taken(body.username):
+        raise HTTPException(status_code=409, detail="Username is already taken.")
+
+    import stores
+
+    from maistro.security.passwords import hash_password
+    from models.schemas import HiveUser
+
+    user_id = str(uuid4())
+    password_hash = hash_password(body.password)
+    now_ts = datetime.now(UTC)
+    user = HiveUser(
+        id=user_id,
+        username=body.username,
+        password_hash=password_hash,
+        role="user",
+        is_active=True,
+        permissions=[],
+        did=None,
+        created_at=now_ts,
+    )
+    stores.users[user_id] = user
+    log_audit("user_register", body.username, target=user_id)
+    result = _issue_session(user, response)
+    return result
+
+
 @router.post("/login")
 def login(body: LoginBody, response: Response) -> dict[str, Any]:
     import stores
+
+    from maistro.security.passwords import hash_password, needs_rehash
 
     for user in stores.users.values():
         if user.username == body.username and user.verify_password(body.password):
             if not user.is_active:
                 raise HTTPException(status_code=403, detail="Account disabled")
-            session_id = str(uuid4())
-            stores.sessions[session_id] = {
-                "user_id": user.id,
-                "username": user.username,
-                "role": user.role,
-                "permissions": user.permissions,
-                "elevated_grants": {},
-                "created_at": datetime.now(UTC).isoformat(),
-            }
-            response.set_cookie(
-                key=_SESSION_COOKIE,
-                value=session_id,
-                max_age=_COOKIE_MAX_AGE,
-                httponly=True,
-                samesite="lax",
-            )
+            if needs_rehash(user.password_hash):
+                stores.users[user.id] = user.model_copy(
+                    update={"password_hash": hash_password(body.password)}
+                )
+                user = stores.users[user.id]
             log_audit("login", user.username)
-            return {
-                "ok": True,
-                "user": {
-                    "id": user.id,
-                    "username": user.username,
-                    "role": user.role,
-                    "permissions": user.permissions,
-                    "did": user.did,
-                },
-            }
+            return _issue_session(user, response)
     log_audit("login_failed", body.username, severity="warning")
     raise HTTPException(status_code=401, detail="Invalid credentials")
 

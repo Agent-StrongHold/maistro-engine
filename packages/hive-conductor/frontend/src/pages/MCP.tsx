@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiDelete } from "../lib/api";
+import { usePmPoc } from "../context/PocMode";
+import { PM_NAV_INTEGRATIONS } from "../lib/pmBranding";
 import { Hex, PageHeader, StatCard, ConfirmDialog, useToast } from "../components/shared";
+const ROVO_MCP_URL = "https://mcp.atlassian.com/v1/mcp/authv2";
 
 type Server = {
   id: string; name: string; description: string; url: string;
@@ -14,6 +17,7 @@ type Tool = {
 };
 
 export default function MCP() {
+  const pmPoc = usePmPoc();
   const toast = useToast();
   const [servers, setServers] = useState<Server[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
@@ -43,6 +47,24 @@ export default function MCP() {
     } catch { toast("Failed to add server", "error"); }
   }
 
+  async function testConnections() {
+    try {
+      const res = await apiPost<{ results?: { server_id: string; ok: boolean; detail?: string }[] }>(
+        "/v1/mcp/test",
+        {},
+      );
+      const results = res.results ?? [];
+      const ok = results.filter((r) => r.ok).length;
+      toast(
+        results.length ? `MCP test: ${ok}/${results.length} connected` : "MCP test complete",
+        ok === results.length && results.length > 0 ? "ok" : "error",
+      );
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "MCP test failed", "error");
+    }
+  }
+
   async function removeServer(id: string) {
     try {
       await apiDelete(`/v1/mcp/servers/${id}`);
@@ -58,11 +80,61 @@ export default function MCP() {
       <ConfirmDialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={() => { if (deleteTarget) void removeServer(deleteTarget.id); }} title="Remove Server" message={`Remove "${deleteTarget?.name ?? ""}" from MCP?`} />
 
       <PageHeader
-        title="MCP"
-        subtitle={`${servers.length} servers · ${tools.length} tools — connect external services and tools`}
-        helpHref="/docs#mcp"
-        actions={<button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setAdding(true)}>+ add server</button>}
+        title={pmPoc ? PM_NAV_INTEGRATIONS : "MCP"}
+        subtitle={
+          pmPoc
+            ? `${servers.length} MCP servers · ${tools.length} tools — container runtime, not Cursor`
+            : `${servers.length} servers · ${tools.length} tools — multi-MCP orchestration in this sandbox`
+        }
+        helpHref={pmPoc ? undefined : "/docs#mcp"}
+        actions={
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => void testConnections()}>
+              Test connection
+            </button>
+            {!pmPoc && (
+              <button className="btn btn-accent" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setAdding(true)}>
+                + add server
+              </button>
+            )}
+          </div>
+        }
       />
+
+      <div className="card" style={{ marginBottom: 14, padding: 14, borderLeft: "4px solid var(--accent)" }}>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", marginBottom: 8 }}>
+          FORCE CONVERGENCE · MULTI-MCP
+        </div>
+        <p style={{ fontFamily: "var(--hand)", fontSize: 13, margin: "0 0 10px", lineHeight: 1.45 }}>
+          Hive runs inside your <strong>leased sandbox container</strong> (Jedai Force Convergence). Agents call MCP tools
+          from this catalog using secrets in <a href="/credentials" style={{ color: "var(--accent)" }}>Credentials</a> or
+          Launch env vars — <strong>not</strong> via Cursor. Canonical manifests live in JFC{" "}
+          <code style={{ fontFamily: "var(--mono)", fontSize: 10 }}>container_registry/MCP_servers/</code>.
+        </p>
+        {pmPoc && (
+          <p style={{ fontFamily: "var(--hand)", fontSize: 12, margin: "0 0 10px", lineHeight: 1.4, color: "var(--pencil)" }}>
+            PM demo: Jira <em>creates</em> use <strong>Jira drafts</strong> (suggest → confirm). Autonomous tasks may read/sync via MCP when configured.
+          </p>
+        )}
+        <p style={{ fontFamily: "var(--hand)", fontSize: 11, margin: "0 0 8px", color: "var(--pencil)" }}>
+          Atlassian Rovo endpoint: {ROVO_MCP_URL}. Local dev engineers may optionally use{" "}
+          <code style={{ fontFamily: "var(--mono)", fontSize: 10 }}>.cursor/mcp.json</code> — that path does not run in production sandboxes.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <a
+            className="btn btn-accent"
+            style={{ fontSize: 9, padding: "4px 10px", textDecoration: "none" }}
+            href="https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Rovo MCP docs
+          </a>
+          <a className="btn" style={{ fontSize: 9, padding: "4px 10px", textDecoration: "none" }} href="/credentials">
+            Configure credentials
+          </a>
+        </div>
+      </div>
       <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--rule)", marginBottom: 12 }}>
         {(["servers", "tools"] as const).map((t) => (
           <div key={t} onClick={() => setTab(t)} style={{ padding: "7px 16px", fontFamily: "var(--mono)", fontSize: 10, cursor: "pointer", borderBottom: tab === t ? "2px solid var(--accent)" : "2px solid transparent", color: tab === t ? "var(--ink)" : "var(--pencil)", textTransform: "capitalize" }}>{t}</div>

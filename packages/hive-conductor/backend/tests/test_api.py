@@ -47,6 +47,51 @@ def test_login_failure() -> None:
     assert r.status_code == 401
 
 
+def test_register_success() -> None:
+    c = TestClient(app)
+    r = c.post(
+        "/v1/auth/register",
+        json={
+            "username": "newpmuser",
+            "password": "securepass1",
+            "confirm_password": "securepass1",
+        },
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["user"]["username"] == "newpmuser"
+    assert data["user"]["role"] == "user"
+    who = c.get("/v1/auth/whoami")
+    assert who.json()["authenticated"] is True
+
+
+def test_register_duplicate_username() -> None:
+    c = TestClient(app)
+    r = c.post(
+        "/v1/auth/register",
+        json={
+            "username": "testuser",
+            "password": "otherpass1",
+            "confirm_password": "otherpass1",
+        },
+    )
+    assert r.status_code == 409
+
+
+def test_register_password_mismatch() -> None:
+    c = TestClient(app)
+    r = c.post(
+        "/v1/auth/register",
+        json={
+            "username": "mismatchuser",
+            "password": "securepass1",
+            "confirm_password": "different1",
+        },
+    )
+    assert r.status_code == 422
+
+
 def test_whoami_authenticated() -> None:
     c = _login()
     r = c.get("/v1/auth/whoami")
@@ -254,11 +299,12 @@ def test_logout() -> None:
 def test_elevation_only_activates_granted_permissions() -> None:
     from datetime import UTC, datetime
 
-    import bcrypt
     import stores
 
+    from maistro.security.passwords import hash_password
+
     now_ts = datetime.now(UTC)
-    pw = bcrypt.hashpw(b"frankpass", bcrypt.gensalt()).decode()
+    pw = hash_password("frankpass")
     stores.users["frank"] = stores.users._model_class(
         id="frank",
         username="frank",
@@ -287,11 +333,12 @@ def test_elevation_only_activates_granted_permissions() -> None:
 def test_elevate_rejects_unassigned_permissions() -> None:
     from datetime import UTC, datetime
 
-    import bcrypt
     import stores
 
+    from maistro.security.passwords import hash_password
+
     now_ts = datetime.now(UTC)
-    pw = bcrypt.hashpw(b"frankpass", bcrypt.gensalt()).decode()
+    pw = hash_password("frankpass")
     stores.users["frank"] = stores.users._model_class(
         id="frank",
         username="frank",
@@ -312,11 +359,12 @@ def test_elevate_rejects_unassigned_permissions() -> None:
 def test_elevation_revoked_on_task_completion() -> None:
     from datetime import UTC, datetime
 
-    import bcrypt
     import stores
 
+    from maistro.security.passwords import hash_password
+
     now_ts = datetime.now(UTC)
-    pw = bcrypt.hashpw(b"frankpass", bcrypt.gensalt()).decode()
+    pw = hash_password("frankpass")
     stores.users["frank"] = stores.users._model_class(
         id="frank",
         username="frank",

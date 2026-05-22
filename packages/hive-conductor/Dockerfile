@@ -7,6 +7,12 @@ WORKDIR /build
 COPY packages/hive-conductor/frontend/package.json packages/hive-conductor/frontend/package-lock.json ./
 RUN npm ci
 COPY packages/hive-conductor/frontend/ ./
+ARG VITE_POC_MODE=
+ENV VITE_POC_MODE=${VITE_POC_MODE}
+# Lets the gateway serve Hive at a sub-path (e.g. VITE_BASE_PATH=/pm/) without
+# breaking asset URLs. Defaults to / so standalone builds are unaffected.
+ARG VITE_BASE_PATH=/
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
 FROM python:3.12-slim
