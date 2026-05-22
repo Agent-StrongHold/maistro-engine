@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 WorkItemType = Literal["initiative", "epic", "user_story", "dev_task", "subtask"]
 

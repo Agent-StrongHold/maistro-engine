@@ -18,7 +18,7 @@ class DelegateStrategy:
         self,
         messages: list[dict[str, Any]],
         model: str,
-        llm: Any,  # noqa: ARG002
+        llm: Any,
         *,
         classified_task_type: str = "chat",
         **kwargs: Any,

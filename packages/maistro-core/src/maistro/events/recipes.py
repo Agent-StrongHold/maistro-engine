@@ -6,7 +6,7 @@ Import and register what you need, or use as templates.
 
 from __future__ import annotations
 
-from maistro.events.bus import EventCategory, Trigger, TriggerCondition
+from maistro.events.bus import Trigger, TriggerCondition
 
 
 def coinswarm_fitness_alert(

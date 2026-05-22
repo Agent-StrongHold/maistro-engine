@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from maistro.graph.types import GraphBlackboard
 
@@ -45,12 +45,12 @@ class ContextCompactor:
             annotation_lines = [
                 f"- {k}: {v[:200]}" for k, v in blackboard.node_annotations.items()
             ]
-            parts.append(f"\n## Key Decisions Made\n" + "\n".join(annotation_lines))
+            parts.append("\n## Key Decisions Made\n" + "\n".join(annotation_lines))
         if blackboard.metadata:
             meta_lines = [
                 f"- {k}: {str(v)[:200]}" for k, v in blackboard.metadata.items()
             ]
-            parts.append(f"\n## Critical Context\n" + "\n".join(meta_lines))
+            parts.append("\n## Critical Context\n" + "\n".join(meta_lines))
         parts.append(
             "\nProduce a concise summary preserving all facts needed for remaining nodes."
         )

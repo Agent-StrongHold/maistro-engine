@@ -22,7 +22,6 @@ machinery handles 429/5xx). Auth failures (401/403) bubble immediately.
 from __future__ import annotations
 
 import os
-from collections.abc import Awaitable
 from typing import Any
 
 import httpx
