@@ -219,9 +219,9 @@ def build_pm_graph_config(
 
 
 __all__ = [
-    "PM_ROLES",
     "PM_CAPABILITY_PROMPTS",
     "PM_PRIMARY_CAPABILITY",
+    "PM_ROLES",
     "build_capability_prompt",
     "build_pm_graph_config",
 ]

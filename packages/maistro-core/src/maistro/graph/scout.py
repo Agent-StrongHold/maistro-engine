@@ -7,11 +7,11 @@ import re
 from collections.abc import Awaitable, Callable
 
 from maistro.graph.types import (
-    AgentRole,
     DEFAULT_SYSTEM_PROMPTS,
+    JSON_OUTPUT_SCHEMAS,
+    AgentRole,
     GraphBlackboard,
     GraphTask,
-    JSON_OUTPUT_SCHEMAS,
     ScoutContext,
     ScoutOutput,
 )
