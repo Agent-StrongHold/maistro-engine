@@ -20,7 +20,7 @@ class HomeAssistantIntegration:
     def __init__(
         self,
         url: str = "http://localhost:8123",
-        token: str = "",
+        token: str = "",  # nosec B107 — empty-string default; real tokens come from env / caller
         event_bus: EventBus | None = None,
     ) -> None:
         self._url = url.rstrip("/")

@@ -24,7 +24,11 @@ class TaskCreate(BaseModel):
     """Request body for POST /tasks."""
 
     description: str
-    workspace: str = "/tmp/maistro-workspace"
+    # The string "/tmp/maistro-workspace" is the API contract for the
+    # workspace mount root (see ALLOWED_HOST_PREFIXES in tools/sandbox/
+    # workspace.py). It is validated before any fs op; bandit's B108 sees
+    # the literal but cannot see the validator gate.
+    workspace: str = "/tmp/maistro-workspace"  # nosec B108 — gated by validate_workspace_path
     tier: int | None = None
     branch: str | None = None
     constraints: list[str] = Field(default_factory=list)

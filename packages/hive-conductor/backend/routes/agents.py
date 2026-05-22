@@ -211,7 +211,7 @@ def forge_agent(body: ForgeAgentBody) -> Agent:
     import random
     import string
 
-    suffix = "".join(random.choices(string.ascii_lowercase, k=6))
+    suffix = "".join(random.choices(string.ascii_lowercase, k=6))  # nosec B311 — display-only id suffix; UUID4 is the actual identity
     aid = str(uuid4())
     t = _now()
     agent = Agent(

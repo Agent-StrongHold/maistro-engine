@@ -21,7 +21,10 @@ def round_robin(available: list[CredentialRecord], index: int) -> tuple[Credenti
 
 
 def random_select(available: list[CredentialRecord]) -> CredentialRecord:
-    return random.choice(available)
+    # Non-crypto: this picks a credential record by index from a pool of
+    # candidates a user has already authorized. The choice doesn't affect
+    # secrecy — every record in `available` is equally authorized.
+    return random.choice(available)  # nosec B311 — pool-selection, not crypto
 
 
 def least_used(available: list[CredentialRecord]) -> CredentialRecord:
