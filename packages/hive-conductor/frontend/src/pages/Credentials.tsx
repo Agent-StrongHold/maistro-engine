@@ -2,6 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPut } from "../lib/api";
 import { PageHeader } from "../components/shared";
 
+type ConfigField = {
+  name: string;
+  label: string;
+  placeholder: string;
+  required: boolean;
+};
+
 type CredentialRow = {
   id: string;
   label: string;
@@ -10,11 +17,18 @@ type CredentialRow = {
   placeholder: string;
   configured: boolean;
   updated_at?: string | null;
+  config_fields?: ConfigField[];
+  config_values?: Record<string, string>;
 };
 
 export default function Credentials() {
   const [rows, setRows] = useState<CredentialRow[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // task #27: per-provider config drafts (e.g. Airtable base_id).
+  // Shape: { providerId: { field_name: value } }
+  const [configDrafts, setConfigDrafts] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +40,14 @@ export default function Credentials() {
     try {
       const data = await apiGet<{ credentials: CredentialRow[] }>("/v1/credentials");
       setRows(data.credentials);
+      // Hydrate config drafts from server-persisted config_values
+      const init: Record<string, Record<string, string>> = {};
+      for (const row of data.credentials) {
+        if (row.config_fields?.length) {
+          init[row.id] = { ...(row.config_values ?? {}) };
+        }
+      }
+      setConfigDrafts(init);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load credentials");
     } finally {
@@ -47,6 +69,22 @@ export default function Credentials() {
       await apiPut(`/v1/credentials/${providerId}`, { secret });
       setDrafts((d) => ({ ...d, [providerId]: "" }));
       setMessage(`${providerId} saved securely`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function saveConfig(providerId: string) {
+    const config = configDrafts[providerId] ?? {};
+    setSaving(providerId);
+    setError(null);
+    setMessage(null);
+    try {
+      await apiPut(`/v1/credentials/${providerId}/config`, { config });
+      setMessage(`${providerId} config saved`);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -170,6 +208,81 @@ export default function Credentials() {
                   </button>
                 )}
               </div>
+
+              {row.config_fields && row.config_fields.length > 0 && (
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 10,
+                    borderTop: "1px dashed var(--rule)",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "var(--mono)",
+                      fontSize: 8,
+                      color: "var(--pencil)",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Provider config (non-secret)
+                  </div>
+                  {row.config_fields.map((f) => (
+                    <div
+                      key={f.name}
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        alignItems: "center",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <label
+                        style={{
+                          fontFamily: "var(--hand)",
+                          fontSize: 11,
+                          minWidth: 110,
+                          color: "var(--ink)",
+                        }}
+                      >
+                        {f.label}
+                        {f.required && (
+                          <span style={{ color: "var(--danger)" }}> *</span>
+                        )}
+                      </label>
+                      <input
+                        className="input-field"
+                        type="text"
+                        placeholder={f.placeholder}
+                        value={
+                          configDrafts[row.id]?.[f.name] ??
+                          row.config_values?.[f.name] ??
+                          ""
+                        }
+                        onChange={(e) =>
+                          setConfigDrafts((cd) => ({
+                            ...cd,
+                            [row.id]: {
+                              ...(cd[row.id] ?? row.config_values ?? {}),
+                              [f.name]: e.target.value,
+                            },
+                          }))
+                        }
+                        style={{ flex: 1 }}
+                      />
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={saving === row.id}
+                    onClick={() => void saveConfig(row.id)}
+                    style={{ fontSize: 9, marginTop: 4 }}
+                  >
+                    {saving === row.id ? "saving…" : "save config"}
+                  </button>
+                </div>
+              )}
             </article>
           ))}
         </div>

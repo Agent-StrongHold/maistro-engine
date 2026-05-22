@@ -97,6 +97,9 @@ audit_log: JsonStore = JsonStore("audit_log")
 eval_verdicts: JsonStore = JsonStore("eval_verdicts")
 # Phase 6 — optimizer proposals keyed by proposal_id.
 optimizer_proposals: JsonStore = JsonStore("optimizer_proposals")
+# Task #27 — per-user, per-provider non-secret config (e.g. Airtable base_id).
+# Key shape: f"{user_id}:{provider_id}" → dict[str, str].
+user_provider_config: JsonStore = JsonStore("user_provider_config")
 
 _all_model_stores: list[ModelStore] = [
     missions,
@@ -121,6 +124,7 @@ _all_json_stores: list[JsonStore] = [
     audit_log,
     eval_verdicts,
     optimizer_proposals,
+    user_provider_config,
 ]
 
 
