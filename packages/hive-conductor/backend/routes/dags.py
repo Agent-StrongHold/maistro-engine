@@ -5,10 +5,11 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import stores
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from routes.audit import log_audit
+from services.edit_lock import diff_dag_snapshots, mark_edited
 
 router = APIRouter(tags=["dags"])
 
@@ -118,15 +119,36 @@ class UpdateDAGBody(BaseModel):
 
 
 @router.put("/{dag_id}")
-def update_dag(dag_id: str, body: UpdateDAGBody) -> dict:
+def update_dag(dag_id: str, body: UpdateDAGBody, request: Request) -> dict:
+    """Phase 5 Signal #2: every successful PUT writes a `dag_edit` audit
+    entry and marks the changed field paths as edit-locked. The
+    optimizer's auto-apply path consults `edit_lock.is_locked()` before
+    mutating any field, so manual user overrides win for
+    `EDIT_LOCK_DAYS` (default 30) days."""
     if dag_id not in stores.dags:
         raise HTTPException(status_code=404, detail="dag not found")
+    old_snapshot = dict(stores.dags[dag_id])
     dag = DAGFile(**stores.dags[dag_id])
     updates = body.model_dump(exclude_none=True)
     updates["updated_at"] = _now()
     dag = dag.model_copy(update=updates)
-    stores.dags[dag_id] = dag.model_dump(mode="json")
-    return dag.model_dump(mode="json")
+    new_snapshot = dag.model_dump(mode="json")
+    stores.dags[dag_id] = new_snapshot
+
+    changed_paths = diff_dag_snapshots(old_snapshot, new_snapshot)
+    # `updated_at` always changes; strip it from the diff so audit + lock
+    # only see the user-meaningful fields.
+    user = getattr(request.state, "user", None) or {}
+    actor = str(user.get("id") or "system")
+    if changed_paths:
+        mark_edited(dag_id, changed_paths, user_id=actor)
+        log_audit(
+            action="dag_edit",
+            actor=actor,
+            target=dag_id,
+            detail={"changed": changed_paths, "field_count": len(changed_paths)},
+        )
+    return new_snapshot
 
 
 @router.delete("/{dag_id}", status_code=204)
