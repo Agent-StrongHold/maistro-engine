@@ -127,8 +127,12 @@ def _annotation_str(ann: Any) -> str:
 # Side-effect imports: every concrete node module self-registers on import.
 # Keep this list flat + alphabetical so new kinds are obvious to add.
 from . import airtable_poll  # noqa: E402, F401  registers "airtable.poll"
+from . import compliance_block  # noqa: E402, F401  registers "compliance.block"
 from . import dashboard_append_section  # noqa: E402, F401  registers "dashboard.append_section"
+from . import human_approve_draft  # noqa: E402, F401  registers "human.approve_draft"
+from . import human_ask_question  # noqa: E402, F401  registers "human.ask_question"
 from . import jira_poll  # noqa: E402, F401  registers "jira.poll"
+from . import jira_wait_for_subtasks  # noqa: E402, F401  registers "jira.wait_for_subtasks"
 from . import llm_summarize  # noqa: E402, F401  registers "llm.summarize"
 from . import transform_extract_field  # noqa: E402, F401  registers "transform.extract_field"
 from . import transform_filter_by_type  # noqa: E402, F401  registers "transform.filter_by_type"
