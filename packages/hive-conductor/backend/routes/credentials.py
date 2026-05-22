@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import stores
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -13,6 +14,27 @@ from routes.audit import log_audit
 from services import user_credentials as cred_svc
 
 router = APIRouter(tags=["credentials"])
+
+
+def _config_key(user_id: str, provider_id: str) -> str:
+    return f"{user_id}:{provider_id}"
+
+
+def _config_field_dicts(provider: Any) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": f.name,
+            "label": f.label,
+            "placeholder": f.placeholder,
+            "required": f.required,
+        }
+        for f in getattr(provider, "config_fields", ()) or ()
+    ]
+
+
+def _read_config(user_id: str, provider_id: str) -> dict[str, str]:
+    raw = stores.user_provider_config.get(_config_key(user_id, provider_id))
+    return dict(raw) if isinstance(raw, dict) else {}
 
 
 def _user_id(request: Request) -> str:
@@ -47,14 +69,71 @@ def list_my_credentials(request: Request) -> dict[str, Any]:
     items = []
     for entry in catalog:
         meta = configured.get(entry["id"], {})
+        provider = get_provider(entry["id"])
         items.append(
             {
                 **entry,
                 "configured": entry["id"] in configured,
                 "updated_at": meta.get("updated_at"),
+                "config_fields": _config_field_dicts(provider),
+                "config_values": _read_config(uid, entry["id"]),
             }
         )
     return {"credentials": items}
+
+
+class SetConfigBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # Free-form dict of {field_name: value}; values are non-secret strings
+    # (we enforce a small length cap so an attacker can't dump arbitrary
+    # blobs into the store via this endpoint).
+    config: dict[str, str] = Field(default_factory=dict)
+
+
+@router.get("/{provider_id}/config")
+def get_credential_config(provider_id: str, request: Request) -> dict[str, Any]:
+    if get_provider(provider_id) is None:
+        raise HTTPException(status_code=404, detail="Unknown credential provider")
+    uid = _user_id(request)
+    return {"provider": provider_id, "config": _read_config(uid, provider_id)}
+
+
+@router.put("/{provider_id}/config")
+def save_credential_config(
+    provider_id: str, body: SetConfigBody, request: Request,
+) -> dict[str, Any]:
+    provider = get_provider(provider_id)
+    if provider is None:
+        raise HTTPException(status_code=404, detail="Unknown credential provider")
+    uid = _user_id(request)
+
+    # Reject unknown field names so the store can't be used as a free-form
+    # KV by a malicious caller.
+    allowed_names = {f.name for f in (getattr(provider, "config_fields", ()) or ())}
+    bad = set(body.config) - allowed_names
+    if bad:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown config field(s): {sorted(bad)}",
+        )
+    # Per-value length cap (256 chars is plenty for an Airtable base_id /
+    # table name; rejects abuse).
+    for k, v in body.config.items():
+        if len(v) > 256:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Field {k!r} exceeds 256-char limit",
+            )
+
+    stores.user_provider_config[_config_key(uid, provider_id)] = dict(body.config)
+    log_audit(
+        action="credential_config_save",
+        actor=uid,
+        target=provider_id,
+        detail={"keys": sorted(body.config.keys())},
+    )
+    return {"ok": True, "provider": provider_id, "config": dict(body.config)}
 
 
 @router.put("/{provider_id}")

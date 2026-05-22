@@ -6,12 +6,32 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class ConfigField:
+    """A non-secret per-user setting that travels with a credential.
+
+    Example: an Airtable PAT (secret) + a base_id (non-secret config).
+    The UI renders one input per field; the backend persists them in
+    plaintext (they aren't credentials) under per-user storage.
+    """
+
+    name: str
+    label: str
+    placeholder: str = ""
+    required: bool = False
+
+
+@dataclass(frozen=True)
 class CredentialProvider:
     id: str
     label: str
     description: str
     help_url: str
     placeholder: str = ""
+    # Phase 5 follow-up (task #27): per-provider non-secret config that
+    # the user must supply alongside the secret. Tuple of ConfigField
+    # entries; the UI renders one input per entry. Empty by default to
+    # keep backward compat.
+    config_fields: tuple[ConfigField, ...] = ()
 
 
 # nosec B105 — this is the URL fragment the user follows to MINT their own
@@ -102,6 +122,20 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         ),
         help_url="https://airtable.com/create/tokens/new",
         placeholder="pat… (Airtable PAT)",
+        config_fields=(
+            ConfigField(
+                name="base_id",
+                label="Airtable base ID",
+                placeholder="appXXXXXXXXXXXXXX",
+                required=True,
+            ),
+            ConfigField(
+                name="table",
+                label="Default table name",
+                placeholder="e.g. Initiatives",
+                required=False,
+            ),
+        ),
     ),
     # Disney on-prem Git hosts. github.disney.com is GitHub Enterprise Server;
     # gitlab.disney.com is the Disney GitLab self-hosted instance. Per the
