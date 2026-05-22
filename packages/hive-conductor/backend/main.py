@@ -31,6 +31,7 @@ from routes import (
     mcp,
     memory,
     messages,
+    metrics as metrics_r,
     missions,
     quotas,
     schedules,
@@ -165,6 +166,10 @@ def create_app() -> FastAPI:
     # Phase 5 Signal #4: thumbs feedback piggybacks on /v1/dag-runs path
     # space so the SSE stream + feedback live together for the client.
     app.include_router(feedback.router, prefix="/v1/dag-runs")
+    # Phase 5 Signal #5 — per-node latency + token aggregates. NOTE: a
+    # separate prefix is needed because /v1/dag-runs/{run_id} would
+    # otherwise greedily match /v1/dag-runs/metrics as run_id="metrics".
+    app.include_router(metrics_r.router, prefix="/v1/dag-metrics")
     app.include_router(messages.router, prefix="/v1/messages")
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
