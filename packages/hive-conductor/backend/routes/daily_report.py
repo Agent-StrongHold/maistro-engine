@@ -326,11 +326,59 @@ def _suggested_actions(
     return actions
 
 
+async def _jira_section_via_dag(user_id: str) -> dict[str, Any]:
+    """Phase 4 path: route the Jira section through the daily-status DAG.
+
+    Resolves the user's per-request PAT from the credential store + the
+    Disney on-prem base URL, then invokes the DAG. Falls back to a
+    structured no_pat shape (matching the legacy inline path) when no
+    PAT is configured.
+    """
+    pat = (
+        _use_secret(user_id, "atlassian_server_jira")
+        or _use_secret(user_id, "jira")
+        or _use_secret(user_id, "atlassian_rovo_mcp")
+    )
+    if not pat:
+        return {
+            "status": "no_pat",
+            "detail": "Add your Disney Jira PAT to see updates",
+            "credential_id": "atlassian_server_jira",
+            "help_url": (
+                "https://myjira.disney.com/secure/ViewProfile.jspa"
+                "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
+            ),
+            "issues": [],
+            "source": "dag:daily-status",
+        }
+
+    # Decide on flavor + base from which credential the store provided.
+    flavor = "server"
+    base_url = "https://myjira.disney.com"
+    if _has_credential(user_id, "jira") or _has_credential(user_id, "atlassian_rovo_mcp"):
+        cloud_site = os.environ.get("ATLASSIAN_SITE_URL", "").strip().rstrip("/")
+        if cloud_site:
+            base_url = cloud_site
+            flavor = "cloud"
+
+    from services.daily_status_runner import run_daily_status_dag  # noqa: PLC0415  lazy
+
+    return await run_daily_status_dag(
+        user_id=user_id,
+        project_id=None,  # Phase 2 ProjectMiddleware will fill this in
+        pat=pat,
+        base_url=base_url,
+        flavor=flavor,
+    )
+
+
 @router.get("")
 async def get_daily_report(request: Request) -> dict[str, Any]:
     uid = _user_id(request)
     generated_at = datetime.now(UTC).isoformat()
-    jira = await _poll_jira(uid)
+    # Route Jira through the DAG (Phase 4); Airtable + research stay on
+    # the inline path until Phases 5 + 6 extend the seed.
+    jira = await _jira_section_via_dag(uid)
     airtable = await _poll_airtable(uid)
     research = _research_summary(uid)
     actions = _suggested_actions(uid, jira, airtable, research)
@@ -341,4 +389,5 @@ async def get_daily_report(request: Request) -> dict[str, Any]:
         "airtable": airtable,
         "research": research,
         "suggested_actions": actions,
+        "generated_by": "dag:daily-status (jira) + inline (airtable + research)",
     }

@@ -134,6 +134,7 @@ from . import human_ask_question  # noqa: E402, F401  registers "human.ask_quest
 from . import jira_poll  # noqa: E402, F401  registers "jira.poll"
 from . import jira_wait_for_subtasks  # noqa: E402, F401  registers "jira.wait_for_subtasks"
 from . import llm_summarize  # noqa: E402, F401  registers "llm.summarize"
+from . import transform_alias_keys  # noqa: E402, F401  registers "transform.alias_keys"
 from . import transform_extract_field  # noqa: E402, F401  registers "transform.extract_field"
 from . import transform_filter_by_type  # noqa: E402, F401  registers "transform.filter_by_type"
 from . import transform_format_markdown  # noqa: E402, F401  registers "transform.format_markdown"
