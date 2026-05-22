@@ -41,6 +41,7 @@ from maistro.graph.types import (
 )
 from maistro.tasks.models import TaskCreate
 from maistro.tools.atlassian import AtlassianMCPClient, AtlassianMCPError
+from maistro.tools.browser import BrowserClient, BrowserToolError
 
 _log = logging.getLogger("hive.engine.pm")
 logger = structlog.get_logger()
@@ -79,6 +80,14 @@ _JIRA_DRIVEN_CAPABILITIES: set[str] = {
     "poll_jira",
     "detect_blockers",
     "fetch_program_state",
+}
+
+# Capabilities that drive a real Chromium browser via browser-use BEFORE
+# the LLM, then feed the search results into the LLM for synthesis.
+# Day 4 — RESEARCH role's web tool. Requires the maistro-engine image
+# (Chromium + browser-use baked in via Dockerfile).
+_BROWSER_DRIVEN_CAPABILITIES: set[str] = {
+    "web_search_background",
 }
 
 
@@ -128,6 +137,73 @@ def _extract_atlassian_pats(payload: dict[str, Any]) -> tuple[str | None, str | 
     jira_pat = pats.get("jira") if isinstance(pats.get("jira"), str) else None
     confluence_pat = pats.get("confluence") if isinstance(pats.get("confluence"), str) else None
     return (jira_pat or None, confluence_pat or None)
+
+
+async def _run_browser_driven(
+    role: AgentRole,
+    capability: str,
+    payload: dict[str, Any],
+) -> PMRoleOutput:
+    """Real Chromium → synthesize via LLM. Real web data, real Claude synthesis.
+
+    Used by the RESEARCH role's `web_search_background` capability. Pulls
+    query terms from the request payload; if the program context already
+    has a `program_name` or `goals`, those feed the query.
+    """
+    # Build a query from the payload — program_name + goals if available,
+    # else fall back to the description.
+    program = payload.get("program") if isinstance(payload, dict) else None
+    query_parts: list[str] = []
+    if isinstance(program, dict):
+        if program.get("program_name"):
+            query_parts.append(str(program["program_name"]))
+        goals = program.get("goals")
+        if isinstance(goals, list) and goals:
+            query_parts.append(str(goals[0]))
+    if not query_parts and isinstance(payload, dict):
+        desc = payload.get("description")
+        if desc:
+            query_parts.append(str(desc))
+    query = " ".join(query_parts).strip() or "AI agent platforms"
+
+    client = BrowserClient()
+    try:
+        search = await client.search_web(query, max_results=3)
+    except BrowserToolError as exc:
+        return PMRoleOutput(
+            capability=capability,
+            summary=(
+                f"Web search unavailable: {exc}. "
+                "RESEARCH agent skipped browser step; downstream agents see "
+                "no scout_context for this run."
+            ),
+            result={"query": query, "error": str(exc)},
+            source="no_data",
+        )
+    finally:
+        await client.aclose()
+
+    # Feed the real search results into the LLM for capability synthesis.
+    enriched_payload = {**payload, "web_search": search.to_dict()}
+    messages = _build_messages(role, capability, enriched_payload)
+    try:
+        raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
+    except Exception as exc:
+        # Fall back to returning the search result directly — better than
+        # losing the live data because synthesis failed.
+        return PMRoleOutput(
+            capability=capability,
+            summary=(
+                f"Web search returned {len(search.citations)} results; "
+                f"LLM synthesis failed ({exc}). Raw results preserved."
+            ),
+            result={"web_search": search.to_dict(), "llm_error": str(exc)},
+            source="no_data",
+        )
+    out = _parse_pm_output(raw, capability)
+    if isinstance(out.result, dict):
+        out.result.setdefault("web_search", search.to_dict())
+    return out
 
 
 async def _run_jira_driven(
@@ -332,11 +408,15 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     # Routing:
     #   1. Jira-driven capabilities → real MCP tool call → real data into LLM
     #      synthesis (Day 3).
-    #   2. _NO_DATA_WITHOUT_TOOLS → short-circuit to source='no_data' (Airtable
+    #   2. Browser-driven capabilities → real Chromium via browser-use → real
+    #      search results into LLM synthesis (Day 4).
+    #   3. _NO_DATA_WITHOUT_TOOLS → short-circuit to source='no_data' (Airtable
     #      etc., not wired yet — never fabricate).
-    #   3. Everything else → straight LLM call with persona + capability prompt.
+    #   4. Everything else → straight LLM call with persona + capability prompt.
     if capability in _JIRA_DRIVEN_CAPABILITIES:
         out = await _run_jira_driven(role, capability, payload)
+    elif capability in _BROWSER_DRIVEN_CAPABILITIES:
+        out = await _run_browser_driven(role, capability, payload)
     elif capability in _NO_DATA_WITHOUT_TOOLS:
         out = _no_data_response(capability, payload)
     else:

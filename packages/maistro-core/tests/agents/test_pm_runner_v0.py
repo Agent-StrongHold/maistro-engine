@@ -312,6 +312,106 @@ async def test_malformed_llm_response_doesnt_crash(monkeypatch):
     assert "This is not JSON" in result.final_answer
 
 
+@pytest.mark.asyncio
+async def test_web_search_calls_browser_then_llm(monkeypatch):
+    """RESEARCH agent's web_search_background must drive a real BrowserClient
+    call FIRST, then feed the search result into the LLM for synthesis."""
+    from maistro.tools.browser import Citation, SearchResult
+
+    browser_called_with: dict[str, object] = {}
+    llm_messages: dict[str, object] = {}
+
+    async def fake_search_web(self, query, *, max_results=3):
+        browser_called_with["query"] = query
+        browser_called_with["max_results"] = max_results
+        return SearchResult(
+            query=query,
+            summary="MAISTROis the company's agent platform; Claude is the LLM backbone.",
+            citations=(
+                Citation(title="MAISTROdocs", url="https://example.com/docs",
+                         snippet="MAISTROdocumentation overview"),
+                Citation(title="Claude API", url="https://docs.anthropic.com",
+                         snippet="Anthropic API reference"),
+            ),
+            duration_ms=8200,
+            source="browser-use",
+        )
+
+    async def fake_aclose(self):
+        return None
+
+    async def fake_llm_call(messages, *, model=None, temperature=None,
+                             json_mode=True, timeout=120.0):
+        llm_messages["messages"] = messages
+        return ('{"capability":"web_search_background",'
+                '"summary":"Background: 2 reputable sources on maistro + Claude agent platforms.",'
+                '"result":{"queries":["maistro platform"],"hypotheses":["Claude is core"]},'
+                '"source":"llm"}')
+
+    monkeypatch.setattr(pm_runner.BrowserClient, "search_web", fake_search_web)
+    monkeypatch.setattr(pm_runner.BrowserClient, "aclose", fake_aclose)
+    monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+
+    task = TaskCreate(
+        description="Background on agent platforms",
+        agent_id="research",
+        capability="web_search_background",
+        program_context={
+            "program_name": "MAISTRO v0",
+            "goals": ["self-improving agent fleet"],
+            "confirmed": False,
+        },
+    )
+    result = await pm_runner.run_pm_task(task)
+
+    # Browser was called with a query derived from program_name + first goal
+    assert "MAISTRO v0" in str(browser_called_with["query"])
+    # LLM saw the search results in its prompt
+    user_msg = llm_messages["messages"][1]["content"]
+    assert "web_search" in user_msg
+    assert "example.com/docs" in user_msg
+    # Output source = llm; the synthesized summary is in the answer
+    assert "source=llm" in result.final_answer
+    assert "2 reputable sources" in result.final_answer
+
+
+@pytest.mark.asyncio
+async def test_web_search_fallback_when_browser_unavailable(monkeypatch):
+    """When browser-use can't run (e.g. no Chromium in this env), pm_runner
+    must return source='no_data' with a clear message — never invent web
+    findings."""
+    from maistro.tools.browser import BrowserToolError
+
+    async def fake_search_web(self, query, *, max_results=3):
+        raise BrowserToolError(
+            "browser-use not installed in this environment. "
+            "Image bakes it in via Dockerfile."
+        )
+
+    async def fake_aclose(self):
+        return None
+
+    async def fake_llm_call(*args, **kwargs):
+        raise AssertionError("LLM must not be called when browser fails")
+
+    monkeypatch.setattr(pm_runner.BrowserClient, "search_web", fake_search_web)
+    monkeypatch.setattr(pm_runner.BrowserClient, "aclose", fake_aclose)
+    monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+
+    task = TaskCreate(
+        description="Research the topic",
+        agent_id="research",
+        capability="web_search_background",
+        program_context={"program_name": "MAISTRO v0", "confirmed": False},
+    )
+    result = await pm_runner.run_pm_task(task)
+    assert "source=no_data" in result.final_answer
+    assert "Web search unavailable" in result.final_answer
+    assert "browser-use not installed" in result.final_answer
+
+
 # Live LLM test — only runs with RUN_LIVE_LLM=1 + valid .env settings.
 @pytest.mark.asyncio
 @pytest.mark.skipif(
