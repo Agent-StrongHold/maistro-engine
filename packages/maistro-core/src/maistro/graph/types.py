@@ -11,11 +11,19 @@ class LLMProviderError(Exception):
 
 
 class AgentRole(StrEnum):
+    # Engineering roles (existing — do not reorder)
     CONDUCTOR = "conductor"
     PLANNER = "planner"
     CODER = "coder"
     REVIEWER = "reviewer"
     SCOUT = "scout"
+    # PM-fleet roles (added for v0 PM-as-DAG; see graph/pm_domain.py for prompts + output types)
+    INTAKE = "intake"
+    PROGRAM_MANAGER = "program_manager"
+    RESEARCH = "research"
+    DELIVERY = "delivery"
+    RISK_DEPENDENCY = "risk_dependency"
+    REPORTING = "reporting"
 
 
 class ExecutionMode(StrEnum):
@@ -151,6 +159,19 @@ class HyperagentOutput(ConductorOutput):
     blackboard: GraphBlackboard | None = None
 
 
+class PMRoleOutput(BaseModel):
+    """v0 PM-role output. One model per role across all its capabilities — the
+    capability-specific shape lives inside `result`. Per-capability typed
+    outputs (CreateInitiativeOutput, DecomposeInitiativeOutput, etc.) are v1
+    refinement. `source` distinguishes real LLM output from cached / fallback.
+    """
+
+    capability: str
+    summary: str
+    result: dict[str, Any] = Field(default_factory=dict)
+    source: str = "llm"  # "llm" | "no_data" | "experience_context_fallback"
+
+
 class NodePerformanceMetrics(BaseModel):
     role: AgentRole
     run_count: int
@@ -195,6 +216,54 @@ DEFAULT_SYSTEM_PROMPTS: dict[AgentRole, str] = {
         "You are the pipeline conductor. Route tasks to the appropriate next "
         "node based on the current state of the pipeline."
     ),
+    # PM-fleet roles (v0 starter prompts — refine via SOUL.md or per-capability overlays in v1)
+    AgentRole.INTAKE: (
+        "You are the Intake Agent — the front door to structured program "
+        "execution. Your job: take an unstructured user request and produce a "
+        "clear Initiative (title, summary, goals, success metrics, "
+        "stakeholders). You never invent data — if a field is unknown, set it "
+        "to null. Initiative drafts always return draft_status='needs_confirm' "
+        "so a human reviews before downstream agents act. You can route to "
+        "PROGRAM_MANAGER once the initiative is concrete."
+    ),
+    AgentRole.PROGRAM_MANAGER: (
+        "You are the Program Manager Agent — a staff-level TPM that never "
+        "sleeps. Your job: decompose initiatives into epics + stories + tasks, "
+        "link dependencies, and request real data (Jira via DELIVERY, "
+        "background via RESEARCH, risks via RISK_DEPENDENCY) before writing "
+        "anything. You never fabricate program state. When information is "
+        "missing, you say so and dispatch a sub-agent to fetch it."
+    ),
+    AgentRole.RESEARCH: (
+        "You are the Research Agent — you gather program background, market "
+        "context, and technical landscape via real web search (browser-use + "
+        "google.com). You return cited findings only; you do not invent "
+        "sources. When the browser is unavailable, you return source='no_data' "
+        "rather than fabricate."
+    ),
+    AgentRole.DELIVERY: (
+        "You are the Delivery Agent — the execution engine for sprint "
+        "velocity. You query real Jira via the Atlassian MCP using the user's "
+        "PAT. You never invent Jira data — if a query returns nothing or no "
+        "PAT is set, you return source='no_data' rather than fabricate. Read "
+        "tools are read-only; write operations (create_jira_ticket, "
+        "sync_jira) always return draft_status='needs_confirm' and never "
+        "auto-post."
+    ),
+    AgentRole.RISK_DEPENDENCY: (
+        "You are the Risk & Dependency Agent — the always-on RAID brain. You "
+        "scan project state for risks, dependencies, and blockers. You cite "
+        "evidence from the program context blackboard and DELIVERY's Jira "
+        "data; you never invent risks without a source. Escalations include "
+        "the user and stakeholder list from the initiative."
+    ),
+    AgentRole.REPORTING: (
+        "You are the Reporting Agent — executive visibility in under 30 "
+        "seconds. You synthesize the blackboard (initiative, epics, risks, "
+        "real Jira data, real research findings) into a structured executive "
+        "summary. You never produce metrics without underlying evidence; "
+        "missing data is shown as 'no data available' not as zero."
+    ),
 }
 
 JSON_OUTPUT_SCHEMAS: dict[AgentRole, str] = {
@@ -217,6 +286,32 @@ JSON_OUTPUT_SCHEMAS: dict[AgentRole, str] = {
         '"dependency_map": {"file": ["import"]}, "similar_implementations": ["string"], '
         '"summary": "string"}'
     ),
+    # PM-fleet roles — all share the PMRoleOutput shape (per-capability schemas
+    # are injected by the runtime via PM_CAPABILITY_PROMPTS in pm_domain.py)
+    AgentRole.INTAKE: (
+        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
+    ),
+    AgentRole.PROGRAM_MANAGER: (
+        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
+    ),
+    AgentRole.RESEARCH: (
+        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
+    ),
+    AgentRole.DELIVERY: (
+        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
+    ),
+    AgentRole.RISK_DEPENDENCY: (
+        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
+    ),
+    AgentRole.REPORTING: (
+        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
+    ),
 }
 
 OUTPUT_TYPES: dict[AgentRole, type[BaseModel]] = {
@@ -224,4 +319,12 @@ OUTPUT_TYPES: dict[AgentRole, type[BaseModel]] = {
     AgentRole.CODER: CodeOutput,
     AgentRole.REVIEWER: ReviewOutput,
     AgentRole.SCOUT: ScoutOutput,
+    # PM-fleet roles all return PMRoleOutput (capability-specific shape lives
+    # in `result: dict`). Per-capability typed outputs are v1.
+    AgentRole.INTAKE: PMRoleOutput,
+    AgentRole.PROGRAM_MANAGER: PMRoleOutput,
+    AgentRole.RESEARCH: PMRoleOutput,
+    AgentRole.DELIVERY: PMRoleOutput,
+    AgentRole.RISK_DEPENDENCY: PMRoleOutput,
+    AgentRole.REPORTING: PMRoleOutput,
 }
