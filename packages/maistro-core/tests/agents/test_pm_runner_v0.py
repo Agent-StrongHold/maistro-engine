@@ -412,6 +412,98 @@ async def test_web_search_fallback_when_browser_unavailable(monkeypatch):
     assert "browser-use not installed" in result.final_answer
 
 
+@pytest.mark.asyncio
+async def test_experience_context_injected_when_outcome_store_wired(monkeypatch):
+    """v0 self-improvement loop: when an outcome_store is wired (via
+    set_pm_outcome_store), the next LLM call's system prompt must include
+    the 'Recent Failure Patterns' section from outcome_store.get_experience_context."""
+    captured: dict[str, object] = {}
+
+    class FakeOutcomeStore:
+        async def get_experience_context(self, *, task_type=""):
+            return f"## Recent Failure Patterns\n- timeout (model: claude-sonnet-4-6) for {task_type}"
+
+    async def fake_llm_call(messages, *, model=None, temperature=None,
+                             json_mode=True, timeout=120.0):
+        captured["messages"] = messages
+        return ('{"capability":"create_initiative","summary":"Drafted with learned context.",'
+                '"result":{"draft_status":"needs_confirm"},"source":"llm"}')
+
+    monkeypatch.setattr(pm_runner, "jedai_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+    pm_runner.set_pm_outcome_store(FakeOutcomeStore())
+    try:
+        result = await pm_runner.run_pm_task(_task())
+        system_msg = captured["messages"][0]["content"]
+        # The experience_context must have been APPENDED to the persona prompt.
+        assert "Recent Failure Patterns" in system_msg
+        assert "timeout" in system_msg
+        # The persona prompt itself must still be present.
+        assert "Intake Agent" in system_msg
+        assert result.success
+    finally:
+        pm_runner.set_pm_outcome_store(None)
+
+
+@pytest.mark.asyncio
+async def test_node_lifecycle_events_emitted_when_bus_wired(monkeypatch):
+    """When an event_bus is wired, pm_runner emits pm_node_started +
+    pm_node_completed (or pm_node_failed) on every invocation."""
+    events: list[tuple[str, dict]] = []
+
+    class FakeBus:
+        async def emit(self, event):
+            events.append((event.event_type, event.payload))
+
+    async def fake_llm_call(*args, **kwargs):
+        return ('{"capability":"create_initiative","summary":"ok",'
+                '"result":{},"source":"llm"}')
+
+    monkeypatch.setattr(pm_runner, "jedai_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+    pm_runner.set_pm_event_bus(FakeBus())
+    try:
+        await pm_runner.run_pm_task(_task())
+        event_types = [e[0] for e in events]
+        assert "pm_node_started" in event_types
+        assert "pm_node_completed" in event_types
+        # The completed event carries source + duration for the eval-judge.
+        completed_payload = next(p for t, p in events if t == "pm_node_completed")
+        assert completed_payload["source"] == "llm"
+        assert completed_payload["duration_ms"] >= 0
+    finally:
+        pm_runner.set_pm_event_bus(None)
+
+
+@pytest.mark.asyncio
+async def test_outcome_recorded_on_success_when_store_wired(monkeypatch):
+    """outcome_store.record() called on every successful PM-runner invocation
+    so the next run's experience_context sees it."""
+    recorded: list = []
+
+    class FakeOutcomeStore:
+        async def get_experience_context(self, *, task_type=""):
+            return ""
+        async def record(self, outcome):
+            recorded.append(outcome)
+            return 1
+
+    async def fake_llm_call(*args, **kwargs):
+        return ('{"capability":"create_initiative","summary":"ok","result":{},"source":"llm"}')
+
+    monkeypatch.setattr(pm_runner, "jedai_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+    pm_runner.set_pm_outcome_store(FakeOutcomeStore())
+    try:
+        await pm_runner.run_pm_task(_task())
+        assert len(recorded) == 1, "outcome_store.record should be called once per task"
+        outcome = recorded[0]
+        assert outcome.task_type == "intake"
+        assert outcome.success is True
+    finally:
+        pm_runner.set_pm_outcome_store(None)
+
+
 # Live LLM test — only runs with RUN_LIVE_LLM=1 + valid .env settings.
 @pytest.mark.asyncio
 @pytest.mark.skipif(
