@@ -40,6 +40,7 @@ from routes import (
     setup,
     setup_checklist,
     skills,
+    topology,
     voice,
     ws,
 )
@@ -179,6 +180,8 @@ def create_app() -> FastAPI:
     # Phase 6 — optimizer endpoints (auto-apply gated by edit_lock; propose
     # surfaces for user accept/reject).
     app.include_router(optimizer_r.router, prefix="/v1/optimizer")
+    # Phase 7 — topology variant comparison.
+    app.include_router(topology.router, prefix="/v1/topology")
     app.include_router(messages.router, prefix="/v1/messages")
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
