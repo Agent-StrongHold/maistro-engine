@@ -27,7 +27,11 @@ async def stream_task(websocket: WebSocket, task_id: str) -> None:
     finally:
         try:
             await websocket.close()
-        except Exception:
+        except Exception as _exc:
+            __import__('logging').getLogger('hive.routes.ws').warning(
+                'error_swallowed file=%s line=%d: %s',
+                'packages/hive-conductor/backend/routes/ws.py', 30, _exc,
+            )
             pass
 
 
@@ -55,5 +59,8 @@ async def stream_dag_run(websocket: WebSocket, dag_id: str) -> None:
     finally:
         try:
             await websocket.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger("hive.ws").debug(
+                "ws_close_failed (already closed): %s", exc,
+            )

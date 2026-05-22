@@ -255,7 +255,11 @@ async def _get_state(entity_id: str) -> str | None:
             )
             if r.status_code == 200:
                 return r.json().get("state")
-    except Exception:
+    except Exception as _exc:
+        __import__('logging').getLogger('hive.services.ha_tools').warning(
+            'error_swallowed file=%s line=%d: %s',
+            'packages/hive-conductor/backend/services/ha_tools.py', 258, _exc,
+        )
         pass
     return None
 
@@ -318,8 +322,11 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
                         f"{HA_URL}/api/states/{state_entity}",
                         headers={"Authorization": f"Bearer {HA_TOKEN}"},
                     )
-            except Exception:
-                pass
+            except Exception as exc:
+                import logging as _logging
+                _logging.getLogger("hive.ha_tools").warning(
+                    "ha_state_cleanup_failed entity=%s: %s", state_entity, exc,
+                )
             return {"result": current, "confirm_id": confirm_id}
 
         try:
@@ -338,7 +345,10 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
                             await _set_state(state_entity, result)
                             _CONFIRM_RESULTS[confirm_id] = result
                             return {"result": result, "confirm_id": confirm_id}
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging as _logging
+            _logging.getLogger("hive.ha_tools").warning(
+                "ha_event_poll_failed: %s", exc,
+            )
 
     return {"result": "timeout", "confirm_id": confirm_id}

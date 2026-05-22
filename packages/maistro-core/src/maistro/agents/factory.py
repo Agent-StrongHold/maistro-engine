@@ -371,7 +371,11 @@ async def create_agents(
             from maistro.persistence.pg_agents import PgAgentRegistry
 
             persist_registry = PgAgentRegistry(sa_engine)
-        except Exception:
+        except Exception as _exc:
+            __import__('logging').getLogger('maistro.agents.factor').warning(
+                'error_swallowed file=%s line=%d: %s',
+                'packages/maistro-core/src/maistro/agents/factory.py', 374, _exc,
+            )
             pass
 
     for agent_dir in sorted(agents_path.iterdir()):

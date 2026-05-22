@@ -83,7 +83,11 @@ def _load_dismissals(user_id: str) -> dict[str, datetime]:
     for key in expired:
         try:
             persisted.delete(_STORE_NAME, key)
-        except Exception:
+        except Exception as _exc:
+            __import__('logging').getLogger('hive.routes.setup_checklist').warning(
+                'error_swallowed file=%s line=%d: %s',
+                'packages/hive-conductor/backend/routes/setup_checklist.py', 86, _exc,
+            )
             pass
     return out
 
@@ -111,8 +115,11 @@ def _delete_dismissal(user_id: str, item_id: str) -> None:
         return
     try:
         persisted.delete(_STORE_NAME, _dismiss_key(user_id, item_id))
-    except Exception:
-        pass
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger("hive.setup_checklist").warning(
+            "dismiss_delete_failed user=%s item=%s: %s", user_id, item_id, exc,
+        )
 
 
 def _has_credential(user_id: str, provider_id: str) -> bool:

@@ -190,7 +190,11 @@ def _revoke_task_elevation(request: Request, task_id: str) -> None:
         from routes.auth import revoke_task_elevation
 
         revoke_task_elevation(session_id, task_id)
-    except Exception:
+    except Exception as _exc:
+        __import__('logging').getLogger('hive.routes.missions').warning(
+            'error_swallowed file=%s line=%d: %s',
+            'packages/hive-conductor/backend/routes/missions.py', 193, _exc,
+        )
         pass
 
 
