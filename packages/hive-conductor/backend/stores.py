@@ -95,6 +95,8 @@ messages: JsonStore = JsonStore("messages")
 audit_log: JsonStore = JsonStore("audit_log")
 # Phase 5 Signal #3 — eval-judge verdicts keyed by run_id.
 eval_verdicts: JsonStore = JsonStore("eval_verdicts")
+# Phase 6 — optimizer proposals keyed by proposal_id.
+optimizer_proposals: JsonStore = JsonStore("optimizer_proposals")
 
 _all_model_stores: list[ModelStore] = [
     missions,
@@ -118,6 +120,7 @@ _all_json_stores: list[JsonStore] = [
     messages,
     audit_log,
     eval_verdicts,
+    optimizer_proposals,
 ]
 
 
