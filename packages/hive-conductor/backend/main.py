@@ -25,6 +25,7 @@ from routes import (
     dag_runs,
     dags,
     daily_report,
+    feedback,
     health,
     install,
     mcp,
@@ -161,6 +162,9 @@ def create_app() -> FastAPI:
     app.include_router(daily_report.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
+    # Phase 5 Signal #4: thumbs feedback piggybacks on /v1/dag-runs path
+    # space so the SSE stream + feedback live together for the client.
+    app.include_router(feedback.router, prefix="/v1/dag-runs")
     app.include_router(messages.router, prefix="/v1/messages")
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
