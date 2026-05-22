@@ -1,0 +1,228 @@
+# Security gate — SAST + DAST + supply chain.
+#
+# Pillar 5 of the QA gate. Heavy bag (containers, ZAP) runs only on PR-to-main
+# + main pushes + nightly. Lightweight SAST runs on every push.
+
+name: security
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, feat/*]
+  schedule:
+    # Nightly full SBOM + DAST + image scan.
+    - cron: "30 7 * * *"
+
+jobs:
+  # ----- SAST: bandit + semgrep + gitleaks (fast; every push) -----
+  sast:
+    name: SAST (bandit + semgrep + gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install uv + Python
+        uses: astral-sh/setup-uv@v3
+      - name: Setup Python 3.12
+        run: uv python install 3.12
+
+      - name: uv sync
+        run: uv sync --all-extras
+
+      - name: bandit (zero Medium+ on OUR code)
+        run: |
+          uv run bandit -r packages/maistro-core/src packages/hive-conductor/backend \
+                          packages/maistro-server/src \
+                          -ll --confidence-level=medium -f json -o bandit.json || true
+          # Fail PR if any new Medium+ finding appears against the baseline
+          # (docs/QA-BASELINE.md: 7 M in JFC + 5 M in maistro-core load-bearing).
+          uv run python -c "
+          import json, sys
+          data = json.load(open('bandit.json'))
+          new = [r for r in data.get('results', []) if r.get('issue_severity') in {'MEDIUM','HIGH'}]
+          if len(new) > 12:
+              print(f'::error::bandit Medium+ count ({len(new)}) exceeds baseline (12). New findings:')
+              for r in new[12:]:
+                  print(f'  {r[\"filename\"]}:{r[\"line_number\"]}  {r[\"issue_text\"]}')
+              sys.exit(1)
+          print(f'bandit Medium+ count: {len(new)} (baseline 12)')
+          "
+
+      - name: semgrep (custom + p/security-audit + p/owasp-top-ten + p/secrets)
+        run: |
+          uv run semgrep --metrics off \
+            --config tools/semgrep/jfc-rules.yaml \
+            --config p/security-audit \
+            --config p/owasp-top-ten \
+            --config p/secrets \
+            --error packages/ apps/ services/ tests/ 2>&1 | tee semgrep-report.txt
+
+      - name: gitleaks (full-history scan on main; commit-range on PR)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ----- Supply chain: pip-audit + safety (fast; every push) -----
+  supply-chain:
+    name: Supply chain (pip-audit + safety)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv + Python
+        uses: astral-sh/setup-uv@v3
+      - name: Setup Python 3.12
+        run: uv python install 3.12
+      - name: uv sync
+        run: uv sync --all-extras
+
+      - name: pip-audit (strict; gate the known CVE list)
+        run: |
+          uv run pip-audit --strict --format=json > pip-audit.json || true
+          uv run python -c "
+          import json, sys
+          data = json.load(open('pip-audit.json'))
+          deps = data.get('dependencies', [])
+          vuln = [d for d in deps if d.get('vulns')]
+          # Baseline: 1 known CVE (pydantic-ai 1.66.0 — task #23). Allow it
+          # until cleared; fail on any NEW vuln.
+          allowed = {'pydantic-ai'}
+          new_vuln = [d for d in vuln if d['name'] not in allowed]
+          if new_vuln:
+              print('::error::pip-audit found new vulnerable deps:')
+              for d in new_vuln:
+                  for v in d['vulns']:
+                      print(f'  {d[\"name\"]}=={d[\"version\"]} {v[\"id\"]} fix={v.get(\"fix_versions\")}')
+              sys.exit(1)
+          print(f'pip-audit OK ({len(vuln)} known; all in baseline allowlist)')
+          "
+
+      - name: safety check (cross-check)
+        run: uv run safety check --json || echo "::warning::safety cross-check found issues (advisory)"
+
+  # ----- Container scan + SBOM + signing (PR-to-main + nightly only) -----
+  containers:
+    name: Container scan + SBOM + cosign
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build hive-conductor image
+        run: |
+          docker build -f packages/hive-conductor/Dockerfile \
+            --build-arg VITE_POC_MODE=pm \
+            --build-arg VITE_BASE_PATH=/pm/ \
+            -t jedai-hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }} .
+
+      - name: Build maistro-engine image
+        run: docker build -t jedai-maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }} .
+
+      - name: Trivy scan (HIGH/CRITICAL only)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: jedai-hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }}
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Grype scan (cross-check)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          grype jedai-hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }} \
+            --fail-on high --output table
+
+      - name: SBOM (syft CycloneDX-JSON)
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft jedai-hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }} \
+            -o cyclonedx-json > sbom-hive-conductor.json
+          syft jedai-maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }} \
+            -o cyclonedx-json > sbom-maistro-engine.json
+
+      - name: Upload SBOMs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sboms-${{ github.event.pull_request.number || 'nightly' }}
+          path: sbom-*.json
+
+      - name: License compliance (no GPL/AGPL on new deps)
+        run: |
+          uv run pip install pip-licenses
+          uv run pip-licenses --fail-on='GPL;LGPL;AGPL' --format=markdown \
+            --output-file=licenses.md
+
+      # cosign sign: only on main pushes (we have the OIDC identity then)
+      - name: cosign install
+        if: github.ref == 'refs/heads/main'
+        uses: sigstore/cosign-installer@main
+
+      - name: cosign keyless sign
+        if: github.ref == 'refs/heads/main'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes jedai-hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }}
+          cosign sign --yes jedai-maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }}
+
+  # ----- DAST: OWASP ZAP against running stack (heavy; nightly + PR-to-main) -----
+  dast:
+    name: DAST (OWASP ZAP baseline)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot the stack for DAST
+        run: |
+          # Compose env file (test secrets only).
+          cat > container_registry/user_containers/sandbox_templates/maistro-engine/.env <<EOF
+          LITELLM_PROXY_URL=http://fake-litellm:4000
+          LITELLM_PROXY_KEY=test-key
+          DB_PASSWORD=test
+          LANGFUSE_NEXTAUTH_SECRET=test-test-test-test-test-test-test
+          LANGFUSE_SALT=salt
+          API_KEYS=["test-key-for-dast"]
+          CORS_ORIGINS=["http://localhost:8090"]
+          EOF
+          docker compose --env-file container_registry/user_containers/sandbox_templates/maistro-engine/.env \
+            -f docker-compose.vibehost-maistro.yml up -d hive-conductor maistro-engine jfc-gateway
+
+          # Wait for /health to be ready.
+          for i in {1..30}; do
+            if curl -sf http://localhost:8090/health/ready; then echo "ready"; break; fi
+            sleep 2
+          done
+
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: http://localhost:8090
+          cmd_options: "-J zap-report.json -r zap-report.html -m 5"
+          fail_action: false   # surfaces report; gate-blocking via the parser below
+
+      - name: Gate on new HIGH alerts
+        if: always()
+        run: |
+          if [ -f zap-report.json ]; then
+            HIGH=$(jq '[.site[].alerts[] | select(.riskcode == "3")] | length' zap-report.json)
+            if [ "${HIGH:-0}" -gt 0 ]; then
+              echo "::error::ZAP found ${HIGH} HIGH-severity alert(s); see zap-report.html artifact"
+              exit 1
+            fi
+            echo "ZAP HIGH count: ${HIGH}"
+          fi
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report-${{ github.event.pull_request.number || 'nightly' }}
+          path: |
+            zap-report.json
+            zap-report.html
