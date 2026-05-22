@@ -52,7 +52,16 @@ class ProjectStore(Protocol):
 
     async def delete(self, project_id: str) -> None: ...
 
-    async def list_for_user(self, user_id: str) -> list[Project]: ...
+    async def list_for_user(
+        self, user_id: str, *, use_case: str | None = None
+    ) -> list[Project]:
+        """List projects the user owns OR is a member of.
+
+        If `use_case` is provided, filter to that domain (e.g. "pm_fleet",
+        "canvas_creative") — supports the user model of "/pm/ shows only
+        my PM projects; /art/ shows only my art projects".
+        """
+        ...
 
     async def add_member(
         self, project_id: str, *, user_id: str, role: ProjectMemberRole
@@ -112,12 +121,21 @@ class InMemoryProjectStore:
             raise ProjectNotFound(project_id)
         del self._projects[project_id]
 
-    async def list_for_user(self, user_id: str) -> list[Project]:
-        """Return all projects the user owns OR is a member of."""
+    async def list_for_user(
+        self, user_id: str, *, use_case: str | None = None
+    ) -> list[Project]:
+        """Return projects the user owns OR is a member of.
+
+        If `use_case` is provided, only projects with matching use_case are
+        returned — the frontend at `/{domain}/` filters this way.
+        """
         out = []
         for p in self._projects.values():
-            if p.has_member(user_id):
-                out.append(p.model_copy(deep=True))
+            if not p.has_member(user_id):
+                continue
+            if use_case is not None and p.use_case != use_case:
+                continue
+            out.append(p.model_copy(deep=True))
         out.sort(key=lambda p: p.created_at, reverse=True)
         return out
 
