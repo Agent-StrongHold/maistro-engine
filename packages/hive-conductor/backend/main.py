@@ -34,6 +34,7 @@ from routes import (
     messages,
     metrics as metrics_r,
     missions,
+    optimizer as optimizer_r,
     quotas,
     schedules,
     setup,
@@ -175,6 +176,9 @@ def create_app() -> FastAPI:
     # (LiteLLM-backed, NOT a Claude Code subagent). Endpoints expose the
     # verdict store + a manual trigger.
     app.include_router(eval_judge.router, prefix="/v1/eval-judge")
+    # Phase 6 — optimizer endpoints (auto-apply gated by edit_lock; propose
+    # surfaces for user accept/reject).
+    app.include_router(optimizer_r.router, prefix="/v1/optimizer")
     app.include_router(messages.router, prefix="/v1/messages")
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
