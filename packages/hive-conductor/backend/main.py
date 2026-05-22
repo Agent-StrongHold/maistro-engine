@@ -25,6 +25,7 @@ from routes import (
     dag_runs,
     dags,
     daily_report,
+    eval_judge,
     feedback,
     health,
     install,
@@ -170,6 +171,10 @@ def create_app() -> FastAPI:
     # separate prefix is needed because /v1/dag-runs/{run_id} would
     # otherwise greedily match /v1/dag-runs/metrics as run_id="metrics".
     app.include_router(metrics_r.router, prefix="/v1/dag-metrics")
+    # Phase 5 Signal #3: eval-judge is an INTERNAL maistro agent
+    # (LiteLLM-backed, NOT a Claude Code subagent). Endpoints expose the
+    # verdict store + a manual trigger.
+    app.include_router(eval_judge.router, prefix="/v1/eval-judge")
     app.include_router(messages.router, prefix="/v1/messages")
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
