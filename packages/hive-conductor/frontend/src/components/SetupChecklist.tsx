@@ -26,6 +26,24 @@ type ChecklistResponse = {
 const POLL_INTERVAL_MS = 30_000;
 const TICK_INTERVAL_MS = 1_000;
 
+/**
+ * Strip the Vite BASE_URL prefix from an absolute path so React Router's
+ * <Link to=...> doesn't double-prepend the basename. The backend emits
+ * `/pm/credentials` for clarity, but the router (basename="/pm") expects
+ * the path RELATIVE to the basename, so we want `/credentials`.
+ */
+function stripBasename(href: string): string {
+  if (!href || href.startsWith("http")) return href;
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  if (base && href.startsWith(base + "/")) {
+    return href.slice(base.length);
+  }
+  if (base && href === base) {
+    return "/";
+  }
+  return href;
+}
+
 function formatCountdown(seconds: number): string {
   if (seconds <= 0) return "expiring…";
   const days = Math.floor(seconds / 86_400);
@@ -208,7 +226,7 @@ export function SetupChecklist() {
                 )}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <Link to={item.link_href} className="btn" style={linkBtnStyle}>
+                <Link to={stripBasename(item.link_href)} className="btn" style={linkBtnStyle}>
                   {item.link_label} →
                 </Link>
                 {item.external_help && (

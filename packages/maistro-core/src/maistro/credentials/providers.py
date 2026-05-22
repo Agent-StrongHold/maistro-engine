@@ -100,6 +100,34 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         help_url="https://airtable.com/create/tokens/new",
         placeholder="pat… (Airtable PAT)",
     ),
+    # on-prem Jira Server Git hosts. github.example.com is GitHub Enterprise Server;
+    # gitlab.example.com is the GitLab self-hosted instance. Per the
+    # durable feedback rule ("we only WRITE to gitlab"), the GitHub token is
+    # typically READ-only scope (repo:read + workflow:read); the GitLab token
+    # gets api / write_repository scopes for the MAISTROrepo flow.
+    CredentialProvider(
+        id="github_enterprise",
+        label="GitHub Enterprise PAT (read-only)",
+        description=(
+            "Personal access token for github.example.com (GitHub Enterprise "
+            "Server). Read-only by policy — MAISTROconsumes MAISTRO-Agents + "
+            "reference-repos reference repos for context; writes land on GitLab. "
+            "Scopes: read:repo + read:workflow."
+        ),
+        help_url="https://github.example.com/settings/tokens",
+        placeholder="ghp_…",
+    ),
+    CredentialProvider(
+        id="gitlab_enterprise",
+        label="GitLab PAT (read/write)",
+        description=(
+            "Personal access token for gitlab.example.com. Used by MAISTROfor "
+            "branch + MR operations on the team's launch-repo. Scopes: api + "
+            "write_repository + read_repository."
+        ),
+        help_url="https://gitlab.example.com/-/profile/personal_access_tokens",
+        placeholder="glpat-…",
+    ),
 )
 
 

@@ -63,6 +63,23 @@ type DailyReportResponse = {
 
 const REFRESH_MS = 60_000;
 
+/**
+ * Strip the Vite BASE_URL prefix so React Router's <Link to=...> doesn't
+ * double-prepend the basename. Backend emits `/pm/credentials`; router
+ * (basename="/pm") wants `/credentials`.
+ */
+function stripBasename(href: string): string {
+  if (!href || href.startsWith("http")) return href;
+  const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+  if (base && href.startsWith(base + "/")) {
+    return href.slice(base.length);
+  }
+  if (base && href === base) {
+    return "/";
+  }
+  return href;
+}
+
 const cardStyle: CSSProperties = {
   border: "1.3px solid var(--rule)",
   borderRadius: 6,
@@ -121,7 +138,7 @@ function externalOrInternalLink(href: string, label: string) {
     );
   }
   return (
-    <Link to={href} className="btn" style={linkBtnStyle}>
+    <Link to={stripBasename(href)} className="btn" style={linkBtnStyle}>
       {label} →
     </Link>
   );

@@ -50,9 +50,14 @@ async function logout() {
   try {
     await fetch("/v1/auth/logout", { method: "POST", credentials: "same-origin" });
   } catch {
-    // ignore — even if the call fails, sending the user to the login page is safe.
+    // ignore — even if the call fails, redirecting still gives the user
+    // a fresh login.
   }
-  window.location.href = (import.meta.env.BASE_URL || "/") + "login";
+  // Send the user to the SPA root. AuthGuard sees no session and renders
+  // <Login>. (Do NOT append "login" — there is no /login route, so a stale
+  // /pm/login URL after subsequent re-login leaves the SPA with no
+  // matching route and renders blank.)
+  window.location.href = import.meta.env.BASE_URL || "/";
 }
 
 export function AccountBanner() {
