@@ -56,7 +56,7 @@ _STYLE_PROMPTS = {
 
 
 @register_node
-class LlmSummarizeNode(BaseNode):
+class LlmSummarizeNode(BaseNode[LlmSummarizeIn, LlmSummarizeOut]):
     kind: ClassVar[str] = "llm.summarize"
     kind_category: ClassVar = "sync.llm"
     input_schema: ClassVar[type[BaseModel]] = LlmSummarizeIn

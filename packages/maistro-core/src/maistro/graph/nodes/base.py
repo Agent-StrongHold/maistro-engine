@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from typing import Any, ClassVar, Literal, Protocol, TypeVar, runtime_checkable
+from typing import Any, ClassVar, Generic, Literal, Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -109,10 +109,20 @@ class Node(Protocol):
     async def run(self, inputs: BaseModel, ctx: NodeContext) -> NodeResult: ...
 
 
-class BaseNode:
+class BaseNode(Generic[InputT, OutputT]):
     """Concrete base class for node kinds — handles the boilerplate of
     timing, schema enforcement, and result envelope construction so subclasses
     only define :meth:`_execute`.
+
+    Generic over the input/output Pydantic models so subclasses can declare:
+
+        class JiraPollNode(BaseNode[JiraPollIn, JiraPollOut]):
+            ...
+            async def _execute(self, inputs: JiraPollIn, ctx: NodeContext) -> JiraPollOut: ...
+
+    Pyright + mypy then enforce the input/output shapes for the subclass
+    without LSP variance errors (the override narrows correctly because the
+    parameter is typed at the Generic parameter, not at `BaseModel`).
     """
 
     kind: ClassVar[str] = ""
@@ -125,15 +135,17 @@ class BaseNode:
     display_name: ClassVar[str] = ""
     description: ClassVar[str] = ""
 
-    async def run(self, inputs: BaseModel, ctx: NodeContext) -> NodeResult:
+    async def run(self, inputs: InputT | BaseModel | dict[str, Any], ctx: NodeContext) -> NodeResult:
         # Validate inputs against the declared schema (defense in depth — the
         # caller should already have done this, but a misconfigured DAG could
         # skip it).
         if not isinstance(inputs, self.input_schema):
-            inputs = self.input_schema.model_validate(inputs)
+            validated: InputT = self.input_schema.model_validate(inputs)  # type: ignore[assignment]
+        else:
+            validated = inputs  # type: ignore[assignment]
         start = time.perf_counter()
         try:
-            output = await self._execute(inputs, ctx)
+            output = await self._execute(validated, ctx)
             latency_ms = int((time.perf_counter() - start) * 1000)
             return NodeResult(
                 success=True,
@@ -162,7 +174,7 @@ class BaseNode:
                 error_message=str(exc)[:512],
             )
 
-    async def _execute(self, inputs: BaseModel, ctx: NodeContext) -> BaseModel | dict[str, Any]:
+    async def _execute(self, inputs: InputT, ctx: NodeContext) -> OutputT:
         """Subclasses implement this. Return the typed output (or raise)."""
         raise NotImplementedError(f"{type(self).__name__}._execute not implemented")
 

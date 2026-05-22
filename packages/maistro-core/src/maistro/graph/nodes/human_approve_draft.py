@@ -38,7 +38,7 @@ class ApproveDraftOut(BaseModel):
 
 
 @register_node
-class HumanApproveDraftNode(BaseNode):
+class HumanApproveDraftNode(BaseNode[ApproveDraftIn, ApproveDraftOut]):
     kind: ClassVar[str] = "human.approve_draft"
     kind_category: ClassVar = "hitl"
     input_schema: ClassVar[type[BaseModel]] = ApproveDraftIn

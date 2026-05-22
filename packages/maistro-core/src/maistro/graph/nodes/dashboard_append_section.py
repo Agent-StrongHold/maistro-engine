@@ -35,7 +35,7 @@ class DashboardAppendOut(BaseModel):
 
 
 @register_node
-class DashboardAppendSectionNode(BaseNode):
+class DashboardAppendSectionNode(BaseNode[DashboardAppendIn, DashboardAppendOut]):
     kind: ClassVar[str] = "dashboard.append_section"
     kind_category: ClassVar = "sync.transform"
     input_schema: ClassVar[type[BaseModel]] = DashboardAppendIn
