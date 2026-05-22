@@ -19,6 +19,7 @@ import MCP from "./pages/MCP";
 import Memory from "./pages/Memory";
 import MessageBoard from "./pages/MessageBoard";
 import Missions from "./pages/Missions";
+import OptimizationInbox from "./pages/OptimizationInbox";
 import Quotas from "./pages/Quotas";
 import Schedules from "./pages/Schedules";
 import Settings from "./pages/Settings";
@@ -123,6 +124,8 @@ function AppRoutes() {
                 {!pmPoc && <Route path="skills" element={<Skills />} />}
                 <Route path="mcp" element={<MCP />} />
                 {!pmPoc && <Route path="topology" element={<Topology />} />}
+                <Route path="optimizer" element={<OptimizationInbox />} />
+                <Route path="optimization-inbox" element={<OptimizationInbox />} />
                 {!pmPoc && <Route path="messages" element={<MessageBoard />} />}
                 {!pmPoc && <Route path="quotas" element={<Quotas />} />}
                 {!pmPoc && <Route path="audit" element={<AuditLog />} />}
