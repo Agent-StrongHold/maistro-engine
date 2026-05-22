@@ -67,8 +67,8 @@ async def test_runner_calls_llm_for_non_gated_capability(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_runner_short_circuits_no_data_capabilities(monkeypatch):
-    """poll_jira and the rest of _NO_DATA_WITHOUT_TOOLS must not call the LLM
-    and must return source='no_data' rather than fabricate."""
+    """Capabilities still in _NO_DATA_WITHOUT_TOOLS (Airtable, fetch_program_metrics,
+    etc) must not invoke the LLM and must return source='no_data'."""
     called = False
 
     async def fake_llm_call(*args, **kwargs):
@@ -80,11 +80,165 @@ async def test_runner_short_circuits_no_data_capabilities(monkeypatch):
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
 
     result = await pm_runner.run_pm_task(
-        _task(agent_id="delivery", capability="poll_jira",
-              description="Fetch open issues for Alice")
+        _task(agent_id="program_manager", capability="poll_airtable",
+              description="Sync from Airtable")
     )
-    assert called is False, "poll_jira must not invoke the LLM in v0 (no MCP wired)"
+    assert called is False, "poll_airtable must not invoke the LLM in v0 (Airtable not wired)"
     assert "source=no_data" in result.final_answer
+
+
+@pytest.mark.asyncio
+async def test_jira_capability_without_pat_returns_no_data_with_link(monkeypatch):
+    """poll_jira without a Jira PAT in program_context must return
+    source='no_data' AND surface the PAT generation URL so the user can fix it."""
+
+    async def fake_llm_call(*args, **kwargs):
+        return "{}"
+
+    async def fake_mcp_call(*args, **kwargs):
+        raise AssertionError("MCP must not be called when there's no PAT")
+
+    monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
+    monkeypatch.setattr(
+        pm_runner.AtlassianMCPClient, "jira_get_my_issues", fake_mcp_call
+    )
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+
+    task = _task(agent_id="delivery", capability="poll_jira",
+                 description="Fetch open issues for Alice")
+    result = await pm_runner.run_pm_task(task)
+    assert "source=no_data" in result.final_answer
+    # Must surface the PAT URL so 2FA-retry flow works
+    assert "jira.example.com" in result.final_answer
+    assert "PATs" in result.final_answer or "PAT" in result.final_answer
+
+
+@pytest.mark.asyncio
+async def test_jira_capability_with_pat_calls_mcp_then_llm(monkeypatch):
+    """poll_jira with a PAT must: (1) call AtlassianMCPClient with the PAT,
+    (2) feed the resulting issues into the LLM, (3) return a PMRoleOutput
+    with source='llm' and jira_data preserved."""
+    from maistro.tools.atlassian import JiraIssue, JiraSearchResult
+
+    mcp_called_with: dict[str, object] = {}
+    llm_called_with: dict[str, object] = {}
+
+    async def fake_mcp_get_my_issues(self, *, max_results, jira_pat):
+        mcp_called_with["max_results"] = max_results
+        mcp_called_with["jira_pat"] = jira_pat
+        return JiraSearchResult(
+            issues=(
+                JiraIssue(key="PROJ-1", summary="Ship pm-fleet v0",
+                          status="In Progress", assignee="alice",
+                          issuetype="Story"),
+                JiraIssue(key="PROJ-2", summary="Wire Atlassian MCP",
+                          status="Open", assignee="alice", issuetype="Task"),
+            ),
+            total=2,
+            jql="assignee = currentUser()",
+        )
+
+    async def fake_llm_call(messages, *, model=None, temperature=None,
+                             json_mode=True, timeout=120.0):
+        llm_called_with["messages"] = messages
+        return ('{"capability":"poll_jira",'
+                '"summary":"Alice has 2 open issues — both v0 critical-path.",'
+                '"result":{"summary_count":2,"top_issue":"PROJ-1"},'
+                '"source":"llm"}')
+
+    monkeypatch.setattr(
+        pm_runner.AtlassianMCPClient,
+        "jira_get_my_issues",
+        fake_mcp_get_my_issues,
+    )
+    monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+
+    task = TaskCreate(
+        description="Fetch open Jira issues",
+        agent_id="delivery",
+        capability="poll_jira",
+        program_context={
+            "program_name": "MAISTRO v0",
+            "atlassian_pats": {"jira": "fake-jira-pat-abc123"},
+            "confirmed": False,
+        },
+    )
+    result = await pm_runner.run_pm_task(task)
+
+    # MCP was called with the right PAT
+    assert mcp_called_with["jira_pat"] == "fake-jira-pat-abc123"
+    # LLM saw the Jira data in its prompt
+    user_msg = llm_called_with["messages"][1]["content"]
+    assert "jira_data" in user_msg
+    assert "PROJ-1" in user_msg
+    # Output has source=llm + Alice's summary preserved
+    assert "source=llm" in result.final_answer
+    assert "Alice has 2 open issues" in result.final_answer
+
+
+@pytest.mark.asyncio
+async def test_detect_blockers_uses_blockers_jql(monkeypatch):
+    """detect_blockers must call jira_search_issues with the unresolved-blockers JQL,
+    not jira_get_my_issues."""
+    from maistro.tools.atlassian import JiraSearchResult
+
+    search_call: dict[str, object] = {}
+
+    async def fake_search(self, jql, *, max_results, jira_pat):
+        search_call["jql"] = jql
+        search_call["max_results"] = max_results
+        return JiraSearchResult(issues=(), total=0, jql=jql)
+
+    async def fake_llm_call(*args, **kwargs):
+        return ('{"capability":"detect_blockers","summary":"No blockers found.",'
+                '"result":{"blockers":[]},"source":"llm"}')
+
+    monkeypatch.setattr(
+        pm_runner.AtlassianMCPClient, "jira_search_issues", fake_search,
+    )
+    monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+
+    task = TaskCreate(
+        description="Identify blockers",
+        agent_id="delivery",
+        capability="detect_blockers",
+        program_context={"atlassian_pats": {"jira": "fake-pat"}, "confirmed": False},
+    )
+    await pm_runner.run_pm_task(task)
+    assert "Unresolved" in search_call["jql"]
+    assert "Blocked" in search_call["jql"]
+
+
+@pytest.mark.asyncio
+async def test_jira_mcp_transport_error_returns_no_data_with_hint(monkeypatch):
+    """When mcp-atlassian is unreachable or returns an error, we must
+    return source='no_data' with a 2FA-retry hint, not crash."""
+
+    async def fake_mcp_raises(self, *, max_results, jira_pat):
+        from maistro.tools.atlassian import AtlassianMCPError
+        raise AtlassianMCPError("connection refused on http://atlassian-mcp:8000")
+
+    async def fake_llm_call(*args, **kwargs):
+        raise AssertionError("LLM must not be called when MCP fails")
+
+    monkeypatch.setattr(
+        pm_runner.AtlassianMCPClient, "jira_get_my_issues", fake_mcp_raises,
+    )
+    monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
+    monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
+
+    task = TaskCreate(
+        description="Fetch open issues",
+        agent_id="delivery",
+        capability="poll_jira",
+        program_context={"atlassian_pats": {"jira": "fake-pat"}, "confirmed": False},
+    )
+    result = await pm_runner.run_pm_task(task)
+    assert "source=no_data" in result.final_answer
+    assert "Atlassian MCP error" in result.final_answer
+    assert "regenerate" in result.final_answer or "2FA" in result.final_answer
 
 
 @pytest.mark.asyncio

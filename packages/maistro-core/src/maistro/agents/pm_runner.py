@@ -40,6 +40,7 @@ from maistro.graph.types import (
     PMRoleOutput,
 )
 from maistro.tasks.models import TaskCreate
+from maistro.tools.atlassian import AtlassianMCPClient, AtlassianMCPError
 
 _log = logging.getLogger("hive.engine.pm")
 logger = structlog.get_logger()
@@ -57,19 +58,27 @@ _PM_AGENT_TO_ROLE: dict[str, AgentRole] = {
 
 # Capabilities whose data inputs live in an external system we may not
 # have wired yet. They short-circuit with source="no_data" before the
-# LLM is called. v0 Atlassian (Day 3) replaces the Jira items here with
-# real MCP tool-call paths; until then we don't fabricate data.
+# LLM is called. v0 Day 3 wires Atlassian (poll_jira, detect_blockers,
+# parts of fetch_program_state) — those moved to _JIRA_DRIVEN_CAPABILITIES
+# below. Airtable + GitHub remain no-data until later wiring.
 _NO_DATA_WITHOUT_TOOLS: set[str] = {
-    "poll_jira",
     "sync_jira",
     "create_jira_ticket",
     "create_subtask",
-    "detect_blockers",
     "poll_airtable",
     "fetch_program_metrics",
-    "fetch_program_state",
     "fetch_dependency_graph",
     "publish_dashboard",
+}
+
+# Capabilities that drive a Jira/Confluence MCP tool call BEFORE the LLM,
+# then feed the real data into the LLM context for synthesis. PATs come
+# from task.program_context["atlassian_pats"] populated by Hive from the
+# encrypted credential store. Never read PATs from env.
+_JIRA_DRIVEN_CAPABILITIES: set[str] = {
+    "poll_jira",
+    "detect_blockers",
+    "fetch_program_state",
 }
 
 
@@ -102,6 +111,112 @@ def _no_data_response(capability: str, payload: dict[str, Any]) -> PMRoleOutput:
         result={"payload": payload, "reason": "tool_unavailable"},
         source="no_data",
     )
+
+
+def _extract_atlassian_pats(payload: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Pull Jira + Confluence PATs out of program_context. Hive populates
+    `program_context["atlassian_pats"] = {"jira": "...", "confluence": "..."}`
+    from the per-user encrypted credential store before invoking pm_runner.
+    PATs MUST NOT come from env per the v0 security model.
+    """
+    program = payload.get("program") if isinstance(payload, dict) else None
+    if not isinstance(program, dict):
+        return (None, None)
+    pats = program.get("atlassian_pats")
+    if not isinstance(pats, dict):
+        return (None, None)
+    jira_pat = pats.get("jira") if isinstance(pats.get("jira"), str) else None
+    confluence_pat = pats.get("confluence") if isinstance(pats.get("confluence"), str) else None
+    return (jira_pat or None, confluence_pat or None)
+
+
+async def _run_jira_driven(
+    role: AgentRole,
+    capability: str,
+    payload: dict[str, Any],
+) -> PMRoleOutput:
+    """Tool-call then LLM-synthesize. Real Atlassian data, real Claude synthesis.
+
+    Flow:
+      1. Pull user's Jira PAT from program_context (never env).
+      2. If absent — return source='no_data' with a clear hint to set credentials.
+      3. Call mcp-atlassian → get real issues / state.
+      4. Inject the real data into the LLM prompt context.
+      5. Let Claude synthesize the PMRoleOutput.
+    """
+    jira_pat, _ = _extract_atlassian_pats(payload)
+    if not jira_pat:
+        return PMRoleOutput(
+            capability=capability,
+            summary=(
+                "No Jira PAT in credentials. "
+                "Open Hive → Credentials → 'Jira PAT (on-prem)' and "
+                "paste a token from "
+                "https://jira.example.com/secure/ViewProfile.jspa"
+                "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
+            ),
+            result={"reason": "no_jira_pat"},
+            source="no_data",
+        )
+
+    client = AtlassianMCPClient()
+
+    # Capability-specific query — capability-bound tool scope per the v0
+    # security model. poll_jira uses jira_get_my_issues (read-only); other
+    # capabilities pick the right read tool with hardcoded shape.
+    try:
+        if capability == "poll_jira":
+            search = await client.jira_get_my_issues(max_results=25, jira_pat=jira_pat)
+            tool_result = search.to_dict()
+        elif capability == "detect_blockers":
+            # Look for issues likely to block — JQL filter against the current
+            # user, sorted by status. The LLM then identifies actual blockers.
+            search = await client.jira_search_issues(
+                jql="assignee = currentUser() AND resolution = Unresolved "
+                "AND status in (Blocked, 'In Progress', Open) ORDER BY updated DESC",
+                max_results=50,
+                jira_pat=jira_pat,
+            )
+            tool_result = search.to_dict()
+        elif capability == "fetch_program_state":
+            # Program state = current user's active issues + recently updated.
+            search = await client.jira_get_my_issues(max_results=50, jira_pat=jira_pat)
+            tool_result = search.to_dict()
+        else:
+            # Unknown Jira-driven capability — return no_data rather than guess.
+            return _no_data_response(capability, payload)
+    except AtlassianMCPError as exc:
+        return PMRoleOutput(
+            capability=capability,
+            summary=(
+                f"Atlassian MCP error: {exc}. "
+                "If your PAT has 2FA, regenerate it at the same Jira URL and "
+                "save again under Hive → Credentials."
+            ),
+            result={"error": str(exc)},
+            source="no_data",
+        )
+
+    # Feed real data into the LLM for synthesis.
+    enriched_payload = {**payload, "jira_data": tool_result}
+    messages = _build_messages(role, capability, enriched_payload)
+    try:
+        raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
+    except Exception as exc:
+        return PMRoleOutput(
+            capability=capability,
+            summary=(
+                f"Got {tool_result.get('total', 0)} Jira issues from {tool_result.get('jql', '?')}, "
+                f"but LLM synthesis failed: {exc}"
+            ),
+            result={"jira_data": tool_result, "llm_error": str(exc)},
+            source="no_data",
+        )
+    out = _parse_pm_output(raw, capability)
+    # Always preserve the raw Jira data so downstream agents can re-use it.
+    if isinstance(out.result, dict):
+        out.result.setdefault("jira_data", tool_result)
+    return out
 
 
 def _parse_pm_output(raw: str, capability: str) -> PMRoleOutput:
@@ -214,9 +329,15 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     if task.program_context:
         payload["program"] = task.program_context
 
-    # Short-circuit capabilities that require unwired data tools — never
-    # fabricate. Day 3+ wires Atlassian MCP, Day 4 wires browser-use.
-    if capability in _NO_DATA_WITHOUT_TOOLS:
+    # Routing:
+    #   1. Jira-driven capabilities → real MCP tool call → real data into LLM
+    #      synthesis (Day 3).
+    #   2. _NO_DATA_WITHOUT_TOOLS → short-circuit to source='no_data' (Airtable
+    #      etc., not wired yet — never fabricate).
+    #   3. Everything else → straight LLM call with persona + capability prompt.
+    if capability in _JIRA_DRIVEN_CAPABILITIES:
+        out = await _run_jira_driven(role, capability, payload)
+    elif capability in _NO_DATA_WITHOUT_TOOLS:
         out = _no_data_response(capability, payload)
     else:
         messages = _build_messages(role, capability, payload)
