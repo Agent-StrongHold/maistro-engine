@@ -8,15 +8,21 @@ from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from logging_setup import configure_logging
 from middleware.auth import AuthMiddleware
+from middleware.request_log import RequestLogMiddleware
 from pydantic import BaseModel, ConfigDict
 from routes import (
     agents,
     audit,
+    program,
+    work_items,
     auth,
+    credentials,
     chat,
     cli,
     containers,
+    dag_runs,
     dags,
     health,
     install,
@@ -67,11 +73,15 @@ async def respond_to_confirm(confirm_id: str, body: ConfirmResponseBody):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
+    import stores
+    from settings_defaults import apply_default_settings_if_needed
+
     try:
         await foundation_service.start_foundation(get_settings())
     except Exception:
-        import stores
         stores.initialize_stores()
+    apply_default_settings_if_needed()
     try:
         await engine_service.start_engine(get_settings())
     except Exception:
@@ -102,6 +112,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     app = FastAPI(title="Hive Conductor", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
@@ -110,16 +121,20 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(RequestLogMiddleware)
     app.add_middleware(AuthMiddleware)
 
     app.include_router(health.router)
     app.include_router(auth.router, prefix="/v1/auth")
+    app.include_router(credentials.router, prefix="/v1/credentials")
     app.include_router(install.router, prefix="/v1/install")
     app.include_router(chat.router, prefix="/v1/chat")
     app.include_router(missions.router, prefix="/v1/tasks")
     app.include_router(schedules.router, prefix="/v1/schedules")
     app.include_router(skills.router, prefix="/v1/skills")
     app.include_router(agents.router, prefix="/v1/agents")
+    app.include_router(program.router, prefix="/v1/program")
+    app.include_router(work_items.router, prefix="/v1/work-items")
     app.include_router(mcp.router, prefix="/v1/mcp")
     app.include_router(cli.router, prefix="/v1/cli")
     app.include_router(containers.router, prefix="/v1/containers")
@@ -129,6 +144,7 @@ def create_app() -> FastAPI:
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")
     app.include_router(dags.router, prefix="/v1/dags")
+    app.include_router(dag_runs.router, prefix="/v1/dag-runs")
     app.include_router(messages.router, prefix="/v1/messages")
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
@@ -145,6 +161,11 @@ def create_app() -> FastAPI:
 
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
+            # Do not return the SPA shell for unknown API paths (avoids JSON parse errors in the UI).
+            if full_path.startswith("v1/"):
+                from starlette.responses import JSONResponse
+
+                return JSONResponse(status_code=404, content={"detail": "Not Found"})
             fp = STATIC_DIR / full_path
             if fp.is_file():
                 return FileResponse(fp)
