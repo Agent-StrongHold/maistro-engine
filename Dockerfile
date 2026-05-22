@@ -50,7 +50,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN uv pip install --system \
     -e "./packages/maistro-core[llm,sandbox,observability]" \
     -e "./packages/maistro-server" \
-    "alembic>=1.14"
+    "alembic>=1.14" \
+    "pydantic-ai-slim[openai]>=0.1" \
+    "openai>=1.40,<2" \
+    "httpx>=0.27.0"
 
 # Install browser-use + Playwright + Chromium for the RESEARCH role's
 # web tool (Day 4). Pinned versions chosen for stability; v1 may relax
