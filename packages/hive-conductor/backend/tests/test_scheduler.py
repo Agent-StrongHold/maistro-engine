@@ -140,8 +140,17 @@ def test_should_fire_field_mismatch_returns_false() -> None:
 # --- start_scheduler / stop_scheduler singleton ---------------------------
 
 
-def test_start_scheduler_creates_singleton_once() -> None:
+def test_start_scheduler_creates_singleton_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import services.scheduler as sched
+
+    # Don't actually schedule the asyncio task; just verify singleton wiring.
+    def _swallow(coro: Any) -> Any:
+        coro.close()
+        return None
+
+    monkeypatch.setattr(sched.asyncio, "ensure_future", _swallow)
 
     assert sched._runner is None
     sched.start_scheduler()
@@ -152,9 +161,16 @@ def test_start_scheduler_creates_singleton_once() -> None:
     sched.stop_scheduler()
 
 
-def test_stop_scheduler_clears_singleton() -> None:
+def test_stop_scheduler_clears_singleton(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import services.scheduler as sched
 
+    def _swallow(coro: Any) -> Any:
+        coro.close()
+        return None
+
+    monkeypatch.setattr(sched.asyncio, "ensure_future", _swallow)
     sched.start_scheduler()
     assert sched._runner is not None
     sched.stop_scheduler()

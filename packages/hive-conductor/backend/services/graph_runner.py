@@ -56,7 +56,10 @@ async def execute_dag(dag_data: dict) -> dict[str, Any]:
         run_scout=dag_data.get("run_scout", False),
     )
 
-    blackboard = GraphBlackboard(task_objective=dag_data.get("name", "Unnamed DAG"))
+    blackboard = GraphBlackboard(
+        task_objective=dag_data.get("name", "Unnamed DAG"),
+        workspace=dag_data.get("workspace", "/tmp/maistro-workspace"),  # nosec B108
+    )
 
     llm_call = _build_llm_call()
 
@@ -210,7 +213,10 @@ async def execute_dag_streaming(dag_data: dict):
         run_scout=dag_data.get("run_scout", False),
     )
 
-    blackboard = GraphBlackboard(task_objective=dag_data.get("name", "Unnamed DAG"))
+    blackboard = GraphBlackboard(
+        task_objective=dag_data.get("name", "Unnamed DAG"),
+        workspace=dag_data.get("workspace", "/tmp/maistro-workspace"),  # nosec B108
+    )
     llm_call = _build_llm_call()
 
     yield {"status": "started", "node_count": len(nodes_cfg), "entry": entry_node}
