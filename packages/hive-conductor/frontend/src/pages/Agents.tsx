@@ -120,7 +120,7 @@ function inferStrategy(a: Agent): Strategy {
 function soulExcerpt(a: Agent): string {
   const cfg = a.config as Record<string, unknown>;
   const soul = typeof cfg.soul === "string" ? cfg.soul : a.description || "";
-  return soul.length > 80 ? soul.slice(0, 80) + "\u2026" : soul;
+  return soul.length > 80 ? soul.slice(0, 80) + "…" : soul;
 }
 
 function SBadge({ s }: { s: Strategy }) {
@@ -324,7 +324,7 @@ export default function Agents() {
 
       {tab === 0 && (
         loading ? <LoadingSpinner /> : agents.length === 0 ? (
-          <EmptyState icon="\uD83D\uDC1D" title="No agents yet" action="Create Agent" onAction={() => setShowCreate(true)} />
+          <EmptyState icon="🐝" title="No agents yet" action="Create Agent" onAction={() => setShowCreate(true)} />
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, padding: "0 0 80px" }}>
             {agents.map((a) => {

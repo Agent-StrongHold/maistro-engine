@@ -30,9 +30,13 @@ def _init_engine() -> None:
 
     _seed_test_user()
 
+    import tempfile
+    from services import user_credentials as cred_svc
+
+    cred_svc.init_credential_store(tempfile.mkdtemp(prefix="hive-cred-test-"))
+
 
 def _seed_test_user() -> None:
-    import bcrypt
     import stores
 
     if len(stores.users) > 0:
@@ -41,21 +45,20 @@ def _seed_test_user() -> None:
     from datetime import UTC, datetime
 
     now_ts = datetime.now(UTC)
-    pw_hash = bcrypt.hashpw(b"testpass", bcrypt.gensalt()).decode()
+    # Precomputed bcrypt hashes (legacy); login auto-upgrades to Argon2id on success.
     stores.users["user"] = stores.users._model_class(
         id="user",
         username="testuser",
-        password_hash=pw_hash,
+        password_hash="$2b$12$hmpbR.C6bkLEJ4d9PYzoqOthlZNKk.WOSjXnLxHpC0Y3S6sgdYfPq",
         role="user",
         is_active=True,
         permissions=[],
         created_at=now_ts,
     )
-    pw_hash_admin = bcrypt.hashpw(b"adminpass", bcrypt.gensalt()).decode()
     stores.users["admin"] = stores.users._model_class(
         id="admin",
         username="testadmin",
-        password_hash=pw_hash_admin,
+        password_hash="$2b$12$QByl/bXdX8r5UJOGZvS1uelzetMHaGLsRG0hu97dSDIerv2FFdbH.",
         role="admin",
         is_active=True,
         permissions=[],

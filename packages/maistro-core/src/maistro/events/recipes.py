@@ -6,7 +6,7 @@ Import and register what you need, or use as templates.
 
 from __future__ import annotations
 
-from maistro.events.bus import EventCategory, Trigger, TriggerCondition
+from maistro.events.bus import Trigger, TriggerCondition
 
 
 def coinswarm_fitness_alert(
@@ -57,7 +57,7 @@ def coinswarm_drawdown_alert(
 
 def coinswarm_evolution_complete(
     ha_url: str = "http://localhost:8123",
-    ha_token: str = "",
+    ha_token: str = "",  # nosec B107 — empty-string default; real token comes from caller
     entity_id: str = "sensor.coinswarm_evolution_status",
 ) -> Trigger:
     return Trigger(

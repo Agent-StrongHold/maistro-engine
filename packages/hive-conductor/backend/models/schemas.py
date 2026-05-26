@@ -127,6 +127,9 @@ class Agent(BaseModel):
     status: Literal["idle", "busy", "offline", "error"]
     capabilities: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
+    tagline: str = ""
+    primary_capability: str = ""
+    primary_action_label: str = ""
     current_mission: str | None = None
     tasks_completed: int = 0
     avg_response_time_ms: float = 0.0
@@ -204,16 +207,16 @@ class MemoryNamespace(BaseModel):
 class SettingsModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    api_base_url: str = "http://localhost:8101"
-    default_model: str = "gpt-4"
-    temperature: float = 0.7
-    max_tokens: int = 4096
+    api_base_url: str = "http://127.0.0.1:8101"
+    default_model: str = "cerebras-qwen-3-235b-a22b-2507"
+    temperature: float = 0.2
+    max_tokens: int = 8192
     stream_responses: bool = True
-    theme: Literal["dark", "light", "system"] = "dark"
-    notifications_enabled: bool = True
+    theme: Literal["dark", "light", "system"] = "system"
+    notifications_enabled: bool = False
     auto_save_sessions: bool = True
     telemetry_enabled: bool = False
-    log_level: Literal["debug", "info", "warn", "error"] = "info"
+    log_level: Literal["debug", "info", "warn", "error"] = "debug"
 
 
 class HiveUser(BaseModel):
@@ -229,9 +232,9 @@ class HiveUser(BaseModel):
     created_at: datetime
 
     def verify_password(self, plain: str) -> bool:
-        import bcrypt
+        from maistro.security.passwords import verify_password
 
-        return bcrypt.checkpw(plain.encode(), self.password_hash.encode())
+        return verify_password(plain, self.password_hash)
 
     def has_permission(self, perm: str) -> bool:
         if self.role == "admin":

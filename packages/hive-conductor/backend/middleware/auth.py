@@ -18,6 +18,7 @@ logger = logging.getLogger("hive.auth_middleware")
 _PUBLIC_PREFIXES = (
     "/v1/setup/",
     "/v1/auth/login",
+    "/v1/auth/register",
     "/v1/voice/",
     "/health",
     "/docs",
@@ -30,6 +31,7 @@ _PUBLIC_EXACT = frozenset({
     "/v1/setup/status",
     "/v1/setup/presets",
     "/v1/auth/login",
+    "/v1/auth/register",
     "/v1/auth/whoami",
     "/favicon.ico",
 })
@@ -47,9 +49,20 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
     },
     "POST": {
         "/v1/settings": "config.write",
+        # Server-wide MCP catalog edits affect everyone; gate behind admin.
+        "/v1/mcp/servers": "mcp.write",
+        "/v1/agents": "agents.write",
+        "/v1/skills": "skills.write",
     },
     "PUT": {
         "/v1/settings": "config.write",
+        "/v1/mcp/servers": "mcp.write",
+        "/v1/agents": "agents.write",
+        "/v1/skills": "skills.write",
+    },
+    "PATCH": {
+        "/v1/settings": "config.write",
+        "/v1/mcp/servers": "mcp.write",
     },
 }
 

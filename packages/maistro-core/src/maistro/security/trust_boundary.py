@@ -1,7 +1,7 @@
 """Trust boundary and per-agent permission system.
 
 Implements permission grants that control what agents can read, write,
-and execute. Ported from OpenClaw's trust-boundary.ts.
+and execute. Ported from the gateway product TypeScript trust-boundary module.
 """
 
 from __future__ import annotations
@@ -56,7 +56,10 @@ class TaskSpec(BaseModel):
         for scope in self.write_scopes:
             if ".." in scope:
                 violations.append(f"Path traversal detected in write scope: {scope}")
-            if scope.startswith("/") and scope not in ("/workspace", "/tmp"):
+            # The literal "/tmp" here is the RIGHT-HAND side of a not-equal
+            # check, i.e. the security gate REJECTS arbitrary /tmp/whatever
+            # paths; this is the negative case. Not a tmpfile usage.
+            if scope.startswith("/") and scope not in ("/workspace", "/tmp"):  # nosec B108
                 violations.append(f"Absolute path outside workspace: {scope}")
 
         return violations

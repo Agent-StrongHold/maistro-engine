@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from maistro.agents.context_builder import ContextBuilder
-from maistro.agents.intents import IntentRegistry
+from maistro.agents.intents import IntentRegistry, build_intent_registry
 from maistro.classifier.engine import ClassifierEngine
 from maistro.memory.learnings.extractor import ToolCorrectionExtractor
 from maistro.memory.learnings.store import InMemoryLearningStore
@@ -98,7 +98,7 @@ async def create_container(config: AgentConfig) -> Container:
     router = RouterEngine(quota_tracker)
     classifier = ClassifierEngine()
     context_builder = ContextBuilder()
-    intent_registry = IntentRegistry()
+    intent_registry = build_intent_registry()
     gate = Gate(warden=warden)
 
     from maistro.security._types import PermissionTable

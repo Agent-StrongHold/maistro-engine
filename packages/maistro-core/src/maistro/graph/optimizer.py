@@ -5,8 +5,8 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 
 from maistro.graph.types import (
-    AgentRole,
     DEFAULT_SYSTEM_PROMPTS,
+    AgentRole,
     GraphConfig,
     HyperagentOutput,
     NodeConfig,

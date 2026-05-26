@@ -47,6 +47,51 @@ def test_login_failure() -> None:
     assert r.status_code == 401
 
 
+def test_register_success() -> None:
+    c = TestClient(app)
+    r = c.post(
+        "/v1/auth/register",
+        json={
+            "username": "newpmuser",
+            "password": "securepass1",
+            "confirm_password": "securepass1",
+        },
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["user"]["username"] == "newpmuser"
+    assert data["user"]["role"] == "user"
+    who = c.get("/v1/auth/whoami")
+    assert who.json()["authenticated"] is True
+
+
+def test_register_duplicate_username() -> None:
+    c = TestClient(app)
+    r = c.post(
+        "/v1/auth/register",
+        json={
+            "username": "testuser",
+            "password": "otherpass1",
+            "confirm_password": "otherpass1",
+        },
+    )
+    assert r.status_code == 409
+
+
+def test_register_password_mismatch() -> None:
+    c = TestClient(app)
+    r = c.post(
+        "/v1/auth/register",
+        json={
+            "username": "mismatchuser",
+            "password": "securepass1",
+            "confirm_password": "different1",
+        },
+    )
+    assert r.status_code == 422
+
+
 def test_whoami_authenticated() -> None:
     c = _login()
     r = c.get("/v1/auth/whoami")
@@ -92,23 +137,16 @@ def test_list_missions() -> None:
     assert missions[0]["id"]
 
 
-def test_install_plan_parity() -> None:
+def test_install_plan_endpoint_retired_returns_405() -> None:
+    """POST /v1/install/plan was retired in favor of POST /v1/install/session
+    (the canonical 'kind=maistro_install_session' shape). Regression-pin
+    so nothing reintroduces it without an explicit decision."""
     c = _login()
     r = c.post(
         "/v1/install/plan",
-        json={
-            "schema_version": "1",
-            "features": ["core_lib"],
-            "stack_bringup": "none",
-        },
+        json={"schema_version": "1", "features": ["core_lib"]},
     )
-    if r.status_code == 503:
-        pytest.skip("maistro-bootstrap not adjacent (non-monorepo layout)")
-    assert r.status_code == 200
-    body = r.json()
-    assert body.get("kind") == "maistro_install_plan"
-    assert "shell_commands" in body
-    assert "compose_profile_hints" in body
+    assert r.status_code == 405
 
 
 def test_install_session_get_and_post() -> None:
@@ -254,11 +292,12 @@ def test_logout() -> None:
 def test_elevation_only_activates_granted_permissions() -> None:
     from datetime import UTC, datetime
 
-    import bcrypt
     import stores
 
+    from maistro.security.passwords import hash_password
+
     now_ts = datetime.now(UTC)
-    pw = bcrypt.hashpw(b"frankpass", bcrypt.gensalt()).decode()
+    pw = hash_password("frankpass")
     stores.users["frank"] = stores.users._model_class(
         id="frank",
         username="frank",
@@ -287,11 +326,12 @@ def test_elevation_only_activates_granted_permissions() -> None:
 def test_elevate_rejects_unassigned_permissions() -> None:
     from datetime import UTC, datetime
 
-    import bcrypt
     import stores
 
+    from maistro.security.passwords import hash_password
+
     now_ts = datetime.now(UTC)
-    pw = bcrypt.hashpw(b"frankpass", bcrypt.gensalt()).decode()
+    pw = hash_password("frankpass")
     stores.users["frank"] = stores.users._model_class(
         id="frank",
         username="frank",
@@ -312,11 +352,12 @@ def test_elevate_rejects_unassigned_permissions() -> None:
 def test_elevation_revoked_on_task_completion() -> None:
     from datetime import UTC, datetime
 
-    import bcrypt
     import stores
 
+    from maistro.security.passwords import hash_password
+
     now_ts = datetime.now(UTC)
-    pw = bcrypt.hashpw(b"frankpass", bcrypt.gensalt()).decode()
+    pw = hash_password("frankpass")
     stores.users["frank"] = stores.users._model_class(
         id="frank",
         username="frank",

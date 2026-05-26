@@ -62,4 +62,4 @@ async def run_graph(
     )
 
 
-__all__ = ["run_graph", "GraphRun", "evaluate_condition"]
+__all__ = ["GraphRun", "evaluate_condition", "run_graph"]

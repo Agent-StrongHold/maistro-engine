@@ -18,7 +18,9 @@ router = APIRouter(tags=["settings"])
 
 @router.get("", response_model=SettingsModel)
 def get_settings() -> SettingsModel:
-    return stores.settings
+    from settings_defaults import apply_default_settings_if_needed
+
+    return apply_default_settings_if_needed()
 
 
 @router.put("", response_model=SettingsModel)

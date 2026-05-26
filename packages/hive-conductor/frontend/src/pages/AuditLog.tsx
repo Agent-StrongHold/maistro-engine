@@ -183,7 +183,7 @@ export default function AuditLog() {
         {loading ? (
           <LoadingSpinner />
         ) : entries.length === 0 ? (
-          <EmptyState icon="\uD83D\uDCDC" title="No audit entries" />
+          <EmptyState icon="📜" title="No audit entries" />
         ) : (
           <div style={{ overflow: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "var(--mono)", fontSize: 10 }}>

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.metadata
+import os
 import signal
 import uuid
 from collections.abc import AsyncIterator
@@ -13,17 +14,16 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-
-from maistro_server.api import chat_completions, health, metrics, models, tasks, webhooks, ws
-from maistro_server.api.rate_limit import RateLimitMiddleware
-from maistro_server.api.schemas import ErrorDetail, ErrorResponse
 from maistro.config.settings import Settings, get_settings
 from maistro.observability.logging import configure_logging
 from maistro.observability.middleware import RequestIDMiddleware
+from maistro.tasks.progress_webhook import ProgressWebhookNotifier
 from maistro.tasks.queue import get_task_queue
 from maistro.tasks.runner import TaskRunner
 from maistro.tools.sandbox.server import cleanup_all_containers
+from maistro_server.api import agents, chat_completions, health, metrics, models, tasks, webhooks, ws
+from maistro_server.api.rate_limit import RateLimitMiddleware
+from maistro_server.api.schemas import ErrorDetail, ErrorResponse
 
 logger = structlog.get_logger()
 
@@ -69,7 +69,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_engine()
 
     queue = get_task_queue()
-    _runner = TaskRunner(queue, executor=run_task)
+
+    if os.getenv("MAISTRO_POC_MODE", "").strip().lower() == "pm":
+        from maistro.agents.catalog import AgentCatalog
+        from maistro.agents.pm_fleet import register_pm_fleet
+
+        catalog = AgentCatalog()
+        register_pm_fleet(catalog)
+        app.state.pm_catalog = catalog
+        await logger.ainfo("pm_fleet_catalog_seeded", agents=len(catalog.list_agents()))
+
+    progress_wh: ProgressWebhookNotifier | None = None
+    if settings.task_progress_webhook_url.strip():
+        progress_wh = ProgressWebhookNotifier(
+            post_url=settings.task_progress_webhook_url.strip(),
+            api_key=settings.task_progress_webhook_api_key,
+        )
+
+    _runner = TaskRunner(queue, executor=run_task, progress_webhook=progress_wh)
     await _runner.start()
     await logger.ainfo("maistro_engine_started", version=APP_VERSION)
 
@@ -183,6 +200,7 @@ app.include_router(metrics.router)
 # API v1 — all business endpoints under /v1 prefix for versioning
 API_V1_PREFIX = "/v1"
 app.include_router(tasks.router, prefix=API_V1_PREFIX)
+app.include_router(agents.router, prefix=f"{API_V1_PREFIX}/maistro")
 app.include_router(chat_completions.router, prefix=API_V1_PREFIX)
 app.include_router(models.router, prefix=API_V1_PREFIX)
 app.include_router(webhooks.router, prefix=API_V1_PREFIX)
@@ -195,9 +213,4 @@ app.include_router(models.router)
 app.include_router(webhooks.router)
 app.include_router(ws.router)
 
-# Dashboard — static HTML/JS served at /dashboard/
-import pathlib as _pathlib
-
-_dashboard_dir = _pathlib.Path(__file__).resolve().parent.parent.parent / "dashboard"
-if _dashboard_dir.is_dir():
-    app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
+# Legacy Knights dashboard removed — Hive Conductor (port 8101) is the product UI.

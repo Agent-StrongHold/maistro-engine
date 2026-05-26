@@ -11,8 +11,9 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from tools.registry.dag import Cycle, find_cycles
-from tools.registry.schema import FrontMatter
+
+from maistro_registry.dag import Cycle, find_cycles
+from maistro_registry.schema import FrontMatter
 
 
 def _make_fm(

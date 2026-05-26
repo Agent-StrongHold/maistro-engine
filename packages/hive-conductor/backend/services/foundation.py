@@ -34,6 +34,7 @@ class Foundation:
         data_dir.mkdir(parents=True, exist_ok=True)
 
         self._init_vault(settings, data_dir)
+        self._init_credentials(data_dir)
         self._init_state(settings, data_dir)
         self._init_privilege(settings, data_dir)
         await self._init_reactor(settings, data_dir)
@@ -58,6 +59,11 @@ class Foundation:
             logger.info("Vault initialised: %s", vault_path)
         except Exception as exc:
             logger.warning("Vault unavailable (%s) — secrets stay in env vars", exc)
+
+    def _init_credentials(self, data_dir: Path) -> None:
+        from services import user_credentials as cred_svc
+
+        cred_svc.init_credential_store(data_dir)
 
     def _init_state(self, settings: Settings, data_dir: Path) -> None:
         db_path = settings.conductor_state_db or str(data_dir / "state.db")

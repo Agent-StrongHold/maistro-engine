@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 import stores
-from fastapi import APIRouter, HTTPException
+
+logger = logging.getLogger("hive.agents")
+from fastapi import APIRouter, HTTPException, Request
 from models.schemas import Agent
 from pydantic import BaseModel, ConfigDict
 
+from maistro.agents.pm_capabilities import CAPABILITY_TO_WORK_ITEM, is_gated
+
 from routes.audit import log_audit
+from services.engine import get_engine
+from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode, list_pm_agents
 
 router = APIRouter(tags=["agents"])
 
@@ -17,16 +25,89 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _user_id(request: Request) -> str:
+    user = getattr(request.state, "user", None) or {}
+    return str(user.get("id") or user.get("username") or "dev")
+
+
 @router.get("", response_model=list[Agent])
-def list_agents() -> list[Agent]:
+def list_agents(request: Request) -> list[Agent]:
+    if is_pm_poc_mode():
+        engine = get_engine()
+        uid = _user_id(request)
+        raw_tasks = []
+        if engine._queue is not None:
+            items, _ = engine._queue.list_tasks(limit=200, user_id=uid)
+            raw_tasks = items
+        return list_pm_agents(raw_tasks, user_id=uid)
     return list(stores.agents.values())
 
 
 @router.get("/{agent_id}", response_model=Agent)
-def get_agent(agent_id: str) -> Agent:
+def get_agent(agent_id: str, request: Request) -> Agent:
+    if is_pm_poc_mode():
+        for agent in list_agents(request):
+            if agent.id == agent_id:
+                return agent
+        raise HTTPException(status_code=404, detail="agent not found")
     if agent_id not in stores.agents:
         raise HTTPException(status_code=404, detail="agent not found")
     return stores.agents[agent_id]
+
+
+class InvokeBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    capability: str
+    payload: dict[str, Any] = {}
+
+
+@router.post("/{agent_id}/invoke")
+async def invoke_agent(agent_id: str, body: InvokeBody, request: Request) -> dict[str, str]:
+    if not is_pm_poc_mode():
+        raise HTTPException(status_code=404, detail="Agent invoke only available in PM POC mode")
+    if is_gated(body.capability):
+        work_type = CAPABILITY_TO_WORK_ITEM.get(body.capability, "work item")
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Capability '{body.capability}' posts to Jira. "
+                f"Use POST /v1/work-items/suggest with work_type '{work_type}' "
+                "— clarify, edit, then confirm."
+            ),
+        )
+    try:
+        task_type, description, resolved_id = invoke_pm_agent(
+            agent_id, body.capability, body.payload
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    engine = get_engine()
+    uid = _user_id(request)
+    logger.info(
+        "agent_invoke agent=%s capability=%s user=%s payload_keys=%s",
+        resolved_id,
+        body.capability,
+        uid,
+        sorted(body.payload.keys()),
+    )
+    record = await engine.submit_task(
+        resolved_id,
+        description,
+        user_id=uid,
+        task_type=task_type,
+        agent_id=resolved_id,
+        capability=body.capability,
+    )
+    logger.info("agent_invoke queued task_id=%s", record.id)
+    log_audit(
+        "agent_invoke",
+        uid,
+        target=resolved_id,
+        detail={"capability": body.capability, "task_id": record.id},
+    )
+    return {"task_id": record.id, "status": "queued"}
 
 
 class CreateAgentBody(BaseModel):
@@ -42,6 +123,8 @@ class CreateAgentBody(BaseModel):
 
 @router.post("", response_model=Agent, status_code=201)
 def create_agent(body: CreateAgentBody) -> Agent:
+    if is_pm_poc_mode():
+        raise HTTPException(status_code=403, detail="PM fleet is read-only in POC mode")
     aid = str(uuid4())
     t = _now()
     agent = Agent(
@@ -78,6 +161,8 @@ class UpdateAgentBody(BaseModel):
 
 @router.put("/{agent_id}", response_model=Agent)
 def update_agent(agent_id: str, body: UpdateAgentBody) -> Agent:
+    if is_pm_poc_mode():
+        raise HTTPException(status_code=403, detail="PM fleet is read-only in POC mode")
     if agent_id not in stores.agents:
         raise HTTPException(status_code=404, detail="agent not found")
     agent = stores.agents[agent_id]
@@ -90,6 +175,8 @@ def update_agent(agent_id: str, body: UpdateAgentBody) -> Agent:
 
 @router.delete("/{agent_id}", status_code=204)
 def delete_agent(agent_id: str) -> None:
+    if is_pm_poc_mode():
+        raise HTTPException(status_code=403, detail="PM fleet is read-only in POC mode")
     if agent_id not in stores.agents:
         raise HTTPException(status_code=404, detail="agent not found")
     stores.agents.pop(agent_id)
@@ -98,6 +185,12 @@ def delete_agent(agent_id: str) -> None:
 
 @router.post("/{agent_id}/scan")
 def scan_agent(agent_id: str) -> dict:
+    if is_pm_poc_mode():
+        from maistro.agents.pm_fleet import get_pm_def
+
+        if get_pm_def(agent_id) is None:
+            raise HTTPException(status_code=404, detail="agent not found")
+        return {"findings": [], "status": "clean"}
     if agent_id not in stores.agents:
         raise HTTPException(status_code=404, detail="agent not found")
     return {"findings": [], "status": "clean"}
@@ -113,10 +206,12 @@ class ForgeAgentBody(BaseModel):
 
 @router.post("/forge", response_model=Agent)
 def forge_agent(body: ForgeAgentBody) -> Agent:
+    if is_pm_poc_mode():
+        raise HTTPException(status_code=403, detail="PM fleet is read-only in POC mode")
     import random
     import string
 
-    suffix = "".join(random.choices(string.ascii_lowercase, k=6))
+    suffix = "".join(random.choices(string.ascii_lowercase, k=6))  # nosec B311 — display-only id suffix; UUID4 is the actual identity
     aid = str(uuid4())
     t = _now()
     agent = Agent(

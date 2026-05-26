@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, integration]
+    branches: [main, integration, merge/main-into-integration, research/pm-fleet-poc]
   pull_request:
-    branches: [main, integration]
+    branches: [main, integration, research/pm-fleet-poc]
 
 permissions:
   contents: read
@@ -18,10 +18,19 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
-      - run: uv pip install --system -e ".[dev]" -e packages/maistro-core -e packages/maistro-server -e packages/maistro-canvas -e packages/maistro-turing -e packages/maistro-evolve
-      - run: ruff check packages/ src/
-      - run: ruff format --check packages/ src/
-      - run: mypy packages/maistro-core/src packages/maistro-server/src packages/maistro-canvas/src packages/maistro-turing/src packages/maistro-evolve/src
+      - run: uv sync --extra dev
+      - run: bash scripts/verify-monorepo-layout.sh
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: >-
+          uv run mypy
+          packages/maistro-core/src
+          packages/maistro-server/src
+          packages/maistro-turing/src
+          packages/maistro-canvas/src
+          packages/maistro-bootstrap/src
+          packages/maistro-registry/src
+          packages/maistro-evolve/src
 
   test:
     runs-on: ubuntu-latest
@@ -31,14 +40,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
-      - run: uv pip install --system -e ".[dev]"
-      # Package tests are run in separate invocations because two
-      # `tests/` directories at the same depth confuse pytest's
-      # rootdir auto-detection (ImportPathMismatchError on conftest.py).
-      # The legacy tests/ directory at repo root is excluded pending
-      # the src/maistro/ -> packages/ migration; its modules are
-      # shadowed by packages/maistro-core/src/maistro/ on the
-      # pythonpath, so they fail collection.
+      - run: uv sync --extra dev
+      - run: pytest packages/maistro-bootstrap/tests -v --tb=short
       - run: pytest packages/maistro-core/tests -v --tb=short
         env:
           REQUIRE_AUTH: "false"
@@ -51,6 +54,15 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: packages/hive-conductor/frontend/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: packages/hive-conductor/frontend
+      - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
+      - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
 
   security:
     runs-on: ubuntu-latest
@@ -59,13 +71,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install pip-audit
-      - run: pip install -e .
-      - run: pip freeze --exclude-editable > /tmp/deps.txt
-      - run: pip-audit --strict -r /tmp/deps.txt
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --extra dev
+      - run: uv pip install pip-audit
+      - run: uv pip freeze > /tmp/deps.txt
+      - run: uv run pip-audit --strict -r /tmp/deps.txt
 
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t maistro-engine:test .
+      - run: docker build -f packages/hive-conductor/Dockerfile packages/hive-conductor -t hive-conductor:ci

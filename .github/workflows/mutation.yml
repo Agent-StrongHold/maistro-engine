@@ -1,0 +1,172 @@
+# Mutation testing (cosmic-ray) — Pillar 4 of the QA gate.
+#
+# Locked gate: ≥90% mutation kill rate on every touched file (Boy Scout Rule).
+#
+# Two modes:
+#   - PR: cosmic-ray on changed files only; ≥90% kill rate to pass.
+#   - Nightly: full sweep across the load-bearing substrate (graph/, projects/,
+#     memory/outcomes, durable_runs); produces a project-wide dashboard.
+#
+# Surviving mutants are tracked in docs/MUTATION-SURVIVORS.md and are
+# treated as defects (test missed a real regression).
+
+name: mutation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro/graph/**'
+      - 'container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro/projects/**'
+      - 'container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro/memory/**'
+  schedule:
+    - cron: "0 6 * * *"   # nightly 06:00 UTC
+
+jobs:
+  mutation-pr:
+    name: Mutation testing on changed files
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v3
+      - run: uv python install 3.12
+      - run: uv sync --all-extras
+
+      - name: Identify changed Python files under load-bearing subtrees
+        id: changed
+        run: |
+          CHANGED=$(git diff --name-only origin/main...HEAD -- \
+            'container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro/graph/' \
+            'container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro/projects/' \
+            'container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro/memory/' \
+            | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGED" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          if [ -z "$CHANGED" ]; then
+            echo "No load-bearing files changed; skipping mutation test."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Write cosmic-ray.toml for changed files
+        if: steps.changed.outputs.skip != 'true'
+        run: |
+          cat > cosmic-ray.toml <<EOF
+          [cosmic-ray]
+          module-path = "container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro"
+          timeout = 30.0
+          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git"]
+          test-command = "PYTHONPATH=container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src python -m pytest container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/tests --timeout=15 -q -x"
+
+          [cosmic-ray.distributor]
+          name = "local"
+
+          [cosmic-ray.distributor.local]
+          worker-count = 4
+          EOF
+
+      - name: cosmic-ray init + exec + gate
+        if: steps.changed.outputs.skip != 'true'
+        run: |
+          uv run cosmic-ray init cosmic-ray.toml session.sqlite
+          uv run cosmic-ray exec cosmic-ray.toml session.sqlite
+          uv run cosmic-ray dump session.sqlite > mutation-results.json
+          # Compute kill rate. Surviving mutants → list them; fail gate at <90%.
+          uv run python -c "
+          import json, sys
+          rows = []
+          for line in open('mutation-results.json'):
+              line = line.strip()
+              if line:
+                  rows.append(json.loads(line))
+          total = len(rows)
+          killed = sum(1 for r in rows if r.get('test_outcome') == 'killed')
+          if total == 0:
+              print('No mutants produced — fail open (likely config error)')
+              sys.exit(1)
+          rate = killed / total
+          print(f'Mutation kill rate: {killed}/{total} = {rate:.1%}')
+          if rate < 0.90:
+              print(f'::error::Mutation kill rate {rate:.1%} below 90% gate. Survivors:')
+              for r in rows:
+                  if r.get('test_outcome') != 'killed':
+                      print(f'  - {r}')
+              sys.exit(1)
+          print('Mutation gate passed (≥90%)')
+          "
+
+      - name: Upload mutation report
+        if: always() && steps.changed.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-pr-${{ github.event.pull_request.number }}
+          path: |
+            session.sqlite
+            mutation-results.json
+
+  mutation-nightly:
+    name: Mutation testing (full sweep nightly)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv python install 3.12
+      - run: uv sync --all-extras
+
+      - name: Write cosmic-ray.toml for the full load-bearing substrate
+        run: |
+          cat > cosmic-ray.toml <<EOF
+          [cosmic-ray]
+          module-path = "container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src/maistro"
+          timeout = 60.0
+          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git", "maistro.maistro-canvas", "maistro.maistro-turing"]
+          test-command = "PYTHONPATH=container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/src python -m pytest container_registry/user_containers/sandbox_templates/maistro-engine/packages/maistro-core/tests --timeout=20 -q"
+
+          [cosmic-ray.distributor]
+          name = "local"
+
+          [cosmic-ray.distributor.local]
+          worker-count = 8
+          EOF
+
+      - name: cosmic-ray full sweep
+        run: |
+          uv run cosmic-ray init cosmic-ray.toml session-nightly.sqlite
+          uv run cosmic-ray exec cosmic-ray.toml session-nightly.sqlite
+          uv run cosmic-ray dump session-nightly.sqlite > mutation-nightly.json
+
+      - name: Project-wide mutation dashboard
+        run: |
+          uv run python -c "
+          import json
+          from collections import defaultdict
+          per_module = defaultdict(lambda: {'total': 0, 'killed': 0})
+          for line in open('mutation-nightly.json'):
+              line = line.strip()
+              if not line: continue
+              r = json.loads(line)
+              mod = r.get('module', 'unknown')
+              per_module[mod]['total'] += 1
+              if r.get('test_outcome') == 'killed':
+                  per_module[mod]['killed'] += 1
+          print('# Mutation kill rate (nightly)')
+          for mod, stats in sorted(per_module.items()):
+              rate = stats['killed']/stats['total'] if stats['total'] else 0
+              flag = '⚠️ ' if rate < 0.9 else '✅ '
+              print(f'{flag}{mod}: {stats[\"killed\"]}/{stats[\"total\"]} = {rate:.1%}')
+          " | tee mutation-dashboard.md
+
+      - name: Upload nightly mutation report + dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-nightly-${{ github.run_id }}
+          path: |
+            session-nightly.sqlite
+            mutation-nightly.json
+            mutation-dashboard.md
