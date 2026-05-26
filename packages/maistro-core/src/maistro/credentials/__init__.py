@@ -1,18 +1,17 @@
-from maistro.credentials.pool import CredentialPool
-from maistro.credentials.types import (
-    CredentialRecord,
-    SelectionStrategy,
-    PoolExhaustedError,
-    PoolStats,
+"""Per-user encrypted credentials for PM integrations."""
+
+from maistro.credentials.providers import PM_CREDENTIAL_PROVIDERS, CredentialProvider, get_provider
+from maistro.credentials.store import (
+    CredentialNotFound,
+    CredentialStoreUnavailable,
+    UserCredentialStore,
 )
-from maistro.credentials.rotation import execute_with_pool, RotationResult
 
 __all__ = [
-    "CredentialPool",
-    "CredentialRecord",
-    "SelectionStrategy",
-    "PoolExhaustedError",
-    "PoolStats",
-    "execute_with_pool",
-    "RotationResult",
+    "CredentialNotFound",
+    "CredentialProvider",
+    "CredentialStoreUnavailable",
+    "PM_CREDENTIAL_PROVIDERS",
+    "UserCredentialStore",
+    "get_provider",
 ]

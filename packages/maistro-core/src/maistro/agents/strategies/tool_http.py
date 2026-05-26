@@ -44,6 +44,10 @@ class HTTPToolExecutor:
                     data: dict[str, Any] = resp.json()
                     tools: list[dict[str, str]] = data.get("tools", [])
                     return tools
-        except Exception:
+        except Exception as _exc:
+            __import__('logging').getLogger('maistro.agents.strategies.tool_htt').warning(
+                'error_swallowed file=%s line=%d: %s',
+                'packages/maistro-core/src/maistro/agents/strategies/tool_http.py', 47, _exc,
+            )
             pass
         return []

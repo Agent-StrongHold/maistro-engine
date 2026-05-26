@@ -29,8 +29,13 @@ def _is_setup_complete() -> bool:
 
 @router.get("/status")
 def setup_status() -> dict[str, Any]:
+    from settings_defaults import is_pm_poc_mode
+
     complete = _is_setup_complete()
-    result: dict[str, Any] = {"setup_complete": complete}
+    result: dict[str, Any] = {
+        "setup_complete": complete,
+        "pm_poc_mode": is_pm_poc_mode(),
+    }
     if complete:
         kv = _get_kv()
         if kv is not None and _SETUP_KEY in kv:
@@ -44,8 +49,9 @@ class SetupCompleteBody:
 
 @router.post("/complete")
 def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
-    import bcrypt
     import stores
+
+    from maistro.security.passwords import hash_password
 
     hardware_preset = body.get("hardware_preset")
     admin_username = body.get("admin_username", "admin")
@@ -77,8 +83,8 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     else:
         config_mnemonic = None
 
-    admin_hash = bcrypt.hashpw(admin_password.encode(), bcrypt.gensalt()).decode()
-    user_hash = bcrypt.hashpw(user_password.encode(), bcrypt.gensalt()).decode()
+    admin_hash = hash_password(admin_password)
+    user_hash = hash_password(user_password)
 
     stores.users["admin"] = stores.users._model_class(
         id="admin",
@@ -99,16 +105,29 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
         did=user_did,
     )
 
+    # v0 fix: persist the Setup-chosen default_model into stores.settings so
+    # the Settings page reflects what the user actually picked (was showing
+    # the hardcoded legacy cerebras- alias regardless of Setup choice).
+    chosen_default_model = body.get("default_model") or "gemini-3.1-flash-lite"
     config = {
         "hardware_preset": hardware_preset,
         "optional_modules": modules,
         "conductor_name": body.get("conductor_name", "Hive Conductor"),
-        "default_model": body.get("default_model", "cerebras-qwen-3-235b-a22b-2507"),
+        "default_model": chosen_default_model,
         "admin_username": admin_username,
         "user_username": user_username,
         "user_did": user_did,
         "completed_at": now_ts.isoformat(),
     }
+
+    try:
+        stores.settings.default_model = chosen_default_model
+    except Exception as exc:
+        # best-effort — don't fail Setup over a settings shape mismatch.
+        import logging as _logging
+        _logging.getLogger("hive.setup").warning(
+            "default_model_set_failed: %s", exc,
+        )
 
     kv = _get_kv()
     if kv is not None:

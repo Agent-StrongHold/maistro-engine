@@ -84,6 +84,45 @@ a { color: var(--accent); }
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
 
+/* Label next to each icon — hidden by default (compact sidebar). Shown only
+   when the viewport is wide enough that we can afford to expand the rail. */
+.nav-icon-label {
+  display: none;
+}
+
+/* Expanded sidebar mode: viewport >= 1200px gets icons + labels on a wider
+   rail so the user can read where they're going instead of guessing icons. */
+@media (min-width: 1200px) {
+  .app-shell {
+    grid-template-columns: 168px 1fr;
+  }
+  .icon-sidebar {
+    align-items: stretch;
+    padding: 8px 6px;
+  }
+  .icon-sidebar::before {
+    align-self: center;
+  }
+  .nav-icon {
+    width: auto;
+    height: auto;
+    justify-content: flex-start;
+    padding: 7px 10px;
+    gap: 8px;
+    /* Lose the diamond clip on active so the label remains readable. */
+    clip-path: none !important;
+  }
+  .nav-icon.active {
+    clip-path: none;
+  }
+  .nav-icon-label {
+    display: inline;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.3px;
+  }
+}
+
 .main-content {
   padding: 14px 18px;
   overflow: auto;

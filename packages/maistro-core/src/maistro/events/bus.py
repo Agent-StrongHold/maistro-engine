@@ -13,13 +13,12 @@ No multi-tenant. No org_id. Single-instance, local-network only.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
-from collections import defaultdict
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, Callable, Coroutine
+from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger("maistro.events")

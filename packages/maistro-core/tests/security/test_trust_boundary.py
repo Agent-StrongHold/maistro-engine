@@ -1,6 +1,6 @@
 """Tests for trust boundary and permission system.
 
-Evidence source: OpenClaw's trust-boundary.ts defines a permission grant
+Evidence source: The reference implementation's trust-boundary.ts defines a permission grant
 system with glob-based path matching, time-limited grants, and task spec
 validation including path traversal detection and prompt stuffing limits.
 """
@@ -19,7 +19,7 @@ from maistro.security.trust_boundary import (
 
 
 class TestTaskSpecValidation:
-    """Evidence: OpenClaw validates task specs at the trust boundary with
+    """Evidence: The reference implementation validates task specs at the trust boundary with
     content length limits, path traversal detection, and scope requirements."""
 
     def test_valid_spec(self) -> None:
@@ -38,14 +38,14 @@ class TestTaskSpecValidation:
         assert any("Task ID" in v for v in violations)
 
     def test_description_length_limit(self) -> None:
-        """Evidence: OpenClaw limits content to 50,000 chars to prevent
+        """Evidence: The reference implementation limits content to 50,000 chars to prevent
         prompt stuffing attacks."""
         spec = TaskSpec(task_id="t1", description="x" * 60_000)
         violations = spec.validate_spec()
         assert any("50,000" in v for v in violations)
 
     def test_path_traversal_dotdot(self) -> None:
-        """Evidence: OpenClaw blocks '..' in write scopes to prevent
+        """Evidence: The reference implementation blocks '..' in write scopes to prevent
         directory traversal escapes."""
         spec = TaskSpec(
             task_id="t1",
@@ -56,7 +56,7 @@ class TestTaskSpecValidation:
         assert any("traversal" in v.lower() for v in violations)
 
     def test_absolute_path_outside_workspace(self) -> None:
-        """Evidence: OpenClaw blocks absolute paths that point outside
+        """Evidence: The reference implementation blocks absolute paths that point outside
         the workspace or tmp directories."""
         spec = TaskSpec(
             task_id="t1",
@@ -77,7 +77,7 @@ class TestTaskSpecValidation:
 
 
 class TestPermissionGrants:
-    """Evidence: OpenClaw's permission grant system uses glob patterns,
+    """Evidence: The reference implementation's permission grant system uses glob patterns,
     time-limited expiry, and per-action checks."""
 
     def test_read_permission_granted(self) -> None:
@@ -113,7 +113,7 @@ class TestPermissionGrants:
         assert not check_permission(grant, Action.WRITE, path="/workspace/config/secret.env")
 
     def test_expired_grant(self) -> None:
-        """Evidence: OpenClaw grants have expiry times. Expired grants
+        """Evidence: The reference implementation grants have expiry times. Expired grants
         must return False regardless of scope match."""
         grant = PermissionGrant(
             grantee="coder",
@@ -141,7 +141,7 @@ class TestPermissionGrants:
         assert not check_permission(grant, Action.EXECUTE, command="pytest tests/")
 
     def test_grant_id_format(self) -> None:
-        """Evidence: OpenClaw uses grant-{timestamp}-{secureId(6)} format."""
+        """Evidence: The reference implementation uses grant-{timestamp}-{secureId(6)} format."""
         grant = PermissionGrant(grantee="test", expires_at=time.time() + 60)
         assert grant.grant_id.startswith("grant-")
         parts = grant.grant_id.split("-")

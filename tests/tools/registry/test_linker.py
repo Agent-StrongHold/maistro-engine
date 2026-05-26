@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from tools.registry.linker import (
+from maistro_registry.linker import (
     FakeResolver,
     LinkResult,
     check_links,
 )
-from tools.registry.schema import FrontMatter
+from maistro_registry.schema import FrontMatter
 
 
 def _make_fm(

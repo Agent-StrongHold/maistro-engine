@@ -29,9 +29,12 @@ def health() -> dict:
         state_enabled = False
         privilege_available = False
         reactor_available = False
+    from settings_defaults import is_pm_poc_mode
+
     return {
         "status": "ok",
         "version": "0.1.0",
+        "pm_poc_mode": is_pm_poc_mode(),
         "uptime_seconds": uptime,
         "started_at": _STARTED_AT,
         "router_model": settings.chat_default_model,

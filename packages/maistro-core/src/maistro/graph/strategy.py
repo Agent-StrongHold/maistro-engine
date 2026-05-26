@@ -1,4 +1,4 @@
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -8,6 +8,7 @@ from maistro.graph.types import (
     GraphBlackboard,
     GraphTask,
     PlanOutput,
+    PMRoleOutput,
     ReviewOutput,
     ScoutContext,
     ScoutOutput,
@@ -204,12 +205,70 @@ class ConductorStrategy:
         return blackboard
 
 
+class PMStrategy:
+    """Generic v0 strategy for PM-fleet roles.
+
+    All six PM roles (INTAKE, PROGRAM_MANAGER, RESEARCH, DELIVERY,
+    RISK_DEPENDENCY, REPORTING) share this strategy. Per-role behavior comes
+    from the role-keyed `DEFAULT_SYSTEM_PROMPTS` + the per-capability prompts
+    layered on at runtime via `graph/pm_domain.py` (Day 2). v1 may split into
+    per-role strategy classes if their blackboard interactions diverge.
+    """
+
+    output_type: type[BaseModel] = PMRoleOutput
+
+    def __init__(self, role: AgentRole) -> None:
+        self.role = role
+
+    def build_user_prompt(
+        self,
+        task: GraphTask,
+        blackboard: GraphBlackboard,
+        plan: PlanOutput | None,
+        code: CodeOutput | None,
+        review: ReviewOutput | None,
+    ) -> str:
+        # PM nodes consume the blackboard, not the engineering plan/code/review.
+        # The blackboard_prefix() in node.py prepends scout_context, annotations,
+        # iteration info; this user-prompt body provides the task + (eventually)
+        # the per-capability prompt template from pm_domain.py.
+        constraints = (
+            "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
+        )
+        return f"Task: {task.description}\nConstraints:\n{constraints}"
+
+    def score_output(self, output: BaseModel) -> float:
+        if isinstance(output, PMRoleOutput) and output.source == "llm":
+            # Score by summary length as a v0 proxy for "the agent produced
+            # substantive output." Longer = better (capped softly).
+            return min(float(len(output.summary)) / 80.0, 5.0)
+        return 0.0
+
+    def update_blackboard(
+        self,
+        output: BaseModel,
+        blackboard: GraphBlackboard,
+    ) -> GraphBlackboard:
+        if isinstance(output, PMRoleOutput):
+            annotations = dict(blackboard.node_annotations)
+            annotations[self.role.value] = output.summary
+            return blackboard.model_copy(update={"node_annotations": annotations})
+        return blackboard
+
+
 STRATEGY_REGISTRY: dict[AgentRole, NodeStrategy] = {
     AgentRole.PLANNER: PlannerStrategy(),
     AgentRole.CODER: CoderStrategy(),
     AgentRole.REVIEWER: ReviewerStrategy(),
     AgentRole.SCOUT: ScoutStrategy(),
     AgentRole.CONDUCTOR: ConductorStrategy(),
+    # PM-fleet roles all share PMStrategy with role-specific blackboard updates.
+    AgentRole.INTAKE: PMStrategy(AgentRole.INTAKE),
+    AgentRole.PROGRAM_MANAGER: PMStrategy(AgentRole.PROGRAM_MANAGER),
+    AgentRole.RESEARCH: PMStrategy(AgentRole.RESEARCH),
+    AgentRole.DELIVERY: PMStrategy(AgentRole.DELIVERY),
+    AgentRole.RISK_DEPENDENCY: PMStrategy(AgentRole.RISK_DEPENDENCY),
+    AgentRole.REPORTING: PMStrategy(AgentRole.REPORTING),
 }
 
 

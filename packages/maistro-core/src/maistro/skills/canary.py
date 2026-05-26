@@ -104,7 +104,7 @@ class CanaryManager:
         deployment = self._deployments.get(skill_name)
         if not deployment:
             return False
-        return random.random() < deployment.traffic_pct
+        return random.random() < deployment.traffic_pct  # nosec B311 — canary traffic split, not crypto
 
     def record_result(self, skill_name: str, success: bool) -> None:
         """Record a canary request result."""

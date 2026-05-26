@@ -77,14 +77,29 @@ memory_entries: ModelStore = ModelStore("memory_entries", MemoryEntry)
 memory_namespaces: dict[str, MemoryNamespace] = {
     "default": MemoryNamespace(name="default", entry_count=1, size_bytes=1024)
 }
-settings: SettingsModel = SettingsModel()
+def _initial_settings() -> SettingsModel:
+    from settings_defaults import default_settings
+
+    return default_settings()
+
+
+settings: SettingsModel = _initial_settings()
 chat_sessions: ModelStore = ModelStore("chat_sessions", ChatSession)
 cli_sessions: JsonStore = JsonStore("cli_sessions")
 users: ModelStore = ModelStore("users", HiveUser)
 sessions: JsonStore = JsonStore("sessions")
+program_contexts: JsonStore = JsonStore("program_contexts")
+work_item_drafts: JsonStore = JsonStore("work_item_drafts")
 dags: JsonStore = JsonStore("dags")
 messages: JsonStore = JsonStore("messages")
 audit_log: JsonStore = JsonStore("audit_log")
+# Phase 5 Signal #3 — eval-judge verdicts keyed by run_id.
+eval_verdicts: JsonStore = JsonStore("eval_verdicts")
+# Phase 6 — optimizer proposals keyed by proposal_id.
+optimizer_proposals: JsonStore = JsonStore("optimizer_proposals")
+# Task #27 — per-user, per-provider non-secret config (e.g. Airtable base_id).
+# Key shape: f"{user_id}:{provider_id}" → dict[str, str].
+user_provider_config: JsonStore = JsonStore("user_provider_config")
 
 _all_model_stores: list[ModelStore] = [
     missions,
@@ -98,7 +113,19 @@ _all_model_stores: list[ModelStore] = [
     chat_sessions,
     users,
 ]
-_all_json_stores: list[JsonStore] = [mission_steps, cli_sessions, sessions, dags, messages, audit_log]
+_all_json_stores: list[JsonStore] = [
+    mission_steps,
+    cli_sessions,
+    sessions,
+    program_contexts,
+    work_item_drafts,
+    dags,
+    messages,
+    audit_log,
+    eval_verdicts,
+    optimizer_proposals,
+    user_provider_config,
+]
 
 
 def configure_persistence(persisted_store: Any) -> None:
@@ -123,7 +150,26 @@ def initialize_stores() -> None:
     )
 
 
+def _seed_platform_mcp() -> None:
+    """Register platform MCP catalog (multi-server) for all Hive modes."""
+    from services.mcp_defaults import merge_manifest_catalog, platform_mcp_catalog
+
+    servers, tools = merge_manifest_catalog(*platform_mcp_catalog())
+    for server in servers:
+        if server.id not in mcp_servers:
+            mcp_servers[server.id] = server
+    existing_tool_ids = {t.id for t in mcp_tools.values()}
+    for tool in tools:
+        if tool.id not in existing_tool_ids:
+            mcp_tools[tool.id] = tool
+
+
 def _seed_if_empty() -> None:
+    _seed_platform_mcp()
+    from settings_defaults import is_pm_poc_mode
+
+    if is_pm_poc_mode():
+        return
     if len(missions) == 0:
         missions["m-1"] = _mission("m-1", "Deploy canary", "running", 0.6)
         missions["m-2"] = _mission("m-2", "Backfill embeddings", "pending", 0.0)

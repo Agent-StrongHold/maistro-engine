@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { apiGet } from "../lib/api";
+import { usePmPoc } from "../context/PocMode";
+import { PM_PRODUCT_NAME } from "../lib/pmBranding";
 
 type Preset = { name: string; label: string; description: string; max_vcpu: number; max_memory_gb: number; db_backend: string; networking: string; gpu_available: boolean; reactor_enabled: boolean; max_agents: number };
 
@@ -15,9 +17,12 @@ const MODULES = [
 ];
 
 export default function Setup() {
+  const pmPoc = usePmPoc();
   const [step, setStep] = useState(0);
-  const [conductorName, setConductorName] = useState("Hive Conductor");
-  const [routerModel, setRouterModel] = useState("cerebras-qwen-3-235b-a22b-2507");
+  const [conductorName, setConductorName] = useState(pmPoc ? PM_PRODUCT_NAME : "Hive Conductor");
+  const [routerModel, setRouterModel] = useState("gemini-3.1-flash-lite");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [preset, setPreset] = useState<string | null>(null);
   const [presets, setPresets] = useState<Record<string, Preset>>({});
   const [modules, setModules] = useState<string[]>([]);
@@ -31,7 +36,88 @@ export default function Setup() {
   const [didKey, setDidKey] = useState<string | null>(null);
   const [mnemonicConfirmed, setMnemonicConfirmed] = useState(false);
 
-  const steps = ["Hive", "Hardware", "Accounts", "Modules", "Confirm"];
+  const steps = pmPoc
+    ? ["PM Fleet", "Accounts", "Confirm"]
+    : ["Hive", "Hardware", "Accounts", "Modules", "Confirm"];
+
+  useEffect(() => {
+    if (pmPoc && !preset) setPreset("laptop");
+  }, [pmPoc, preset]);
+
+  // Load available models from the LLM gateway via Hive's
+  // /v1/settings/models proxy. The user's LITELLM key stays server-side.
+  // Setup runs BEFORE any login, so the auth-gated /v1/settings/models will
+  // 401; that's expected — we fall back to a curated list of known
+  // LLM-gateway models so the dropdown is always populated. After the
+  // admin user finishes setup, settings can refresh the list from the
+  // live gateway.
+  useEffect(() => {
+    // Curated LLM gateway model aliases — sorted by "good router default"
+    // first (small, fast, cheap), then by family. Trim / extend as the
+    // gateway's catalog evolves.
+    const FALLBACK_MODELS = [
+      // Routers (small / fast / cheap — ideal default)
+      "gemini-3.1-flash-lite",
+      "gemini-2.5-flash-lite",
+      "claude-haiku-4-5",
+      "gpt-4.1-nano",
+      "gpt-5-nano",
+      // Mid-tier
+      "claude-sonnet-4-5",
+      "claude-sonnet-4-6",
+      "gemini-2.5-flash",
+      "gemini-3.5-flash",
+      "gpt-4o-mini",
+      "gpt-4.1-mini",
+      "gpt-5-mini",
+      // Heavy reasoning (overkill for router)
+      "claude-opus-4-5",
+      "claude-opus-4-6",
+      "claude-opus-4-7",
+      "gpt-5",
+      "gpt-5.1",
+      "gpt-5.2",
+      "gemini-2.5-pro",
+      "o3",
+      "o3-pro",
+      // Embedding (won't actually work as router, surfaced for completeness)
+      "text-embedding-3",
+    ];
+    setAvailableModels(FALLBACK_MODELS);
+    setRouterModel((cur) =>
+      FALLBACK_MODELS.includes(cur) ? cur : "gemini-3.1-flash-lite",
+    );
+
+    // Best-effort: ask the live gateway for the latest list; replace if we
+    // get a non-empty response. If we're pre-login the 401 just keeps the
+    // fallback. Settings page (post-login) gets a richer refresh path.
+    let active = true;
+    setModelsLoading(true);
+    apiGet<{ models: string[] }>("/v1/settings/models")
+      .then((data) => {
+        if (!active) return;
+        const models = (data.models ?? []).filter(Boolean);
+        if (models.length > 0) {
+          setAvailableModels(models);
+          if (!models.includes(routerModel)) {
+            const preferred =
+              models.find((m) => m === "gemini-3.1-flash-lite") ??
+              models.find((m) => m.startsWith("gemini-") && m.includes("flash")) ??
+              models[0];
+            setRouterModel(preferred);
+          }
+        }
+      })
+      .catch(() => {
+        /* pre-login 401 expected — fallback list is already in place */
+      })
+      .finally(() => {
+        if (active) setModelsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadPresets() {
     try {
@@ -83,7 +169,11 @@ export default function Setup() {
       body: JSON.stringify({ username: userUsername, password: userPassword }),
     });
     if (!r.ok) throw new Error("auto-login failed");
-    window.location.href = "/";
+    // When Hive is served behind the MAISTROgateway at /pm/, redirecting to "/"
+    // dumps the user at the MAISTROcatalog with no obvious way back. Use the
+    // Vite base path so they land on the Fleet page (Hive's PM-mode index
+    // auto-redirects /pm/ → /pm/agents).
+    window.location.href = import.meta.env.BASE_URL || "/";
   }
 
   void loadPresets();
@@ -127,10 +217,12 @@ export default function Setup() {
       <div style={{ width: "100%", maxWidth: 560, background: "var(--paper)", border: "2px solid var(--ink)", borderRadius: 8, overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "2px solid var(--ink)", background: "var(--honey-light)" }}>
           <div style={{ fontFamily: "var(--hand)", fontSize: 30, fontWeight: 700 }}>
-            {"\uD83D\uDC1D"} Hive Conductor
+            {"\uD83D\uDC1D"} {pmPoc ? PM_PRODUCT_NAME : "Hive Conductor"}
           </div>
           <div style={{ fontFamily: "var(--hand)", fontSize: 14, color: "var(--pencil)", marginTop: 2 }}>
-            First boot — configure your hive before the swarm can work
+            {pmPoc
+              ? "First boot — create accounts, then start the program interview"
+              : "First boot — configure your hive before the swarm can work"}
           </div>
         </div>
 
@@ -150,20 +242,60 @@ export default function Setup() {
 
           {step === 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ fontFamily: "var(--hand)", fontSize: 18, fontWeight: 600 }}>Name your hive</div>
+              <div style={{ fontFamily: "var(--hand)", fontSize: 18, fontWeight: 600 }}>
+                {pmPoc ? "Name your program workspace" : "Name your hive"}
+              </div>
+              {pmPoc && (
+                <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", lineHeight: 1.4 }}>
+                  PM POC uses six agents (Intake, Program Manager, Delivery, Risk, Reporting, Research).
+                  Hardware and crypto modules are skipped.
+                </div>
+              )}
               <div>
                 <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", marginBottom: 3 }}>CONDUCTOR NAME</div>
                 <input className="input-field" placeholder="Hive Conductor" value={conductorName} onChange={(e) => setConductorName(e.target.value)} />
               </div>
               <div>
                 <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", marginBottom: 3 }}>ROUTER MODEL</div>
-                <input className="input-field" placeholder="cerebras-qwen-3-235b-a22b-2507" value={routerModel} onChange={(e) => setRouterModel(e.target.value)} />
-                <div style={{ fontFamily: "var(--hand)", fontSize: 11, color: "var(--pencil)", marginTop: 4 }}>The queen bee's brain — classifies intent, complexity, and cost to route each request to the best worker model. Needs to be fast and cheap, not the strongest.</div>
+                {availableModels.length > 0 ? (
+                  <select
+                    className="input-field"
+                    value={routerModel}
+                    onChange={(e) => setRouterModel(e.target.value)}
+                    style={{ width: "100%" }}
+                  >
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    className="input-field"
+                    placeholder={modelsLoading ? "Loading models from gateway…" : "gemini-3.1-flash-lite"}
+                    value={routerModel}
+                    onChange={(e) => setRouterModel(e.target.value)}
+                    disabled={modelsLoading}
+                  />
+                )}
+                <div style={{ fontFamily: "var(--hand)", fontSize: 11, color: "var(--pencil)", marginTop: 4 }}>
+                  The queen bee's brain — classifies intent, complexity, and cost to route each request to the best worker model. Needs to be fast and cheap, not the strongest. <code>gemini-3.1-flash-lite</code> is a good default.{" "}
+                  <a
+                    href="https://latest.llm-gateway-admin.example.com/ui/?page=model-hub"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "var(--accent)", textDecoration: "underline" }}
+                  >
+                    Browse the MAISTRO Model Hub →
+                  </a>{" "}
+                  for details on each model (context window, pricing, capabilities).
+                </div>
               </div>
             </div>
           )}
 
-          {step === 1 && (
+          {!pmPoc && step === 1 && (
             <div>
               <div style={{ fontFamily: "var(--hand)", fontSize: 18, fontWeight: 600, marginBottom: 8 }}>Pick your hardware tier</div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -178,7 +310,7 @@ export default function Setup() {
             </div>
           )}
 
-          {step === 2 && (
+          {(pmPoc ? step === 1 : step === 2) && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ fontFamily: "var(--hand)", fontSize: 18, fontWeight: 600 }}>Create user accounts</div>
               <div style={{ fontFamily: "var(--hand)", fontSize: 13, color: "var(--pencil)" }}>
@@ -203,7 +335,7 @@ export default function Setup() {
             </div>
           )}
 
-          {step === 3 && (
+          {!pmPoc && step === 3 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ fontFamily: "var(--hand)", fontSize: 18, fontWeight: 600 }}>Optional modules</div>
               <div style={{ fontFamily: "var(--hand)", fontSize: 13, color: "var(--pencil)" }}>Enable now or later from Settings. Crypto Identity enables the BIP39 HD derivation tree.</div>
@@ -224,7 +356,7 @@ export default function Setup() {
             </div>
           )}
 
-          {step === 4 && (
+          {(pmPoc ? step === 2 : step === 4) && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ fontFamily: "var(--hand)", fontSize: 18, fontWeight: 600 }}>Confirm configuration</div>
               <div className="card">
@@ -256,18 +388,23 @@ export default function Setup() {
         </div>
 
         <div style={{ padding: "12px 20px", borderTop: "1px solid var(--rule)", display: "flex", justifyContent: "space-between" }}>
-          <button className="btn" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>{"\u2190"} back</button>
+          {step > 0 ? (
+            <button className="btn" onClick={() => setStep(Math.max(0, step - 1))}>{"\u2190"} back</button>
+          ) : (
+            // Reserve the slot so the layout doesn't jump when back appears at step 1.
+            <span style={{ display: "inline-block", minWidth: 60 }} />
+          )}
           {step < steps.length - 1 ? (
             <button className="btn btn-accent" onClick={() => setStep(step + 1)} disabled={
               (step === 0 && !conductorName.trim()) ||
-              (step === 1 && !preset) ||
-              (step === 2 && (!adminPassword || !userUsername || !userPassword))
+              (!pmPoc && step === 1 && !preset) ||
+              ((pmPoc ? step === 1 : step === 2) && (!adminPassword || !userUsername || !userPassword))
             }>
               next {"\u2192"}
             </button>
           ) : (
-            <button className="btn btn-accent" onClick={() => void finish()} disabled={loading || !preset}>
-              {loading ? "configuring hive..." : "launch the hive \uD83D\uDC1D"}
+            <button className="btn btn-accent" onClick={() => void finish()} disabled={loading || (!pmPoc && !preset)}>
+              {loading ? "configuring..." : pmPoc ? "launch PM fleet \uD83D\uDC1D" : "launch the hive \uD83D\uDC1D"}
             </button>
           )}
         </div>

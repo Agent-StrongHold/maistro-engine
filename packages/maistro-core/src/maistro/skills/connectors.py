@@ -566,7 +566,7 @@ async def search_clawhub(
     per_page: int = 20,
     http_client: httpx.AsyncClient | None = None,
 ) -> list[SkillMetadata]:
-    """Search ClawHub (OpenClaw) skill registry."""
+    """Search ClawHub public skill registry."""
     if http_client:
         try:
             resp = await http_client.get(

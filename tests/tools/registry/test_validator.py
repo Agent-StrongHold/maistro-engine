@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from textwrap import dedent
 
-from tools.registry.validator import validate_file
+from maistro_registry.validator import validate_file
 
 _VALID = dedent(
     """\

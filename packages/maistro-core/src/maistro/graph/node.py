@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import re
 import time
 import uuid
@@ -14,13 +13,12 @@ import structlog
 
 from maistro.agents.circuit_breaker import CircuitBreaker
 from maistro.graph.events import (
-    GraphEvent,
     node_completed,
     node_failed,
     node_retrying,
     node_started,
 )
-from maistro.graph.phases import TERMINAL_NODE_PHASES, NodePhase
+from maistro.graph.phases import NodePhase
 from maistro.graph.strategy import NodeStrategy, get_strategy
 from maistro.graph.types import (
     DEFAULT_SYSTEM_PROMPTS,
@@ -28,14 +26,10 @@ from maistro.graph.types import (
     AgentRole,
     GraphBlackboard,
     GraphNodeResult,
-    GraphTask,
     NodeConfig,
-    PlanOutput,
-    CodeOutput,
-    ReviewOutput,
 )
 from maistro.resilience.backoff import BackoffConfig, compute_backoff, jittered_backoff
-from maistro.resilience.classifier import ClassifiedError, ErrorCategory, classify_error
+from maistro.resilience.classifier import ClassifiedError, classify_error
 
 logger = structlog.get_logger()
 
@@ -459,7 +453,9 @@ class NodeRun:
                 import asyncio as _aio
                 loop = _aio.get_running_loop()
                 loop.create_task(coro)
-            except Exception:
+            except Exception as _exc:
+                _log_b110 = __import__('structlog').get_logger('maistro.graph.node')
+                _log_b110.warning('error_swallowed', error=str(_exc), file='packages/maistro-core/src/maistro/graph/node.py', line=456)
                 pass
 
     def to_result(self) -> GraphNodeResult:
