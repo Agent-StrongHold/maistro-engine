@@ -10,6 +10,7 @@ This replaces the naive "ask LLM to pretend it researched" pattern.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -21,8 +22,13 @@ logger = logging.getLogger("hive.tool_executor")
 
 
 async def web_search(query: str, max_results: int = 5) -> dict[str, Any]:
-    """Real web search via BrowserClient or fallback to Serper/Tavily."""
-    # Try Serper first (fast, no browser needed)
+    """Real web search via Brave Search API (primary), with fallbacks."""
+    # Brave Search (fast, real results, free tier)
+    brave_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+    if brave_key:
+        return await _brave_search(query, max_results, brave_key)
+
+    # Try Serper (fast, no browser needed)
     serper_key = os.environ.get("SERPER_API_KEY", "")
     if serper_key:
         return await _serper_search(query, max_results, serper_key)
@@ -110,6 +116,27 @@ async def clarify(questions: list[str], context: dict[str, Any]) -> dict[str, st
     except Exception as e:
         logger.error(f"Clarification failed: {e}")
         return {str(i+1): "Not specified" for i in range(len(questions))}
+
+
+async def _brave_search(query: str, max_results: int, api_key: str) -> dict[str, Any]:
+    """Web search via Brave Search API. Rate limited to 1 req/sec (free tier)."""
+    await asyncio.sleep(1.1)  # Free tier: 1 req/sec
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
+                params={"q": query, "count": max_results},
+            )
+            r.raise_for_status()
+            data = r.json()
+            results = data.get("web", {}).get("results", [])[:max_results]
+            citations = [{"title": o.get("title", ""), "url": o.get("url", ""), "snippet": o.get("description", "")[:200]} for o in results]
+            summary = " ".join(c["snippet"] for c in citations if c["snippet"])
+            return {"query": query, "summary": summary[:500], "citations": citations, "source": "brave"}
+    except Exception as e:
+        logger.warning(f"Brave search failed for '{query}': {e}")
+        return {"query": query, "summary": "", "citations": [], "source": "error", "error": str(e)}
 
 
 async def _gemini_grounded_search(query: str, max_results: int) -> dict[str, Any]:
