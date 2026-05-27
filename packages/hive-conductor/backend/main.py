@@ -190,6 +190,20 @@ def create_app() -> FastAPI:
     app.include_router(quotas.router, prefix="/v1/quotas")
     app.include_router(_confirms_router, prefix="/v1/confirms")
 
+    # Phase 6 — Canvas/Davinci DAG
+    try:
+        from routes.canvas import router as canvas_router
+        app.include_router(canvas_router)
+    except Exception:
+        pass
+
+    # Phase 7 — PM Fleet v2 (distillation, GitHub/GitLab tools, topK)
+    try:
+        from routes.pm_fleet_v2 import router as pm_fleet_v2_router
+        app.include_router(pm_fleet_v2_router)
+    except Exception:
+        pass
+
     try:
         from routes.evolution import router as evolution_router
         app.include_router(evolution_router, prefix="/v1/evolution")
