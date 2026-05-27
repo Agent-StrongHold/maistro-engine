@@ -6,9 +6,17 @@ The user never picks authors. They say:
   - "chapter book for a kid who likes Percy Jackson"
 
 The system maps (age, length, purpose) → best author examples automatically.
+
+ALSO: searches Goodreads and NYT bestseller lists via Brave Search to
+find what's CURRENTLY popular for this age/genre — not just our static list.
 """
 
 from __future__ import annotations
+
+import asyncio
+import os
+from typing import Any
+
 from dags.author_examples import (
     SEUSS, ERIC_CARLE, MO_WILLEMS, JULIA_DONALDSON, DRAGONS_LOVE_TACOS, PETE_THE_CAT,
     JUNIE_B_JONES, FROG_AND_TOAD, ELEPHANT_AND_PIGGIE,
@@ -112,3 +120,73 @@ def format_examples_for_prompt(authors: list[dict]) -> str:
         "\n".join(f"- {v}" for v in list(ENGAGEMENT_PRINCIPLES.values())[:4])
     )
     return "\n\n".join(parts)
+
+
+async def search_bestsellers(age: int, genre: str = "", tone: str = "") -> dict[str, Any]:
+    """Search Goodreads + NYT bestseller lists for what's popular NOW for this audience.
+    
+    Returns real book titles, ratings, and why they're popular — used as
+    additional context for the writing nodes alongside our static examples.
+    """
+    import httpx
+
+    brave_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+    if not brave_key:
+        return {"books": [], "source": "none"}
+
+    # Build age-appropriate search query
+    if age <= 5:
+        age_term = "picture books toddler preschool"
+    elif age <= 7:
+        age_term = "early reader beginning chapter books ages 5-7"
+    elif age <= 10:
+        age_term = "middle grade chapter books ages 8-10"
+    else:
+        age_term = "middle grade YA young adult ages 10-14"
+
+    query = f"goodreads best {age_term} {genre} {tone} 2024 highest rated".strip()
+
+    try:
+        await asyncio.sleep(1.1)  # Brave rate limit
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={"X-Subscription-Token": brave_key, "Accept": "application/json"},
+                params={"q": query, "count": 5},
+            )
+            r.raise_for_status()
+            data = r.json()
+            results = data.get("web", {}).get("results", [])[:5]
+            return {
+                "query": query,
+                "books": [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("description", "")[:150]} for r in results],
+                "source": "brave+goodreads",
+            }
+    except Exception:
+        return {"books": [], "source": "error"}
+
+
+async def get_writing_context(age: int, word_count: int, purpose: str = "", tone: str = "") -> dict[str, Any]:
+    """Full context for a creative writing DAG: static examples + live bestseller data.
+    
+    This is what gets injected into the writing prompts:
+    1. Static author examples (proven techniques with real passages)
+    2. Live bestseller/Goodreads data (what's popular RIGHT NOW for this audience)
+    3. Engagement principles (why kids stay hooked)
+    """
+    # Static examples based on age/length/tone
+    authors = select_authors(age, word_count, purpose, tone)
+    examples_text = format_examples_for_prompt(authors)
+
+    # Live bestseller search
+    bestsellers = await search_bestsellers(age, purpose, tone)
+
+    return {
+        "static_examples": examples_text,
+        "authors_selected": [a["author"] for a in authors],
+        "bestseller_context": bestsellers,
+        "age": age,
+        "word_count": word_count,
+        "purpose": purpose,
+        "tone": tone,
+    }
