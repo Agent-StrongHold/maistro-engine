@@ -45,8 +45,10 @@ async def web_search(query: str, max_results: int = 5) -> dict[str, Any]:
             "source": result.source,
         }
     except Exception as e:
-        logger.warning(f"All search methods failed for '{query}': {e}")
-        return {"query": query, "summary": "", "citations": [], "source": "error", "error": str(e)}
+        logger.warning(f"BrowserClient failed for '{query}': {e}")
+
+    # Last resort: use Gemini with grounding (search built into the model)
+    return await _gemini_grounded_search(query, max_results)
 
 
 async def browse_url(url: str, task: str = "Extract key facts and quotes") -> dict[str, Any]:
@@ -108,6 +110,49 @@ async def clarify(questions: list[str], context: dict[str, Any]) -> dict[str, st
     except Exception as e:
         logger.error(f"Clarification failed: {e}")
         return {str(i+1): "Not specified" for i in range(len(questions))}
+
+
+async def _gemini_grounded_search(query: str, max_results: int) -> dict[str, Any]:
+    """Use Gemini model with search grounding via LiteLLM gateway."""
+    base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
+    if not base.endswith("/v1"):
+        base += "/v1"
+    key = os.environ.get("LITELLM_API_KEY", "")
+
+    prompt = (
+        f"Search the web for: {query}\n\n"
+        f"Return the top {max_results} most relevant results you find. "
+        "For each result provide: title, URL, and a 1-2 sentence snippet. "
+        "Then write a 3-sentence summary synthesizing the findings.\n\n"
+        "Output JSON: {\"summary\": str, \"citations\": [{\"title\": str, \"url\": str, \"snippet\": str}]}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(
+                f"{base}/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "model": "gemini-2.5-flash",
+                    "messages": [
+                        {"role": "system", "content": "You are a web research assistant. Search for real, current information. Cite real URLs you know exist. If you're not sure a URL is real, don't include it."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "response_format": {"type": "json_object"},
+                },
+            )
+            r.raise_for_status()
+            content = r.json()["choices"][0]["message"]["content"]
+            data = json.loads(content)
+            return {
+                "query": query,
+                "summary": data.get("summary", ""),
+                "citations": data.get("citations", [])[:max_results],
+                "source": "gemini-grounded",
+            }
+    except Exception as e:
+        logger.error(f"Gemini grounded search failed for '{query}': {e}")
+        return {"query": query, "summary": "", "citations": [], "source": "error", "error": str(e)}
 
 
 async def _serper_search(query: str, max_results: int, api_key: str) -> dict[str, Any]:
