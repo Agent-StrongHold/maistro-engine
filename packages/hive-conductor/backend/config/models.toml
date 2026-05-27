@@ -31,7 +31,7 @@ cost = "paid"
 notes = "Best synthesis + instruction follow. Paid only — use when free quota exhausted."
 
 [models.gemini-2-5-pro]
-alias = "google-gemini-2.5-pro"
+alias = "google-gemini-3.5-pro"
 gpqa = 84
 aime24 = 92
 math500 = 97
@@ -236,7 +236,7 @@ cost = "free"
 notes = "130+ languages natively. Route multilingual book writing here."
 
 # Router failover chain:
-#   gemini-2.5-flash (primary, 7B free, q=0.90)
+#   gemini-3.5-flash (primary, 7B free, q=0.90)
 #   → qwen3-32b on Groq (300 t/s, q=0.87)
 #   → gemini-flash-lite (10.8B free, q=0.85)
 #   → cerebras-llama8b (2100 t/s, trivial/classification only, q=0.62)

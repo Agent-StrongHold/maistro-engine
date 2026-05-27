@@ -30,7 +30,7 @@ const DEFAULT_MODELS = [
   "mistral-large",
   "gpt-4o",
   "claude-sonnet-4-20250514",
-  "gemini-2.5-pro",
+  "gemini-3.5-pro",
 ];
 
 const DOTS_ID = "hc-chat-dots";
