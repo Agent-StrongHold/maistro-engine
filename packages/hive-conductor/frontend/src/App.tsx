@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { ModeProvider } from "./components/ModeToggle";
+import { Onboarding } from "./components/Onboarding";
 import { ToastProvider } from "./components/shared";
 import { PocModeProvider, usePmPoc } from "./context/PocMode";
 import Agents from "./pages/Agents";
@@ -10,6 +13,7 @@ import Chat from "./pages/Chat";
 import CLI from "./pages/CLI";
 import Containers from "./pages/Containers";
 import DagBuilder from "./pages/DagBuilder";
+import DagRuns from "./pages/DagRuns";
 import Dashboard from "./pages/Dashboard";
 import DesignStudio from "./pages/DesignStudio";
 import Docs from "./pages/Docs";
@@ -28,6 +32,7 @@ import Setup from "./pages/Setup";
 import Skills from "./pages/Skills";
 import Topology from "./pages/Topology";
 import WorkItems from "./pages/WorkItems";
+import KnowledgeBase from "./pages/KnowledgeBase";
 
 type UserInfo = {
   id: string;
@@ -119,9 +124,11 @@ function AppRoutes() {
                 <Route path="chat" element={<Chat />} />
                 <Route path="missions" element={<Missions />} />
                 {!pmPoc && <Route path="dags" element={<DagBuilder />} />}
+                {!pmPoc && <Route path="dag-runs" element={<DagRuns />} />}
                 {!pmPoc && <Route path="schedules" element={<Schedules />} />}
                 <Route path="agents" element={pmPoc ? <Fleet /> : <Agents />} />
                 {pmPoc && <Route path="work-items" element={<WorkItems />} />}
+                {pmPoc && <Route path="knowledge" element={<KnowledgeBase />} />}
                 {!pmPoc && <Route path="skills" element={<Skills />} />}
                 <Route path="mcp" element={<MCP />} />
                 {!pmPoc && <Route path="topology" element={<Topology />} />}
@@ -149,10 +156,24 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <PocModeProvider>
-        <AppRoutes />
-      </PocModeProvider>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <ModeProvider>
+          <PocModeProvider>
+            <AppRoutesWithOnboarding />
+          </PocModeProvider>
+        </ModeProvider>
+      </ToastProvider>
+    </ErrorBoundary>
+  );
+}
+
+function AppRoutesWithOnboarding() {
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("hive_onboarded"));
+  return (
+    <>
+      {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
+      <AppRoutes />
+    </>
   );
 }

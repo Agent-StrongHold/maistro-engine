@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useUser } from "../App";
+import { ModeToggle } from "./ModeToggle";
 import { usePmPoc } from "../context/PocMode";
 import {
   PM_NAV_CREDENTIALS,
@@ -17,6 +18,7 @@ const fullNav = [
   { to: "/chat", icon: "\uD83D\uDCAC", label: "Chat" },
   { to: "/missions", icon: "\uD83C\uDFAF", label: "Missions" },
   { to: "/dags", icon: "\uD83DD\uDC00", label: "DAGs" },
+  { to: "/dag-runs", icon: "▶️", label: "Runs" },
   { to: "/schedules", icon: "\u23F1", label: "Schedules" },
   { to: "/agents", icon: "\uD83E\uDDE0", label: "Agents" },
   { to: "/skills", icon: "\u25C8", label: "Skills" },
@@ -36,7 +38,8 @@ const fullNav = [
 const pocNav = [
   { to: "/chat", icon: "\uD83D\uDCAC", label: "Chat" },
   { to: "/dashboard", icon: "\uD83D\uDCCA", label: "Dashboard" },
-  { to: "/agents", icon: "\uD83E\uDDE0", label: PM_NAV_PROGRAM },
+  { to: "/knowledge", icon: "\uD83E\uDDE0", label: "Knowledge" },
+  { to: "/agents", icon: "\uD83D\uDC1D", label: PM_NAV_PROGRAM },
   { to: "/missions", icon: "\uD83C\uDFAF", label: PM_NAV_MISSIONS },
   { to: "/mcp", icon: "\u229E", label: PM_NAV_INTEGRATIONS },
   { to: "/credentials", icon: "\uD83D\uDD11", label: PM_NAV_CREDENTIALS },
@@ -76,6 +79,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
       <nav className={`drawer${drawerOpen ? " open" : ""}`}>
         <div className="drawer-header">
           <span style={{ fontFamily: "var(--hand)", fontSize: 20, fontWeight: 700 }}>{shellTitle}</span>
+          <ModeToggle />
           <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu">&#x2715;</button>
         </div>
         {pmPoc ? (
