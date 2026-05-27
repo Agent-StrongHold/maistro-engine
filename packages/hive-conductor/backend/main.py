@@ -165,7 +165,8 @@ def create_app() -> FastAPI:
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")
     app.include_router(setup_checklist.router, prefix="/v1/setup-checklist")
-    app.include_router(daily_report.router, prefix="/v1/daily-report")
+    from routes import daily_report_v2
+    app.include_router(daily_report_v2.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
     # Phase 5 Signal #4: thumbs feedback piggybacks on /v1/dag-runs path

@@ -63,6 +63,20 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         ),
         help_url=_ATLASSIAN_MCP_TOKEN_URL,
         placeholder="Atlassian API token",
+        config_fields=(
+            ConfigField(
+                name="jql",
+                label="JQL query",
+                placeholder="project = MYPROJ AND updated >= -7d ORDER BY updated DESC",
+                required=False,
+            ),
+            ConfigField(
+                name="site_url",
+                label="Jira site URL",
+                placeholder="https://your-org.atlassian.net",
+                required=False,
+            ),
+        ),
     ),
     CredentialProvider(
         id="atlassian_rovo_mcp",
@@ -102,6 +116,14 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         ),
         help_url=_SERVER_JIRA_PAT_URL,
         placeholder="Jira PAT",
+        config_fields=(
+            ConfigField(
+                name="jql",
+                label="JQL query",
+                placeholder="updated >= -24h AND assignee = currentUser() ORDER BY updated DESC",
+                required=False,
+            ),
+        ),
     ),
     CredentialProvider(
         id="atlassian_server_confluence",

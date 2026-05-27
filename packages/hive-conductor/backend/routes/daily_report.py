@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+import stores
 from fastapi import APIRouter, HTTPException, Request
 
 from services import user_credentials as cred_svc
@@ -56,83 +57,41 @@ def _use_secret(user_id: str, provider_id: str) -> str | None:
 
 
 async def _poll_jira(user_id: str) -> dict[str, Any]:
-    """Poll on-prem Jira Server Jira (jira.example.com) for updates in the last 24h.
-
-    Uses the per-user PAT from the credential store. Falls back to Cloud Jira
-    if only the cloud token is set.
-    """
+    """Poll MAISTRO Jira project — same path as chat tools."""
     pat = _use_secret(user_id, "atlassian_server_jira")
-    base_url = "https://jira.example.com"
-    flavor = "server"
     if not pat:
-        # Try Cloud token as fallback.
         pat = _use_secret(user_id, "jira") or _use_secret(user_id, "atlassian_rovo_mcp")
-        cloud_site = os.getenv("ATLASSIAN_SITE_URL", "").strip().rstrip("/")
-        if pat and cloud_site:
-            base_url = cloud_site
-            flavor = "cloud"
-        else:
-            return {
-                "status": "no_pat",
-                "detail": "Add your Jira PAT to see updates",
-                "credential_id": "atlassian_server_jira",
-                "help_url": (
-                    "https://jira.example.com/secure/ViewProfile.jspa"
-                    "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
-                ),
-                "issues": [],
-            }
+    if not pat:
+        return {
+            "status": "no_pat",
+            "detail": "Add your Jira PAT to see updates",
+            "credential_id": "atlassian_server_jira",
+            "issues": [],
+        }
 
-    jql = 'updated >= -24h AND assignee = currentUser() ORDER BY updated DESC'
-    api_path = "/rest/api/2/search" if flavor == "server" else "/rest/api/3/search"
-    headers = {"Authorization": f"Bearer {pat}"} if flavor == "server" else {}
-    auth = None
-    if flavor == "cloud":
-        email = os.getenv("ATLASSIAN_EMAIL", "").strip()
-        auth = (email or pat, pat)
-
+    jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(
-                f"{base_url}{api_path}",
-                params={"jql": jql, "maxResults": 20, "fields": "summary,status,updated"},
-                headers=headers,
-                auth=auth,
+                "https://jira.example.com/rest/api/2/search",
+                params={"jql": jql, "maxResults": 15, "fields": "summary,status,assignee,issuetype,updated"},
+                headers={"Authorization": f"Bearer {pat}", "Accept": "application/json"},
             )
-        if r.status_code == 401:
-            return {
-                "status": "auth_failed",
-                "detail": "Jira returned 401 — your PAT may have expired (2FA?)",
-                "credential_id": "atlassian_server_jira" if flavor == "server" else "jira",
-                "help_url": (
-                    "https://jira.example.com/secure/ViewProfile.jspa"
-                    "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
-                ),
-                "issues": [],
-            }
-        if r.status_code != 200:
-            return {
-                "status": "error",
-                "detail": f"Jira returned HTTP {r.status_code}",
-                "issues": [],
-            }
-        data = r.json()
-        issues = []
-        for it in data.get("issues", [])[:20]:
-            fields = it.get("fields", {})
-            issues.append(
-                {
-                    "key": it.get("key", ""),
-                    "summary": fields.get("summary", "")[:160],
-                    "status": (fields.get("status") or {}).get("name", ""),
-                    "updated": fields.get("updated", ""),
-                    "url": f"{base_url}/browse/{it.get('key', '')}",
-                }
-            )
-        return {"status": "ok", "issues": issues, "source": f"jira_{flavor}", "count": len(issues)}
-    except httpx.HTTPError as exc:
-        logger.warning("daily_report jira fetch failed: %s", exc)
-        return {"status": "error", "detail": "Jira unreachable", "issues": []}
+            r.raise_for_status()
+            data = r.json()
+            issues = []
+            for i in data.get("issues", []):
+                f = i.get("fields", {})
+                issues.append({
+                    "key": i.get("key"),
+                    "summary": f.get("summary"),
+                    "status": (f.get("status") or {}).get("name"),
+                    "assignee": ((f.get("assignee") or {}).get("displayName")),
+                    "updated": f.get("updated"),
+                })
+            return {"status": "ok", "count": data.get("total", 0), "issues": issues, "jql": jql}
+    except Exception as e:
+        return {"status": "error", "detail": str(e), "issues": []}
 
 
 async def _poll_airtable(user_id: str) -> dict[str, Any]:
@@ -151,12 +110,15 @@ async def _poll_airtable(user_id: str) -> dict[str, Any]:
             "records": [],
         }
 
-    base_id = os.getenv("AIRTABLE_BASE_ID", "").strip()
-    table_name = os.getenv("AIRTABLE_TABLE", "").strip()
+    # Read from per-user config (Credentials UI) with env-var fallback.
+    user_config = stores.user_provider_config.get(f"{user_id}:airtable")
+    user_config = dict(user_config) if isinstance(user_config, dict) else {}
+    base_id = (user_config.get("base_id") or os.getenv("AIRTABLE_BASE_ID", "")).strip()
+    table_name = (user_config.get("table") or os.getenv("AIRTABLE_TABLE", "")).strip()
     if not base_id or not table_name:
         return {
             "status": "needs_config",
-            "detail": "Set AIRTABLE_BASE_ID and AIRTABLE_TABLE to enable polling",
+            "detail": "Set base_id and table in Credentials → Airtable config",
             "records": [],
         }
 
@@ -265,7 +227,7 @@ def _suggested_actions(
                 "title": "Connect Jira to see real updates",
                 "reason": "Daily report can't poll Jira until you add your PAT.",
                 "link_label": "Open Credentials",
-                "link_href": "/pm/credentials",
+                "link_href": "/credentials",
             }
         )
     elif jira.get("status") == "auth_failed":
@@ -274,16 +236,16 @@ def _suggested_actions(
                 "title": "Refresh your Jira PAT",
                 "reason": "Jira returned 401 — token likely expired after 2FA.",
                 "link_label": "Regenerate token",
-                "link_href": jira.get("help_url", "/pm/credentials"),
+                "link_href": jira.get("help_url", "/credentials"),
             }
         )
     elif jira.get("status") == "ok" and jira.get("count", 0) == 0:
         actions.append(
             {
-                "title": "No Jira updates in 24h",
-                "reason": "Either your queue is quiet or the JQL needs tuning.",
-                "link_label": "Open Credentials",
-                "link_href": "/pm/credentials",
+                "title": "No Jira updates found",
+                "reason": "Try picking a different project or widening the time window.",
+                "link_label": "Ask in Chat",
+                "link_href": "/chat",
             }
         )
 
@@ -300,9 +262,9 @@ def _suggested_actions(
         actions.append(
             {
                 "title": "Tell Airtable which base to poll",
-                "reason": "Set AIRTABLE_BASE_ID + AIRTABLE_TABLE in the Hive env.",
-                "link_label": "Open Settings",
-                "link_href": "/pm/settings",
+                "reason": "Set base_id + table in Credentials → Airtable.",
+                "link_label": "Open Credentials",
+                "link_href": "/credentials",
             }
         )
 
@@ -312,7 +274,7 @@ def _suggested_actions(
                 "title": "Run a fleet pulse",
                 "reason": "No research outcomes recorded in the last 24h.",
                 "link_label": "Trigger pulse",
-                "link_href": "/pm/agents",
+                "link_href": "/agents",
             }
         )
 
@@ -323,7 +285,7 @@ def _suggested_actions(
                 "title": f"Review {issue.get('key', '')}: {issue.get('summary', '')}",
                 "reason": f"Updated in last 24h — current status {issue.get('status', '?')}",
                 "link_label": "Open in Jira",
-                "link_href": issue.get("url", "/pm/agents"),
+                "link_href": issue.get("url", "/agents"),
             }
         )
 
@@ -395,3 +357,65 @@ async def get_daily_report(request: Request) -> dict[str, Any]:
         "suggested_actions": actions,
         "generated_by": "dag:daily-status (jira) + inline (airtable + research)",
     }
+
+
+@router.get("/jira/projects")
+async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
+    """Search Jira projects the user has access to. Returns candidates for JQL config.
+
+    If `q` is provided, filters by name/key. Otherwise returns all visible projects.
+    The fleet uses this to suggest which projects to track.
+    """
+    uid = _user_id(request)
+    pat = _use_secret(uid, "atlassian_server_jira")
+    base_url = "https://jira.example.com"
+    flavor = "server"
+    if not pat:
+        pat = _use_secret(uid, "jira") or _use_secret(uid, "atlassian_rovo_mcp")
+        cloud_site = os.getenv("ATLASSIAN_SITE_URL", "").strip().rstrip("/")
+        if pat and cloud_site:
+            base_url = cloud_site
+            flavor = "cloud"
+        else:
+            return {"status": "no_pat", "projects": []}
+
+    api_path = "/rest/api/2/project" if flavor == "server" else "/rest/api/3/project/search"
+    headers = {"Authorization": f"Bearer {pat}"} if flavor == "server" else {}
+    auth = None
+    if flavor == "cloud":
+        email = os.getenv("ATLASSIAN_EMAIL", "").strip()
+        auth = (email or pat, pat)
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            r = await client.get(
+                f"{base_url}{api_path}",
+                headers=headers,
+                auth=auth,
+            )
+        if r.status_code != 200:
+            return {"status": "error", "detail": f"Jira returned {r.status_code}", "projects": []}
+
+        data = r.json()
+        # Server returns a list; Cloud returns {"values": [...]}
+        raw_projects = data if isinstance(data, list) else data.get("values", [])
+
+        projects = []
+        q_lower = q.lower()
+        for p in raw_projects:
+            key = p.get("key", "")
+            name = p.get("name", "")
+            if q_lower and q_lower not in key.lower() and q_lower not in name.lower():
+                continue
+            projects.append({
+                "key": key,
+                "name": name,
+                "jql_suggestion": f"project = {key} AND updated >= -7d ORDER BY updated DESC",
+            })
+
+        # Sort by relevance: exact key match first, then alphabetical
+        projects.sort(key=lambda p: (0 if p["key"].lower() == q_lower else 1, p["key"]))
+        return {"status": "ok", "projects": projects[:25]}
+    except httpx.HTTPError as exc:
+        logger.warning("jira project search failed: %s", exc)
+        return {"status": "error", "detail": "Jira unreachable", "projects": []}
