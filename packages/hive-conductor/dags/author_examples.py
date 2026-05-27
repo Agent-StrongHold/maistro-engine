@@ -310,6 +310,79 @@ DIARY_OF_A_WIMPY_KID_HOOK = {
     ],
 }
 
+# --- BEST SELLERS (millions of copies — proven market demand) ---
+
+HARRY_POTTER = {
+    "author": "J.K. Rowling",
+    "books": ["Harry Potter and the Sorcerer's Stone"],
+    "copies_sold": "600M+ series",
+    "technique": "Wish fulfillment, mystery per book, found family, escalating stakes",
+    "example": """Mr. and Mrs. Dursley, of number four, Privet Drive, were proud to say that they were perfectly normal, thank you very much. They were the last people you'd expect to be involved in anything strange or mysterious, because they just didn't hold with such nonsense.""",
+    "rules": [
+        "Ordinary kid discovers they're special — universal wish fulfillment",
+        "Each book is a self-contained mystery PLUS series arc",
+        "School year structure = built-in pacing",
+        "Adults are either useless or actively hostile — kids solve everything",
+        "Magic system has clear rules that matter to the plot",
+    ],
+}
+
+MAGIC_TREE_HOUSE = {
+    "author": "Mary Pope Osborne",
+    "books": ["Dinosaurs Before Dark", "The Knight at Dawn"],
+    "copies_sold": "130M+",
+    "technique": "Formula that works every time: real history + adventure + short chapters",
+    "example": """Jack and Annie found a tree house in the woods. It was filled with books. Jack opened a book about dinosaurs. He pointed to a picture. "I wish I could go there," he said. And then the tree house started to spin. Faster and faster. Then everything was still. Absolutely still.""",
+    "rules": [
+        "28 chapters, each 2-3 pages — kids finish a chapter in 5 minutes",
+        "Real historical facts woven into adventure (kids learn without knowing)",
+        "Same formula every book — kids know what to expect and love it",
+        "Cliffhanger every chapter: 'Then they heard a sound...'",
+        "Siblings work together — relatable dynamic",
+    ],
+}
+
+HUNGER_GAMES_YA = {
+    "author": "Suzanne Collins",
+    "books": ["The Hunger Games"],
+    "copies_sold": "100M+",
+    "technique": "Present tense urgency, impossible choices, first-person survival",
+    "example": """When I wake up, the other side of the bed is cold. My fingers stretch out, seeking Prim's warmth but finding only the rough canvas cover of the mattress. She must have had bad dreams and climbed in with our mother. Of course, she did. This is the day of the reaping.""",
+    "rules": [
+        "Present tense = you're IN it, no safety of past tense",
+        "Every chapter ends mid-crisis",
+        "Moral dilemmas with no good answer",
+        "Protagonist is competent but vulnerable",
+        "World is unfair — kids relate to powerlessness against systems",
+    ],
+}
+
+WIMPY_KID_BESTSELLER = {
+    "author": "Jeff Kinney",
+    "books": ["Diary of a Wimpy Kid series"],
+    "copies_sold": "275M+",
+    "technique": "Illustrated diary, social survival, every kid sees themselves",
+    "why_it_sells": "Kids who 'don't like reading' devour these. The drawings break up text. Short entries mean you can stop anywhere but never want to. Social stakes feel as real as life-or-death to a middle schooler.",
+}
+
+DOG_MAN_BESTSELLER = {
+    "author": "Dav Pilkey",
+    "books": ["Dog Man series"],
+    "copies_sold": "55M+",
+    "technique": "Comic format, 'made by kids' aesthetic, reluctant readers' gateway drug",
+    "why_it_sells": "Kids who struggle with prose THRIVE with comics. The 'bad spelling' and crayon art makes kids feel 'I could make this.' Flip-o-rama is physical. Potty humor is the hook, empathy is the payload.",
+}
+
+PETE_THE_CAT_BESTSELLER = {
+    "author": "James Dean",
+    "books": ["Pete the Cat series"],
+    "copies_sold": "80M+",
+    "why_it_sells": "Singable. Parents buy it because kids demand it performed. The refrain ('Did Pete cry? Goodness, no!') becomes family language. Emotional regulation modeled without preaching.",
+}
+
+BEST_SELLERS = [HARRY_POTTER, MAGIC_TREE_HOUSE, HUNGER_GAMES_YA, WIMPY_KID_BESTSELLER, DOG_MAN_BESTSELLER, PETE_THE_CAT_BESTSELLER]
+
+
 # --- WHY THESE BOOKS HOOK KIDS (principles) ---
 ENGAGEMENT_PRINCIPLES = {
     "participation": "Kids can shout along, predict what's next, or physically interact (flip-o-rama)",
