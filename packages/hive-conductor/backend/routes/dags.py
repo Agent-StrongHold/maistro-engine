@@ -249,14 +249,49 @@ async def run_dag(dag_id: str) -> dict:
         raise HTTPException(status_code=404, detail="dag not found")
     dag_data = stores.dags[dag_id]
     log_audit("dag_run", "system", target=dag_id)
+    exec_id = str(uuid4())
     try:
         from services.graph_runner import execute_dag
+        from services.dag_run_store import get_dag_run_store
+        import time as _time
+        _start = _time.monotonic()
+        store = get_dag_run_store()
+        run = await store.start_run(run_id=exec_id)
         result = await execute_dag(dag_data)
-        return {"status": "completed", "execution_id": str(uuid4()), "result": result}
+        _elapsed_ms = int((_time.monotonic() - _start) * 1000)
+        run.status = "completed"
+        run.result = result
+        # Store node results as events for eval-judge and UI
+        for nid, nr in result.get("node_results", {}).items():
+            await store.append_event(
+                exec_id,
+                event_type="pm_node_completed" if nr.get("success") else "pm_node_failed",
+                role=nr.get("role", "worker"),
+                capability=nid,
+                payload={"source": "llm", "response": nr.get("response", "")[:2000]},
+            )
+        # Record node metrics (Signal #5)
+        try:
+            from services.node_metrics_store import NodeObservation, get_store as get_metrics
+            metrics = get_metrics()
+            for nid, nr in result.get("node_results", {}).items():
+                metrics.record(NodeObservation(
+                    run_id=exec_id, node_id=nid, node_kind=nr.get("role", ""),
+                    project_id="", dag_id=dag_id, phase="COMPLETED" if nr.get("success") else "FAILED",
+                    latency_ms=_elapsed_ms // max(result.get("cycles", 1), 1),
+                    tokens_in=0, tokens_out=0, cost_usd=0.0,
+                    model_used=dag_data.get("nodes", [{}])[0].get("model", "gemini-3.5-flash"),
+                ))
+        except Exception:
+            pass
+        return {"status": "completed", "execution_id": exec_id, "result": result}
     except Exception as exc:
         import logging
         logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)
-        return {"status": "failed", "execution_id": str(uuid4()), "error": str(exc)}
+        return {"status": "failed", "execution_id": exec_id, "error": str(exc)}
+        import logging
+        logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)
+        return {"status": "failed", "execution_id": exec_id, "error": str(exc)}
 
 
 @router.post("/run-champion")

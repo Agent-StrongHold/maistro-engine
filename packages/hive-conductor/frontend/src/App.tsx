@@ -113,9 +113,10 @@ function AppRoutes() {
           <AuthGuard>
             <Routes>
               <Route path="/" element={<AppShell />}>
-                <Route index element={<Navigate to={pmPoc ? "agents" : "dashboard"} replace />} />
+                <Route index element={<Navigate to={pmPoc ? "chat" : "dashboard"} replace />} />
                 {!pmPoc && <Route path="dashboard" element={<Dashboard />} />}
-                {!pmPoc && <Route path="chat" element={<Chat />} />}
+                {pmPoc && <Route path="dashboard" element={<Dashboard />} />}
+                <Route path="chat" element={<Chat />} />
                 <Route path="missions" element={<Missions />} />
                 {!pmPoc && <Route path="dags" element={<DagBuilder />} />}
                 {!pmPoc && <Route path="schedules" element={<Schedules />} />}

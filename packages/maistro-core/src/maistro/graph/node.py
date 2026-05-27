@@ -255,8 +255,9 @@ class NodeRun:
                 return
 
             try:
+                schema = self.strategy.output_type.model_json_schema() if self.strategy and hasattr(self.strategy, 'output_type') else None
                 raw = await asyncio.wait_for(
-                    llm_call(messages, model=self.model, temperature=self.temperature),
+                    llm_call(messages, model=self.model, temperature=self.temperature, response_schema=schema),
                     timeout=timeout,
                 )
                 self.circuit.record_success()

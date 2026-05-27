@@ -19,6 +19,22 @@ from maistro.agents.pm_capabilities import is_autonomous
 from maistro.agents.program_context import apply_guidance
 
 
+def _get_atlassian_pats(user_id: str) -> dict[str, str | None]:
+    """Pull Jira + Confluence PATs from the encrypted credential store."""
+    from services import user_credentials as cred_svc
+
+    store = cred_svc.get_credential_store()
+    if store is None:
+        return {}
+    pats: dict[str, str | None] = {}
+    for provider_id, key in [("jira", "jira"), ("confluence", "confluence")]:
+        try:
+            pats[key] = store.use_secret(user_id, provider_id, lambda s: s)
+        except Exception:
+            pats[key] = None
+    return pats
+
+
 def user_id_from_request(request: Request) -> str:
     user = getattr(request.state, "user", None) or {}
     uid = user.get("id")
@@ -117,6 +133,11 @@ async def run_program_pulse(user_id: str, *, max_actions: int = 4) -> dict[str, 
             )
             from maistro.agents.program_context import context_for_task
 
+            pctx = context_for_task(ctx)
+            # Inject user's Atlassian PATs from encrypted credential store
+            # so pm_runner can make real Jira/Confluence calls.
+            pctx["atlassian_pats"] = _get_atlassian_pats(user_id)
+
             rec = await engine.submit_task(
                 agent_id,
                 description,
@@ -124,7 +145,7 @@ async def run_program_pulse(user_id: str, *, max_actions: int = 4) -> dict[str, 
                 task_type=task_type,
                 agent_id=agent_id,
                 capability=action.capability,
-                program_context=context_for_task(ctx),
+                program_context=pctx,
             )
             queued.append(
                 {

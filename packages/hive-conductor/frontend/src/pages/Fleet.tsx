@@ -167,19 +167,9 @@ export default function Fleet() {
       openGatedDraft(agentId, capability);
       return;
     }
-    setInvokingId(agentId);
-    try {
-      const res = await apiPost<{ task_id: string; status: string }>(
-        `/v1/agents/${agentId}/invoke`,
-        { capability, payload: { title: capability.replace(/_/g, " ") } },
-      );
-      toast(`Task queued: ${res.task_id.slice(0, 8)}…`, "ok");
-      await load();
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Invoke failed", "error");
-    } finally {
-      setInvokingId(null);
-    }
+    // Navigate to chat with the capability as a pre-filled prompt
+    const label = capability.replace(/_/g, " ");
+    window.location.href = `/chat?q=${encodeURIComponent(label)}`;
   };
 
   function openGatedDraft(_agentId: string, capability: string, reason?: string) {

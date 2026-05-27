@@ -168,7 +168,7 @@ def _build_catalog() -> list[dict[str, Any]]:
                 "Setup, but you can change it any time in Settings."
             ),
             "link_label": "Open Settings",
-            "link_href": "/pm/settings",
+            "link_href": "/settings",
             "category": "fleet",
         },
         {
@@ -180,7 +180,7 @@ def _build_catalog() -> list[dict[str, Any]]:
                 "blind."
             ),
             "link_label": "Start interview",
-            "link_href": "/pm/agents",
+            "link_href": "/agents",
             "category": "fleet",
         },
         {
@@ -192,7 +192,7 @@ def _build_catalog() -> list[dict[str, Any]]:
                 "the Cloud Rovo path below takes over."
             ),
             "link_label": "Open Credentials",
-            "link_href": "/pm/credentials",
+            "link_href": "/credentials",
             "external_help": (
                 "https://myjira.disney.com/secure/ViewProfile.jspa"
                 "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
@@ -207,7 +207,7 @@ def _build_catalog() -> list[dict[str, Any]]:
                 "Lets agents read Confluence pages (RFCs, runbooks, status docs)."
             ),
             "link_label": "Open Credentials",
-            "link_href": "/pm/credentials",
+            "link_href": "/credentials",
             "external_help": (
                 "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"
             ),
@@ -222,7 +222,7 @@ def _build_catalog() -> list[dict[str, Any]]:
                 "Jira/Confluence after the on-prem path retires."
             ),
             "link_label": "Open Credentials",
-            "link_href": "/pm/credentials",
+            "link_href": "/credentials",
             "external_help": (
                 "https://id.atlassian.com/manage-profile/security/api-tokens"
                 "?autofillToken&expiryDays=max&appId=mcp&selectedScopes=all"
@@ -238,7 +238,7 @@ def _build_catalog() -> list[dict[str, Any]]:
                 "needs to see."
             ),
             "link_label": "Open Credentials",
-            "link_href": "/pm/credentials",
+            "link_href": "/credentials",
             "external_help": "https://airtable.com/create/tokens/new",
             "category": "integrations",
         },
@@ -250,7 +250,7 @@ def _build_catalog() -> list[dict[str, Any]]:
                 "back to code."
             ),
             "link_label": "Open Credentials",
-            "link_href": "/pm/credentials",
+            "link_href": "/credentials",
             "external_help": "https://github.com/settings/tokens?type=beta",
             "category": "integrations",
         },

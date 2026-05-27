@@ -35,9 +35,10 @@ from services.node_metrics_store import (
 logger = logging.getLogger(__name__)
 
 
-W_SUCCESS = 0.5
-W_LATENCY = 0.3
-W_THUMB = 0.2
+W_SUCCESS = 0.4   # quality (benchmark pass rate, eval-judge score)
+W_LATENCY = 0.25  # speed (lower is better)
+W_THUMB = 0.2     # user satisfaction
+W_COST = 0.15     # cost efficiency (lower is better)
 
 ALLOWED_GROUP_FIELDS = ("model_used", "node_kind", "node_id")
 
@@ -139,10 +140,12 @@ def _composite(
     success_rates: list[float],
     norm_latency: list[float],
     norm_thumb_down: list[float],
+    norm_cost: list[float] | None = None,
 ) -> list[float]:
+    costs = norm_cost or [0.0] * len(success_rates)
     return [
-        round(W_SUCCESS * s + W_LATENCY * l + W_THUMB * t, 4)
-        for s, l, t in zip(success_rates, norm_latency, norm_thumb_down,
+        round(W_SUCCESS * s + W_LATENCY * l + W_THUMB * t + W_COST * c, 4)
+        for s, l, t, c in zip(success_rates, norm_latency, norm_thumb_down, costs,
                            strict=False)
     ]
 

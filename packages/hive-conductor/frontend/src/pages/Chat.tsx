@@ -19,10 +19,10 @@ type ChatMsg = {
 type FullSession = { id: string; title: string; messages: ChatMsg[]; created_at: string; updated_at: string };
 
 const SUGGESTIONS = [
-  "turn off living room lights",
-  "what agents are available?",
-  "browse the web for me",
-  "what can you do?",
+  "What's on my plate in Jira?",
+  "Who's blocked right now?",
+  "Summarize the sprint status",
+  "Search Confluence for onboarding docs",
 ];
 
 const DEFAULT_MODELS = [
@@ -42,6 +42,17 @@ function ensureDotsAnim() {
   document.head.appendChild(s);
 }
 
+const STATUS_STEPS = ["Working…"];
+
+function StreamingStatus({ status }: { status: string }) {
+  return (
+    <div style={{ alignSelf: "flex-start", padding: "8px 12px", background: "var(--paper)", border: "1.4px solid var(--accent)", borderRadius: 8, fontFamily: "var(--mono)", fontSize: 10, color: "var(--accent)", display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "hc-dots 1s ease-in-out infinite" }} />
+      {status}
+    </div>
+  );
+}
+
 function fmtTime(ts: string) {
   const d = new Date(ts);
   const now = new Date();
@@ -55,8 +66,9 @@ export default function Chat() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [streamStatus, setStreamStatus] = useState("Working…");
   const [models, setModels] = useState<string[]>(DEFAULT_MODELS);
-  const [selectedModel, setSelectedModel] = useState("cerebras-qwen-3-235b-a22b-2507");
+  const [selectedModel, setSelectedModel] = useState("gemini-3.5-flash");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [deleteTarget, setDeleteTarget] = useState<Session | null>(null);
@@ -83,6 +95,38 @@ export default function Chat() {
 
   useEffect(() => { void loadSessions(); void loadModels(); ensureDotsAnim(); }, [loadSessions, loadModels]);
 
+  // Auto-send from ?q= query param (agent button clicks)
+  const pendingQuery = useRef<string | null>(null);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
+    if (q) {
+      window.history.replaceState({}, "", window.location.pathname);
+      (async () => {
+        try {
+          const s = await apiPost<Session>("/v1/chat/sessions", { title: q.slice(0, 40) });
+          setSessions((p) => [s, ...p]);
+          setActiveSessionId(s.id);
+          setMessages([]);
+          pendingQuery.current = q;
+        } catch {
+          pendingQuery.current = q;
+        }
+      })();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fire pending query after session is selected
+  useEffect(() => {
+    if (pendingQuery.current && activeSessionId) {
+      const q = pendingQuery.current;
+      pendingQuery.current = null;
+      void send(q);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
+
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, streaming]);
 
   async function createSession() {
@@ -108,7 +152,7 @@ export default function Chat() {
     try {
       await apiDelete(`/v1/chat/sessions/${id}`);
       setSessions((p) => p.filter((s) => s.id !== id));
-      if (activeSessionId === id) { setActiveSessionId(null); setMessages([]); }
+      if (activeSessionId === id) { setActiveSessionId(null); setMessages([]); setStreaming(false); }
     } catch { /* */ }
     setDeleteTarget(null);
   }
@@ -118,28 +162,44 @@ export default function Chat() {
     if (!text || streaming) return;
     setInput("");
     if (taRef.current) taRef.current.style.height = "auto";
+    // Auto-create session if none active
+    let sid = activeSessionId;
+    if (!sid) {
+      try {
+        const s = await apiPost<Session>("/v1/chat/sessions", { title: text.slice(0, 40) });
+        setSessions((p) => [s, ...p]);
+        setActiveSessionId(s.id);
+        sid = s.id;
+      } catch { /* continue without session */ }
+    }
     const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", content: text, timestamp: new Date().toISOString() };
     const next = [...messages, userMsg];
     setMessages(next);
     setStreaming(true);
+    setStreamStatus("Working…");
     setClarifyChoice(null);
     try {
       const history = next.map((m) => ({ role: m.role, content: m.content }));
-      const data = await apiPost<Record<string, unknown>>("/v1/chat/complete", { messages: history, model: selectedModel });
-      const choices = data.choices as { message: { content: string } }[] | undefined;
-      const content = choices?.[0]?.message?.content ?? (data.response as string | undefined) ?? JSON.stringify(data);
+      const resp = await fetch("/v1/chat/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ messages: history, model: selectedModel }),
+      });
+      if (!resp.ok) throw new Error(`/v1/chat/complete: ${resp.status}`);
+      const data = await resp.json();
+      const content = data?.choices?.[0]?.message?.content ?? "";
       const asst: ChatMsg = {
-        id: crypto.randomUUID(), role: "assistant", content,
+        id: crypto.randomUUID(), role: "assistant", content: content || "(no response)",
         timestamp: new Date().toISOString(),
-        agent: (data.agent as string) ?? "Conductor",
-        model: (data.model as string) ?? selectedModel,
-        intent: data.intent as string | undefined,
-        tool_calls: data.tool_calls as ChatMsg["tool_calls"],
-        verdict: data.verdict as string | undefined,
-        clarify_options: data.clarify_options as string[] | undefined,
-        gate: data.gate as ChatMsg["gate"],
+        model: selectedModel,
       };
       setMessages((p) => [...p, asst]);
+      // Persist messages to session
+      if (sid) {
+        apiPost(`/v1/chat/sessions/${sid}/messages`, { role: "user", content: text }).catch(() => {});
+        apiPost(`/v1/chat/sessions/${sid}/messages`, { role: "assistant", content }).catch(() => {});
+      }
       if (sessions.length === 0) void loadSessions();
     } catch (e) {
       setMessages((p) => [...p, {
@@ -219,7 +279,7 @@ export default function Chat() {
           )}
           <PageHeader
             title="Chat"
-            subtitle="Talk to your AI assistant — control your home, browse the web, manage tasks"
+            subtitle="PM Fleet — manage your program, check Jira, track blockers"
             helpHref="/docs#chat"
             actions={!showSidebar ? <button className="btn btn-accent" onClick={() => void createSession()} style={{ fontSize: 9 }}>+ new session</button> : undefined}
           />
@@ -228,7 +288,7 @@ export default function Chat() {
         {!messages.length && !streaming ? (
           <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: 20 }}>
             <div style={{ fontFamily: "var(--hand)", fontSize: 32, textAlign: "center" }}>How can I help?</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)", textAlign: "center" }}>Control your home, browse the web, manage agents, or ask anything</div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: 10, color: "var(--pencil)", textAlign: "center" }}>Poll Jira, check blockers, search Confluence, or create agent buttons</div>
             <div className="grid-2" style={{ width: "100%", maxWidth: 380 }}>
               {SUGGESTIONS.map((s) => (
                 <div key={s} className="card" style={{ cursor: "pointer", fontFamily: "var(--hand)", fontSize: 13 }} onClick={() => void send(s)}>{s}</div>
@@ -321,10 +381,11 @@ export default function Chat() {
                 </div>
               );
             })}
-            {streaming && (
-              <div style={{ alignSelf: "flex-start", padding: "8px 12px", background: "var(--paper)", border: "1.4px solid var(--ink)", borderRadius: 8, display: "flex", gap: 4 }}>
-                {[0, 1, 2].map((i) => (
-                  <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "hc-dots 1.4s ease-in-out infinite", animationDelay: `${i * 0.2}s` }} />
+            {streaming && <StreamingStatus status={streamStatus} />}
+            {messages.length > 0 && !streaming && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "8px 0" }}>
+                {SUGGESTIONS.map((s) => (
+                  <button key={s} onClick={() => void send(s)} style={{ background: "var(--paper-2)", border: "1px solid var(--rule)", borderRadius: 12, padding: "4px 10px", fontFamily: "var(--mono)", fontSize: 9, cursor: "pointer", color: "var(--accent)" }}>{s}</button>
                 ))}
               </div>
             )}
@@ -337,7 +398,7 @@ export default function Chat() {
             ref={taRef}
             className="input-field"
             style={{ flex: 1, resize: "none", minHeight: 32, maxHeight: 120, padding: "6px 10px" }}
-            placeholder="Ask me to control your home, browse the web, or manage tasks..."
+            placeholder="Ask about your sprint, blockers, or team status..."
             value={input}
             rows={1}
             onChange={(e) => {

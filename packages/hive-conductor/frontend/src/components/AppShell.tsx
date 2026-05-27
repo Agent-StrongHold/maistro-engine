@@ -34,9 +34,10 @@ const fullNav = [
 ];
 
 const pocNav = [
+  { to: "/chat", icon: "\uD83D\uDCAC", label: "Chat" },
+  { to: "/dashboard", icon: "\uD83D\uDCCA", label: "Dashboard" },
   { to: "/agents", icon: "\uD83E\uDDE0", label: PM_NAV_PROGRAM },
   { to: "/missions", icon: "\uD83C\uDFAF", label: PM_NAV_MISSIONS },
-  { to: "/work-items", icon: "\uD83D\uDCCB", label: PM_NAV_DRAFTS },
   { to: "/mcp", icon: "\u229E", label: PM_NAV_INTEGRATIONS },
   { to: "/credentials", icon: "\uD83D\uDD11", label: PM_NAV_CREDENTIALS },
   { to: "/settings", icon: "\u2699", label: "Settings" },
