@@ -40,11 +40,36 @@ class PassResult:
 class HillClimber:
     """Manages eval rotation and anti-overfitting for a single DAG."""
 
-    def __init__(self, dag_id: str, all_evals: list[str], target_count: int = 3, held_out_count: int = 2):
+    # Two phases of optimization:
+    # BUILD: models locked to best (o3-pro, opus-4-6). Optimize prompts/structure only.
+    # OPTIMIZE: models are a variable. Try cheaper, keep if quality holds within threshold.
+    PHASE_BUILD = "build"
+    PHASE_OPTIMIZE = "optimize"
+
+    # Best models — used during build phase, quality ceiling reference during optimize
+    BEST_MODELS = ["o3-pro", "claude-opus-4-6"]
+
+    # Candidates for optimize phase — ordered by cost (cheapest first)
+    OPTIMIZE_CANDIDATES = [
+        "gemini-3.5-flash",      # cheapest
+        "gpt-5-mini",            # cheap + good
+        "claude-haiku-4-5",      # fast + decent
+        "gpt-5-nano",            # ultra cheap
+        "gpt-4.1-mini",         # balanced
+        "claude-sonnet-4-6",     # strong but cheaper than opus
+        "gpt-5",                 # strong
+        "o4-mini",               # reasoning, cheaper than o3
+    ]
+
+    # Quality floor: optimize-phase model must score within this % of best
+    QUALITY_FLOOR_PCT = 0.90  # 90% of best model's score
+
+    def __init__(self, dag_id: str, all_evals: list[str], target_count: int = 3, held_out_count: int = 2, phase: str = "build"):
         self.dag_id = dag_id
         self.all_evals = list(all_evals)
         self.target_count = target_count
         self.held_out_count = held_out_count
+        self.phase = phase
         self.pass_number = 0
         self.history: list[PassResult] = []
         self.score_history: dict[str, list[EvalScore]] = {e: [] for e in all_evals}
