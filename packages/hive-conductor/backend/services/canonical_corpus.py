@@ -145,7 +145,7 @@ Output: {{"patterns": [str]}}"""
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                     json={
-                        "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-2.5-flash"),
+                        "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash"),
                         "messages": [{"role": "user", "content": prompt}],
                         "response_format": {"type": "json_object"},
                     },
@@ -252,7 +252,7 @@ Reply JSON: {{"score": int, "rationale": str}}"""
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                     json={
-                        "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-2.5-flash"),
+                        "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash"),
                         "messages": [{"role": "user", "content": prompt}],
                         "response_format": {"type": "json_object"},
                     },
@@ -300,7 +300,7 @@ Reply JSON: {{"score": int, "matches": [str], "missing": [str], "suggestion": st
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                     json={
-                        "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-2.5-flash"),
+                        "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash"),
                         "messages": [{"role": "user", "content": prompt}],
                         "response_format": {"type": "json_object"},
                     },
