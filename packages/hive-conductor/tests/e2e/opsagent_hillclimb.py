@@ -27,7 +27,7 @@ TEST_QUESTIONS = [
 CONFIGS_TO_TEST = [
     {"name": "baseline (claude-opus-4-6)", "model": None},  # don't change, just measure
     {"name": "claude-sonnet-4-6", "model": "claude-sonnet-4-6"},
-    {"name": "gemini-2.5-flash", "model": "gemini-2.5-flash"},
+    {"name": "gemini-3.5-flash", "model": "gemini-3.5-flash"},
     {"name": "gpt-5-mini", "model": "gpt-5-mini"},
     {"name": "claude-haiku-4-5", "model": "claude-haiku-4-5"},
 ]
@@ -128,7 +128,7 @@ async def main():
     print(f"\n{'='*60}")
     print("LEADERBOARD (sorted by score/cost efficiency)")
     print(f"{'='*60}")
-    MODEL_COST = {"claude-opus-4-6": 3.0, "claude-sonnet-4-6": 1.5, "gemini-2.5-flash": 0.15, "gpt-5-mini": 0.15, "claude-haiku-4-5": 0.25}
+    MODEL_COST = {"claude-opus-4-6": 3.0, "claude-sonnet-4-6": 1.5, "gemini-3.5-flash": 0.15, "gpt-5-mini": 0.15, "claude-haiku-4-5": 0.25}
     for r in sorted(results, key=lambda x: x["avg_score"] / MODEL_COST.get(x["model"], 1.0), reverse=True):
         cost = MODEL_COST.get(r["model"], 1.0)
         efficiency = r["avg_score"] / cost
