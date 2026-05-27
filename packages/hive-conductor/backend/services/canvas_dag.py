@@ -26,14 +26,14 @@ CANVAS_DAG = {
         {
             "id": "style_interpreter",
             "prompt": "Interpret the visual style request into precise art direction: color palette (hex codes), mood, lighting, composition rules, reference artists/movements, and texture notes. Request: {input}",
-            "model": "gemini-3.5-flash",
+            "model": "claude-opus-4-6",
             "role": "art_director",
             "optimizable": ["prompt", "model"],
         },
         {
             "id": "composition_planner",
             "prompt": "Plan the image composition: layout grid, focal point placement (rule of thirds), depth layers (foreground/mid/background), negative space usage, and visual hierarchy. Style direction: {style_interpreter}",
-            "model": "gemini-3.5-flash",
+            "model": "claude-opus-4-6",
             "role": "compositor",
             "optimizable": ["prompt"],
         },
@@ -47,7 +47,7 @@ CANVAS_DAG = {
         {
             "id": "compositor",
             "prompt": "Layer the generated elements: specify z-order, blending modes, opacity for each layer, shadow/highlight placement, and edge treatment between layers. Elements: {generator}",
-            "model": "gemini-3.5-flash",
+            "model": "claude-opus-4-6",
             "role": "compositor",
             "optimizable": ["prompt"],
         },
@@ -61,7 +61,7 @@ CANVAS_DAG = {
         {
             "id": "refiner",
             "prompt": "Apply the critic's feedback to refine the image description. Make the specific improvement suggested while preserving what scored well. Original: {compositor}\nCritique: {critic}",
-            "model": "gemini-3.5-flash",
+            "model": "claude-opus-4-6",
             "role": "refiner",
             "optimizable": ["prompt", "model"],
         },
@@ -104,7 +104,7 @@ async def visual_quality_eval(output: str, context: dict[str, Any] | None = None
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
-                    "model": "gemini-3.5-flash",
+                    "model": "claude-opus-4-6",
                     "messages": [
                         {"role": "system", "content": judge_prompt},
                         {"role": "user", "content": f"Image description to judge:\n\n{output[:3000]}"},
