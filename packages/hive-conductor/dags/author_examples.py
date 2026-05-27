@@ -1,8 +1,8 @@
-"""Real author examples — what GOOD children's writing looks like.
+"""Real author examples — what keeps kids HOOKED.
 
-These are short excerpts and style descriptions from real published
-children's books. DAG nodes reference these as the quality bar.
-The hill-climber scores output AGAINST these examples.
+Not necessarily award-winning. These are the books kids demand
+over and over, refuse to put down, quote at dinner, and carry
+until the covers fall off. The quality bar is ENGAGEMENT, not prestige.
 """
 
 # --- PICTURE BOOKS (ages 2-5) ---
@@ -218,6 +218,115 @@ That is quite high, thought Little Nutbrown Hare. I wish I had such long arms.""
 PICTURE_BOOK_EXAMPLES = [SEUSS, ERIC_CARLE, MO_WILLEMS, JULIA_DONALDSON]
 EARLY_READER_EXAMPLES = [JUNIE_B_JONES, FROG_AND_TOAD, ELEPHANT_AND_PIGGIE]
 CHAPTER_BOOK_EXAMPLES = [ROALD_DAHL, DIARY_OF_A_WIMPY_KID, PERCY_JACKSON]
+BEDTIME_EXAMPLES = [GOODNIGHT_MOON, GUESS_HOW_MUCH]
+
+ALL_EXAMPLES = PICTURE_BOOK_EXAMPLES + EARLY_READER_EXAMPLES + CHAPTER_BOOK_EXAMPLES + BEDTIME_EXAMPLES
+
+# --- BOOKS KIDS ARE OBSESSED WITH (engagement over prestige) ---
+
+DRAGONS_LOVE_TACOS = {
+    "author": "Adam Rubin",
+    "books": ["Dragons Love Tacos", "Dragons Love Tacos 2"],
+    "technique": "Absurd premise played totally straight, direct address, one escalating joke",
+    "example": """Dragons love tacos. They love chicken tacos, beef tacos, and really big tacos. They love tiny tacos. If you want to be friends with a dragon, tacos are key. But here's the thing about dragons and tacos: dragons really, really, REALLY don't like spicy salsa.""",
+    "rules": [
+        "One absurd premise, never wink at the audience — play it dead serious",
+        "Repetition builds anticipation for the inevitable disaster",
+        "The 'rule' is stated clearly so kids KNOW it will be broken",
+        "Catastrophe is spectacular and visual (dragon fire everywhere)",
+        "Kids feel smart because they saw it coming",
+    ],
+}
+
+PETE_THE_CAT = {
+    "author": "James Dean & Eric Litwin",
+    "books": ["Pete the Cat: I Love My White Shoes", "Pete the Cat: Rocking in My School Shoes"],
+    "technique": "Singable refrain, unflappable protagonist, repetition kids can join in on",
+    "example": """Pete the Cat was walking down the street in his brand-new white shoes. Pete loved his white shoes so much he sang this song: "I love my white shoes, I love my white shoes, I love my white shoes." Then Pete stepped in a large pile of strawberries. What color did it turn his shoes? Red! Did Pete cry? Goodness, no!""",
+    "rules": [
+        "Refrain is SINGABLE — kids join in by page 3",
+        "Same question every time: 'Did Pete cry? Goodness, no!'",
+        "Character never gets upset — models emotional resilience",
+        "Color/object changes but structure stays identical",
+        "Kids shout the answer before you read it",
+    ],
+}
+
+DOG_MAN = {
+    "author": "Dav Pilkey",
+    "books": ["Dog Man", "Dog Man Unleashed", "Dog Man: A Tale of Two Kitties"],
+    "technique": "Comic format, potty humor, flip-o-rama, 'made by kids' aesthetic",
+    "example": """Chapter 1: A Hero Is Unleashed
+(drawn in crayon-style)
+Narrator: One time there was a cop and a police dog. They were the best of friends. But then a bomb blew up and the cop's body was dying and the dog's head was dying. So the doctor sewed the dog's head onto the cop's body. And Dog Man was born!""",
+    "rules": [
+        "Looks like a kid drew it — that's the POINT",
+        "Potty humor is the hook (farts, underwear, boogers)",
+        "Flip-o-rama = physical interaction with the book",
+        "Bad guy is sympathetic (Petey the cat just wants love)",
+        "Meta-humor: characters know they're in a book",
+    ],
+}
+
+CAPTAIN_UNDERPANTS = {
+    "author": "Dav Pilkey",
+    "books": ["Captain Underpants and the Perilous Plot of Professor Poopypants"],
+    "technique": "Breaking fourth wall, reader participation, relentless irreverence",
+    "example": """This is George Beard and Harold Hutchins. George is the kid on the left with the tie and the flat-top. Harold is the one on the right with the T-shirt and the bad haircut. Remember that now. If you mix them up, you'll be confused for the rest of the story.""",
+    "rules": [
+        "Direct address to reader constantly",
+        "Names are jokes (Professor Poopypants, Tippy Tinkletrousers)",
+        "Authority figures are always wrong and ridiculous",
+        "Kids are the heroes, adults are the villains",
+        "Chapters are 2-3 pages max — constant momentum",
+    ],
+}
+
+THE_BAD_GUYS = {
+    "author": "Aaron Blabey",
+    "books": ["The Bad Guys", "The Bad Guys in Mission Unpluckable"],
+    "technique": "Villains trying to be heroes, comic panel format, fast pace, twist endings",
+    "example": """Mr. Wolf: OK, so here's the thing — I know what you're thinking. You're thinking, 'Ooh, a wolf! How scary!' Right? Wrong. I'm a nice guy. A GOOD guy, in fact. I just have a... bad reputation.""",
+    "rules": [
+        "Villains as protagonists — kids root for the 'bad' guys",
+        "Comic panels mixed with prose — visual variety on every page",
+        "Each book is one mission — heist/rescue structure",
+        "Twist at the end reframes everything",
+        "Characters are TRYING to be good but keep messing up",
+    ],
+}
+
+DIARY_OF_A_WIMPY_KID_HOOK = {
+    "author": "Jeff Kinney",
+    "books": ["Diary of a Wimpy Kid"],
+    "technique": "The hook that makes kids read 300 pages in one sitting",
+    "example": """First of all, let me get something straight: this is a JOURNAL, not a diary. I know what it says on the cover, but when Mom went out to buy this thing I SPECIFICALLY told her to get one that didn't say "diary" on it.""",
+    "rules": [
+        "Kid feels SEEN — 'that's exactly what I think!'",
+        "Every page has a drawing that adds a joke",
+        "Social humiliation is the stakes (not life/death)",
+        "Narrator is wrong about himself but doesn't know it",
+        "Short entries = easy to read 'just one more page'",
+    ],
+}
+
+# --- WHY THESE BOOKS HOOK KIDS (principles) ---
+ENGAGEMENT_PRINCIPLES = {
+    "participation": "Kids can shout along, predict what's next, or physically interact (flip-o-rama)",
+    "repetition_with_payoff": "Same structure repeated until the pattern BREAKS — the break is the reward",
+    "kid_is_smarter": "Child reader knows something the character doesn't — dramatic irony",
+    "irreverence": "Authority is silly, rules are broken, potty humor is welcome",
+    "fast_chapters": "2-3 pages max per chapter — constant sense of progress",
+    "visual_variety": "Mix text with comics, drawings, lists, fake documents",
+    "emotional_honesty": "Characters feel exactly what kids feel — embarrassment, unfairness, wanting to belong",
+    "one_more_page": "Every chapter ends with a question or cliffhanger — impossible to stop",
+}
+
+
+# --- Lookup by category ---
+PICTURE_BOOK_EXAMPLES = [SEUSS, ERIC_CARLE, MO_WILLEMS, JULIA_DONALDSON, DRAGONS_LOVE_TACOS, PETE_THE_CAT]
+EARLY_READER_EXAMPLES = [JUNIE_B_JONES, FROG_AND_TOAD, ELEPHANT_AND_PIGGIE]
+CHAPTER_BOOK_EXAMPLES = [ROALD_DAHL, DIARY_OF_A_WIMPY_KID, PERCY_JACKSON, DOG_MAN, CAPTAIN_UNDERPANTS, THE_BAD_GUYS, DIARY_OF_A_WIMPY_KID_HOOK]
 BEDTIME_EXAMPLES = [GOODNIGHT_MOON, GUESS_HOW_MUCH]
 
 ALL_EXAMPLES = PICTURE_BOOK_EXAMPLES + EARLY_READER_EXAMPLES + CHAPTER_BOOK_EXAMPLES + BEDTIME_EXAMPLES
