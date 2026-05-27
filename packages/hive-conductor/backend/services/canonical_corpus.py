@@ -158,6 +158,110 @@ Output: {{"patterns": [str]}}"""
             logger.error(f"Pattern extraction failed: {e}")
             return []
 
+    async def discover_new_holdout(self, n: int = 5) -> list[dict[str, Any]]:
+        """Find genuinely NEW examples the corpus has never seen.
+        
+        Anti-overfitting: each hill-climb pass searches with a novel query,
+        finds examples that aren't in the corpus yet. The system literally
+        cannot overfit to these because it didn't know they existed.
+        """
+        brave_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
+        if not brave_key:
+            return []
+
+        known_urls = {e.get("url") for e in self.examples}
+
+        import random
+        angles = [
+            f"new {self.domain} 2024 2025 released recently",
+            f"{self.domain} underrated hidden gem {self.audience}",
+            f"reddit recommend {self.domain} {self.audience} this month",
+            f"{self.domain} trending viral recent",
+            f"indie {self.domain} breakout success {self.audience}",
+            f"{self.domain} debut award nominee 2024",
+            f"tiktok booktok {self.domain} popular {self.audience}",
+            f"best new {self.domain} nobody talks about",
+        ]
+        query = random.choice(angles)
+
+        await asyncio.sleep(1.1)
+        results = await self._search(query, brave_key)
+        new_examples = [r for r in results if r.get("url") not in known_urls]
+
+        for ex in new_examples[:n]:
+            ex["discovered_at_pass"] = self.size
+            ex["holdout"] = True
+            self.examples.append(ex)
+
+        return new_examples[:n]
+
+    async def hill_climb_pass(self, output_baseline: str, output_mutated: str) -> dict[str, Any]:
+        """One hill-climb pass with genuinely new held-out examples.
+        
+        1. Score baseline against known corpus
+        2. Discover NEW examples (never seen before — no lookahead bias)
+        3. Score mutated against known corpus (target)
+        4. Score mutated against NEW examples (held-out)
+        5. Accept only if improves on known AND doesn't fail on new
+        """
+        baseline_result = await self.score(output_baseline)
+        new_examples = await self.discover_new_holdout(n=3)
+        mutated_result = await self.score(output_mutated)
+        holdout_result = await self._score_against_new(output_mutated, new_examples)
+
+        target_improved = mutated_result.get("score", 0) > baseline_result.get("score", 0)
+        holdout_ok = holdout_result.get("score", 0) >= 40
+
+        return {
+            "accepted": target_improved and holdout_ok,
+            "baseline_score": baseline_result.get("score", 0),
+            "mutated_score": mutated_result.get("score", 0),
+            "holdout_score": holdout_result.get("score", 0),
+            "new_examples_found": len(new_examples),
+            "reason": "improved + passed on genuinely new" if (target_improved and holdout_ok) else
+                     ("no improvement on known" if not target_improved else "failed on unseen examples"),
+            "new_examples": [e.get("title", "") for e in new_examples],
+        }
+
+    async def _score_against_new(self, output: str, examples: list[dict]) -> dict[str, Any]:
+        """Score against specific newly-discovered examples."""
+        if not examples:
+            return {"score": 50}
+
+        base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
+        if not base.endswith("/v1"):
+            base += "/v1"
+        key = os.environ.get("LITELLM_API_KEY", "")
+
+        examples_text = "\n".join(f"- {e['title']}: {e['snippet']}" for e in examples)
+        prompt = f"""Score this {self.domain} output against these NEWLY DISCOVERED examples of what's currently good.
+These are fresh — they represent what's succeeding RIGHT NOW.
+
+New examples found:
+{examples_text}
+
+Output to score:
+{output[:2000]}
+
+Does this output match the quality bar set by these new examples? Score 0-100.
+Reply JSON: {{"score": int, "rationale": str}}"""
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post(
+                    f"{base}/chat/completions",
+                    headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                    json={
+                        "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-2.5-flash"),
+                        "messages": [{"role": "user", "content": prompt}],
+                        "response_format": {"type": "json_object"},
+                    },
+                )
+                r.raise_for_status()
+                return json.loads(r.json()["choices"][0]["message"]["content"])
+        except Exception as e:
+            return {"score": 0, "error": str(e)}
+
     async def score(self, output: str) -> dict[str, Any]:
         """Score output against the corpus. How close is it to canonically good?"""
         if not self._built:
