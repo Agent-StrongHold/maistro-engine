@@ -54,12 +54,15 @@ Score this UI 0-100 against these canonical examples of what good looks like:
 {refs_text}
 
 Evaluate on:
-1. CLARITY (25 pts): Is it immediately obvious what to do? Can a non-technical user figure it out in 3 seconds?
-2. DENSITY (25 pts): Is information presented efficiently without clutter? Like Linear/Stripe — dense but scannable.
-3. SPEED PERCEPTION (25 pts): Does it FEEL fast? Minimal loading states, instant feedback, no unnecessary transitions.
-4. VISUAL HIERARCHY (25 pts): Is there one clear primary action? Do eyes flow naturally? Like Google — one input dominates.
+1. CLARITY (20 pts): Is it immediately obvious what to do? Can a non-technical user figure it out in 3 seconds?
+2. DENSITY (20 pts): Is information presented efficiently without clutter? Like Linear/Stripe — dense but scannable.
+3. SPEED PERCEPTION (20 pts): Does it FEEL fast? Minimal loading states, instant feedback, no unnecessary transitions.
+4. VISUAL HIERARCHY (20 pts): Is there one clear primary action? Do eyes flow naturally? Like Google — one input dominates.
+5. FUNCTIONALITY ACCESS (20 pts): Can you reach ALL features without hunting? Like Linear — everything is there but layered. Dashboard shows what needs attention NOW, actions are obvious, deep features are one click away not buried in menus.
 
-Reply JSON: {{"score": int, "clarity": int, "density": int, "speed": int, "hierarchy": int, "top_issue": str, "fix": str}}"""
+Key principle: A great dashboard presents ALL the info you need quickly AND makes it clear how to act on it. Not fewer features — better presentation of features.
+
+Reply JSON: {{"score": int, "clarity": int, "density": int, "speed": int, "hierarchy": int, "functionality": int, "top_issue": str, "fix": str}}"""
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -169,11 +172,17 @@ CODE FEEDBACK:
 - Suggested fix: {code_feedback.get('fix', 'unknown')}
 
 CANONICAL REFERENCES (what good looks like):
-- Google: One input, zero clutter
-- ChatGPT: Single thread, streaming, minimal chrome
-- Linear: Fast, keyboard-first, beautiful density
+- Linear: All features accessible, layered. Dashboard shows what needs attention NOW.
+- Stripe: Data-dense but scannable. Clear hierarchy. Actions obvious.
+- Notion: Progressive disclosure. Simple surface, power underneath.
 
-Generate an IMPROVED version of the component that addresses the top issues.
+CRITICAL RULE: Do NOT remove functionality. Every feature in the current code must remain accessible. Instead:
+- Surface the most important info/actions prominently (dashboard pattern)
+- Layer secondary features behind clear affordances (tabs, expandable sections, command palette)
+- Make it obvious what to do NEXT based on current state
+- Show status at a glance — what's working, what needs attention, what's blocked
+
+Generate an IMPROVED version that scores higher on ALL axes including functionality access.
 Output ONLY the complete TSX code, no explanation."""
 
     try:
