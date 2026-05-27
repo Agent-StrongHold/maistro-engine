@@ -130,6 +130,70 @@ print(r.json()["choices"][0]["message"]["content"])
             node = node_map[nid]
             prompt = node.get("prompt", "")
             model = node.get("model", os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash"))
+
+            # --- TOOL NODE: execute tool instead of LLM ---
+            tool_name = node.get("tool")
+            if tool_name:
+                try:
+                    from services.tool_executor import TOOLS
+                    tool_fn = TOOLS.get(tool_name)
+                    if not tool_fn:
+                        results[nid] = {"role": node.get("role", "worker"), "response": f"Unknown tool: {tool_name}", "success": False}
+                        return
+                    tool_config = node.get("tool_config", {})
+                    parent_outputs = {pid: results[pid]["response"] for pid in inbound[nid] if pid in results and results[pid].get("success")}
+
+                    if tool_name == "web_search":
+                        # Execute search queries from parent node output or config
+                        iterate_over = tool_config.get("iterate_over", "")
+                        queries = []
+                        if iterate_over and "." in iterate_over:
+                            src_node, src_field = iterate_over.split(".", 1)
+                            src_data = parent_outputs.get(src_node, "")
+                            try:
+                                parsed = json.loads(src_data) if isinstance(src_data, str) else src_data
+                                queries = parsed.get(src_field, []) if isinstance(parsed, dict) else []
+                            except (json.JSONDecodeError, AttributeError):
+                                queries = [task_desc]
+                        elif tool_config.get("queries_from_input"):
+                            template = tool_config.get("query_template", "{input}")
+                            queries = [template.replace("{input}", task_desc)]
+                        if not queries:
+                            queries = [task_desc]
+
+                        from services.tool_executor import web_search
+                        all_results = []
+                        max_r = tool_config.get("max_results", 5)
+                        for q in queries[:5]:
+                            sr = await web_search(q, max_results=max_r)
+                            all_results.append(sr)
+                        results[nid] = {"role": node.get("role", "worker"), "response": json.dumps(all_results, indent=2), "success": True}
+
+                    elif tool_name == "clarify":
+                        from services.tool_executor import clarify
+                        questions = tool_config.get("questions", [])
+                        ctx = {"input": task_desc}
+                        answers = await clarify(questions, ctx)
+                        # Format as readable brief
+                        brief = "\n".join(f"Q: {q}\nA: {answers.get(str(i+1), answers.get(q, 'Not specified'))}\n" for i, q in enumerate(questions))
+                        results[nid] = {"role": node.get("role", "worker"), "response": brief, "success": True}
+
+                    elif tool_name == "browse_url":
+                        from services.tool_executor import browse_url
+                        url = tool_config.get("url", "")
+                        task = tool_config.get("task", "Extract key information")
+                        br = await browse_url(url, task)
+                        results[nid] = {"role": node.get("role", "worker"), "response": json.dumps(br, indent=2), "success": True}
+
+                    else:
+                        result = await tool_fn(task_desc)
+                        results[nid] = {"role": node.get("role", "worker"), "response": json.dumps(result) if isinstance(result, dict) else str(result), "success": True}
+                except Exception as e:
+                    logger.error(f"Tool node {nid} failed: {e}")
+                    results[nid] = {"role": node.get("role", "worker"), "response": f"Tool error: {e}", "success": False}
+                return
+            # --- END TOOL NODE ---
+
             system = prompt or f"You are a {node.get('name', 'worker')} agent."
             user_content = f"Task: {task_desc}"
             parent_outputs = [results[pid]["response"] for pid in inbound[nid] if pid in results and results[pid].get("success")]
