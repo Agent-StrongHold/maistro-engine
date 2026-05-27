@@ -20,12 +20,12 @@ DAGS = [
                 "tool": "clarify",
                 "tool_config": {
                     "questions": [
-                        "Which picture book authors should we emulate? Pick 2-3 from: Eric Carle (bold collage, repetition), Mo Willems (humor, minimal text), Oliver Jeffers (whimsy, emotional depth), Julia Donaldson (rhyme, rhythm), Hervé Tullet (interactive, playful). What specifically do you love about their style?",
+                        "How old is the child this is for? (This determines vocabulary, sentence length, and which proven styles we'll use.)",
                         "What is the main character? (animal, child, object) Describe their appearance and one defining personality trait.",
                         "What is the emotional journey? (e.g., scared→brave, lonely→connected, confused→understanding)",
                         "What is the setting? Describe the world in sensory detail — colors, sounds, textures.",
                         "What is the single concept or lesson? (e.g., sharing, bedtime routine, counting, colors)",
-                        "What repetitive phrase or rhythm should anchor the story? (Think 'Brown Bear, Brown Bear' or 'We're Going on a Bear Hunt')"
+                        "What should the tone be? (silly/funny, warm/gentle, exciting/adventurous, interactive/participatory)"
                     ]
                 },
             },
@@ -73,12 +73,12 @@ DAGS = [
                 "tool": "clarify",
                 "tool_config": {
                     "questions": [
-                        "Which early reader authors should we study? Pick 2-3 from: Arnold Lobel (Frog and Toad — gentle friendship, quiet humor), Cynthia Rylant (Henry and Mudge — sensory detail, warmth), Mo Willems (Elephant & Piggie — pure dialogue, physical comedy), James Dean (Pete the Cat — repetition, positivity), Dav Pilkey (Dog Man — visual humor, energy). What do you love about them?",
-                        "Who is the protagonist? Name, age, 2-3 personality traits, and what makes them relatable to a 5-7 year old.",
+                        "How old is the child? What do they already like reading? (This determines which proven styles we'll match.)",
+                        "Who is the protagonist? Name, age, 2-3 personality traits, and what makes them relatable to this kid.",
                         "What is the central problem? (lost toy, new school, making a friend, learning something hard)",
-                        "What are 3 attempts the character makes to solve the problem? (try-fail-try-fail-succeed pattern like Frog and Toad)",
+                        "What are 3 attempts the character makes to solve the problem? (try-fail-try-fail-succeed pattern)",
                         "What does the character LEARN by the end? How do they grow?",
-                        "What is the tone? (Arnold Lobel gentle, Mo Willems silly, Cynthia Rylant warm, Dav Pilkey wild)"
+                        "What tone does this kid respond to? (silly/physical comedy, warm/gentle, adventurous, gross-out funny)"
                     ]
                 },
             },
@@ -126,12 +126,12 @@ DAGS = [
                 "tool": "clarify",
                 "tool_config": {
                     "questions": [
-                        "Which chapter book authors define the quality bar? Pick 2-3 from: Roald Dahl (subversive humor, vivid villains), Kate DiCamillo (spare prose, emotional depth), Rick Riordan (action pacing, mythology), Jeff Kinney (diary format, visual humor), Katherine Applegate (empathy, animal POV), Beverly Cleary (realistic kids, everyday adventures). What specifically makes their writing great?",
-                        "What genre? (fantasy, mystery, adventure, realistic fiction, humor) Name 2 specific books in this genre the reader already loves.",
+                        "How old is the reader? What books have they loved? What do they binge? (We'll match proven styles that hook kids like them.)",
+                        "What genre? (fantasy, mystery, adventure, realistic fiction, humor) What's a book they couldn't put down?",
                         "Describe the protagonist: name, age, appearance, 3 traits, biggest fear, secret talent, deepest want.",
                         "What is the central conflict? What's at stake if the protagonist fails?",
-                        "Who is the antagonist? What makes them compelling (Dahl's grotesque adults, Riordan's sympathetic monsters, DiCamillo's internal struggles)?",
-                        "What is the theme without being preachy? (Dahl: justice for the powerless. DiCamillo: love persists. Riordan: found family.)"
+                        "Who is the antagonist? What makes them interesting (not just 'evil')?",
+                        "What is the theme without being preachy? What should the reader FEEL at the end?"
                     ]
                 },
             },
@@ -188,11 +188,11 @@ DAGS = [
                 "tool": "clarify",
                 "tool_config": {
                     "questions": [
-                        "Which bedtime story authors set the bar? Pick from: Margaret Wise Brown (Goodnight Moon — ritual, repetition, slowing rhythm), Sam McBratney (Guess How Much I Love You — parent-child warmth), Mem Fox (Time for Bed — gentle animals, lullaby cadence), Eric Litwin (Pete the Cat: Bedtime Blues — reassurance through humor). What makes their bedtime stories work?",
+                        "How old is the child? What's their bedtime like right now? (Wired? Scared of dark? Just needs winding down?)",
                         "What creature or character will the child follow to sleep? Describe them as soft, warm, and safe.",
-                        "What is the gentle 'adventure' before sleep? (Margaret Wise Brown: saying goodnight to everything. Mem Fox: animals tucking in one by one.)",
-                        "What sensory details should repeat? (Brown: 'goodnight ___'. McBratney: 'I love you to ___ and back'.)",
-                        "What soothing phrase should repeat like a lullaby throughout? (Must have the same syllable count each time for rhythm.)"
+                        "What is the gentle 'adventure' before sleep? (saying goodnight to things, following moonbeams, animals tucking in one by one)",
+                        "What sensory details calm this specific child? (warm blanket, rain sounds, parent's heartbeat, soft fur)",
+                        "What soothing phrase should repeat like a lullaby? (Must have the same syllable count each time for rhythm.)"
                     ]
                 },
             },
@@ -229,12 +229,12 @@ DAGS = [
                 "tool": "clarify",
                 "tool_config": {
                     "questions": [
-                        "Which educational story authors should we study? Pick from: Joanna Cole (Magic School Bus — adventure IS the lesson), Andrea Beaty (Rosie Revere/Ada Twist — growth mindset through failure), Oliver Jeffers (Here We Are — big concepts made intimate), Jason Chin (Grand Canyon — narrative nonfiction, time travel through layers). How do they teach without lecturing?",
-                        "What specific concept should the child learn? (Not vague — e.g., 'how seeds grow' not 'nature')",
-                        "What age range? What's the ONE new thing they should understand after reading?",
-                        "What character will discover this concept? How does learning it solve their personal problem? (Beaty technique: character NEEDS the knowledge)",
-                        "What are 3 concrete scenes where the concept is demonstrated through action? (Cole technique: characters physically experience the science)",
-                        "What common misconception should the story gently correct? (Chin technique: show the real thing being more amazing than the misconception)"
+                        "How old is the child? What do they already know about this topic? (We'll pick the right style for their level.)",
+                        "What specific concept should they learn? (Not vague — e.g., 'how seeds grow into plants' not 'nature')",
+                        "What's the ONE new thing they should understand after reading?",
+                        "What character will discover this concept? How does learning it solve their personal problem?",
+                        "What are 3 concrete scenes where the concept is demonstrated through action (not explained)?",
+                        "What common misconception should the story gently correct?"
                     ]
                 },
             },
