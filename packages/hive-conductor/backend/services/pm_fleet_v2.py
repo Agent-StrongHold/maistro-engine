@@ -72,7 +72,7 @@ class KnowledgeDistiller:
                     f"{base}/chat/completions",
                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                     json={
-                        "model": "gemini-2.5-flash",
+                        "model": "gemini-3.5-flash",
                         "messages": [{"role": "user", "content": prompt}],
                         "response_format": {"type": "json_object"},
                     },

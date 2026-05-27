@@ -104,7 +104,7 @@ async def clarify(questions: list[str], context: dict[str, Any]) -> dict[str, st
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
-                    "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-2.5-flash"),
+                    "model": os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash"),
                     "messages": [{"role": "user", "content": prompt}],
                     "response_format": {"type": "json_object"},
                 },
@@ -160,7 +160,7 @@ async def _gemini_grounded_search(query: str, max_results: int) -> dict[str, Any
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
-                    "model": "gemini-2.5-flash",
+                    "model": "gemini-3.5-flash",
                     "messages": [
                         {"role": "system", "content": "You are a web research assistant. Search for real, current information. Cite real URLs you know exist. If you're not sure a URL is real, don't include it."},
                         {"role": "user", "content": prompt},

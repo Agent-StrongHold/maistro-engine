@@ -127,8 +127,8 @@ async def validate_and_filter_proposals(
 CANDIDATE_MODELS = [
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash",
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
+    "gemini-3.5-flash",
+    "gemini-3.5-pro",
     "gpt-4.1-mini",
     "gpt-4.1-nano",
     "gpt-5-mini",
@@ -217,8 +217,8 @@ def _filter_above_knee(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     # Estimate cost from model (rough $/1M tokens)
     MODEL_COST = {
-        "gemini-3.1-flash-lite": 0.02, "gemini-3.5-flash": 0.20, "gemini-2.5-flash": 0.15,
-        "gemini-2.5-pro": 1.25, "gpt-4.1-nano": 0.05, "gpt-4.1-mini": 0.10,
+        "gemini-3.1-flash-lite": 0.02, "gemini-3.5-flash": 0.20, "gemini-3.5-flash": 0.15,
+        "gemini-3.5-pro": 1.25, "gpt-4.1-nano": 0.05, "gpt-4.1-mini": 0.10,
         "gpt-5-nano": 0.08, "gpt-5-mini": 0.15, "gpt-5.1": 0.50, "gpt-5.2": 0.75,
         "gpt-5.4": 1.50, "gpt-5.5": 2.00, "claude-haiku-4-5": 0.25, "claude-sonnet-4-6": 1.50,
         "o4-mini": 0.30,
@@ -290,8 +290,8 @@ async def hill_climb_models(
 
     # Pareto-optimal selection: best quality/cost/latency composite
     MODEL_COST = {
-        "gemini-3.1-flash-lite": 0.02, "gemini-3.5-flash": 0.20, "gemini-2.5-flash": 0.15,
-        "gemini-2.5-pro": 1.25, "gpt-4.1-nano": 0.05, "gpt-4.1-mini": 0.10,
+        "gemini-3.1-flash-lite": 0.02, "gemini-3.5-flash": 0.20, "gemini-3.5-flash": 0.15,
+        "gemini-3.5-pro": 1.25, "gpt-4.1-nano": 0.05, "gpt-4.1-mini": 0.10,
         "gpt-5-nano": 0.08, "gpt-5-mini": 0.15, "gpt-5.1": 0.50, "gpt-5.2": 0.75,
         "gpt-5.4": 1.50, "gpt-5.5": 2.00, "claude-haiku-4-5": 0.25, "claude-sonnet-4-6": 1.50,
         "o4-mini": 0.30,

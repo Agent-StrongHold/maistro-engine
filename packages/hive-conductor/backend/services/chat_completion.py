@@ -46,6 +46,7 @@ def _get_program_context(user_id: str) -> dict[str, Any]:
             "constraints": ctx.constraints,
             "stakeholders": ctx.stakeholders,
             "summary": ctx.summary,
+            "recent_guidance": ctx.guidance_log[-3:],
         }
     except Exception:
         return {}
@@ -91,6 +92,10 @@ def _build_system_prompt(user_id: str) -> str:
         base += f"\nStakeholders: {', '.join(ctx['stakeholders'])}"
     if ctx.get("constraints"):
         base += f"\nConstraints: {', '.join(ctx['constraints'])}"
+    if ctx.get("recent_guidance"):
+        base += "\n\nRecent PM guidance (use this to shape priorities):"
+        for g in ctx["recent_guidance"]:
+            base += f"\n- {g}"
     return base
 
 
