@@ -142,6 +142,7 @@ export default function DagBuilder() {
   const [editRole, setEditRole] = useState<Role>("worker");
   const [editStrategy, setEditStrategy] = useState<Strategy>("react");
   const [editModel, setEditModel] = useState("");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [editPrompt, setEditPrompt] = useState("");
   const [editAgentId, setEditAgentId] = useState<string>("");
   const [addEdgeTarget, setAddEdgeTarget] = useState<string | null>(null);
@@ -169,6 +170,7 @@ export default function DagBuilder() {
   useEffect(() => {
     loadDags();
     loadAgents();
+    apiGet<{ models: string[] }>("/v1/settings/models").then((r) => setAvailableModels(r.models)).catch(() => {});
   }, [loadDags, loadAgents]);
 
   useEffect(() => {
@@ -738,7 +740,10 @@ export default function DagBuilder() {
                           </div>
                           <div>
                             <label style={lbl}>Model</label>
-                            <input value={editModel} onChange={(e) => setEditModel(e.target.value)} style={inp} placeholder="e.g. gpt-4o" />
+                            <select value={editModel} onChange={(e) => setEditModel(e.target.value)} style={inp}>
+                              <option value="">Default ({availableModels[0] || "—"})</option>
+                              {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
+                            </select>
                           </div>
                         </div>
                         <div style={{ marginTop: 6 }}>

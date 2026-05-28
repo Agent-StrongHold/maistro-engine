@@ -165,7 +165,8 @@ def create_app() -> FastAPI:
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")
     app.include_router(setup_checklist.router, prefix="/v1/setup-checklist")
-    app.include_router(daily_report.router, prefix="/v1/daily-report")
+    from routes import daily_report_v2
+    app.include_router(daily_report_v2.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
     # Phase 5 Signal #4: thumbs feedback piggybacks on /v1/dag-runs path
@@ -188,6 +189,20 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
     app.include_router(_confirms_router, prefix="/v1/confirms")
+
+    # Phase 6 — Canvas/Davinci DAG
+    try:
+        from routes.canvas import router as canvas_router
+        app.include_router(canvas_router)
+    except Exception:
+        pass
+
+    # Phase 7 — PM Fleet v2 (distillation, GitHub/GitLab tools, topK)
+    try:
+        from routes.pm_fleet_v2 import router as pm_fleet_v2_router
+        app.include_router(pm_fleet_v2_router)
+    except Exception:
+        pass
 
     try:
         from routes.evolution import router as evolution_router

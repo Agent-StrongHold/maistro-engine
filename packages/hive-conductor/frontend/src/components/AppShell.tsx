@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useUser } from "../App";
+import { ModeToggle } from "./ModeToggle";
 import { usePmPoc } from "../context/PocMode";
 import {
   PM_NAV_CREDENTIALS,
@@ -12,31 +13,18 @@ import {
 } from "../lib/pmBranding";
 
 const fullNav = [
-  { to: "/credentials", icon: "\uD83D\uDD11", label: "Credentials" },
-  { to: "/dashboard", icon: "\uD83C\uDFE0", label: "Dashboard" },
-  { to: "/chat", icon: "\uD83D\uDCAC", label: "Chat" },
-  { to: "/missions", icon: "\uD83C\uDFAF", label: "Missions" },
-  { to: "/dags", icon: "\uD83DD\uDC00", label: "DAGs" },
-  { to: "/schedules", icon: "\u23F1", label: "Schedules" },
-  { to: "/agents", icon: "\uD83E\uDDE0", label: "Agents" },
-  { to: "/skills", icon: "\u25C8", label: "Skills" },
-  { to: "/mcp", icon: "\u229E", label: "MCP" },
-  { to: "/topology", icon: "\uD83D\uDD17", label: "Topology" },
-  { to: "/messages", icon: "\uD83D\uDCCB", label: "Messages" },
-  { to: "/quotas", icon: "\uD83D\uDCCA", label: "Quotas" },
-  { to: "/audit", icon: "\uD83D\uDD12", label: "Audit" },
-  { to: "/cli", icon: "\u203A_", label: "CLI" },
-  { to: "/containers", icon: "\u2B21", label: "Containers" },
-  { to: "/evolution", icon: "\u26A1", label: "Evolution" },
-  { to: "/memory", icon: "\u25D1", label: "Memory" },
-  { to: "/docs", icon: "\u2753", label: "Docs" },
-  { to: "/settings", icon: "\u2699", label: "Settings" },
+  { to: "/chat", icon: "💬", label: "Chat" },
+  { to: "/dashboard", icon: "📊", label: "Dashboard" },
+  { to: "/agents", icon: "🤖", label: "Agents" },
+  { to: "/settings", icon: "⚙", label: "Settings" },
 ];
 
 const pocNav = [
-  { to: "/agents", icon: "\uD83E\uDDE0", label: PM_NAV_PROGRAM },
+  { to: "/chat", icon: "\uD83D\uDCAC", label: "Chat" },
+  { to: "/dashboard", icon: "\uD83D\uDCCA", label: "Dashboard" },
+  { to: "/knowledge", icon: "\uD83E\uDDE0", label: "Knowledge" },
+  { to: "/agents", icon: "\uD83D\uDC1D", label: PM_NAV_PROGRAM },
   { to: "/missions", icon: "\uD83C\uDFAF", label: PM_NAV_MISSIONS },
-  { to: "/work-items", icon: "\uD83D\uDCCB", label: PM_NAV_DRAFTS },
   { to: "/mcp", icon: "\u229E", label: PM_NAV_INTEGRATIONS },
   { to: "/credentials", icon: "\uD83D\uDD11", label: PM_NAV_CREDENTIALS },
   { to: "/settings", icon: "\u2699", label: "Settings" },
@@ -75,6 +63,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
       <nav className={`drawer${drawerOpen ? " open" : ""}`}>
         <div className="drawer-header">
           <span style={{ fontFamily: "var(--hand)", fontSize: 20, fontWeight: 700 }}>{shellTitle}</span>
+          <ModeToggle />
           <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu">&#x2715;</button>
         </div>
         {pmPoc ? (

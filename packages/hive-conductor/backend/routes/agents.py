@@ -30,6 +30,30 @@ def _user_id(request: Request) -> str:
     return str(user.get("id") or user.get("username") or "dev")
 
 
+def _build_invoke_context(user_id: str) -> dict[str, Any]:
+    """Build program_context with credentials for agent invocation."""
+    from services import program_store as prog, user_credentials as cred_svc
+    try:
+        from maistro.agents.program_context import context_for_task
+        ctx = prog.get_context(user_id)
+        pctx = context_for_task(ctx)
+    except Exception:
+        pctx = {}
+    # Inject Atlassian PATs
+    store = cred_svc.get_credential_store()
+    if store:
+        pats: dict[str, str | None] = {}
+        for pid, key in [("atlassian_server_jira", "jira"), ("confluence", "confluence")]:
+            try:
+                if store.has_secret(user_id, pid):
+                    pats[key] = store.use_secret(user_id, pid, lambda s: s)
+            except Exception:
+                pass
+        if pats:
+            pctx["atlassian_pats"] = pats
+    return pctx
+
+
 @router.get("", response_model=list[Agent])
 def list_agents(request: Request) -> list[Agent]:
     if is_pm_poc_mode():
@@ -63,7 +87,7 @@ class InvokeBody(BaseModel):
 
 
 @router.post("/{agent_id}/invoke")
-async def invoke_agent(agent_id: str, body: InvokeBody, request: Request) -> dict[str, str]:
+async def invoke_agent(agent_id: str, body: InvokeBody, request: Request) -> dict[str, Any]:
     if not is_pm_poc_mode():
         raise HTTPException(status_code=404, detail="Agent invoke only available in PM POC mode")
     if is_gated(body.capability):
@@ -76,38 +100,17 @@ async def invoke_agent(agent_id: str, body: InvokeBody, request: Request) -> dic
                 "— clarify, edit, then confirm."
             ),
         )
-    try:
-        task_type, description, resolved_id = invoke_pm_agent(
-            agent_id, body.capability, body.payload
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    engine = get_engine()
     uid = _user_id(request)
-    logger.info(
-        "agent_invoke agent=%s capability=%s user=%s payload_keys=%s",
-        resolved_id,
-        body.capability,
-        uid,
-        sorted(body.payload.keys()),
-    )
-    record = await engine.submit_task(
-        resolved_id,
-        description,
-        user_id=uid,
-        task_type=task_type,
-        agent_id=resolved_id,
-        capability=body.capability,
-    )
-    logger.info("agent_invoke queued task_id=%s", record.id)
+    # Execute directly via the same tool execution the chat uses — real data, no queue
+    from services.chat_completion import _execute_tool
+    result = await _execute_tool(body.capability, body.payload, uid)
     log_audit(
         "agent_invoke",
         uid,
-        target=resolved_id,
-        detail={"capability": body.capability, "task_id": record.id},
+        target=agent_id,
+        detail={"capability": body.capability, "result_keys": list(result.keys()) if isinstance(result, dict) else []},
     )
-    return {"task_id": record.id, "status": "queued"}
+    return {"status": "completed", "capability": body.capability, "result": result}
 
 
 class CreateAgentBody(BaseModel):
