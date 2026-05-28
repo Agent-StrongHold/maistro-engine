@@ -97,7 +97,7 @@ export default function ChatPage() {
     setTimeout(() => textareaRef.current?.focus(), 0);
 
     try {
-      const res = await fetch("/v1/chat/completions", {
+      const res = await fetch("/v1/chat/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
