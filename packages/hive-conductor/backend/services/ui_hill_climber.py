@@ -148,42 +148,43 @@ async def score_ui_full(screenshot_b64: str, component_code: str) -> dict[str, A
 
 
 async def generate_ui_mutation(current_code: str, visual_feedback: dict, code_feedback: dict) -> str:
-    """Generate a mutated version of the UI code based on scoring feedback."""
+    """Generate a TARGETED EDIT — fix the single top issue, not a rewrite.
+    
+    Like the DAG hill-climber: one mutation per pass. Small, testable, reversible.
+    """
     base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
     if not base.endswith("/v1"):
         base += "/v1"
     key = os.environ.get("LITELLM_API_KEY", "")
 
-    prompt = f"""You are improving a React UI component. Here's the current code and feedback:
+    prompt = f"""You are making ONE targeted edit to improve a React component.
 
-CURRENT CODE:
+DO NOT rewrite the file. Make the SMALLEST change that fixes the top issue.
+
+TOP ISSUE (visual): {visual_feedback.get('top_issue', 'none')}
+TOP ISSUE (code): {code_feedback.get('top_issue', 'none')}
+SUGGESTED FIX: {code_feedback.get('fix', visual_feedback.get('fix', 'none'))}
+
+Pick the SINGLE highest-impact fix. Output a JSON diff:
+{{
+  "description": "what this edit does in one sentence",
+  "find": "exact string to find in the current code (copy-paste exact, including whitespace)",
+  "replace": "what to replace it with"
+}}
+
+If the fix requires adding new code (not replacing), use:
+{{
+  "description": "what this adds",
+  "insert_after": "exact line to insert after",
+  "code": "new code to insert"
+}}
+
+CURRENT CODE (first 3000 chars):
 ```tsx
 {current_code[:3000]}
 ```
 
-VISUAL FEEDBACK (from screenshot evaluation):
-- Score: {visual_feedback.get('score', '?')}/100
-- Top issue: {visual_feedback.get('top_issue', 'unknown')}
-- Suggested fix: {visual_feedback.get('fix', 'unknown')}
-
-CODE FEEDBACK:
-- Score: {code_feedback.get('score', '?')}/100
-- Top issue: {code_feedback.get('top_issue', 'unknown')}
-- Suggested fix: {code_feedback.get('fix', 'unknown')}
-
-CANONICAL REFERENCES (what good looks like):
-- Linear: All features accessible, layered. Dashboard shows what needs attention NOW.
-- Stripe: Data-dense but scannable. Clear hierarchy. Actions obvious.
-- Notion: Progressive disclosure. Simple surface, power underneath.
-
-CRITICAL RULE: Do NOT remove functionality. Every feature in the current code must remain accessible. Instead:
-- Surface the most important info/actions prominently (dashboard pattern)
-- Layer secondary features behind clear affordances (tabs, expandable sections, command palette)
-- Make it obvious what to do NEXT based on current state
-- Show status at a glance — what's working, what needs attention, what's blocked
-
-Generate an IMPROVED version that scores higher on ALL axes including functionality access.
-Output ONLY the complete TSX code, no explanation."""
+Output ONLY the JSON object. One edit. Smallest possible change for maximum score improvement."""
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -193,19 +194,34 @@ Output ONLY the complete TSX code, no explanation."""
                 json={
                     "model": "claude-opus-4-6",
                     "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"},
                 },
             )
             r.raise_for_status()
             content = r.json()["choices"][0]["message"]["content"]
-            # Extract code from markdown if wrapped
-            if "```" in content:
-                parts = content.split("```")
-                for p in parts[1:]:
-                    if p.strip().startswith("tsx") or p.strip().startswith("typescript"):
-                        return p.split("\n", 1)[1].rsplit("```", 1)[0]
-                    elif "import" in p or "export" in p:
-                        return p.rsplit("```", 1)[0]
-            return content
+            edit = json.loads(content)
+
+            # Apply the targeted edit
+            if "find" in edit and "replace" in edit:
+                if edit["find"] in current_code:
+                    result = current_code.replace(edit["find"], edit["replace"], 1)
+                    logger.info(f"UI mutation applied: {edit.get('description', 'edit')}")
+                    return result
+                else:
+                    logger.warning(f"UI mutation find string not found: {edit['find'][:80]}")
+                    return current_code
+            elif "insert_after" in edit and "code" in edit:
+                if edit["insert_after"] in current_code:
+                    idx = current_code.index(edit["insert_after"]) + len(edit["insert_after"])
+                    result = current_code[:idx] + "\n" + edit["code"] + current_code[idx:]
+                    logger.info(f"UI mutation inserted: {edit.get('description', 'insert')}")
+                    return result
+                else:
+                    logger.warning(f"UI mutation insert_after not found: {edit['insert_after'][:80]}")
+                    return current_code
+            else:
+                logger.warning(f"UI mutation unknown format: {list(edit.keys())}")
+                return current_code
     except Exception as e:
         logger.error(f"Mutation generation failed: {e}")
         return current_code  # return unchanged on failure
