@@ -16,12 +16,11 @@ interface Session {
   createdAt: Date;
 }
 
-const MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "o3-pro", "gemini-3.5-flash", "gpt-5", "gpt-5-mini"];
-
+const SUGGESTED_PROMPTS_HEADING = "AI Project Manager — ask about your sprint, run research, generate documents";
 const SUGGESTED_PROMPTS = [
-  "Explain quantum entanglement simply",
-  "Write a short poem about autumn",
-  "Help me debug a React useEffect hook",
+  "What are my top blockers this sprint?",
+  "Research competitors to Cursor AI",
+  "Draft a PRD for real-time collaboration",
 ];
 
 function generateId() {
@@ -37,12 +36,28 @@ function createSession(title = "New Chat"): Session {
 }
 
 export default function ChatPage() {
+  const [models, setModels] = useState<string[]>([]);
+  const MODELS = models;
   const [sessions, setSessions] = useState<Session[]>([createSession()]);
   const [activeId, setActiveId] = useState(sessions[0].id);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [model, setModel] = useState(MODELS[0]);
+  const [model, setModel] = useState("");
+
+  useEffect(() => {
+    fetch("/v1/settings/models")
+      .then((res) => res.json())
+      .then((data) => {
+        const arr = Array.isArray(data) ? data : (data.models || data.data || []);
+        const list = arr.map((m: any) => typeof m === "string" ? m : (m.id || m.name || "")).filter(Boolean);
+        if (list.length > 0) {
+          setModels(list);
+          setModel(list[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [modelOpen, setModelOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
@@ -52,6 +67,15 @@ export default function ChatPage() {
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeSession.messages, streaming]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (el) {
+      el.rows = 1;
+      el.style.height = "auto";
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [input]);
 
   const updateSession = useCallback((id: string, updater: (s: Session) => Session) => {
     setSessions((prev) => prev.map((s) => (s.id === id ? updater(s) : s)));
@@ -108,6 +132,7 @@ export default function ChatPage() {
 
   return (
     <div className="chat-layout">
+      <style>{`.chat-layout { height: 100%; } @media (min-width: 768px) { .chat-layout .drawer { transform: none !important; } }`}</style>
       {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
       <aside className={`drawer${drawerOpen ? " drawer--open" : ""}`} aria-label="Chat sessions">
         <div className="drawer-header">
