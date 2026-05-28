@@ -13,26 +13,10 @@ import {
 } from "../lib/pmBranding";
 
 const fullNav = [
-  { to: "/credentials", icon: "\uD83D\uDD11", label: "Credentials" },
-  { to: "/dashboard", icon: "\uD83C\uDFE0", label: "Dashboard" },
-  { to: "/chat", icon: "\uD83D\uDCAC", label: "Chat" },
-  { to: "/missions", icon: "\uD83C\uDFAF", label: "Missions" },
-  { to: "/dags", icon: "\uD83DD\uDC00", label: "DAGs" },
-  { to: "/dag-runs", icon: "▶️", label: "Runs" },
-  { to: "/schedules", icon: "\u23F1", label: "Schedules" },
-  { to: "/agents", icon: "\uD83E\uDDE0", label: "Agents" },
-  { to: "/skills", icon: "\u25C8", label: "Skills" },
-  { to: "/mcp", icon: "\u229E", label: "MCP" },
-  { to: "/topology", icon: "\uD83D\uDD17", label: "Topology" },
-  { to: "/messages", icon: "\uD83D\uDCCB", label: "Messages" },
-  { to: "/quotas", icon: "\uD83D\uDCCA", label: "Quotas" },
-  { to: "/audit", icon: "\uD83D\uDD12", label: "Audit" },
-  { to: "/cli", icon: "\u203A_", label: "CLI" },
-  { to: "/containers", icon: "\u2B21", label: "Containers" },
-  { to: "/evolution", icon: "\u26A1", label: "Evolution" },
-  { to: "/memory", icon: "\u25D1", label: "Memory" },
-  { to: "/docs", icon: "\u2753", label: "Docs" },
-  { to: "/settings", icon: "\u2699", label: "Settings" },
+  { to: "/chat", icon: "💬", label: "Chat" },
+  { to: "/dashboard", icon: "📊", label: "Dashboard" },
+  { to: "/agents", icon: "🤖", label: "Agents" },
+  { to: "/settings", icon: "⚙", label: "Settings" },
 ];
 
 const pocNav = [
