@@ -16,7 +16,7 @@ interface Session {
   createdAt: Date;
 }
 
-const MODELS = ["GPT-4o", "GPT-3.5", "Claude 3", "Gemini Pro"];
+const MODELS = ["claude-sonnet-4-6", "claude-opus-4-6", "o3-pro", "gemini-3.5-flash", "gpt-5", "gpt-5-mini"];
 
 const SUGGESTED_PROMPTS = [
   "Explain quantum entanglement simply",
@@ -72,12 +72,22 @@ export default function ChatPage() {
     setStreaming(true);
     setTimeout(() => textareaRef.current?.focus(), 0);
 
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
+    try {
+      const res = await fetch("/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ model, messages: [{ role: "user", content: text.trim() }] }),
+      });
+      const data = await res.json();
+      const reply = data?.choices?.[0]?.message?.content || data?.response || "No response";
+      const assistantMsg: Message = { id: generateId(), role: "assistant", content: reply, timestamp: new Date() };
+      updateSession(sessionId, (s) => ({ ...s, messages: [...s.messages, assistantMsg] }));
+    } catch (e: any) {
+      const errMsg: Message = { id: generateId(), role: "assistant", content: `Error: ${e.message}`, timestamp: new Date() };
+      updateSession(sessionId, (s) => ({ ...s, messages: [...s.messages, errMsg] }));
+    }
 
-    const reply = `This is a simulated response to: "${text.trim().slice(0, 40)}${text.length > 40 ? "…" : ""}"`;
-    const assistantMsg: Message = { id: generateId(), role: "assistant", content: reply, timestamp: new Date() };
-
-    updateSession(sessionId, (s) => ({ ...s, messages: [...s.messages, assistantMsg] }));
     setStreaming(false);
     setTimeout(() => textareaRef.current?.focus(), 0);
   }, [activeId, streaming, updateSession]);
@@ -97,7 +107,7 @@ export default function ChatPage() {
   const switchSession = (id: string) => { setActiveId(id); setDrawerOpen(false); setTimeout(() => textareaRef.current?.focus(), 0); };
 
   return (
-    <div className="app-shell">
+    <div className="chat-layout">
       {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
       <aside className={`drawer${drawerOpen ? " drawer--open" : ""}`} aria-label="Chat sessions">
         <div className="drawer-header">
