@@ -697,3 +697,6 @@ button:hover, .suggestion-button:hover {
   transform: translateY(-1px) !important;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
 }
+
+/* Dashboard.tsx pass 2 */
+.overview-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
