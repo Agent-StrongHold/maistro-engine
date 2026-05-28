@@ -58,7 +58,10 @@ async def execute_dag(dag_data: dict, *, user_id: str = "", user_credentials: di
     completed: set[str] = set()
 
     def run_node_subprocess(nid: str, context: str) -> dict[str, Any]:
-        """Run node as separate Python process (own GIL)."""
+        """Run node in Hyperlight microVM (or subprocess fallback)."""
+        from services.hyperlight_executor import get_executor
+        import asyncio as _aio
+
         node = node_map[nid]
         script = f'''
 import json, httpx, os, sys
@@ -74,14 +77,16 @@ r.raise_for_status()
 print(r.json()["choices"][0]["message"]["content"])
 '''
         try:
-            result = subprocess.run(
-                [sys.executable, "-c", script],
-                capture_output=True, text=True, timeout=120,
+            executor = get_executor()
+            result = _aio.run(executor.execute_node(
+                script,
                 env={**node_env},
-            )
-            if result.returncode == 0:
-                return {"role": node.get("role", "worker"), "response": result.stdout.strip(), "success": True}
-            return {"role": node.get("role", "worker"), "response": result.stderr[:500], "success": False}
+                timeout_s=120,
+                allow_network=True,  # nodes need to call LiteLLM
+            ))
+            if result["success"]:
+                return {"role": node.get("role", "worker"), "response": result["output"].strip(), "success": True, "isolation": result.get("isolation", "unknown")}
+            return {"role": node.get("role", "worker"), "response": result.get("error", "")[:500], "success": False, "isolation": result.get("isolation", "unknown")}
         except Exception as e:
             return {"role": node.get("role", "worker"), "response": str(e), "success": False}
 
