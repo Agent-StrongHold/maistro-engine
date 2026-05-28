@@ -125,6 +125,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def _required_permission(self, request: Request) -> str | None:
         method_perms = _PROTECTED_OPS.get(request.method, {})
         path = request.url.path
+        # Agent invoke is autonomous read — don't gate behind elevation
+        if "/invoke" in path:
+            return None
         for prefix, perm in method_perms.items():
             if path.startswith(prefix):
                 return perm

@@ -50,14 +50,15 @@ _RUBRIC = (
     "\n"
     "Optionally propose ONE concrete topology mutation that would "
     "demonstrably improve a future run of this DAG. Topology proposals "
-    "must reference existing node_ids from the snapshot.\n"
+    "can: add a node, remove a node, reorder nodes, add/remove edges, "
+    "swap a node's model, or rewrite a node's prompt.\n"
     "\n"
     "Reply with ONLY a JSON object matching this schema, no prose around it:\n"
     "{\n"
     '  "score": <int 0-100>,\n'
     '  "rationale": <string>,\n'
     '  "topology_proposal": null | {\n'
-    '      "kind": "swap_node_kind" | "add_node" | "drop_node" | "tune_param",\n'
+    '      "kind": "add_node" | "drop_node" | "reorder" | "add_edge" | "remove_edge" | "tune_edge_weight" | "set_edge_condition" | "swap_model" | "rewrite_prompt" | "change_schema" | "change_temperature" | "change_max_tokens" | "change_strategy" | "change_max_cycles" | "change_entry" | "rename_node" | "change_role",\n'
     '      "target_node_id": <string>,\n'
     '      "from_value": <string>,\n'
     '      "to_value": <string>,\n'

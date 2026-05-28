@@ -48,6 +48,10 @@ WEIGHT_ERROR_CODE = 3.0
 WEIGHT_USER_EDIT = 2.5
 WEIGHT_EVAL_JUDGE = 1.5
 WEIGHT_THUMB = 1.0
+
+# SkillOpt-inspired controls
+TEXTUAL_LEARNING_RATE = 4  # max edits per optimization pass (add/delete/replace)
+MAX_REJECTED_BUFFER = 20   # remember last N rejected edits to avoid repeating
 WEIGHT_LATENCY = 0.5
 
 # Proposal classes — gating for auto-apply vs propose-only.
@@ -145,13 +149,14 @@ def _collect_thumbs(dag_id: str) -> dict[str, dict[str, Any]]:
 
 
 def _collect_eval_verdicts(dag_id: str) -> list[dict[str, Any]]:
-    """Return all eval-judge verdicts for runs of this DAG."""
+    """Return eval-judge verdicts for this DAG (or all if none match)."""
     import stores
 
-    return [
-        v for v in stores.eval_verdicts.values()
-        if v.get("dag_id") == dag_id
-    ]
+    matched = [v for v in stores.eval_verdicts.values() if v.get("dag_id") == dag_id]
+    if matched:
+        return matched
+    # Fallback: use all verdicts as signal (dag_id not always set)
+    return list(stores.eval_verdicts.values())
 
 
 def _collect_user_edits(dag_id: str) -> list[dict[str, Any]]:
@@ -183,10 +188,9 @@ def _build_snapshot_for_dag(
             verdicts, key=lambda v: v.get("scored_at", ""), reverse=True,
         )
         latest = verdicts_sorted[0]
-        # Convert score 0-100 → 0-1 baseline; invert so LOW scores
-        # contribute MORE optimizer weight ("things that need work").
-        score = float(latest.get("score", 100))
-        eval_baseline = max(0.0, (100 - score) / 100.0)
+        # Use the WORST score as baseline — that's what needs improvement
+        worst_score = min(float(v.get("score", 100)) for v in verdicts)
+        eval_baseline = max(0.0, (100 - worst_score) / 100.0)
         eval_context = verdicts_sorted[:5]
 
     # User edits aren't per-node either — they're per-field-path. The
@@ -198,6 +202,9 @@ def _build_snapshot_for_dag(
     edit_score_total = WEIGHT_USER_EDIT * min(len(edits), 5) / 5.0  # cap at 1*weight
 
     all_node_ids = set(metrics.keys()) | set(thumbs.keys())
+    # If no node-level data, create a DAG-level snapshot from eval verdicts
+    if not all_node_ids and (verdicts or edits):
+        all_node_ids = {"_dag_level_"}
     snapshots: dict[str, SignalSnapshot] = {}
 
     for nid in all_node_ids:
@@ -287,12 +294,16 @@ def _propose_for_snapshot(
         tp = v.get("topology_proposal")
         if not tp:
             continue
-        if tp.get("target_node_id") != snapshot.target_node_id:
-            continue
+        # Match by target_node_id OR by role name (eval-judge may use either)
+        target = tp.get("target_node_id", "")
+        if target and target != snapshot.target_node_id and target != "_dag_level_":
+            # Try matching by role — eval-judge often uses role names
+            if snapshot.target_node_id != "_dag_level_":
+                continue
         proposals.append({
             "class": CLASS_PROPOSE,
             "kind": KIND_TOPOLOGY,
-            "field_path": f"nodes[{tp['target_node_id']}].{tp.get('kind', '')}",
+            "field_path": f"nodes[{target}].{tp.get('kind', '')}",
             "rationale": tp.get("expected_improvement", "")
                        or "Eval-judge proposed this topology mutation.",
             "topology_proposal": tp,
@@ -447,6 +458,14 @@ def record_decision(
     payload["decided_at"] = datetime.now(UTC).isoformat()
     stores.optimizer_proposals[proposal_id] = payload
 
+    # Apply accepted topology mutations to the DAG
+    if decision == DECISION_ACCEPTED and payload.get("kind") == KIND_TOPOLOGY:
+        _apply_topology_mutation(payload)
+
+    # Track rejected edits so optimizer doesn't re-propose them (SkillOpt rejected-edit buffer)
+    if decision == DECISION_REJECTED:
+        _record_rejected_edit(payload)
+
     log_audit(
         action="optimizer_decision",
         actor=actor,
@@ -458,6 +477,161 @@ def record_decision(
         },
     )
     return payload
+
+
+# SkillOpt rejected-edit buffer — prevents re-proposing failed mutations
+_rejected_buffer: list[dict[str, Any]] = []
+
+
+def _record_rejected_edit(proposal: dict[str, Any]) -> None:
+    """Remember a rejected edit so the optimizer avoids re-proposing it."""
+    _rejected_buffer.append({
+        "kind": proposal.get("kind"),
+        "field_path": proposal.get("field_path"),
+        "dag_id": proposal.get("dag_id"),
+        "rejected_at": datetime.now(UTC).isoformat(),
+    })
+    # Keep buffer bounded
+    while len(_rejected_buffer) > MAX_REJECTED_BUFFER:
+        _rejected_buffer.pop(0)
+
+
+def get_rejected_buffer(dag_id: str = "") -> list[dict[str, Any]]:
+    """Return rejected edits for a DAG (or all). Fed to eval-judge as negative signal."""
+    if dag_id:
+        return [r for r in _rejected_buffer if r.get("dag_id") == dag_id]
+    return list(_rejected_buffer)
+
+
+def _apply_topology_mutation(proposal: dict[str, Any]) -> None:
+    """Apply an accepted topology mutation to the DAG in stores."""
+    import stores
+    from uuid import uuid4
+
+    dag_id = proposal.get("dag_id", "")
+    tp = proposal.get("topology_proposal") or {}
+    kind = tp.get("kind", "")
+    target = tp.get("target_node_id", "")
+
+    if not dag_id or dag_id not in stores.dags:
+        return
+
+    dag = dict(stores.dags[dag_id])
+    nodes = dag.get("nodes", [])
+    edges = dag.get("edges", [])
+
+    if kind == "add_node":
+        new_id = str(uuid4())[:8]
+        nodes.append({
+            "id": new_id,
+            "role": "worker",
+            "name": tp.get("to_value", "New Node"),
+            "prompt": tp.get("expected_improvement", ""),
+            "model": "gemini-3.5-flash",
+            "strategy": "direct",
+        })
+        # Add edge from target to new node
+        if target:
+            edges.append({"id": str(uuid4())[:8], "from_node": target, "to_node": new_id})
+
+    elif kind == "drop_node":
+        nodes = [n for n in nodes if n.get("id") != target]
+        edges = [e for e in edges if e.get("from_node") != target and e.get("to_node") != target]
+
+    elif kind == "reorder":
+        # Swap target with the node after it
+        ids = [n["id"] for n in nodes]
+        if target in ids:
+            idx = ids.index(target)
+            if idx < len(nodes) - 1:
+                nodes[idx], nodes[idx + 1] = nodes[idx + 1], nodes[idx]
+
+    elif kind == "swap_model":
+        for n in nodes:
+            if n.get("id") == target:
+                n["model"] = tp.get("to_value", n.get("model"))
+
+    elif kind == "rewrite_prompt":
+        for n in nodes:
+            if n.get("id") == target:
+                n["prompt"] = tp.get("to_value", n.get("prompt"))
+
+    elif kind == "add_edge":
+        edges.append({"id": str(uuid4())[:8], "from_node": target, "to_node": tp.get("to_value", "")})
+
+    elif kind == "remove_edge":
+        edges = [e for e in edges if not (e.get("from_node") == target and e.get("to_node") == tp.get("to_value"))]
+
+    elif kind == "tune_edge_weight":
+        for e in edges:
+            if e.get("from_node") == target and e.get("to_node") == tp.get("from_value"):
+                try:
+                    e["weight"] = float(tp.get("to_value", 1.0))
+                except (ValueError, TypeError):
+                    pass
+
+    elif kind == "set_edge_condition":
+        for e in edges:
+            if e.get("from_node") == target and e.get("to_node") == tp.get("from_value"):
+                e["condition"] = tp.get("to_value", "")
+
+    elif kind == "change_schema":
+        for n in nodes:
+            if n.get("id") == target:
+                n.setdefault("config", {})["output_schema"] = tp.get("to_value", "")
+
+    elif kind == "change_temperature":
+        for n in nodes:
+            if n.get("id") == target:
+                try:
+                    n["temperature"] = float(tp.get("to_value", 0.3))
+                except (ValueError, TypeError):
+                    pass
+
+    elif kind == "change_max_tokens":
+        for n in nodes:
+            if n.get("id") == target:
+                try:
+                    n["max_tokens"] = int(tp.get("to_value", 4096))
+                except (ValueError, TypeError):
+                    pass
+
+    elif kind == "change_strategy":
+        for n in nodes:
+            if n.get("id") == target:
+                n["strategy"] = tp.get("to_value", "direct")
+
+    elif kind == "change_max_cycles":
+        try:
+            dag["max_cycles"] = int(tp.get("to_value", 5))
+        except (ValueError, TypeError):
+            pass
+
+    elif kind == "change_entry":
+        dag["entry_node"] = tp.get("to_value", dag.get("entry_node"))
+
+    elif kind == "rename_node":
+        for n in nodes:
+            if n.get("id") == target:
+                n["name"] = tp.get("to_value", n.get("name"))
+
+    elif kind == "change_role":
+        for n in nodes:
+            if n.get("id") == target:
+                n["role"] = tp.get("to_value", n.get("role"))
+
+    elif kind == "upgrade_execution_tier":
+        # REQUIRES ADMIN APPROVAL — optimizer can propose but never auto-apply
+        # Upgrading from light→heavy or heavy→container is a security decision
+        for n in nodes:
+            if n.get("id") == target:
+                n.setdefault("config", {})["execution_tier"] = tp.get("to_value", "")
+                n["config"]["tier_approved_by"] = "admin"  # must be set by admin accept
+
+    dag["nodes"] = nodes
+    dag["edges"] = edges
+    stores.dags[dag_id] = dag
+    logger.info("topology_mutation_applied dag=%s kind=%s target=%s", dag_id, kind, target)
 
 
 def list_proposals(

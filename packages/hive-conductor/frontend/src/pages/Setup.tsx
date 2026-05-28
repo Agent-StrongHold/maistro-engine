@@ -58,14 +58,14 @@ export default function Setup() {
     const FALLBACK_MODELS = [
       // Routers (small / fast / cheap — ideal default)
       "gemini-3.1-flash-lite",
-      "gemini-2.5-flash-lite",
+      "gemini-3.5-flash-lite",
       "claude-haiku-4-5",
       "gpt-4.1-nano",
       "gpt-5-nano",
       // Mid-tier
       "claude-sonnet-4-5",
       "claude-sonnet-4-6",
-      "gemini-2.5-flash",
+      "gemini-3.5-flash",
       "gemini-3.5-flash",
       "gpt-4o-mini",
       "gpt-4.1-mini",
@@ -77,7 +77,7 @@ export default function Setup() {
       "gpt-5",
       "gpt-5.1",
       "gpt-5.2",
-      "gemini-2.5-pro",
+      "gemini-3.5-pro",
       "o3",
       "o3-pro",
       // Embedding (won't actually work as router, surfaced for completeness)

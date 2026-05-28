@@ -11,11 +11,12 @@ export default function Settings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [elevating, setElevating] = useState(false);
   const [elevPassword, setElevPassword] = useState("");
   const [elevatingFor, setElevatingFor] = useState<string | null>(null);
   const load = useCallback(async () => { try { setSettings(await apiGet<Settings>("/v1/settings")); } catch { /* */ } }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); apiGet<{ models: string[] }>("/v1/settings/models").then((r) => setAvailableModels(r.models)).catch(() => {}); }, [load]);
 
   async function saveSetting(key: string) {
     if (!settings) return;
@@ -104,6 +105,11 @@ export default function Settings() {
                     <select className="input-field" value={editVal} onChange={(e) => setEditVal(e.target.value)} style={{ width: 80 }}>
                       <option value="true">true</option>
                       <option value="false">false</option>
+                    </select>
+                  ) : key.toLowerCase().includes("model") && availableModels.length > 0 ? (
+                    <select className="input-field" value={editVal} onChange={(e) => setEditVal(e.target.value)}>
+                      {!availableModels.includes(editVal) && <option value={editVal}>{editVal}</option>}
+                      {availableModels.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                   ) : (
                     <input className="input-field" value={editVal} onChange={(e) => setEditVal(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void saveSetting(key); if (e.key === "Escape") setEditing(null); }} />

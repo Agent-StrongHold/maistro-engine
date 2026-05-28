@@ -41,7 +41,7 @@ type IntentRow = {
 
 const MODELS = [
   "gpt-4o", "gpt-4o-mini", "claude-3.5-sonnet", "claude-3.5-haiku",
-  "gemini-2.0-flash", "gemini-2.5-pro", "qwen-2.5-coder-32b",
+  "gemini-3.5-flash", "gemini-3.5-pro", "qwen-2.5-coder-32b",
   "deepseek-r1", "mistral-large", "llama-3.3-70b",
 ];
 
@@ -68,13 +68,13 @@ const STATUS_MAP: Record<AgentStatus, "running" | "idle" | "error" | "busy"> = {
 
 const DEFAULT_INTENTS: IntentRow[] = [
   { intent: "tool_dispatch", agent: "Conductor", model: "gpt-4o", strategy: "delegate" },
-  { intent: "research", agent: "Researcher", model: "gemini-2.5-pro", strategy: "react" },
+  { intent: "research", agent: "Researcher", model: "gemini-3.5-pro", strategy: "react" },
   { intent: "code", agent: "Coder", model: "claude-3.5-sonnet", strategy: "plan_execute" },
   { intent: "ha_control", agent: "Abra", model: "gpt-4o-mini", strategy: "direct" },
   { intent: "security", agent: "RedTeam", model: "deepseek-r1", strategy: "react" },
   { intent: "maintenance", agent: "Heartbeat", model: "gpt-4o-mini", strategy: "direct" },
   { intent: "memory", agent: "DreamLoop", model: "mistral-large", strategy: "plan_execute" },
-  { intent: "exploration", agent: "Phantom", model: "gemini-2.0-flash", strategy: "react" },
+  { intent: "exploration", agent: "Phantom", model: "gemini-3.5-flash", strategy: "react" },
 ];
 
 const STEP_LABELS = ["Describe", "Strategy", "Model", "Generate", "Review", "Scan", "Save"];

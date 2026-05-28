@@ -65,7 +65,10 @@ class HttpOpenAIProtocolLLM:
         api_key: str,
         variant: Literal["auto", "responses", "chat_completions"],
     ) -> None:
-        self._base = base_url.rstrip("/")
+        base = base_url.rstrip("/")
+        if not base.endswith("/v1"):
+            base = base + "/v1"
+        self._base = base
         self._key = api_key
         self._variant = variant
 

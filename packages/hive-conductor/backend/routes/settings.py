@@ -75,17 +75,17 @@ def settings_models() -> dict:
 
 
 def _fetch_available_models() -> list[str]:
-    cfg = get_settings()
-    base = cfg.maistro_llm_base_url or cfg.litellm_api_base
-    key = cfg.maistro_llm_api_key or cfg.litellm_api_key
+    import os
+    base = os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL") or ""
+    key = os.environ.get("LITELLM_API_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
     if not base:
         return [stores.settings.default_model]
     try:
         headers = {}
         if key:
-            raw = key.get_secret_value() if hasattr(key, "get_secret_value") else str(key)
-            headers["Authorization"] = f"Bearer {raw}"
-        resp = httpx.get(f"{base}/v1/models", headers=headers, timeout=5.0)
+            headers["Authorization"] = f"Bearer {key}"
+        url = f"{base.rstrip('/')}/models"
+        resp = httpx.get(url, headers=headers, timeout=5.0)
         resp.raise_for_status()
         data = resp.json()
         model_ids = [m.get("id", m.get("model", "")) for m in data.get("data", [])]
