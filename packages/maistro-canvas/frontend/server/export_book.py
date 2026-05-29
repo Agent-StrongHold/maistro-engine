@@ -83,7 +83,7 @@ def export_interior(payload: dict, output_path: str) -> str:
             page_images.append(decode_base64_image(composite))
         else:
             layers = page.get("layers", [])
-            bg = next((l for l in layers if l.get("type") == "background"), None)
+            bg = next((layer for layer in layers if layer.get("type") == "background"), None)
             if bg and bg.get("image_url"):
                 img_data = decode_base64_image(bg["image_url"])
                 page_images.append(img_data)
@@ -98,7 +98,9 @@ def export_interior(payload: dict, output_path: str) -> str:
                 page_images.append(blank)
 
         text_layers = [
-            l for l in page.get("layers", []) if l.get("type") == "text" and l.get("text_content")
+            layer
+            for layer in page.get("layers", [])
+            if layer.get("type") == "text" and layer.get("text_content")
         ]
         if text_layers:
             page_texts[page_num] = " ".join(t["text_content"] for t in text_layers)

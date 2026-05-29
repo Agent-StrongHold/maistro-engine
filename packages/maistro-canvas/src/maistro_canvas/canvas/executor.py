@@ -36,7 +36,7 @@ from maistro_canvas.types import (
 
 if TYPE_CHECKING:
     from maistro_canvas.protocols import CanvasStore, ImageGenClient
-    from maistro_canvas.types import LayerRecord
+    from maistro_canvas.types import CanvasRecord, LayerRecord
 
 logger = logging.getLogger("maistro_canvas.canvas.executor")
 
@@ -255,79 +255,88 @@ class CanvasExecutor:
 
             raise CanvasNotFoundError(f"canvas {job.canvas_id!r} not found")
 
-        params = job.params
-        count: int = int(params.get("count", 1))
-        seed: int | None = params.get("seed")  # 0 is valid, None means unset
-        negative_prompt: str = str(params.get("negative_prompt", ""))
-
         if job.action == JobAction.GENERATE:
-            images = await self._image_client.generate(
-                model_id=job.model_id,
-                prompt=job.prompt,
-                width=canvas.width,
-                height=canvas.height,
-                count=count,
-                seed=seed,
-                negative_prompt=negative_prompt,
-            )
-            paths = [img.url for img in images if img.url]
-            if not paths:
-                # No valid URLs — treat as a decode/provider error
-                msg = "Provider returned no usable image URLs (IMAGE_DECODE_ERROR)"
-                raise ValueError(msg)
-            if len(paths) != count:
-                logger.warning(
-                    "Expected %d images, got %d valid URLs for job %s",
-                    count,
-                    len(paths),
-                    job.id,
-                )
-            return paths
-
+            return await self._execute_generate(job, canvas)
         if job.action == JobAction.REFINE:
-            layer = await self._store.get_layer(job.layer_id)
-            if layer is None or not layer.image_path:
-                from maistro_canvas.types import RefineNoSourceError
-
-                raise RefineNoSourceError("source image no longer available")
-            refined = await self._image_client.refine(
-                model_id=job.model_id,
-                source_url=layer.image_path,
-                prompt=job.prompt,
-                region=str(params.get("region", "full")),
-                strength=float(params.get("strength", 0.6)),
-            )
-            return [refined.url] if refined.url else []
-
+            return await self._execute_refine(job)
         if job.action == JobAction.REFERENCE:
-            # Generate hero image then three turnaround views
-            hero_list = await self._image_client.generate(
-                model_id=job.model_id,
-                prompt=job.prompt + " front view, isolated on white background",
-                width=canvas.width,
-                height=canvas.height,
-                count=1,
-                seed=seed,
-            )
-            hero_url = hero_list[0].url if hero_list else ""
-            if not hero_url:
-                return []
-            views = []
-            for angle in ("side view", "back view", "3/4 view"):
-                v = await self._image_client.refine(
-                    model_id=job.model_id,
-                    source_url=hero_url,
-                    prompt=f"{job.prompt} {angle}, isolated on white background",
-                    region="full",
-                    strength=0.7,
-                )
-                if v.url:
-                    views.append(v.url)
-            return [hero_url, *views]
+            return await self._execute_reference(job, canvas)
 
         # Composite and text are handled elsewhere
         msg = f"action {job.action!r} is not an image-gen action"
         raise ValueError(msg)
+
+    async def _execute_generate(self, job: GenerationJobRecord, canvas: CanvasRecord) -> list[str]:
+        params = job.params
+        count: int = int(params.get("count", 1))
+        seed: int | None = params.get("seed")  # 0 is valid, None means unset
+        negative_prompt: str = str(params.get("negative_prompt", ""))
+        images = await self._image_client.generate(
+            model_id=job.model_id,
+            prompt=job.prompt,
+            width=canvas.width,
+            height=canvas.height,
+            count=count,
+            seed=seed,
+            negative_prompt=negative_prompt,
+        )
+        paths = [img.url for img in images if img.url]
+        if not paths:
+            # No valid URLs — treat as a decode/provider error
+            msg = "Provider returned no usable image URLs (IMAGE_DECODE_ERROR)"
+            raise ValueError(msg)
+        if len(paths) != count:
+            logger.warning(
+                "Expected %d images, got %d valid URLs for job %s",
+                count,
+                len(paths),
+                job.id,
+            )
+        return paths
+
+    async def _execute_refine(self, job: GenerationJobRecord) -> list[str]:
+        params = job.params
+        layer = await self._store.get_layer(job.layer_id)
+        if layer is None or not layer.image_path:
+            from maistro_canvas.types import RefineNoSourceError
+
+            raise RefineNoSourceError("source image no longer available")
+        refined = await self._image_client.refine(
+            model_id=job.model_id,
+            source_url=layer.image_path,
+            prompt=job.prompt,
+            region=str(params.get("region", "full")),
+            strength=float(params.get("strength", 0.6)),
+        )
+        return [refined.url] if refined.url else []
+
+    async def _execute_reference(self, job: GenerationJobRecord, canvas: CanvasRecord) -> list[str]:
+        params = job.params
+        seed: int | None = params.get("seed")  # 0 is valid, None means unset
+        # Generate hero image then three turnaround views
+        hero_list = await self._image_client.generate(
+            model_id=job.model_id,
+            prompt=job.prompt + " front view, isolated on white background",
+            width=canvas.width,
+            height=canvas.height,
+            count=1,
+            seed=seed,
+        )
+        hero_url = hero_list[0].url if hero_list else ""
+        if not hero_url:
+            return []
+        views = []
+        for angle in ("side view", "back view", "3/4 view"):
+            v = await self._image_client.refine(
+                model_id=job.model_id,
+                source_url=hero_url,
+                prompt=f"{job.prompt} {angle}, isolated on white background",
+                region="full",
+                strength=0.7,
+            )
+            if v.url:
+                views.append(v.url)
+        return [hero_url, *views]
 
     async def accept_variant(
         self,
