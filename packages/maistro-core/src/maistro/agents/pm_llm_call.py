@@ -100,7 +100,8 @@ async def maistro_llm_call(
             # default short message.
             raise RuntimeError(f"LLM gateway {resp.status_code}: {resp.text[:1000]}")
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        content: str = data["choices"][0]["message"]["content"]
+        return content
 
 
 __all__ = ["maistro_llm_call"]

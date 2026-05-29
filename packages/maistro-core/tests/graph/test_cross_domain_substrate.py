@@ -14,6 +14,7 @@ agent.yaml-only path), one of these tests will break first.
 
 from __future__ import annotations
 
+import contextlib
 from typing import ClassVar
 
 from pydantic import BaseModel
@@ -120,10 +121,9 @@ class _StubRfcReviewerNode(BaseNode):
 
 
 for _cls in (_CreativeBriefNode, _StubImageGenerateNode, _StubRfcReviewerNode):
-    try:
+    # re-registration in same pytest session is fine
+    with contextlib.suppress(ValueError):
         register_node(_cls)
-    except ValueError:
-        pass  # re-registration in same pytest session is fine
 
 
 def _resolver(node_id: str, dag: dict) -> BaseNode:

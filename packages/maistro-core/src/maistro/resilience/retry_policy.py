@@ -61,4 +61,4 @@ def get_delay(stage: OperationStage, attempt: int) -> float:
     if stage == OperationStage.READ:
         return policy.base_delay
     delay = policy.base_delay * (2**attempt)
-    return min(delay, policy.max_delay)
+    return float(min(delay, policy.max_delay))

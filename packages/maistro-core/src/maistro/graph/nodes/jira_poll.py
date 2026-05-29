@@ -88,7 +88,7 @@ class JiraPollNode(BaseNode[JiraPollIn, JiraPollOut]):
             else:
                 headers["Authorization"] = f"Bearer {inputs.pat}"
 
-        params = {
+        params: dict[str, str | int] = {
             "jql": inputs.jql,
             "maxResults": inputs.max_results,
             "fields": ",".join(inputs.fields),

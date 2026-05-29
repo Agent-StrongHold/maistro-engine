@@ -88,7 +88,7 @@ def _render_preamble(template: str, manifest: dict[str, Any]) -> str:
             if isinstance(val, str):
                 variables[key] = val.strip()
 
-    def _replace(match: re.Match) -> str:
+    def _replace(match: re.Match[str]) -> str:
         var_name = match.group(1)
         return variables.get(var_name, "")
 
@@ -272,6 +272,92 @@ def _instantiate(identity: AgentIdentity, *, agent_resolver: Any = None, **deps:
     )
 
 
+def _build_persist_registry(sa_engine: Any) -> Any:
+    """Construct a ``PgAgentRegistry`` for write-back, or ``None`` if unavailable."""
+    if not sa_engine:
+        return None
+    try:
+        from maistro.persistence.pg_agents import PgAgentRegistry
+
+        return PgAgentRegistry(sa_engine)
+    except Exception as _exc:
+        logger.warning(
+            "error_swallowed file=%s line=%d: %s",
+            "packages/maistro-core/src/maistro/agents/factory.py",
+            374,
+            _exc,
+        )
+        return None
+
+
+async def _load_agents_from_db(
+    sa_engine: Any,
+    prompt_manager: Any,
+    deps: dict[str, Any],
+) -> dict[str, Agent] | None:
+    """Load active agents from the Postgres registry. Returns the agent map, or
+    ``None`` to signal the caller should fall back to the filesystem (no agents
+    in DB, or a load failure)."""
+    try:
+        from maistro.persistence.pg_agents import PgAgentRegistry
+
+        registry = PgAgentRegistry(sa_engine)
+        if await registry.count() <= 0:
+            return None
+        identities = await registry.list_active()
+        souls = await registry.souls()
+        agents: dict[str, Agent] = {}
+        for identity in identities:
+            await prompt_manager.upsert(
+                f"agent.{identity.name}.soul",
+                souls.get(identity.name, ""),
+                label="production",
+            )
+            agents[identity.name] = _instantiate(identity, agent_resolver=agents.get, **{**deps})
+        logger.info("Loaded %d agents from database", len(agents))
+        return agents
+    except Exception:
+        logger.warning("Failed to load agents from DB -- falling back to filesystem", exc_info=True)
+        return None
+
+
+async def _persist_agent_record(
+    persist_registry: Any,
+    identity: Any,
+    full_soul: str,
+    rules: Any,
+) -> None:
+    """Upsert a built-in agent identity into the Postgres registry (best-effort)."""
+    try:
+        # maistro.models lives in the hive-conductor app (no py.typed); owned elsewhere.
+        from maistro.models.agent import AgentRecord  # type: ignore[import-untyped]
+
+        record = AgentRecord(
+            name=identity.name,
+            version=identity.version,
+            description=identity.description,
+            soul=full_soul,
+            rules=rules,
+            reasoning_strategy=identity.reasoning_strategy,
+            model=identity.model,
+            model_fallbacks=list(identity.model_fallbacks),
+            model_constraints=identity.model_constraints,
+            tools=list(identity.tools),
+            skills=list(identity.skills),
+            max_tool_rounds=identity.max_tool_rounds,
+            memory_config=identity.memory_config,
+            trust_tier=identity.trust_tier,
+            priority_tier=identity.priority_tier,
+            provenance="builtin",
+            org_id="",
+            preamble=True,
+            active=True,
+        )
+        await persist_registry.upsert(record)
+    except Exception:
+        logger.warning("Failed to persist agent '%s' to DB", identity.name, exc_info=True)
+
+
 async def create_agents(
     *,
     agents_dir: str | Path,
@@ -315,30 +401,9 @@ async def create_agents(
     }
 
     if sa_engine:
-        try:
-            from maistro.persistence.pg_agents import PgAgentRegistry
-
-            registry = PgAgentRegistry(sa_engine)
-            count = await registry.count()
-            if count > 0:
-                identities = await registry.list_active()
-                souls = await registry.souls()
-                agents: dict[str, Agent] = {}
-                for identity in identities:
-                    await prompt_manager.upsert(
-                        f"agent.{identity.name}.soul",
-                        souls.get(identity.name, ""),
-                        label="production",
-                    )
-                    agents[identity.name] = _instantiate(
-                        identity, agent_resolver=agents.get, **{**deps}
-                    )
-                logger.info("Loaded %d agents from database", len(agents))
-                return agents
-        except Exception:
-            logger.warning(
-                "Failed to load agents from DB -- falling back to filesystem", exc_info=True
-            )
+        db_agents = await _load_agents_from_db(sa_engine, prompt_manager, deps)
+        if db_agents is not None:
+            return db_agents
 
     agents_path = Path(agents_dir)
     if not agents_path.is_dir():
@@ -346,22 +411,9 @@ async def create_agents(
         return {}
 
     preamble = _load_preamble(agents_path)
-    agents = {}
+    agents: dict[str, Agent] = {}
 
-    persist_registry: Any = None
-    if sa_engine:
-        try:
-            from maistro.persistence.pg_agents import PgAgentRegistry
-
-            persist_registry = PgAgentRegistry(sa_engine)
-        except Exception as _exc:
-            __import__("logging").getLogger("maistro.agents.factor").warning(
-                "error_swallowed file=%s line=%d: %s",
-                "packages/maistro-core/src/maistro/agents/factory.py",
-                374,
-                _exc,
-            )
-            pass
+    persist_registry: Any = _build_persist_registry(sa_engine)
 
     for agent_dir in sorted(agents_path.iterdir()):
         if not agent_dir.is_dir():
@@ -384,33 +436,7 @@ async def create_agents(
         )
 
         if persist_registry:
-            try:
-                from maistro.models.agent import AgentRecord
-
-                record = AgentRecord(
-                    name=identity.name,
-                    version=identity.version,
-                    description=identity.description,
-                    soul=full_soul,
-                    rules=rules,
-                    reasoning_strategy=identity.reasoning_strategy,
-                    model=identity.model,
-                    model_fallbacks=list(identity.model_fallbacks),
-                    model_constraints=identity.model_constraints,
-                    tools=list(identity.tools),
-                    skills=list(identity.skills),
-                    max_tool_rounds=identity.max_tool_rounds,
-                    memory_config=identity.memory_config,
-                    trust_tier=identity.trust_tier,
-                    priority_tier=identity.priority_tier,
-                    provenance="builtin",
-                    org_id="",
-                    preamble=True,
-                    active=True,
-                )
-                await persist_registry.upsert(record)
-            except Exception:
-                logger.warning("Failed to persist agent '%s' to DB", identity.name, exc_info=True)
+            await _persist_agent_record(persist_registry, identity, full_soul, rules)
 
         agents[identity.name] = _instantiate(identity, agent_resolver=agents.get, **{**deps})
         logger.info(

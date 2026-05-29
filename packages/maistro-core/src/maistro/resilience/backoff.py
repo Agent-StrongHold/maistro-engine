@@ -30,7 +30,7 @@ def jittered_backoff(
     raw = base_delay * (2 ** (attempt - 1))
     capped = min(raw, max_delay)
     jitter = capped * jitter_factor * random.random()  # nosec B311 — backoff jitter, not crypto
-    return min(capped + jitter, max_delay)
+    return float(min(capped + jitter, max_delay))
 
 
 def compute_backoff(

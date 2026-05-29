@@ -65,15 +65,22 @@ def _compute_bottleneck_score(
     return min(1.0, 0.5 * failure + 0.4 * quality_gap + 0.1 * token_waste)
 
 
+def _role_name(role: AgentRole | str | None) -> str:
+    """Render a role (enum or raw kind string) as its string identifier."""
+    if role is None:
+        return ""
+    return role.value if isinstance(role, AgentRole) else role
+
+
 def _describe_pipeline(config: GraphConfig) -> str:
     if not config.edges:
-        return " -> ".join(n.value for n in config.nodes)
+        return " -> ".join(_role_name(n) for n in config.nodes)
     parts = []
     for edge in config.edges:
         arrow = ">>" if edge.parallel else "->"
         cond = f" [{edge.condition}]" if edge.condition else ""
-        to = edge.to_role.value if edge.to_role else "END"
-        parts.append(f"{edge.from_role.value} {arrow} {to}{cond}")
+        to = _role_name(edge.to_role) if edge.to_role else "END"
+        parts.append(f"{_role_name(edge.from_role)} {arrow} {to}{cond}")
     return ", ".join(parts)
 
 
@@ -94,9 +101,9 @@ class GraphOptimizer:
         if not traces:
             raise ValueError("At least one trace is required to extract signal.")
 
-        run_counts: dict[AgentRole, int] = defaultdict(int)
-        success_counts: dict[AgentRole, int] = defaultdict(int)
-        token_sums: dict[AgentRole, float] = defaultdict(float)
+        run_counts: dict[AgentRole | str, int] = defaultdict(int)
+        success_counts: dict[AgentRole | str, int] = defaultdict(int)
+        token_sums: dict[AgentRole | str, float] = defaultdict(float)
         review_scores: list[float] = []
 
         for trace in traces:
@@ -144,13 +151,17 @@ class GraphOptimizer:
             avg_review_score=pipeline_avg_review,
         )
 
-    def _current_prompt(self, config: GraphConfig, role: AgentRole) -> str:
-        nc = config.node_configs.get(role)
+    def _current_prompt(self, config: GraphConfig, role: AgentRole | str) -> str:
+        nc = config.node_configs.get(_role_name(role))
         if nc and nc.system_prompt:
             return nc.system_prompt
-        return DEFAULT_SYSTEM_PROMPTS.get(role, "")
+        try:
+            role_enum = role if isinstance(role, AgentRole) else AgentRole(role)
+        except ValueError:
+            return ""
+        return DEFAULT_SYSTEM_PROMPTS.get(role_enum, "")
 
-    def _collect_failures(self, traces: list[HyperagentOutput], role: AgentRole) -> list[str]:
+    def _collect_failures(self, traces: list[HyperagentOutput], role: AgentRole | str) -> list[str]:
         failures = []
         for trace in traces:
             for nr in trace.node_results:
@@ -164,7 +175,7 @@ class GraphOptimizer:
         self,
         config: GraphConfig,
         signal: OptimizationSignal,
-        role: AgentRole,
+        role: AgentRole | str,
         current_prompt: str,
         failure_examples: list[str],
     ) -> str:
@@ -193,15 +204,31 @@ class GraphOptimizer:
         )
 
         other_roles = [r for r in config.nodes if r != role]
-        other_nodes_text = ", ".join(r.value for r in other_roles) if other_roles else "none"
+        other_nodes_text = ", ".join(_role_name(r) for r in other_roles) if other_roles else "none"
+
+        try:
+            role_enum: AgentRole | None = role if isinstance(role, AgentRole) else AgentRole(role)
+        except ValueError:
+            role_enum = None
+        upstream = _ROLE_UPSTREAM.get(role_enum, "task inputs") if role_enum else "task inputs"
+        output_spec = (
+            _ROLE_OUTPUT_SPEC.get(role_enum, "structured output")
+            if role_enum
+            else "structured output"
+        )
+        downstream = (
+            _ROLE_DOWNSTREAM.get(role_enum, "next pipeline node")
+            if role_enum
+            else "next pipeline node"
+        )
 
         meta_prompt = (
             f"## Pipeline Objective\n{self.task_description}\n\n"
             f"## Pipeline Topology\n{_describe_pipeline(config)}\n\n"
-            f"## Node Being Optimized: [{role.upper()}]\n"
-            f"Receives from upstream: {_ROLE_UPSTREAM.get(role, 'task inputs')}\n"
-            f"Must produce: {_ROLE_OUTPUT_SPEC.get(role, 'structured output')}\n"
-            f"Downstream consumer: {_ROLE_DOWNSTREAM.get(role, 'next pipeline node')}\n"
+            f"## Node Being Optimized: [{_role_name(role).upper()}]\n"
+            f"Receives from upstream: {upstream}\n"
+            f"Must produce: {output_spec}\n"
+            f"Downstream consumer: {downstream}\n"
             f"Other nodes: {other_nodes_text}\n\n"
             f"## Current System Prompt\n```\n{current_prompt}\n```\n\n"
             f"## Performance Signal ({run_count} runs across {signal.total_runs} total)\n"
@@ -253,7 +280,7 @@ class GraphOptimizer:
         logger.info(
             "optimizer_start",
             extra={
-                "target_role": target_role.value,
+                "target_role": _role_name(target_role),
                 "bottleneck_score": signal.node_metrics[0].bottleneck_score,
                 "total_runs": signal.total_runs,
             },
@@ -265,12 +292,12 @@ class GraphOptimizer:
 
         new_node_config = NodeConfig(role=target_role, system_prompt=improved_prompt)
         new_node_configs = dict(config.node_configs)
-        new_node_configs[target_role] = new_node_config
+        new_node_configs[_role_name(target_role)] = new_node_config
 
         logger.info(
             "optimizer_complete",
             extra={
-                "target_role": target_role.value,
+                "target_role": _role_name(target_role),
                 "prompt_length_before": len(current_prompt),
                 "prompt_length_after": len(improved_prompt),
             },

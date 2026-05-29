@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from argon2 import PasswordHasher
+
 _ARGON2_PREFIX = "$argon2"
 _BCRYPT_PREFIX = "$2"
 
 
-def _hasher():
+def _hasher() -> PasswordHasher:
     from argon2 import PasswordHasher
 
     # OWASP-aligned defaults for interactive login (64 MiB, 3 iterations).
@@ -21,7 +26,7 @@ def _hasher():
 
 def hash_password(plain: str) -> str:
     """Hash a password with Argon2id."""
-    return _hasher().hash(plain)
+    return str(_hasher().hash(plain))
 
 
 def verify_password(plain: str, stored: str) -> bool:
@@ -49,6 +54,6 @@ def needs_rehash(stored: str) -> bool:
     if not stored.startswith(_ARGON2_PREFIX):
         return True
     try:
-        return _hasher().check_needs_rehash(stored)
+        return bool(_hasher().check_needs_rehash(stored))
     except Exception:
         return True

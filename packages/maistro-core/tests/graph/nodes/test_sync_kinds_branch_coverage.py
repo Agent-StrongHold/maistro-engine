@@ -305,10 +305,7 @@ async def test_format_markdown_render_with_attribute_access() -> None:
     The template renderer falls back to getattr when cur isn't a dict —
     simulate by passing a SimpleNamespace-like object.
     """
-    from types import SimpleNamespace
-
     node = get_node("transform.format_markdown")()
-    obj = SimpleNamespace(key="K1", fields=SimpleNamespace(summary="from-attr"))
     # The node's input_schema demands list[dict], so this gets validated
     # as model_validate. Pydantic will coerce only dict-shaped input; the
     # attribute-access branch is invoked by nested dicts in normal items.
