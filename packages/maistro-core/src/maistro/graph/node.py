@@ -39,6 +39,63 @@ def _strip_json_block(text: str) -> str:
     return m.group(1).strip() if m else text.strip()
 
 
+def _coerce_int(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _read_usage(usage: Any) -> tuple[int, int]:
+    """Extract (tokens_in, tokens_out) from a usage object or mapping.
+
+    Accepts common provider shapes: prompt_tokens/completion_tokens (OpenAI),
+    input_tokens/output_tokens (Anthropic), or tokens_in/tokens_out.
+    """
+    if usage is None:
+        return 0, 0
+
+    def _get(*names: str) -> int:
+        for name in names:
+            if isinstance(usage, dict):
+                if name in usage:
+                    return _coerce_int(usage[name])
+            elif hasattr(usage, name):
+                return _coerce_int(getattr(usage, name))
+        return 0
+
+    tokens_in = _get("tokens_in", "prompt_tokens", "input_tokens")
+    tokens_out = _get("tokens_out", "completion_tokens", "output_tokens")
+    return tokens_in, tokens_out
+
+
+def _normalize_llm_result(result: Any) -> tuple[str, int, int]:
+    """Normalize an llm_call result into (text, tokens_in, tokens_out).
+
+    Backwards compatible with clients that return a plain ``str`` (usage 0/0).
+    Also supports:
+      * a 2-tuple ``(text, usage)``
+      * an object/mapping carrying ``text``/``content`` plus a ``usage`` field
+    """
+    if isinstance(result, str):
+        return result, 0, 0
+
+    if isinstance(result, tuple) and len(result) == 2:
+        text, usage = result
+        ti, to = _read_usage(usage)
+        return str(text), ti, to
+
+    # Object or mapping that carries both text and usage.
+    if isinstance(result, dict):
+        text = result.get("text") or result.get("content") or ""
+        usage = result.get("usage")
+    else:
+        text = getattr(result, "text", None) or getattr(result, "content", None) or ""
+        usage = getattr(result, "usage", None)
+    ti, to = _read_usage(usage)
+    return str(text), ti, to
+
+
 def _build_system_prompt(role: AgentRole, node_config: NodeConfig | None = None) -> str:
     base = (
         (node_config.system_prompt if node_config and node_config.system_prompt else None)
@@ -95,6 +152,8 @@ class BeamCandidate:
     parse_error: str | None = None
     score: float = 0.0
     tokens_used: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
     duration_s: float = 0.0
     error: Exception | None = None
 
@@ -221,7 +280,7 @@ class NodeRun:
                 ))
             return
         except Exception as exc:
-            self._finish_failure(exc)
+            await self._finish_failure(exc)
             return
 
         self.completed_at = time.monotonic()
@@ -247,21 +306,24 @@ class NodeRun:
                 return
 
             if not self.circuit.allow_request():
-                self._finish_failure(LLMProviderError("Circuit breaker open for node"))
+                await self._finish_failure(LLMProviderError("Circuit breaker open for node"))
                 return
 
             if iteration_budget is not None and not iteration_budget.consume():
-                self._finish_failure(LLMProviderError("Iteration budget exhausted"))
+                await self._finish_failure(LLMProviderError("Iteration budget exhausted"))
                 return
 
             try:
                 schema = self.strategy.output_type.model_json_schema() if self.strategy and hasattr(self.strategy, 'output_type') else None
-                raw = await asyncio.wait_for(
+                result = await asyncio.wait_for(
                     llm_call(messages, model=self.model, temperature=self.temperature, response_schema=schema),
                     timeout=timeout,
                 )
+                raw, tokens_in, tokens_out = _normalize_llm_result(result)
                 self.circuit.record_success()
                 self.raw_response = raw
+                self.tokens_in += tokens_in
+                self.tokens_out += tokens_out
 
                 parsed = self._parse_output(raw)
                 if parsed is None:
@@ -301,7 +363,7 @@ class NodeRun:
                     self.retry_count += 1
                     delay = compute_backoff(attempt + 1, backoff_config, retry_after=classified.retry_after_seconds)
                     if delay < 0:
-                        self._finish_failure(exc, classified)
+                        await self._finish_failure(exc, classified)
                         return
                     logger.warning(
                         "node_retry",
@@ -320,11 +382,11 @@ class NodeRun:
                     await asyncio.sleep(delay)
                     self._transition(NodePhase.RUNNING)
                 else:
-                    self._finish_failure(exc, classified)
+                    await self._finish_failure(exc, classified)
                     return
 
         if last_exc is not None:
-            self._finish_failure(last_exc)
+            await self._finish_failure(last_exc)
 
     async def _execute_beam(
         self,
@@ -362,7 +424,7 @@ class NodeRun:
         if not scored:
             first_error = next((c.error for c in candidates if c.error), None)
             if first_error:
-                self._finish_failure(first_error)
+                await self._finish_failure(first_error)
             return
 
         best = max(scored, key=lambda c: c.score)
@@ -370,7 +432,8 @@ class NodeRun:
         self.raw_response = best.raw_response
         self.parsed_output = best.parsed_output
         self.score = best.score
-        self.tokens_in = sum(c.tokens_used for c in candidates)
+        self.tokens_in = sum(c.tokens_in for c in candidates)
+        self.tokens_out = sum(c.tokens_out for c in candidates)
         self._transition(NodePhase.SUCCEEDED)
 
         if self._emit_event:
@@ -395,23 +458,27 @@ class NodeRun:
         if iteration_budget is not None and not iteration_budget.consume():
             raise LLMProviderError("Iteration budget exhausted")
 
-        raw = await asyncio.wait_for(
+        result = await asyncio.wait_for(
             llm_call(messages, model=self.model, temperature=self.temperature),
             timeout=timeout,
         )
+        raw, tokens_in, tokens_out = _normalize_llm_result(result)
         elapsed = time.monotonic() - start
 
         parsed = self._parse_output_raw(raw)
         if parsed is None:
             return BeamCandidate(
                 index=index, raw_response=raw, parse_error="failed to parse",
-                duration_s=elapsed,
+                duration_s=elapsed, tokens_used=tokens_in + tokens_out,
+                tokens_in=tokens_in, tokens_out=tokens_out,
             )
 
         score = self.strategy.score_output(parsed)
         return BeamCandidate(
             index=index, raw_response=raw, parsed_output=parsed,
             score=score, duration_s=elapsed,
+            tokens_used=tokens_in + tokens_out,
+            tokens_in=tokens_in, tokens_out=tokens_out,
         )
 
     def _parse_output(self, raw: str) -> Any | None:
@@ -431,7 +498,7 @@ class NodeRun:
             logger.debug("node_parse_error", node_id=self.node_id, error=str(exc))
             return None
 
-    def _finish_failure(
+    async def _finish_failure(
         self,
         exc: Exception,
         classified: ClassifiedError | None = None,
@@ -445,19 +512,21 @@ class NodeRun:
             self.duration_s = self.completed_at - (self.started_at or self.completed_at)
 
         if self._emit_event:
+            # node_failed is the most important event to deliver reliably; await
+            # it on the same path as every other emit rather than fire-and-forget.
             try:
-                coro = self._emit_event(node_failed(
+                await self._emit_event(node_failed(
                     self.run_id, self.node_id, self.role.value,
                     category=classified.category.value,
                     error=str(exc)[:200],
                 ))
-                import asyncio as _aio
-                loop = _aio.get_running_loop()
-                loop.create_task(coro)
-            except Exception as _exc:
-                _log_b110 = __import__('structlog').get_logger('maistro.graph.node')
-                _log_b110.warning('error_swallowed', error=str(_exc), file='packages/maistro-core/src/maistro/graph/node.py', line=456)
-                pass
+            except Exception:
+                logger.warning(
+                    "node_failed_emit_error",
+                    node_id=self.node_id,
+                    role=self.role.value,
+                    exc_info=True,
+                )
 
     def to_result(self) -> GraphNodeResult:
         success = self.phase == NodePhase.SUCCEEDED
