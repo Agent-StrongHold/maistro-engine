@@ -45,10 +45,7 @@ class TransformExtractFieldNode(BaseNode[ExtractFieldIn, ExtractFieldOut]):
         for item in inputs.items:
             cur: Any = item
             for part in path_parts:
-                if isinstance(cur, dict):
-                    cur = cur.get(part)
-                else:
-                    cur = getattr(cur, part, None)
+                cur = cur.get(part) if isinstance(cur, dict) else getattr(cur, part, None)
                 if cur is None:
                     break
             values.append(cur if cur is not None else inputs.default)

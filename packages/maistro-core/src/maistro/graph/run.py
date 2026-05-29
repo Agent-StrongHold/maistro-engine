@@ -21,6 +21,7 @@ from maistro.graph.node import (
     NodeRun,
     _blackboard_prefix,
     _build_system_prompt,
+    _to_agent_role,
 )
 from maistro.graph.phases import TERMINAL_GRAPH_PHASES, GraphPhase, NodePhase
 from maistro.graph.strategy import get_strategy
@@ -41,7 +42,7 @@ logger = structlog.get_logger()
 
 
 def _get_temperature(
-    role: AgentRole,
+    role: AgentRole | str,
     node_config: NodeConfig | None = None,
     default: float | None = None,
 ) -> float | None:
@@ -90,15 +91,20 @@ def _compare(lhs: object, op: str, rhs: object) -> bool:
         return lhs == rhs
     if stripped in ("is not", "!="):
         return lhs != rhs
+    # Ordering comparisons are dynamic: operands come from a runtime-parsed
+    # condition string and may be any comparable type. Mismatched types raise
+    # TypeError, which we treat as "condition not satisfied".
+    a: Any = lhs
+    b: Any = rhs
     try:
         if stripped == "<":
-            return bool(lhs < rhs)
+            return bool(a < b)
         if stripped == ">":
-            return bool(lhs > rhs)
+            return bool(a > b)
         if stripped == "<=":
-            return bool(lhs <= rhs)
+            return bool(a <= b)
         if stripped == ">=":
-            return bool(lhs >= rhs)
+            return bool(a >= b)
     except TypeError:
         return False
     return False
@@ -120,15 +126,20 @@ def evaluate_condition(
     return False
 
 
+def _role_str(role: AgentRole | str) -> str:
+    """Render a role (enum or raw kind string) as its string identifier."""
+    return role.value if isinstance(role, AgentRole) else role
+
+
 def _next_nodes(
     config: GraphConfig,
-    current: AgentRole,
+    current: AgentRole | str,
     plan: PlanOutput | None,
     code: CodeOutput | None,
     review: ReviewOutput | None,
-) -> list[AgentRole]:
-    sequential: AgentRole | None = None
-    parallel: list[AgentRole] = []
+) -> list[AgentRole | str]:
+    sequential: AgentRole | str | None = None
+    parallel: list[AgentRole | str] = []
 
     for edge in config.edges:
         if edge.from_role != current:
@@ -290,8 +301,8 @@ class GraphRun:
         await self._emit(
             graph_started(
                 self.run_id,
-                nodes=[n.value for n in config.nodes],
-                entry=config.entry.value,
+                nodes=[_role_str(n) for n in config.nodes],
+                entry=_role_str(config.entry),
                 model=model,
             )
         )
@@ -301,7 +312,7 @@ class GraphRun:
                 llm_call, model, temperature, timeout, max_retries, backoff_config, budget
             )
 
-        active: list[AgentRole] = [config.entry]
+        active: list[AgentRole | str] = [config.entry]
         cycle = 0
 
         while active and cycle < config.max_cycles and not self._cancel_requested:
@@ -309,7 +320,7 @@ class GraphRun:
                 cycle_started(
                     self.run_id,
                     cycle=cycle,
-                    active=[a.value for a in active],
+                    active=[_role_str(a) for a in active],
                 )
             )
 
@@ -385,7 +396,7 @@ class GraphRun:
 
     def _create_node_run(
         self,
-        role: AgentRole,
+        role: AgentRole | str,
         config: GraphConfig,
         model: str,
         temperature: float | None,
@@ -397,7 +408,8 @@ class GraphRun:
         cycle: int,
     ) -> NodeRun:
         strategy = get_strategy(role)
-        node_config = config.node_configs.get(role)
+        node_config = config.node_configs.get(_role_str(role))
+        role_enum = _to_agent_role(role) or AgentRole.PLANNER
 
         system_prompt = _build_system_prompt(role, node_config)
         bb = self.blackboard or GraphBlackboard(
@@ -414,7 +426,7 @@ class GraphRun:
 
         nr = NodeRun(
             run_id=self.run_id,
-            role=role,
+            role=role_enum,
             strategy=strategy,
             beam_width=node_config.beam_width if node_config else 1,
             model=model,
@@ -474,9 +486,9 @@ class GraphRun:
         node_runs: list[NodeRun],
         config: GraphConfig,
         cycle: int,
-    ) -> list[AgentRole]:
-        seen: set[AgentRole] = set()
-        next_active: list[AgentRole] = []
+    ) -> list[AgentRole | str]:
+        seen: set[AgentRole | str] = set()
+        next_active: list[AgentRole | str] = []
 
         for nr in node_runs:
             if nr.phase != NodePhase.SUCCEEDED:

@@ -212,7 +212,6 @@ class TestRedactJWTs:
     def test_jwt_in_auth_header(self):
         token = "eyJ" + "A" * 80
         result = redact(f"Bearer {token}")
-        assert "FAKE" not in result or True
         assert token not in result
 
     def test_jwt_with_dashes_and_underscores(self):

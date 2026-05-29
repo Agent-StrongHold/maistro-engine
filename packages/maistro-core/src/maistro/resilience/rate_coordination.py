@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import tempfile
@@ -78,8 +79,6 @@ class RateLimitCoordinator:
                 json.dump(data, f)
             os.replace(tmp_path, state_file)
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
             raise

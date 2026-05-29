@@ -24,7 +24,7 @@ from maistro.auth.provider import ServiceKeyAuthProvider
 from maistro.auth.registry import ServiceKeyRegistry
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> object:
     if name in (
         "extract_service_identity",
         "require_any_scope",

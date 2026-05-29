@@ -31,7 +31,7 @@ if TYPE_CHECKING:
     from maistro.agents.base import Agent
     from maistro.protocols.memory import LearningStore, OutcomeStore, SessionStore
     from maistro.protocols.quota import QuotaTracker
-    from maistro.security.sentinel.audit import AuditLog
+    from maistro.security._types import AuditLog
     from maistro.security.sentinel.policy import Sentinel
 
 logger = logging.getLogger("maistro.container")

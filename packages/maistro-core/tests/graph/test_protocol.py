@@ -63,8 +63,8 @@ class _RecordingLlm:
 
 
 class _FailingLlm:
-    def __init__(self, error: Exception = RuntimeError("boom")) -> None:
-        self.error = error
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error if error is not None else RuntimeError("boom")
         self.call_count = 0
 
     async def __call__(self, messages: list[dict], **kwargs: Any) -> str:

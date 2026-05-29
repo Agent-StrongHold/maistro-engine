@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from maistro.types.memory import Outcome
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
 
 
 class PgOutcomeStore:

@@ -298,14 +298,10 @@ def _validate_schema_compatibility(
 def _fields_of(model_cls: type) -> set[str]:
     if not hasattr(model_cls, "model_fields"):
         return set()
-    return set(model_cls.model_fields.keys())  # type: ignore[attr-defined]
+    return set(model_cls.model_fields.keys())
 
 
 def _required_fields_of(model_cls: type) -> set[str]:
     if not hasattr(model_cls, "model_fields"):
         return set()
-    return {
-        name
-        for name, info in model_cls.model_fields.items()  # type: ignore[attr-defined]
-        if info.is_required()
-    }
+    return {name for name, info in model_cls.model_fields.items() if info.is_required()}

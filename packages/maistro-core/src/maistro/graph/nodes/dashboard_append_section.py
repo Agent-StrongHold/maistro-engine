@@ -10,7 +10,7 @@ DAG run because the section title acts as a stable key.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
@@ -52,11 +52,11 @@ class DashboardAppendSectionNode(BaseNode[DashboardAppendIn, DashboardAppendOut]
     async def _execute(self, inputs: DashboardAppendIn, ctx: NodeContext) -> DashboardAppendOut:
         bb_metadata = self._blackboard_metadata(ctx)
         key = f"dashboard:{inputs.dashboard_id}"
-        dashboard: dict = bb_metadata.get(key) or {"sections": []}
+        dashboard: dict[str, Any] = bb_metadata.get(key) or {"sections": []}
         section_id = f"{inputs.dashboard_id}/{inputs.section_title}"
 
         # Upsert by section_id so re-running the same node doesn't duplicate.
-        sections: list[dict] = list(dashboard.get("sections", []))
+        sections: list[dict[str, Any]] = list(dashboard.get("sections", []))
         for i, s in enumerate(sections):
             if s.get("id") == section_id:
                 sections[i] = {
@@ -85,7 +85,7 @@ class DashboardAppendSectionNode(BaseNode[DashboardAppendIn, DashboardAppendOut]
         )
 
     @staticmethod
-    def _blackboard_metadata(ctx: NodeContext) -> dict:
+    def _blackboard_metadata(ctx: NodeContext) -> dict[str, Any]:
         """Return the writable metadata dict on the blackboard.
 
         If no blackboard is attached (unit tests, ad-hoc runs), fall back to

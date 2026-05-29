@@ -27,10 +27,10 @@ from .base import (
     pause_until,
 )
 
-_REGISTRY: dict[str, type[BaseNode]] = {}
+_REGISTRY: dict[str, type[BaseNode[Any, Any]]] = {}
 
 
-def register_node(node_cls: type[BaseNode]) -> type[BaseNode]:
+def register_node(node_cls: type[BaseNode[Any, Any]]) -> type[BaseNode[Any, Any]]:
     """Register a node class by its `kind` identifier. Usable as a decorator.
 
     Raises ``ValueError`` on:
@@ -52,7 +52,7 @@ def register_node(node_cls: type[BaseNode]) -> type[BaseNode]:
     return node_cls
 
 
-def get_node(kind: str) -> type[BaseNode]:
+def get_node(kind: str) -> type[BaseNode[Any, Any]]:
     """Look up a node class by kind. Raises ``KeyError`` if not registered."""
     if kind not in _REGISTRY:
         raise KeyError(
@@ -120,26 +120,39 @@ def _annotation_str(ann: Any) -> str:
         return "Any"
     name = getattr(ann, "__name__", None)
     if name:
-        return name
+        return str(name)
     return str(ann).replace("typing.", "")
 
 
-# Side-effect imports: every concrete node module self-registers on import.
-# Keep this list flat + alphabetical so new kinds are obvious to add.
-from . import (
-    airtable_poll,  # noqa: F401  registers "airtable.poll"
-    compliance_block,  # noqa: F401  registers "compliance.block"
-    dashboard_append_section,  # noqa: F401  registers "dashboard.append_section"
-    human_approve_draft,  # noqa: F401  registers "human.approve_draft"
-    human_ask_question,  # noqa: F401  registers "human.ask_question"
-    jira_poll,  # noqa: F401  registers "jira.poll"
-    jira_wait_for_subtasks,  # noqa: F401  registers "jira.wait_for_subtasks"
-    llm_summarize,  # noqa: F401  registers "llm.summarize"
-    transform_alias_keys,  # noqa: F401  registers "transform.alias_keys"
-    transform_extract_field,  # noqa: F401  registers "transform.extract_field"
-    transform_filter_by_type,  # noqa: F401  registers "transform.filter_by_type"
-    transform_format_markdown,  # noqa: F401  registers "transform.format_markdown"
-)
+def _import_node_modules() -> None:
+    """Eagerly import every concrete node module so each self-registers.
+
+    Done via ``importlib`` (not a top-level ``from . import ...``) because the
+    concrete modules call :func:`register_node` at import time, so they must be
+    imported only after this module's registry + ``register_node`` are defined.
+    Keep this list flat + alphabetical so new kinds are obvious to add.
+    """
+    import importlib
+
+    module_names = (
+        "airtable_poll",  # registers "airtable.poll"
+        "compliance_block",  # registers "compliance.block"
+        "dashboard_append_section",  # registers "dashboard.append_section"
+        "human_approve_draft",  # registers "human.approve_draft"
+        "human_ask_question",  # registers "human.ask_question"
+        "jira_poll",  # registers "jira.poll"
+        "jira_wait_for_subtasks",  # registers "jira.wait_for_subtasks"
+        "llm_summarize",  # registers "llm.summarize"
+        "transform_alias_keys",  # registers "transform.alias_keys"
+        "transform_extract_field",  # registers "transform.extract_field"
+        "transform_filter_by_type",  # registers "transform.filter_by_type"
+        "transform_format_markdown",  # registers "transform.format_markdown"
+    )
+    for name in module_names:
+        importlib.import_module(f"{__name__}.{name}")
+
+
+_import_node_modules()
 
 __all__ = [
     "BaseNode",

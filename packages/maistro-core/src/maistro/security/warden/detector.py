@@ -39,6 +39,20 @@ def _pattern_search(pattern: object, text: str) -> bool:
         return False
 
 
+def _scan_reject_patterns(scan_content: str) -> list[str]:
+    """Run every reject pattern against ``scan_content``, collecting flag
+    descriptions (and ``regex_error:`` markers for patterns that raise)."""
+    flags: list[str] = []
+    for pattern, description in REJECT_PATTERNS:
+        try:
+            if _pattern_search(pattern, scan_content):
+                flags.append(description)
+        except Exception:
+            logger.warning("Regex error on pattern: %s", description)
+            flags.append(f"regex_error:{description}")
+    return flags
+
+
 class Warden:
     """Threat detector. Runs at user_input and tool_result boundaries only.
 
@@ -67,13 +81,8 @@ class Warden:
             scan_content = unicodedata.normalize("NFKD", content[:max_scan_size])
         else:
             scan_content = unicodedata.normalize("NFKD", content)
-        for pattern, description in REJECT_PATTERNS:
-            try:
-                if _pattern_search(pattern, scan_content):
-                    flags.append(description)
-            except Exception:
-                logger.warning("Regex error on pattern: %s", description)
-                flags.append(f"regex_error:{description}")
+
+        flags.extend(_scan_reject_patterns(scan_content))
 
         if flags:
             return WardenVerdict(
@@ -104,26 +113,38 @@ class Warden:
             )
 
         if boundary == "tool_result" and self._llm is not None:
-            try:
-                from maistro.security.warden.llm_classifier import classify_tool_result
-
-                result = await classify_tool_result(
-                    content,
-                    self._llm,
-                    self._classifier_model,
-                )
-
-                if result.get("label") == "suspicious":
-                    model = result.get("model", "?")
-                    flags.append(f"llm_classification:suspicious (model={model}, mode=binary)")
-                    return WardenVerdict(
-                        clean=False,
-                        blocked=False,
-                        flags=tuple(flags),
-                        confidence=0.8,
-                        reasoning_trace=result.get("reasoning_trace"),
-                    )
-            except Exception:
-                logger.warning("L3 LLM classification failed", exc_info=True)
+            llm_verdict = await self._scan_llm_classification(content, flags)
+            if llm_verdict is not None:
+                return llm_verdict
 
         return WardenVerdict(clean=True)
+
+    async def _scan_llm_classification(
+        self, content: str, flags: list[str]
+    ) -> WardenVerdict | None:
+        """L3 LLM tool-result classification. Returns a verdict if the content is
+        classified suspicious, otherwise ``None``. Only called when ``self._llm``
+        is set."""
+        assert self._llm is not None
+        try:
+            from maistro.security.warden.llm_classifier import classify_tool_result
+
+            result = await classify_tool_result(
+                content,
+                self._llm,
+                self._classifier_model,
+            )
+
+            if result.get("label") == "suspicious":
+                model = result.get("model", "?")
+                flags.append(f"llm_classification:suspicious (model={model}, mode=binary)")
+                return WardenVerdict(
+                    clean=False,
+                    blocked=False,
+                    flags=tuple(flags),
+                    confidence=0.8,
+                    reasoning_trace=result.get("reasoning_trace"),
+                )
+        except Exception:
+            logger.warning("L3 LLM classification failed", exc_info=True)
+        return None

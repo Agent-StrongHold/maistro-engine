@@ -459,24 +459,37 @@ def _wrap_for_hive(
     )
 
 
+def _run_pm_stub_rollback(task: TaskCreate) -> ConductorOutput:
+    """Legacy stub path, only used when MAISTRO_PM_USE_STUBS is explicitly set."""
+    from maistro.tools.pm_stubs import PM_STUB_HANDLERS
+
+    capability = normalize_capability(_resolve_capability(task))
+    result_dict = PM_STUB_HANDLERS.get(capability, lambda p: {})(
+        {"description": task.description, "program": task.program_context or {}}
+    )
+    out = PMRoleOutput(
+        capability=capability,
+        summary=f"[stub-rollback] {capability}",
+        result=result_dict,
+        source="no_data",
+    )
+    return _wrap_for_hive(out, "PM Agent (stub-rollback)", task.description)
+
+
+def _resolve_role(agent_id: str, capability: str) -> Any:
+    """Resolve a PM role from the agent id, falling back to the capability map."""
+    role = _PM_AGENT_TO_ROLE.get(agent_id) if agent_id else None
+    if role is None:
+        for r, primary in PM_PRIMARY_CAPABILITY.items():
+            if primary == capability:
+                return r
+    return role
+
+
 async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     """Execute a PM fleet capability via real Claude via the JedAI gateway."""
     if os.environ.get("MAISTRO_PM_USE_STUBS", "").lower() in {"1", "true", "yes"}:
-        # Emergency rollback path: keep the legacy stub behavior available
-        # but only when an operator explicitly opts in.
-        from maistro.tools.pm_stubs import PM_STUB_HANDLERS
-
-        capability = normalize_capability(_resolve_capability(task))
-        result_dict = PM_STUB_HANDLERS.get(capability, lambda p: {})(
-            {"description": task.description, "program": task.program_context or {}}
-        )
-        out = PMRoleOutput(
-            capability=capability,
-            summary=f"[stub-rollback] {capability}",
-            result=result_dict,
-            source="no_data",
-        )
-        return _wrap_for_hive(out, "PM Agent (stub-rollback)", task.description)
+        return _run_pm_stub_rollback(task)
 
     capability = normalize_capability(_resolve_capability(task))
     prog_ctx = task.program_context if isinstance(task.program_context, dict) else {}
@@ -498,13 +511,7 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     defn = get_pm_def(agent_id) if agent_id else None
     agent_label = defn.display_name if defn else agent_id or "PM Agent"
 
-    role = _PM_AGENT_TO_ROLE.get(agent_id) if agent_id else None
-    if role is None:
-        # Fall back: derive role from capability via the primary-capability map.
-        for r, primary in PM_PRIMARY_CAPABILITY.items():
-            if primary == capability:
-                role = r
-                break
+    role = _resolve_role(agent_id, capability)
     if role is None:
         return _wrap_for_hive(
             _no_data_response(capability, {"description": task.description}),

@@ -189,7 +189,8 @@ class TestNoIO:
     def test_no_network_imports(self):
         import maistro.testing.harness as mod
 
-        source = open(mod.__file__).read()
+        with open(mod.__file__) as fh:
+            source = fh.read()
         for forbidden in ("httpx", "aiohttp", "requests", "asyncpg", "sqlalchemy"):
             assert forbidden not in source
 

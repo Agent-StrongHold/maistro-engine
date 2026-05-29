@@ -75,9 +75,12 @@ class CredentialPool:
         if not available:
             soonest = None
             for e in self._entries:
-                if e.cooldown_until is not None and not e.blocked:
-                    if soonest is None or e.cooldown_until < soonest:
-                        soonest = e.cooldown_until
+                if (
+                    e.cooldown_until is not None
+                    and not e.blocked
+                    and (soonest is None or e.cooldown_until < soonest)
+                ):
+                    soonest = e.cooldown_until
             blocked = sum(1 for e in self._entries if e.blocked)
             cooling = sum(
                 1

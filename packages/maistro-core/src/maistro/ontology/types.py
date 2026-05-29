@@ -9,14 +9,14 @@ ordered (time-ordered) so naive sorts are roughly chronological.
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class Facet(str, Enum):
+class Facet(StrEnum):
     """Ontology facets per `engine#ADR-036`.
 
     - SEMANTIC: what an object *is*. Required for v1.0.

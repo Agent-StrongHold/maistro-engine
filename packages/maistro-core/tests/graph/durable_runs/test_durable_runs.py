@@ -16,6 +16,7 @@ Covers:
 
 from __future__ import annotations
 
+import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
 
@@ -134,11 +135,9 @@ class _DurableBoomNode(BaseNode):
 
 
 for _cls in (_UppercaseNode, _AppendNode, _MiniAskNode, _DurableBoomNode):
-    try:
+    # Tests rerun in the same process; collision is fine.
+    with contextlib.suppress(ValueError):
         register_node(_cls)
-    except ValueError:
-        # Tests rerun in the same process; collision is fine.
-        pass
 
 
 def _resolver(node_id: str, dag: dict[str, Any]) -> BaseNode:
@@ -170,7 +169,7 @@ def _record_for(run_id: str) -> DurableRunRecord:
 
 
 async def test_create_get_roundtrip(mem_store: DurableRunStore) -> None:
-    rec = await mem_store.create(_record_for("r-1"))
+    await mem_store.create(_record_for("r-1"))
     got = await mem_store.get("r-1")
     assert got is not None
     assert got.run_id == "r-1"

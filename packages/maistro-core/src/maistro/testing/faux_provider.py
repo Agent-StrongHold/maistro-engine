@@ -61,11 +61,7 @@ def _make_openai_response(fr: FauxResponse) -> dict[str, Any]:
 
 
 def _make_stream_chunk(fr: FauxResponse, token: str, is_last: bool = False) -> dict[str, Any]:
-    delta: dict[str, Any] = {}
-    if is_last:
-        delta = {}
-    else:
-        delta = {"content": token}
+    delta: dict[str, Any] = {} if is_last else {"content": token}
 
     return {
         "id": "faux-stream",
@@ -233,7 +229,8 @@ class FauxProvider:
     ) -> str:
         resp_dict = await self.complete(messages, model, **kwargs)
         choice = resp_dict["choices"][0]
-        return choice["message"]["content"]
+        content: str = choice["message"]["content"]
+        return content
 
 
 def plan_output(
