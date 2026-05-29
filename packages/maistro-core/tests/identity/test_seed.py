@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from bip_utils import Base58Decoder
 
-from maistro.identity import ConductorSeed, PATHS
+from maistro.identity import PATHS, ConductorSeed
 
 
 def test_generate_24_words() -> None:
@@ -89,6 +90,41 @@ def test_did_key_custom_path() -> None:
     did_identity = seed.did_key("m/44'/9000'/0'")
     did_signing = seed.did_key("m/0'")
     assert did_identity != did_signing
+
+
+def test_did_key_spec_compliant_decoding() -> None:
+    """did:key must be base58btc (z-prefix) of multicodec 0xed01 + 32-byte pubkey.
+
+    Per the did:key spec / multiformats: Ed25519 public keys use the
+    multicodec varint 0xed01 followed by the raw 32-byte key, multibase-
+    encoded with base58btc whose prefix character is 'z'.
+    """
+    seed = ConductorSeed.generate()
+    pub = seed.public_key("m/44'/9000'/0'")
+    assert len(pub) == 32
+
+    did = seed.did_key("m/44'/9000'/0'")
+    assert did.startswith("did:key:z")
+
+    # Strip the did:key: scheme; the 'z' is the base58btc multibase prefix.
+    multibase = did[len("did:key:") :]
+    assert multibase[0] == "z"
+    decoded = Base58Decoder.Decode(multibase[1:])
+
+    # multicodec prefix for Ed25519 public key is varint(0xed) = 0xed 0x01
+    assert decoded[:2] == b"\xed\x01"
+    # remaining bytes are exactly the raw public key
+    assert decoded[2:] == pub
+    assert len(decoded) == 34
+
+
+def test_zero_clears_mnemonic_material() -> None:
+    """zero() must actually destroy the secret, not just the derivation root."""
+    seed = ConductorSeed.generate()
+    seed.zero()
+
+    # The 24-word master secret must no longer be retrievable.
+    assert seed.mnemonic_words() == []
 
 
 def test_zero_prevents_operations() -> None:
