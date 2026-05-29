@@ -734,6 +734,113 @@ class BookPlan:
     scenes: list[ScenePlan]
 
 
+def _resolve_page_dims(orientation: str) -> dict[str, int]:
+    """Map an orientation string to canvas dimensions."""
+    if "portrait" in orientation:
+        return {"w": 1024, "h": 1536}
+    if "square" in orientation:
+        return {"w": 1024, "h": 1024}
+    return {"w": 1536, "h": 1024}
+
+
+def _classify_scene_type(idx: int, raw: dict, scenes_raw: list[dict], book_spec: dict) -> str:
+    """Determine the scene type for the scene at ``idx``."""
+    if idx == 0:
+        return "title_page"
+    if idx == 1 and book_spec.get("dedication"):
+        return "dedication"
+    if idx == len(scenes_raw) - 1:
+        return "ending"
+    return raw.get("scene_type", "story_beat")
+
+
+_DEFAULT_POSES: dict[str, str] = {
+    "emotional_beat": "looking_up",
+    "action_beat": "running_right",
+    "ending": "arms_raised",
+}
+
+
+def _resolve_pose_name(raw: dict, scene_type: str) -> str:
+    """Resolve an explicit pose or fall back to a scene-type default."""
+    pose_name = raw.get("pose")
+    if pose_name:
+        return str(pose_name)
+    return _DEFAULT_POSES.get(scene_type, "standing_3q_left")
+
+
+def _build_scene_plan(
+    idx: int,
+    raw: dict,
+    scenes_raw: list[dict],
+    book_spec: dict,
+    character_design: object,
+    style_token: object,
+    mood_token: object,
+    lighting_token: object,
+) -> ScenePlan:
+    """Build a single ScenePlan from a raw scene entry."""
+    scene_type = _classify_scene_type(idx, raw, scenes_raw, book_spec)
+    scene_type_def = SCENE_TYPES.get(scene_type, SCENE_TYPES["story_beat"])
+
+    composition = raw.get("composition", scene_type_def.default_composition)
+    pose_name = _resolve_pose_name(raw, scene_type)
+
+    prop_defs = [
+        PropDef(
+            name=p.get("name", ""),
+            description=p.get("description", ""),
+            placement=p.get("placement", "right"),
+            scale=p.get("scale", "handheld"),
+        )
+        for p in raw.get("props", [])
+    ]
+
+    scene_def = SceneDef(
+        type=scene_type,
+        title=raw.get("title", ""),
+        page_text=raw.get("page_text", ""),
+        description=raw.get("description", raw.get("title", "")),
+        pose=pose_name,
+        composition=composition,
+        props=prop_defs,
+        character_action=raw.get("character_action", ""),
+    )
+
+    template = build_scene_template(scene_def, style_token, mood_token, lighting_token)
+
+    handheld = [p for p in prop_defs if p.scale == "handheld"]
+    environment = [p for p in prop_defs if p.scale == "environment"]
+
+    char_prompt = None
+    if scene_type_def.has_character:
+        char_prompt = build_character_prompt(
+            template, character_design, scene_def.character_action, handheld
+        )
+
+    return ScenePlan(
+        id=raw.get("id", idx + 1),
+        scene_type=template.scene_type,
+        title=template.title,
+        page_text=template.page_text,
+        description=template.description,
+        composition=template.composition,
+        character_slot=template.character_slot,
+        generation_params=template.generation_params,
+        props=template.props,
+        bg_prompt=build_background_prompt(template, scene_def.description),
+        character_prompt=char_prompt,
+        prop_prompts=[
+            {
+                "name": p.name,
+                "prompt": build_prop_prompt(template, p, scene_def.character_action),
+                "placement": p.placement,
+            }
+            for p in environment
+        ],
+    )
+
+
 def generate_scene_plan(
     scenes_raw: list[dict],
     book_spec: dict,
@@ -773,95 +880,21 @@ def generate_scene_plan(
     character_design = character_designs[0]
 
     orientation = book_spec.get("orientation", "landscape (wide)")
-    if "portrait" in orientation:
-        dims = {"w": 1024, "h": 1536}
-    elif "square" in orientation:
-        dims = {"w": 1024, "h": 1024}
-    else:
-        dims = {"w": 1536, "h": 1024}
+    dims = _resolve_page_dims(orientation)
 
-    scenes: list[ScenePlan] = []
-    for idx, raw in enumerate(scenes_raw):
-        scene_type: str
-        if idx == 0:
-            scene_type = "title_page"
-        elif idx == 1 and book_spec.get("dedication"):
-            scene_type = "dedication"
-        elif idx == len(scenes_raw) - 1:
-            scene_type = "ending"
-        else:
-            scene_type = raw.get("scene_type", "story_beat")
-
-        scene_type_def = SCENE_TYPES.get(scene_type, SCENE_TYPES["story_beat"])
-
-        composition = raw.get("composition", scene_type_def.default_composition)
-        pose_name = raw.get("pose")
-        if not pose_name:
-            if scene_type == "emotional_beat":
-                pose_name = "looking_up"
-            elif scene_type == "action_beat":
-                pose_name = "running_right"
-            elif scene_type == "ending":
-                pose_name = "arms_raised"
-            else:
-                pose_name = "standing_3q_left"
-
-        all_props_raw = raw.get("props", [])
-        prop_defs = [
-            PropDef(
-                name=p.get("name", ""),
-                description=p.get("description", ""),
-                placement=p.get("placement", "right"),
-                scale=p.get("scale", "handheld"),
-            )
-            for p in all_props_raw
-        ]
-
-        scene_def = SceneDef(
-            type=scene_type,
-            title=raw.get("title", ""),
-            page_text=raw.get("page_text", ""),
-            description=raw.get("description", raw.get("title", "")),
-            pose=pose_name,
-            composition=composition,
-            props=prop_defs,
-            character_action=raw.get("character_action", ""),
+    scenes = [
+        _build_scene_plan(
+            idx,
+            raw,
+            scenes_raw,
+            book_spec,
+            character_design,
+            style_token,
+            mood_token,
+            lighting_token,
         )
-
-        template = build_scene_template(scene_def, style_token, mood_token, lighting_token)
-
-        handheld = [p for p in prop_defs if p.scale == "handheld"]
-        environment = [p for p in prop_defs if p.scale == "environment"]
-
-        char_prompt = None
-        if scene_type_def.has_character:
-            char_prompt = build_character_prompt(
-                template, character_design, scene_def.character_action, handheld
-            )
-
-        scenes.append(
-            ScenePlan(
-                id=raw.get("id", idx + 1),
-                scene_type=template.scene_type,
-                title=template.title,
-                page_text=template.page_text,
-                description=template.description,
-                composition=template.composition,
-                character_slot=template.character_slot,
-                generation_params=template.generation_params,
-                props=template.props,
-                bg_prompt=build_background_prompt(template, scene_def.description),
-                character_prompt=char_prompt,
-                prop_prompts=[
-                    {
-                        "name": p.name,
-                        "prompt": build_prop_prompt(template, p, scene_def.character_action),
-                        "placement": p.placement,
-                    }
-                    for p in environment
-                ],
-            )
-        )
+        for idx, raw in enumerate(scenes_raw)
+    ]
 
     return BookPlan(
         title=book_spec.get("title", "My Book"),

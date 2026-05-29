@@ -1,3 +1,5 @@
+from typing import Any, ClassVar
+
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field
@@ -7,7 +9,7 @@ from .base import BaseModel
 
 class Creator(BaseModel, table=True):
     __tablename__ = "creators"
-    __table_args__ = {"extend_existing": True}
+    __table_args__: ClassVar[dict[str, Any]] = {"extend_existing": True}
 
     email: str = Field(unique=True, index=True)
     name: str

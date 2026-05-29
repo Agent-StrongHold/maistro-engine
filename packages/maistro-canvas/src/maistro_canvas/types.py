@@ -16,7 +16,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from maistro.types.errors import AgentError
+# maistro-core ships no py.typed marker yet, so its modules are untyped here.
+from maistro.types.errors import AgentError  # type: ignore[import-untyped]
 
 # ─────────────────────────────────────────────────────────────────────
 # Enums
@@ -301,7 +302,7 @@ class CompositeResult:
 # ─────────────────────────────────────────────────────────────────────
 
 
-class CanvasError(AgentError):
+class CanvasError(AgentError):  # type: ignore[misc]  # AgentError is Any (untyped maistro-core)
     code = "CANVAS_ERROR"
 
 

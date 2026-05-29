@@ -20,10 +20,10 @@ def _make_face_image(
     img = Image.new("RGBA", (200, 300), (240, 240, 240, 255))
     draw = ImageDraw.Draw(img)
 
-    draw.rectangle([50, 0, 150, 60], fill=hair_color + (255,))
-    draw.ellipse([60, 40, 140, 150], fill=skin_color + (255,))
-    draw.ellipse([80, 80, 95, 95], fill=eye_color + (255,))
-    draw.ellipse([105, 80, 120, 95], fill=eye_color + (255,))
+    draw.rectangle([50, 0, 150, 60], fill=(*hair_color, 255))
+    draw.ellipse([60, 40, 140, 150], fill=(*skin_color, 255))
+    draw.ellipse([80, 80, 95, 95], fill=(*eye_color, 255))
+    draw.ellipse([105, 80, 120, 95], fill=(*eye_color, 255))
 
     return img
 
@@ -36,17 +36,17 @@ class TestRgbToHsl:
         assert lum == pytest.approx(50.0, abs=1)
 
     def test_white(self):
-        h, s, lum = _rgb_to_hsl(255, 255, 255)
+        _h, s, lum = _rgb_to_hsl(255, 255, 255)
         assert s == pytest.approx(0.0, abs=1)
         assert lum == pytest.approx(100.0, abs=1)
 
     def test_black(self):
-        h, s, lum = _rgb_to_hsl(0, 0, 0)
+        _h, s, lum = _rgb_to_hsl(0, 0, 0)
         assert s == pytest.approx(0.0, abs=1)
         assert lum == pytest.approx(0.0, abs=1)
 
     def test_pure_green(self):
-        h, s, lum = _rgb_to_hsl(0, 255, 0)
+        h, s, _lum = _rgb_to_hsl(0, 255, 0)
         assert h == pytest.approx(120.0, abs=1)
         assert s == pytest.approx(100.0, abs=1)
 
