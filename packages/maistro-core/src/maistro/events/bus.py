@@ -130,7 +130,16 @@ class EventBus:
 
         fired: list[Trigger] = []
         for trigger in self._triggers:
-            if trigger.matches(event):
+            try:
+                matched = trigger.matches(event)
+            except Exception:
+                logger.exception(
+                    "Trigger %s match evaluation failed for event %s",
+                    trigger.trigger_id,
+                    event.event_id,
+                )
+                continue
+            if matched:
                 handler = self._handlers.get(trigger.action_type)
                 if handler:
                     try:
