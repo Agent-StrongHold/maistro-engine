@@ -8,9 +8,21 @@ Merged from maistro.memory.types + upstream types.memory.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
+
+
+def compute_content_hash(content: str) -> str:
+    """Stable SHA-256 of episodic content for write-time dedup.
+
+    Used to skip storing a memory whose content already exists within the
+    same scope (otherwise identical observations accumulate and double-weight
+    each other in retrieval). Also lets the bootstrap-constitution loader
+    detect unchanged seeds and skip re-seeding.
+    """
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 class MemoryTier(StrEnum):
@@ -156,3 +168,11 @@ class EpisodicMemory:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_accessed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     deleted: bool = False
+    # SHA-256 of `content`, auto-derived when not supplied. Enables write-time
+    # dedup in InMemoryEpisodicStore.store(). Appended last so positional
+    # construction stays compatible.
+    content_hash: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.content_hash:
+            self.content_hash = compute_content_hash(self.content)

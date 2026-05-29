@@ -6,7 +6,12 @@ import pytest
 
 from maistro.memory.episodic.store import InMemoryEpisodicStore
 from maistro.memory.episodic.tiers import clamp_weight, decay, reinforce
-from maistro.memory.types import EpisodicMemory, MemoryScope, MemoryTier
+from maistro.memory.types import (
+    EpisodicMemory,
+    MemoryScope,
+    MemoryTier,
+    compute_content_hash,
+)
 
 
 def _mem(
@@ -132,3 +137,63 @@ class TestInMemoryEpisodicStore:
         await store.reinforce("m1", delta=0.1)
         results = await store.retrieve("python", agent_id="a1")
         assert results[0].weight > 0.4
+
+
+class TestContentHash:
+    def test_hash_auto_computed_from_content(self) -> None:
+        mem = _mem(content="python import error fix")
+        assert mem.content_hash == compute_content_hash("python import error fix")
+        assert mem.content_hash != ""
+
+    def test_explicit_hash_preserved(self) -> None:
+        mem = EpisodicMemory(content="anything", content_hash="precomputed-abc")
+        assert mem.content_hash == "precomputed-abc"
+
+    def test_same_content_same_hash(self) -> None:
+        assert _mem(mid="a").content_hash == _mem(mid="b").content_hash
+
+    def test_different_content_different_hash(self) -> None:
+        assert _mem(content="one").content_hash != _mem(content="two").content_hash
+
+    def test_reinforce_preserves_hash(self) -> None:
+        # tiers.reinforce rebuilds the object; the hash must follow content.
+        mem = _mem(content="stable content")
+        assert reinforce(mem).content_hash == mem.content_hash
+
+
+class TestContentHashDedup:
+    async def test_identical_memory_deduped(self) -> None:
+        store = InMemoryEpisodicStore()
+        first = await store.store(_mem(mid="m1", content="dup content", agent_id="a1"))
+        second = await store.store(_mem(mid="m2", content="dup content", agent_id="a1"))
+        assert first == "m1"
+        assert second == "m1"  # dedup returns the existing id, not the new one
+        assert len(store._memories) == 1
+
+    async def test_distinct_content_not_deduped(self) -> None:
+        store = InMemoryEpisodicStore()
+        await store.store(_mem(mid="m1", content="alpha", agent_id="a1"))
+        await store.store(_mem(mid="m2", content="beta", agent_id="a1"))
+        assert len(store._memories) == 2
+
+    async def test_same_content_different_scope_not_deduped(self) -> None:
+        # Same text owned by two different agents must remain two rows.
+        store = InMemoryEpisodicStore()
+        await store.store(_mem(mid="m1", content="shared", agent_id="a1"))
+        await store.store(_mem(mid="m2", content="shared", agent_id="a2"))
+        assert len(store._memories) == 2
+
+    async def test_deleted_row_does_not_block_insert(self) -> None:
+        store = InMemoryEpisodicStore()
+        await store.store(_mem(mid="m1", content="recoverable", agent_id="a1", deleted=True))
+        new_id = await store.store(_mem(mid="m2", content="recoverable", agent_id="a1"))
+        assert new_id == "m2"
+        assert len(store._memories) == 2
+
+    async def test_dedup_prevents_double_weight_in_retrieval(self) -> None:
+        # The core bug this fixes: a repeated observation should surface once.
+        store = InMemoryEpisodicStore()
+        await store.store(_mem(mid="m1", content="python import error", agent_id="a1"))
+        await store.store(_mem(mid="m2", content="python import error", agent_id="a1"))
+        results = await store.retrieve("python import error", agent_id="a1")
+        assert len(results) == 1

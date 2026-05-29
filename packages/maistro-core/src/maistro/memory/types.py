@@ -22,6 +22,7 @@ from maistro.types.memory import (
     MemoryTier,
     Outcome,
     SkillMutation,
+    compute_content_hash,
 )
 
 __all__ = [
@@ -35,4 +36,5 @@ __all__ = [
     "MemoryTier",
     "Outcome",
     "SkillMutation",
+    "compute_content_hash",
 ]
