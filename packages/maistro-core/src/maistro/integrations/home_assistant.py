@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from maistro.events.bus import Event, EventCategory, EventBus
+from maistro.events.bus import Event, EventBus, EventCategory
 
 logger = logging.getLogger("maistro.integrations.ha")
 

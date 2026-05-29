@@ -26,19 +26,19 @@ _PUBLIC_PREFIXES = (
     "/redoc",
 )
 
-_PUBLIC_EXACT = frozenset({
-    "/",
-    "/v1/setup/status",
-    "/v1/setup/presets",
-    "/v1/auth/login",
-    "/v1/auth/register",
-    "/v1/auth/whoami",
-    "/favicon.ico",
-})
-
-_ADMIN_CHAT_BLOCKED = (
-    "/v1/chat/",
+_PUBLIC_EXACT = frozenset(
+    {
+        "/",
+        "/v1/setup/status",
+        "/v1/setup/presets",
+        "/v1/auth/login",
+        "/v1/auth/register",
+        "/v1/auth/whoami",
+        "/favicon.ico",
+    }
 )
+
+_ADMIN_CHAT_BLOCKED = ("/v1/chat/",)
 
 _PROTECTED_OPS: dict[str, dict[str, str]] = {
     "DELETE": {
@@ -68,9 +68,7 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
 
         if path in _PUBLIC_EXACT or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
@@ -92,14 +90,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if user["role"] == "admin" and self._is_chat(path):
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Admin account cannot use chat. Use your daily user account."},
+                    content={
+                        "detail": "Admin account cannot use chat. Use your daily user account."
+                    },
                 )
 
             required_perm = self._required_permission(request)
             if required_perm and not self._check_permission(user, required_perm):
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": f"Permission '{required_perm}' required. Elevate to proceed."},
+                    content={
+                        "detail": f"Permission '{required_perm}' required. Elevate to proceed."
+                    },
                 )
 
         return await call_next(request)

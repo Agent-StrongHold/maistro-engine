@@ -18,9 +18,9 @@ from pydantic import BaseModel, Field
 
 from maistro.agents.conductor import run_task
 from maistro.agents.types import LLMProviderError
-from maistro_server.api.auth import RequireAuth
 from maistro.constants import STREAM_CHUNK_SIZE
 from maistro.tasks.models import TaskCreate
+from maistro_server.api.auth import RequireAuth
 
 logger = structlog.get_logger()
 

@@ -17,8 +17,7 @@ from maistro.security.sentinel.validator import validate_and_repair
 logger = logging.getLogger("maistro.sentinel")
 
 if TYPE_CHECKING:
-    from maistro.security._types import AuditLog
-    from maistro.security._types import AuthContext, PermissionTable
+    from maistro.security._types import AuditLog, AuthContext, PermissionTable
     from maistro.security.warden.detector import Warden
 
 

@@ -1,10 +1,10 @@
-import pytest
-
 from server.mcp.canvas_templates import (
+    COMPOSITION_ZONES,
     CROUCH_GEO,
     LIGHTING_TOKENS,
     MOOD_TOKENS,
     POSES,
+    SCENE_TYPES,
     SITTING_GEO,
     STANDING_GEO,
     STYLE_TOKENS,
@@ -16,9 +16,6 @@ from server.mcp.canvas_templates import (
     Pose,
     PropDef,
     SceneDef,
-    ScenePlan,
-    SceneTemplate,
-    SceneType,
     StyleToken,
     build_background_prompt,
     build_character_design,
@@ -26,10 +23,6 @@ from server.mcp.canvas_templates import (
     build_prop_prompt,
     build_scene_template,
     generate_scene_plan,
-)
-from server.mcp.canvas_templates import (
-    COMPOSITION_ZONES,
-    SCENE_TYPES,
 )
 
 REQUIRED_GEO_FIELDS = (

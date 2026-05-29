@@ -57,24 +57,19 @@ class State:
         conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS schema_migrations "
-            "(name TEXT PRIMARY KEY, applied_at TEXT)"
+            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT)"
         )
         conn.commit()
         self._writer = conn
         self._writer_open = True
 
-        self._writer_thread = threading.Thread(
-            target=self._writer_loop, daemon=True
-        )
+        self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
         self._writer_thread.start()
 
         return conn
 
     def open_reader(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(
-            f"file:{self._db_path}?mode=ro", uri=True, check_same_thread=False
-        )
+        conn = sqlite3.connect(f"file:{self._db_path}?mode=ro", uri=True, check_same_thread=False)
         conn.execute("PRAGMA query_only=1")
         return conn
 
@@ -164,9 +159,7 @@ class State:
         except Exception as e:
             self._writer.execute("ROLLBACK TO migration")
             self._writer.execute("RELEASE migration")
-            raise MigrationFailedError(
-                f"MIGRATION_FAILED: {name}: {e}"
-            ) from None
+            raise MigrationFailedError(f"MIGRATION_FAILED: {name}: {e}") from None
 
     def close(self) -> None:
         self._shutdown.set()

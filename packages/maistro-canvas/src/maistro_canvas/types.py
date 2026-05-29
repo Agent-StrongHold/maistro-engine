@@ -88,7 +88,7 @@ class BookLayer:
     face_mask: str | None = None
     head_region: dict[str, Any] | None = None
 
-    def retry(self, new_url: str) -> "BookLayer":
+    def retry(self, new_url: str) -> BookLayer:
         """Return new layer with new_url active and old image pushed to history."""
         history = list(self.history)
         if self.image_url:
@@ -108,7 +108,7 @@ class BookLayer:
             head_region=self.head_region,
         )
 
-    def upgrade(self, new_url: str) -> "BookLayer":
+    def upgrade(self, new_url: str) -> BookLayer:
         """Return new layer upgraded to final quality; history preserved."""
         upgraded = self.retry(new_url)
         upgraded.quality = "final"

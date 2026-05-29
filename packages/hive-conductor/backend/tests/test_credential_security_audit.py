@@ -22,9 +22,8 @@ fails CI:
 
 from __future__ import annotations
 
-import sys
 import pathlib
-from typing import Any
+import sys
 
 from fastapi.testclient import TestClient
 
@@ -126,9 +125,11 @@ def test_credentials_config_does_not_leak_across_users() -> None:
 def test_credential_store_use_secret_passes_to_callback_only() -> None:
     """The store-level invariant: use_secret returns the CALLBACK's
     return value, not the secret. The secret never escapes the closure."""
-    from maistro.credentials.store import UserCredentialStore as CredentialStore
-    from cryptography.fernet import Fernet
     import tempfile
+
+    from cryptography.fernet import Fernet
+
+    from maistro.credentials.store import UserCredentialStore as CredentialStore
 
     with tempfile.TemporaryDirectory() as tmp:
         # Direct unit test on the store — bypasses HTTP, isolates the
@@ -144,7 +145,8 @@ def test_credential_store_use_secret_passes_to_callback_only() -> None:
         # returned to the caller.
         was_called_with = []
         derived = store.use_secret(
-            "u1", "jira",
+            "u1",
+            "jira",
             lambda s: (was_called_with.append(len(s)), "DERIVED")[1],
         )
         assert derived == "DERIVED"
@@ -153,11 +155,16 @@ def test_credential_store_use_secret_passes_to_callback_only() -> None:
 
 def test_admin_session_cannot_call_use_secret_for_other_user() -> None:
     """The store keys on user_id literally. There is no admin override."""
-    from maistro.credentials.store import (
-        CredentialNotFound, UserCredentialStore as CredentialStore,
-    )
-    from cryptography.fernet import Fernet
     import tempfile
+
+    from cryptography.fernet import Fernet
+
+    from maistro.credentials.store import (
+        CredentialNotFound,
+    )
+    from maistro.credentials.store import (
+        UserCredentialStore as CredentialStore,
+    )
 
     with tempfile.TemporaryDirectory() as tmp:
         store = CredentialStore(
@@ -196,8 +203,7 @@ def test_no_new_lambda_s_s_in_critical_callsites() -> None:
     repo_root = pathlib.Path(__file__).resolve().parents[3]
     hits: list[str] = []
     for py in repo_root.rglob("*.py"):
-        if any(part in {".venv", "tests", "__pycache__", "build"}
-               for part in py.parts):
+        if any(part in {".venv", "tests", "__pycache__", "build"} for part in py.parts):
             continue
         try:
             src = py.read_text(encoding="utf-8", errors="ignore")

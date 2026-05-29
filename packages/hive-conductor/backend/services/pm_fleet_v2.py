@@ -30,9 +30,10 @@ DEFAULT_TOPK = 8
 
 # --- Knowledge Distillation ---
 
+
 class KnowledgeDistiller:
     """Opus answers → focused FAQ → Flash Lite serves.
-    
+
     Collects high-quality answers from expensive models (Opus/Pro),
     distills them into a FAQ, then serves from cheap models (Flash Lite).
     """
@@ -62,7 +63,7 @@ class KnowledgeDistiller:
             "You have a collection of high-quality Q&A pairs. "
             "Distill them into a focused FAQ (max 20 entries). "
             "Merge similar questions, keep answers concise but complete. "
-            "Output JSON array: [{\"q\": str, \"a\": str}]\n\n"
+            'Output JSON array: [{"q": str, "a": str}]\n\n'
             f"Source Q&A pairs:\n{json.dumps(self.opus_answers[:50], indent=2)}"
         )
 
@@ -106,7 +107,18 @@ GITHUB_TOOLS = [
         "function": {
             "name": "github_list_prs",
             "description": "List open pull requests for a repository",
-            "parameters": {"type": "object", "properties": {"repo": {"type": "string", "description": "owner/repo format"}, "state": {"type": "string", "enum": ["open", "closed", "all"], "default": "open"}}, "required": ["repo"]},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string", "description": "owner/repo format"},
+                    "state": {
+                        "type": "string",
+                        "enum": ["open", "closed", "all"],
+                        "default": "open",
+                    },
+                },
+                "required": ["repo"],
+            },
         },
     },
     {
@@ -114,7 +126,16 @@ GITHUB_TOOLS = [
         "function": {
             "name": "github_create_issue",
             "description": "Create a new GitHub issue",
-            "parameters": {"type": "object", "properties": {"repo": {"type": "string"}, "title": {"type": "string"}, "body": {"type": "string"}, "labels": {"type": "array", "items": {"type": "string"}}}, "required": ["repo", "title"]},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "title": {"type": "string"},
+                    "body": {"type": "string"},
+                    "labels": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["repo", "title"],
+            },
         },
     },
     {
@@ -122,7 +143,15 @@ GITHUB_TOOLS = [
         "function": {
             "name": "github_get_file",
             "description": "Get file contents from a repository",
-            "parameters": {"type": "object", "properties": {"repo": {"type": "string"}, "path": {"type": "string"}, "ref": {"type": "string", "default": "main"}}, "required": ["repo", "path"]},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "path": {"type": "string"},
+                    "ref": {"type": "string", "default": "main"},
+                },
+                "required": ["repo", "path"],
+            },
         },
     },
     {
@@ -130,7 +159,18 @@ GITHUB_TOOLS = [
         "function": {
             "name": "gitlab_list_mrs",
             "description": "List merge requests for a GitLab project",
-            "parameters": {"type": "object", "properties": {"project_id": {"type": "string"}, "state": {"type": "string", "enum": ["opened", "closed", "merged", "all"], "default": "opened"}}, "required": ["project_id"]},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "state": {
+                        "type": "string",
+                        "enum": ["opened", "closed", "merged", "all"],
+                        "default": "opened",
+                    },
+                },
+                "required": ["project_id"],
+            },
         },
     },
     {
@@ -138,7 +178,16 @@ GITHUB_TOOLS = [
         "function": {
             "name": "gitlab_create_issue",
             "description": "Create a new GitLab issue",
-            "parameters": {"type": "object", "properties": {"project_id": {"type": "string"}, "title": {"type": "string"}, "description": {"type": "string"}, "labels": {"type": "string"}}, "required": ["project_id", "title"]},
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "string"},
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                    "labels": {"type": "string"},
+                },
+                "required": ["project_id", "title"],
+            },
         },
     },
 ]
@@ -155,20 +204,40 @@ async def execute_github_tool(name: str, args: dict[str, Any]) -> dict[str, Any]
 
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
         if name == "github_list_prs":
-            r = await client.get(f"{base}/repos/{args['repo']}/pulls", params={"state": args.get("state", "open")})
+            r = await client.get(
+                f"{base}/repos/{args['repo']}/pulls", params={"state": args.get("state", "open")}
+            )
             r.raise_for_status()
-            return {"pulls": [{"number": p["number"], "title": p["title"], "user": p["user"]["login"], "url": p["html_url"]} for p in r.json()[:20]]}
+            return {
+                "pulls": [
+                    {
+                        "number": p["number"],
+                        "title": p["title"],
+                        "user": p["user"]["login"],
+                        "url": p["html_url"],
+                    }
+                    for p in r.json()[:20]
+                ]
+            }
 
         elif name == "github_create_issue":
-            body = {"title": args["title"], "body": args.get("body", ""), "labels": args.get("labels", [])}
+            body = {
+                "title": args["title"],
+                "body": args.get("body", ""),
+                "labels": args.get("labels", []),
+            }
             r = await client.post(f"{base}/repos/{args['repo']}/issues", json=body)
             r.raise_for_status()
             return {"issue_url": r.json()["html_url"], "number": r.json()["number"]}
 
         elif name == "github_get_file":
-            r = await client.get(f"{base}/repos/{args['repo']}/contents/{args['path']}", params={"ref": args.get("ref", "main")})
+            r = await client.get(
+                f"{base}/repos/{args['repo']}/contents/{args['path']}",
+                params={"ref": args.get("ref", "main")},
+            )
             r.raise_for_status()
             import base64
+
             content = base64.b64decode(r.json()["content"]).decode()
             return {"content": content[:5000], "path": args["path"]}
 
@@ -186,12 +255,29 @@ async def execute_gitlab_tool(name: str, args: dict[str, Any]) -> dict[str, Any]
 
     async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
         if name == "gitlab_list_mrs":
-            r = await client.get(f"{base}/projects/{args['project_id']}/merge_requests", params={"state": args.get("state", "opened")})
+            r = await client.get(
+                f"{base}/projects/{args['project_id']}/merge_requests",
+                params={"state": args.get("state", "opened")},
+            )
             r.raise_for_status()
-            return {"merge_requests": [{"iid": m["iid"], "title": m["title"], "author": m["author"]["username"], "url": m["web_url"]} for m in r.json()[:20]]}
+            return {
+                "merge_requests": [
+                    {
+                        "iid": m["iid"],
+                        "title": m["title"],
+                        "author": m["author"]["username"],
+                        "url": m["web_url"],
+                    }
+                    for m in r.json()[:20]
+                ]
+            }
 
         elif name == "gitlab_create_issue":
-            body = {"title": args["title"], "description": args.get("description", ""), "labels": args.get("labels", "")}
+            body = {
+                "title": args["title"],
+                "description": args.get("description", ""),
+                "labels": args.get("labels", ""),
+            }
             r = await client.post(f"{base}/projects/{args['project_id']}/issues", json=body)
             r.raise_for_status()
             return {"issue_url": r.json()["web_url"], "iid": r.json()["iid"]}
@@ -200,6 +286,7 @@ async def execute_gitlab_tool(name: str, args: dict[str, Any]) -> dict[str, Any]
 
 
 # --- topK Testing ---
+
 
 class TopKTester:
     """Test different topK values and track which performs best."""
@@ -228,7 +315,10 @@ class TopKTester:
         return {
             "current": self.current_topk,
             "best": self.get_best_topk(),
-            "results": {k: {"count": len(v), "avg": sum(v) / len(v) if v else 0} for k, v in self.results.items()},
+            "results": {
+                k: {"count": len(v), "avg": sum(v) / len(v) if v else 0}
+                for k, v in self.results.items()
+            },
         }
 
 

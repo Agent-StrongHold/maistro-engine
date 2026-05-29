@@ -54,12 +54,16 @@ class TestOverQuotaScale:
 
     def test_higher_overage_rate_costs_more(self) -> None:
         cheap = ProviderConfig(
-            billing_cycle="daily", free_tokens=1000,
-            overage_cost_per_1k_input=1.0, overage_cost_per_1k_output=1.0,
+            billing_cycle="daily",
+            free_tokens=1000,
+            overage_cost_per_1k_input=1.0,
+            overage_cost_per_1k_output=1.0,
         )
         pricey = ProviderConfig(
-            billing_cycle="daily", free_tokens=1000,
-            overage_cost_per_1k_input=10.0, overage_cost_per_1k_output=10.0,
+            billing_cycle="daily",
+            free_tokens=1000,
+            overage_cost_per_1k_input=10.0,
+            overage_cost_per_1k_output=10.0,
         )
         assert compute_effective_cost(1.0, pricey) > compute_effective_cost(1.0, cheap)
 

@@ -36,8 +36,7 @@ class TransformExtractFieldNode(BaseNode[ExtractFieldIn, ExtractFieldOut]):
     external_io: ClassVar[bool] = False
     display_name: ClassVar[str] = "Extract field"
     description: ClassVar[str] = (
-        "Pull a single field (dot-path) out of every item in a list. "
-        "Pure data, no LLM."
+        "Pull a single field (dot-path) out of every item in a list. Pure data, no LLM."
     )
 
     async def _execute(self, inputs: ExtractFieldIn, ctx: NodeContext) -> ExtractFieldOut:

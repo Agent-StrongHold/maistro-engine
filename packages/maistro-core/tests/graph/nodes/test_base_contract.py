@@ -25,7 +25,6 @@ from maistro.graph.nodes import (
     register_node,
 )
 
-
 # --- Fixtures: minimal node kinds we register only for the test session. ----
 
 

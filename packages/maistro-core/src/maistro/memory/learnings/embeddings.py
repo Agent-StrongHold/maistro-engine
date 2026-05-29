@@ -161,9 +161,11 @@ class HybridLearningStore:
                     if learning.id is not None:
                         self._embedding_cache[learning.id] = vec
                 except Exception as _exc:
-                    __import__('logging').getLogger('maistro.memory.learnings.embeddings').warning(
-                        'error_swallowed file=%s line=%d: %s',
-                        'packages/maistro-core/src/maistro/memory/learnings/embeddings.py', 158, _exc,
+                    __import__("logging").getLogger("maistro.memory.learnings.embeddings").warning(
+                        "error_swallowed file=%s line=%d: %s",
+                        "packages/maistro-core/src/maistro/memory/learnings/embeddings.py",
+                        158,
+                        _exc,
                     )
                     pass
 

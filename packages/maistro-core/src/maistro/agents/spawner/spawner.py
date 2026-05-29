@@ -176,9 +176,11 @@ class Spawner:
             try:
                 return self._parser.parse(raw, result_type).model_dump()
             except Exception as _exc:
-                __import__('logging').getLogger('maistro.agents.spawner.spawner').warning(
-                    'error_swallowed file=%s line=%d: %s',
-                    'packages/maistro-core/src/maistro/agents/spawner/spawner.py', 178, _exc,
+                __import__("logging").getLogger("maistro.agents.spawner.spawner").warning(
+                    "error_swallowed file=%s line=%d: %s",
+                    "packages/maistro-core/src/maistro/agents/spawner/spawner.py",
+                    178,
+                    _exc,
                 )
                 pass
         return _try_parse_json(raw)

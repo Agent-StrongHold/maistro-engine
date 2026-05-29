@@ -7,8 +7,7 @@ to fit within the hardware envelope.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Literal, assert_type
+from typing import Any, assert_type
 
 import pytest
 

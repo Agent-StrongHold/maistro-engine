@@ -18,9 +18,8 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-import sys
 import pathlib
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -77,8 +76,8 @@ async def test_start_then_get_returns_instance(tmp_path: Path) -> None:
 
 
 async def test_stop_clears_singleton(tmp_path: Path) -> None:
-    from services.foundation import start_foundation, stop_foundation
     import services.foundation as f
+    from services.foundation import start_foundation, stop_foundation
 
     await start_foundation(_StubSettings(tmp_path))
     assert f._singleton is not None
@@ -87,8 +86,8 @@ async def test_stop_clears_singleton(tmp_path: Path) -> None:
 
 
 async def test_stop_when_not_started_is_noop() -> None:
-    from services.foundation import stop_foundation
     import services.foundation as f
+    from services.foundation import stop_foundation
 
     assert f._singleton is None
     await stop_foundation()
@@ -127,13 +126,16 @@ def _StubSettings(tmp_path: Path) -> Any:
 
 
 def test_init_vault_success(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.foundation import Foundation
     import types
 
+    from services.foundation import Foundation
+
     class _Vault:
-        def __init__(self, **kw: Any) -> None: self.kw = kw
+        def __init__(self, **kw: Any) -> None:
+            self.kw = kw
 
     vault_mod = types.ModuleType("maistro.vault")
     vault_mod.Vault = _Vault  # type: ignore[attr-defined]
@@ -146,11 +148,13 @@ def test_init_vault_success(
 
 
 def test_init_vault_exception_swallowed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If Vault import fails, vault_available stays False."""
-    from services.foundation import Foundation
     import types
+
+    from services.foundation import Foundation
 
     broken = types.ModuleType("maistro.vault")
 
@@ -170,26 +174,46 @@ def test_init_vault_exception_swallowed(
 
 
 def test_init_state_success_wires_persisted_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.foundation import Foundation
     import types
+
+    from services.foundation import Foundation
 
     flushed = [0]
 
     class _State:
-        def __init__(self, **kw: Any) -> None: pass
-        def flush(self) -> None: flushed[0] += 1
-        def close(self) -> None: pass
+        def __init__(self, **kw: Any) -> None:
+            pass
+
+        def flush(self) -> None:
+            flushed[0] += 1
+
+        def close(self) -> None:
+            pass
 
     class _Persist:
-        def __init__(self, *a: Any) -> None: pass
-        def initialize(self) -> None: pass
-        def list_all(self, store_name: str, model_class: Any) -> list[Any]: return []
-        def list_all_raw(self, store_name: str) -> list[Any]: return []
-        def put(self, *a: Any, **kw: Any) -> None: pass
-        def put_raw(self, *a: Any, **kw: Any) -> None: pass
-        def delete(self, *a: Any, **kw: Any) -> None: pass
+        def __init__(self, *a: Any) -> None:
+            pass
+
+        def initialize(self) -> None:
+            pass
+
+        def list_all(self, store_name: str, model_class: Any) -> list[Any]:
+            return []
+
+        def list_all_raw(self, store_name: str) -> list[Any]:
+            return []
+
+        def put(self, *a: Any, **kw: Any) -> None:
+            pass
+
+        def put_raw(self, *a: Any, **kw: Any) -> None:
+            pass
+
+        def delete(self, *a: Any, **kw: Any) -> None:
+            pass
 
     state_mod = types.ModuleType("maistro.state")
     state_mod.State = _State  # type: ignore[attr-defined]
@@ -203,10 +227,12 @@ def test_init_state_success_wires_persisted_store(
 
 
 def test_init_state_exception_falls_back_to_in_memory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.foundation import Foundation
     import types
+
+    from services.foundation import Foundation
 
     broken = types.ModuleType("maistro.state")
 
@@ -235,14 +261,19 @@ def test_init_privilege_skipped_without_admin_key(tmp_path: Path) -> None:
 
 
 def test_init_privilege_success(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.foundation import Foundation
     import types
 
+    from services.foundation import Foundation
+
     class _Guard:
-        def __init__(self, *, data_dir: str) -> None: self.dd = data_dir
-        def initialize(self, **kw: Any) -> None: pass
+        def __init__(self, *, data_dir: str) -> None:
+            self.dd = data_dir
+
+        def initialize(self, **kw: Any) -> None:
+            pass
 
     priv_mod = types.ModuleType("maistro.privilege")
     priv_mod.PrivilegeGuard = _Guard  # type: ignore[attr-defined]
@@ -256,10 +287,12 @@ def test_init_privilege_success(
 
 
 def test_init_privilege_exception_swallowed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.foundation import Foundation
     import types
+
+    from services.foundation import Foundation
 
     broken = types.ModuleType("maistro.privilege")
 
@@ -280,18 +313,25 @@ def test_init_privilege_exception_swallowed(
 
 
 async def test_init_reactor_success(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.foundation import Foundation
     import types
+
+    from services.foundation import Foundation
 
     started = [0]
     stopped = [0]
 
     class _Reactor:
-        def __init__(self, **kw: Any) -> None: pass
-        async def start(self) -> None: started[0] += 1
-        async def stop(self) -> None: stopped[0] += 1
+        def __init__(self, **kw: Any) -> None:
+            pass
+
+        async def start(self) -> None:
+            started[0] += 1
+
+        async def stop(self) -> None:
+            stopped[0] += 1
 
     reactor_mod = types.ModuleType("maistro.reactor")
     reactor_mod.Reactor = _Reactor  # type: ignore[attr-defined]
@@ -305,10 +345,12 @@ async def test_init_reactor_success(
 
 
 async def test_init_reactor_exception_swallowed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.foundation import Foundation
     import types
+
+    from services.foundation import Foundation
 
     broken = types.ModuleType("maistro.reactor")
 
@@ -333,10 +375,12 @@ async def test_stop_calls_subsystems_when_available() -> None:
     stopped = [0]
 
     class _R:
-        async def stop(self) -> None: stopped[0] += 1
+        async def stop(self) -> None:
+            stopped[0] += 1
 
     class _St:
-        def close(self) -> None: closed[0] += 1
+        def close(self) -> None:
+            closed[0] += 1
 
     fnd = Foundation()
     fnd.reactor = _R()

@@ -76,6 +76,7 @@ def settings_models() -> dict:
 
 def _fetch_available_models() -> list[str]:
     import os
+
     base = os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL") or ""
     key = os.environ.get("LITELLM_API_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
     if not base:

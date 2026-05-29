@@ -26,6 +26,7 @@ def coerce_priority(value: str | None) -> Priority | None:
         return cast(Priority, value)
     return None
 
+
 _FILLER_WORDS = frozenset(
     {
         "the",

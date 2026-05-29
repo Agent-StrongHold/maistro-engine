@@ -11,7 +11,6 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -77,7 +76,6 @@ class TestQuiescentCPU:
 
     @pytest.mark.asyncio()
     async def test_idle_cpu_low(self) -> None:
-        import os
 
         from maistro.reactor import Reactor
 

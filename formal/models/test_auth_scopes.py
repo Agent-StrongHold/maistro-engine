@@ -77,8 +77,9 @@ def test_superuser_expands_to_all():
 
 
 @given(
-    invalid=st.text(min_size=1, max_size=30, alphabet=st.characters(whitelist_categories=("L", "N")))
-        .filter(lambda x: x not in _VALID_SCOPES and x != "*:*" and not any(x == f"{c.value}:*" for c in ScopeCategory))
+    invalid=st.text(min_size=1, max_size=30, alphabet=st.characters(whitelist_categories=("L", "N"))).filter(
+        lambda x: x not in _VALID_SCOPES and x != "*:*" and not any(x == f"{c.value}:*" for c in ScopeCategory)
+    )
 )
 @settings(max_examples=50)
 def test_invalid_scopes_ignored(invalid):

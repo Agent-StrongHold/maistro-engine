@@ -18,18 +18,33 @@ import os
 from typing import Any
 
 from dags.author_examples import (
-    SEUSS, ERIC_CARLE, MO_WILLEMS, JULIA_DONALDSON, DRAGONS_LOVE_TACOS, PETE_THE_CAT,
-    JUNIE_B_JONES, FROG_AND_TOAD, ELEPHANT_AND_PIGGIE,
-    ROALD_DAHL, DIARY_OF_A_WIMPY_KID, PERCY_JACKSON, DOG_MAN, CAPTAIN_UNDERPANTS, THE_BAD_GUYS,
-    GOODNIGHT_MOON, GUESS_HOW_MUCH,
-    HARRY_POTTER, MAGIC_TREE_HOUSE, HUNGER_GAMES_YA,
+    CAPTAIN_UNDERPANTS,
+    DIARY_OF_A_WIMPY_KID,
+    DOG_MAN,
+    DRAGONS_LOVE_TACOS,
+    ELEPHANT_AND_PIGGIE,
     ENGAGEMENT_PRINCIPLES,
+    ERIC_CARLE,
+    FROG_AND_TOAD,
+    GOODNIGHT_MOON,
+    GUESS_HOW_MUCH,
+    HARRY_POTTER,
+    HUNGER_GAMES_YA,
+    JULIA_DONALDSON,
+    JUNIE_B_JONES,
+    MAGIC_TREE_HOUSE,
+    MO_WILLEMS,
+    PERCY_JACKSON,
+    PETE_THE_CAT,
+    ROALD_DAHL,
+    SEUSS,
+    THE_BAD_GUYS,
 )
 
 
 def select_authors(age: int, word_count: int, purpose: str = "", tone: str = "") -> list[dict]:
     """Pick 2-3 author examples based on audience and format.
-    
+
     Args:
         age: target reader age (2-14)
         word_count: target length
@@ -116,15 +131,15 @@ def format_examples_for_prompt(authors: list[dict]) -> str:
         )
     # Add engagement principles
     parts.append(
-        "\n**Why kids stay hooked:**\n" +
-        "\n".join(f"- {v}" for v in list(ENGAGEMENT_PRINCIPLES.values())[:4])
+        "\n**Why kids stay hooked:**\n"
+        + "\n".join(f"- {v}" for v in list(ENGAGEMENT_PRINCIPLES.values())[:4])
     )
     return "\n\n".join(parts)
 
 
 async def search_bestsellers(age: int, genre: str = "", tone: str = "") -> dict[str, Any]:
     """Search Goodreads + NYT bestseller lists for what's popular NOW for this audience.
-    
+
     Returns real book titles, ratings, and why they're popular — used as
     additional context for the writing nodes alongside our static examples.
     """
@@ -159,16 +174,25 @@ async def search_bestsellers(age: int, genre: str = "", tone: str = "") -> dict[
             results = data.get("web", {}).get("results", [])[:5]
             return {
                 "query": query,
-                "books": [{"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("description", "")[:150]} for r in results],
+                "books": [
+                    {
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "snippet": r.get("description", "")[:150],
+                    }
+                    for r in results
+                ],
                 "source": "brave+goodreads",
             }
     except Exception:
         return {"books": [], "source": "error"}
 
 
-async def get_writing_context(age: int, word_count: int, purpose: str = "", tone: str = "") -> dict[str, Any]:
+async def get_writing_context(
+    age: int, word_count: int, purpose: str = "", tone: str = ""
+) -> dict[str, Any]:
     """Full context for a creative writing DAG: static examples + live bestseller data.
-    
+
     This is what gets injected into the writing prompts:
     1. Static author examples (proven techniques with real passages)
     2. Live bestseller/Goodreads data (what's popular RIGHT NOW for this audience)

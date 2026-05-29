@@ -74,22 +74,16 @@ def test_back_references_computed_for_supersedes() -> None:
     a = _make_fm("ADR-001", supersedes=["maistro-engine#ADR-002"])
     b = _make_fm("ADR-002")
     reg = build_registry([a, b])
-    assert reg.entries["maistro-engine#ADR-002"].superseded_by == [
-        "maistro-engine#ADR-001"
-    ]
+    assert reg.entries["maistro-engine#ADR-002"].superseded_by == ["maistro-engine#ADR-001"]
     # Forward ref preserved
-    assert reg.entries["maistro-engine#ADR-001"].supersedes == [
-        "maistro-engine#ADR-002"
-    ]
+    assert reg.entries["maistro-engine#ADR-001"].supersedes == ["maistro-engine#ADR-002"]
 
 
 def test_back_references_computed_for_blocks() -> None:
     a = _make_fm("ADR-001", blocks=["maistro-engine#ADR-002"])
     b = _make_fm("ADR-002")
     reg = build_registry([a, b])
-    assert reg.entries["maistro-engine#ADR-002"].blocked_by_inverse == [
-        "maistro-engine#ADR-001"
-    ]
+    assert reg.entries["maistro-engine#ADR-002"].blocked_by_inverse == ["maistro-engine#ADR-001"]
 
 
 def test_referenced_by_aggregates_substrate_related_implements() -> None:
@@ -102,12 +96,8 @@ def test_referenced_by_aggregates_substrate_related_implements() -> None:
     c = _make_fm("ADR-003")
     reg = build_registry([a, b, c])
 
-    assert reg.entries["maistro-engine#ADR-002"].referenced_by == [
-        "maistro-engine#ADR-001"
-    ]
-    assert reg.entries["maistro-engine#ADR-003"].referenced_by == [
-        "maistro-engine#ADR-001"
-    ]
+    assert reg.entries["maistro-engine#ADR-002"].referenced_by == ["maistro-engine#ADR-001"]
+    assert reg.entries["maistro-engine#ADR-003"].referenced_by == ["maistro-engine#ADR-001"]
 
 
 def test_back_references_idempotent() -> None:
@@ -116,9 +106,7 @@ def test_back_references_idempotent() -> None:
     reg = build_registry([a, b])
     # Second computation should not duplicate back-refs
     reg.compute_back_references()
-    assert reg.entries["maistro-engine#ADR-002"].superseded_by == [
-        "maistro-engine#ADR-001"
-    ]
+    assert reg.entries["maistro-engine#ADR-002"].superseded_by == ["maistro-engine#ADR-001"]
 
 
 def test_back_references_skip_unknown_targets() -> None:
@@ -127,9 +115,7 @@ def test_back_references_skip_unknown_targets() -> None:
     reg = build_registry([a])
     # No entry for ADR-999, nothing crashes, ADR-001 still has its forward ref
     assert "maistro-engine#ADR-999" not in reg.entries
-    assert reg.entries["maistro-engine#ADR-001"].supersedes == [
-        "maistro-engine#ADR-999"
-    ]
+    assert reg.entries["maistro-engine#ADR-001"].supersedes == ["maistro-engine#ADR-999"]
 
 
 def test_json_keys_are_sorted() -> None:

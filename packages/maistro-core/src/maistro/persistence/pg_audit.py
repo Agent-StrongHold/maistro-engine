@@ -71,7 +71,7 @@ class PgAuditLog:
 
         where = " AND ".join(conditions) if conditions else "TRUE"
         params.append(limit)
-        query = f"SELECT * FROM audit_log WHERE {where} ORDER BY timestamp DESC LIMIT ${idx}"  # noqa: S608  # nosec B608
+        query = f"SELECT * FROM audit_log WHERE {where} ORDER BY timestamp DESC LIMIT ${idx}"  # nosec B608
 
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(query, *params)

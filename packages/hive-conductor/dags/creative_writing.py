@@ -25,7 +25,7 @@ DAGS = [
                         "What is the emotional journey? (e.g., scared→brave, lonely→connected, confused→understanding)",
                         "What is the setting? Describe the world in sensory detail — colors, sounds, textures.",
                         "What is the single concept or lesson? (e.g., sharing, bedtime routine, counting, colors)",
-                        "What should the tone be? (silly/funny, warm/gentle, exciting/adventurous, interactive/participatory)"
+                        "What should the tone be? (silly/funny, warm/gentle, exciting/adventurous, interactive/participatory)",
                     ]
                 },
             },
@@ -35,7 +35,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} picture book writing techniques craft", "max_results": 3},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} picture book writing techniques craft",
+                    "max_results": 3,
+                },
             },
             {
                 "id": "structure",
@@ -78,7 +82,7 @@ DAGS = [
                         "What is the central problem? (lost toy, new school, making a friend, learning something hard)",
                         "What are 3 attempts the character makes to solve the problem? (try-fail-try-fail-succeed pattern)",
                         "What does the character LEARN by the end? How do they grow?",
-                        "What tone does this kid respond to? (silly/physical comedy, warm/gentle, adventurous, gross-out funny)"
+                        "What tone does this kid respond to? (silly/physical comedy, warm/gentle, adventurous, gross-out funny)",
                     ]
                 },
             },
@@ -88,7 +92,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} early reader writing craft techniques leveled reading", "max_results": 3},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} early reader writing craft techniques leveled reading",
+                    "max_results": 3,
+                },
             },
             {
                 "id": "outline",
@@ -110,7 +118,13 @@ DAGS = [
             {"from_node": "outline", "to_node": "draft"},
             {"from_node": "clarify", "to_node": "draft"},
         ],
-        "evals": ["AgeAppropriateness", "StoryArc", "CharacterConsistency", "WordCount", "ReadAloudQuality"],
+        "evals": [
+            "AgeAppropriateness",
+            "StoryArc",
+            "CharacterConsistency",
+            "WordCount",
+            "ReadAloudQuality",
+        ],
     },
     {
         "id": "cw_chapter_book",
@@ -131,7 +145,7 @@ DAGS = [
                         "Describe the protagonist: name, age, appearance, 3 traits, biggest fear, secret talent, deepest want.",
                         "What is the central conflict? What's at stake if the protagonist fails?",
                         "Who is the antagonist? What makes them interesting (not just 'evil')?",
-                        "What is the theme without being preachy? What should the reader FEEL at the end?"
+                        "What is the theme without being preachy? What should the reader FEEL at the end?",
                     ]
                 },
             },
@@ -141,7 +155,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} middle grade writing craft chapter book structure", "max_results": 3},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} middle grade writing craft chapter book structure",
+                    "max_results": 3,
+                },
             },
             {
                 "id": "world",
@@ -192,7 +210,7 @@ DAGS = [
                         "What creature or character will the child follow to sleep? Describe them as soft, warm, and safe.",
                         "What is the gentle 'adventure' before sleep? (saying goodnight to things, following moonbeams, animals tucking in one by one)",
                         "What sensory details calm this specific child? (warm blanket, rain sounds, parent's heartbeat, soft fur)",
-                        "What soothing phrase should repeat like a lullaby? (Must have the same syllable count each time for rhythm.)"
+                        "What soothing phrase should repeat like a lullaby? (Must have the same syllable count each time for rhythm.)",
                     ]
                 },
             },
@@ -234,7 +252,7 @@ DAGS = [
                         "What's the ONE new thing they should understand after reading?",
                         "What character will discover this concept? How does learning it solve their personal problem?",
                         "What are 3 concrete scenes where the concept is demonstrated through action (not explained)?",
-                        "What common misconception should the story gently correct?"
+                        "What common misconception should the story gently correct?",
                     ]
                 },
             },
@@ -244,7 +262,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} children educational accurate facts", "max_results": 3},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} children educational accurate facts",
+                    "max_results": 3,
+                },
             },
             {
                 "id": "plan",
@@ -267,6 +289,12 @@ DAGS = [
             {"from_node": "research", "to_node": "write"},
             {"from_node": "clarify", "to_node": "write"},
         ],
-        "evals": ["AgeAppropriateness", "StoryArc", "CharacterConsistency", "WordCount", "ReadAloudQuality"],
+        "evals": [
+            "AgeAppropriateness",
+            "StoryArc",
+            "CharacterConsistency",
+            "WordCount",
+            "ReadAloudQuality",
+        ],
     },
 ]

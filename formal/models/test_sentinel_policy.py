@@ -9,7 +9,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
 
-from maistro.security._types import AuthContext, IdentityKind, SentinelVerdict, WardenVerdict
+from maistro.security._types import AuthContext, WardenVerdict
 from maistro.security.sentinel.policy import Sentinel, check_permission
 
 

@@ -17,7 +17,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} product launch announcement", "max_results": 5},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} product launch announcement",
+                    "max_results": 5,
+                },
             },
             {
                 "id": "facts",
@@ -44,7 +48,13 @@ DAGS = [
             {"from_node": "draft", "to_node": "verify"},
             {"from_node": "research", "to_node": "verify"},
         ],
-        "evals": ["InvertedPyramid", "QuoteQuality", "APStyle", "FactualAccuracy", "Newsworthiness"],
+        "evals": [
+            "InvertedPyramid",
+            "QuoteQuality",
+            "APStyle",
+            "FactualAccuracy",
+            "Newsworthiness",
+        ],
     },
     {
         "id": "pr_partnership",
@@ -58,7 +68,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} partnership collaboration announcement", "max_results": 5},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} partnership collaboration announcement",
+                    "max_results": 5,
+                },
             },
             {
                 "id": "context",
@@ -91,7 +105,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} executive biography LinkedIn", "max_results": 5},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} executive biography LinkedIn",
+                    "max_results": 5,
+                },
             },
             {
                 "id": "bio",
@@ -124,7 +142,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} quarterly earnings results revenue", "max_results": 5},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} quarterly earnings results revenue",
+                    "max_results": 5,
+                },
             },
             {
                 "id": "numbers",
@@ -157,7 +179,11 @@ DAGS = [
                 "model": "none",
                 "role": "researcher",
                 "tool": "web_search",
-                "tool_config": {"queries_from_input": True, "query_template": "{input} incident response statement", "max_results": 5},
+                "tool_config": {
+                    "queries_from_input": True,
+                    "query_template": "{input} incident response statement",
+                    "max_results": 5,
+                },
             },
             {
                 "id": "assess",

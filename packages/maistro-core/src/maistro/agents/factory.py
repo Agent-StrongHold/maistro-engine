@@ -260,9 +260,7 @@ def _register_custom_strategies() -> None:
         pass
 
 
-def _instantiate(
-    identity: AgentIdentity, *, agent_resolver: Any = None, **deps: Any
-) -> Agent:
+def _instantiate(identity: AgentIdentity, *, agent_resolver: Any = None, **deps: Any) -> Agent:
     strategy = _build_strategy(identity)
     tool_executor = deps.pop("tool_executor", None)
     return Agent(
@@ -357,9 +355,11 @@ async def create_agents(
 
             persist_registry = PgAgentRegistry(sa_engine)
         except Exception as _exc:
-            __import__('logging').getLogger('maistro.agents.factor').warning(
-                'error_swallowed file=%s line=%d: %s',
-                'packages/maistro-core/src/maistro/agents/factory.py', 374, _exc,
+            __import__("logging").getLogger("maistro.agents.factor").warning(
+                "error_swallowed file=%s line=%d: %s",
+                "packages/maistro-core/src/maistro/agents/factory.py",
+                374,
+                _exc,
             )
             pass
 
@@ -412,9 +412,7 @@ async def create_agents(
             except Exception:
                 logger.warning("Failed to persist agent '%s' to DB", identity.name, exc_info=True)
 
-        agents[identity.name] = _instantiate(
-            identity, agent_resolver=agents.get, **{**deps}
-        )
+        agents[identity.name] = _instantiate(identity, agent_resolver=agents.get, **{**deps})
         logger.info(
             "Seeded agent '%s' (strategy=%s, tools=%d, db=%s)",
             identity.name,

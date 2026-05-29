@@ -19,8 +19,8 @@ class RunStatus(StrEnum):
 
     PENDING = "pending"
     RUNNING = "running"
-    PAUSED_WAIT = "paused_wait"   # external condition (Jira subtasks, etc.)
-    PAUSED_HITL = "paused_hitl"   # waiting on human input
+    PAUSED_WAIT = "paused_wait"  # external condition (Jira subtasks, etc.)
+    PAUSED_HITL = "paused_hitl"  # waiting on human input
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -73,7 +73,7 @@ class DurableRunRecord(BaseModel):
 
     run_id: str
     dag_id: str
-    dag_snapshot: dict[str, Any]   # serialized DAGFile / GraphConfig
+    dag_snapshot: dict[str, Any]  # serialized DAGFile / GraphConfig
     inputs: dict[str, Any] = Field(default_factory=dict)
     status: RunStatus = RunStatus.PENDING
     # Cursor: which node is "next to run" after the current checkpoint. None

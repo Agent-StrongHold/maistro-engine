@@ -191,9 +191,11 @@ def _revoke_task_elevation(request: Request, task_id: str) -> None:
 
         revoke_task_elevation(session_id, task_id)
     except Exception as _exc:
-        __import__('logging').getLogger('hive.routes.missions').warning(
-            'error_swallowed file=%s line=%d: %s',
-            'packages/hive-conductor/backend/routes/missions.py', 193, _exc,
+        __import__("logging").getLogger("hive.routes.missions").warning(
+            "error_swallowed file=%s line=%d: %s",
+            "packages/hive-conductor/backend/routes/missions.py",
+            193,
+            _exc,
         )
         pass
 
@@ -230,7 +232,11 @@ async def post_mission_guidance(
     request: Request,
 ) -> dict[str, object]:
     """Human guidance on a mission — feeds the meta hyperagent."""
-    from services.program_hyperagent import apply_guidance_and_pulse, require_pm_poc, user_id_from_request
+    from services.program_hyperagent import (
+        apply_guidance_and_pulse,
+        require_pm_poc,
+        user_id_from_request,
+    )
 
     require_pm_poc()
     if not body.text.strip():

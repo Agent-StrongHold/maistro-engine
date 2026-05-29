@@ -25,8 +25,7 @@ import os
 import sys
 
 import httpx
-from browser_use import Agent, Browser
-from browser_use import ChatGoogle
+from browser_use import Agent, Browser, ChatGoogle
 
 HIVE_URL = os.environ.get("HIVE_URL", "http://localhost:8101")
 JIRA_URL = os.environ.get("JIRA_URL", "")
@@ -55,9 +54,13 @@ async def run():
     try:
         # ─── Step 1: Login to Hive ───
         print("\n🐝 Step 1: Login to Hive...")
-        r = await http.post("/v1/auth/login", json={
-            "username": HIVE_USER, "password": HIVE_PASS,
-        })
+        r = await http.post(
+            "/v1/auth/login",
+            json={
+                "username": HIVE_USER,
+                "password": HIVE_PASS,
+            },
+        )
         assert r.status_code == 200, f"Hive login failed: {r.text}"
         cookies = {"hive_session": r.cookies.get("hive_session")}
         print("   ✅ Logged in")
@@ -122,12 +125,17 @@ async def run():
         print("\n🐝 Step 6: Create DAG from real Jira data...")
         dag_name = (
             f"Sprint Report: {jira_issues[0]['summary'][:40]}"
-            if jira_issues else "Sprint Status Report"
+            if jira_issues
+            else "Sprint Status Report"
         )
-        r = await http.post("/v1/dags", json={
-            "name": dag_name,
-            "description": f"From {len(jira_issues)} real Jira issues",
-        }, cookies=cookies)
+        r = await http.post(
+            "/v1/dags",
+            json={
+                "name": dag_name,
+                "description": f"From {len(jira_issues)} real Jira issues",
+            },
+            cookies=cookies,
+        )
         assert r.status_code == 201
         dag = r.json()
 
@@ -138,25 +146,28 @@ async def run():
         print(f"   ✅ DAG '{dag_name}' executed")
 
         # Feedback
-        await http.post(f"/v1/dag-runs/{run_id}/feedback", json={
-            "thumb": "up",
-            "comment": f"Real Jira data — {len(jira_issues)} issues",
-            "dag_id": dag["id"],
-        }, cookies=cookies)
+        await http.post(
+            f"/v1/dag-runs/{run_id}/feedback",
+            json={
+                "thumb": "up",
+                "comment": f"Real Jira data — {len(jira_issues)} issues",
+                "dag_id": dag["id"],
+            },
+            cookies=cookies,
+        )
         print("   ✅ Feedback submitted")
 
         # ─── Step 7: Verify in UI ───
         print("\n🐝 Step 7: Verify in Hive UI...")
         result = await browse(
-            f"Go to {HIVE_URL}/fleet. "
-            f"Can you see '{dag_name[:25]}'? Is it active?"
+            f"Go to {HIVE_URL}/fleet. Can you see '{dag_name[:25]}'? Is it active?"
         )
         print(f"   {result[:200]}")
 
         print("\n" + "=" * 60)
         print("✅ DONE — real Jira → Hive end-to-end, nothing faked")
         print(f"   Issues read: {len(jira_issues)}")
-        print(f"   Creds from: Hive credential store (saved via UI)")
+        print("   Creds from: Hive credential store (saved via UI)")
         print("=" * 60)
 
     except AssertionError as e:

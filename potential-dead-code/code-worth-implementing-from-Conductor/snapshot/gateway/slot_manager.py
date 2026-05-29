@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import httpx
 
@@ -68,9 +68,7 @@ class SlotManager:
             slot_id = await asyncio.wait_for(self._available.get(), timeout=timeout)
         except asyncio.TimeoutError:
             raise RuntimeError(f"No worker slot available within {timeout}s for task {task_id}")
-        self._slot_states[slot_id] = SlotStatus(
-            slot_id=slot_id, state="reserved", task_id=task_id
-        )
+        self._slot_states[slot_id] = SlotStatus(slot_id=slot_id, state="reserved", task_id=task_id)
         logger.info("Acquired slot %d for task %s", slot_id, task_id)
         return slot_id
 
@@ -84,17 +82,13 @@ class SlotManager:
 
     async def save_template(self, project_id: str) -> float:
         """Save the template slot's KV cache to disk. Returns time in ms."""
-        return await self._slot_action(
-            self._template_slot, "save", f"template-{project_id}"
-        )
+        return await self._slot_action(self._template_slot, "save", f"template-{project_id}")
 
     async def restore_template_to_worker(self, project_id: str, worker_slot_id: int) -> float:
         """Restore the saved template cache into a worker slot. Returns time in ms."""
         if worker_slot_id == self._template_slot:
             raise ValueError("Cannot restore into the template slot")
-        return await self._slot_action(
-            worker_slot_id, "restore", f"template-{project_id}"
-        )
+        return await self._slot_action(worker_slot_id, "restore", f"template-{project_id}")
 
     async def get_all_status(self) -> list[SlotStatus]:
         """Return status of all managed slots."""

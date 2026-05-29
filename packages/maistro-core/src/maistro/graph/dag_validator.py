@@ -21,8 +21,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from pydantic import BaseModel
-
 from .nodes import get_node
 
 
@@ -30,8 +28,8 @@ from .nodes import get_node
 class ValidationFinding:
     """A single validator result."""
 
-    code: str           # "missing_node" | "unknown_kind" | "schema_mismatch" | "cycle" | "no_entry" | "unreachable" | "edge_missing_endpoint"
-    severity: str       # "error" | "warning"
+    code: str  # "missing_node" | "unknown_kind" | "schema_mismatch" | "cycle" | "no_entry" | "unreachable" | "edge_missing_endpoint"
+    severity: str  # "error" | "warning"
     message: str
     node_id: str | None = None
     edge_index: int | None = None
@@ -218,7 +216,7 @@ def _validate_no_cycles(
             adj[fn].append(tn)
 
     WHITE, GRAY, BLACK = 0, 1, 2
-    color: dict[str, int] = {nid: WHITE for nid in adj}
+    color: dict[str, int] = dict.fromkeys(adj, WHITE)
 
     def _dfs(u: str) -> bool:
         color[u] = GRAY

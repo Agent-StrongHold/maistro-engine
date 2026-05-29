@@ -11,7 +11,6 @@ Four layers (cheap to expensive, short-circuit on detection):
 from __future__ import annotations
 
 import logging
-import signal
 import unicodedata
 from typing import TYPE_CHECKING
 

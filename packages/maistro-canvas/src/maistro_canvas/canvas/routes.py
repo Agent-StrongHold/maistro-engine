@@ -549,7 +549,7 @@ def make_canvas_router(
     async def export_canvas(
         canvas_id: str,
         auth: CurrentUser = Depends(get_current_user),
-        format: str = Query(default="png"),  # noqa: A002
+        format: str = Query(default="png"),
         quality: int = Query(default=90),
     ) -> Response:
         canvas = await store.get_canvas(canvas_id)
@@ -572,7 +572,7 @@ def make_canvas_router(
             await store.save_composite(comp)
 
         # Re-encode to the requested format
-        from maistro_canvas.canvas.compositor import PilCompositorService  # noqa: PLC0415
+        from maistro_canvas.canvas.compositor import PilCompositorService
 
         if isinstance(compositor, PilCompositorService):
             output_bytes = await compositor.encode(comp.image_bytes, fmt=fmt, quality=quality)
@@ -598,7 +598,7 @@ def make_canvas_router(
 
     @router.get("/models")
     async def list_models(
-        auth: CurrentUser = Depends(get_current_user),  # noqa: ARG001
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         # In production, this delegates to the model registry / LiteLLM;
         # the executor's model_registry exposes list_image_models() if available.

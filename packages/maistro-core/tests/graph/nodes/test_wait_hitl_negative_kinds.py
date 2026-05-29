@@ -56,9 +56,7 @@ async def test_ask_question_resume_with_user_answer_completes() -> None:
     ctx.metadata["hitl_answers"] = {
         "approve-canary": {"answer": True, "answered_at": "2026-05-22T10:00:00Z"}
     }
-    result = await Node().run(
-        {"question": "Approve?", "response_kind": "yes_no"}, ctx
-    )
+    result = await Node().run({"question": "Approve?", "response_kind": "yes_no"}, ctx)
     assert result.success is True
     assert result.status == "completed"
     assert result.output.answer is True
@@ -93,9 +91,7 @@ async def test_approve_draft_resume_with_verdict_modified() -> None:
             "reviewer_note": "Add Q3 scope",
         }
     }
-    result = await Node().run(
-        {"draft": {"summary": "x"}, "draft_kind": "jira_ticket"}, ctx
-    )
+    result = await Node().run({"draft": {"summary": "x"}, "draft_kind": "jira_ticket"}, ctx)
     assert result.status == "completed"
     assert result.output.verdict == "modified"
     assert result.output.modified_draft is not None
@@ -106,7 +102,9 @@ async def test_approve_draft_resume_with_verdict_modified() -> None:
 # --- jira.wait_for_subtasks -----------------------------------------------
 
 
-def _patch_httpx(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any], status_code: int = 200) -> None:
+def _patch_httpx(
+    monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any], status_code: int = 200
+) -> None:
     class _Resp:
         status_code = 200
 
@@ -119,7 +117,7 @@ def _patch_httpx(monkeypatch: pytest.MonkeyPatch, payload: dict[str, Any], statu
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -218,16 +216,13 @@ async def test_wait_for_subtasks_timeout_returns_timed_out(
 ) -> None:
     _patch_httpx(
         monkeypatch,
-        {
-            "fields": {
-                "subtasks": [{"key": "PROJ-101", "fields": {"status": {"name": "Open"}}}]
-            }
-        },
+        {"fields": {"subtasks": [{"key": "PROJ-101", "fields": {"status": {"name": "Open"}}}]}},
     )
     Node = get_node("jira.wait_for_subtasks")
     # Simulate "we started waiting an hour ago" with a 60-second timeout.
     ctx = _ctx()
     from datetime import UTC, datetime, timedelta
+
     one_hour_ago = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
     ctx.metadata[f"wait_first_seen:{ctx.node_id}"] = one_hour_ago
     result = await Node().run(
@@ -284,7 +279,12 @@ async def test_compliance_block_with_halt_sets_halt_flag() -> None:
     ctx = NodeContext(run_id="r1", dag_id="d1", node_id="block-1", blackboard=bb)
     Node = get_node("compliance.block")
     await Node().run(
-        {"rule_id": "policy.export_controlled", "severity": 10.0, "halt_run": True, "reason": "ITAR"},
+        {
+            "rule_id": "policy.export_controlled",
+            "severity": 10.0,
+            "halt_run": True,
+            "reason": "ITAR",
+        },
         ctx,
     )
     assert bb.metadata.get("halt_requested") is True

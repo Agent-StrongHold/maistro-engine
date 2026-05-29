@@ -24,8 +24,8 @@ specific VALUE in the response, the recorded Outcome, or the audit log):
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from typing import Any
 
 import pytest
@@ -39,8 +39,9 @@ if str(_BACKEND) not in sys.path:
 def fresh_outcome_store():
     """Bind a brand-new in-memory outcome store for each test so signals
     don't leak across tests."""
-    from maistro.memory.outcomes import InMemoryOutcomeStore
     import services.feedback_service as svc
+
+    from maistro.memory.outcomes import InMemoryOutcomeStore
 
     previous = svc.get_outcome_store()
     store = InMemoryOutcomeStore()
@@ -106,7 +107,10 @@ async def test_record_thumb_invalid_value_raises_value_error(
 
     with pytest.raises(ValueError, match="thumb must be one of"):
         await record_thumb(
-            user_id="u1", project_id="p", run_id="r", thumb="meh",
+            user_id="u1",
+            project_id="p",
+            run_id="r",
+            thumb="meh",
         )
 
 
@@ -117,7 +121,10 @@ async def test_record_thumb_empty_user_raises_value_error(
 
     with pytest.raises(ValueError, match="user_id is required"):
         await record_thumb(
-            user_id="", project_id="p", run_id="r", thumb="up",
+            user_id="",
+            project_id="p",
+            run_id="r",
+            thumb="up",
         )
 
 
@@ -128,7 +135,10 @@ async def test_record_thumb_empty_run_id_raises_value_error(
 
     with pytest.raises(ValueError, match="run_id is required"):
         await record_thumb(
-            user_id="u", project_id="p", run_id="", thumb="up",
+            user_id="u",
+            project_id="p",
+            run_id="",
+            thumb="up",
         )
 
 
@@ -136,6 +146,7 @@ def test_set_outcome_store_swaps_the_module_singleton() -> None:
     """The bridge / tests can hot-swap the store via set_outcome_store
     so the optimizer reads from the same instance the route writes to."""
     import services.feedback_service as svc
+
     from maistro.memory.outcomes import InMemoryOutcomeStore
 
     original = svc.get_outcome_store()
@@ -196,9 +207,7 @@ def test_feedback_route_invalid_thumb_returns_422(
     authed_client: Any, fresh_outcome_store: Any
 ) -> None:
     """Pydantic Literal rejects values outside up|down with 422 (not 400)."""
-    r = authed_client.post(
-        "/v1/dag-runs/run-C/feedback", json={"thumb": "maybe"}
-    )
+    r = authed_client.post("/v1/dag-runs/run-C/feedback", json={"thumb": "maybe"})
     assert r.status_code == 422
 
 
@@ -211,9 +220,7 @@ def test_feedback_route_unauthenticated_returns_401() -> None:
     assert r.status_code == 401
 
 
-def test_feedback_route_writes_audit_log(
-    authed_client: Any, fresh_outcome_store: Any
-) -> None:
+def test_feedback_route_writes_audit_log(authed_client: Any, fresh_outcome_store: Any) -> None:
     import stores
 
     audit_count_before = len(stores.audit_log)
@@ -255,12 +262,17 @@ async def test_thumbs_down_appears_in_same_project_experience_context(
     from services.feedback_service import record_thumb
 
     await record_thumb(
-        user_id="u1", project_id="proj-Alpha", run_id="r1",
-        thumb="down", comment="missed an epic", node_id="filter",
+        user_id="u1",
+        project_id="proj-Alpha",
+        run_id="r1",
+        thumb="down",
+        comment="missed an epic",
+        node_id="filter",
         task_type="pm_daily_status",
     )
     ctx = await fresh_outcome_store.get_experience_context(
-        task_type="pm_daily_status", project_id="proj-Alpha",
+        task_type="pm_daily_status",
+        project_id="proj-Alpha",
     )
     assert "User Thumbs-Down Patterns" in ctx
     assert "missed an epic" in ctx
@@ -273,9 +285,10 @@ async def test_thumbs_down_appears_in_same_project_experience_context(
 def test_resolve_user_id_raises_401_when_user_missing() -> None:
     """If AuthMiddleware somehow let an unauthenticated request through
     (defensive coverage), _resolve_user_id raises 401 explicitly."""
-    from routes.feedback import _resolve_user_id
-    from fastapi import HTTPException
     from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from routes.feedback import _resolve_user_id
 
     request = SimpleNamespace(state=SimpleNamespace(user=None))
     with pytest.raises(HTTPException) as exc_info:
@@ -284,9 +297,10 @@ def test_resolve_user_id_raises_401_when_user_missing() -> None:
 
 
 def test_resolve_user_id_raises_401_when_user_has_no_id() -> None:
-    from routes.feedback import _resolve_user_id
-    from fastapi import HTTPException
     from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from routes.feedback import _resolve_user_id
 
     request = SimpleNamespace(state=SimpleNamespace(user={"username": "x"}))
     with pytest.raises(HTTPException) as exc_info:
@@ -295,8 +309,9 @@ def test_resolve_user_id_raises_401_when_user_has_no_id() -> None:
 
 
 def test_resolve_project_id_falls_back_to_request_state_when_body_empty() -> None:
-    from routes.feedback import FeedbackBody, _resolve_project_id
     from types import SimpleNamespace
+
+    from routes.feedback import FeedbackBody, _resolve_project_id
 
     request = SimpleNamespace(state=SimpleNamespace(project_id="state-proj"))
     body = FeedbackBody(thumb="up")  # project_id defaults to ""
@@ -304,8 +319,9 @@ def test_resolve_project_id_falls_back_to_request_state_when_body_empty() -> Non
 
 
 def test_resolve_project_id_body_wins_over_state() -> None:
-    from routes.feedback import FeedbackBody, _resolve_project_id
     from types import SimpleNamespace
+
+    from routes.feedback import FeedbackBody, _resolve_project_id
 
     request = SimpleNamespace(state=SimpleNamespace(project_id="state-proj"))
     body = FeedbackBody(thumb="up", project_id="body-proj")
@@ -314,8 +330,9 @@ def test_resolve_project_id_body_wins_over_state() -> None:
 
 def test_resolve_project_id_missing_state_returns_empty_string() -> None:
     """No body project_id + no request.state.project_id → empty fallback."""
-    from routes.feedback import FeedbackBody, _resolve_project_id
     from types import SimpleNamespace
+
+    from routes.feedback import FeedbackBody, _resolve_project_id
 
     request = SimpleNamespace(state=SimpleNamespace())  # no project_id attr
     body = FeedbackBody(thumb="up")
@@ -328,9 +345,10 @@ async def test_record_feedback_rejects_invalid_thumb_at_runtime(
     """Direct service-layer call — Pydantic's Literal can't intercept a
     handcrafted FeedbackBody constructed with thumb='bad'. Confirms the
     in-function defense fires."""
-    from routes.feedback import FeedbackBody, _record_feedback
-    from fastapi import HTTPException
     from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from routes.feedback import FeedbackBody, _record_feedback
 
     # Bypass Pydantic by mutating the field after construction.
     body = FeedbackBody(thumb="up")
@@ -348,22 +366,28 @@ async def test_record_feedback_per_node_route_requires_non_empty_node_id(
     """Direct call into the node route handler with empty node_id —
     FastAPI's path parser blocks this in HTTP, but the in-function
     defensive check must still exist + work for service-layer callers."""
-    from routes.feedback import FeedbackBody, submit_node_feedback
-    from fastapi import HTTPException
     from types import SimpleNamespace
+
+    from fastapi import HTTPException
+    from routes.feedback import FeedbackBody, submit_node_feedback
 
     request = SimpleNamespace(state=SimpleNamespace(user={"id": "u1"}))
     body = FeedbackBody(thumb="up")
     with pytest.raises(HTTPException) as exc_info:
         await submit_node_feedback(
-            run_id="r", node_id="", body=body, request=request,  # type: ignore[arg-type]
+            run_id="r",
+            node_id="",
+            body=body,
+            request=request,  # type: ignore[arg-type]
         )
     assert exc_info.value.status_code == 400
     assert "node_id is required" in exc_info.value.detail
 
 
 async def test_record_feedback_translates_value_error_to_400(
-    authed_client: Any, fresh_outcome_store: Any, monkeypatch: pytest.MonkeyPatch,
+    authed_client: Any,
+    fresh_outcome_store: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If record_thumb raises ValueError (e.g. service-level invariant
     fails) the route maps it to 400 instead of 500."""
@@ -375,11 +399,10 @@ async def test_record_feedback_translates_value_error_to_400(
     monkeypatch.setattr(svc, "record_thumb", _raise)
     # Also patch the route module's reference (it imported by name)
     import routes.feedback as fb
+
     monkeypatch.setattr(fb, "record_thumb", _raise)
 
-    r = authed_client.post(
-        "/v1/dag-runs/run-V/feedback", json={"thumb": "up"}
-    )
+    r = authed_client.post("/v1/dag-runs/run-V/feedback", json={"thumb": "up"})
     assert r.status_code == 400
     assert "invariant broken" in r.json()["detail"]
 
@@ -390,12 +413,16 @@ async def test_cross_project_thumb_does_not_leak(
     from services.feedback_service import record_thumb
 
     await record_thumb(
-        user_id="u1", project_id="proj-Alpha", run_id="r1",
-        thumb="down", comment="alpha-only signal",
+        user_id="u1",
+        project_id="proj-Alpha",
+        run_id="r1",
+        thumb="down",
+        comment="alpha-only signal",
         task_type="pm_daily_status",
     )
     ctx_other = await fresh_outcome_store.get_experience_context(
-        task_type="pm_daily_status", project_id="proj-Beta",
+        task_type="pm_daily_status",
+        project_id="proj-Beta",
     )
     assert "alpha-only signal" not in ctx_other
     assert ctx_other == ""  # no signals for Beta project at all

@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from hypothesis import assume, given, settings
-from hypothesis import stateful, strategies as st
+from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
 
 from maistro.security.strikes import (

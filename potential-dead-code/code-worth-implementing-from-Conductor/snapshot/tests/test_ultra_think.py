@@ -136,9 +136,7 @@ class TestErrorHandling:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_handles_partial_failure(
-        self, config: GatewayConfig, client: httpx.AsyncClient
-    ):
+    async def test_handles_partial_failure(self, config: GatewayConfig, client: httpx.AsyncClient):
         """Should handle partial generation failure."""
         for slot_id in [1, 2, 3]:
             respx.post(f"http://mock-llama:8080/slots/{slot_id}?action=restore").mock(

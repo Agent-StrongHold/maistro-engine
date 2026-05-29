@@ -34,6 +34,7 @@ from typing import Any, cast
 
 import httpx
 import structlog
+from maistro.memory.protocol import WorkingMemoryProtocol
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
@@ -55,7 +56,6 @@ from maistro.agents.types import (
 from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
-from maistro.memory.protocol import WorkingMemoryProtocol
 from maistro.observability.metrics import llm_errors_total, llm_requests_total, llm_tokens_used
 from maistro.tasks.models import TaskCreate
 

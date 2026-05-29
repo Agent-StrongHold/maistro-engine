@@ -41,16 +41,25 @@ class PermissionBoundary:
     def __init__(self) -> None:
         self._violations: list[EscalationAttempt] = []
 
-    def check_escalation(self, agent_id: str, current: Tier, requested: Tier) -> EscalationAttempt | None:
+    def check_escalation(
+        self, agent_id: str, current: Tier, requested: Tier
+    ) -> EscalationAttempt | None:
         if requested > current:
             v = EscalationAttempt(agent_id, current, requested, "self-escalation blocked")
             self._violations.append(v)
             return v
         return None
 
-    def check_tier_modification(self, actor_id: str, actor_tier: Tier, target_id: str, new_tier: Tier) -> EscalationAttempt | None:
+    def check_tier_modification(
+        self, actor_id: str, actor_tier: Tier, target_id: str, new_tier: Tier
+    ) -> EscalationAttempt | None:
         if actor_tier < Tier.ADMIN:
-            v = EscalationAttempt(actor_id, actor_tier, Tier.ADMIN, f"only admin can modify tiers; tried to set {target_id} to {new_tier.name}")
+            v = EscalationAttempt(
+                actor_id,
+                actor_tier,
+                Tier.ADMIN,
+                f"only admin can modify tiers; tried to set {target_id} to {new_tier.name}",
+            )
             self._violations.append(v)
             return v
         return None

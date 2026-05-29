@@ -93,9 +93,7 @@ class TestDelegation:
         mason = _make_agent("mason", _RecordingStrategy("def add(): ..."))
         registry["mason"] = mason
 
-        delegate_strategy = DelegateStrategy(
-            routing_table={"code": "mason"}, default_agent="mason"
-        )
+        delegate_strategy = DelegateStrategy(routing_table={"code": "mason"}, default_agent="mason")
         coordinator = _make_agent(
             "coordinator",
             delegate_strategy,
@@ -120,12 +118,8 @@ class TestDelegation:
         registry["ranger"] = ranger
 
         # Only 'search' is routed; 'code' would fall through to default.
-        delegate_strategy = DelegateStrategy(
-            routing_table={"search": "ranger"}, default_agent=""
-        )
-        coordinator = _make_agent(
-            "coordinator", delegate_strategy, agent_resolver=registry.get
-        )
+        delegate_strategy = DelegateStrategy(routing_table={"search": "ranger"}, default_agent="")
+        coordinator = _make_agent("coordinator", delegate_strategy, agent_resolver=registry.get)
 
         result = await coordinator.handle(
             messages=[{"role": "user", "content": "find the docs"}],
@@ -140,9 +134,7 @@ class TestDelegation:
         """When nothing matches and there is no default, do not crash."""
         registry: dict[str, Agent] = {}
         delegate_strategy = DelegateStrategy(routing_table={}, default_agent="")
-        coordinator = _make_agent(
-            "coordinator", delegate_strategy, agent_resolver=registry.get
-        )
+        coordinator = _make_agent("coordinator", delegate_strategy, agent_resolver=registry.get)
 
         result = await coordinator.handle(
             messages=[{"role": "user", "content": "hello"}],

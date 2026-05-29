@@ -4,8 +4,9 @@ import hashlib
 import math
 import random
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+from .mutate import MODEL_REGISTRY, STRATEGY_LIST
 from .types import (
     DAGEdgeGenome,
     DAGTopology,
@@ -13,7 +14,6 @@ from .types import (
     NodeGenome,
     PipelineGenome,
 )
-from .mutate import MODEL_REGISTRY, STRATEGY_LIST
 
 
 def _new_id() -> str:
@@ -21,7 +21,7 @@ def _new_id() -> str:
 
 
 def _fresh_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def trait_vector(genome: PipelineGenome) -> list[float]:
@@ -39,7 +39,7 @@ def trait_vector(genome: PipelineGenome) -> list[float]:
         model_hashes.append(int(h[:8], 16) / 0xFFFFFFFF)
     avg_model_hash = sum(model_hashes) / len(model_hashes)
 
-    strategy_counts: dict[str, float] = {s: 0.0 for s in STRATEGY_LIST}
+    strategy_counts: dict[str, float] = dict.fromkeys(STRATEGY_LIST, 0.0)
     for n in nodes:
         if n.strategy in strategy_counts:
             strategy_counts[n.strategy] += 1.0

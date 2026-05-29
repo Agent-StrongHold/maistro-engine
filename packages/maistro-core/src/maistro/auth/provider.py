@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from maistro.auth._types import Scope, ServiceIdentity
+from maistro.auth._types import ServiceIdentity
 from maistro.auth.registry import ServiceKeyRegistry
 from maistro.security.secret_equal import secret_equal
 

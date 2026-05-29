@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from maistro.graph.nodes import NodeContext, get_node
 
 

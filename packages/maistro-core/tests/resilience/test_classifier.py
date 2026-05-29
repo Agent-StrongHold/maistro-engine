@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.resilience.classifier import (
-    ClassifiedError,
     ErrorCategory,
     _classify_402,
     _extract_retry_after,

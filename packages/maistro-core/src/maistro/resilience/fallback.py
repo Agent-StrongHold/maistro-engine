@@ -55,7 +55,9 @@ class FallbackState:
         return {
             "current_index": self.current_index,
             "failover_count": self.failover_count,
-            "last_failover_reason": self.last_failover_reason.value if self.last_failover_reason else None,
+            "last_failover_reason": self.last_failover_reason.value
+            if self.last_failover_reason
+            else None,
             "is_on_primary": self.is_on_primary,
             "consecutive_successes": self.consecutive_successes,
         }
@@ -115,7 +117,10 @@ class FallbackChain:
         if self._state.failover_count >= self._config.max_failovers:
             return False
 
-        if reason == FailoverReason.CONTEXT_OVERFLOW and self._config.retry_primary_on_context_overflow:
+        if (
+            reason == FailoverReason.CONTEXT_OVERFLOW
+            and self._config.retry_primary_on_context_overflow
+        ):
             return False
 
         self._state.current_index += 1

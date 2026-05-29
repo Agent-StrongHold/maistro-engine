@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
-
 import stores
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -28,9 +25,11 @@ async def stream_task(websocket: WebSocket, task_id: str) -> None:
         try:
             await websocket.close()
         except Exception as _exc:
-            __import__('logging').getLogger('hive.routes.ws').warning(
-                'error_swallowed file=%s line=%d: %s',
-                'packages/hive-conductor/backend/routes/ws.py', 30, _exc,
+            __import__("logging").getLogger("hive.routes.ws").warning(
+                "error_swallowed file=%s line=%d: %s",
+                "packages/hive-conductor/backend/routes/ws.py",
+                30,
+                _exc,
             )
             pass
 
@@ -61,6 +60,8 @@ async def stream_dag_run(websocket: WebSocket, dag_id: str) -> None:
             await websocket.close()
         except Exception as exc:
             import logging as _logging
+
             _logging.getLogger("hive.ws").debug(
-                "ws_close_failed (already closed): %s", exc,
+                "ws_close_failed (already closed): %s",
+                exc,
             )

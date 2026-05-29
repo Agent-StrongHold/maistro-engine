@@ -145,9 +145,7 @@ async def test_full_field_roundtrip(registry):
 async def test_upsert_updates_existing_without_duplicating(registry, engine):
     """A second upsert of the same name updates in place (no duplicate row)."""
     await registry.upsert({"name": "ranger", "description": "first", "tools": ["a"]})
-    await registry.upsert(
-        {"name": "ranger", "description": "second", "tools": ["a", "b", "c"]}
-    )
+    await registry.upsert({"name": "ranger", "description": "second", "tools": ["a", "b", "c"]})
 
     assert await _count_rows(engine) == 1
     agent = await registry.get("ranger")
@@ -186,9 +184,7 @@ async def test_get_missing_returns_none(registry):
 
 async def test_souls_returns_soul_text_by_name(registry):
     """souls() exposes the stored soul prompt separately from AgentIdentity."""
-    await registry.upsert(
-        {"name": "scribe", "soul": "You are Scribe.", "active": True}
-    )
+    await registry.upsert({"name": "scribe", "soul": "You are Scribe.", "active": True})
     await registry.upsert({"name": "ranger", "soul": "You are Ranger.", "active": True})
     await registry.upsert({"name": "ghost", "soul": "hidden", "active": True})
     await registry.delete("ghost")

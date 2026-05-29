@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import re
 import json
+import re
 from typing import Any
 
 
@@ -70,7 +70,9 @@ def extract_json_from_response(response: str) -> dict | list | None:
         return None
 
 
-def function_call_match(response: str, expected_name: str, expected_params: dict | None = None) -> float:
+def function_call_match(
+    response: str, expected_name: str, expected_params: dict | None = None
+) -> float:
     data = extract_json_from_response(response)
     if data is None:
         return 0.0

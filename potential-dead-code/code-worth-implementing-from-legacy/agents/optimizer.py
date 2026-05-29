@@ -36,6 +36,7 @@ import os
 from collections import defaultdict
 
 import structlog
+from maistro.memory.protocol import WorkingMemoryProtocol
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -49,7 +50,6 @@ from maistro.agents.types import (
     OptimizationSignal,
     ReviewOutput,
 )
-from maistro.memory.protocol import WorkingMemoryProtocol
 
 logger = structlog.get_logger()
 

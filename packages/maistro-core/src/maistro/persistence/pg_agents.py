@@ -137,9 +137,7 @@ class PgAgentRegistry:
     async def count(self) -> int:
         """Count active agents in the database."""
         async with AsyncSession(self._engine) as session:
-            result = await session.execute(
-                text("SELECT COUNT(*) FROM agents WHERE active = TRUE")
-            )
+            result = await session.execute(text("SELECT COUNT(*) FROM agents WHERE active = TRUE"))
             row = result.first()
             return int(row[0]) if row else 0
 

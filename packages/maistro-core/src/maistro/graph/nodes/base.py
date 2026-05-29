@@ -135,7 +135,9 @@ class BaseNode(Generic[InputT, OutputT]):
     display_name: ClassVar[str] = ""
     description: ClassVar[str] = ""
 
-    async def run(self, inputs: InputT | BaseModel | dict[str, Any], ctx: NodeContext) -> NodeResult:
+    async def run(
+        self, inputs: InputT | BaseModel | dict[str, Any], ctx: NodeContext
+    ) -> NodeResult:
         # Validate inputs against the declared schema (defense in depth — the
         # caller should already have done this, but a misconfigured DAG could
         # skip it).

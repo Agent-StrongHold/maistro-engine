@@ -19,8 +19,13 @@ import httpx
 import pytest
 from pydantic import BaseModel
 
-from maistro.graph.nodes import BaseNode, NodeContext, get_node
-from maistro.graph.nodes import _annotation_str, _schema_summary  # type: ignore[attr-defined]
+from maistro.graph.nodes import (  # type: ignore[attr-defined]
+    BaseNode,
+    NodeContext,
+    _annotation_str,
+    _schema_summary,
+    get_node,
+)
 
 
 def _ctx(**o: Any) -> NodeContext:
@@ -41,6 +46,7 @@ def test_register_node_empty_kind_string_raises() -> None:
         output_schema: ClassVar[type[BaseModel]] = type("O", (BaseModel,), {})
 
     from maistro.graph.nodes import register_node as _reg
+
     with pytest.raises(ValueError, match="missing required `kind`"):
         _reg(_NoKind)
 
@@ -60,8 +66,13 @@ def test_annotation_str_none_returns_any() -> None:
 # --- jira_poll: cloud with email (Basic auth) + 403 + generic 4xx ---
 
 
-def _patch_jira(monkeypatch: pytest.MonkeyPatch, *, status_code: int, body: Any = None,
-                seen: dict[str, Any] | None = None) -> None:
+def _patch_jira(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    status_code: int,
+    body: Any = None,
+    seen: dict[str, Any] | None = None,
+) -> None:
     class _Resp:
         def __init__(self) -> None:
             self.status_code = status_code
@@ -71,10 +82,13 @@ def _patch_jira(monkeypatch: pytest.MonkeyPatch, *, status_code: int, body: Any 
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, url: str, *, params: Any = None, headers: Any = None,
-                      auth: Any = None) -> _Resp:
+        async def get(
+            self, url: str, *, params: Any = None, headers: Any = None, auth: Any = None
+        ) -> _Resp:
             if seen is not None:
                 seen["url"] = url
                 seen["params"] = params
@@ -153,9 +167,7 @@ async def test_approve_draft_resume_with_timed_out_true_propagates() -> None:
 async def test_ask_question_resume_with_timed_out_true_propagates() -> None:
     """Line 104 of human_ask_question.py: explicit timed_out=True branch."""
     ctx = _ctx(node_id="ask")
-    ctx.metadata["hitl_answers"] = {
-        "ask": {"answer": None, "answered_at": "", "timed_out": True}
-    }
+    ctx.metadata["hitl_answers"] = {"ask": {"answer": None, "answered_at": "", "timed_out": True}}
     node = get_node("human.ask_question")()
     out = await node.run({"question": "?"}, ctx)
     assert out.success
