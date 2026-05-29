@@ -177,26 +177,6 @@ def _build_identity_from_manifest(manifest: dict[str, Any]) -> AgentIdentity:
     )
 
 
-def _build_identity_from_record(record: Any) -> AgentIdentity:
-    return AgentIdentity(
-        name=record.name,
-        version=record.version,
-        description=record.description,
-        soul_prompt_name=f"agent.{record.name}.soul",
-        model=record.model,
-        model_fallbacks=tuple(record.model_fallbacks or []),
-        model_constraints=record.model_constraints or {},
-        tools=tuple(record.tools or []),
-        skills=tuple(record.skills or []),
-        rules=tuple(record.rules.splitlines()) if record.rules else (),
-        trust_tier=record.trust_tier,
-        priority_tier=getattr(record, "priority_tier", "P2"),
-        max_tool_rounds=record.max_tool_rounds,
-        reasoning_strategy=record.reasoning_strategy,
-        memory_config=record.memory_config or {},
-    )
-
-
 _DELEGATE_ROUTING_DEFAULTS: dict[str, str] = {
     "code": "artificer",
     "code_gen": "mason",
@@ -340,13 +320,13 @@ async def create_agents(
             registry = PgAgentRegistry(sa_engine)
             count = await registry.count()
             if count > 0:
-                records = await registry.list_active()
+                identities = await registry.list_active()
+                souls = await registry.souls()
                 agents: dict[str, Agent] = {}
-                for record in records:
-                    identity = _build_identity_from_record(record)
+                for identity in identities:
                     await prompt_manager.upsert(
                         f"agent.{identity.name}.soul",
-                        record.soul,
+                        souls.get(identity.name, ""),
                         label="production",
                     )
                     agents[identity.name] = _instantiate(identity, **{**deps})
