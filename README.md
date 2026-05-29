@@ -1,74 +1,81 @@
 # maistro-engine
 
-The shared Python runtime that underpins three downstream products. Not an end-user application — a substrate.
+The shared Python runtime — and the consolidation monorepo — behind the Maistro products. Not a library you only import: it also *contains* **Agent Conductor** (the personal/homelab app) and the **canvas ability**, and exposes `maistro-core` for downstream products to import.
 
 ```
-                          ┌───────────────────────────────────┐
-                          │        maistro-engine            │
-                          │   shared Python runtime + ADRs   │
-                          │   + Copier templates + registry  │
-                          └──────────────┬──────────────────┘
-                                         │ imports / templates
-                ┌───────────────────────────┼────────────────────────────────────────┐
-                ▼                        ▼                        ▼
-       ┌──────────────┐          ┌──────────────┐         ┌──────────────┐
-       │ Project_mAIstro │        │ AgentTuring  │         │  stronghold  │
-       │ single-tenant │         │ autonoetic   │         │ multi-tenant │
-       │ multi-user   │         │ experiment   │         │ enterprise  │
-       │ self-hosted  │         │ 24/7 self-   │         │             │
-       │             │         │ awareness    │         │             │
-       └──────────────┘          └──────────────┘         └──────────────┘
-        ease of self-host       continuity of self      multi-tenant isolation
-         (dominant constraint)   (dominant constraint)   (dominant constraint)
+        ┌────────────────────────────────────────────────────┐
+        │                    maistro-engine                   │
+        │  shared runtime ........ packages/maistro-core, …   │
+        │  Agent Conductor app ... packages/hive-conductor    │
+        │  canvas ability ........ packages/maistro-canvas    │
+        │  + ADRs/specs + registry CI                         │
+        └───────────────────────────┬────────────────────────┘
+                                    │ imported by
+                     ┌──────────────┴───────────────┐
+                     ▼                               ▼
+         ┌───────────────────────┐      ┌────────────────────────────┐
+         │ Canvas book-maker POC │      │ Stronghold  (planned)       │
+         │ (name TBD)            │      │ imports the engine, adds    │
+         │ imports maistro-canvas│      │ multi-tenancy + a stricter  │
+         │                       │      │ security stance, disables   │
+         │                       │      │ homelab/personal features   │
+         └───────────────────────┘      └────────────────────────────┘
 ```
 
 ## What this repo is
 
-- **Library** — the Python runtime: orchestrator, conduit, classifier, router, agents, A2A, memory, security, skills, tools, observability, quota, sessions, events.
-- **Canonical ADRs** — architectural decisions that all three products inherit. See `docs/adr/`.
-- **Copier templates** — three product scaffolds under `templates/` (per [`ADR-033`](docs/adr/ADR-033-templates-and-copier-workflow.md)).
-- **Registry CI host** — the front-matter validator, link-checker, and registry generator that enforce cross-repo conventions.
+- **A monorepo** — the shared Python runtime under `packages/maistro-core`, its sibling packages, the **Agent Conductor** app (`packages/hive-conductor`, the personal/homelab product), and the **canvas ability** (`packages/maistro-canvas`). One `uv` workspace, one git repo.
+- **Library-first** — `maistro-core` is a pure Python library; the FastAPI surface (`maistro-server`) is a thin wrapper. The app is optional.
+- **Canonical ADRs & specs** — architectural decisions and specifications under `docs/adr/` and `docs/specs/`.
+- **Registry CI host** — the front-matter validator, link-checker, and registry generator that enforce doc conventions (`packages/maistro-registry`).
+
+> **History note.** This engine used to be split across sibling repos (`Project_mAIstro`, `stronghold`, `AgentTuring`, `conductor-router`). The canonical shape as of 2026-05 is this single substrate monorepo — sibling trees are being consolidated in additively (see [`CONSOLIDATION-PLAN.md`](CONSOLIDATION-PLAN.md)). Cross-repo `<repo>#<ID>` references in front-matter remain valid during the transition.
 
 ## What this repo is not
 
-- Not an end-user product. It does not ship a UI, a deployment, or a household setup wizard. Those are downstream.
-- Not multi-tenant. Multi-tenancy lives in `stronghold`.
-- Not autonoetic. Continuous self-modelling lives in `AgentTuring`.
+- Not, by itself, multi-tenant. Tenant isolation is the Stronghold layer on top of `maistro-core`, not part of core — there is no `org_id` in core (see [`ADR-019`](docs/adr/ADR-019-canonical-source-split.md)).
+- Not the place for product-specific UX. Homelab/personal features live in Agent Conductor; the enterprise hardening lives in Stronghold.
 
-## The four-repo system
+## Products
 
-| Repo | Role | Dominant constraint |
+**Shipped in this repo:**
+
+| Product | Lives in | Audience |
 |---|---|---|
-| `BlakeMatthews-dev/maistro-engine` | Substrate (this repo) | n/a |
-| `BlakeMatthews-dev/Project_mAIstro` | Single-tenant secure multi-user product | Ease of self-hosting |
-| `BlakeMatthews-dev/AgentTuring` | Autonoetic experimental agent | Continuity of self |
-| `agent-stronghold/stronghold` | Multi-tenant enterprise product | Multi-tenant isolation |
+| **Agent Conductor** | `packages/hive-conductor` (consumes `maistro-core`) | Household / personal, self-hosted |
 
-The three products are **Copier-templated peers**, not a hierarchy. Each rebases from an engine template. See [`ADR-030`](docs/adr/ADR-030-four-repo-governance.md) for the full governance model.
+**Downstream products that import the engine:**
+
+| Product | Imports | Status |
+|---|---|---|
+| **Canvas book-maker** (name TBD) | `maistro-canvas` (the canvas ability) | POC — frontend app on top of the canvas engine |
+| **Stronghold** | `maistro-engine` | Planned — refactor to import the engine, add multi-tenancy + a stricter security stance, and disable homelab/personal features |
+
+The line between shared runtime and product-specific code is defined in [`ADR-019`](docs/adr/ADR-019-canonical-source-split.md): `maistro-core` stays product-agnostic; tenancy, security posture, and feature toggles live in the importing product.
 
 ## Quick start
 
 ```bash
-# Requires Python 3.12 and uv (https://github.com/astral-sh/uv)
-uv sync                               # install all packages in the workspace
+# Requires Python 3.11+ (tooling targets 3.12) and uv — https://github.com/astral-sh/uv
+uv sync                               # install every package in the workspace
 uv sync --extra bootstrap             # optional: maistro-install TUI / answers-file planner
-uv run maistro-install --dry-run      # print uv/docker/copier commands (see docs/install/)
 uv run pytest                         # run the test suite
-uv run alembic upgrade head           # apply migrations (needs Postgres)
+uv run alembic upgrade head           # apply DB migrations (needs Postgres)
 docker compose up -d                  # full local stack (Postgres + LiteLLM + Langfuse)
 ```
 
-The repo is a `uv` workspace: **six published Python packages**, plus **`packages/hive-conductor`** (reference app stack) and **`apps/maistro-gateway-node-flutter`** (planned native node; see [`SPEC-179`](docs/specs/SPEC-179-flutter-gateway-node.md)).
+The repo is a `uv` workspace: **seven Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker) and the planned **`apps/maistro-gateway-node-flutter`** native node (see [`SPEC-179`](docs/specs/SPEC-179-flutter-gateway-node.md)).
 
 | Package / tree | Purpose |
 |---|---|
-| `maistro-core` | The library: orchestration, agents, memory, security, skills, tools |
+| `maistro-core` | The library: orchestration, agents, memory, security, skills, tools, router |
 | `maistro-server` | FastAPI HTTP surface around `maistro-core` |
-| `maistro-turing` | Autonoetic self-model package consumed by `AgentTuring` |
-| `maistro-canvas` | Book-builder package consumed by Canvas Studio |
+| `maistro-turing` | Autonoetic self-model package (mood, drives, proactive producers) |
+| `maistro-canvas` | Canvas engine — the base canvas ability behind Canvas Studio |
+| `maistro-evolve` | Elo-tournament optimizer for agent self-improvement |
 | `maistro-bootstrap` | `maistro-install` TUI and answers-file planner (`uv sync --extra bootstrap`) |
 | `maistro-registry` | Front-matter validation, link checks, registry generation |
-| `packages/hive-conductor/` | Hive Conductor reference: Vite frontend, FastAPI backend, Docker |
+| `packages/hive-conductor/` | Agent Conductor reference app: React frontend, FastAPI backend, Docker |
 | `apps/maistro-gateway-node-flutter/` | Flutter gateway node (bootstrap with `flutter create`; see app README) |
 
 ## Architecture at a glance
@@ -83,83 +90,62 @@ request ──► conduit ──► classifier ──► orchestrator ──► 
 
 - **conduit** — single entry point; classifies, routes, delegates
 - **orchestrator** — plans tasks, manages execution, tracks state
-- **router** — picks model and agent via scoring formula `quality^(qw·p) / cost^cw`
-- **agents** — base/factory/strategies/roster + A2A delegation
-- **memory** — learning, episodic, outcome stores; pgvector-backed
-- **security** — Warden (input), Sentinel (output), Gate (boundary), PII filter
+- **router** — picks model and agent via the scoring formula `quality^(qw·p) / cost^cw`
+- **agents** — base / factory / strategies / roster + A2A delegation
+- **memory** — learning, episodic, outcome stores; pgvector-backed; decays without reinforcement
+- **security** — Warden (input), Sentinel (output), Gate (boundary), PII filter — all input is untrusted
 - **skills** — marketplace + Forge + canary
-- **observability** — OpenTelemetry traces, Prometheus metrics, structlog logs, domain events (per [`ADR-037`](docs/adr/ADR-037-observability-taxonomy.md))
-- **reliability** — retries, circuit breakers, fallbacks, SLOs (per [`ADR-038`](docs/adr/ADR-038-reliability-taxonomy.md))
+- **graph** — DAG execution: nodes, executor, optimizer ([`ADR-042`](docs/adr/ADR-042-graph-execution-protocol.md))
+- **observability** — traces, Prometheus metrics, structlog logs, domain events ([`ADR-037`](docs/adr/ADR-037-observability-taxonomy.md))
+- **resilience** — retries, circuit breakers, fallbacks ([`ADR-038`](docs/adr/ADR-038-reliability-taxonomy.md))
 
 ## ADRs and specs
 
-- **Legacy reference archives** (frozen snapshots, not importable product code) live under [`potential-dead-code/`](potential-dead-code/README.md); retention and deletion sequencing are defined in [`docs/specs/SPEC-178-legacy-snapshot-retention.md`](docs/specs/SPEC-178-legacy-snapshot-retention.md).
-- All architectural decisions are recorded as ADRs under `docs/adr/`.
+- All architectural decisions are recorded as ADRs under `docs/adr/` (ADR-000 through ADR-057).
 - The cross-repo inventory of every ADR and spec lives at [`docs/INVENTORY-ADRS-SPECS.md`](docs/INVENTORY-ADRS-SPECS.md).
-- Front-matter and cross-reference conventions are defined in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md).
-- Acceptance criteria are layered contracts (Pydantic / Hoare / Pact) per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md).
-
-### Where does my work go?
-
-| Kind of work | Where it lands |
-|---|---|
-| Shared Python subsystem (orchestrator, memory, router, security…) | `maistro-engine` (this repo) — see [`ADR-019`](docs/adr/ADR-019-canonical-source-split.md) |
-| Multi-tenant deployment / K8s topology / RBAC / tenant isolation | `stronghold` |
-| Autonoetic self-model / 24/7 awareness loop / dossier | `AgentTuring` |
-| End-user single-tenant multi-user feature (channels, household UX) | `Project_mAIstro` |
-| Architectural decision affecting more than one product | Engine ADR here, with `substrate:` cross-refs from product specs |
-
-## Status
-
-v1.0 horizon: 3 months. v2.0 (inventory-clear): 12 months. See [`ADR-030`](docs/adr/ADR-030-four-repo-governance.md) for product-specific MVPs.
-
-The registry CI is in **warn-only mode** during the front-matter rollout window (per [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md)). Hard CI fail at day 30.
+- Front-matter and cross-reference conventions are defined in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md); acceptance criteria are layered contracts per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md).
+- **Frozen legacy archives** (reference only, not importable code) live under [`potential-dead-code/`](potential-dead-code/README.md); retention/deletion sequencing is in [`SPEC-178`](docs/specs/SPEC-178-legacy-snapshot-retention.md).
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full author-facing guide. Quick reminders:
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full author guide. The essentials:
 
-1. Branch off `main` as `claude/<topic>-<slug>` (per [`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
-2. ADRs live in `docs/adr/ADR-NNN-<slug>.md` with required front-matter (per [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md)).
-3. Tests carry `pytest.mark.contract(...)` and `pytest.mark.scope(...)` (per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md)).
-4. Mutation-testing kill rate is the quality bar; coverage is reported but not gating.
-5. Cross-repo work uses the same branch name across repos when feasible.
-6. External library adoption follows [`ADR-039`](docs/adr/ADR-039-external-library-adoption-policy.md) — import / service-boundary / pattern reference / reject.
+- Branch model is `feature/* → integration → main` — base feature work off `integration`, never open PRs against `main` directly ([`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
+- ADRs live in `docs/adr/ADR-NNN-<slug>.md` with required front-matter ([`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md)); validate with `python -m maistro_registry.cli lint .`.
+- Tests carry `@pytest.mark.contract` and `@pytest.mark.scope(...)` ([`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md)).
+- External-library adoption follows [`ADR-039`](docs/adr/ADR-039-external-library-adoption-policy.md): import / service-boundary / pattern-reference / reject.
 
 ## Layout
 
 ```
 maistro-engine/
 ├── docs/
-│   ├── adr/                          # Architectural Decision Records
-│   ├── analysis/                     # Cross-framework comparisons
-│   ├── specs/                        # Numbered engine specs (SPEC-17x)
+│   ├── adr/                          # Architectural Decision Records (ADR-000 … ADR-057)
+│   ├── specs/                        # Numbered engine specs (SPEC-NNN)
 │   └── INVENTORY-ADRS-SPECS.md       # Cross-repo ADR/spec inventory
-├── potential-dead-code/              # Frozen legacy snapshots (not on PYTHONPATH; SPEC-178)
 ├── packages/
 │   ├── maistro-core/                 # The library
 │   ├── maistro-server/               # FastAPI surface
 │   ├── maistro-turing/               # Autonoetic self-model package
-│   ├── maistro-canvas/               # Canvas Studio package
+│   ├── maistro-canvas/               # Canvas ability (Canvas Studio)
+│   ├── maistro-evolve/               # Elo-tournament optimizer
 │   ├── maistro-bootstrap/            # maistro-install planner
 │   ├── maistro-registry/             # Registry / front-matter CI helpers
-│   └── hive-conductor/               # Reference app (frontend + backend + Docker)
+│   └── hive-conductor/               # Agent Conductor reference app (frontend + backend + Docker)
 ├── apps/
 │   └── maistro-gateway-node-flutter/ # Native gateway node (Flutter; see SPEC-179)
-├── scripts/                          # e.g. sibling spec pull, layout verify
+├── potential-dead-code/              # Frozen legacy snapshots (not on PYTHONPATH; SPEC-178)
+├── formal/                           # Property-based conformance tests (Hypothesis; separate CI)
 ├── templates/                        # Copier templates (per ADR-033)
-│   ├── single-tenant-multi-user/     # Project_mAIstro shape
-│   ├── autonoetic/                   # AgentTuring shape
-│   └── multi-tenant/                 # stronghold shape
+├── scripts/                          # Repo maintenance scripts
 ├── alembic/                          # DB migrations
-├── tests/                            # Legacy / shared pytest (see CI comments)
+├── tests/                            # Shared / registry pytest tree (in `testpaths`)
 ├── docker-compose.yml                # Local dev stack
-├── litellm_config.yaml               # Model gateway config
-├── pyproject.toml                    # uv workspace root
+├── pyproject.toml                    # uv workspace root (uv.lock is source of truth)
 ├── CONTRIBUTING.md                   # Author-facing how-to
 └── README.md                         # this file
 ```
 
 ## License
 
-TBD.
+Apache 2.0.
