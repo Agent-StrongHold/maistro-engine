@@ -180,3 +180,27 @@ def test_sign_rejects_secp256k1_wallet_paths() -> None:
         seed.sign("m/44'/0'/0'", b"msg")
     with pytest.raises(ValueError, match="secp256k1"):
         seed.verify("m/44'/60'/0'", b"msg", b"\x00" * 64)
+
+
+# bip_utils accepts lowercase 'h' as an alternate hardened marker (it rejects
+# uppercase 'H'); the curve classifier must agree with the deriver regardless of
+# which accepted notation is used, or m/44h/0h/0h would re-introduce the
+# wrong-curve bug and bypass the sign guard. (_curve_for_path also normalizes
+# 'H' defensively, though bip_utils refuses it before derivation.)
+@pytest.mark.parametrize(
+    "btc_path",
+    ["m/44h/0h/0h", "m/44'/0h/0'", "m/44h/60h/1h"],
+)
+def test_hardened_h_notation_classified_as_secp256k1(btc_path: str) -> None:
+    seed = ConductorSeed.generate()
+    key = seed.derive(btc_path)
+    assert key.curve == "secp256k1", f"{btc_path} must derive on secp256k1"
+    assert len(key.public_key) == 33
+    # The sign guard must reject the h form too, not just the apostrophe form.
+    with pytest.raises(ValueError, match="secp256k1"):
+        seed.sign(btc_path, b"msg")
+
+
+def test_h_and_apostrophe_notation_derive_identical_keys() -> None:
+    seed = ConductorSeed.generate()
+    assert seed.derive("m/44h/0h/0h").public_key == seed.derive("m/44'/0'/0'").public_key

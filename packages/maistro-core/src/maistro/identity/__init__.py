@@ -34,9 +34,21 @@ def _curve_for_path(path: str) -> str:
     """Pick the curve for a derivation path. BIP-44 layout is
     ``m / purpose' / coin_type' / ...``; only the BTC/ETH coin types use
     secp256k1. ``m/0'`` (signing) has no coin_type segment, so it correctly
-    stays Ed25519."""
-    parts = path.split("/")
-    if len(parts) >= 3 and parts[1] == "44'" and parts[2] in _SECP256K1_COIN_TYPES:
+    stays Ed25519.
+
+    bip_utils accepts both ``'`` and ``h``/``H`` for hardened nodes, so we
+    normalize to ``'`` first — otherwise ``m/44h/0h/0h`` would be misclassified
+    as Ed25519 while the deriver treats it as hardened Bitcoin (a parser
+    differential that would re-introduce the wrong-curve bug and bypass the
+    ``sign()`` guard)."""
+    normalized = path.replace("H", "'").replace("h", "'")
+    parts = normalized.split("/")
+    if (
+        len(parts) >= 3
+        and parts[0] == "m"
+        and parts[1] == "44'"
+        and parts[2] in _SECP256K1_COIN_TYPES
+    ):
         return "secp256k1"
     return "ed25519"
 
