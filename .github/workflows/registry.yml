@@ -9,7 +9,6 @@ on:
     paths:
       - 'docs/adr/**'
       - 'docs/specs/**'
-      - 'specs/**'
       - 'packages/maistro-registry/**'
       - 'tests/tools/registry/**'
       - 'pyproject.toml'
