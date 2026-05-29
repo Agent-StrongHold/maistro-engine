@@ -20,7 +20,7 @@ contracts:
 tests:
   - apps/maistro-gateway-node-flutter/test/
   - apps/maistro-gateway-node-flutter/integration_test/
-layer: User/Client
+layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
 ---
