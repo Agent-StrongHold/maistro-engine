@@ -52,6 +52,7 @@ from maistro_canvas.layers import (
     OcclusionHint,
     PersonalizationSlot,
     Slot,
+    StyleVolume,
     Transform,
     WorldStyle,
 )
@@ -716,7 +717,7 @@ def make_router(get_store: GetStore) -> APIRouter:
         try:
             instances = await store.list_instances(canvas_id)
             world_style: WorldStyle | None = None
-            volumes: tuple = ()
+            volumes: tuple[StyleVolume, ...] = ()
             profile: ChildProfile | None = None
 
             if body.book_id is not None:
@@ -790,7 +791,7 @@ async def _create_book_via(
     book_id: str,
     title: str,
     world_style: WorldStyle,
-    style_volumes: tuple,
+    style_volumes: tuple[StyleVolume, ...],
     profile_id: str | None,
     org_id: str,
 ) -> Book:
@@ -805,7 +806,7 @@ async def _create_book_via(
             org_id=org_id,
         )
     # PostgresAssetStore exposes the same signature.
-    return await store.create_book(  # type: ignore[attr-defined]
+    book: Book = await store.create_book(  # type: ignore[attr-defined]
         book_id=book_id,
         title=title,
         world_style=world_style,
@@ -813,6 +814,7 @@ async def _create_book_via(
         profile_id=profile_id,
         org_id=org_id,
     )
+    return book
 
 
 __all__ = [

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any, ClassVar
 
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
@@ -10,7 +11,7 @@ from .base import BaseModel, _utcnow
 
 class Character(BaseModel, table=True):
     __tablename__ = "characters"
-    __table_args__ = {"extend_existing": True}
+    __table_args__: ClassVar[dict[str, Any]] = {"extend_existing": True}
 
     customer_id: uuid.UUID = Field(foreign_key="customers.id", index=True)
     creator_id: uuid.UUID | None = Field(default=None, foreign_key="creators.id")

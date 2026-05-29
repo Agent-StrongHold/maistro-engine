@@ -16,7 +16,7 @@ PRODUCTS = [
         "binding": "Perfect",
         "paper": "80# Coated White",
         "color_mode": "Full Color",
-        "description": "32-page full-color picture book, 7.5×7.5 inches",
+        "description": "32-page full-color picture book, 7.5x7.5 inches",
         "weight_oz": 7.0,
     },
     {
@@ -30,7 +30,7 @@ PRODUCTS = [
         "binding": "Perfect",
         "paper": "80# Coated White",
         "color_mode": "Full Color",
-        "description": "32-page full-color picture book, 9×7 inches landscape",
+        "description": "32-page full-color picture book, 9x7 inches landscape",
         "weight_oz": 7.0,
     },
     {
@@ -44,7 +44,7 @@ PRODUCTS = [
         "binding": "Perfect",
         "paper": "60# Uncoated White",
         "color_mode": "Black & White",
-        "description": "32-page black & white coloring book, 8.5×11 inches",
+        "description": "32-page black & white coloring book, 8.5x11 inches",
         "weight_oz": 5.0,
     },
     {
@@ -58,7 +58,7 @@ PRODUCTS = [
         "binding": "Coil",
         "paper": "60# Uncoated White",
         "color_mode": "Black & White",
-        "description": "150-page black & white coloring book, 8.5×11 inches, spiral bound",
+        "description": "150-page black & white coloring book, 8.5x11 inches, spiral bound",
         "weight_oz": 14.0,
     },
 ]

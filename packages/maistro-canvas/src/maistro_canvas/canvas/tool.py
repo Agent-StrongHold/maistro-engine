@@ -65,7 +65,7 @@ class Canvas:
 
     def sorted_layers(self) -> list[Layer]:
         """Return layers sorted by z_index (back-to-front)."""
-        return sorted(self.layers.values(), key=lambda l: l.z_index)
+        return sorted(self.layers.values(), key=lambda layer: layer.z_index)
 
 
 # ---------------------------------------------------------------------------
@@ -220,11 +220,11 @@ def _composite_layers(canvas: Canvas) -> bytes:
         if layer.scale != 1.0:
             new_w = max(1, int(img.width * layer.scale))
             new_h = max(1, int(img.height * layer.scale))
-            img = img.resize((new_w, new_h), Image.LANCZOS)
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
         # Rotate (expand=True keeps the full image after rotation)
         if layer.rotation != 0:
-            img = img.rotate(-layer.rotation, expand=True, resample=Image.BICUBIC)
+            img = img.rotate(-layer.rotation, expand=True, resample=Image.Resampling.BICUBIC)
 
         # Paste at position (using alpha channel as mask)
         base.paste(img, (layer.x, layer.y), img)
@@ -251,6 +251,7 @@ def _render_text(
     alignment = style.get("alignment", "center")
 
     # Try to load a font; fall back to default
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont
     try:
         font_name = style.get("font", "sans-serif")
         weight = style.get("weight", "normal")
@@ -445,7 +446,7 @@ async def execute_canvas(  # noqa: C901
         views = ["front view", "side view (left)", "back view", "three-quarter view"]
         all_images: list[dict[str, Any]] = []
 
-        for i, view in enumerate(views):
+        for view in views:
             view_images = await _generate_image(
                 f"{prompt}. {view}, character reference sheet, clean isolated on white background.",
                 tier="draft",
@@ -470,21 +471,21 @@ async def execute_canvas(  # noqa: C901
         # Update layer transforms from the provided layer specs
         if layers:
             for spec in layers:
-                layer = canvas.get_layer(spec.get("layer_id", spec.get("image", "")))
-                if layer is None:
+                target = canvas.get_layer(spec.get("layer_id", spec.get("image", "")))
+                if target is None:
                     continue
                 if "x" in spec:
-                    layer.x = spec["x"]
+                    target.x = spec["x"]
                 if "y" in spec:
-                    layer.y = spec["y"]
+                    target.y = spec["y"]
                 if "scale" in spec:
-                    layer.scale = spec["scale"]
+                    target.scale = spec["scale"]
                 if "rotation" in spec:
-                    layer.rotation = spec["rotation"]
+                    target.rotation = spec["rotation"]
                 if "z_index" in spec:
-                    layer.z_index = spec["z_index"]
+                    target.z_index = spec["z_index"]
                 if "visible" in spec:
-                    layer.visible = spec["visible"]
+                    target.visible = spec["visible"]
 
         result_bytes = _composite_layers(canvas)
 
@@ -493,7 +494,7 @@ async def execute_canvas(  # noqa: C901
             "canvas_id": canvas.id,
             "width": canvas.width,
             "height": canvas.height,
-            "layer_count": len([l for l in canvas.layers.values() if l.visible]),
+            "layer_count": len([layer for layer in canvas.layers.values() if layer.visible]),
             "image_b64": base64.b64encode(result_bytes).decode(),
         }
 
@@ -533,11 +534,11 @@ async def execute_canvas(  # noqa: C901
         img_bytes = base64.b64decode(upload_image)
         from PIL import Image
 
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+        upload_img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
 
         # Re-encode as PNG for consistent storage
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        upload_img.save(buf, format="PNG")
         png_bytes = buf.getvalue()
 
         layer_id = f"{layer_type}-upload-{uuid.uuid4().hex[:8]}"
@@ -820,19 +821,19 @@ def list_layers(session_id: str) -> list[dict[str, Any]]:
         return []
     return [
         {
-            "layer_id": l.id,
-            "name": l.name,
-            "type": l.layer_type,
-            "x": l.x,
-            "y": l.y,
-            "scale": l.scale,
-            "rotation": l.rotation,
-            "z_index": l.z_index,
-            "width": l.width,
-            "height": l.height,
-            "visible": l.visible,
+            "layer_id": layer.id,
+            "name": layer.name,
+            "type": layer.layer_type,
+            "x": layer.x,
+            "y": layer.y,
+            "scale": layer.scale,
+            "rotation": layer.rotation,
+            "z_index": layer.z_index,
+            "width": layer.width,
+            "height": layer.height,
+            "visible": layer.visible,
         }
-        for l in canvas.sorted_layers()
+        for layer in canvas.sorted_layers()
     ]
 
 
