@@ -170,6 +170,7 @@ class Agent:
         tracer: TracingBackend | None = None,
         tool_executor: Any = None,
         tool_registry: Any = None,
+        agent_resolver: Any = None,
     ) -> None:
         self.identity = identity
         self._strategy = strategy
@@ -189,6 +190,8 @@ class Agent:
         self._tool_executor = tool_executor
         self._tool_registry = tool_registry
         self._tracer = tracer
+        # Resolves a sub-agent name -> Agent for delegation. Callable or mapping.
+        self._agent_resolver = agent_resolver
 
     async def handle(
         self,
@@ -198,6 +201,8 @@ class Agent:
         session_id: str | None = None,
         model_override: str | None = None,
         status_callback: Any = None,
+        classified_task_type: str = "",
+        _delegation_depth: int = 0,
     ) -> AgentResponse:
         trace = (
             self._tracer.create_trace(
@@ -300,6 +305,8 @@ class Agent:
         if status_callback:
             strategy_kwargs["status_callback"] = status_callback
         strategy_kwargs["identity"] = self.identity
+        if classified_task_type:
+            strategy_kwargs["classified_task_type"] = classified_task_type
 
         try:
             if trace:
@@ -345,6 +352,24 @@ class Agent:
                 content="I encountered an internal error. Please try again.",
                 agent_name=self.identity.name,
             )
+
+        # Delegation: the strategy decided to route to a sub-agent. Resolve the
+        # target and return *its* response. Without this, a DelegateStrategy
+        # result (response=None, done=False, delegate_to=<name>) would fall
+        # through and produce an empty AgentResponse.
+        if result.delegate_to:
+            delegated = await self._delegate(
+                result,
+                auth=auth,
+                session_id=session_id,
+                model_override=model_override,
+                status_callback=status_callback,
+                classified_task_type=classified_task_type,
+                depth=_delegation_depth,
+                trace=trace,
+            )
+            if delegated is not None:
+                return delegated
 
         tool_had_failures = bool(
             result.tool_history
@@ -509,3 +534,77 @@ class Agent:
             content=result.response or "",
             agent_name=self.identity.name,
         )
+
+    async def _delegate(
+        self,
+        result: Any,
+        *,
+        auth: Any,
+        session_id: str | None,
+        model_override: str | None,
+        status_callback: Any,
+        classified_task_type: str,
+        depth: int,
+        trace: Any,
+    ) -> AgentResponse | None:
+        """Invoke the sub-agent chosen by the reasoning strategy.
+
+        Returns the sub-agent's :class:`AgentResponse`, or ``None`` if the
+        target cannot be resolved (caller then falls back to normal handling).
+        """
+        import logging as _log
+
+        log = _log.getLogger("maistro.agent")
+        target_name = result.delegate_to
+
+        _MAX_DELEGATION_DEPTH = 5
+        if depth >= _MAX_DELEGATION_DEPTH:
+            log.warning(
+                "Delegation depth limit reached: agent=%s target=%s depth=%d",
+                self.identity.name,
+                target_name,
+                depth,
+            )
+            if trace:
+                trace.score("delegation_depth_exceeded", 0.0, comment=target_name)
+                trace.end()
+            return AgentResponse(
+                content="Delegation chain too deep; aborting.",
+                agent_name=self.identity.name,
+            )
+
+        target = self._resolve_agent(target_name)
+        if target is None:
+            log.warning(
+                "Delegation target unresolved: agent=%s target=%s",
+                self.identity.name,
+                target_name,
+            )
+            return None
+
+        delegate_text = result.delegate_message or ""
+        delegate_messages = [{"role": "user", "content": delegate_text}]
+
+        if trace:
+            trace.update({"delegated_to": target_name})
+
+        return await target.handle(
+            messages=delegate_messages,
+            auth=auth,
+            session_id=session_id,
+            model_override=model_override,
+            status_callback=status_callback,
+            classified_task_type=classified_task_type,
+            _delegation_depth=depth + 1,
+        )
+
+    def _resolve_agent(self, name: str) -> Agent | None:
+        """Look up a sub-agent by name via the configured resolver.
+
+        The resolver may be a callable ``name -> Agent | None`` or a mapping.
+        """
+        resolver = self._agent_resolver
+        if resolver is None:
+            return None
+        target = resolver(name) if callable(resolver) else resolver.get(name)
+        return target if isinstance(target, Agent) else None
