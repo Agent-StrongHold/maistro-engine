@@ -11,44 +11,62 @@ from .prompt_builder import build_messages, build_model_config, build_system_pro
 from .scoring import judge_score
 
 
-def _score_code_fix(response: str, sample: dict[str, Any]) -> float:
-    score = 0.0
-    max_score = 0.0
+def _score_keywords(code_text: str, sample: dict[str, Any]) -> tuple[float, float]:
+    expected_keywords = sample.get("expected_keywords", [])
+    if not expected_keywords:
+        return 0.0, 0.0
+    found = sum(1 for kw in expected_keywords if kw.lower() in code_text.lower())
+    return (found / len(expected_keywords)) * 0.4, 0.4
 
+
+def _score_buggy_change(code_text: str, sample: dict[str, Any]) -> tuple[float, float]:
+    buggy_code = sample.get("buggy_code", "")
+    if not buggy_code:
+        return 0.0, 0.0
+    buggy_lines = [
+        line.strip()
+        for line in buggy_code.split("\n")
+        if line.strip() and not line.strip().startswith("def ")
+    ]
+    if not buggy_lines:
+        return 0.1, 0.2
+    unchanged = sum(1 for line in buggy_lines if line.lower() in code_text.lower())
+    change_ratio = 1.0 - (unchanged / len(buggy_lines))
+    return change_ratio * 0.2, 0.2
+
+
+def _score_recursive(code_text: str, sample: dict[str, Any]) -> tuple[float, float]:
+    problem_desc = sample.get("problem", "").lower()
+    if "recursive" not in problem_desc and "recursively" not in problem_desc:
+        return 0.0, 0.0
+    if "recursive" in code_text.lower() or code_text.count("def ") > 1:
+        return 0.15, 0.15
+    return 0.0, 0.15
+
+
+def _score_expected_output(code_text: str, sample: dict[str, Any]) -> tuple[float, float]:
+    expected_output = sample.get("expected_output", "")
+    if not expected_output:
+        return 0.0, 0.0
+    if expected_output.lower().replace(" ", "") in code_text.lower().replace(" ", ""):
+        return 0.1, 0.1
+    return 0.0, 0.1
+
+
+def _score_code_fix(response: str, sample: dict[str, Any]) -> float:
     code_blocks = re.findall(r"```(?:python)?\s*(.*?)```", response, re.DOTALL)
     code_text = "\n".join(code_blocks) if code_blocks else response
 
-    expected_keywords = sample.get("expected_keywords", [])
-    if expected_keywords:
-        max_score += 0.4
-        found = sum(1 for kw in expected_keywords if kw.lower() in code_text.lower())
-        score += (found / len(expected_keywords)) * 0.4
-
-    buggy_code = sample.get("buggy_code", "")
-    if buggy_code:
-        max_score += 0.2
-        buggy_lines = [
-            line.strip()
-            for line in buggy_code.split("\n")
-            if line.strip() and not line.strip().startswith("def ")
-        ]
-        if buggy_lines:
-            unchanged = sum(1 for line in buggy_lines if line.lower() in code_text.lower())
-            change_ratio = 1.0 - (unchanged / len(buggy_lines))
-            score += change_ratio * 0.2
-        else:
-            score += 0.1
-
-    problem_desc = sample.get("problem", "").lower()
-    if "recursive" in problem_desc or "recursively" in problem_desc:
-        max_score += 0.15
-        if "def " in code_text and code_text.count("def ") <= code_text.count(
-            code_text.split("def ")[1].split("(")[0] if "def " in code_text else ""
-        ):
-            if code_text.split("def ")[0].count("def ") < code_text.count("def "):
-                pass
-        if "recursive" in code_text.lower() or code_text.count("def ") > 1:
-            score += 0.15
+    score = 0.0
+    max_score = 0.0
+    for component in (
+        _score_keywords(code_text, sample),
+        _score_buggy_change(code_text, sample),
+        _score_recursive(code_text, sample),
+        _score_expected_output(code_text, sample),
+    ):
+        score += component[0]
+        max_score += component[1]
 
     if "return" in code_text and "def " in code_text:
         max_score += 0.1
@@ -57,12 +75,6 @@ def _score_code_fix(response: str, sample: dict[str, Any]) -> float:
     if len(code_text.strip()) > 20:
         max_score += 0.05
         score += 0.05
-
-    expected_output = sample.get("expected_output", "")
-    if expected_output:
-        max_score += 0.1
-        if expected_output.lower().replace(" ", "") in code_text.lower().replace(" ", ""):
-            score += 0.1
 
     if max_score == 0:
         return 0.5

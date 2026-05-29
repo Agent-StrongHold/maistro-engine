@@ -53,7 +53,7 @@ async def optimize_prompt(
 
     if llm_call is not None:
         try:
-            result = await llm_call(meta_prompt)
+            result: str = await llm_call(meta_prompt)
             return result
         except Exception:
             pass

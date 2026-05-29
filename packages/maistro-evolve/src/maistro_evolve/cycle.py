@@ -198,13 +198,15 @@ class EvolutionCycle:
             current_count = len(population.list_all())
             needed = max(0, cfg.population_size - current_count)
             for _ in range(needed):
+                pa: PipelineGenome | None
+                pb: PipelineGenome | None
                 if len(breeding_pool) >= 2:
-                    a, b = random.sample(breeding_pool, 2)
+                    pa, pb = random.sample(breeding_pool, 2)
                 else:
-                    a = breeding_pool[0] if breeding_pool else None
-                    b = None
-                if a and b:
-                    child = crossover_and_mutate(a, b, cfg.mutation_rate)
+                    pa = breeding_pool[0] if breeding_pool else None
+                    pb = None
+                if pa and pb:
+                    child = crossover_and_mutate(pa, pb, cfg.mutation_rate)
                     population.add(child)
 
         await self._self_improve_top(population, cfg, llm_call)

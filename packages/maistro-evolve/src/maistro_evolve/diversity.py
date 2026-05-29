@@ -66,7 +66,7 @@ def trait_vector(genome: PipelineGenome) -> list[float]:
 
 
 def _euclidean(a: list[float], b: list[float]) -> float:
-    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b, strict=True)))
 
 
 def population_diversity(population: list[PipelineGenome]) -> float:
@@ -85,7 +85,7 @@ def population_diversity(population: list[PipelineGenome]) -> float:
 def _random_genome() -> PipelineGenome:
     node_count = random.randint(2, 6)
     nodes: list[NodeGenome] = []
-    for i in range(node_count):
+    for _ in range(node_count):
         nodes.append(
             NodeGenome(
                 id=_new_id(),
@@ -123,7 +123,7 @@ def _random_genome() -> PipelineGenome:
     fields = list(EvalWeights.model_fields.keys())
     raw = [random.random() for _ in fields]
     total = sum(raw)
-    for fname, val in zip(fields, raw):
+    for fname, val in zip(fields, raw, strict=True):
         weights[fname] = round(val / total, 4)
 
     ts = _fresh_timestamp()
