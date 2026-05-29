@@ -309,6 +309,120 @@ class TestNodeRun:
         assert nr.phase == NodePhase.FAILED
 
 
+class _UsageResult:
+    """LLM result object that reports token usage (OpenAI-style)."""
+
+    def __init__(self, text: str, prompt_tokens: int, completion_tokens: int) -> None:
+        self.text = text
+        self.usage = {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+
+
+class _UsageReportingLlm:
+    """LLM client that returns usage-bearing result objects."""
+
+    def __init__(self, responses: list[_UsageResult]) -> None:
+        self.responses = list(responses)
+        self.call_count = 0
+
+    async def __call__(self, messages: list[dict], **kwargs: Any) -> Any:
+        self.call_count += 1
+        idx = min(self.call_count - 1, len(self.responses) - 1)
+        return self.responses[idx]
+
+
+class TestNodeFailureEventDelivery:
+    @pytest.mark.asyncio
+    async def test_node_failed_event_delivered_to_subscriber(self):
+        """node_failed must be reliably delivered (awaited), not fire-and-forget."""
+        received: list[Any] = []
+
+        async def emit(event: Any) -> None:
+            received.append(event)
+
+        llm = _FailingLlm(RuntimeError("catastrophic"))
+        nr = NodeRun(
+            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
+            system_prompt="sys", user_prompt="usr", max_retries=1,
+        )
+        nr._emit_event = emit
+        from maistro.resilience.backoff import BackoffConfig
+        await nr.execute(llm, backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0))
+
+        assert nr.phase == NodePhase.FAILED
+        # By the time execute() returns, the failure event must already be delivered.
+        types = [e.type for e in received]
+        assert "node_failed" in types, f"node_failed not delivered; got {types}"
+        failed = next(e for e in received if e.type == "node_failed")
+        assert failed.run_id == "r1"
+        assert failed.role == AgentRole.PLANNER.value
+
+    @pytest.mark.asyncio
+    async def test_node_failed_emit_error_does_not_propagate(self):
+        """A failing subscriber must not break the node lifecycle."""
+
+        async def emit(event: Any) -> None:
+            if event.type == "node_failed":
+                raise RuntimeError("subscriber blew up")
+
+        llm = _FailingLlm(RuntimeError("catastrophic"))
+        nr = NodeRun(
+            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
+            system_prompt="sys", user_prompt="usr", max_retries=1,
+        )
+        nr._emit_event = emit
+        from maistro.resilience.backoff import BackoffConfig
+        await nr.execute(llm, backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0))
+        assert nr.phase == NodePhase.FAILED
+
+
+class TestNodeTokenAccounting:
+    @pytest.mark.asyncio
+    async def test_single_path_records_token_usage(self):
+        llm = _UsageReportingLlm([_UsageResult(_make_plan_json("ok"), 120, 45)])
+        nr = NodeRun(
+            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
+            system_prompt="sys", user_prompt="usr",
+        )
+        await nr.execute(llm)
+        assert nr.phase == NodePhase.SUCCEEDED
+        assert nr.tokens_in == 120
+        assert nr.tokens_out == 45
+
+    @pytest.mark.asyncio
+    async def test_single_path_plain_str_keeps_zero_tokens(self):
+        """Backwards compatible: a str-returning client reports zero usage."""
+        llm = _RecordingLlm([_make_plan_json("ok")])
+        nr = NodeRun(
+            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
+            system_prompt="sys", user_prompt="usr",
+        )
+        await nr.execute(llm)
+        assert nr.phase == NodePhase.SUCCEEDED
+        assert nr.tokens_in == 0
+        assert nr.tokens_out == 0
+
+    @pytest.mark.asyncio
+    async def test_beam_path_records_token_usage(self):
+        llm = _UsageReportingLlm([
+            _UsageResult(_make_plan_json("weak", 1), 100, 10),
+            _UsageResult(_make_plan_json("strong", 5), 100, 20),
+            _UsageResult(_make_plan_json("medium", 3), 100, 30),
+        ])
+        nr = NodeRun(
+            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
+            system_prompt="sys", user_prompt="usr", beam_width=3,
+        )
+        await nr.execute(llm)
+        assert nr.phase == NodePhase.SUCCEEDED
+        # Beam accounting sums usage across all candidates.
+        assert nr.tokens_in == 300
+        assert nr.tokens_out == 60
+        assert sum(c.tokens_used for c in nr.beam_candidates) == 360
+
+
 class TestGraphRun:
     @pytest.mark.asyncio
     async def test_happy_path_planner_coder_reviewer(self):
