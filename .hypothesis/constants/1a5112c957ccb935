@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/oauth.py
-# hypothesis_version: 6.151.10
-
-[3600, 'Invalid access token', 'Token revoked: %s', 'expires_at', 'roles', 'scope', 'user', 'user_id']

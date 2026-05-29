@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/quota/tracker.py
-# hypothesis_version: 6.152.9
-
-[0.0, 'cycle_key', 'input_tokens', 'output_tokens', 'provider', 'request_count', 'total_tokens']

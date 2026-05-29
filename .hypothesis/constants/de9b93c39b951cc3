@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/gate.py
-# hypothesis_version: 6.151.10
-
-['No, let me clarify', 'Yes, go ahead', 'anonymous', 'best_effort', 'chat', 'maistro.gate', 'normal', 'persistent', 'supervised', 'user_input']

@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/types/spec.py
-# hypothesis_version: 6.152.9
-
-[0.0, 100, 'L', 'M', 'S', 'acceptance_criteria', 'active', 'complexity', 'coverage_pct', 'created_at', 'critical', 'data_invariant', 'description', 'draft', 'expression', 'failures', 'files_touched', 'high', 'invariant_name', 'invariants', 'issue_number', 'kind', 'low', 'max_examples', 'medium', 'module_path', 'name', 'passed', 'postcondition', 'precondition', 'property_tests', 'protocol', 'protocols_touched', 'severity', 'spec_issue_number', 'stage', 'state_invariant', 'status', 'strategy_code', 'test_body', 'title', 'verified', 'verified_at', 'violated']
