@@ -25,94 +25,120 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-058 — maistro-design: composable design skills + design systems package
+# ADR-058 — maistro-design: composable design skills + design systems
 
 ## Context
 
-`maistro-canvas` provides a pixel-level compositor (layers, PIL assembly, image-gen jobs). It has no concept of reusable design *workflows*, brand specifications, or the structured "ask before generating" discipline that reduces LLM redirect loops.
+`maistro-canvas` provides pixel-level composition primitives (layers, PIL compositor,
+image generation). It has no concept of *design intent* — what kind of artifact to
+create, what brand vocabulary to apply, or how to gather structured input before
+generating. This gap produces costly redirect loops: the agent generates something,
+the user says "wrong style", the agent regenerates.
 
-`open-design` (nexu-io/open-design) demonstrates two patterns worth adopting:
+`open-design` (nexu-io/open-design) solves this with two primitives:
 
-1. **Composable Skills** — atomic design-capability units (prototype / deck / template / design-system / image / video / audio) each with a discovery form that must be completed before generation.
-2. **Design Systems** — portable brand specifications (colors, typography, spacing, tokens.css, DESIGN.md) that any skill can consume as style context.
+1. **Skills** — atomic design capabilities, each with a discovery form that must be
+   completed before generation. Structured upfront input eliminates redirect loops.
+2. **Design Systems** — portable brand/style specifications (DESIGN.md + tokens.css +
+   manifest.json) that ground every generation in a consistent visual vocabulary.
 
-The gap: nothing in maistro-engine bridges these two patterns with the engine's security model (Warden, trust tiers, RLPHD feedback loop) or its graph substrate (DAG nodes, A2A delegation).
+`maistro-design` brings these primitives into the maistro runtime, backed by the
+engine's security (Warden), trust model, DAG node registry, and A2A delegation.
 
 ## Decision
 
-Create a new first-class package `maistro-design` with the following shape:
+### 1. Separate package, not an extension of canvas
 
-```
-packages/maistro-design/
-└── src/maistro_design/
-    ├── types.py        # DesignSkill, DesignSystem, DesignProject, enums, errors
-    ├── protocols.py    # runtime_checkable Protocol interfaces
-    ├── trust.py        # TrustTier, TrustReviewRecord, TrustBanishList, TrustReviewQueue
-    ├── skills/         # InMemoryDesignSkillRegistry + 9 built-in skills
-    ├── systems/        # InMemoryDesignSystemRegistry + DesignSystemLoader
-    ├── engine.py       # DesignEngine — discovery → Warden → prompt-stack → canvas/A2A
-    └── nodes.py        # DesignOrchestrateNode registered under kind "design.orchestrate"
-```
+`maistro-design` is a new package that depends on `maistro-core` and `maistro-canvas`.
+Canvas remains a pure pixel compositor. Design is the skill/system/workflow layer above it.
 
-### Key decisions
+### 2. DesignEngine builds artifacts; it does not call an LLM directly
 
-1. **Separate package, not a canvas extension.** Canvas = pixel compositor. Design = skill/system/workflow orchestration. The boundary prevents canvas from accumulating unrelated concerns.
+The engine builds a prompt stack and creates canvas/A2A artifacts. The caller routes
+the prompt stack to the maistro-core conduit/orchestrator. This preserves the
+protocol-driven DI philosophy: no concrete LLM client dependency inside the package.
 
-2. **Engine builds prompt stack; does not call an LLM.** Consistent with ADR-019's library-first, protocol-driven DI philosophy. Caller passes the assembled prompt to maistro-core's conduit.
+### 3. Trust contamination is per-session, monotonically decreasing
 
-3. **Trust contamination is per-session and monotonically decreasing.** Each `DesignEngine` instance starts at `TrustTier.T0`. Loading a lower-trust component permanently reduces `context_trust_tier` for that instance. Session isolation is the caller's responsibility.
+`TrustTier` ordering: `t0 > t1 > t2 > t3 > skull`.
+One `DesignEngine` instance per session. `context_trust_tier` starts at `t0` and can
+only decrease as components (skill, design system, discovery responses) are evaluated.
+Discovery responses are always `t3` by default (untrusted user input).
 
-4. **All user input flows through Warden before trust assignment.** Discovery responses default to `TrustTier.T3`. Warden scans each response; skull-flagged content raises `TrustBannedError`. Every scanned input enqueues a `TrustReviewRecord` for async admin review.
+### 4. All user input flows through Warden; decisions are async
 
-5. **Admin trust decisions feed an RLPHD loop.** Admin choices (keep / upgrade / improve+upgrade / banish) update `TrustBanishList` and provide the preference signal that improves Warden's future recommendations (Reinforcement Learning for Policy via Human Decisions — "Ralph'd").
+Every discovery response is scanned by Warden before trust tier assignment. The engine
+proceeds immediately at the assigned tier (non-blocking). A `TrustReviewRecord` is
+queued for async admin review. Admin decides: keep / upgrade / improve+upgrade / banish.
 
-6. **Engine registers as a DAG node.** `DesignOrchestrateNode` (kind `"design.orchestrate"`) wraps `DesignEngine.generate()` so design workflows compose with the existing maistro-core graph executor.
+### 5. RLPHD feedback loop
+
+Admin decisions are the human preference signal for Warden's trust policy
+(**RLPHD** — Reinforcement Learning for Policy via Human Decisions, pronounced
+"Ralphed"). Banished patterns feed into `TrustBanishList` and auto-block future
+similar content. Each upgrade teaches Warden what clears the bar.
+
+### 6. Engine registers as a DAG node
+
+`DesignOrchestrateNode` registers under kind `"design.orchestrate"` via
+`@register_node`. This makes design workflows composable inside any maistro DAG.
 
 ## Acceptance criteria
 
 ```gherkin
-# Trust tier
-Scenario: TrustTier.min() is commutative and monotone
+Scenario: TrustTier.min() is monotonically decreasing
   Given TrustTier.T0
-  When min(T2) then min(T0) is applied
+  When min(T2) is applied then min(T0) is applied
   Then result is T2
 
-Scenario: skull is the lowest tier
-  Given any TrustTier t
-  When t.min(SKULL) is called
+Scenario: skull is always the lowest tier
+  Given any TrustTier value
+  When min(SKULL) is applied
   Then result is SKULL
 
-# Skill registry
-Scenario: load_builtins registers at least 9 skills
-Scenario: t0 skill cannot be overwritten by a t2 skill
-Scenario: list_by_mode returns only skills with the requested mode
+Scenario: t0 built-in skill cannot be overwritten by t2 install
+  Given a registry containing "login-flow" at trust_tier=T0
+  When DesignSkill(slug="login-flow", trust_tier=T2) is registered
+  Then registry still holds the original T0 skill
 
-# Engine — generate
-Scenario: generate returns DesignProject.trust_tier == min of all inputs
-Scenario: generate raises DiscoveryIncompleteError for a missing required field
-Scenario: generate raises SkillModeError for image-mode skill when image_gen is None
-Scenario: Warden-flagged discovery response raises TrustBannedError
-Scenario: Every scanned input creates a TrustReviewRecord in the queue
+Scenario: Discovery response contaminates engine context to t3
+  Given a DesignEngine with context_trust_tier=T0
+  When generate() is called with a DiscoveryResult (trust_tier=T3)
+  Then engine.context_trust_tier == T3
+  And DesignProject.trust_tier == T3
 
-# DAG node
-Scenario: DesignOrchestrateNode is registered under kind "design.orchestrate"
+Scenario: Warden-blocked content raises TrustBannedError
+  Given a banish list containing pattern "rm -rf"
+  When a discovery response containing "rm -rf" is submitted
+  Then TrustBannedError is raised
+
+Scenario: Image-mode skill without image_gen raises SkillModeError
+  Given a DesignEngine with image_gen=None
+  When generate() is called for a skill with mode=IMAGE
+  Then SkillModeError is raised
+
+Scenario: DesignOrchestrateNode is registered in the DAG registry
+  When the maistro_design.nodes module is imported
+  Then "design.orchestrate" is present in the node registry
 ```
 
 ## Consequences
 
-**Positive**
-- Design workflows gain the full security stack (Warden, trust tiers, RLPHD) with no bolting onto canvas.
-- Skills are composable by downstream products (Project_mAIstro, stronghold) without engine changes.
-- DAG node registration means design steps compose into any existing workflow graph.
+**Positive:**
+- Discovery forms eliminate redirect loops for all downstream products.
+- Design systems decouple brand vocabulary from skill logic — systems are portable DESIGN.md files.
+- RLPHD trust loop continuously tightens Warden's policy from real admin signal.
+- DAG node registration lets design workflows compose with any maistro graph.
 
-**Negative / trade-offs**
-- Adds a sixth importable package to the workspace; dependency graph grows.
-- `DesignEngine` must be instantiated per-session; no singleton usage. Callers must manage lifecycle.
+**Negative:**
+- Adding a Warden scan per discovery field adds latency to the generation path.
+- Admin review queue requires UI surface (not in scope for this ADR).
+- No bundled design systems — callers must register their own.
 
 ## Out of scope
 
-- LLM invocation (engine builds the prompt stack; conduit handles the call)
-- Frontend / UI for the admin trust-review panel (emits records; UI is a downstream concern)
-- Bundled named design systems (open-design's 150 systems); registry + loader only in v0
-- Persistence layer for `DesignProject` (in-memory only; PostgreSQL store is v1)
-- Multi-tenant isolation (stronghold concern per ADR-019)
+- Admin panel UI for trust review decisions.
+- Mutmut configuration (deferred to ADR-033 template rollout).
+- LLM call inside the engine (caller's responsibility).
+- Bundled design systems (registry + loader infrastructure only).
+- Cross-tenant design system sharing (Stronghold concern).
