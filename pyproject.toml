@@ -71,6 +71,7 @@ src = [
     "packages/maistro-bootstrap/src",
     "packages/maistro-registry/src",
     "packages/maistro-evolve/src",
+    "packages/maistro-design/src",
 ]
 
 [tool.ruff.lint]
@@ -88,6 +89,7 @@ testpaths = [
     "packages/maistro-canvas/tests",
     "packages/maistro-bootstrap/tests",
     "packages/maistro-evolve/tests",
+    "packages/maistro-design/tests",
     "tests",
 ]
 asyncio_mode = "auto"
@@ -100,6 +102,7 @@ pythonpath = [
     "packages/maistro-server/src",
     "packages/maistro-turing/src",
     "packages/maistro-canvas/src",
+    "packages/maistro-design/src",
     ".",
 ]
 
@@ -111,3 +114,4 @@ plugins = ["pydantic.mypy"]
 [tool.uv.sources]
 maistro-bootstrap = { path = "packages/maistro-bootstrap", editable = true }
 maistro-registry = { path = "packages/maistro-registry", editable = true }
+maistro-design = { path = "packages/maistro-design", editable = true }
