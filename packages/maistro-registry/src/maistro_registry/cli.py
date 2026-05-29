@@ -34,7 +34,6 @@ from maistro_registry.validator import ValidationResult, validate_file
 _WALK_PATTERNS: tuple[str, ...] = (
     "docs/adr/ADR-*.md",
     "docs/specs/**/*.md",
-    "specs/**/*.md",
 )
 
 
