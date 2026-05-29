@@ -65,15 +65,15 @@ class Conduit:
             }
 
         # 1. Gate scan
-        gate_result = self.container.gate.check(last_user_msg)
-        if not gate_result.passed:
-            logger.warning("Gate blocked: %s", gate_result.reason)
+        gate_result = await self.container.gate.process_input(last_user_msg, auth=auth)
+        if gate_result.blocked:
+            logger.warning("Gate blocked: %s", gate_result.block_reason)
             return {
                 "choices": [
                     {
                         "message": {
                             "role": "assistant",
-                            "content": f"Request blocked: {gate_result.reason}",
+                            "content": f"Request blocked: {gate_result.block_reason}",
                         },
                         "finish_reason": "stop",
                     }
@@ -81,7 +81,10 @@ class Conduit:
             }
 
         # 2. Classify intent
-        intent = await self.container.classifier.classify(last_user_msg)
+        intent = await self.container.classifier.classify(
+            messages,
+            self.container.config.task_types,
+        )
         if intent_hint:
             from maistro.types.intent import TIER_ORDER
 
