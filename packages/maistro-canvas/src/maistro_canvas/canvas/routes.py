@@ -30,6 +30,11 @@ Route summary:
   GET    /api/canvas/models                       list models
 """
 
+# B008 (function-call-in-default-argument) is the standard FastAPI
+# dependency-injection pattern (Depends(...), Query(...)); see the
+# sibling asset_routes.py for the same suppression.
+# ruff: noqa: B008
+
 from __future__ import annotations
 
 import contextlib
@@ -37,10 +42,10 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
 
-from maistro_canvas.auth import get_current_user as AuthDep  # noqa: TC001
+from maistro_canvas.auth import CurrentUser, get_current_user
 from maistro_canvas.types import (
     _VALID_EXPORT_FORMATS,
     CanvasArchivedError,
@@ -67,8 +72,8 @@ from maistro_canvas.types import (
 )
 
 if TYPE_CHECKING:
-    from maistro_canvas.protocols import CanvasStore, CompositorService
     from maistro_canvas.canvas.executor import CanvasExecutor
+    from maistro_canvas.protocols import CanvasStore, CompositorService
     from maistro_canvas.types import CanvasRecord
 
 logger = logging.getLogger("maistro_canvas.canvas.routes")
@@ -149,7 +154,7 @@ def make_canvas_router(
     @router.post("")
     async def create_canvas(
         body: dict[str, Any],
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         # Resolve dimensions
         if "aspect_ratio" in body and "width" not in body and "height" not in body:
@@ -200,7 +205,7 @@ def make_canvas_router(
 
     @router.get("")
     async def list_canvases(
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
         include_archived: bool = Query(default=False),
     ) -> JSONResponse:
         canvases = await store.list_canvases(auth.org_id, include_archived=include_archived)
@@ -209,7 +214,7 @@ def make_canvas_router(
     @router.get("/{canvas_id}")
     async def get_canvas(
         canvas_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         canvas = await store.get_canvas(canvas_id)
         if canvas is None or canvas.org_id != auth.org_id:
@@ -225,7 +230,7 @@ def make_canvas_router(
     async def update_canvas(
         canvas_id: str,
         body: dict[str, Any],
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         canvas = await _require_canvas(canvas_id, auth.org_id)
 
@@ -253,7 +258,7 @@ def make_canvas_router(
     @router.delete("/{canvas_id}")
     async def delete_canvas(
         canvas_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         canvas = await store.get_canvas(canvas_id)
         if canvas is None or canvas.org_id != auth.org_id:
@@ -277,7 +282,7 @@ def make_canvas_router(
     async def add_layer(
         canvas_id: str,
         body: dict[str, Any],
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(canvas_id, auth.org_id)
         try:
@@ -302,7 +307,7 @@ def make_canvas_router(
     @router.get("/{canvas_id}/layers")
     async def list_layers(
         canvas_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(canvas_id, auth.org_id)
         layers = await store.list_layers(canvas_id)
@@ -313,7 +318,7 @@ def make_canvas_router(
         canvas_id: str,
         layer_id: str,
         body: dict[str, Any],
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(canvas_id, auth.org_id)
         layer = await store.get_layer(layer_id)
@@ -372,7 +377,7 @@ def make_canvas_router(
     async def delete_layer(
         canvas_id: str,
         layer_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(canvas_id, auth.org_id)
         layer = await store.get_layer(layer_id)
@@ -385,7 +390,7 @@ def make_canvas_router(
     async def reorder_layers(
         canvas_id: str,
         assignments: list[dict[str, Any]],
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(canvas_id, auth.org_id)
         try:
@@ -401,7 +406,7 @@ def make_canvas_router(
         canvas_id: str,
         layer_id: str,
         body: dict[str, Any],
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(canvas_id, auth.org_id)
         layer = await store.get_layer(layer_id)
@@ -439,7 +444,7 @@ def make_canvas_router(
     async def list_layer_jobs(
         canvas_id: str,
         layer_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         await _require_canvas(canvas_id, auth.org_id)
         jobs = await store.list_jobs_for_layer(layer_id)
@@ -448,7 +453,7 @@ def make_canvas_router(
     @router.get("/jobs/{job_id}")
     async def get_job(
         job_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         job = await store.get_job(job_id)
         if job is None:
@@ -462,7 +467,7 @@ def make_canvas_router(
     @router.delete("/jobs/{job_id}")
     async def cancel_job(
         job_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         job = await store.get_job(job_id)
         if job is None:
@@ -480,7 +485,7 @@ def make_canvas_router(
     async def accept_variant(
         job_id: str,
         variant_index: int,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         job = await store.get_job(job_id)
         if job is None:
@@ -503,7 +508,7 @@ def make_canvas_router(
     @router.post("/{canvas_id}/composite")
     async def composite_canvas(
         canvas_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         canvas = await _require_canvas(canvas_id, auth.org_id)
         layers = await store.list_layers(canvas_id)
@@ -521,7 +526,7 @@ def make_canvas_router(
     @router.get("/{canvas_id}/composite/latest")
     async def latest_composite(
         canvas_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
     ) -> JSONResponse:
         canvas = await store.get_canvas(canvas_id)
         if canvas is None or canvas.org_id != auth.org_id:
@@ -543,7 +548,7 @@ def make_canvas_router(
     @router.get("/{canvas_id}/export")
     async def export_canvas(
         canvas_id: str,
-        auth: AuthDep,
+        auth: CurrentUser = Depends(get_current_user),
         format: str = Query(default="png"),  # noqa: A002
         quality: int = Query(default=90),
     ) -> Response:
@@ -593,7 +598,7 @@ def make_canvas_router(
 
     @router.get("/models")
     async def list_models(
-        auth: AuthDep,  # noqa: ARG001
+        auth: CurrentUser = Depends(get_current_user),  # noqa: ARG001
     ) -> JSONResponse:
         # In production, this delegates to the model registry / LiteLLM;
         # the executor's model_registry exposes list_image_models() if available.
