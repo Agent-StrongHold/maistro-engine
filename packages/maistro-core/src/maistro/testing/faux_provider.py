@@ -167,7 +167,12 @@ class FauxProvider:
         max_tokens: int | None = None,
         temperature: float | None = None,
         metadata: dict[str, Any] | None = None,
+        **extra: Any,
     ) -> dict[str, Any]:
+        # Tolerate (and record) forward-compatible kwargs the graph node passes
+        # through `llm_call`, e.g. `response_schema`. A test double must accept
+        # the same call contract as the real provider rather than TypeError on
+        # an unknown keyword.
         entry: dict[str, Any] = {
             "messages": messages,
             "model": model,
@@ -177,6 +182,7 @@ class FauxProvider:
             "max_tokens": max_tokens,
             "temperature": temperature,
             "metadata": metadata,
+            "extra": extra,
             "timestamp": time.monotonic(),
         }
         self._call_log.append(entry)
