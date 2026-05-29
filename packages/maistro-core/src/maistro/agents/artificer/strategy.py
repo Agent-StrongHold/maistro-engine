@@ -93,28 +93,7 @@ class ArtificerStrategy:
         await status("Executing plan...")
 
         for round_num in range(self.max_phases * 3):
-            if trace:
-                with trace.span(f"llm_call_{round_num}") as ls:
-                    ls.set_input({"model": model, "message_count": len(current_messages)})
-                    response = await llm.complete(
-                        current_messages,
-                        model,
-                        tools=tools,
-                        tool_choice="auto",
-                    )
-                    usage = response.get("usage", {})
-                    ls.set_usage(
-                        input_tokens=usage.get("prompt_tokens", 0),
-                        output_tokens=usage.get("completion_tokens", 0),
-                        model=model,
-                    )
-            else:
-                response = await llm.complete(
-                    current_messages,
-                    model,
-                    tools=tools,
-                    tool_choice="auto",
-                )
+            response = await self._call_llm(llm, current_messages, model, tools, trace, round_num)
 
             choices = response.get("choices", [])
             choice = choices[0] if choices else {}
@@ -136,124 +115,23 @@ class ArtificerStrategy:
             current_messages.append(message)
 
             for tc in tool_calls:
-                fn = tc.get("function", {})
-                tool_name = fn.get("name", "")
-                try:
-                    tool_args = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "Malformed tool arguments for %s: %s",
-                        tool_name,
-                        fn.get("arguments", "")[:200],
-                    )
-                    tool_args = {}
-
-                raw_arg_bytes = len(fn.get("arguments", "{}").encode("utf-8"))
-                if raw_arg_bytes > _MAX_ARG_BYTES:
-                    logger.warning(
-                        "Tool %s arg size %d exceeds %d limit",
-                        tool_name,
-                        raw_arg_bytes,
-                        _MAX_ARG_BYTES,
-                    )
-                    tool_result = f"Error: tool arguments exceed {_MAX_ARG_BYTES} byte limit"
-                    result_str = tool_result
-                    tool_history.append(
-                        {
-                            "tool_name": tool_name,
-                            "arguments": tool_args,
-                            "result": tool_result,
-                            "round": round_num,
-                        }
-                    )
-                    current_messages.append(
-                        {"role": "tool", "tool_call_id": tc.get("id", ""), "content": result_str}
-                    )
-                    continue
-
-                sentinel = kwargs.get("sentinel")
-                auth = kwargs.get("auth")
-                tool_blocked = False
-                if sentinel is not None and auth is not None:
-                    sentinel_verdict = await sentinel.pre_call(
-                        tool_name,
-                        tool_args,
-                        auth,
-                        {},
-                    )
-                    if not sentinel_verdict.allowed:
-                        tool_result = f"Error: Permission denied for tool '{tool_name}'"
-                        tool_blocked = True
-                    elif sentinel_verdict.repaired_data:
-                        tool_args = sentinel_verdict.repaired_data
-
-                await status(f"Running {tool_name}...")
-                logger.info("Tool call: %s(%s)", tool_name, list(tool_args.keys()))
-
-                if tool_blocked:
-                    pass
-                elif tool_executor and callable(tool_executor):
-                    if trace:
-                        with trace.span(f"tool.{tool_name}") as ts:
-                            ts.set_input(tool_args)
-                            tool_result = await tool_executor(tool_name, tool_args)
-                            result_preview = str(tool_result)[:300]
-                            tool_success = (
-                                '"passed": true' in result_preview
-                                or '"status": "ok"' in result_preview
-                                or (
-                                    not result_preview.startswith("Error")
-                                    and "error" not in result_preview[:50].lower()
-                                )
-                            )
-                            ts.set_output(
-                                {
-                                    "success": tool_success,
-                                    "result_preview": result_preview,
-                                }
-                            )
-                    else:
-                        tool_result = await tool_executor(tool_name, tool_args)
-                else:
-                    tool_result = f"Tool '{tool_name}' not available"
-
-                result_str = tool_result if isinstance(tool_result, str) else str(tool_result)
-                if len(result_str) > _MAX_RESULT_BYTES:
-                    omitted = len(str(tool_result)) - _MAX_RESULT_BYTES
-                    result_str = (
-                        result_str[:_MAX_RESULT_BYTES]
-                        + f"\n[... truncated, {omitted} bytes omitted]"
-                    )
-
-                if sentinel is not None and auth is not None:
-                    result_str = await sentinel.post_call(tool_name, result_str, auth)
-                else:
-                    warden = kwargs.get("warden")
-                    if warden is not None:
-                        verdict = await warden.scan(result_str, "tool_result")
-                        if not verdict.clean:
-                            result_str = (
-                                f"[BLOCKED: tool result contained suspicious content: "
-                                f"{', '.join(verdict.flags)}]"
-                            )
-
-                result_preview = result_str[:200]
-                if '"passed": true' in result_preview or '"status": "ok"' in result_preview:
-                    await status(f"{tool_name}: OK")
-                elif '"passed": false' in result_preview:
-                    await status(f"{tool_name}: FAILED -- fixing...")
-                elif '"error":' in result_preview and '"status": "failed"' in result_preview:
-                    await status(f"{tool_name}: error -- retrying...")
-
+                tool_args, result_str = await self._handle_tool_call(
+                    tc,
+                    tool_executor=tool_executor,
+                    trace=trace,
+                    status=status,
+                    sentinel=kwargs.get("sentinel"),
+                    auth=kwargs.get("auth"),
+                    warden=kwargs.get("warden"),
+                )
                 tool_history.append(
                     {
-                        "tool_name": tool_name,
+                        "tool_name": tc.get("function", {}).get("name", ""),
                         "arguments": tool_args,
                         "result": result_str,
                         "round": round_num,
                     }
                 )
-
                 current_messages.append(
                     {
                         "role": "tool",
@@ -270,6 +148,146 @@ class ArtificerStrategy:
             done=True,
             tool_history=tool_history,
         )
+
+    async def _call_llm(
+        self,
+        llm: LLMClient,
+        current_messages: list[dict[str, Any]],
+        model: str,
+        tools: list[dict[str, Any]] | None,
+        trace: Trace | None,
+        round_num: int,
+    ) -> dict[str, Any]:
+        """Run one LLM completion (tool_choice='auto'), tracing when enabled."""
+        if not trace:
+            return await llm.complete(current_messages, model, tools=tools, tool_choice="auto")
+        with trace.span(f"llm_call_{round_num}") as ls:
+            ls.set_input({"model": model, "message_count": len(current_messages)})
+            response = await llm.complete(current_messages, model, tools=tools, tool_choice="auto")
+            usage = response.get("usage", {})
+            ls.set_usage(
+                input_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=usage.get("completion_tokens", 0),
+                model=model,
+            )
+        return response
+
+    async def _run_tool(
+        self,
+        tool_name: str,
+        tool_args: dict[str, Any],
+        tool_executor: Any,
+        trace: Trace | None,
+    ) -> Any:
+        """Invoke the tool executor, recording a trace span when tracing is on."""
+        if not (tool_executor and callable(tool_executor)):
+            return f"Tool '{tool_name}' not available"
+        if not trace:
+            return await tool_executor(tool_name, tool_args)
+        with trace.span(f"tool.{tool_name}") as ts:
+            ts.set_input(tool_args)
+            tool_result = await tool_executor(tool_name, tool_args)
+            result_preview = str(tool_result)[:300]
+            tool_success = (
+                '"passed": true' in result_preview
+                or '"status": "ok"' in result_preview
+                or (
+                    not result_preview.startswith("Error")
+                    and "error" not in result_preview[:50].lower()
+                )
+            )
+            ts.set_output({"success": tool_success, "result_preview": result_preview})
+        return tool_result
+
+    async def _sanitize_result(
+        self,
+        tool_name: str,
+        result_str: str,
+        *,
+        sentinel: Any,
+        auth: Any,
+        warden: Any,
+    ) -> str:
+        """Apply sentinel post-call, or warden scan, to a tool result string."""
+        if sentinel is not None and auth is not None:
+            sanitized: str = await sentinel.post_call(tool_name, result_str, auth)
+            return sanitized
+        if warden is not None:
+            verdict = await warden.scan(result_str, "tool_result")
+            if not verdict.clean:
+                result_str = (
+                    f"[BLOCKED: tool result contained suspicious content: "
+                    f"{', '.join(verdict.flags)}]"
+                )
+        return result_str
+
+    async def _emit_result_status(self, tool_name: str, result_str: str, status: Any) -> None:
+        """Surface a coarse pass/fail/error status from the tool result preview."""
+        result_preview = result_str[:200]
+        if '"passed": true' in result_preview or '"status": "ok"' in result_preview:
+            await status(f"{tool_name}: OK")
+        elif '"passed": false' in result_preview:
+            await status(f"{tool_name}: FAILED -- fixing...")
+        elif '"error":' in result_preview and '"status": "failed"' in result_preview:
+            await status(f"{tool_name}: error -- retrying...")
+
+    async def _handle_tool_call(
+        self,
+        tc: dict[str, Any],
+        *,
+        tool_executor: Any,
+        trace: Trace | None,
+        status: Any,
+        sentinel: Any,
+        auth: Any,
+        warden: Any,
+    ) -> tuple[dict[str, Any], str]:
+        """Process a single tool call end-to-end. Returns ``(tool_args, result_str)``."""
+        fn = tc.get("function", {})
+        tool_name = fn.get("name", "")
+        raw_args = fn.get("arguments", "{}")
+        try:
+            tool_args = json.loads(raw_args)
+        except json.JSONDecodeError:
+            logger.warning("Malformed tool arguments for %s: %s", tool_name, raw_args[:200])
+            tool_args = {}
+
+        if len(raw_args.encode("utf-8")) > _MAX_ARG_BYTES:
+            logger.warning(
+                "Tool %s arg size %d exceeds %d limit",
+                tool_name,
+                len(raw_args.encode("utf-8")),
+                _MAX_ARG_BYTES,
+            )
+            return tool_args, f"Error: tool arguments exceed {_MAX_ARG_BYTES} byte limit"
+
+        tool_blocked = False
+        if sentinel is not None and auth is not None:
+            sentinel_verdict = await sentinel.pre_call(tool_name, tool_args, auth, {})
+            if not sentinel_verdict.allowed:
+                tool_result: Any = f"Error: Permission denied for tool '{tool_name}'"
+                tool_blocked = True
+            elif sentinel_verdict.repaired_data:
+                tool_args = sentinel_verdict.repaired_data
+
+        await status(f"Running {tool_name}...")
+        logger.info("Tool call: %s(%s)", tool_name, list(tool_args.keys()))
+
+        if not tool_blocked:
+            tool_result = await self._run_tool(tool_name, tool_args, tool_executor, trace)
+
+        result_str = tool_result if isinstance(tool_result, str) else str(tool_result)
+        if len(result_str) > _MAX_RESULT_BYTES:
+            omitted = len(str(tool_result)) - _MAX_RESULT_BYTES
+            result_str = (
+                result_str[:_MAX_RESULT_BYTES] + f"\n[... truncated, {omitted} bytes omitted]"
+            )
+
+        result_str = await self._sanitize_result(
+            tool_name, result_str, sentinel=sentinel, auth=auth, warden=warden
+        )
+        await self._emit_result_status(tool_name, result_str, status)
+        return tool_args, result_str
 
     async def _plan(
         self,

@@ -294,13 +294,13 @@ class TestIntegrations:
         bus = EventBus()
         received = []
         bus.subscribe(lambda e: _append(received, e.event_type))
-        cs = CoinSwarmIntegration(event_bus=bus)
+        CoinSwarmIntegration(event_bus=bus)
 
     async def test_turing_handles_coinswarm_event(self):
         from maistro.integrations.turing import TuringIntegration
 
-        t = TuringIntegration(chat_url="http://not-real:9101")
-        event = Event(
+        TuringIntegration(chat_url="http://not-real:9101")
+        Event(
             category=EventCategory.TRADING,
             event_type="evolution_cycle_complete",
             source="coinswarm",

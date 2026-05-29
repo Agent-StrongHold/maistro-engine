@@ -29,11 +29,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import BaseModel
+
 from ..nodes.base import BaseNode, NodeContext, NodeResult
 from .protocol import DurableRunStore
 from .types import DurableNodeRecord, DurableRunRecord, NodePhase, RunStatus
 
-NodeResolver = Callable[[str, dict[str, Any]], BaseNode]
+NodeResolver = Callable[[str, dict[str, Any]], BaseNode[Any, Any]]
 """Given (node_id, dag_snapshot) return an instantiated node ready to run."""
 
 
@@ -222,7 +224,7 @@ def _entry_node(dag: dict[str, Any]) -> str:
 def _node_spec(dag: dict[str, Any], node_id: str) -> dict[str, Any] | None:
     for n in dag.get("nodes", []):
         if str(n.get("id")) == node_id:
-            return n
+            return dict(n)
     return None
 
 
@@ -364,11 +366,8 @@ async def _checkpoint_success(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
-    output_dump = (
-        result.output.model_dump()
-        if hasattr(result.output, "model_dump")
-        else (result.output or None)
-    )
+    output = result.output
+    output_dump = output.model_dump() if isinstance(output, BaseModel) else (output or None)
     new_nr = node_record.model_copy(
         update={
             "phase": NodePhase.COMPLETED,

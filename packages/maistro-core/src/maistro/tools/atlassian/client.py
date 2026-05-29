@@ -112,7 +112,8 @@ class AtlassianMCPClient:
         if resp.status_code >= 400:
             raise AtlassianMCPError(f"healthz returned {resp.status_code}: {resp.text[:300]}")
         try:
-            return resp.json()
+            health: dict[str, Any] = resp.json()
+            return health
         except ValueError:
             return {"status": resp.text}
 
@@ -275,7 +276,7 @@ class AtlassianMCPClient:
             description=str(fields.get("description", "") if isinstance(fields, dict) else "")[
                 :2000
             ],
-            labels=tuple(str(l) for l in labels) if isinstance(labels, list) else (),
+            labels=tuple(str(lbl) for lbl in labels) if isinstance(labels, list) else (),
         )
 
 

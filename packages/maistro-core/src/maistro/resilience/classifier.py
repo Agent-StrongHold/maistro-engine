@@ -167,38 +167,71 @@ def _infer_context_overflow(error: Exception, message: str) -> bool:
     if _CONTEXT_OVERFLOW_PATTERNS.search(message):
         return True
     error_name = type(error).__name__
-    if error_name == "RemoteProtocolError" and "disconnect" in message.lower():
-        return True
-    return False
+    return error_name == "RemoteProtocolError" and "disconnect" in message.lower()
 
 
-def classify_error(
+def _classify_network(
     error: Exception,
     *,
-    provider: str = "",
-    model: str = "",
-    context_usage_pct: float = 0.0,
-    request_messages: int = 0,
-) -> ClassifiedError:
-    message = str(error)
-    error_name = type(error).__name__
-    error_module = type(error).__module__ or ""
-    lower_msg = message.lower()
-
-    status_code = _extract_status_code(error)
-    headers = _extract_headers(error)
-
-    if status_code is not None:
-        return _classify_by_status(
-            error,
-            status_code,
-            message,
-            headers,
+    message: str,
+    lower_msg: str,
+    error_name: str,
+    provider: str,
+    model: str,
+    context_usage_pct: float,
+) -> ClassifiedError | None:
+    """Classify connection/network/SSL errors. Returns ``None`` if not a network error."""
+    if error_name in _NETWORK_ERROR_NAMES or error_name == "ConnectionError":
+        should_compress = (
+            "disconnect" in message.lower() or "protocol" in message.lower()
+        ) and context_usage_pct > 0.6
+        return ClassifiedError(
+            category=ErrorCategory.NETWORK,
+            original=error,
+            message=message,
+            retryable=True,
+            should_fallback=True,
+            should_compress=should_compress,
             provider=provider,
             model=model,
-            context_usage_pct=context_usage_pct,
         )
 
+    if any(code in lower_msg for code in _NETWORK_ERROR_CODES):
+        return ClassifiedError(
+            category=ErrorCategory.NETWORK,
+            original=error,
+            message=message,
+            retryable=True,
+            should_fallback=True,
+            provider=provider,
+            model=model,
+        )
+
+    if _SSL_PATTERNS.search(message):
+        return ClassifiedError(
+            category=ErrorCategory.NETWORK,
+            original=error,
+            message=message,
+            retryable=True,
+            provider=provider,
+            model=model,
+        )
+
+    return None
+
+
+def _classify_by_message_patterns(
+    error: Exception,
+    *,
+    message: str,
+    lower_msg: str,
+    error_name: str,
+    provider: str,
+    model: str,
+    context_usage_pct: float,
+) -> ClassifiedError | None:
+    """Classify a status-less error from its message/type. Returns ``None`` if
+    no message-based pattern matched (caller then inspects the cause chain)."""
     if _infer_context_overflow(error, message):
         return ClassifiedError(
             category=ErrorCategory.CONTEXT_OVERFLOW,
@@ -241,44 +274,17 @@ def classify_error(
             model=model,
         )
 
-    if error_name in _NETWORK_ERROR_NAMES or error_name == "ConnectionError":
-        retryable = True
-        should_compress = False
-        if (
-            "disconnect" in message.lower() or "protocol" in message.lower()
-        ) and context_usage_pct > 0.6:
-            should_compress = True
-        return ClassifiedError(
-            category=ErrorCategory.NETWORK,
-            original=error,
-            message=message,
-            retryable=retryable,
-            should_fallback=True,
-            should_compress=should_compress,
-            provider=provider,
-            model=model,
-        )
-
-    if any(code in lower_msg for code in _NETWORK_ERROR_CODES):
-        return ClassifiedError(
-            category=ErrorCategory.NETWORK,
-            original=error,
-            message=message,
-            retryable=True,
-            should_fallback=True,
-            provider=provider,
-            model=model,
-        )
-
-    if _SSL_PATTERNS.search(message):
-        return ClassifiedError(
-            category=ErrorCategory.NETWORK,
-            original=error,
-            message=message,
-            retryable=True,
-            provider=provider,
-            model=model,
-        )
+    network = _classify_network(
+        error,
+        message=message,
+        lower_msg=lower_msg,
+        error_name=error_name,
+        provider=provider,
+        model=model,
+        context_usage_pct=context_usage_pct,
+    )
+    if network is not None:
+        return network
 
     if "timeout" in lower_msg or error_name.endswith("Timeout"):
         return ClassifiedError(
@@ -309,6 +315,48 @@ def classify_error(
             provider=provider,
             model=model,
         )
+
+    return None
+
+
+def classify_error(
+    error: Exception,
+    *,
+    provider: str = "",
+    model: str = "",
+    context_usage_pct: float = 0.0,
+    request_messages: int = 0,
+) -> ClassifiedError:
+    message = str(error)
+    error_name = type(error).__name__
+    error_module = type(error).__module__ or ""
+    lower_msg = message.lower()
+
+    status_code = _extract_status_code(error)
+    headers = _extract_headers(error)
+
+    if status_code is not None:
+        return _classify_by_status(
+            error,
+            status_code,
+            message,
+            headers,
+            provider=provider,
+            model=model,
+            context_usage_pct=context_usage_pct,
+        )
+
+    by_pattern = _classify_by_message_patterns(
+        error,
+        message=message,
+        lower_msg=lower_msg,
+        error_name=error_name,
+        provider=provider,
+        model=model,
+        context_usage_pct=context_usage_pct,
+    )
+    if by_pattern is not None:
+        return by_pattern
 
     cause = error.__cause__ or error.__context__
     if isinstance(cause, Exception) and cause is not error:

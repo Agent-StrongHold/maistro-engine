@@ -38,7 +38,7 @@ class TestSingletonWriter:
 
         state = State(db_path=str(db_path))
         state.open_writer()
-        with pytest.raises(RuntimeError, match="open_writer.*once"):
+        with pytest.raises(RuntimeError, match=r"open_writer.*once"):
             state.open_writer()
         state.close()
 
@@ -85,8 +85,6 @@ class TestSubmitQueue:
         w.execute("INSERT INTO counter VALUES (1, 0)")
         w.commit()
 
-        errors: list[Exception] = []
-
         def increment(conn: Any) -> None:
             conn.execute("UPDATE counter SET n = n + 1 WHERE id = 1")
 
@@ -109,7 +107,6 @@ class TestSubmitQueue:
         state.open_writer()
 
         barrier = threading.Event()
-        results: list[str] = []
 
         def blocking_txn(conn: Any) -> None:
             barrier.wait()
@@ -117,7 +114,7 @@ class TestSubmitQueue:
         for _ in range(5):
             state.submit(blocking_txn)
 
-        with pytest.raises(Exception, match="backpressure|queue.*full"):
+        with pytest.raises(Exception, match=r"backpressure|queue.*full"):
             state.submit(blocking_txn)
 
         barrier.set()

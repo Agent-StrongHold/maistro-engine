@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any, ClassVar
 
 import pytest
@@ -35,10 +36,8 @@ class _RegNode(BaseNode[_RegIn, _RegOut]):
         return _RegOut(y=inputs.x.upper())
 
 
-try:
+with contextlib.suppress(ValueError):
     register_node(_RegNode)
-except ValueError:
-    pass
 
 
 def _ok_dag(dag_id: str = "ok-dag", *, use_case: str = "generic") -> dict[str, Any]:

@@ -150,7 +150,7 @@ class InMemoryProjectStore:
                 for m in p.members
             ]
         else:
-            new_members = list(p.members) + [ProjectMember(user_id=user_id, role=role)]
+            new_members = [*p.members, ProjectMember(user_id=user_id, role=role)]
         updated = p.model_copy(update={"members": new_members, "updated_at": datetime.now(UTC)})
         self._projects[project_id] = updated
         return updated.model_copy(deep=True)

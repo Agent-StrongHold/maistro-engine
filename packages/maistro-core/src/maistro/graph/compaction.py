@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from maistro.graph.types import GraphBlackboard
 
@@ -59,7 +60,7 @@ class ContextCompactor:
             for k, v in data.get("node_annotations", {}).items()
         }
 
-        new_metadata: dict = {}
+        new_metadata: dict[str, Any] = {}
         for k, v in data.get("metadata", {}).items():
             sv = str(v)
             new_metadata[k] = sv[:max_field_len] if len(sv) > max_field_len else v

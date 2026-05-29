@@ -14,6 +14,29 @@ from maistro.memory.types import Outcome
 MAX_OUTCOMES = 10_000
 
 
+def _format_failure_lines(failures: list[Outcome]) -> list[str]:
+    """Render hard-failure outcomes as a markdown section (empty list if none)."""
+    if not failures:
+        return []
+    lines = ["## Recent Failure Patterns"]
+    for o in failures:
+        error = o.error_type or "unknown"
+        lines.append(f"- {error} (model: {o.model_used})")
+    return lines
+
+
+def _format_thumb_lines(thumb_downs: list[Outcome]) -> list[str]:
+    """Render thumbs-down outcomes as a markdown section (empty list if none)."""
+    if not thumb_downs:
+        return []
+    lines = ["## User Thumbs-Down Patterns"]
+    for o in thumb_downs:
+        comment = (o.thumb_comment or "").strip()
+        tail = f" — {comment}" if comment else ""
+        lines.append(f"- node={o.node_id or '(unknown)'} task={o.task_type}{tail}")
+    return lines
+
+
 class InMemoryOutcomeStore:
     def __init__(self, max_outcomes: int = MAX_OUTCOMES) -> None:
         self._outcomes: list[Outcome] = []
@@ -97,9 +120,7 @@ class InMemoryOutcomeStore:
                 return False
             if not self._org_matches(o.org_id, org_id):
                 return False
-            if project_id and o.project_id != project_id:
-                return False
-            return True
+            return not (project_id and o.project_id != project_id)
 
         # Two signal types: hard failures (success=False) and user thumbs-down.
         hard_failures = [o for o in self._outcomes if _matches(o) and not o.success]
@@ -109,20 +130,13 @@ class InMemoryOutcomeStore:
             return ""
 
         lines: list[str] = []
-        if hard_failures:
-            lines.append("## Recent Failure Patterns")
-            for o in hard_failures[-limit:]:
-                error = o.error_type or "unknown"
-                lines.append(f"- {error} (model: {o.model_used})")
+        lines.extend(_format_failure_lines(hard_failures[-limit:]))
 
-        if thumb_downs:
+        thumb_lines = _format_thumb_lines(thumb_downs[-limit:])
+        if thumb_lines:
             if lines:
                 lines.append("")
-            lines.append("## User Thumbs-Down Patterns")
-            for o in thumb_downs[-limit:]:
-                comment = (o.thumb_comment or "").strip()
-                tail = f" — {comment}" if comment else ""
-                lines.append(f"- node={o.node_id or '(unknown)'} task={o.task_type}{tail}")
+            lines.extend(thumb_lines)
 
         return "\n".join(lines)
 

@@ -29,19 +29,22 @@ class CoinSwarmIntegration:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(f"{self._url}/status")
             r.raise_for_status()
-            return r.json()
+            data: dict[str, Any] = r.json()
+            return data
 
     async def list_agents(self) -> list[dict[str, Any]]:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(f"{self._url}/agents")
             r.raise_for_status()
-            return r.json()
+            data: list[dict[str, Any]] = r.json()
+            return data
 
     async def get_agent(self, agent_id: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(f"{self._url}/agents/{agent_id}")
             r.raise_for_status()
-            return r.json()
+            data: dict[str, Any] = r.json()
+            return data
 
     async def trigger_backtest(
         self, agent_id: str, config: dict[str, Any] | None = None
@@ -52,25 +55,29 @@ class CoinSwarmIntegration:
                 json={"agent_id": agent_id, **(config or {})},
             )
             r.raise_for_status()
-            return r.json()
+            data: dict[str, Any] = r.json()
+            return data
 
     async def trigger_evolution(self) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(f"{self._url}/system/evolution/trigger")
             r.raise_for_status()
-            return r.json()
+            data: dict[str, Any] = r.json()
+            return data
 
     async def pause_agent(self, agent_id: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(f"{self._url}/agents/{agent_id}/pause")
             r.raise_for_status()
-            return r.json()
+            data: dict[str, Any] = r.json()
+            return data
 
     async def resume_agent(self, agent_id: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.post(f"{self._url}/agents/{agent_id}/resume")
             r.raise_for_status()
-            return r.json()
+            data: dict[str, Any] = r.json()
+            return data
 
     async def emit_agent_fitness(self, agent_id: str) -> None:
         if self._bus is None:

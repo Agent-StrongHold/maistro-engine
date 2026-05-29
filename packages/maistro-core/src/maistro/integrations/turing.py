@@ -35,7 +35,7 @@ class TuringIntegration:
             )
             r.raise_for_status()
             data = r.json()
-            return data.get("response", "")
+            return str(data.get("response", ""))
 
     async def trigger_reflection(self, topic: str = "") -> str:
         return await self.chat(
@@ -52,7 +52,8 @@ class TuringIntegration:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(f"{self._metrics_url}/metrics")
             r.raise_for_status()
-            return r.json()
+            metrics: dict[str, Any] = r.json()
+            return metrics
 
     async def emit_mood_event(self, mood_data: dict[str, Any]) -> None:
         if self._bus is None:

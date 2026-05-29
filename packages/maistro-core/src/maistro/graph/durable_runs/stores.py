@@ -34,7 +34,7 @@ class InMemoryDurableRunStore:
             return self._rows[record.run_id]
 
     async def get(self, run_id: str) -> DurableRunRecord | None:
-        return self._rows.get(run_id).model_copy(deep=True) if run_id in self._rows else None
+        return self._rows[run_id].model_copy(deep=True) if run_id in self._rows else None
 
     async def update(self, record: DurableRunRecord) -> DurableRunRecord:
         async with self._lock:
@@ -75,7 +75,7 @@ class InMemoryDurableRunStore:
         self,
         run_id: str,
         node_id: str,
-        answer: dict,
+        answer: dict[str, Any],
     ) -> DurableRunRecord:
         async with self._lock:
             r = self._rows.get(run_id)
@@ -202,7 +202,7 @@ class SqliteDurableRunStore:
         self,
         run_id: str,
         node_id: str,
-        answer: dict,
+        answer: dict[str, Any],
     ) -> DurableRunRecord:
         async with self._lock:
             # Don't call self.get / self.update — those would re-acquire the

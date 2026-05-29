@@ -10,6 +10,42 @@ if TYPE_CHECKING:
     from maistro.types.config import TaskTypeConfig
 
 
+def _split_into_parts(text_lower: str) -> list[str]:
+    """Split lowercased text on conjunctions into meaningful (>5 char) parts."""
+    splitters = [" and then ", " and also ", " and ", " also ", ". also ", ". then "]
+    parts = [text_lower]
+    for splitter in splitters:
+        new_parts: list[str] = []
+        for p in parts:
+            new_parts.extend(p.split(splitter))
+        parts = new_parts
+    return [p.strip() for p in parts if len(p.strip()) > 5]
+
+
+def _match_strong_indicator(part: str) -> str | None:
+    """Return the task type whose strong indicator phrase appears in ``part``."""
+    for task_name, phrases in STRONG_INDICATORS.items():
+        for phrase in phrases:
+            padded = " " + phrase + " "
+            if padded in " " + part + " ":
+                return task_name
+    return None
+
+
+def _match_config_keyword(
+    part: str,
+    task_types: dict[str, TaskTypeConfig],
+    seen_types: list[str],
+) -> str | None:
+    """Return the first config task type whose keyword appears in ``part`` and
+    has not already been seen."""
+    for task_name, task_cfg in task_types.items():
+        for kw in task_cfg.keywords:
+            if kw in part and task_name not in seen_types:
+                return task_name
+    return None
+
+
 def detect_multi_intent(
     user_text: str,
     task_types: dict[str, TaskTypeConfig],
@@ -18,44 +54,15 @@ def detect_multi_intent(
 
     Returns list of task_type strings if compound, else empty.
     """
-    text_lower = user_text.lower()
-
-    # Split on common conjunctions
-    splitters = [" and then ", " and also ", " and ", " also ", ". also ", ". then "]
-    parts = [text_lower]
-    for splitter in splitters:
-        new_parts = []
-        for p in parts:
-            new_parts.extend(p.split(splitter))
-        parts = new_parts
-
-    # Need at least 2 meaningful parts
-    parts = [p.strip() for p in parts if len(p.strip()) > 5]
+    parts = _split_into_parts(user_text.lower())
     if len(parts) < 2:
         return []
 
-    # Classify each part independently
     seen_types: list[str] = []
     for part in parts:
-        best_type: str | None = None
-        best_score = 0.0
-        for task_name in STRONG_INDICATORS:
-            for phrase in STRONG_INDICATORS[task_name]:
-                padded = " " + phrase + " "
-                if padded in " " + part + " " and best_score < 3.0:
-                    best_score = 3.0
-                    best_type = task_name
-                    break
-
-        # Also check config keywords
+        best_type = _match_strong_indicator(part)
         if best_type is None:
-            for task_name, task_cfg in task_types.items():
-                for kw in task_cfg.keywords:
-                    if kw in part and task_name not in seen_types:
-                        best_type = task_name
-                        break
-                if best_type:
-                    break
+            best_type = _match_config_keyword(part, task_types, seen_types)
 
         if best_type and best_type not in seen_types:
             seen_types.append(best_type)

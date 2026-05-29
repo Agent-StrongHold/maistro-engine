@@ -101,9 +101,11 @@ class FallbackChain:
 
     def record_success(self) -> None:
         self._state.consecutive_successes += 1
-        if not self._state.is_on_primary:
-            if self._state.consecutive_successes >= self._config.restore_after_successes:
-                self._try_restore_primary()
+        if (
+            not self._state.is_on_primary
+            and self._state.consecutive_successes >= self._config.restore_after_successes
+        ):
+            self._try_restore_primary()
 
     def record_failure(self, exc: Exception) -> bool:
         classified = classify_error(exc)

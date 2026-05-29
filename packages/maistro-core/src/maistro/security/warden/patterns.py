@@ -8,8 +8,8 @@ from __future__ import annotations
 
 try:
     import regex
-except ImportError:
-    import re as regex
+except ImportError:  # pragma: no cover - fallback when the `regex` lib is absent
+    import re as regex  # type: ignore[no-redef]
 
 REJECT_PATTERNS: list[tuple[regex.Pattern[str], str]] = [
     (
