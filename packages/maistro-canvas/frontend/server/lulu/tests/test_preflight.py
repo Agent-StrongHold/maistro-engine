@@ -107,7 +107,7 @@ class TestPreflightInterior:
         _make_pdf(30, BLEED_W_PT, BLEED_H_PT, path=pdf_path)
         result = preflight_interior(pdf_path, PKG, expected_page_count=32)
         assert any(i.code == "PAGE_COUNT_MISMATCH" for i in result.issues)
-        mismatch = [i for i in result.issues if i.code == "PAGE_COUNT_MISMATCH"][0]
+        mismatch = next(i for i in result.issues if i.code == "PAGE_COUNT_MISMATCH")
         assert mismatch.severity == "warning"
         assert mismatch.details["expected"] == 32
         assert mismatch.details["actual"] == 30

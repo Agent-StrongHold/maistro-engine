@@ -133,7 +133,7 @@ class TestStyleTokens:
         assert len(STYLE_TOKENS) == 7
 
     def test_each_has_technique_string(self):
-        for key, token in STYLE_TOKENS.items():
+        for _key, token in STYLE_TOKENS.items():
             assert isinstance(token, StyleToken)
             assert isinstance(token.technique, str)
             assert len(token.technique) > 0
@@ -161,7 +161,7 @@ class TestLightingTokens:
         assert len(LIGHTING_TOKENS) == 6
 
     def test_each_has_direction_and_color_temp(self):
-        for key, token in LIGHTING_TOKENS.items():
+        for _key, token in LIGHTING_TOKENS.items():
             assert isinstance(token, LightingToken)
             assert isinstance(token.direction, str)
             assert len(token.direction) > 0

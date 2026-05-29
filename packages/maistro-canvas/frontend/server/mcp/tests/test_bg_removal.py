@@ -9,12 +9,12 @@ def _make_test_image(
     fg_center: bool = True,
     fg_color: tuple[int, int, int] = (100, 50, 200),
 ) -> Image.Image:
-    img = Image.new("RGBA", size, bg_color + (255,))
+    img = Image.new("RGBA", size, (*bg_color, 255))
     if fg_center:
         draw = ImageDraw.Draw(img)
         cx, cy = size[0] // 2, size[1] // 2
         r = min(size) // 4
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=fg_color + (255,))
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(*fg_color, 255))
     return img
 
 
