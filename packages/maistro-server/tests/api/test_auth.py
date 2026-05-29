@@ -14,7 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
 from maistro.config.settings import Settings, get_settings
-from maistro_server.api.auth import verify_api_key
+from maistro_server.api.auth import resolve_token_principal, verify_api_key
 from maistro_server.api.health import router as health_router
 from maistro_server.api.tasks import router as tasks_router
 
@@ -78,7 +78,9 @@ class TestSecretComparison:
         settings = Settings(api_keys=["test-key-123"])
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test-key-123")
         result = verify_api_key(creds, settings)
-        assert result == "test-key-123"
+        # verify_api_key returns an AuthenticatedPrincipal (not the raw key).
+        assert result is not None
+        assert result.token == "test-key-123"
 
     def test_wrong_key_rejected(self) -> None:
         settings = Settings(api_keys=["correct-key"])
@@ -94,11 +96,13 @@ class TestSecretComparison:
         assert exc_info.value.status_code == 401
 
     def test_uses_constant_time_comparison(self) -> None:
-        """Evidence: The implementation must use constant-time comparison, not ==."""
-        source = inspect.getsource(verify_api_key)
+        """Evidence: token comparison must be constant-time, not ==.
+        The comparison lives in resolve_token_principal (verify_api_key delegates
+        to it), so inspect that function's source."""
+        source = inspect.getsource(resolve_token_principal)
         assert "secret_equal" in source or "compare_digest" in source, (
-            "verify_api_key must use secret_equal or hmac.compare_digest"
+            "resolve_token_principal must use secret_equal or hmac.compare_digest"
         )
-        assert "==" not in source or "status_code ==" in source or "== 401" in source, (
-            "verify_api_key should not use == for token comparison"
+        assert "token ==" not in source and "== token" not in source, (
+            "resolve_token_principal must not use == for token comparison"
         )
