@@ -17,9 +17,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from maistro.protocols.classifier import IntentClassifier
-    from maistro.protocols.llm import LLMClient
-    from maistro.protocols.memory import EpisodicStore, LearningStore
+    # maistro-core does not ship a py.typed marker yet, so these imports are
+    # untyped from mypy's perspective. Owned by another package.
+    from maistro.protocols.classifier import IntentClassifier  # type: ignore[import-untyped]
+    from maistro.protocols.llm import LLMClient  # type: ignore[import-untyped]
+    from maistro.protocols.memory import (  # type: ignore[import-untyped]
+        EpisodicStore,
+        LearningStore,
+    )
 
 logger = logging.getLogger("maistro_turing.bridge")
 
@@ -139,7 +144,10 @@ class TuringMemoryBridge:
         if self._episodic is None:
             logger.warning("no episodic store configured; memory write dropped")
             return ""
-        from maistro.types.memory import EpisodicMemory, MemoryTier
+        from maistro.types.memory import (  # type: ignore[import-untyped]
+            EpisodicMemory,
+            MemoryTier,
+        )
 
         mem = EpisodicMemory(
             content=content,
@@ -148,7 +156,7 @@ class TuringMemoryBridge:
             weight=weight,
             context=context or {},
         )
-        return await self._episodic.store(mem)
+        return str(await self._episodic.store(mem))
 
     async def retrieve_episodes(
         self,
@@ -189,7 +197,7 @@ class TuringMemoryBridge:
             learning=learning,
             tool_name=tool_name,
         )
-        return await self._learnings.store(lrn)
+        return int(await self._learnings.store(lrn))
 
 
 class TuringSecurityBridge:
@@ -272,7 +280,7 @@ class TuringProviderBridge:
             result = asyncio.run(coro)
         choices = result.get("choices", [])
         if choices:
-            return choices[0].get("message", {}).get("content", "")
+            return str(choices[0].get("message", {}).get("content", ""))
         return ""
 
     async def acomplete(self, prompt: str, *, max_tokens: int | None = None, pool: str = "") -> str:
@@ -287,7 +295,7 @@ class TuringProviderBridge:
         )
         choices = result.get("choices", [])
         if choices:
-            return choices[0].get("message", {}).get("content", "")
+            return str(choices[0].get("message", {}).get("content", ""))
         return ""
 
     def pool_names(self) -> list[str]:
