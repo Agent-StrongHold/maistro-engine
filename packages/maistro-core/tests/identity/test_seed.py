@@ -144,9 +144,63 @@ def test_derive_named_unknown() -> None:
         seed.derive_named("nonexistent")
 
 
+# BIP-44 coin types Bitcoin (0') and Ethereum (60') use the secp256k1 curve;
+# everything else in PATHS (Solana 501', identity, signing) uses Ed25519.
+_SECP256K1_NAMES = {"bitcoin_cold", "bitcoin_hot", "evm_cold", "evm_hot"}
+
+
 def test_all_named_paths_derive() -> None:
     seed = ConductorSeed.generate()
     for name in PATHS:
         key = seed.derive_named(name)
-        assert len(key.public_key) == 32
-        assert key.curve == "ed25519"
+        if name in _SECP256K1_NAMES:
+            assert key.curve == "secp256k1", f"{name} must derive on secp256k1"
+            # SEC1 compressed public key: 0x02/0x03 parity prefix + 32-byte X.
+            assert len(key.public_key) == 33
+            assert key.public_key[0] in (0x02, 0x03)
+        else:
+            assert key.curve == "ed25519", f"{name} must derive on ed25519"
+            assert len(key.public_key) == 32
+
+
+def test_bitcoin_and_evm_use_secp256k1() -> None:
+    """Wallet keys must derive on secp256k1, not Ed25519 (the bug this fixes)."""
+    seed = ConductorSeed.generate()
+    assert seed.derive_named("bitcoin_cold").curve == "secp256k1"
+    assert seed.derive_named("evm_hot").curve == "secp256k1"
+    # Solana is correctly Ed25519 and must stay that way.
+    assert seed.derive_named("solana_cold").curve == "ed25519"
+
+
+def test_sign_rejects_secp256k1_wallet_paths() -> None:
+    """The Ed25519 identity-signing API must refuse secp256k1 wallet paths
+    rather than silently producing a wrong-curve signature."""
+    seed = ConductorSeed.generate()
+    with pytest.raises(ValueError, match="secp256k1"):
+        seed.sign("m/44'/0'/0'", b"msg")
+    with pytest.raises(ValueError, match="secp256k1"):
+        seed.verify("m/44'/60'/0'", b"msg", b"\x00" * 64)
+
+
+# bip_utils accepts lowercase 'h' as an alternate hardened marker (it rejects
+# uppercase 'H'); the curve classifier must agree with the deriver regardless of
+# which accepted notation is used, or m/44h/0h/0h would re-introduce the
+# wrong-curve bug and bypass the sign guard. (_curve_for_path also normalizes
+# 'H' defensively, though bip_utils refuses it before derivation.)
+@pytest.mark.parametrize(
+    "btc_path",
+    ["m/44h/0h/0h", "m/44'/0h/0'", "m/44h/60h/1h"],
+)
+def test_hardened_h_notation_classified_as_secp256k1(btc_path: str) -> None:
+    seed = ConductorSeed.generate()
+    key = seed.derive(btc_path)
+    assert key.curve == "secp256k1", f"{btc_path} must derive on secp256k1"
+    assert len(key.public_key) == 33
+    # The sign guard must reject the h form too, not just the apostrophe form.
+    with pytest.raises(ValueError, match="secp256k1"):
+        seed.sign(btc_path, b"msg")
+
+
+def test_h_and_apostrophe_notation_derive_identical_keys() -> None:
+    seed = ConductorSeed.generate()
+    assert seed.derive("m/44h/0h/0h").public_key == seed.derive("m/44'/0'/0'").public_key
