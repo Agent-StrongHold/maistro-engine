@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field
 
 from maistro.graph.nodes import register_node
 from maistro.graph.nodes.base import BaseNode, NodeContext
-
 from maistro_design.engine import DesignEngine
 from maistro_design.skills.builtins import load_builtins
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry

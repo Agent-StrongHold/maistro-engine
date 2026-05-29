@@ -1,5 +1,5 @@
 ---
-id: S-160
+id: SPEC-160
 title: "maistro-design acceptance criteria — skills, systems, trust, engine"
 repo: maistro-engine
 kind: spec
@@ -21,7 +21,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# S-160 — maistro-design acceptance criteria
+# SPEC-160 — maistro-design acceptance criteria
 
 Full Gherkin acceptance criteria for every subsystem in `maistro-design`.
 Tests implementing these scenarios live in `packages/maistro-design/tests/test_design.py`

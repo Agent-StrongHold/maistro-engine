@@ -1,6 +1,5 @@
 """Built-in design skills covering the five shipped modes (prototype/deck/template/design-system/image)."""
 
-from maistro_design.trust import TrustTier
 from maistro_design.types import DesignSkill, DiscoveryField, OutputFormat, SkillMode
 
 BUILTINS: list[DesignSkill] = [
