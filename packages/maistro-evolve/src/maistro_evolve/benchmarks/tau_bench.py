@@ -94,7 +94,7 @@ async def _simulate_turns(
     cost = 0.0
     last_response = ""
 
-    for turn in range(max_turns):
+    for _turn in range(max_turns):
         try:
             response = await asyncio.wait_for(
                 llm_call(
@@ -147,8 +147,8 @@ async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     samples = len(TAU_BENCH_SAMPLES)
 
     for sample in TAU_BENCH_SAMPLES:
-        messages = [msg for msg in sample["conversation"]]
-        full_messages = [msg for msg in messages]
+        messages = list(sample["conversation"])
+        full_messages = list(messages)
         full_messages.insert(0, {"role": "system", "content": effective_system})
 
         try:
