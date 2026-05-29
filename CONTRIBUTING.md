@@ -4,7 +4,20 @@ Author-facing summary of the conventions you need to know to land changes here. 
 
 ## Branch model
 
-`feature/* → integration → main`. Integration is the QA tier. Feature branches base off integration. Detail: [`docs/adr/ADR-001-branching-strategy.md`](docs/adr/ADR-001-branching-strategy.md).
+Four tiers; work flows **upward**, every promotion is a pull request (never a direct push):
+
+```
+feat/* bug/* idea/* doc/* chore/*  →  develop  →  integration  →  main
+```
+
+- **Topic branches** (`feat/*`, `bug/*`, `idea/*`, `doc/*`, `chore/*`, `fix/*`) — branch off **`develop`**, PR into `develop`.
+- **`develop`** — active feature-integration tier (PR-gated, 0 approvals).
+- **`integration`** — stabilized QA tier; receives PRs from `develop` (PR-gated, 0 approvals).
+- **`main`** — release-grade; receives PRs from `integration` only (PR-gated, **1 approval**).
+
+All three branches are **protected**: PR required, no force-push, no deletion, **linear history**. Because linear history is enforced, **merge via squash or rebase — not merge commits.** Required CI status checks are added per-branch as each CI job reaches reliable green.
+
+Detail: [`ADR-060`](docs/adr/ADR-060-four-tier-branch-model.md) (supersedes [`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
 
 ## How to add an ADR
 
