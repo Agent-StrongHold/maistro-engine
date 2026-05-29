@@ -59,12 +59,16 @@ class RateLimitCoordinator:
             return {}
         try:
             with open(self._state_file) as f:
-                return json.load(f)
+                data: dict[str, float] = json.load(f)
+                return data
         except (json.JSONDecodeError, OSError):
             return {}
 
     def _save_file(self, data: dict[str, float]) -> None:
-        parent = os.path.dirname(self._state_file) if self._state_file else None
+        state_file = self._state_file
+        if state_file is None:
+            return
+        parent = os.path.dirname(state_file)
         tmp_dir = parent if parent else None
         if parent:
             os.makedirs(parent, exist_ok=True)
@@ -72,7 +76,7 @@ class RateLimitCoordinator:
         try:
             with os.fdopen(fd, "w") as f:
                 json.dump(data, f)
-            os.replace(tmp_path, self._state_file)
+            os.replace(tmp_path, state_file)
         except BaseException:
             try:
                 os.unlink(tmp_path)
