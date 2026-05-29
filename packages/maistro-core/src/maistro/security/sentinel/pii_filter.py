@@ -64,8 +64,21 @@ _PII_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
+def normalize_for_scan(text: str) -> str:
+    """Return the NFKD-normalized string that scanning and redaction share.
+
+    ``scan_for_pii`` matches against this string and records offsets into it.
+    ``redact`` MUST slice the same string, otherwise compatibility characters
+    (ligatures like ``ﬁ``, fractions like ``½``, composed accents) expand to a
+    different length and shift every subsequent offset, leaking part of the
+    matched secret. Keeping a single canonical string for both phases is the
+    invariant that closes that desync.
+    """
+    return unicodedata.normalize("NFKD", text)
+
+
 def scan_for_pii(text: str) -> list[PIIMatch]:
-    normalized = unicodedata.normalize("NFKD", text)
+    normalized = normalize_for_scan(text)
     matches: list[PIIMatch] = []
     seen_ranges: list[tuple[int, int]] = []
 
@@ -93,9 +106,15 @@ def redact(text: str, matches: list[PIIMatch] | None = None) -> str:
         matches = scan_for_pii(text)
 
     if not matches:
+        # No matches => nothing to slice => safe to return the original text
+        # unchanged (avoids normalizing benign output unnecessarily).
         return text
 
-    result = text
+    # Match offsets were recorded against the NFKD-normalized string, so we
+    # MUST slice that same string. Slicing the un-normalized original shifts
+    # offsets whenever a compatibility character precedes a match and leaks
+    # part of the secret.
+    result = normalize_for_scan(text)
     for match in sorted(matches, key=lambda x: x.start, reverse=True):
         placeholder = f"[REDACTED:{match.pii_type}]"
         result = result[: match.start] + placeholder + result[match.end :]
