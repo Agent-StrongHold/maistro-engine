@@ -19,9 +19,9 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 if TYPE_CHECKING:
     # maistro-core does not ship a py.typed marker yet, so these imports are
     # untyped from mypy's perspective. Owned by another package.
-    from maistro.protocols.classifier import IntentClassifier  # type: ignore[import-untyped]
-    from maistro.protocols.llm import LLMClient  # type: ignore[import-untyped]
-    from maistro.protocols.memory import (  # type: ignore[import-untyped]
+    from maistro.protocols.classifier import IntentClassifier
+    from maistro.protocols.llm import LLMClient
+    from maistro.protocols.memory import (
         EpisodicStore,
         LearningStore,
     )
@@ -144,7 +144,7 @@ class TuringMemoryBridge:
         if self._episodic is None:
             logger.warning("no episodic store configured; memory write dropped")
             return ""
-        from maistro.types.memory import (  # type: ignore[import-untyped]
+        from maistro.types.memory import (
             EpisodicMemory,
             MemoryTier,
         )

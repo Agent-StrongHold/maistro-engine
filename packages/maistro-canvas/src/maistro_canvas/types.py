@@ -17,7 +17,7 @@ from enum import StrEnum
 from typing import Any
 
 # maistro-core ships no py.typed marker yet, so its modules are untyped here.
-from maistro.types.errors import AgentError  # type: ignore[import-untyped]
+from maistro.types.errors import AgentError
 
 # ─────────────────────────────────────────────────────────────────────
 # Enums
@@ -302,7 +302,7 @@ class CompositeResult:
 # ─────────────────────────────────────────────────────────────────────
 
 
-class CanvasError(AgentError):  # type: ignore[misc]  # AgentError is Any (untyped maistro-core)
+class CanvasError(AgentError):
     code = "CANVAS_ERROR"
 
 
