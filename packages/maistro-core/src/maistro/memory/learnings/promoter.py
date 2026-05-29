@@ -75,11 +75,13 @@ class LearningPromoter:
         assert self._approval_gate is not None
         promoted: list[Learning] = []
 
-        candidates = await self._store.find_relevant(
-            "",
-            org_id=org_id,
-            max_results=100,
-        )
+        # Enumerate real candidates. find_relevant("") scores 0 for every
+        # learning (no trigger key can match an empty query), so it returns an
+        # empty list and nothing ever reaches pending_approval. Use list_all and
+        # apply the same org scoping as check_auto_promotions: an empty org_id
+        # means "only learnings without an org".
+        all_candidates = await self._store.list_all(org_id=org_id, limit=10_000)
+        candidates = [lr for lr in all_candidates if org_id or not lr.org_id]
         for lr in candidates:
             if lr.hit_count >= self._threshold and lr.status == "active":
                 self._approval_gate.request_approval(
