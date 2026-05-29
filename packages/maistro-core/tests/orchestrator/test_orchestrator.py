@@ -210,6 +210,31 @@ class TestSuperPlanner:
         assert orch._items
         assert len(orch._waves) > 0
 
+    def test_topological_sort_self_cycle_raises(self):
+        # A depends on itself → must raise a clear error, not RecursionError.
+        items = [SubsystemDef(task_id="A", group="g1", description="a", depends_on=["A"])]
+        with pytest.raises(ValueError, match="cycle"):
+            _topological_sort(items)
+
+    def test_topological_sort_two_node_cycle_raises(self):
+        # A → B → A. Must raise a clear ValueError naming the cycle, not RecursionError.
+        items = [
+            SubsystemDef(task_id="A", group="g1", description="a", depends_on=["B"]),
+            SubsystemDef(task_id="B", group="g1", description="b", depends_on=["A"]),
+        ]
+        with pytest.raises(ValueError, match="cycle") as exc:
+            _topological_sort(items)
+        assert not isinstance(exc.value, RecursionError)
+
+    def test_topological_sort_three_node_cycle_raises(self):
+        items = [
+            SubsystemDef(task_id="A", group="g1", description="a", depends_on=["C"]),
+            SubsystemDef(task_id="B", group="g1", description="b", depends_on=["A"]),
+            SubsystemDef(task_id="C", group="g1", description="c", depends_on=["B"]),
+        ]
+        with pytest.raises(ValueError, match="cycle"):
+            _topological_sort(items)
+
     def test_custom_template(self):
         template = PlanTemplate(
             name="test",
