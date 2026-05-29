@@ -85,10 +85,7 @@ def _render(template: str, item: dict[str, Any]) -> str:
         parts = [p for p in key.split(".") if p]
         cur: Any = item
         for p in parts:
-            if isinstance(cur, dict):
-                cur = cur.get(p)
-            else:
-                cur = getattr(cur, p, None)
+            cur = cur.get(p) if isinstance(cur, dict) else getattr(cur, p, None)
             if cur is None:
                 return ""
         return str(cur)

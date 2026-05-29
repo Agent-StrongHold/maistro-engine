@@ -6,7 +6,7 @@ implementation lands in Phase 17 (Launch deploy).
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from .types import DurableRunRecord, RunStatus
 
@@ -53,7 +53,7 @@ class DurableRunStore(Protocol):
         self,
         run_id: str,
         node_id: str,
-        answer: dict,
+        answer: dict[str, Any],
     ) -> DurableRunRecord:
         """Attach a user-supplied answer to a HITL node. Flips the run from
         `paused_hitl` to `running` so the scheduler picks it up. Raises if

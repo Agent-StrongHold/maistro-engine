@@ -268,8 +268,12 @@ STRATEGY_REGISTRY: dict[AgentRole, NodeStrategy] = {
 }
 
 
-def get_strategy(role: AgentRole) -> NodeStrategy:
-    strategy = STRATEGY_REGISTRY.get(role)
+def get_strategy(role: AgentRole | str) -> NodeStrategy:
+    try:
+        role_enum = role if isinstance(role, AgentRole) else AgentRole(role)
+    except ValueError:
+        role_enum = None
+    strategy = STRATEGY_REGISTRY.get(role_enum) if role_enum is not None else None
     if strategy is None:
         raise ValueError(f"No strategy registered for role {role}")
     return strategy

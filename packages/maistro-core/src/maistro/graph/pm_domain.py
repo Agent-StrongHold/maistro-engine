@@ -14,6 +14,8 @@ self-improvement loop.
 
 from __future__ import annotations
 
+from typing import Any
+
 from maistro.graph.types import (
     DEFAULT_SYSTEM_PROMPTS,
     JSON_OUTPUT_SCHEMAS,
@@ -156,7 +158,7 @@ PM_PRIMARY_CAPABILITY: dict[AgentRole, str] = {
 }
 
 
-def build_capability_prompt(capability: str, payload: dict) -> str:
+def build_capability_prompt(capability: str, payload: dict[str, Any]) -> str:
     """Inject payload into the capability prompt template.
 
     Templates use the literal sentinel ``{payload_json}`` (str.replace,

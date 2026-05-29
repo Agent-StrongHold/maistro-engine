@@ -100,7 +100,8 @@ async def jedai_llm_call(
             # default short message.
             raise RuntimeError(f"JedAI gateway {resp.status_code}: {resp.text[:1000]}")
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        content: str = data["choices"][0]["message"]["content"]
+        return content
 
 
 __all__ = ["jedai_llm_call"]

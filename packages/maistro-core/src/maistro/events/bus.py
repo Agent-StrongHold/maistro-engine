@@ -55,9 +55,9 @@ class TriggerCondition:
         if actual is None:
             return False
         if self.op == "eq":
-            return actual == self.value
+            return bool(actual == self.value)
         if self.op == "ne":
-            return actual != self.value
+            return bool(actual != self.value)
         if self.op == "gt":
             return float(actual) > float(self.value)
         if self.op == "lt":

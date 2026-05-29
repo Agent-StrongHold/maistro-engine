@@ -100,9 +100,9 @@ class JWTAuthProvider:
         try:
             import jwt as pyjwt
             from jwt import PyJWKClient
-        except ImportError:
+        except ImportError as err:
             msg = "PyJWT with cryptography is required: pip install PyJWT[crypto]"
-            raise ValueError(msg)
+            raise ValueError(msg) from err
 
         jwks_client = await self._get_jwks_client(pyjwt, PyJWKClient)
 

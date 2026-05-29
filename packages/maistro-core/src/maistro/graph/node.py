@@ -96,17 +96,30 @@ def _normalize_llm_result(result: Any) -> tuple[str, int, int]:
     return str(text), ti, to
 
 
-def _build_system_prompt(role: AgentRole, node_config: NodeConfig | None = None) -> str:
-    base = (
-        node_config.system_prompt if node_config and node_config.system_prompt else None
-    ) or DEFAULT_SYSTEM_PROMPTS.get(role, "")
-    schema_suffix = JSON_OUTPUT_SCHEMAS.get(role, "")
+def _to_agent_role(role: AgentRole | str) -> AgentRole | None:
+    """Coerce a role identifier to its :class:`AgentRole`, or ``None`` if it is
+    an arbitrary kind string with no enum member."""
+    if isinstance(role, AgentRole):
+        return role
+    try:
+        return AgentRole(role)
+    except ValueError:
+        return None
+
+
+def _build_system_prompt(role: AgentRole | str, node_config: NodeConfig | None = None) -> str:
+    role_enum = _to_agent_role(role)
+    base = (node_config.system_prompt if node_config and node_config.system_prompt else None) or (
+        DEFAULT_SYSTEM_PROMPTS.get(role_enum, "") if role_enum is not None else ""
+    )
+    schema_suffix = JSON_OUTPUT_SCHEMAS.get(role_enum, "") if role_enum is not None else ""
     return base + schema_suffix
 
 
-def _blackboard_prefix(role: AgentRole, bb: GraphBlackboard | None) -> str:
+def _blackboard_prefix(role: AgentRole | str, bb: GraphBlackboard | None) -> str:
     if bb is None:
         return ""
+    role_str = role.value if isinstance(role, AgentRole) else role
     lines: list[str] = [f"## Pipeline Objective\n{bb.task_objective}\n"]
 
     if bb.scout_context:
@@ -133,9 +146,9 @@ def _blackboard_prefix(role: AgentRole, bb: GraphBlackboard | None) -> str:
             f"{te.test_output[:400]}\n"
         )
 
-    annotation = bb.node_annotations.get(role.value)
+    annotation = bb.node_annotations.get(role_str)
     if annotation:
-        lines.append(f"## Hyperagent Note for {role.upper()}\n{annotation}\n")
+        lines.append(f"## Hyperagent Note for {role_str.upper()}\n{annotation}\n")
 
     if bb.iteration > 0:
         lines.append(f"## Optimization Context\nIteration {bb.iteration}.")
@@ -344,78 +357,97 @@ class NodeRun:
 
                 parsed = self._parse_output(raw)
                 if parsed is None:
-                    self.circuit.record_failure()
                     last_exc = LLMProviderError(f"Failed to parse output for {self.role.value}")
-                    if attempt < self.max_retries - 1:
-                        self._transition(NodePhase.RETRYING)
-                        self.retry_count += 1
-                        delay = jittered_backoff(attempt, base_delay=0.1, max_delay=1.0)
-                        await asyncio.sleep(delay)
-                        self._transition(NodePhase.RUNNING)
+                    await self._handle_parse_failure(attempt)
                     continue
 
-                self.parsed_output = parsed
-                self.score = self.strategy.score_output(parsed)
-                self._transition(NodePhase.SUCCEEDED)
-
-                if self._emit_event:
-                    await self._emit_event(
-                        node_completed(
-                            self.run_id,
-                            self.node_id,
-                            self.role.value,
-                            score=self.score,
-                        )
-                    )
+                await self._finish_success(parsed)
                 return
 
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                classified = classify_error(
-                    exc,
-                    provider=self.model,
-                    model=self.model,
-                )
-                self.error_classifications.append(classified)
                 last_exc = exc
-                self.circuit.record_failure()
-
-                if classified.retryable and attempt < self.max_retries - 1:
-                    self._transition(NodePhase.RETRYING)
-                    self.retry_count += 1
-                    delay = compute_backoff(
-                        attempt + 1, backoff_config, retry_after=classified.retry_after_seconds
-                    )
-                    if delay < 0:
-                        await self._finish_failure(exc, classified)
-                        return
-                    logger.warning(
-                        "node_retry",
-                        node_id=self.node_id,
-                        role=self.role.value,
-                        attempt=attempt + 1,
-                        category=classified.category.value,
-                        delay=delay,
-                    )
-                    if self._emit_event:
-                        await self._emit_event(
-                            node_retrying(
-                                self.run_id,
-                                self.node_id,
-                                self.role.value,
-                                attempt=attempt + 1,
-                                category=classified.category.value,
-                            )
-                        )
-                    await asyncio.sleep(delay)
-                    self._transition(NodePhase.RUNNING)
-                else:
-                    await self._finish_failure(exc, classified)
+                should_retry = await self._handle_attempt_exception(exc, attempt, backoff_config)
+                if not should_retry:
                     return
 
         if last_exc is not None:
             await self._finish_failure(last_exc)
+
+    async def _handle_parse_failure(self, attempt: int) -> None:
+        """Record a parse failure and, if retries remain, schedule a backoff retry."""
+        self.circuit.record_failure()
+        if attempt < self.max_retries - 1:
+            self._transition(NodePhase.RETRYING)
+            self.retry_count += 1
+            delay = jittered_backoff(attempt, base_delay=0.1, max_delay=1.0)
+            await asyncio.sleep(delay)
+            self._transition(NodePhase.RUNNING)
+
+    async def _finish_success(self, parsed: Any) -> None:
+        """Store a successfully parsed output, score it, and emit completion."""
+        assert self.strategy is not None
+        self.parsed_output = parsed
+        self.score = self.strategy.score_output(parsed)
+        self._transition(NodePhase.SUCCEEDED)
+
+        if self._emit_event:
+            await self._emit_event(
+                node_completed(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                    score=self.score,
+                )
+            )
+
+    async def _handle_attempt_exception(
+        self,
+        exc: Exception,
+        attempt: int,
+        backoff_config: BackoffConfig,
+    ) -> bool:
+        """Classify a failed attempt and either schedule a retry (return True to
+        continue the loop) or finish the node as failed (return False)."""
+        classified = classify_error(exc, provider=self.model, model=self.model)
+        self.error_classifications.append(classified)
+        self.circuit.record_failure()
+
+        if not (classified.retryable and attempt < self.max_retries - 1):
+            await self._finish_failure(exc, classified)
+            return False
+
+        self._transition(NodePhase.RETRYING)
+        self.retry_count += 1
+        delay = compute_backoff(
+            attempt + 1, backoff_config, retry_after=classified.retry_after_seconds
+        )
+        if delay < 0:
+            await self._finish_failure(exc, classified)
+            return False
+
+        logger.warning(
+            "node_retry",
+            node_id=self.node_id,
+            role=self.role.value,
+            attempt=attempt + 1,
+            category=classified.category.value,
+            delay=delay,
+        )
+        if self._emit_event:
+            await self._emit_event(
+                node_retrying(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                    attempt=attempt + 1,
+                    category=classified.category.value,
+                )
+            )
+        await asyncio.sleep(delay)
+        self._transition(NodePhase.RUNNING)
+        return True
 
     async def _execute_beam(
         self,
