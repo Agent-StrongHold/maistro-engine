@@ -5,9 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import HTTPException, Request
-from services import program_store as prog
-from services.engine import get_engine
-from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode
 
 from maistro.agents.hyperagent import (
     interview_status,
@@ -17,6 +14,9 @@ from maistro.agents.hyperagent import (
 )
 from maistro.agents.pm_capabilities import is_autonomous
 from maistro.agents.program_context import apply_guidance
+from services import program_store as prog
+from services.engine import get_engine
+from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode
 
 
 def _get_atlassian_pats(user_id: str) -> dict[str, str | None]:
@@ -70,7 +70,7 @@ async def apply_guidance_and_pulse(
         try:
             pulse_result = await run_program_pulse(user_id, max_actions=max_pulse_actions)
             queued = pulse_result.get("queued", [])
-        except Exception as exc:
+        except Exception:
             pulse_error = "Fleet pulse skipped (engine unavailable)"
 
     out: dict[str, Any] = {
@@ -156,9 +156,11 @@ async def run_program_pulse(user_id: str, *, max_actions: int = 4) -> dict[str, 
                 }
             )
         except Exception as _exc:
-            __import__('logging').getLogger('hive.services.program_hyperagent').warning(
-                'error_swallowed file=%s line=%d: %s',
-                'packages/hive-conductor/backend/services/program_hyperagent.py', 137, _exc,
+            __import__("logging").getLogger("hive.services.program_hyperagent").warning(
+                "error_swallowed file=%s line=%d: %s",
+                "packages/hive-conductor/backend/services/program_hyperagent.py",
+                137,
+                _exc,
             )
             continue
 

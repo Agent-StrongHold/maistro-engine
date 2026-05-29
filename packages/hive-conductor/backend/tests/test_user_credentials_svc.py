@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from pathlib import Path
 
 import pytest
@@ -37,6 +37,7 @@ def test_init_credential_store_failure_returns_false(
 ) -> None:
     """If UserCredentialStore.open raises, init returns False + store stays None."""
     import services.user_credentials as cred_svc
+
     from maistro.credentials.store import UserCredentialStore
 
     def _boom(path):
@@ -51,6 +52,7 @@ def test_init_credential_store_failure_returns_false(
 
 def test_require_store_raises_when_uninitialized() -> None:
     import services.user_credentials as cred_svc
+
     from maistro.credentials import CredentialStoreUnavailable
 
     cred_svc._store = None
@@ -70,6 +72,7 @@ def test_require_store_returns_instance_when_initialized(
 
 def test_list_provider_catalog_returns_known_providers() -> None:
     from services.user_credentials import list_provider_catalog
+
     from maistro.credentials import PM_CREDENTIAL_PROVIDERS
 
     catalog = list_provider_catalog()

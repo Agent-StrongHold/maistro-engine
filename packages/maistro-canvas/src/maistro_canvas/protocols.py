@@ -202,7 +202,7 @@ class PersonalizationCompiler(Protocol):
 class ImageData:
     """Raw image data returned by the generation backend."""
 
-    __slots__ = ("width", "height", "url", "bytes_")
+    __slots__ = ("bytes_", "height", "url", "width")
 
     def __init__(
         self,

@@ -12,7 +12,6 @@ tools actually work — inside the microVM, not on a dev laptop.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any
@@ -26,14 +25,14 @@ BROKER_URL = os.environ.get("SANDBOX_BROKER_URL", "http://localhost:8090/api/v1"
 
 async def request_hill_climb_vm(component: str = "Chat.tsx", passes: int = 5) -> dict[str, Any]:
     """Request a Hyperlight microVM to run the UI hill-climb loop.
-    
+
     The VM gets:
     - The current frontend source
     - Chromium + playwright
     - Node.js for builds
     - The hill-climb script
     - Network access to LiteLLM gateway for scoring
-    
+
     Returns results when the VM completes (or streams progress).
     """
     payload = {
@@ -85,6 +84,7 @@ async def run_ui_hill_climb(component: str = "Chat.tsx", passes: int = 5) -> dic
     async with httpx.AsyncClient(timeout=600.0) as client:
         for _ in range(120):  # poll for up to 10 minutes
             import asyncio
+
             await asyncio.sleep(5)
             r = await client.get(f"{BROKER_URL}/sandboxes/{lease_id}/status")
             if r.status_code != 200:

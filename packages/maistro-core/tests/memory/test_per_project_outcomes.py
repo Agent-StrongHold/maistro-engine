@@ -59,7 +59,9 @@ async def _record_thumb_down(
 async def test_failures_in_project_a_do_not_pollute_project_b_narrative() -> None:
     store = InMemoryOutcomeStore()
     await _record_failure(store, task_type="reporting", error="LLMTimeout", project_id="proj-a")
-    await _record_failure(store, task_type="reporting", error="JsonDecodeError", project_id="proj-a")
+    await _record_failure(
+        store, task_type="reporting", error="JsonDecodeError", project_id="proj-a"
+    )
     await _record_failure(store, task_type="reporting", error="RateLimited", project_id="proj-b")
 
     narrative_a = await store.get_experience_context("reporting", project_id="proj-a")
@@ -130,8 +132,13 @@ async def test_failure_and_thumbs_down_appear_in_same_narrative() -> None:
     distinguish 'we failed here' from 'human disliked this output'."""
     store = InMemoryOutcomeStore()
     await _record_failure(store, task_type="poll", error="JiraAuthFailed", project_id="p")
-    await _record_thumb_down(store, task_type="poll", project_id="p", node_id="jira_filter",
-                             comment="Picked irrelevant tickets")
+    await _record_thumb_down(
+        store,
+        task_type="poll",
+        project_id="p",
+        node_id="jira_filter",
+        comment="Picked irrelevant tickets",
+    )
     narrative = await store.get_experience_context("poll", project_id="p")
     assert "Recent Failure Patterns" in narrative
     assert "JiraAuthFailed" in narrative
@@ -163,9 +170,7 @@ async def test_tool_name_filter_combines_with_project_id() -> None:
             tool_calls=[{"name": "jira_search"}],
         )
     )
-    narrow = await store.get_experience_context(
-        "research", tool_name="browser_use", project_id="p"
-    )
+    narrow = await store.get_experience_context("research", tool_name="browser_use", project_id="p")
     assert "WebTimeout" in narrow
     assert "AuthDenied" not in narrow
 

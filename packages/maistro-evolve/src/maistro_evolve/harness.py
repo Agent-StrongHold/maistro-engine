@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import random
 import time
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from .types import EvalResult, PipelineGenome
 
@@ -57,6 +58,7 @@ class EvalHarness:
     def _register_real_benchmarks(self) -> None:
         try:
             from .benchmarks import REAL_BENCHMARKS
+
             for name, runner in REAL_BENCHMARKS.items():
                 self.register_benchmark(name, runner)
         except ImportError:

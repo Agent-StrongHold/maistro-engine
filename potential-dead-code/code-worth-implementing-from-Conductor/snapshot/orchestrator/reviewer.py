@@ -145,9 +145,7 @@ Respond ONLY with valid JSON (no markdown fences):
             feedback_for_retry=feedback_for_retry,
         )
 
-    async def _review_one(
-        self, subtask: Subtask, candidate: CoderCandidate
-    ) -> ReviewResult:
+    async def _review_one(self, subtask: Subtask, candidate: CoderCandidate) -> ReviewResult:
         """Review a single candidate."""
         user_content = f"""## Task That Was Assigned
 {subtask.description}

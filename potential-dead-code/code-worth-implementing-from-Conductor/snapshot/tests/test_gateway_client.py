@@ -50,9 +50,7 @@ class TestRetryLogic:
     @pytest.mark.asyncio
     async def test_raises_after_max_retries(self, client: GatewayClient):
         """Should raise GatewayError after max retries exceeded."""
-        respx.get("http://mock-gateway:9090/health").mock(
-            return_value=Response(503)
-        )
+        respx.get("http://mock-gateway:9090/health").mock(return_value=Response(503))
 
         with pytest.raises(GatewayError, match="failed after 3 attempts"):
             await client.health()

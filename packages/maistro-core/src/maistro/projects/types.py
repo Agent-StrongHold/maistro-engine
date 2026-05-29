@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,9 +24,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class ProjectMemberRole(StrEnum):
     """Role of a user within a project."""
 
-    OWNER = "owner"      # full control + can add/remove members
-    EDITOR = "editor"    # can mutate DAGs + credentials + run pulses
-    VIEWER = "viewer"    # read-only (sees runs, can submit thumbs)
+    OWNER = "owner"  # full control + can add/remove members
+    EDITOR = "editor"  # can mutate DAGs + credentials + run pulses
+    VIEWER = "viewer"  # read-only (sees runs, can submit thumbs)
 
 
 class ProjectMember(BaseModel):
@@ -43,7 +42,7 @@ class JiraResourceBinding(BaseModel):
 
     project_key: str  # e.g. "PROJ"
     flavor: str = "server"  # "server" | "cloud"
-    site_url: str = ""      # https://myjira.disney.com or https://acme.atlassian.net
+    site_url: str = ""  # https://myjira.disney.com or https://acme.atlassian.net
 
 
 class AirtableResourceBinding(BaseModel):
@@ -81,21 +80,26 @@ class ProjectSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     eval_judge_cadence_runs: int = Field(
-        default=5, ge=1, le=100,
+        default=5,
+        ge=1,
+        le=100,
         description="External eval-judge fires every N DAG runs",
     )
     monthly_budget_usd: float = Field(
-        default=100.0, ge=0.0,
+        default=100.0,
+        ge=0.0,
         description="Project-level $ cap; optimizer halts non-critical runs at 100%",
     )
     edit_lock_days: int = Field(
-        default=30, ge=1, le=365,
+        default=30,
+        ge=1,
+        le=365,
         description="How long user-edited params are locked from auto-mutation",
     )
     auto_apply_topology_changes: bool = Field(
         default=False,
         description="If True, optimizer applies topology mutations directly; "
-                    "if False, they go to the OptimizationInbox for approval.",
+        "if False, they go to the OptimizationInbox for approval.",
     )
 
 

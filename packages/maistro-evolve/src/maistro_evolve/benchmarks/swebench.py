@@ -7,7 +7,7 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import SWEBENCH_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config, build_messages
+from .prompt_builder import build_messages, build_model_config, build_system_prompt
 from .scoring import judge_score
 
 
@@ -27,7 +27,11 @@ def _score_code_fix(response: str, sample: dict[str, Any]) -> float:
     buggy_code = sample.get("buggy_code", "")
     if buggy_code:
         max_score += 0.2
-        buggy_lines = [line.strip() for line in buggy_code.split("\n") if line.strip() and not line.strip().startswith("def ")]
+        buggy_lines = [
+            line.strip()
+            for line in buggy_code.split("\n")
+            if line.strip() and not line.strip().startswith("def ")
+        ]
         if buggy_lines:
             unchanged = sum(1 for line in buggy_lines if line.lower() in code_text.lower())
             change_ratio = 1.0 - (unchanged / len(buggy_lines))
@@ -38,7 +42,9 @@ def _score_code_fix(response: str, sample: dict[str, Any]) -> float:
     problem_desc = sample.get("problem", "").lower()
     if "recursive" in problem_desc or "recursively" in problem_desc:
         max_score += 0.15
-        if "def " in code_text and code_text.count("def ") <= code_text.count(code_text.split("def ")[1].split("(")[0] if "def " in code_text else ""):
+        if "def " in code_text and code_text.count("def ") <= code_text.count(
+            code_text.split("def ")[1].split("(")[0] if "def " in code_text else ""
+        ):
             if code_text.split("def ")[0].count("def ") < code_text.count("def "):
                 pass
         if "recursive" in code_text.lower() or code_text.count("def ") > 1:
@@ -86,7 +92,10 @@ async def _judge_code_quality(
         judge_response = await asyncio.wait_for(
             llm_call(
                 [
-                    {"role": "system", "content": "You are a strict code judge. Respond with only a number."},
+                    {
+                        "role": "system",
+                        "content": "You are a strict code judge. Respond with only a number.",
+                    },
                     {"role": "user", "content": judge_prompt},
                 ],
                 temperature=0.0,
@@ -95,7 +104,7 @@ async def _judge_code_quality(
             timeout=20.0,
         )
         return judge_score(judge_response)
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         return 0.0
 
 
@@ -152,7 +161,7 @@ async def run_swebench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
                 score = _heuristic_score(sample)
                 total_score += score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             evaluated += 1
 
     avg_score = total_score / max(evaluated, 1)
@@ -170,6 +179,7 @@ async def run_swebench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
 
 def _heuristic_score(sample: dict[str, Any]) -> float:
     import random
+
     problem = sample.get("problem", "").lower()
     base = 0.45
     if "recursive" in problem:

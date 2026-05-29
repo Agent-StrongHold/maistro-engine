@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from maistro.events.bus import (
     Event,
     EventBus,
@@ -199,7 +197,7 @@ class TestEmitRobustness:
 
         captured: dict[str, Any] = {}
 
-        async def fake_post(url, json, headers, timeout):  # noqa: ANN001
+        async def fake_post(url, json, headers, timeout):
             captured["message"] = json["messages"][0]["content"]
 
             class _Resp:

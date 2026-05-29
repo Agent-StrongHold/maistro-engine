@@ -14,7 +14,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from maistro.types.intent import Intent
-from maistro.types.errors import ClassificationError
 
 if TYPE_CHECKING:
     from maistro.container import Container

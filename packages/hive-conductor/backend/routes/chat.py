@@ -97,8 +97,8 @@ async def complete(req: ChatCompletionRequest, request: Request) -> dict:
 @router.post("/stream")
 async def stream_complete(req: ChatCompletionRequest, request: Request):
     """SSE streaming — sends real status updates as tools execute."""
-    import asyncio
     import json
+
     from fastapi.responses import StreamingResponse
     from services.chat_completion import run_chat_completion_streaming
 
@@ -112,4 +112,8 @@ async def stream_complete(req: ChatCompletionRequest, request: Request):
         except Exception as e:
             yield f"data: {json.dumps({'type': 'done', 'content': f'Error: {e}'})}\n\n"
 
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

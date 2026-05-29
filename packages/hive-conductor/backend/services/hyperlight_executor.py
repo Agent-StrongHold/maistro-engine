@@ -19,7 +19,6 @@ The cage is enforced at the hypervisor level, not just in Python.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import subprocess
@@ -42,7 +41,9 @@ class HyperlightExecutor:
             try:
                 result = subprocess.run(
                     [sys.executable, "-c", "import hyperlight; print(hyperlight.__version__)"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 self._available = result.returncode == 0
                 if self._available:
@@ -60,18 +61,19 @@ class HyperlightExecutor:
         memory_mb: int = 256,
     ) -> dict[str, Any]:
         """Execute code in an isolated microVM.
-        
+
         Args:
             code: Python code to execute
             env: environment variables to pass (filtered — no secrets unless explicit)
             timeout_s: max execution time
             allow_network: whether the VM can make outbound requests
             memory_mb: memory limit for the VM
-        
+
         Returns:
             {"output": str, "success": bool, "duration_ms": int, "isolation": str}
         """
         import time
+
         start = time.monotonic()
 
         if self.available:
@@ -85,7 +87,12 @@ class HyperlightExecutor:
         return result
 
     async def _run_hyperlight(
-        self, code: str, env: dict[str, str] | None, timeout_s: int, allow_network: bool, memory_mb: int
+        self,
+        code: str,
+        env: dict[str, str] | None,
+        timeout_s: int,
+        allow_network: bool,
+        memory_mb: int,
     ) -> dict[str, Any]:
         """Run in actual Hyperlight microVM."""
         import base64
@@ -119,13 +126,17 @@ with Sandbox(config) as sandbox:
         result = await loop.run_in_executor(None, self._subprocess_run, script, env, timeout_s)
         return {**result, "isolation": "hyperlight-microvm"}
 
-    async def _run_subprocess(self, code: str, env: dict[str, str] | None, timeout_s: int) -> dict[str, Any]:
+    async def _run_subprocess(
+        self, code: str, env: dict[str, str] | None, timeout_s: int
+    ) -> dict[str, Any]:
         """Fallback: subprocess isolation (no hypervisor, but still separate process)."""
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, self._subprocess_run, code, env, timeout_s)
         return {**result, "isolation": "subprocess"}
 
-    def _subprocess_run(self, code: str, env: dict[str, str] | None, timeout_s: int) -> dict[str, Any]:
+    def _subprocess_run(
+        self, code: str, env: dict[str, str] | None, timeout_s: int
+    ) -> dict[str, Any]:
         """Run code in a subprocess."""
         run_env = {
             "PATH": os.environ.get("PATH", ""),
@@ -137,7 +148,9 @@ with Sandbox(config) as sandbox:
         try:
             result = subprocess.run(
                 [sys.executable, "-c", code],
-                capture_output=True, text=True, timeout=timeout_s,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
                 env=run_env,
             )
             return {
@@ -159,6 +172,8 @@ def get_executor() -> HyperlightExecutor:
     return _executor
 
 
-async def execute_in_microvm(code: str, env: dict[str, str] | None = None, allow_network: bool = False) -> dict[str, Any]:
+async def execute_in_microvm(
+    code: str, env: dict[str, str] | None = None, allow_network: bool = False
+) -> dict[str, Any]:
     """Convenience: execute code in a microVM (or fallback)."""
     return await _executor.execute_node(code, env=env, allow_network=allow_network)

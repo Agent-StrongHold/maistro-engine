@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
 from maistro.credentials.pool import CredentialPool
 from maistro.credentials.types import CredentialRecord, PoolExhaustedError
@@ -85,7 +85,9 @@ async def execute_with_pool(
                 if cooldown > 0 or should_block:
                     pool.record_failure(
                         credential.key_id,
-                        status_code=classified.detail.get("status_code", 0) if isinstance(classified.detail, dict) else 0,
+                        status_code=classified.detail.get("status_code", 0)
+                        if isinstance(classified.detail, dict)
+                        else 0,
                         error_code=classified.category.value,
                         cooldown_seconds=cooldown,
                         block=should_block,

@@ -80,9 +80,7 @@ class ConductorSeed:
         self._root: Bip32Slip10Ed25519 | None = Bip32Slip10Ed25519.FromSeed(seed_bytes)
         # Separate secp256k1 root for the BTC/ETH wallet paths; both roots come
         # from the same BIP-39 seed, differing only by curve.
-        self._secp_root: Bip32Slip10Secp256k1 | None = Bip32Slip10Secp256k1.FromSeed(
-            seed_bytes
-        )
+        self._secp_root: Bip32Slip10Secp256k1 | None = Bip32Slip10Secp256k1.FromSeed(seed_bytes)
 
     @staticmethod
     def generate() -> ConductorSeed:

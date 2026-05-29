@@ -13,7 +13,7 @@ carries `timed_out=True` so downstream conditional edges can branch.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any, ClassVar
+from typing import ClassVar
 
 import httpx
 from pydantic import BaseModel, Field
@@ -103,6 +103,7 @@ class JiraWaitForSubtasksNode(BaseNode[WaitForSubtasksIn, WaitForSubtasksOut]):
         # Resume path — was the deadline reached?
         try:
             from datetime import datetime as _dt
+
             first = _dt.fromisoformat(first_seen)
         except Exception:
             first = now

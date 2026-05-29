@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 
 from hypothesis import given, settings
@@ -16,12 +15,8 @@ class OAuth2TokenMachine(RuleBasedStateMachine):
     def __init__(self):
         super().__init__()
         self.provider = OAuth2Provider()
-        self.provider.register_provider(
-            "google", "https://auth", "https://token", "client123", "openid"
-        )
-        self.provider.register_provider(
-            "github", "https://auth", "https://token", "client456", "repo"
-        )
+        self.provider.register_provider("google", "https://auth", "https://token", "client123", "openid")
+        self.provider.register_provider("github", "https://auth", "https://token", "client456", "repo")
         self.known_tokens = set()
         self.revoked = set()
 

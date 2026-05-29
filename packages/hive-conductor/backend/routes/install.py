@@ -20,6 +20,7 @@ def _bootstrap_or_503():
     _ensure_bootstrap_on_path()
     try:
         from maistro_bootstrap.session import get_session_defaults
+
         return get_session_defaults
     except ImportError:
         raise HTTPException(status_code=503, detail="maistro-bootstrap not available")

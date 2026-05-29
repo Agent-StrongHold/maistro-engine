@@ -6,8 +6,9 @@ and returns 0-100 based on criteria specific to that department.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,11 @@ class RubricEval:
             passed = c["check"](output, context or {})
             points = c["weight"] if passed else 0
             earned += points
-            details["criteria"].append({"name": c["name"], "passed": passed, "points": points, "max": c["weight"]})
+            details["criteria"].append(
+                {"name": c["name"], "passed": passed, "points": points, "max": c["weight"]}
+            )
 
         score = int(100 * earned / total_weight) if total_weight else 0
-        return EvalResult(score=score, department=self.department, eval_name=self.eval_name, details=details)
+        return EvalResult(
+            score=score, department=self.department, eval_name=self.eval_name, details=details
+        )

@@ -33,13 +33,15 @@ class GrantKeyMismatchError(Exception):
     """Raised when a grant was signed by a rotated/invalid admin key."""
 
 
-_ADMIN_TOOLS = frozenset({
-    "admin:settings:write",
-    "admin:users:manage",
-    "admin:keys:rotate",
-    "admin:audit:read",
-    "admin:plugins:install",
-})
+_ADMIN_TOOLS = frozenset(
+    {
+        "admin:settings:write",
+        "admin:users:manage",
+        "admin:keys:rotate",
+        "admin:audit:read",
+        "admin:plugins:install",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -72,8 +74,7 @@ class ElevationGrant:
         if not self._valid:
             return False
         return not (
-            self.ttl_seconds <= 0
-            or (time.monotonic() - self.created_at) > self.ttl_seconds
+            self.ttl_seconds <= 0 or (time.monotonic() - self.created_at) > self.ttl_seconds
         )
 
     @property
@@ -137,9 +138,7 @@ class UsersStore:
     ) -> None:
         if not user_name or not user_public_key:
             if not self._allow_single_user:
-                raise InsufficientUsersError(
-                    "At least 2 users required (admin + user1)"
-                )
+                raise InsufficientUsersError("At least 2 users required (admin + user1)")
             self._users = [UserInfo(admin_name, admin_public_key, "admin")]
         else:
             self._users = [
@@ -173,10 +172,10 @@ class UsersStore:
         raw = toml_path.read_text()
         newline_pos = raw.index("\n")
         sig_line = raw[:newline_pos]
-        content = raw[newline_pos + 1:]
+        content = raw[newline_pos + 1 :]
         if not sig_line.startswith("# sig: "):
             raise UsersTamperError("Missing signature in users.toml")
-        stored_sig = sig_line[len("# sig: "):]
+        stored_sig = sig_line[len("# sig: ") :]
 
         admin_key, users = self._parse_users(content)
 
@@ -281,14 +280,16 @@ class PrivilegeGuard:
             _signature=sig,
         )
         self._grants.append(grant)
-        self._audit.append({
-            "action": "elevation_granted",
-            "scope": request.scope,
-            "user_public_key": request.user_public_key,
-            "justification": request.justification,
-            "signature": sig,
-            "timestamp": time.time(),
-        })
+        self._audit.append(
+            {
+                "action": "elevation_granted",
+                "scope": request.scope,
+                "user_public_key": request.user_public_key,
+                "justification": request.justification,
+                "signature": sig,
+                "timestamp": time.time(),
+            }
+        )
         return grant
 
     def rotate_admin_key(self, old_key: str, new_key: str) -> None:
@@ -316,14 +317,16 @@ class PrivilegeGuard:
             f"{scope}:{user_public_key}:{time.monotonic()}".encode(),
             hashlib.sha256,
         ).hexdigest()[:16]
-        self._policies.append(_Policy(
-            policy_id=policy_id,
-            admin_key=admin_key,
-            user_public_key=user_public_key,
-            scope=scope,
-            description=description,
-            admin_key_version=self._admin_key_version,
-        ))
+        self._policies.append(
+            _Policy(
+                policy_id=policy_id,
+                admin_key=admin_key,
+                user_public_key=user_public_key,
+                scope=scope,
+                description=description,
+                admin_key_version=self._admin_key_version,
+            )
+        )
         return policy_id
 
     def revoke_policy(self, policy_id: str, admin_key: str) -> None:
@@ -333,9 +336,7 @@ class PrivilegeGuard:
             if p.policy_id == policy_id:
                 p.revoked = True
 
-    def policy_allows(
-        self, policy_id: str, user_public_key: str, action: str
-    ) -> bool:
+    def policy_allows(self, policy_id: str, user_public_key: str, action: str) -> bool:
         for p in self._policies:
             if p.policy_id == policy_id and p.user_public_key == user_public_key:
                 if p.revoked:

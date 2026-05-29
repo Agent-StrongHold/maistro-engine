@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 import yaml
+
 from maistro.agents.recipes import AgentRecipe, RecipeRegistry
 from maistro.agents.spec.agent_spec import AgentRole
 from maistro.agents.spec.schemas import resolve_schema

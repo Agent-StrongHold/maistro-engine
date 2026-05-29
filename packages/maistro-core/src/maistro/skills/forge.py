@@ -197,7 +197,7 @@ class SkillForge:
                 "error": f"Learning text rejected by security scan: {', '.join(findings)}",
             }
 
-        from maistro.security.warden.heuristics import (  # noqa: PLC0415
+        from maistro.security.warden.heuristics import (
             score_instruction_density,
         )
 

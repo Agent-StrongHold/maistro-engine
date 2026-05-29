@@ -17,8 +17,8 @@ Covers:
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from types import SimpleNamespace
 from typing import Any
 
@@ -238,17 +238,14 @@ async def test_run_program_pulse_submits_autonomous_action(
             return {"agent_id": self.agent_id, "capability": self.capability}
 
     class _Sugg:
-        def as_dict(self) -> dict[str, Any]: return {"s": True}
+        def as_dict(self) -> dict[str, Any]:
+            return {"s": True}
 
-    monkeypatch.setattr(ph, "propose_autonomous_actions",
-                       lambda c, max_actions: [_Action()])
-    monkeypatch.setattr(ph, "propose_work_item_suggestions",
-                       lambda c, uid: [_Sugg()])
+    monkeypatch.setattr(ph, "propose_autonomous_actions", lambda c, max_actions: [_Action()])
+    monkeypatch.setattr(ph, "propose_work_item_suggestions", lambda c, uid: [_Sugg()])
     monkeypatch.setattr(ph, "is_autonomous", lambda cap: True)
-    monkeypatch.setattr(ph, "invoke_pm_agent",
-                       lambda a, c, p: ("tt", "desc", "agent-1"))
-    monkeypatch.setattr("maistro.agents.program_context.context_for_task",
-                       lambda c: {})
+    monkeypatch.setattr(ph, "invoke_pm_agent", lambda a, c, p: ("tt", "desc", "agent-1"))
+    monkeypatch.setattr("maistro.agents.program_context.context_for_task", lambda c: {})
 
     submitted: list[Any] = []
 
@@ -257,6 +254,7 @@ async def test_run_program_pulse_submits_autonomous_action(
 
     class _Engine:
         _queue = object()
+
         async def submit_task(self, *a: Any, **kw: Any) -> Any:
             submitted.append((a, kw))
             return _Rec()
@@ -284,20 +282,18 @@ async def test_run_program_pulse_submit_failure_swallowed(
         reason = "r"
         payload: dict[str, Any] = {}
 
-        def as_dict(self) -> dict[str, Any]: return {"a": "x"}
+        def as_dict(self) -> dict[str, Any]:
+            return {"a": "x"}
 
-    monkeypatch.setattr(ph, "propose_autonomous_actions",
-                       lambda c, max_actions: [_Action()])
-    monkeypatch.setattr(ph, "propose_work_item_suggestions",
-                       lambda c, uid: [])
+    monkeypatch.setattr(ph, "propose_autonomous_actions", lambda c, max_actions: [_Action()])
+    monkeypatch.setattr(ph, "propose_work_item_suggestions", lambda c, uid: [])
     monkeypatch.setattr(ph, "is_autonomous", lambda cap: True)
-    monkeypatch.setattr(ph, "invoke_pm_agent",
-                       lambda a, c, p: ("tt", "desc", "agent"))
-    monkeypatch.setattr("maistro.agents.program_context.context_for_task",
-                       lambda c: {})
+    monkeypatch.setattr(ph, "invoke_pm_agent", lambda a, c, p: ("tt", "desc", "agent"))
+    monkeypatch.setattr("maistro.agents.program_context.context_for_task", lambda c: {})
 
     class _Engine:
         _queue = object()
+
         async def submit_task(self, *a: Any, **kw: Any) -> Any:
             raise RuntimeError("queue rejected")
 
@@ -323,17 +319,19 @@ async def test_run_program_pulse_skips_non_autonomous_actions(
         capability = "needs_human"
         reason = "r"
         payload: dict[str, Any] = {}
-        def as_dict(self) -> dict[str, Any]: return {}
 
-    monkeypatch.setattr(ph, "propose_autonomous_actions",
-                       lambda c, max_actions: [_Action()])
-    monkeypatch.setattr(ph, "propose_work_item_suggestions",
-                       lambda c, uid: [])
+        def as_dict(self) -> dict[str, Any]:
+            return {}
+
+    monkeypatch.setattr(ph, "propose_autonomous_actions", lambda c, max_actions: [_Action()])
+    monkeypatch.setattr(ph, "propose_work_item_suggestions", lambda c, uid: [])
     monkeypatch.setattr(ph, "is_autonomous", lambda cap: False)
 
     submitted = [0]
+
     class _Engine:
         _queue = object()
+
         async def submit_task(self, *a: Any, **kw: Any) -> Any:
             submitted[0] += 1
 

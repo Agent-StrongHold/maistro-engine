@@ -77,6 +77,7 @@ _PRESCRIPTIVE_PATTERNS: list[re.Pattern[str]] = [
     ]
 ]
 
+
 def semantic_tool_poisoning_scan(text: str) -> tuple[bool, list[str]]:
     text_lower = text.lower()
     flags: list[str] = []

@@ -47,10 +47,7 @@ class TransformFilterByTypeNode(BaseNode[FilterByTypeIn, FilterByTypeOut]):
     )
 
     async def _execute(self, inputs: FilterByTypeIn, ctx: NodeContext) -> FilterByTypeOut:
-        allow = (
-            set(inputs.types) if inputs.case_sensitive
-            else {t.lower() for t in inputs.types}
-        )
+        allow = set(inputs.types) if inputs.case_sensitive else {t.lower() for t in inputs.types}
         path_parts = [p for p in inputs.type_path.split(".") if p]
 
         kept: list[dict[str, Any]] = []
@@ -64,10 +61,10 @@ class TransformFilterByTypeNode(BaseNode[FilterByTypeIn, FilterByTypeOut]):
                     cur = getattr(cur, part, None)
                 if cur is None:
                     break
-            type_value: str | None = (
-                str(cur) if cur is not None else None
+            type_value: str | None = str(cur) if cur is not None else None
+            check_value = (
+                type_value if (inputs.case_sensitive or type_value is None) else type_value.lower()
             )
-            check_value = type_value if (inputs.case_sensitive or type_value is None) else type_value.lower()
             if check_value is not None and check_value in allow:
                 kept.append(item)
             else:

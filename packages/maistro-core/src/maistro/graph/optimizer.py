@@ -24,8 +24,7 @@ _ROLE_UPSTREAM = {
         "title, description, and file_paths."
     ),
     AgentRole.REVIEWER: (
-        "A CodeOutput: list of files_changed, implementation description, "
-        "tests_added flag."
+        "A CodeOutput: list of files_changed, implementation description, tests_added flag."
     ),
     AgentRole.SCOUT: "A task description and workspace path.",
     AgentRole.CONDUCTOR: "Outputs from all completed sub-agent nodes.",
@@ -36,10 +35,7 @@ _ROLE_OUTPUT_SPEC = {
         "PlanOutput — summary: str, subtasks: list[{title, description, "
         "file_paths}], estimated_files: list[str]"
     ),
-    AgentRole.CODER: (
-        "CodeOutput — files_changed: list[str], description: str, "
-        "tests_added: bool"
-    ),
+    AgentRole.CODER: ("CodeOutput — files_changed: list[str], description: str, tests_added: bool"),
     AgentRole.REVIEWER: (
         "ReviewOutput — approved: bool, score: float (0-10), "
         "issues: list[str], suggestions: list[str]"
@@ -49,18 +45,11 @@ _ROLE_OUTPUT_SPEC = {
 }
 
 _ROLE_DOWNSTREAM = {
-    AgentRole.PLANNER: (
-        "CODER — needs specific, actionable subtasks with file paths."
-    ),
-    AgentRole.CODER: (
-        "REVIEWER — evaluates correctness, quality, security, and "
-        "completeness."
-    ),
+    AgentRole.PLANNER: ("CODER — needs specific, actionable subtasks with file paths."),
+    AgentRole.CODER: ("REVIEWER — evaluates correctness, quality, security, and completeness."),
     AgentRole.REVIEWER: "CONDUCTOR — uses approved/score to decide routing.",
     AgentRole.SCOUT: "PLANNER or CODER — provides research context.",
-    AgentRole.CONDUCTOR: (
-        "All nodes — routing decisions determine which node runs next."
-    ),
+    AgentRole.CONDUCTOR: ("All nodes — routing decisions determine which node runs next."),
 }
 
 
@@ -71,9 +60,7 @@ def _compute_bottleneck_score(
     max_avg_tokens: float,
 ) -> float:
     failure = 1.0 - success_rate
-    quality_gap = (
-        (10.0 - avg_review_score) / 10.0 if avg_review_score is not None else 0.5
-    )
+    quality_gap = (10.0 - avg_review_score) / 10.0 if avg_review_score is not None else 0.5
     token_waste = (avg_tokens / max(max_avg_tokens, 1.0)) * failure
     return min(1.0, 0.5 * failure + 0.4 * quality_gap + 0.1 * token_waste)
 
@@ -103,9 +90,7 @@ class GraphOptimizer:
         self.llm_call = llm_call
         self.task_type = task_type
 
-    def extract_signal(
-        self, traces: list[HyperagentOutput]
-    ) -> OptimizationSignal:
+    def extract_signal(self, traces: list[HyperagentOutput]) -> OptimizationSignal:
         if not traces:
             raise ValueError("At least one trace is required to extract signal.")
 
@@ -128,9 +113,7 @@ class GraphOptimizer:
         }
         max_avg_tokens = max(avg_tokens_per_role.values(), default=1.0)
 
-        pipeline_avg_review = (
-            sum(review_scores) / len(review_scores) if review_scores else None
-        )
+        pipeline_avg_review = sum(review_scores) / len(review_scores) if review_scores else None
 
         metrics: list[NodePerformanceMetrics] = []
         for role in run_counts:
@@ -167,9 +150,7 @@ class GraphOptimizer:
             return nc.system_prompt
         return DEFAULT_SYSTEM_PROMPTS.get(role, "")
 
-    def _collect_failures(
-        self, traces: list[HyperagentOutput], role: AgentRole
-    ) -> list[str]:
+    def _collect_failures(self, traces: list[HyperagentOutput], role: AgentRole) -> list[str]:
         failures = []
         for trace in traces:
             for nr in trace.node_results:
@@ -190,17 +171,13 @@ class GraphOptimizer:
         if self.llm_call is None:
             raise RuntimeError("llm_call is required for prompt optimization")
 
-        node_metric = next(
-            (m for m in signal.node_metrics if m.role == role), None
-        )
+        node_metric = next((m for m in signal.node_metrics if m.role == role), None)
 
         success_rate = node_metric.success_rate if node_metric else 1.0
         run_count = node_metric.run_count if node_metric else 0
         bottleneck = node_metric.bottleneck_score if node_metric else 0.0
 
-        rank = next(
-            (i + 1 for i, m in enumerate(signal.node_metrics) if m.role == role), 1
-        )
+        rank = next((i + 1 for i, m in enumerate(signal.node_metrics) if m.role == role), 1)
         rank_suffix = {1: "st", 2: "nd", 3: "rd"}.get(rank, "th")
 
         review_context = (
@@ -210,17 +187,13 @@ class GraphOptimizer:
         )
 
         failures_text = (
-            "\n\n".join(
-                f"  [{i + 1}] {f}" for i, f in enumerate(failure_examples)
-            )
+            "\n\n".join(f"  [{i + 1}] {f}" for i, f in enumerate(failure_examples))
             if failure_examples
             else "  No recorded failures."
         )
 
         other_roles = [r for r in config.nodes if r != role]
-        other_nodes_text = (
-            ", ".join(r.value for r in other_roles) if other_roles else "none"
-        )
+        other_nodes_text = ", ".join(r.value for r in other_roles) if other_roles else "none"
 
         meta_prompt = (
             f"## Pipeline Objective\n{self.task_description}\n\n"
@@ -253,8 +226,7 @@ class GraphOptimizer:
             {
                 "role": "system",
                 "content": (
-                    "You are an expert prompt engineer specializing in "
-                    "multi-agent AI pipelines."
+                    "You are an expert prompt engineer specializing in multi-agent AI pipelines."
                 ),
             },
             {"role": "user", "content": meta_prompt},
@@ -269,9 +241,7 @@ class GraphOptimizer:
         traces: list[HyperagentOutput],
     ) -> GraphConfig:
         if not traces:
-            logger.warning(
-                "optimizer_no_traces", extra={"task_type": self.task_type}
-            )
+            logger.warning("optimizer_no_traces", extra={"task_type": self.task_type})
             return config
 
         signal = self.extract_signal(traces)

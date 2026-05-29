@@ -25,13 +25,13 @@ the executor stays decoupled from the legacy engineering substrate.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Callable
+from typing import Any
 
 from ..nodes.base import BaseNode, NodeContext, NodeResult
 from .protocol import DurableRunStore
 from .types import DurableNodeRecord, DurableRunRecord, NodePhase, RunStatus
-
 
 NodeResolver = Callable[[str, dict[str, Any]], BaseNode]
 """Given (node_id, dag_snapshot) return an instantiated node ready to run."""
@@ -365,7 +365,8 @@ async def _checkpoint_success(
     store: DurableRunStore,
 ) -> DurableRunRecord:
     output_dump = (
-        result.output.model_dump() if hasattr(result.output, "model_dump")
+        result.output.model_dump()
+        if hasattr(result.output, "model_dump")
         else (result.output or None)
     )
     new_nr = node_record.model_copy(
@@ -457,9 +458,7 @@ async def _checkpoint_failure(
     )
 
 
-async def _mark_completed(
-    record: DurableRunRecord, *, store: DurableRunStore
-) -> DurableRunRecord:
+async def _mark_completed(record: DurableRunRecord, *, store: DurableRunStore) -> DurableRunRecord:
     now = datetime.now(UTC)
     updated = record.model_copy(
         update={

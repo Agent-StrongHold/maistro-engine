@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import asyncio
-from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
-from maistro.agents.intents import IntentRegistry
 from maistro.classifier.engine import ClassifierEngine
 from maistro.container import Container
-from maistro.graph.events import GraphEvent
 from maistro.graph.phases import GraphPhase
 from maistro.graph.types import (
     AgentRole,
@@ -64,7 +60,9 @@ class TestFactoryWiring:
 class TestSendPrompt:
     async def test_send_prompt_routes_through_provider(self):
         env = create_test_environment()
-        env.provider.seed(FauxResponse(content="hello world", usage_prompt_tokens=5, usage_completion_tokens=10))
+        env.provider.seed(
+            FauxResponse(content="hello world", usage_prompt_tokens=5, usage_completion_tokens=10)
+        )
         result = await env.send_prompt("write a hello world function")
         assert env.provider.call_count >= 1
         assert len(env.responses) == 1
@@ -72,7 +70,9 @@ class TestSendPrompt:
 
     async def test_send_prompt_captures_response(self):
         env = create_test_environment()
-        env.provider.seed(FauxResponse(content="test output", usage_prompt_tokens=5, usage_completion_tokens=10))
+        env.provider.seed(
+            FauxResponse(content="test output", usage_prompt_tokens=5, usage_completion_tokens=10)
+        )
         await env.send_prompt("generate something")
         last = env.get_last_response()
         assert last is not None
@@ -167,7 +167,9 @@ class TestCustomComponents:
         assert "coder_agent" in env.container.agents
         assert env.container.agents["planner_agent"] is agent_a
         assert env.container.agents["coder_agent"] is agent_b
-        assert env.container.intent_registry.get_agent_for_intent("planner_agent") == "planner_agent"
+        assert (
+            env.container.intent_registry.get_agent_for_intent("planner_agent") == "planner_agent"
+        )
 
     async def test_custom_graph_config(self):
         cfg = GraphConfig(

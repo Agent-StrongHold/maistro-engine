@@ -275,13 +275,8 @@ def _extract_json(text: str) -> dict:
             for ch in candidate:
                 if ch in "{[":
                     stack.append(ch)
-                elif (
-                    ch == "}"
-                    and stack
-                    and stack[-1] == "{"
-                    or ch == "]"
-                    and stack
-                    and stack[-1] == "["
+                elif (ch == "}" and stack and stack[-1] == "{") or (
+                    ch == "]" and stack and stack[-1] == "["
                 ):
                     stack.pop()
             for s in reversed(stack):

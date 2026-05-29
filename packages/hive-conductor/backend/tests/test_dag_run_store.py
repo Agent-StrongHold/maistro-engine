@@ -4,6 +4,7 @@ The store is an in-memory ring buffer that pm_runner's events feed
 into via maistro.events.bus → install_pm_event_bridge(). SSE subscribers
 consume via store.subscribe(run_id).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -48,12 +49,16 @@ async def test_append_event_records_into_run():
     store = DagRunStore()
     run = await store.start_run()
     await store.append_event(
-        run.id, event_type="pm_node_started",
-        role="intake", capability="create_initiative",
+        run.id,
+        event_type="pm_node_started",
+        role="intake",
+        capability="create_initiative",
     )
     await store.append_event(
-        run.id, event_type="pm_node_completed",
-        role="intake", capability="create_initiative",
+        run.id,
+        event_type="pm_node_completed",
+        role="intake",
+        capability="create_initiative",
         payload={"source": "llm", "duration_ms": 1234},
     )
     detail = store.get_run(run.id)
@@ -91,12 +96,16 @@ async def test_subscribe_replays_buffered_events_to_late_subscriber():
     store = DagRunStore()
     run = await store.start_run()
     await store.append_event(
-        run.id, event_type="pm_node_started",
-        role="intake", capability="create_initiative",
+        run.id,
+        event_type="pm_node_started",
+        role="intake",
+        capability="create_initiative",
     )
     await store.append_event(
-        run.id, event_type="pm_node_completed",
-        role="intake", capability="create_initiative",
+        run.id,
+        event_type="pm_node_completed",
+        role="intake",
+        capability="create_initiative",
         payload={"source": "llm"},
     )
     # Late subscriber arrives now
@@ -116,8 +125,10 @@ async def test_subscribe_receives_new_events_after_subscribe():
     q = store.subscribe(run.id)
     # Append AFTER subscribing — must arrive via queue.
     await store.append_event(
-        run.id, event_type="pm_node_started",
-        role="delivery", capability="poll_jira",
+        run.id,
+        event_type="pm_node_started",
+        role="delivery",
+        capability="poll_jira",
     )
     ev = await asyncio.wait_for(q.get(), timeout=1.0)
     assert ev.event_type == "pm_node_started"

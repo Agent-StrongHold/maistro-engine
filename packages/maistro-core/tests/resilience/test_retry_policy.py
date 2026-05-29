@@ -4,8 +4,6 @@ import pytest
 
 from maistro.resilience.retry_policy import (
     OperationStage,
-    RetryPolicy,
-    STAGE_POLICIES,
     get_delay,
     get_policy,
     should_retry,
@@ -16,9 +14,7 @@ class _HttpError(Exception):
     def __init__(self, message: str, status_code: int) -> None:
         super().__init__(message)
         self.status_code = status_code
-        self.response = type(
-            "Resp", (), {"status_code": status_code, "headers": {}}
-        )
+        self.response = type("Resp", (), {"status_code": status_code, "headers": {}})
 
 
 class TestStagePolicies:

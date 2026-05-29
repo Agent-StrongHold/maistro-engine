@@ -16,9 +16,7 @@ _SKIP_PREFIXES = ("/favicon.ico", "/docs", "/openapi.json", "/redoc")
 
 
 class RequestLogMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
         if any(path.startswith(p) for p in _SKIP_PREFIXES):
             return await call_next(request)

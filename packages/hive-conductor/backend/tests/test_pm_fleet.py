@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from maistro.tasks.models import TaskCreate, TaskStatus
-from maistro.tasks.queue import TaskQueue
-
 from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode, list_pm_agents
+
+from maistro.tasks.models import TaskCreate
+from maistro.tasks.queue import TaskQueue
 
 
 def test_list_pm_agents_returns_canonical_fleet() -> None:
@@ -15,8 +15,12 @@ def test_list_pm_agents_returns_canonical_fleet() -> None:
     agents = list_pm_agents([])
     ids = [a.id for a in agents]
     assert ids == [
-        "intake", "program_manager", "research", "delivery",
-        "risk_dependency", "reporting",
+        "intake",
+        "program_manager",
+        "research",
+        "delivery",
+        "risk_dependency",
+        "reporting",
     ]
     assert agents[0].tagline
     assert agents[0].primary_capability
@@ -55,7 +59,7 @@ def test_pm_tasks_scoped_per_user_in_queue() -> None:
     asyncio.run(_run())
 
 
-def test_is_pm_poc_mode_reads_env(monkeypatch) -> None:  # noqa: ANN001
+def test_is_pm_poc_mode_reads_env(monkeypatch) -> None:
     monkeypatch.delenv("MAISTRO_POC_MODE", raising=False)
     monkeypatch.delenv("HIVE_POC_MODE", raising=False)
     assert is_pm_poc_mode() is False

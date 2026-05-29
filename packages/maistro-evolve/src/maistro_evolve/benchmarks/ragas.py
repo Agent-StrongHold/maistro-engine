@@ -6,7 +6,7 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import RAGAS_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config, build_messages
+from .prompt_builder import build_messages, build_model_config, build_system_prompt
 from .scoring import judge_score
 
 
@@ -42,7 +42,24 @@ def _score_relevance(response: str, question: str, expected_answer: str) -> floa
     resp_lower = response.lower()
     exp_lower = expected_answer.lower()
 
-    exp_key_terms = set(exp_lower.split()) - {"a", "an", "the", "is", "are", "was", "were", "in", "on", "at", "to", "for", "of", "and", "or", "but"}
+    exp_key_terms = set(exp_lower.split()) - {
+        "a",
+        "an",
+        "the",
+        "is",
+        "are",
+        "was",
+        "were",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "and",
+        "or",
+        "but",
+    }
     if not exp_key_terms:
         return 0.5
 
@@ -51,7 +68,19 @@ def _score_relevance(response: str, question: str, expected_answer: str) -> floa
 
     q_lower = question.lower()
     if "difference" in q_lower:
-        has_contrast = any(w in resp_lower for w in ["while", "whereas", "unlike", "however", "but", "compared", "versus", "difference"])
+        has_contrast = any(
+            w in resp_lower
+            for w in [
+                "while",
+                "whereas",
+                "unlike",
+                "however",
+                "but",
+                "compared",
+                "versus",
+                "difference",
+            ]
+        )
         term_coverage = term_coverage * 0.7 + (0.3 if has_contrast else 0.0)
 
     if "relationship" in q_lower or "what is" in q_lower:
@@ -71,7 +100,9 @@ async def _judge_rag_quality(
     if eval_type == "faithfulness":
         criteria = "Is the answer faithful to the provided context? Does it only use information from the context?"
     else:
-        criteria = "Is the answer relevant to the question? Does it directly address what was asked?"
+        criteria = (
+            "Is the answer relevant to the question? Does it directly address what was asked?"
+        )
 
     judge_prompt = (
         f"Context: {context}\n\n"
@@ -85,7 +116,10 @@ async def _judge_rag_quality(
         judge_response = await asyncio.wait_for(
             llm_call(
                 [
-                    {"role": "system", "content": "You are a strict RAG quality judge. Respond with only a number."},
+                    {
+                        "role": "system",
+                        "content": "You are a strict RAG quality judge. Respond with only a number.",
+                    },
                     {"role": "user", "content": judge_prompt},
                 ],
                 temperature=0.0,
@@ -94,7 +128,7 @@ async def _judge_rag_quality(
             timeout=15.0,
         )
         return judge_score(judge_response)
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         return 0.0
 
 
@@ -115,7 +149,10 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
             f"Answer the question based only on the provided context. Be concise and accurate."
         )
 
-        rag_system = system_prompt + "\n\nAnswer questions using only the provided context. Do not add information not in the context."
+        rag_system = (
+            system_prompt
+            + "\n\nAnswer questions using only the provided context. Do not add information not in the context."
+        )
         messages = build_messages(rag_system, user_msg)
 
         try:
@@ -132,9 +169,13 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
 
                 eval_type = sample.get("eval_type", "faithfulness")
                 if eval_type == "faithfulness":
-                    static = _score_faithfulness(response, sample["context"], sample["expected_answer"])
+                    static = _score_faithfulness(
+                        response, sample["context"], sample["expected_answer"]
+                    )
                 else:
-                    static = _score_relevance(response, sample["question"], sample["expected_answer"])
+                    static = _score_relevance(
+                        response, sample["question"], sample["expected_answer"]
+                    )
 
                 if static >= 0.6:
                     total_score += static
@@ -150,7 +191,7 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
                 score = _heuristic_score(sample)
                 total_score += score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             evaluated += 1
 
     avg_score = total_score / max(evaluated, 1)
@@ -168,5 +209,6 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
 
 def _heuristic_score(sample: dict[str, Any]) -> float:
     import random
+
     base = 0.6 if sample.get("eval_type") == "faithfulness" else 0.55
     return max(0.2, min(0.9, base + random.uniform(-0.08, 0.08)))

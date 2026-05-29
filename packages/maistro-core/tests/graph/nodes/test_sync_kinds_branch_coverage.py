@@ -24,8 +24,9 @@ def _ctx(**o: Any) -> NodeContext:
     return NodeContext(**base)
 
 
-def _patch_httpx(monkeypatch: pytest.MonkeyPatch, *, payload: Any, status_code: int = 200,
-                 verb: str = "get") -> None:
+def _patch_httpx(
+    monkeypatch: pytest.MonkeyPatch, *, payload: Any, status_code: int = 200, verb: str = "get"
+) -> None:
     """Patch httpx.AsyncClient with a configurable response for either GET or POST."""
 
     class _Resp:
@@ -37,10 +38,15 @@ def _patch_httpx(monkeypatch: pytest.MonkeyPatch, *, payload: Any, status_code: 
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
-        async def post(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
+
+        async def post(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
 
@@ -84,11 +90,14 @@ async def test_airtable_poll_without_since_iso_no_filter_param(
     class _Resp:
         status_code = 200
 
-        def json(self) -> Any: return {"records": []}
+        def json(self) -> Any:
+            return {"records": []}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def get(self, url: str, *, params: dict | None = None, **kw: Any) -> _Resp:
             seen["params"] = params or {}
@@ -135,7 +144,9 @@ async def test_llm_summarize_extra_system_prompt_appended(
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def post(self, url: str, *, json: Any = None, **kw: Any) -> _Resp:
             seen["body"] = json
@@ -159,21 +170,33 @@ async def test_llm_summarize_unknown_style_falls_back_to_bullet(
     """Covers line 105→108: style not in _STYLE_PROMPTS branch."""
     monkeypatch.setenv("MAISTRO_LLM_BASE_URL", "http://fake")
     seen: dict[str, Any] = {}
-    _patch_httpx(monkeypatch, payload={
-        "choices": [{"message": {"content": "ok"}}],
-        "model": "m", "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-    }, verb="post")
+    _patch_httpx(
+        monkeypatch,
+        payload={
+            "choices": [{"message": {"content": "ok"}}],
+            "model": "m",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        },
+        verb="post",
+    )
 
     class _C:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_C": return self
+        async def __aenter__(self) -> _C:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def post(self, *a: Any, **kw: Any):
             class _R:
                 status_code = 200
+
                 def json(self) -> Any:
-                    return {"choices": [{"message": {"content": "ok"}}], "model": "m",
-                            "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+                    return {
+                        "choices": [{"message": {"content": "ok"}}],
+                        "model": "m",
+                        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+                    }
+
             seen["body"] = kw.get("json")
             return _R()
 
@@ -226,8 +249,13 @@ async def test_format_markdown_empty_uses_fallback_with_footer() -> None:
     """Covers line 60: footer-append on empty-items branch."""
     node = get_node("transform.format_markdown")()
     out = await node.run(
-        {"items": [], "template": "- {x}", "header": "## h", "footer": "_(end)_",
-         "empty_fallback": "_no data_"},
+        {
+            "items": [],
+            "template": "- {x}",
+            "header": "## h",
+            "footer": "_(end)_",
+            "empty_fallback": "_no data_",
+        },
         _ctx(),
     )
     assert out.success
@@ -304,11 +332,10 @@ async def test_wait_for_subtasks_resume_within_deadline_pauses_again(
 ) -> None:
     """Covers lines 119-128: resume path where some subtasks still not done
     and the deadline has NOT yet been reached → pauses again."""
-    _patch_httpx(monkeypatch, payload={
-        "fields": {
-            "subtasks": [{"key": "S1", "fields": {"status": {"name": "Open"}}}]
-        }
-    })
+    _patch_httpx(
+        monkeypatch,
+        payload={"fields": {"subtasks": [{"key": "S1", "fields": {"status": {"name": "Open"}}}]}},
+    )
     node = get_node("jira.wait_for_subtasks")()
     ctx = _ctx()
     # Was first seen 30 seconds ago; timeout 1 hour → still within deadline.
@@ -335,9 +362,10 @@ async def test_wait_for_subtasks_resume_with_bad_first_seen_falls_back_to_now(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Covers lines 107-108: ValueError on fromisoformat → first = now."""
-    _patch_httpx(monkeypatch, payload={
-        "fields": {"subtasks": [{"key": "S1", "fields": {"status": {"name": "Open"}}}]}
-    })
+    _patch_httpx(
+        monkeypatch,
+        payload={"fields": {"subtasks": [{"key": "S1", "fields": {"status": {"name": "Open"}}}]}},
+    )
     node = get_node("jira.wait_for_subtasks")()
     ctx = _ctx()
     ctx.metadata[f"wait_first_seen:{ctx.node_id}"] = "not-an-iso-date"
@@ -370,10 +398,18 @@ async def test_wait_for_subtasks_cloud_flavor_with_email_uses_basic_auth(
 
     class _C:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_C": return self
+        async def __aenter__(self) -> _C:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, url: str, *, params: dict | None = None,
-                      headers: dict | None = None, auth: Any = None) -> _Resp:
+        async def get(
+            self,
+            url: str,
+            *,
+            params: dict | None = None,
+            headers: dict | None = None,
+            auth: Any = None,
+        ) -> _Resp:
             seen["url"] = url
             seen["auth"] = auth
             seen["headers"] = headers
@@ -404,14 +440,24 @@ async def test_wait_for_subtasks_cloud_flavor_without_email_uses_bearer(
 
     class _Resp:
         status_code = 200
-        def json(self) -> Any: return {"fields": {"subtasks": []}}
+
+        def json(self) -> Any:
+            return {"fields": {"subtasks": []}}
 
     class _C:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_C": return self
+        async def __aenter__(self) -> _C:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, url: str, *, params: dict | None = None,
-                      headers: dict | None = None, auth: Any = None) -> _Resp:
+        async def get(
+            self,
+            url: str,
+            *,
+            params: dict | None = None,
+            headers: dict | None = None,
+            auth: Any = None,
+        ) -> _Resp:
             seen["headers"] = headers
             seen["auth"] = auth
             return _Resp()
@@ -473,14 +519,17 @@ async def test_wait_for_subtasks_subtask_without_key_is_dropped(
 ) -> None:
     """Covers line 167→164: subtask in the response without a 'key' is skipped
     (the conditional `if key:` False branch)."""
-    _patch_httpx(monkeypatch, payload={
-        "fields": {
-            "subtasks": [
-                {"key": "", "fields": {"status": {"name": "Done"}}},  # no key → dropped
-                {"key": "S2", "fields": {"status": {"name": "Done"}}},
-            ]
-        }
-    })
+    _patch_httpx(
+        monkeypatch,
+        payload={
+            "fields": {
+                "subtasks": [
+                    {"key": "", "fields": {"status": {"name": "Done"}}},  # no key → dropped
+                    {"key": "S2", "fields": {"status": {"name": "Done"}}},
+                ]
+            }
+        },
+    )
     node = get_node("jira.wait_for_subtasks")()
     out = await node.run(
         {

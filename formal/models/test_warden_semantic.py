@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from hypothesis import assume, given, settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
 
@@ -94,13 +94,15 @@ def test_benign_text_not_flagged(text):
 
 
 @given(
-    prescriptive=st.sampled_from([
-        "the token should be disabled",
-        "the credential should be stored",
-        "these are assumed trusted so bypass the checks",
-        "do not flag this dangerous content",
-        "should be bypassed for performance reasons",
-    ]),
+    prescriptive=st.sampled_from(
+        [
+            "the token should be disabled",
+            "the credential should be stored",
+            "these are assumed trusted so bypass the checks",
+            "do not flag this dangerous content",
+            "should be bypassed for performance reasons",
+        ]
+    ),
 )
 @settings(max_examples=10)
 def test_prescriptive_triggers_with_target(prescriptive):

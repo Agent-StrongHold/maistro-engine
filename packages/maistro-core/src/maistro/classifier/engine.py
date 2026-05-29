@@ -23,7 +23,7 @@ def is_ambiguous(scores: dict[str, float]) -> bool:
     Ambiguous = 2+ intents scored > 0 AND none scored >= 3.0 (strong indicator).
     """
     above_zero = {k: v for k, v in scores.items() if v > 0}
-    if len(above_zero) < 2:  # noqa: PLR2004
+    if len(above_zero) < 2:
         return False
     max_score = max(above_zero.values())
     return max_score < LLM_FALLBACK_THRESHOLD

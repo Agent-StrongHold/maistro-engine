@@ -2,23 +2,19 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 
 import pytest
 
 from maistro.graph.executor import run_graph
-from maistro.graph.node import BeamCandidate, IterationBudget, NodeRun
-from maistro.graph.phases import GraphPhase, NodePhase, TERMINAL_NODE_PHASES, TERMINAL_GRAPH_PHASES
+from maistro.graph.node import IterationBudget, NodeRun
+from maistro.graph.phases import TERMINAL_GRAPH_PHASES, TERMINAL_NODE_PHASES, GraphPhase, NodePhase
 from maistro.graph.run import GraphRun, evaluate_condition
 from maistro.graph.strategy import (
-    CoderStrategy,
-    ConductorStrategy,
-    PlannerStrategy,
-    ReviewerStrategy,
-    ScoutStrategy,
     STRATEGY_REGISTRY,
+    CoderStrategy,
+    PlannerStrategy,
     get_strategy,
 )
 from maistro.graph.types import (
@@ -29,7 +25,6 @@ from maistro.graph.types import (
     GraphEdge,
     GraphTask,
     HyperagentOutput,
-    NodeConfig,
     PlanOutput,
     ReviewOutput,
     ScoutOutput,
@@ -37,12 +32,16 @@ from maistro.graph.types import (
 
 
 def _make_plan_json(summary: str = "plan", n_subtasks: int = 1) -> str:
-    subtasks = [{"title": f"t{i}", "description": f"d{i}", "file_paths": []} for i in range(n_subtasks)]
+    subtasks = [
+        {"title": f"t{i}", "description": f"d{i}", "file_paths": []} for i in range(n_subtasks)
+    ]
     return json.dumps({"summary": summary, "subtasks": subtasks, "estimated_files": []})
 
 
 def _make_code_json(files: list[str] | None = None, tests: bool = True) -> str:
-    return json.dumps({"files_changed": files or ["main.py"], "description": "impl", "tests_added": tests})
+    return json.dumps(
+        {"files_changed": files or ["main.py"], "description": "impl", "tests_added": tests}
+    )
 
 
 def _make_review_json(approved: bool = True, score: float = 8.0) -> str:
@@ -155,7 +154,9 @@ class TestPlannerStrategy:
 
     def test_score_output(self):
         s = PlannerStrategy()
-        plan = PlanOutput(summary="s", subtasks=[{"title": "t", "description": "d", "file_paths": []}])
+        plan = PlanOutput(
+            summary="s", subtasks=[{"title": "t", "description": "d", "file_paths": []}]
+        )
         assert s.score_output(plan) == 1.0
 
 
@@ -164,7 +165,10 @@ class TestCoderStrategy:
         s = CoderStrategy()
         task = GraphTask(description="Implement X", workspace="/tmp")
         bb = GraphBlackboard(task_objective="Implement X", workspace="/tmp")
-        plan = PlanOutput(summary="do X", subtasks=[{"title": "step1", "description": "code it", "file_paths": []}])
+        plan = PlanOutput(
+            summary="do X",
+            subtasks=[{"title": "step1", "description": "code it", "file_paths": []}],
+        )
         prompt = s.build_user_prompt(task, bb, plan, None, None)
         assert "do X" in prompt
         assert "step1" in prompt
@@ -182,8 +186,11 @@ class TestNodeRun:
     async def test_succeeds(self):
         llm = _RecordingLlm([_make_plan_json("test plan")])
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
         )
         await nr.execute(llm)
         assert nr.phase == NodePhase.SUCCEEDED
@@ -198,8 +205,11 @@ class TestNodeRun:
     async def test_records_input(self):
         llm = _RecordingLlm([_make_plan_json()])
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="my system prompt", user_prompt="my user prompt",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="my system prompt",
+            user_prompt="my user prompt",
         )
         await nr.execute(llm)
         assert nr.system_prompt == "my system prompt"
@@ -211,8 +221,11 @@ class TestNodeRun:
         raw = _make_plan_json("hello world")
         llm = _RecordingLlm([raw])
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
         )
         await nr.execute(llm)
         assert nr.raw_response == raw
@@ -221,8 +234,12 @@ class TestNodeRun:
     async def test_fails_on_bad_json(self):
         llm = _RecordingLlm(["not json at all"] * 5)
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr", max_retries=3,
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            max_retries=3,
         )
         await nr.execute(llm)
         assert nr.phase == NodePhase.FAILED
@@ -232,10 +249,15 @@ class TestNodeRun:
     async def test_retry_on_transient_error(self):
         llm = _FailingLlm(ConnectionError("Connection reset by peer"))
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr", max_retries=3,
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            max_retries=3,
         )
         from maistro.resilience.backoff import BackoffConfig
+
         await nr.execute(llm, backoff_config=BackoffConfig(base_delay=0.01, max_delay=0.05))
         assert nr.phase == NodePhase.FAILED
         assert nr.retry_count > 0
@@ -245,8 +267,11 @@ class TestNodeRun:
     async def test_phase_log_records_transitions(self):
         llm = _RecordingLlm([_make_plan_json()])
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
         )
         await nr.execute(llm)
         old_phases = [p for p, _ in nr.phase_log]
@@ -263,8 +288,12 @@ class TestNodeRun:
         ]
         llm = _RecordingLlm(responses)
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr", beam_width=3,
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=3,
         )
         await nr.execute(llm)
         assert nr.phase == NodePhase.SUCCEEDED
@@ -279,8 +308,11 @@ class TestNodeRun:
         llm = _RecordingLlm([_make_plan_json()])
         budget = IterationBudget(10)
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
         )
         await nr.execute(llm, iteration_budget=budget)
         assert budget.consumed >= 1
@@ -289,8 +321,11 @@ class TestNodeRun:
     async def test_to_result_success(self):
         llm = _RecordingLlm([_make_plan_json("ok")])
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
         )
         await nr.execute(llm)
         result = nr.to_result()
@@ -301,10 +336,15 @@ class TestNodeRun:
     async def test_never_raises(self):
         llm = _FailingLlm(RuntimeError("catastrophic"))
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr", max_retries=1,
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            max_retries=1,
         )
         from maistro.resilience.backoff import BackoffConfig
+
         await nr.execute(llm, backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0))
         assert nr.phase == NodePhase.FAILED
 
@@ -344,11 +384,16 @@ class TestNodeFailureEventDelivery:
 
         llm = _FailingLlm(RuntimeError("catastrophic"))
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr", max_retries=1,
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            max_retries=1,
         )
         nr._emit_event = emit
         from maistro.resilience.backoff import BackoffConfig
+
         await nr.execute(llm, backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0))
 
         assert nr.phase == NodePhase.FAILED
@@ -369,11 +414,16 @@ class TestNodeFailureEventDelivery:
 
         llm = _FailingLlm(RuntimeError("catastrophic"))
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr", max_retries=1,
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            max_retries=1,
         )
         nr._emit_event = emit
         from maistro.resilience.backoff import BackoffConfig
+
         await nr.execute(llm, backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0))
         assert nr.phase == NodePhase.FAILED
 
@@ -383,8 +433,11 @@ class TestNodeTokenAccounting:
     async def test_single_path_records_token_usage(self):
         llm = _UsageReportingLlm([_UsageResult(_make_plan_json("ok"), 120, 45)])
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
         )
         await nr.execute(llm)
         assert nr.phase == NodePhase.SUCCEEDED
@@ -396,8 +449,11 @@ class TestNodeTokenAccounting:
         """Backwards compatible: a str-returning client reports zero usage."""
         llm = _RecordingLlm([_make_plan_json("ok")])
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr",
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
         )
         await nr.execute(llm)
         assert nr.phase == NodePhase.SUCCEEDED
@@ -406,14 +462,20 @@ class TestNodeTokenAccounting:
 
     @pytest.mark.asyncio
     async def test_beam_path_records_token_usage(self):
-        llm = _UsageReportingLlm([
-            _UsageResult(_make_plan_json("weak", 1), 100, 10),
-            _UsageResult(_make_plan_json("strong", 5), 100, 20),
-            _UsageResult(_make_plan_json("medium", 3), 100, 30),
-        ])
+        llm = _UsageReportingLlm(
+            [
+                _UsageResult(_make_plan_json("weak", 1), 100, 10),
+                _UsageResult(_make_plan_json("strong", 5), 100, 20),
+                _UsageResult(_make_plan_json("medium", 3), 100, 30),
+            ]
+        )
         nr = NodeRun(
-            run_id="r1", role=AgentRole.PLANNER, strategy=PlannerStrategy(),
-            system_prompt="sys", user_prompt="usr", beam_width=3,
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=3,
         )
         await nr.execute(llm)
         assert nr.phase == NodePhase.SUCCEEDED
@@ -426,11 +488,13 @@ class TestNodeTokenAccounting:
 class TestGraphRun:
     @pytest.mark.asyncio
     async def test_happy_path_planner_coder_reviewer(self):
-        llm = _RecordingLlm([
-            _make_plan_json("test plan"),
-            _make_code_json(),
-            _make_review_json(True, 9.0),
-        ])
+        llm = _RecordingLlm(
+            [
+                _make_plan_json("test plan"),
+                _make_code_json(),
+                _make_review_json(True, 9.0),
+            ]
+        )
         task = GraphTask(
             description="Build feature",
             workspace="/tmp",
@@ -474,8 +538,10 @@ class TestGraphRun:
         )
         run = GraphRun(task=task, config=task.graph_config)
         from maistro.resilience.backoff import BackoffConfig
+
         result = await run.start(
-            llm, max_retries=1,
+            llm,
+            max_retries=1,
             backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0),
         )
         assert result is not None
@@ -492,8 +558,10 @@ class TestGraphRun:
         )
         run = GraphRun(task=task, config=task.graph_config)
         from maistro.resilience.backoff import BackoffConfig
+
         await run.start(
-            llm, max_retries=1,
+            llm,
+            max_retries=1,
             backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0),
         )
         assert len(run.node_runs) == 1
@@ -504,10 +572,12 @@ class TestGraphRun:
 
     @pytest.mark.asyncio
     async def test_per_node_telemetry(self):
-        llm = _RecordingLlm([
-            _make_plan_json("p"),
-            _make_code_json(),
-        ])
+        llm = _RecordingLlm(
+            [
+                _make_plan_json("p"),
+                _make_code_json(),
+            ]
+        )
         task = GraphTask(
             description="task",
             workspace="/tmp",
@@ -593,11 +663,13 @@ class TestRunGraphBackwardCompat:
 
     @pytest.mark.asyncio
     async def test_parallel_generations(self):
-        llm = _RecordingLlm([
-            _make_plan_json("weak", 1),
-            _make_plan_json("strong", 5),
-            _make_plan_json("ok", 2),
-        ])
+        llm = _RecordingLlm(
+            [
+                _make_plan_json("weak", 1),
+                _make_plan_json("strong", 5),
+                _make_plan_json("ok", 2),
+            ]
+        )
         task = GraphTask(
             description="task",
             workspace="/tmp",
@@ -610,10 +682,14 @@ class TestRunGraphBackwardCompat:
 
 class TestEvaluateCondition:
     def test_equality(self):
-        assert evaluate_condition("review.score == 8.0", None, None, ReviewOutput(approved=True, score=8.0))
+        assert evaluate_condition(
+            "review.score == 8.0", None, None, ReviewOutput(approved=True, score=8.0)
+        )
 
     def test_greater_than(self):
-        assert evaluate_condition("review.score > 5.0", None, None, ReviewOutput(approved=True, score=8.0))
+        assert evaluate_condition(
+            "review.score > 5.0", None, None, ReviewOutput(approved=True, score=8.0)
+        )
 
     def test_unknown_path(self):
         assert evaluate_condition("foo.bar == 1", None, None, None) is False

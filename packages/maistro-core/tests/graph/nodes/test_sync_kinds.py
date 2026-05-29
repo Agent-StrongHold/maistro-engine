@@ -107,9 +107,7 @@ async def test_format_markdown_renders_template_with_dot_paths() -> None:
 
 async def test_format_markdown_empty_uses_fallback() -> None:
     Node = get_node("transform.format_markdown")
-    out = await Node().run(
-        {"items": [], "template": "- {x}", "header": "## Things"}, _ctx()
-    )
+    out = await Node().run({"items": [], "template": "- {x}", "header": "## Things"}, _ctx())
     assert out.success
     assert "## Things" in out.output.markdown
     assert "_no items_" in out.output.markdown
@@ -157,7 +155,7 @@ def fake_jira_server(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        async def __aenter__(self) -> "_FakeClient":
+        async def __aenter__(self) -> _FakeClient:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -220,7 +218,7 @@ async def test_jira_poll_cloud_with_email_uses_basic_auth(
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -269,7 +267,7 @@ async def test_jira_poll_401_surfaces_permission_error(monkeypatch: pytest.Monke
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -311,7 +309,11 @@ async def test_airtable_poll_uses_filter_formula_for_since_iso(
         def json(self) -> Any:
             return {
                 "records": [
-                    {"id": "rec1", "fields": {"Name": "Alpha"}, "createdTime": "2026-05-22T07:00:00Z"},
+                    {
+                        "id": "rec1",
+                        "fields": {"Name": "Alpha"},
+                        "createdTime": "2026-05-22T07:00:00Z",
+                    },
                 ]
             }
 
@@ -319,7 +321,7 @@ async def test_airtable_poll_uses_filter_formula_for_since_iso(
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -372,9 +374,7 @@ async def test_llm_summarize_against_litellm_response_shape(
         def json(self) -> Any:
             return {
                 "model": "gemini-3.1-flash-lite",
-                "choices": [
-                    {"message": {"content": "- shipped X\n- blocked on Y"}}
-                ],
+                "choices": [{"message": {"content": "- shipped X\n- blocked on Y"}}],
                 "usage": {"prompt_tokens": 1500, "completion_tokens": 80},
             }
 
@@ -382,7 +382,7 @@ async def test_llm_summarize_against_litellm_response_shape(
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -421,7 +421,11 @@ async def test_dashboard_append_section_appends_to_blackboard() -> None:
 
     bb = GraphBlackboard(task_objective="Daily report", workspace="")
     ctx = NodeContext(
-        run_id="r1", dag_id="d1", node_id="n1", user_id="u1", project_id="p1",
+        run_id="r1",
+        dag_id="d1",
+        node_id="n1",
+        user_id="u1",
+        project_id="p1",
         blackboard=bb,
     )
 
@@ -459,9 +463,7 @@ async def test_dashboard_upsert_does_not_duplicate_on_rerun() -> None:
     from maistro.graph.types import GraphBlackboard
 
     bb = GraphBlackboard(task_objective="x", workspace="")
-    ctx = NodeContext(
-        run_id="r1", dag_id="d1", node_id="n1", blackboard=bb
-    )
+    ctx = NodeContext(run_id="r1", dag_id="d1", node_id="n1", blackboard=bb)
     Node = get_node("dashboard.append_section")
     payload = {
         "dashboard_id": "x",
@@ -528,7 +530,7 @@ async def test_daily_report_flow_e2e_no_llm(monkeypatch: pytest.MonkeyPatch) -> 
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        async def __aenter__(self) -> "_Client":
+        async def __aenter__(self) -> _Client:
             return self
 
         async def __aexit__(self, *args: Any) -> None:
@@ -543,8 +545,12 @@ async def test_daily_report_flow_e2e_no_llm(monkeypatch: pytest.MonkeyPatch) -> 
 
     bb = GraphBlackboard(task_objective="Daily Status", workspace="")
     ctx = NodeContext(
-        run_id="r1", dag_id="daily-status", node_id="entry",
-        user_id="u1", project_id="p1", blackboard=bb,
+        run_id="r1",
+        dag_id="daily-status",
+        node_id="entry",
+        user_id="u1",
+        project_id="p1",
+        blackboard=bb,
     )
 
     # 1. jira.poll

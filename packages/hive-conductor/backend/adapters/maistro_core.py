@@ -123,9 +123,7 @@ class MaistroCoreBridge:
 
         llm_base = (settings.maistro_llm_base_url or "").strip()
         llm_key = (
-            settings.maistro_llm_api_key.get_secret_value()
-            if settings.maistro_llm_api_key
-            else ""
+            settings.maistro_llm_api_key.get_secret_value() if settings.maistro_llm_api_key else ""
         )
         model = settings.maistro_model
 

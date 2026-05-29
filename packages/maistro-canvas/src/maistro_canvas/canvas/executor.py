@@ -50,7 +50,7 @@ _TERMINAL_STATUSES = frozenset({JobStatus.DONE, JobStatus.FAILED, JobStatus.CANC
 
 
 class _WardenProtocol:
-    async def scan_prompt(self, prompt: str) -> str:  # noqa: D102
+    async def scan_prompt(self, prompt: str) -> str:
         raise NotImplementedError
 
 
@@ -60,10 +60,10 @@ class _WardenProtocol:
 
 
 class _ModelRegistryProtocol:
-    def is_registered(self, model_id: str) -> bool:  # noqa: D102
+    def is_registered(self, model_id: str) -> bool:
         raise NotImplementedError
 
-    def get_default_draft(self) -> str:  # noqa: D102
+    def get_default_draft(self) -> str:
         raise NotImplementedError
 
 
@@ -168,7 +168,7 @@ class CanvasExecutor:
     ) -> GenerationJobRecord:
         layer = await self._store.get_layer(layer_id)
         if layer is None:
-            from maistro_canvas.types import LayerNotFoundError  # noqa: PLC0415
+            from maistro_canvas.types import LayerNotFoundError
 
             raise LayerNotFoundError(f"layer {layer_id!r} not found")
 
@@ -251,7 +251,7 @@ class CanvasExecutor:
         """Dispatch to the correct image-gen action; return signed URL list."""
         canvas = await self._store.get_canvas(job.canvas_id)
         if canvas is None:
-            from maistro_canvas.types import CanvasNotFoundError  # noqa: PLC0415
+            from maistro_canvas.types import CanvasNotFoundError
 
             raise CanvasNotFoundError(f"canvas {job.canvas_id!r} not found")
 
@@ -287,7 +287,7 @@ class CanvasExecutor:
         if job.action == JobAction.REFINE:
             layer = await self._store.get_layer(job.layer_id)
             if layer is None or not layer.image_path:
-                from maistro_canvas.types import RefineNoSourceError  # noqa: PLC0415
+                from maistro_canvas.types import RefineNoSourceError
 
                 raise RefineNoSourceError("source image no longer available")
             refined = await self._image_client.refine(
@@ -352,7 +352,7 @@ class CanvasExecutor:
 
         layer = await self._store.get_layer(job.layer_id)
         if layer is None:
-            from maistro_canvas.types import LayerNotFoundError  # noqa: PLC0415
+            from maistro_canvas.types import LayerNotFoundError
 
             raise LayerNotFoundError(f"layer {job.layer_id!r} not found")
 

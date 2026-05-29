@@ -25,7 +25,7 @@ logger = logging.getLogger("hive.corpus")
 
 class CanonicalCorpus:
     """A collection of 100 canonically good examples for a domain.
-    
+
     The corpus is the quality bar. Scoring = how similar is your output
     to the things that already won in this domain?
     """
@@ -68,7 +68,9 @@ class CanonicalCorpus:
             self.patterns = await self._extract_patterns()
             self._built = True
 
-        logger.info(f"Corpus built: {self.size} examples, {len(self.patterns)} patterns for '{self.domain}'")
+        logger.info(
+            f"Corpus built: {self.size} examples, {len(self.patterns)} patterns for '{self.domain}'"
+        )
 
     async def _generate_search_queries(self, target_size: int) -> list[str]:
         """Generate diverse queries to find examples from multiple angles."""
@@ -110,7 +112,12 @@ class CanonicalCorpus:
                 r.raise_for_status()
                 data = r.json()
                 return [
-                    {"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("description", "")[:200], "query": query}
+                    {
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "snippet": r.get("description", "")[:200],
+                        "query": query,
+                    }
                     for r in data.get("web", {}).get("results", [])[:5]
                 ]
         except Exception as e:
@@ -127,7 +134,7 @@ class CanonicalCorpus:
         sample = self.examples[:30]  # Use first 30 for pattern extraction
         examples_text = "\n".join(f"- {e['title']}: {e['snippet']}" for e in sample)
 
-        prompt = f"""You have {len(sample)} examples of canonically good {self.domain} (audience: {self.audience or 'general'}).
+        prompt = f"""You have {len(sample)} examples of canonically good {self.domain} (audience: {self.audience or "general"}).
 
 Examples:
 {examples_text}
@@ -160,7 +167,7 @@ Output: {{"patterns": [str]}}"""
 
     async def discover_new_holdout(self, n: int = 5) -> list[dict[str, Any]]:
         """Find genuinely NEW examples the corpus has never seen.
-        
+
         Anti-overfitting: each hill-climb pass searches with a novel query,
         finds examples that aren't in the corpus yet. The system literally
         cannot overfit to these because it didn't know they existed.
@@ -172,6 +179,7 @@ Output: {{"patterns": [str]}}"""
         known_urls = {e.get("url") for e in self.examples}
 
         import random
+
         angles = [
             f"new {self.domain} 2024 2025 released recently",
             f"{self.domain} underrated hidden gem {self.audience}",
@@ -197,7 +205,7 @@ Output: {{"patterns": [str]}}"""
 
     async def hill_climb_pass(self, output_baseline: str, output_mutated: str) -> dict[str, Any]:
         """One hill-climb pass with genuinely new held-out examples.
-        
+
         1. Score baseline against known corpus
         2. Discover NEW examples (never seen before — no lookahead bias)
         3. Score mutated against known corpus (target)
@@ -218,8 +226,11 @@ Output: {{"patterns": [str]}}"""
             "mutated_score": mutated_result.get("score", 0),
             "holdout_score": holdout_result.get("score", 0),
             "new_examples_found": len(new_examples),
-            "reason": "improved + passed on genuinely new" if (target_improved and holdout_ok) else
-                     ("no improvement on known" if not target_improved else "failed on unseen examples"),
+            "reason": "improved + passed on genuinely new"
+            if (target_improved and holdout_ok)
+            else (
+                "no improvement on known" if not target_improved else "failed on unseen examples"
+            ),
             "new_examples": [e.get("title", "") for e in new_examples],
         }
 
@@ -322,7 +333,7 @@ Reply JSON: {{"score": int, "matches": [str], "missing": [str], "suggestion": st
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CanonicalCorpus":
+    def from_dict(cls, data: dict[str, Any]) -> CanonicalCorpus:
         """Load corpus from storage."""
         c = cls(data["domain"], data.get("audience", ""))
         c.examples = data.get("examples", [])

@@ -59,9 +59,7 @@ class _InboxHandler(FileSystemEventHandler):
 
         # Debounce: record timestamp, schedule check
         self._pending[str(path)] = time.monotonic()
-        self._loop.call_later(
-            self._debounce_ms / 1000, self._check_and_dispatch, str(path)
-        )
+        self._loop.call_later(self._debounce_ms / 1000, self._check_and_dispatch, str(path))
 
     def _check_and_dispatch(self, path_str: str) -> None:
         path = Path(path_str)
@@ -69,9 +67,7 @@ class _InboxHandler(FileSystemEventHandler):
         # If file was modified again recently, skip (still writing)
         if time.monotonic() - last_seen < (self._debounce_ms / 1000):
             # Reschedule
-            self._loop.call_later(
-                self._debounce_ms / 1000, self._check_and_dispatch, path_str
-            )
+            self._loop.call_later(self._debounce_ms / 1000, self._check_and_dispatch, path_str)
             return
         if not path.exists():
             self._pending.pop(path_str, None)
@@ -107,6 +103,7 @@ class ObsidianWatcher:
         self._on_task = on_task
         # Observer type from watchdog — use Any to avoid import issues with mypy
         from typing import Any
+
         self._observer: Any = None
 
         # Ensure folders exist
@@ -134,9 +131,7 @@ class ObsidianWatcher:
             # Check file size
             size = path.stat().st_size
             if size > MAX_TASK_FILE_SIZE:
-                raise ValueError(
-                    f"Task file too large: {size} bytes (max {MAX_TASK_FILE_SIZE})"
-                )
+                raise ValueError(f"Task file too large: {size} bytes (max {MAX_TASK_FILE_SIZE})")
 
             content = path.read_text()
             result = await self._on_task(task_id, content)

@@ -14,7 +14,6 @@ from __future__ import annotations
 import base64
 import io
 import logging
-import math
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -147,7 +146,7 @@ async def _generate_image(
 
     Returns a list of PNG byte buffers.
     """
-    import httpx  # noqa: PLC0415
+    import httpx
 
     models = DRAFT_MODELS if tier == "draft" else PROOF_MODELS
     if source_image:
@@ -207,7 +206,7 @@ async def _generate_image(
 
 def _composite_layers(canvas: Canvas) -> bytes:
     """Composite all visible layers into a single PNG."""
-    from PIL import Image  # noqa: PLC0415
+    from PIL import Image
 
     base = Image.new("RGBA", (canvas.width, canvas.height), canvas.background_color)
 
@@ -242,7 +241,7 @@ def _render_text(
     canvas_height: int,
 ) -> bytes:
     """Render text to a transparent PNG layer using Pillow."""
-    from PIL import Image, ImageDraw, ImageFont  # noqa: PLC0415
+    from PIL import Image, ImageDraw, ImageFont
 
     img = Image.new("RGBA", (canvas_width, canvas_height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -268,7 +267,7 @@ def _render_text(
 
         font_path = font_map.get(font_name, font_name)
         font = ImageFont.truetype(font_path, font_size)
-    except (OSError, IOError):
+    except OSError:
         font = ImageFont.load_default()
 
     # Calculate text bounding box for alignment
@@ -303,7 +302,7 @@ def _render_text(
 # ---------------------------------------------------------------------------
 
 
-async def execute_canvas(  # noqa: C901, PLR0912
+async def execute_canvas(  # noqa: C901
     session_id: str,
     action: str,
     *,
@@ -342,7 +341,9 @@ async def execute_canvas(  # noqa: C901, PLR0912
         if layer_type == "background":
             full_prompt = f"{prompt}. Full environment scene, no people or characters, no objects in foreground."
         elif layer_type in ("character", "object"):
-            full_prompt = f"{prompt}. Isolated on pure white background, clean edges, full body visible."
+            full_prompt = (
+                f"{prompt}. Isolated on pure white background, clean edges, full body visible."
+            )
 
         if lighting:
             full_prompt += f" Lighting: {lighting}."
@@ -361,7 +362,7 @@ async def execute_canvas(  # noqa: C901, PLR0912
 
         created_layers: list[dict[str, Any]] = []
         for i, img_bytes in enumerate(images):
-            from PIL import Image  # noqa: PLC0415
+            from PIL import Image
 
             img = Image.open(io.BytesIO(img_bytes))
             layer_id = f"{layer_type}-{uuid.uuid4().hex[:8]}"
@@ -375,14 +376,16 @@ async def execute_canvas(  # noqa: C901, PLR0912
                 z_index=0 if layer_type == "background" else 10 + len(canvas.layers),
             )
             canvas.add_layer(layer)
-            created_layers.append({
-                "layer_id": layer_id,
-                "name": layer.name,
-                "width": img.width,
-                "height": img.height,
-                "z_index": layer.z_index,
-                "image_b64": base64.b64encode(img_bytes).decode(),
-            })
+            created_layers.append(
+                {
+                    "layer_id": layer_id,
+                    "name": layer.name,
+                    "width": img.width,
+                    "height": img.height,
+                    "z_index": layer.z_index,
+                    "image_b64": base64.b64encode(img_bytes).decode(),
+                }
+            )
 
         return {
             "action": "generate",
@@ -405,7 +408,7 @@ async def execute_canvas(  # noqa: C901, PLR0912
 
         layer_id = f"refined-{uuid.uuid4().hex[:8]}"
         img_bytes = images[0]
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         img = Image.open(io.BytesIO(img_bytes))
         layer = Layer(
@@ -450,10 +453,12 @@ async def execute_canvas(  # noqa: C901, PLR0912
                 litellm_url=litellm_url,
                 litellm_key=litellm_key,
             )
-            all_images.append({
-                "view": view,
-                "image_b64": base64.b64encode(view_images[0]).decode(),
-            })
+            all_images.append(
+                {
+                    "view": view,
+                    "image_b64": base64.b64encode(view_images[0]).decode(),
+                }
+            )
 
         return {
             "action": "reference",
@@ -497,7 +502,7 @@ async def execute_canvas(  # noqa: C901, PLR0912
         text_bytes = _render_text(text_content, style, canvas.width, canvas.height)
 
         layer_id = f"text-{uuid.uuid4().hex[:8]}"
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         img = Image.open(io.BytesIO(text_bytes))
         layer = Layer(
@@ -526,7 +531,7 @@ async def execute_canvas(  # noqa: C901, PLR0912
             return {"error": "upload_image (via source_image param) is required"}
 
         img_bytes = base64.b64decode(upload_image)
-        from PIL import Image  # noqa: PLC0415
+        from PIL import Image
 
         img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
 
@@ -565,7 +570,7 @@ async def execute_canvas(  # noqa: C901, PLR0912
         }
 
     if action == "transform":
-        layer_id_param = (layers[0].get("layer_id", "") if layers else "")
+        layer_id_param = layers[0].get("layer_id", "") if layers else ""
         transform_spec = layers[0] if layers else {}
         result = transform_layer(
             session_id,
@@ -582,12 +587,12 @@ async def execute_canvas(  # noqa: C901, PLR0912
         return {"action": "transform", **result}
 
     if action == "delete":
-        layer_id_param = (layers[0].get("layer_id", "") if layers else "")
+        layer_id_param = layers[0].get("layer_id", "") if layers else ""
         ok = delete_layer(session_id, layer_id_param)
         return {"action": "delete", "layer_id": layer_id_param, "deleted": ok}
 
     if action == "duplicate":
-        layer_id_param = (layers[0].get("layer_id", "") if layers else "")
+        layer_id_param = layers[0].get("layer_id", "") if layers else ""
         result = duplicate_layer(session_id, layer_id_param)
         if result is None:
             return {"error": f"Layer not found: {layer_id_param}"}
@@ -679,7 +684,13 @@ async def save_character_reference(
                 view_images = EXCLUDED.view_images,
                 created_at = NOW()
             """,
-            ref_id, name, description, tags, user_id, tenant_id, hero_image,
+            ref_id,
+            name,
+            description,
+            tags,
+            user_id,
+            tenant_id,
+            hero_image,
             __import__("json").dumps(views_json),
         )
 
@@ -715,7 +726,9 @@ async def load_character_reference(
             ORDER BY (user_id = $2) DESC
             LIMIT 1
             """,
-            name, user_id, tenant_id,
+            name,
+            user_id,
+            tenant_id,
         )
         if row is None:
             return None
@@ -744,12 +757,14 @@ async def list_character_references(
             if ref.user_id == user_id or ref.tenant_id == tenant_id:
                 if tags and not set(tags).intersection(ref.tags):
                     continue
-                results.append({
-                    "name": ref.name,
-                    "description": ref.description,
-                    "tags": ref.tags,
-                    "user_id": ref.user_id,
-                })
+                results.append(
+                    {
+                        "name": ref.name,
+                        "description": ref.description,
+                        "tags": ref.tags,
+                        "user_id": ref.user_id,
+                    }
+                )
         return results
 
     async with db_pool.acquire() as conn:
@@ -761,7 +776,9 @@ async def list_character_references(
                 WHERE (user_id = $1 OR tenant_id = $2) AND tags && $3
                 ORDER BY created_at DESC
                 """,
-                user_id, tenant_id, tags,
+                user_id,
+                tenant_id,
+                tags,
             )
         else:
             rows = await conn.fetch(
@@ -771,7 +788,8 @@ async def list_character_references(
                 WHERE user_id = $1 OR tenant_id = $2
                 ORDER BY created_at DESC
                 """,
-                user_id, tenant_id,
+                user_id,
+                tenant_id,
             )
 
     return [
