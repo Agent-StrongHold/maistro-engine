@@ -41,6 +41,10 @@ def _walk(root: Path) -> Iterable[Path]:
     seen: set[Path] = set()
     for pattern in _WALK_PATTERNS:
         for p in root.glob(pattern):
+            # Skip scaffolding templates (e.g. ADR-000-template.md): they carry
+            # placeholder ids/dates by design and are not real registry records.
+            if p.name.endswith("-template.md"):
+                continue
             if p.suffix == ".md" and p.is_file() and p not in seen:
                 seen.add(p)
                 yield p

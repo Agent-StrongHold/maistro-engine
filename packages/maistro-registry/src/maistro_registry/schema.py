@@ -115,6 +115,9 @@ class FrontMatter(BaseModel):
     contracts: list[Contract] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
 
+    # Provenance: repo paths (packages/…, apps/…) this record governs/derives from.
+    source: list[str] = Field(default_factory=list)
+
     # Classification
     layer: Layer
     owners: list[str] = Field(default_factory=list)
