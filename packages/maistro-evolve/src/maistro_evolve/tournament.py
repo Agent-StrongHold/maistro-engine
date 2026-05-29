@@ -116,12 +116,12 @@ class EloTournament:
 
     def get_leaderboard(self, benchmark: str | None = None) -> list[dict[str, Any]]:
         genome_elos: dict[str, list[float]] = {}
-        for key, rating in self._ratings.items():
+        for rating in self._ratings.values():
             if benchmark is not None and rating.benchmark != benchmark:
                 continue
             genome_elos.setdefault(rating.genome_id, []).append(rating.elo)
 
-        entries = []
+        entries: list[dict[str, Any]] = []
         for gid, elos in genome_elos.items():
             avg = sum(elos) / len(elos)
             r = self._get_rating(gid, benchmark or "overall")
