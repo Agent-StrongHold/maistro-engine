@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/types/model.py
-# hypothesis_version: 6.152.9
-
-[0.0, 0.5, 100, 8192, 'active', 'monthly', 'small', 'text']

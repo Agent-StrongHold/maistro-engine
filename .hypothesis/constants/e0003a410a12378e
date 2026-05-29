@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/rate_limiter.py
-# hypothesis_version: 6.151.10
-
-[1.0, 60.0, 300, 1000, '0', 'X-RateLimit-Limit', 'X-RateLimit-Reset']
