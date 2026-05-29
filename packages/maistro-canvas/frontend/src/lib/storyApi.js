@@ -1,32 +1,9 @@
-const LITELLM_URL =
-  import.meta.env.VITE_LITELLM_URL || "/litellm";
-const LITELLM_KEY =
-  import.meta.env.VITE_LITELLM_KEY || "sk-conductor-litellm-2026";
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-const AZURE_KEY = import.meta.env.VITE_AZURE_KEY || "";
-const AZURE_ENDPOINT = import.meta.env.VITE_AZURE_ENDPOINT || "";
-const AZURE_DEPLOYMENT = "gpt-image-2-1";
+import { chat, generateImage } from "./llmClient";
+
+// Keys are server-side only (see server.js /api/llm/*). Nothing here holds them.
 
 async function llm(messages, model = "gemini-flash") {
-  const res = await fetch(`${LITELLM_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${LITELLM_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.7,
-      max_tokens: 16000,
-    }),
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || `LLM ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  return chat(messages, model, { temperature: 0.7, max_tokens: 16000 });
 }
 
 function extractJSON(text) {
@@ -71,62 +48,12 @@ function extractJSON(text) {
   throw new Error("AI did not return valid JSON. Response: " + text.slice(0, 200));
 }
 
-async function azureImageGen(prompt) {
-  if (!AZURE_KEY || !AZURE_ENDPOINT) throw new Error("No Azure config");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
+async function generateSceneImage(prompt) {
+  // Server proxy selects Azure/LiteLLM/Gemini from server-side keys.
   try {
-    const res = await fetch(
-      `${AZURE_ENDPOINT}/openai/deployments/${AZURE_DEPLOYMENT}/images/generations?api-version=2025-03-01-preview`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "api-key": AZURE_KEY },
-        body: JSON.stringify({ prompt, n: 1, size: "1024x1024", quality: "medium" }),
-        signal: controller.signal,
-      }
-    );
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.error?.message || `Azure ${res.status}`);
-    }
-    const data = await res.json();
-    const img = data.data?.[0];
-    if (!img) throw new Error("No image from Azure");
-    if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
-    if (img.url) return img.url;
-    throw new Error("No image data");
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function geminiImageGen(prompt) {
-  if (!GEMINI_KEY) throw new Error("No Gemini key");
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `Generate an image: ${prompt}` }] }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-      }),
-    }
-  );
-  if (!res.ok) throw new Error(`Gemini ${res.status}`);
-  const data = await res.json();
-  const part = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
-  if (!part) throw new Error("No image from Gemini");
-  return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-}
-
-async function generateImage(prompt) {
-  if (AZURE_KEY && AZURE_ENDPOINT) {
-    try { return await azureImageGen(prompt); } catch {}
-  }
-  if (GEMINI_KEY) {
-    try { return await geminiImageGen(prompt); } catch {}
-  }
+    const img = await generateImage({ prompt });
+    if (img) return img;
+  } catch { /* fall through to placeholder */ }
   return makePlaceholder(prompt);
 }
 
@@ -427,7 +354,7 @@ export async function generateScene(storyId, sceneId, onProgress) {
       : `${stylePrefix}. ${lp.name}`;
 
     try {
-      const imageUrl = await generateImage(fullPrompt);
+      const imageUrl = await generateSceneImage(fullPrompt);
       layers.push({
         id: uid(),
         name: lp.name,
@@ -475,7 +402,7 @@ export async function generateScene(storyId, sceneId, onProgress) {
   return scene;
 }
 
-export { generateImage, llm };
+export { generateSceneImage as generateImage, llm };
 export default {
   decomposeStory,
   refineStyleContract,
@@ -486,6 +413,6 @@ export default {
   updateStyleContract,
   updateScene,
   generateScene,
-  generateImage,
+  generateImage: generateSceneImage,
   IMAGE_MODELS,
 };
