@@ -2,36 +2,43 @@
 
 **Project:** Maistro Engine — Shared Python runtime for AI agent platforms
 **License:** Apache 2.0
-**Python:** 3.12+
+**Python:** 3.11+
 
 ---
 
 ## Architecture
 
-Monorepo with 6 packages + the hive-conductor app. The canonical shared runtime that powers Agent Conductor, Agent Stronghold, and Canvas Studio.
+Consolidation **monorepo** (single git repo, `uv` workspace) with 7 packages + the hive-conductor app. It is *not* just a library: it **contains** the Agent Conductor app (`hive-conductor`, the personal/homelab product) and the canvas ability (`maistro-canvas`), and exposes `maistro-core` for downstream products to import. (Was historically split across sibling repos — see `CONSOLIDATION-PLAN.md`.)
 
 ```
 packages/
 ├── maistro-core/      # Shared library: pip install maistro-core
-├── maistro-canvas/    # Standalone book builder (frontend + canvas engine)
+├── maistro-canvas/    # Canvas ability (engine + protocols); the book-maker frontend is a separate app
 ├── maistro-server/    # FastAPI app (replaces conductor-router)
 ├── maistro-turing/    # Autonoetic self-model extensions
 ├── maistro-evolve/    # Elo tournament optimizer for agent self-improvement
 ├── hive-conductor/    # Agent Conductor app (FastAPI backend + React frontend)
-└── maistro-bootstrap/ # Bootstrap stub (WIP)
+├── maistro-bootstrap/ # Bootstrap stub (WIP)
+└── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check docs
 ```
 
-### Product relationship
+### Product relationship — contains vs. imports
 
 ```
-maistro-engine (this repo)
+maistro-engine (this monorepo)
+  │  contains
+  ├── Agent Conductor (household/personal)  — packages/hive-conductor (consumes maistro-core)
+  └── canvas ability                        — packages/maistro-canvas
   │
-  ├─→ Agent Conductor (household/personal)  — hive-conductor (FastAPI backend + React frontend)
-  ├─→ Agent Stronghold (enterprise)         — pip install maistro-core + multi-tenant layer
-  └─→ Canvas Studio (standalone book builder) — maistro-canvas + P40 image gen server
+  │  imported by downstream products
+  ├─→ Canvas book-maker POC (name TBD)      — imports maistro-canvas (separate frontend app)
+  └─→ Stronghold (PLANNED)                  — will import maistro-engine, add multi-tenancy +
+                                              stricter security, and disable homelab/personal features
 ```
 
-**ADR-019** defines the canonical source split: maistro-core = shared runtime, Stronghold = multi-tenant only. 43 ADRs total (ADR-000–ADR-042); notable recent ones: ADR-036 (ontology), ADR-038 (reliability), ADR-042 (graph execution protocol).
+Agent Conductor ships **here**; the Canvas book-maker and Stronghold are downstream products that **import** the engine (Stronghold is a planned refactor, not yet done).
+
+**ADR-019** defines the canonical source split: maistro-core = product-agnostic shared runtime (no `org_id`); multi-tenancy/security-posture/feature-toggles live in the importing product (Stronghold). 64 ADRs (ADR-000 through ADR-057); notable: ADR-036 (ontology), ADR-038 (reliability), ADR-042 (graph execution protocol), ADR-057 (memory exposure mode).
 
 ### Naming convention
 
@@ -69,8 +76,13 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Identity** | `maistro.identity` | Identity management |
 | **Scheduling** | `maistro.scheduling` | Scheduling (distinct from the scheduler/ placeholder) |
 | **Prompts** | `maistro.prompts` | Prompt templates |
+| **Credentials** | `maistro.credentials` | Per-user encrypted credentials for PM integrations |
+| **Projects** | `maistro.projects` | User workspaces: domains, meta-DAGs, PM Fleet, Canvas/Engineering |
+| **Testing** | `maistro.testing` | Shared test utilities/fixtures |
 
-### maistro-canvas (standalone book builder)
+Root-level modules: `reactor.py` (1kHz reactor loop), `vault.py` (age-encrypted secrets), `privilege.py`, `state.py`.
+
+### maistro-canvas (canvas ability + book-maker POC frontend)
 
 ```
 packages/maistro-canvas/
@@ -97,7 +109,7 @@ packages/maistro-canvas/
 
 ### maistro-turing (autonoetic self-model)
 
-Implementation in progress: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security. Note: tests/ directory exists but is empty; maistro-turing is not exercised in CI.
+Implementation in progress: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security. Note: tests/ now has suites (protocols, reactor, tiers, types); CI type-checks turing's src, but ci.yml's pytest matrix doesn't run its suite.
 
 ---
 
@@ -113,10 +125,10 @@ pip install -e packages/maistro-turing
 pip install -e packages/maistro-canvas
 pip install -e packages/maistro-evolve
 
-# Run core tests (~375 tests)
+# Run core tests
 PYTHONPATH=packages/maistro-core/src pytest packages/maistro-core/tests/ -q
 
-# Run all package tests (~525 total; maistro-turing has no tests yet)
+# Run all package tests
 PYTHONPATH=packages/maistro-core/src:packages/maistro-canvas/src:packages/maistro-turing/src \
   pytest packages/maistro-core/tests packages/maistro-server/tests \
   packages/maistro-canvas/tests packages/maistro-evolve/tests -q
@@ -124,9 +136,11 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-canvas/src:packages/maistr
 # Formal property-based conformance tests (separate CI flow — formal-conformance.yml)
 PYTHONPATH=packages/maistro-core/src pytest formal/ -q
 
-# Lint (note: CI targets root src/ only; run manually for packages/)
+# Lint — ci.yml runs `ruff check .` + `ruff format --check` + mypy across all packages/*/src
 ruff check packages/
 mypy packages/ --strict
+# CI workflows: ci.yml (lint+type+core tests), quality.yml (full ruleset+coverage),
+# security.yml, mutation.yml, registry.yml, cage-guard.yml, formal-conformance{,-nightly}.yml
 
 # Verify all core imports
 PYTHONPATH=packages/maistro-core/src python3 -c "
@@ -162,7 +176,7 @@ print('OK')
 5. **Memory must forget.** Decay without reinforcement, weight floors for wisdom/regrets.
 6. **All input is untrusted.** Warden scans at every trust boundary. Sentinel validates tool calls.
 7. **No org_id in maistro-core.** Multi-tenant isolation is Stronghold-specific. Scope isolation (global → team → user → agent → session) is kept.
-8. **Canvas Studio is standalone.** Runs on a mini-PC with a P40 image gen server. No Conductor or Stronghold required.
+8. **The canvas ability is standalone.** `maistro-canvas` needs no Conductor or Stronghold; the book-maker POC frontend imports it and runs on a mini-PC with a P40 image-gen server.
 
 ---
 
@@ -245,7 +259,7 @@ maistro-engine/
 │       └── frontend/            # React SPA
 │
 ├── formal/                      # Property-based conformance tests (Hypothesis); separate CI flow
-├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-042)
+├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-057)
 ├── src/maistro/                 # Old layout (agent spec/spawner/recipes + model pricing)
 └── pyproject.toml               # uv workspace root (uv.lock is source of truth)
 ```
