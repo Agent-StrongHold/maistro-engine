@@ -55,7 +55,9 @@ class DesignEngine:
         self._skills = skill_registry
         self._systems = system_registry
         self._banish_list = banish_list if banish_list is not None else InMemoryTrustBanishList()
-        self._trust_review_queue = trust_review_queue if trust_review_queue is not None else InMemoryTrustReviewQueue()
+        self._trust_review_queue = (
+            trust_review_queue if trust_review_queue is not None else InMemoryTrustReviewQueue()
+        )
         self._canvas_store = canvas_store
         self._image_gen = image_gen
         self._context_trust_tier: TrustTier = TrustTier.T0
@@ -68,7 +70,10 @@ class DesignEngine:
         self._context_trust_tier = self._context_trust_tier.min(tier)
 
     def _check_compatibility(self, skill: Any, design_system_slug: str) -> None:
-        if skill.compatible_design_systems and design_system_slug not in skill.compatible_design_systems:
+        if (
+            skill.compatible_design_systems
+            and design_system_slug not in skill.compatible_design_systems
+        ):
             msg = (
                 f"Skill '{skill.slug}' is not compatible with design system "
                 f"'{design_system_slug}'. "

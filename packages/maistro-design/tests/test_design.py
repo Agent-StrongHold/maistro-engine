@@ -295,9 +295,15 @@ class TestDesignErrors:
         )
 
         errors = [
-            DesignError, SkillNotFoundError, DesignSystemNotFoundError,
-            DiscoveryIncompleteError, SkillModeError, DesignProjectNotFoundError,
-            IncompatibleDesignSystemError, TrustBannedError, TrustUpgradeRequiredError,
+            DesignError,
+            SkillNotFoundError,
+            DesignSystemNotFoundError,
+            DiscoveryIncompleteError,
+            SkillModeError,
+            DesignProjectNotFoundError,
+            IncompatibleDesignSystemError,
+            TrustBannedError,
+            TrustUpgradeRequiredError,
         ]
         codes = [e.code for e in errors]
         assert len(codes) == len(set(codes)), "Error codes must be unique"
@@ -316,8 +322,12 @@ class TestDesignErrors:
         )
 
         for cls in [
-            SkillNotFoundError, DesignSystemNotFoundError, DiscoveryIncompleteError,
-            SkillModeError, IncompatibleDesignSystemError, TrustBannedError,
+            SkillNotFoundError,
+            DesignSystemNotFoundError,
+            DiscoveryIncompleteError,
+            SkillModeError,
+            IncompatibleDesignSystemError,
+            TrustBannedError,
         ]:
             assert issubclass(cls, DesignError)
 
@@ -387,7 +397,9 @@ class TestInMemoryDesignSkillRegistry:
     def test_featured_skills_have_discovery_forms(self, skill_registry):
         """Featured skills must have at least one DiscoveryField."""
         for skill in skill_registry.list_featured():
-            assert len(skill.discovery_form) > 0, f"{skill.slug} is featured but has no discovery form"
+            assert len(skill.discovery_form) > 0, (
+                f"{skill.slug} is featured but has no discovery form"
+            )
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("unit")
@@ -428,7 +440,9 @@ class TestInMemoryDesignSkillRegistry:
 
         r = InMemoryDesignSkillRegistry()
         for i in range(n):
-            r.register(DesignSkill(slug=f"s{i}", name=f"S{i}", mode=SkillMode(mode_val), description=""))
+            r.register(
+                DesignSkill(slug=f"s{i}", name=f"S{i}", mode=SkillMode(mode_val), description="")
+            )
         by_mode = r.list_by_mode(mode_val)
         all_skills = r.list_all()
         assert all(s in all_skills for s in by_mode)
@@ -669,7 +683,9 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
-    async def test_generate_raises_incompatible_design_system(self, skill_registry, system_registry):
+    async def test_generate_raises_incompatible_design_system(
+        self, skill_registry, system_registry
+    ):
         """
         Given a skill with compatible_design_systems=["stripe"]
         When generate() is called with design_system_slug="default"
@@ -694,7 +710,9 @@ class TestDesignEngineGenerate:
             compatible_design_systems=["stripe"],
         )
         skill_registry.register(restricted)
-        system_registry.register(DesignSystem(slug="stripe", name="Stripe", description="", trust_tier=TrustTier.T0))
+        system_registry.register(
+            DesignSystem(slug="stripe", name="Stripe", description="", trust_tier=TrustTier.T0)
+        )
 
         eng = DesignEngine(skill_registry=skill_registry, system_registry=system_registry)
         discovery = DiscoveryResult(
