@@ -280,13 +280,16 @@ def _register_custom_strategies() -> None:
         pass
 
 
-def _instantiate(identity: AgentIdentity, **deps: Any) -> Agent:
+def _instantiate(
+    identity: AgentIdentity, *, agent_resolver: Any = None, **deps: Any
+) -> Agent:
     strategy = _build_strategy(identity)
     tool_executor = deps.pop("tool_executor", None)
     return Agent(
         identity=identity,
         strategy=strategy,
         tool_executor=tool_executor if identity.tools else None,
+        agent_resolver=agent_resolver,
         **deps,
     )
 
@@ -349,7 +352,9 @@ async def create_agents(
                         record.soul,
                         label="production",
                     )
-                    agents[identity.name] = _instantiate(identity, **{**deps})
+                    agents[identity.name] = _instantiate(
+                        identity, agent_resolver=agents.get, **{**deps}
+                    )
                 logger.info("Loaded %d agents from database", len(agents))
                 return agents
         except Exception:
@@ -427,7 +432,9 @@ async def create_agents(
             except Exception:
                 logger.warning("Failed to persist agent '%s' to DB", identity.name, exc_info=True)
 
-        agents[identity.name] = _instantiate(identity, **{**deps})
+        agents[identity.name] = _instantiate(
+            identity, agent_resolver=agents.get, **{**deps}
+        )
         logger.info(
             "Seeded agent '%s' (strategy=%s, tools=%d, db=%s)",
             identity.name,
