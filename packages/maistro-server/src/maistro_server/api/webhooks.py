@@ -34,7 +34,8 @@ def _sanitize(text: str) -> str:
     violations = detect_injection(text)
     if violations:
         logger.warning("injection_detected_in_webhook", violations=violations)
-    return wrap_external_content(text, ContentSource.WEBHOOK)
+    wrapped: str = wrap_external_content(text, ContentSource.WEBHOOK)
+    return wrapped
 
 
 def _check_body_size(request: Request, settings: Settings) -> None:
