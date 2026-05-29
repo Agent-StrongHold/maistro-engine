@@ -5,17 +5,14 @@ import json
 
 import pytest
 
+from maistro.graph.run import GraphRun
 from maistro.graph.types import (
     AgentRole,
-    CodeOutput,
-    GraphBlackboard,
     GraphConfig,
     GraphEdge,
     GraphTask,
     PlanOutput,
-    ReviewOutput,
 )
-from maistro.graph.run import GraphRun
 from maistro.testing.faux_provider import (
     FauxProvider,
     FauxResponse,
@@ -77,7 +74,9 @@ class TestFauxProviderBasic:
         assert loop.run_until_complete(provider([])) == "first"
         assert loop.run_until_complete(provider([])) == "second"
         assert loop.run_until_complete(provider([])) == "third"
-        assert loop.run_until_complete(provider([])) == "first" or "faux plan" in loop.run_until_complete(provider([]))
+        assert loop.run_until_complete(
+            provider([])
+        ) == "first" or "faux plan" in loop.run_until_complete(provider([]))
 
     def test_seed_json_with_dict(self):
         provider = FauxProvider()
@@ -133,12 +132,14 @@ class TestFauxProviderBasic:
 class TestFauxProviderComplete:
     def test_returns_openai_format(self):
         provider = FauxProvider()
-        provider.seed(FauxResponse(
-            content="test response",
-            usage_prompt_tokens=50,
-            usage_completion_tokens=25,
-            model="faux://test-model",
-        ))
+        provider.seed(
+            FauxResponse(
+                content="test response",
+                usage_prompt_tokens=50,
+                usage_completion_tokens=25,
+                model="faux://test-model",
+            )
+        )
         result = asyncio.get_event_loop().run_until_complete(
             provider.complete([{"role": "user", "content": "hi"}])
         )
@@ -152,14 +153,16 @@ class TestFauxProviderComplete:
 
     def test_tool_calls_in_response(self):
         provider = FauxProvider()
-        provider.seed(FauxResponse(
-            content="",
-            tool_calls=[
-                ToolCallDef(name="func_a", arguments={"x": 1}, call_id="call_0"),
-                ToolCallDef(name="func_b", arguments={"y": 2}),
-            ],
-            finish_reason="tool_calls",
-        ))
+        provider.seed(
+            FauxResponse(
+                content="",
+                tool_calls=[
+                    ToolCallDef(name="func_a", arguments={"x": 1}, call_id="call_0"),
+                    ToolCallDef(name="func_b", arguments={"y": 2}),
+                ],
+                finish_reason="tool_calls",
+            )
+        )
         result = asyncio.get_event_loop().run_until_complete(
             provider.complete([{"role": "user", "content": "go"}])
         )
@@ -263,9 +266,12 @@ class TestFauxProviderWithGraphExecutor:
     def test_full_pipeline_deterministic(self):
         provider = FauxProvider()
         provider.seed(
-            plan_output(summary="test plan", subtasks=[
-                {"title": "do thing", "description": "implement it", "file_paths": ["main.py"]},
-            ]),
+            plan_output(
+                summary="test plan",
+                subtasks=[
+                    {"title": "do thing", "description": "implement it", "file_paths": ["main.py"]},
+                ],
+            ),
             code_output(files_changed=["main.py"], description="implemented"),
             review_output(approved=True, score=9.0),
         )

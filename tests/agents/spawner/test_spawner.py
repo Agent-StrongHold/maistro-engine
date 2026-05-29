@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from maistro.agents.spawner.spawner import Spawner
 from maistro.agents.spec.agent_spec import AgentOutput, AgentRole, AgentSpec, ErrorType
 

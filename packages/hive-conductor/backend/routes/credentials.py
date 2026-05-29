@@ -7,11 +7,11 @@ from typing import Any
 import stores
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
+from services import user_credentials as cred_svc
 
 from maistro.credentials import get_provider
 from maistro.credentials.store import CredentialStoreUnavailable
 from routes.audit import log_audit
-from services import user_credentials as cred_svc
 
 router = APIRouter(tags=["credentials"])
 
@@ -101,7 +101,9 @@ def get_credential_config(provider_id: str, request: Request) -> dict[str, Any]:
 
 @router.put("/{provider_id}/config")
 def save_credential_config(
-    provider_id: str, body: SetConfigBody, request: Request,
+    provider_id: str,
+    body: SetConfigBody,
+    request: Request,
 ) -> dict[str, Any]:
     provider = get_provider(provider_id)
     if provider is None:

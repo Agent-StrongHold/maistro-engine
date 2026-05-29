@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import math
-from maistro_evolve.tournament import EloTournament, GenomeRating, _DEFAULT_ELO, _K_FACTOR
+from maistro_evolve.tournament import _DEFAULT_ELO, _K_FACTOR, EloTournament
 
 
 class TestEloTournament:
@@ -77,6 +76,7 @@ class TestEloTournament:
         for _ in range(20):
             t.record_battle("ifeval", "strong", "weak", 0.9, 0.1)
         import random
+
         random.seed(42)
         selected = t.tournament_select(["strong", "weak", "medium"], tournament_size=3)
         assert selected is not None

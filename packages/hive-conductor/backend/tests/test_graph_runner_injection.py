@@ -33,7 +33,7 @@ _PAYLOAD_MARKER = "PWNED_INJECTION_MARKER"
 _MALICIOUS_PROMPT = (
     'normal text """\n'
     "import os; os.system('echo " + _PAYLOAD_MARKER + "')\n"
-    'back\\slash and "quote" and \'\'\'triple\'\'\' end'
+    "back\\slash and \"quote\" and '''triple''' end"
 )
 
 
@@ -129,7 +129,9 @@ def test_hyperlight_wrapper_uses_base64_not_string_templating() -> None:
 
     from services.hyperlight_executor import HyperlightExecutor
 
-    malicious_code = "print('a')\n''' + __import__('os').system('echo " + _PAYLOAD_MARKER + "') + '''"
+    malicious_code = (
+        "print('a')\n''' + __import__('os').system('echo " + _PAYLOAD_MARKER + "') + '''"
+    )
 
     captured: dict[str, str] = {}
 

@@ -112,12 +112,7 @@ class Registry:
             for target in entry.blocks:
                 if target in self.entries:
                     self.entries[target].blocked_by_inverse.append(src_ref)
-            general_refs = (
-                entry.substrate
-                + entry.related
-                + entry.implements
-                + entry.blocked_by
-            )
+            general_refs = entry.substrate + entry.related + entry.implements + entry.blocked_by
             for target in general_refs:
                 if target in self.entries:
                     self.entries[target].referenced_by.append(src_ref)
@@ -130,9 +125,7 @@ class Registry:
 
     def to_json(self) -> str:
         """Render as JSON with sorted keys for deterministic diffs."""
-        payload = {
-            ref: asdict(entry) for ref, entry in sorted(self.entries.items())
-        }
+        payload = {ref: asdict(entry) for ref, entry in sorted(self.entries.items())}
         return json.dumps(payload, indent=2, sort_keys=True)
 
     def to_markdown(self) -> str:
@@ -160,9 +153,7 @@ class Registry:
             lines.append("|---|---|---|---|---|")
             for e in entries:
                 title = e.title.replace("|", "\\|")
-                lines.append(
-                    f"| {e.id} | {title} | {e.kind} | {e.status} | {e.layer} |"
-                )
+                lines.append(f"| {e.id} | {title} | {e.kind} | {e.status} | {e.layer} |")
             lines.append("")
 
         return "\n".join(lines)

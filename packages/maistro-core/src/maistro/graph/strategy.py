@@ -55,9 +55,7 @@ class PlannerStrategy:
     ) -> str:
         constraints = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
         return (
-            f"Task: {task.description}\n\n"
-            f"Workspace: {task.workspace}\n"
-            f"Constraints:\n{constraints}"
+            f"Task: {task.description}\n\nWorkspace: {task.workspace}\nConstraints:\n{constraints}"
         )
 
     def score_output(self, output: BaseModel) -> float:
@@ -232,9 +230,7 @@ class PMStrategy:
         # The blackboard_prefix() in node.py prepends scout_context, annotations,
         # iteration info; this user-prompt body provides the task + (eventually)
         # the per-capability prompt template from pm_domain.py.
-        constraints = (
-            "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
-        )
+        constraints = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
         return f"Task: {task.description}\nConstraints:\n{constraints}"
 
     def score_output(self, output: BaseModel) -> float:

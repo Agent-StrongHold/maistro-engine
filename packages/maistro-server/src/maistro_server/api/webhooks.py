@@ -10,12 +10,12 @@ import structlog
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel
 
-from maistro_server.api.schemas import CIWebhookIgnored, WebhookAccepted, WebhookIgnored
 from maistro.config.settings import Settings, get_settings
 from maistro.constants import WEBHOOK_BODY_PREVIEW_LEN
 from maistro.security.external_content import ContentSource, detect_injection, wrap_external_content
 from maistro.tasks.models import TaskCreate
 from maistro.tasks.queue import TaskQueue, get_task_queue
+from maistro_server.api.schemas import CIWebhookIgnored, WebhookAccepted, WebhookIgnored
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])

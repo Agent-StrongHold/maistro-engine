@@ -27,9 +27,8 @@ Tests cover:
 
 from __future__ import annotations
 
-import sys
 import pathlib
-from datetime import UTC, datetime, timedelta
+import sys
 from typing import Any
 
 import pytest
@@ -50,10 +49,18 @@ def _isolated():
     import stores
     from services import edit_lock
     from services.feedback_service import (
-        InMemoryOutcomeStore, get_outcome_store, set_outcome_store,
+        InMemoryOutcomeStore,
+        get_outcome_store,
+        set_outcome_store,
     )
     from services.node_metrics_store import (
-        NodeMetricsStore, get_store as _get_metrics_store, set_store as _set_metrics_store,
+        NodeMetricsStore,
+    )
+    from services.node_metrics_store import (
+        get_store as _get_metrics_store,
+    )
+    from services.node_metrics_store import (
+        set_store as _set_metrics_store,
     )
 
     _wipe(stores.audit_log)
@@ -73,9 +80,9 @@ def _isolated():
     _set_metrics_store(prev_m)
 
 
-def _seed_metrics(dag_id: str, node_id: str, *,
-                  count: int = 0, failed: int = 0, p95: int = 0,
-                  kind: str = "x") -> None:
+def _seed_metrics(
+    dag_id: str, node_id: str, *, count: int = 0, failed: int = 0, p95: int = 0, kind: str = "x"
+) -> None:
     """Seed `count` total observations for one node, `failed` of which
     are FAILED. The p95 latency arg sets the per-observation latency."""
     from services.node_metrics_store import NodeObservation, get_store
@@ -83,26 +90,45 @@ def _seed_metrics(dag_id: str, node_id: str, *,
     store = get_store()
     for i in range(count):
         phase = "FAILED" if i < failed else "COMPLETED"
-        store.append(NodeObservation(
-            run_id=f"r-{i}", node_id=node_id, node_kind=kind,
-            project_id="p", dag_id=dag_id, phase=phase, latency_ms=p95,
-            tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-        ))
+        store.append(
+            NodeObservation(
+                run_id=f"r-{i}",
+                node_id=node_id,
+                node_kind=kind,
+                project_id="p",
+                dag_id=dag_id,
+                phase=phase,
+                latency_ms=p95,
+                tokens_in=0,
+                tokens_out=0,
+                cost_usd=0.0,
+                model_used="",
+            )
+        )
 
 
-def _seed_thumb(dag_id: str, node_id: str, thumb: str,
-                comment: str = "") -> None:
+def _seed_thumb(dag_id: str, node_id: str, thumb: str, comment: str = "") -> None:
     import asyncio
+
     from services.feedback_service import record_thumb
 
-    asyncio.run(record_thumb(
-        user_id="u1", project_id="p", run_id="r", thumb=thumb,
-        comment=comment, node_id=node_id, dag_id=dag_id,
-    ))
+    asyncio.run(
+        record_thumb(
+            user_id="u1",
+            project_id="p",
+            run_id="r",
+            thumb=thumb,
+            comment=comment,
+            node_id=node_id,
+            dag_id=dag_id,
+        )
+    )
 
 
 def _seed_eval_verdict(
-    dag_id: str, run_id: str, score: int,
+    dag_id: str,
+    run_id: str,
+    score: int,
     proposal: dict[str, Any] | None = None,
     *,
     scored_at: str | None = None,
@@ -110,8 +136,11 @@ def _seed_eval_verdict(
     import stores
 
     stores.eval_verdicts[run_id] = {
-        "run_id": run_id, "dag_id": dag_id, "score": score,
-        "rationale": "stub", "topology_proposal": proposal,
+        "run_id": run_id,
+        "dag_id": dag_id,
+        "score": score,
+        "rationale": "stub",
+        "topology_proposal": proposal,
         "scored_at": scored_at or "2026-05-22T12:00:00+00:00",
     }
 
@@ -123,9 +152,13 @@ def test_priority_score_sums_all_components() -> None:
     from services.optimizer import SignalSnapshot
 
     s = SignalSnapshot(
-        dag_id="d", target_node_id="n",
-        error_score=3.0, edit_score=1.0, eval_score=0.6,
-        thumb_score=2.0, latency_score=0.5,
+        dag_id="d",
+        target_node_id="n",
+        error_score=3.0,
+        edit_score=1.0,
+        eval_score=0.6,
+        thumb_score=2.0,
+        latency_score=0.5,
     )
     assert s.priority_score == 7.1
 
@@ -139,11 +172,18 @@ def test_build_snapshot_rolls_up_per_node() -> None:
     _seed_metrics("d", "n1", count=10, failed=4, p95=200)
     _seed_metrics("d", "n2", count=5, failed=0, p95=10_000)
     _seed_thumb("d", "n1", "down", "buggy")
-    _seed_eval_verdict("d", "r1", score=40, proposal={
-        "kind": "swap_node_kind", "target_node_id": "n1",
-        "from_value": "transform.alias", "to_value": "llm_summarize",
-        "expected_improvement": "more flexible parse",
-    })
+    _seed_eval_verdict(
+        "d",
+        "r1",
+        score=40,
+        proposal={
+            "kind": "swap_node_kind",
+            "target_node_id": "n1",
+            "from_value": "transform.alias",
+            "to_value": "llm_summarize",
+            "expected_improvement": "more flexible parse",
+        },
+    )
 
     snaps = _build_snapshot_for_dag("d", window_seconds=3600)
     assert "n1" in snaps
@@ -170,13 +210,17 @@ def test_build_snapshot_no_data_returns_empty() -> None:
 
 def test_propose_high_error_score_emits_model_swap() -> None:
     from services.optimizer import (
-        CLASS_AUTO_APPLY, KIND_MODEL_SWAP, SignalSnapshot,
+        CLASS_AUTO_APPLY,
+        KIND_MODEL_SWAP,
+        SignalSnapshot,
         _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1",
-        error_score=2.0, context={"metrics": {"failed": 8, "count": 10}},
+        dag_id="d",
+        target_node_id="n1",
+        error_score=2.0,
+        context={"metrics": {"failed": 8, "count": 10}},
     )
     out = _propose_for_snapshot(snap)
     kinds = {p["kind"] for p in out}
@@ -187,13 +231,17 @@ def test_propose_high_error_score_emits_model_swap() -> None:
 
 def test_propose_moderate_error_score_emits_retry_count() -> None:
     from services.optimizer import (
-        KIND_MODEL_SWAP, KIND_RETRY_COUNT, SignalSnapshot,
+        KIND_MODEL_SWAP,
+        KIND_RETRY_COUNT,
+        SignalSnapshot,
         _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1",
-        error_score=0.9, context={"metrics": {"failed": 1, "count": 3}},
+        dag_id="d",
+        target_node_id="n1",
+        error_score=0.9,
+        context={"metrics": {"failed": 1, "count": 3}},
     )
     out = _propose_for_snapshot(snap)
     kinds = {p["kind"] for p in out}
@@ -203,11 +251,15 @@ def test_propose_moderate_error_score_emits_retry_count() -> None:
 
 def test_propose_high_latency_emits_edge_weight() -> None:
     from services.optimizer import (
-        KIND_EDGE_WEIGHT, SignalSnapshot, _propose_for_snapshot,
+        KIND_EDGE_WEIGHT,
+        SignalSnapshot,
+        _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1", latency_score=0.5,
+        dag_id="d",
+        target_node_id="n1",
+        latency_score=0.5,
         context={"metrics": {"latency_ms_p95": 9000}},
     )
     kinds = {p["kind"] for p in _propose_for_snapshot(snap)}
@@ -216,35 +268,49 @@ def test_propose_high_latency_emits_edge_weight() -> None:
 
 def test_propose_high_thumb_score_emits_prompt_rewrite() -> None:
     from services.optimizer import (
-        CLASS_PROPOSE, KIND_PROMPT, SignalSnapshot, _propose_for_snapshot,
+        CLASS_PROPOSE,
+        KIND_PROMPT,
+        SignalSnapshot,
+        _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1", thumb_score=3.0,
-        context={"thumbs": {"down": 3, "up": 0,
-                            "comments": ["weak rationale", "duplicate result"]}},
+        dag_id="d",
+        target_node_id="n1",
+        thumb_score=3.0,
+        context={
+            "thumbs": {"down": 3, "up": 0, "comments": ["weak rationale", "duplicate result"]}
+        },
     )
     out = _propose_for_snapshot(snap)
-    assert any(p["kind"] == KIND_PROMPT and p["class"] == CLASS_PROPOSE
-               for p in out)
+    assert any(p["kind"] == KIND_PROMPT and p["class"] == CLASS_PROPOSE for p in out)
 
 
 def test_propose_eval_topology_surfaced_when_target_matches() -> None:
     from services.optimizer import (
-        CLASS_PROPOSE, KIND_TOPOLOGY, SignalSnapshot, _propose_for_snapshot,
+        CLASS_PROPOSE,
+        KIND_TOPOLOGY,
+        SignalSnapshot,
+        _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1",
-        context={"eval_verdicts": [{
-            "score": 40,
-            "topology_proposal": {
-                "kind": "tune_param",
-                "target_node_id": "n1",
-                "from_value": "0.3", "to_value": "0.7",
-                "expected_improvement": "more diversity",
-            },
-        }]},
+        dag_id="d",
+        target_node_id="n1",
+        context={
+            "eval_verdicts": [
+                {
+                    "score": 40,
+                    "topology_proposal": {
+                        "kind": "tune_param",
+                        "target_node_id": "n1",
+                        "from_value": "0.3",
+                        "to_value": "0.7",
+                        "expected_improvement": "more diversity",
+                    },
+                }
+            ]
+        },
     )
     out = _propose_for_snapshot(snap)
     topo = [p for p in out if p["kind"] == KIND_TOPOLOGY]
@@ -255,16 +321,25 @@ def test_propose_eval_topology_surfaced_when_target_matches() -> None:
 
 def test_propose_eval_topology_skipped_when_target_mismatches() -> None:
     from services.optimizer import (
-        KIND_TOPOLOGY, SignalSnapshot, _propose_for_snapshot,
+        KIND_TOPOLOGY,
+        SignalSnapshot,
+        _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1",
-        context={"eval_verdicts": [{
-            "score": 40, "topology_proposal": {
-                "kind": "tune_param", "target_node_id": "n2",  # wrong node
-            },
-        }]},
+        dag_id="d",
+        target_node_id="n1",
+        context={
+            "eval_verdicts": [
+                {
+                    "score": 40,
+                    "topology_proposal": {
+                        "kind": "tune_param",
+                        "target_node_id": "n2",  # wrong node
+                    },
+                }
+            ]
+        },
     )
     kinds = {p["kind"] for p in _propose_for_snapshot(snap)}
     assert KIND_TOPOLOGY not in kinds
@@ -273,11 +348,14 @@ def test_propose_eval_topology_skipped_when_target_mismatches() -> None:
 def test_propose_eval_verdict_without_topology_proposal() -> None:
     """A verdict where topology_proposal is None is skipped (continue)."""
     from services.optimizer import (
-        KIND_TOPOLOGY, SignalSnapshot, _propose_for_snapshot,
+        KIND_TOPOLOGY,
+        SignalSnapshot,
+        _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1",
+        dag_id="d",
+        target_node_id="n1",
         context={"eval_verdicts": [{"score": 50, "topology_proposal": None}]},
     )
     kinds = {p["kind"] for p in _propose_for_snapshot(snap)}
@@ -287,11 +365,15 @@ def test_propose_eval_verdict_without_topology_proposal() -> None:
 def test_propose_thumbs_score_high_but_no_comments() -> None:
     """thumb_score ≥ 2 with no comments — rationale falls back."""
     from services.optimizer import (
-        KIND_PROMPT, SignalSnapshot, _propose_for_snapshot,
+        KIND_PROMPT,
+        SignalSnapshot,
+        _propose_for_snapshot,
     )
 
     snap = SignalSnapshot(
-        dag_id="d", target_node_id="n1", thumb_score=3.0,
+        dag_id="d",
+        target_node_id="n1",
+        thumb_score=3.0,
         context={"thumbs": {"down": 3, "up": 0, "comments": []}},
     )
     out = [p for p in _propose_for_snapshot(snap) if p["kind"] == KIND_PROMPT]
@@ -337,8 +419,7 @@ def test_run_optimizer_apply_auto_true_applies_unless_locked() -> None:
     # Audit log has the auto-apply entry
     import stores
 
-    apply_entries = [e for e in stores.audit_log.values()
-                     if e["action"] == "optimizer_auto_apply"]
+    apply_entries = [e for e in stores.audit_log.values() if e["action"] == "optimizer_auto_apply"]
     assert len(apply_entries) >= 1
 
 
@@ -375,8 +456,7 @@ def test_run_optimizer_writes_run_audit() -> None:
 
     _seed_metrics("d5", "n1", count=10, failed=8, p95=100)
     run_optimizer("d5", actor="alice")
-    runs = [e for e in stores.audit_log.values()
-            if e["action"] == "optimizer_run"]
+    runs = [e for e in stores.audit_log.values() if e["action"] == "optimizer_run"]
     assert len(runs) == 1
     assert runs[0]["actor"] == "alice"
     assert runs[0]["target"] == "d5"
@@ -397,9 +477,10 @@ def test_record_decision_accepts_proposal() -> None:
     assert decision["decision"] == "accepted"
     assert decision["decided_by"] == "alice"
     # Audit log has the decision entry
-    assert any(e["action"] == "optimizer_decision"
-               and e["detail"]["proposal_id"] == pid
-               for e in stores.audit_log.values())
+    assert any(
+        e["action"] == "optimizer_decision" and e["detail"]["proposal_id"] == pid
+        for e in stores.audit_log.values()
+    )
 
 
 def test_record_decision_rejects_proposal() -> None:
@@ -490,10 +571,10 @@ def test_run_endpoint_with_apply_auto_true(authed_client: Any) -> None:
 def test_run_endpoint_empty_dag_id_returns_400(authed_client: Any) -> None:
     """FastAPI's path can't be empty, but if a service-level ValueError
     bubbles, the route translates it to 400."""
-    import services.optimizer as opt
 
     # Monkeypatch via the route's binding
     from routes import optimizer as routes_opt
+
     original = routes_opt.run_optimizer
 
     def _raise(*a: Any, **kw: Any) -> Any:
@@ -510,6 +591,7 @@ def test_run_endpoint_empty_dag_id_returns_400(authed_client: Any) -> None:
 def test_list_endpoint_returns_proposals(authed_client: Any) -> None:
     _seed_metrics("d-list", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
+
     run_optimizer("d-list")
     r = authed_client.get("/v1/optimizer/d-list/proposals")
     assert r.status_code == 200
@@ -521,6 +603,7 @@ def test_list_endpoint_returns_proposals(authed_client: Any) -> None:
 def test_list_all_endpoint(authed_client: Any) -> None:
     _seed_metrics("d-all", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
+
     run_optimizer("d-all")
     r = authed_client.get("/v1/optimizer/proposals?decision=pending")
     assert r.status_code == 200
@@ -530,6 +613,7 @@ def test_list_all_endpoint(authed_client: Any) -> None:
 def test_accept_endpoint(authed_client: Any) -> None:
     _seed_metrics("d-acc", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
+
     out = run_optimizer("d-acc")
     pid = out["proposals"][0]["id"]
     r = authed_client.post(f"/v1/optimizer/proposals/{pid}/accept")
@@ -540,6 +624,7 @@ def test_accept_endpoint(authed_client: Any) -> None:
 def test_reject_endpoint(authed_client: Any) -> None:
     _seed_metrics("d-rejhttp", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
+
     out = run_optimizer("d-rejhttp")
     pid = out["proposals"][0]["id"]
     r = authed_client.post(f"/v1/optimizer/proposals/{pid}/reject")
@@ -619,14 +704,14 @@ def test_collect_thumbs_ignores_blank_thumb_outcomes() -> None:
     """An Outcome with thumb='' (e.g. recorded by a non-thumbs flow)
     must NOT count toward the optimizer's signal."""
     import asyncio
-    from maistro.memory.types import Outcome
+
     from services.feedback_service import get_outcome_store
     from services.optimizer import _collect_thumbs
 
+    from maistro.memory.types import Outcome
+
     store = get_outcome_store()
-    asyncio.run(
-        store.record(Outcome(task_type="x", thumb="", dag_id="d", node_id="n"))
-    )
+    asyncio.run(store.record(Outcome(task_type="x", thumb="", dag_id="d", node_id="n")))
     out = _collect_thumbs("d")
     assert out == {}
 
@@ -644,13 +729,20 @@ def test_collect_thumbs_thumbs_with_no_dag_id_attribution_pass_through() -> None
     """The loose filter: outcomes with no dag_id attribution still
     surface (the wire wasn't there in older runs)."""
     import asyncio
+
     from services.feedback_service import record_thumb
     from services.optimizer import _collect_thumbs
 
-    asyncio.run(record_thumb(
-        user_id="u", project_id="p", run_id="r", thumb="up",
-        node_id="legacy", dag_id="",
-    ))
+    asyncio.run(
+        record_thumb(
+            user_id="u",
+            project_id="p",
+            run_id="r",
+            thumb="up",
+            node_id="legacy",
+            dag_id="",
+        )
+    )
     out = _collect_thumbs("d")
     assert "legacy" in out
     assert out["legacy"]["up"] == 1
@@ -663,8 +755,10 @@ def test_user_edit_count_caps_at_five() -> None:
 
     for i in range(7):
         stores.audit_log[f"a-{i}"] = {
-            "action": "dag_edit", "target": "d-edits",
-            "actor": "u", "detail": {"changed": ["name"]},
+            "action": "dag_edit",
+            "target": "d-edits",
+            "actor": "u",
+            "detail": {"changed": ["name"]},
         }
     _seed_metrics("d-edits", "n", count=2, failed=0, p95=0)
     snaps = _build_snapshot_for_dag("d-edits")
@@ -677,10 +771,8 @@ def test_eval_baseline_uses_most_recent_verdict() -> None:
     from services.optimizer import _build_snapshot_for_dag
 
     _seed_metrics("d-multi", "n", count=2, failed=0, p95=0)
-    _seed_eval_verdict("d-multi", "r-old", score=80,
-                       scored_at="2026-01-01T00:00:00+00:00")
-    _seed_eval_verdict("d-multi", "r-new", score=30,
-                       scored_at="2026-05-22T12:00:00+00:00")
+    _seed_eval_verdict("d-multi", "r-old", score=80, scored_at="2026-01-01T00:00:00+00:00")
+    _seed_eval_verdict("d-multi", "r-new", score=30, scored_at="2026-05-22T12:00:00+00:00")
     snaps = _build_snapshot_for_dag("d-multi")
     # 30 → baseline (100-30)/100 = 0.7 → * 1.5 = 1.05
     assert snaps["n"].eval_score == 1.05
@@ -691,13 +783,21 @@ def test_collect_thumbs_down_without_comment_skips_append() -> None:
     False branch (142→129). The down count still increments, no
     comments appended."""
     import asyncio
+
     from services.feedback_service import record_thumb
     from services.optimizer import _collect_thumbs
 
-    asyncio.run(record_thumb(
-        user_id="u", project_id="p", run_id="r", thumb="down",
-        comment="", node_id="n9", dag_id="d-no-comment",
-    ))
+    asyncio.run(
+        record_thumb(
+            user_id="u",
+            project_id="p",
+            run_id="r",
+            thumb="down",
+            comment="",
+            node_id="n9",
+            dag_id="d-no-comment",
+        )
+    )
     out = _collect_thumbs("d-no-comment")
     assert out["n9"]["down"] == 1
     assert out["n9"]["comments"] == []
@@ -707,15 +807,22 @@ def test_collect_thumbs_unknown_value_falls_through() -> None:
     """Direct Outcome.thumb='weird' (bypasses service validation) must
     NOT crash. Hits the 'neither up nor down' fall-through (140→129)."""
     import asyncio
-    from maistro.memory.types import Outcome
+
     from services.feedback_service import get_outcome_store
     from services.optimizer import _collect_thumbs
 
+    from maistro.memory.types import Outcome
+
     asyncio.run(
-        get_outcome_store().record(Outcome(
-            task_type="x", thumb="sideways", dag_id="d-weird",
-            node_id="n", user_id="u",
-        ))
+        get_outcome_store().record(
+            Outcome(
+                task_type="x",
+                thumb="sideways",
+                dag_id="d-weird",
+                node_id="n",
+                user_id="u",
+            )
+        )
     )
     out = _collect_thumbs("d-weird")
     # Node slot was created but neither up nor down incremented.
@@ -727,8 +834,9 @@ def test_route_user_id_helper_raises_401_for_missing_id() -> None:
     """Defensive check in routes/optimizer._user_id — fires only if
     AuthMiddleware lets through a user dict without 'id' (covers route
     line 41)."""
-    from fastapi import HTTPException
     from types import SimpleNamespace
+
+    from fastapi import HTTPException
     from routes.optimizer import _user_id
 
     req = SimpleNamespace(state=SimpleNamespace(user={"username": "x"}))

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from maistro.memory.episodic.tiers import clamp_weight, decay, reinforce
 from maistro.memory.episodic.store import InMemoryEpisodicStore
+from maistro.memory.episodic.tiers import clamp_weight, decay, reinforce
 from maistro.memory.types import EpisodicMemory, MemoryScope, MemoryTier
 
 

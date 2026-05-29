@@ -23,22 +23,26 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from services.feedback_service import get_outcome_store
 from services.node_metrics_store import (
     NodeObservation,
-    _aggregate as _ms_aggregate,  # noqa: PLC2701
+)
+from services.node_metrics_store import (
+    _aggregate as _ms_aggregate,
+)
+from services.node_metrics_store import (
     get_store as _metrics_store,
 )
 
 logger = logging.getLogger(__name__)
 
 
-W_SUCCESS = 0.4   # quality (benchmark pass rate, eval-judge score)
+W_SUCCESS = 0.4  # quality (benchmark pass rate, eval-judge score)
 W_LATENCY = 0.25  # speed (lower is better)
-W_THUMB = 0.2     # user satisfaction
-W_COST = 0.15     # cost efficiency (lower is better)
+W_THUMB = 0.2  # user satisfaction
+W_COST = 0.15  # cost efficiency (lower is better)
 
 ALLOWED_GROUP_FIELDS = ("model_used", "node_kind", "node_id")
 
@@ -85,7 +89,8 @@ def _resolve_label(obs: NodeObservation, group_by: str) -> str:
 
 
 def _bucket_observations(
-    obs_list: list[NodeObservation], group_by: str,
+    obs_list: list[NodeObservation],
+    group_by: str,
 ) -> dict[str, VariantBucket]:
     buckets: dict[str, VariantBucket] = {}
     for o in obs_list:
@@ -145,8 +150,7 @@ def _composite(
     costs = norm_cost or [0.0] * len(success_rates)
     return [
         round(W_SUCCESS * s + W_LATENCY * l + W_THUMB * t + W_COST * c, 4)
-        for s, l, t, c in zip(success_rates, norm_latency, norm_thumb_down, costs,
-                           strict=False)
+        for s, l, t, c in zip(success_rates, norm_latency, norm_thumb_down, costs, strict=False)
     ]
 
 
@@ -184,19 +188,18 @@ def compare_variants(
     if not dag_id:
         raise ValueError("dag_id is required")
     if group_by not in ALLOWED_GROUP_FIELDS:
-        raise ValueError(
-            f"group_by must be one of {ALLOWED_GROUP_FIELDS!r}, got {group_by!r}"
-        )
+        raise ValueError(f"group_by must be one of {ALLOWED_GROUP_FIELDS!r}, got {group_by!r}")
 
-    obs = _metrics_store()._filter(  # noqa: SLF001
-        dag_id=dag_id, window_seconds=window_seconds, now=now,
+    obs = _metrics_store()._filter(
+        dag_id=dag_id,
+        window_seconds=window_seconds,
+        now=now,
     )
     buckets = _bucket_observations(obs, group_by)
     _fold_in_thumbs(buckets, dag_id=dag_id, group_by=group_by)
 
     if not buckets:
-        return {"dag_id": dag_id, "group_by": group_by,
-                "variants": [], "winner": ""}
+        return {"dag_id": dag_id, "group_by": group_by, "variants": [], "winner": ""}
 
     labels = list(buckets.keys())
     success_rates = [buckets[l].success_rate for l in labels]
@@ -210,17 +213,19 @@ def compare_variants(
     rows = []
     for i, lbl in enumerate(labels):
         b = buckets[lbl]
-        rows.append({
-            "label": lbl,
-            "count": b.count,
-            "succeeded": b.succeeded,
-            "success_rate": round(success_rates[i], 4),
-            "p95_latency_ms": int(p95s[i]),
-            "thumb_up": b.thumb_up,
-            "thumb_down": b.thumb_down,
-            "thumb_down_rate": round(thumbs_down[i], 4),
-            "composite_score": composite[i],
-        })
+        rows.append(
+            {
+                "label": lbl,
+                "count": b.count,
+                "succeeded": b.succeeded,
+                "success_rate": round(success_rates[i], 4),
+                "p95_latency_ms": int(p95s[i]),
+                "thumb_up": b.thumb_up,
+                "thumb_down": b.thumb_down,
+                "thumb_down_rate": round(thumbs_down[i], 4),
+                "composite_score": composite[i],
+            }
+        )
 
     rows.sort(key=lambda r: r["composite_score"], reverse=True)
     for r, row in enumerate(rows, 1):

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-from pydantic import BaseModel
 from typing import Any
 
+from fastapi import APIRouter
+from pydantic import BaseModel
 from services.pm_fleet_v2 import (
-    JIRA_PROJECT_KEY, GITHUB_TOOLS, get_distiller, get_topk_tester,
-    execute_github_tool, execute_gitlab_tool,
+    GITHUB_TOOLS,
+    JIRA_PROJECT_KEY,
+    execute_github_tool,
+    execute_gitlab_tool,
+    get_distiller,
+    get_topk_tester,
 )
 
 router = APIRouter(prefix="/v1/pm-fleet", tags=["pm-fleet"])

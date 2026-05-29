@@ -6,9 +6,7 @@ FAIL until the privilege module is implemented.
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -55,7 +53,7 @@ class TestMandatoryTwoUsers:
     """AC: Setup wizard cannot complete with fewer than two users."""
 
     def test_refuses_single_user_init(self, tmp_path: Path) -> None:
-        from maistro.privilege import UsersStore, InsufficientUsersError
+        from maistro.privilege import InsufficientUsersError, UsersStore
 
         store = UsersStore(data_dir=str(tmp_path))
         with pytest.raises(InsufficientUsersError):
@@ -65,7 +63,7 @@ class TestMandatoryTwoUsers:
             )
 
     def test_no_single_user_env_override(self, tmp_path: Path) -> None:
-        from maistro.privilege import UsersStore, InsufficientUsersError
+        from maistro.privilege import InsufficientUsersError, UsersStore
 
         store = UsersStore(data_dir=str(tmp_path), allow_single_user=False)
         with pytest.raises(InsufficientUsersError):
@@ -79,7 +77,7 @@ class TestElevationFlow:
     """AC: User proposes -> admin signs -> operation proceeds; under 30s."""
 
     def test_elevation_grant_and_use(self, tmp_path: Path) -> None:
-        from maistro.privilege import PrivilegeGuard, ElevationRequest
+        from maistro.privilege import ElevationRequest, PrivilegeGuard
 
         guard = PrivilegeGuard(data_dir=str(tmp_path))
         guard.initialize(
@@ -99,7 +97,7 @@ class TestElevationFlow:
         assert grant.scope == "shell:execute"
 
     def test_elevation_rejected_by_wrong_admin(self, tmp_path: Path) -> None:
-        from maistro.privilege import PrivilegeGuard, ElevationRequest, ElevationDeniedError
+        from maistro.privilege import ElevationDeniedError, ElevationRequest, PrivilegeGuard
 
         guard = PrivilegeGuard(data_dir=str(tmp_path))
         guard.initialize(
@@ -121,7 +119,7 @@ class TestTimeBoxedDelegation:
     """AC: Admin grants 15-min scope; auto-revokes at expiry."""
 
     def test_delegation_expires(self, tmp_path: Path) -> None:
-        from maistro.privilege import PrivilegeGuard, ElevationRequest
+        from maistro.privilege import ElevationRequest, PrivilegeGuard
 
         guard = PrivilegeGuard(data_dir=str(tmp_path))
         guard.initialize(
@@ -149,7 +147,7 @@ class TestAdminKeyRotation:
     """AC: Admin key rotation invalidates all active elevation grants."""
 
     def test_rotation_revokes_all_grants(self, tmp_path: Path) -> None:
-        from maistro.privilege import PrivilegeGuard, ElevationRequest
+        from maistro.privilege import ElevationRequest, PrivilegeGuard
 
         guard = PrivilegeGuard(data_dir=str(tmp_path))
         guard.initialize(
@@ -228,7 +226,7 @@ class TestAuditLog:
     """AC: Audit log records every elevation as signed VC."""
 
     def test_elevation_grant_recorded(self, tmp_path: Path) -> None:
-        from maistro.privilege import PrivilegeGuard, ElevationRequest
+        from maistro.privilege import ElevationRequest, PrivilegeGuard
 
         guard = PrivilegeGuard(data_dir=str(tmp_path))
         guard.initialize(

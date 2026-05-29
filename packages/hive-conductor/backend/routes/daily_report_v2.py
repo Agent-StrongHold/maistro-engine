@@ -1,9 +1,11 @@
 """Daily report v2 — simple, uses same path as chat tools."""
+
 from __future__ import annotations
+
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, Request
-from typing import Any
 
 router = APIRouter(tags=["daily-report"])
 
@@ -11,6 +13,7 @@ router = APIRouter(tags=["daily-report"])
 def _get_pat(user_id: str) -> str | None:
     try:
         from services import user_credentials as cred_svc
+
         store = cred_svc.get_credential_store()
         if not store:
             return None
@@ -39,7 +42,11 @@ async def daily_report(request: Request) -> dict[str, Any]:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.get(
                     "https://myjira.disney.com/rest/api/2/search",
-                    params={"jql": jql, "maxResults": 15, "fields": "summary,status,assignee,issuetype,updated"},
+                    params={
+                        "jql": jql,
+                        "maxResults": 15,
+                        "fields": "summary,status,assignee,issuetype,updated",
+                    },
                     headers={"Authorization": f"Bearer {pat}", "Accept": "application/json"},
                 )
                 r.raise_for_status()
@@ -47,24 +54,27 @@ async def daily_report(request: Request) -> dict[str, Any]:
                 issues = []
                 for i in data.get("issues", []):
                     f = i.get("fields", {})
-                    issues.append({
-                        "key": i.get("key"),
-                        "summary": f.get("summary"),
-                        "status": (f.get("status") or {}).get("name"),
-                        "assignee": ((f.get("assignee") or {}).get("displayName")),
-                        "updated": f.get("updated"),
-                    })
+                    issues.append(
+                        {
+                            "key": i.get("key"),
+                            "summary": f.get("summary"),
+                            "status": (f.get("status") or {}).get("name"),
+                            "assignee": ((f.get("assignee") or {}).get("displayName")),
+                            "updated": f.get("updated"),
+                        }
+                    )
                 jira = {"status": "ok", "count": data.get("total", 0), "issues": issues}
         except Exception as e:
             jira = {"status": "error", "detail": str(e), "count": 0, "issues": []}
 
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
 
     # Airtable
     airtable: dict[str, Any] = {"status": "not_configured", "count": 0, "issues": []}
     airtable_pat = None
     try:
         from services import user_credentials as cred_svc
+
         store = cred_svc.get_credential_store()
         if store:
             for pid in ("airtable", "airtable_pat"):
@@ -109,11 +119,21 @@ async def daily_report(request: Request) -> dict[str, Any]:
                         items = []
                         for rec in records[:10]:
                             fields = rec.get("fields", {})
-                            name = fields.get("Name") or fields.get("Title") or fields.get("Use Case Name") or next(iter(fields.values()), "")
+                            name = (
+                                fields.get("Name")
+                                or fields.get("Title")
+                                or fields.get("Use Case Name")
+                                or next(iter(fields.values()), "")
+                            )
                             items.append({"id": rec.get("id"), "name": str(name)[:100]})
                         airtable = {"status": "ok", "count": len(records), "records": items}
                     else:
-                        airtable = {"status": "error", "detail": f"Airtable {r.status_code}", "count": 0, "issues": []}
+                        airtable = {
+                            "status": "error",
+                            "detail": f"Airtable {r.status_code}",
+                            "count": 0,
+                            "issues": [],
+                        }
         except Exception as e:
             airtable = {"status": "error", "detail": str(e)[:100], "count": 0, "issues": []}
 
@@ -123,6 +143,11 @@ async def daily_report(request: Request) -> dict[str, Any]:
         "airtable": airtable,
         "research": {"status": "not_configured", "count": 0},
         "suggested_actions": [
-            {"title": "Ask in Chat", "reason": "Use chat to query Jira, blockers, or Confluence", "link_label": "Open Chat", "link_href": "/chat"},
+            {
+                "title": "Ask in Chat",
+                "reason": "Use chat to query Jira, blockers, or Confluence",
+                "link_label": "Open Chat",
+                "link_href": "/chat",
+            },
         ],
     }

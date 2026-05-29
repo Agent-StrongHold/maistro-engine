@@ -5,7 +5,6 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-
 _DEFAULT_ELO = 1200.0
 _K_FACTOR = 32.0
 
@@ -126,12 +125,14 @@ class EloTournament:
         for gid, elos in genome_elos.items():
             avg = sum(elos) / len(elos)
             r = self._get_rating(gid, benchmark or "overall")
-            entries.append({
-                "genome_id": gid,
-                "avg_elo": round(avg, 1),
-                "total_battles": r.total_battles,
-                "win_rate": r.win_rate,
-            })
+            entries.append(
+                {
+                    "genome_id": gid,
+                    "avg_elo": round(avg, 1),
+                    "total_battles": r.total_battles,
+                    "win_rate": r.win_rate,
+                }
+            )
         entries.sort(key=lambda e: e["avg_elo"], reverse=True)
         return entries
 
@@ -144,12 +145,13 @@ class EloTournament:
         if not genome_ids:
             return None
         import random
-        candidates = random.sample(
-            genome_ids, min(tournament_size, len(genome_ids))
-        )
+
+        candidates = random.sample(genome_ids, min(tournament_size, len(genome_ids)))
         best = max(
             candidates,
-            key=lambda gid: self.get_avg_elo(gid) if benchmark is None else self.get_elo(gid, benchmark),
+            key=lambda gid: (
+                self.get_avg_elo(gid) if benchmark is None else self.get_elo(gid, benchmark)
+            ),
         )
         return best
 
@@ -162,8 +164,7 @@ class EloTournament:
         filtered = self._battles
         if genome_id:
             filtered = [
-                b for b in filtered
-                if b.genome_a_id == genome_id or b.genome_b_id == genome_id
+                b for b in filtered if b.genome_a_id == genome_id or b.genome_b_id == genome_id
             ]
         if benchmark:
             filtered = [b for b in filtered if b.benchmark == benchmark]

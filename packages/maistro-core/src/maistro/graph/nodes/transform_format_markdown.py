@@ -28,9 +28,7 @@ class FormatMarkdownIn(BaseModel):
     )
     header: str = Field(default="", description="Markdown text prepended once, before the rows")
     footer: str = Field(default="", description="Markdown text appended once, after the rows")
-    empty_fallback: str = Field(
-        default="_no items_", description="Text shown when items is empty"
-    )
+    empty_fallback: str = Field(default="_no items_", description="Text shown when items is empty")
 
 
 class FormatMarkdownOut(BaseModel):
@@ -82,7 +80,7 @@ def _render(template: str, item: dict[str, Any]) -> str:
     dot-path keys ('fields.summary')."""
     import re
 
-    def repl(match: "re.Match[str]") -> str:
+    def repl(match: re.Match[str]) -> str:
         key = match.group(1)
         parts = [p for p in key.split(".") if p]
         cur: Any = item

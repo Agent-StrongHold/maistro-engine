@@ -7,9 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from maistro.credentials import (
-    CredentialNotFound,
-    CredentialStoreUnavailable,
     PM_CREDENTIAL_PROVIDERS,
+    CredentialStoreUnavailable,
     UserCredentialStore,
 )
 

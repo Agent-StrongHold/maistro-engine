@@ -10,7 +10,7 @@ from pathlib import Path
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent))
-from mcp.pdf_composer import compose_interior, compose_cover
+from mcp.pdf_composer import compose_cover, compose_interior
 from mcp.products import ProductSpec
 
 STANDARD_8x8 = ProductSpec(

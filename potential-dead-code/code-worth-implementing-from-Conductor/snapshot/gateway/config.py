@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-from functools import lru_cache
 
 from pydantic_settings import BaseSettings
 

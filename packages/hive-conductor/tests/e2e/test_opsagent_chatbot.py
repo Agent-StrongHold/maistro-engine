@@ -1,13 +1,19 @@
 """Test OpsAgent chatbot via browser-use — asks questions, captures responses."""
+
 import asyncio
-import os
 import json
+import os
 
 from browser_use import Agent, Browser
 
 # Use LiteLLM gateway for the vision model
 os.environ.setdefault("OPENAI_API_KEY", os.environ.get("LITELLM_API_KEY", ""))
-os.environ.setdefault("OPENAI_BASE_URL", os.environ.get("LITELLM_API_BASE", "").rstrip("/") + "/v1" if os.environ.get("LITELLM_API_BASE") else "")
+os.environ.setdefault(
+    "OPENAI_BASE_URL",
+    os.environ.get("LITELLM_API_BASE", "").rstrip("/") + "/v1"
+    if os.environ.get("LITELLM_API_BASE")
+    else "",
+)
 
 SWAGGER_URL = "https://latest.opsagent.wdprapps.disney.com/api/v1/api-docs/index.html"
 TEAM_URL = "https://latest.opsagent.wdprapps.disney.com/teams/jedai_team"
@@ -24,14 +30,15 @@ QUESTIONS = [
 async def main():
     browser = Browser()
     from browser_use import ChatGoogle
+
     llm = ChatGoogle(model="gemini-3.5-flash")
 
     results = []
 
     for q in QUESTIONS:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Q: {q}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         agent = Agent(
             task=f"""Go to {TEAM_URL}. 
@@ -60,7 +67,7 @@ async def main():
     # Save results
     with open("/tmp/opsagent_test_results.json", "w") as f:
         json.dump(results, f, indent=2)
-    print(f"\n\nResults saved to /tmp/opsagent_test_results.json")
+    print("\n\nResults saved to /tmp/opsagent_test_results.json")
 
 
 if __name__ == "__main__":

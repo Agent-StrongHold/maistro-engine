@@ -98,9 +98,8 @@ def _normalize_llm_result(result: Any) -> tuple[str, int, int]:
 
 def _build_system_prompt(role: AgentRole, node_config: NodeConfig | None = None) -> str:
     base = (
-        (node_config.system_prompt if node_config and node_config.system_prompt else None)
-        or DEFAULT_SYSTEM_PROMPTS.get(role, "")
-    )
+        node_config.system_prompt if node_config and node_config.system_prompt else None
+    ) or DEFAULT_SYSTEM_PROMPTS.get(role, "")
     schema_suffix = JSON_OUTPUT_SCHEMAS.get(role, "")
     return base + schema_suffix
 
@@ -261,9 +260,13 @@ class NodeRun:
         self.started_at = time.monotonic()
 
         if self._emit_event:
-            await self._emit_event(node_started(
-                self.run_id, self.node_id, self.role.value,
-            ))
+            await self._emit_event(
+                node_started(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                )
+            )
 
         try:
             if self.beam_width > 1:
@@ -275,9 +278,14 @@ class NodeRun:
             self.completed_at = time.monotonic()
             self.duration_s = self.completed_at - (self.started_at or self.completed_at)
             if self._emit_event:
-                await self._emit_event(node_failed(
-                    self.run_id, self.node_id, self.role.value, reason="cancelled",
-                ))
+                await self._emit_event(
+                    node_failed(
+                        self.run_id,
+                        self.node_id,
+                        self.role.value,
+                        reason="cancelled",
+                    )
+                )
             return
         except Exception as exc:
             await self._finish_failure(exc)
@@ -314,9 +322,18 @@ class NodeRun:
                 return
 
             try:
-                schema = self.strategy.output_type.model_json_schema() if self.strategy and hasattr(self.strategy, 'output_type') else None
+                schema = (
+                    self.strategy.output_type.model_json_schema()
+                    if self.strategy and hasattr(self.strategy, "output_type")
+                    else None
+                )
                 result = await asyncio.wait_for(
-                    llm_call(messages, model=self.model, temperature=self.temperature, response_schema=schema),
+                    llm_call(
+                        messages,
+                        model=self.model,
+                        temperature=self.temperature,
+                        response_schema=schema,
+                    ),
                     timeout=timeout,
                 )
                 raw, tokens_in, tokens_out = _normalize_llm_result(result)
@@ -342,17 +359,23 @@ class NodeRun:
                 self._transition(NodePhase.SUCCEEDED)
 
                 if self._emit_event:
-                    await self._emit_event(node_completed(
-                        self.run_id, self.node_id, self.role.value,
-                        score=self.score,
-                    ))
+                    await self._emit_event(
+                        node_completed(
+                            self.run_id,
+                            self.node_id,
+                            self.role.value,
+                            score=self.score,
+                        )
+                    )
                 return
 
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 classified = classify_error(
-                    exc, provider=self.model, model=self.model,
+                    exc,
+                    provider=self.model,
+                    model=self.model,
                 )
                 self.error_classifications.append(classified)
                 last_exc = exc
@@ -361,7 +384,9 @@ class NodeRun:
                 if classified.retryable and attempt < self.max_retries - 1:
                     self._transition(NodePhase.RETRYING)
                     self.retry_count += 1
-                    delay = compute_backoff(attempt + 1, backoff_config, retry_after=classified.retry_after_seconds)
+                    delay = compute_backoff(
+                        attempt + 1, backoff_config, retry_after=classified.retry_after_seconds
+                    )
                     if delay < 0:
                         await self._finish_failure(exc, classified)
                         return
@@ -374,11 +399,15 @@ class NodeRun:
                         delay=delay,
                     )
                     if self._emit_event:
-                        await self._emit_event(node_retrying(
-                            self.run_id, self.node_id, self.role.value,
-                            attempt=attempt + 1,
-                            category=classified.category.value,
-                        ))
+                        await self._emit_event(
+                            node_retrying(
+                                self.run_id,
+                                self.node_id,
+                                self.role.value,
+                                attempt=attempt + 1,
+                                category=classified.category.value,
+                            )
+                        )
                     await asyncio.sleep(delay)
                     self._transition(NodePhase.RUNNING)
                 else:
@@ -414,9 +443,13 @@ class NodeRun:
             if isinstance(result, BeamCandidate):
                 candidates.append(result)
             elif isinstance(result, (Exception, BaseException)):
-                candidates.append(BeamCandidate(
-                    index=i, raw_response="", error=Exception(str(result)),
-                ))
+                candidates.append(
+                    BeamCandidate(
+                        index=i,
+                        raw_response="",
+                        error=Exception(str(result)),
+                    )
+                )
 
         self.beam_candidates = candidates
 
@@ -437,12 +470,16 @@ class NodeRun:
         self._transition(NodePhase.SUCCEEDED)
 
         if self._emit_event:
-            await self._emit_event(node_completed(
-                self.run_id, self.node_id, self.role.value,
-                score=self.score,
-                beam_width=self.beam_width,
-                beam_succeeded=len(scored),
-            ))
+            await self._emit_event(
+                node_completed(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                    score=self.score,
+                    beam_width=self.beam_width,
+                    beam_succeeded=len(scored),
+                )
+            )
 
     async def _beam_attempt(
         self,
@@ -468,17 +505,25 @@ class NodeRun:
         parsed = self._parse_output_raw(raw)
         if parsed is None:
             return BeamCandidate(
-                index=index, raw_response=raw, parse_error="failed to parse",
-                duration_s=elapsed, tokens_used=tokens_in + tokens_out,
-                tokens_in=tokens_in, tokens_out=tokens_out,
+                index=index,
+                raw_response=raw,
+                parse_error="failed to parse",
+                duration_s=elapsed,
+                tokens_used=tokens_in + tokens_out,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
             )
 
         score = self.strategy.score_output(parsed)
         return BeamCandidate(
-            index=index, raw_response=raw, parsed_output=parsed,
-            score=score, duration_s=elapsed,
+            index=index,
+            raw_response=raw,
+            parsed_output=parsed,
+            score=score,
+            duration_s=elapsed,
             tokens_used=tokens_in + tokens_out,
-            tokens_in=tokens_in, tokens_out=tokens_out,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
         )
 
     def _parse_output(self, raw: str) -> Any | None:
@@ -515,11 +560,15 @@ class NodeRun:
             # node_failed is the most important event to deliver reliably; await
             # it on the same path as every other emit rather than fire-and-forget.
             try:
-                await self._emit_event(node_failed(
-                    self.run_id, self.node_id, self.role.value,
-                    category=classified.category.value,
-                    error=str(exc)[:200],
-                ))
+                await self._emit_event(
+                    node_failed(
+                        self.run_id,
+                        self.node_id,
+                        self.role.value,
+                        category=classified.category.value,
+                        error=str(exc)[:200],
+                    )
+                )
             except Exception:
                 logger.warning(
                     "node_failed_emit_error",

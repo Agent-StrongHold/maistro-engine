@@ -65,7 +65,9 @@ def extract_tool_call(response: str) -> dict[str, Any] | None:
         if match:
             try:
                 data = json.loads(match.group(1))
-                if isinstance(data, dict) and ("name" in data or "function" in data or "action" in data):
+                if isinstance(data, dict) and (
+                    "name" in data or "function" in data or "action" in data
+                ):
                     return data
             except (json.JSONDecodeError, ValueError):
                 continue

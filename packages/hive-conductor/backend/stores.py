@@ -35,8 +35,10 @@ from services.model_store import JsonStore, ModelStore
 
 logger = logging.getLogger(__name__)
 
+
 def now() -> datetime:
     return datetime.now(UTC)
+
 
 _persisted: Any | None = None
 
@@ -77,6 +79,8 @@ memory_entries: ModelStore = ModelStore("memory_entries", MemoryEntry)
 memory_namespaces: dict[str, MemoryNamespace] = {
     "default": MemoryNamespace(name="default", entry_count=1, size_bytes=1024)
 }
+
+
 def _initial_settings() -> SettingsModel:
     from settings_defaults import default_settings
 
@@ -145,9 +149,7 @@ def initialize_stores() -> None:
     for store in _all_json_stores:
         store.initialize()
     _seed_if_empty()
-    logger.info(
-        "Stores initialized (persisted=%s)", _persisted is not None
-    )
+    logger.info("Stores initialized (persisted=%s)", _persisted is not None)
 
 
 def _seed_platform_mcp() -> None:
@@ -235,19 +237,111 @@ def _seed_if_empty() -> None:
     if len(agents) == 0:
         t = now()
         _real_agents = [
-            ("queen", "Conductor", "Orchestrates agents, routes intents, dispatches tools", "cerebras-qwen-3-235b-a22b-2507", ["missions", "tools", "routing", "chat"], ["sk-1"], 234, 42.0, {"strategy": "react", "role": "queen"}),
-            ("worker", "Coder", "Writes, reviews, and refactors code", "mistral-codestral", ["code", "reasoning", "tools"], ["sk-1"], 189, 1200.0, {"strategy": "plan_execute", "role": "worker"}),
-            ("worker", "Researcher", "Web search, document analysis, summarization", "gemini-3-flash", ["research", "tools", "summarize"], ["sk-1"], 156, 210.0, {"strategy": "react", "role": "worker"}),
-            ("worker", "Abra", "Home Assistant control, IoT device management", "gemini-flash-lite", ["ha_control", "tools"], ["sk-1"], 142, 180.0, {"strategy": "react", "role": "worker"}),
-            ("scout", "Phantom", "Exploratory research, competitive analysis, trend detection", "perplexity-sonar-deep-research", ["research", "exploration"], [], 37, 4500.0, {"strategy": "react", "role": "scout"}),
-            ("drone", "Heartbeat", "System health checks, uptime monitoring, maintenance", "cerebras-llama8b", ["monitoring", "maintenance"], [], 89, 35.0, {"strategy": "react", "role": "drone"}),
-            ("drone", "DreamLoop", "Background memory consolidation, pattern mining, embedding backfill", "gemma-27b", ["memory", "patterns"], [], 37, 3200.0, {"strategy": "react", "role": "drone"}),
-            ("guard", "Bouncer", "Security gate, intent validation, privilege enforcement", "mistral-small", ["security", "gate"], [], 312, 55.0, {"strategy": "react", "role": "guard"}),
-            ("guard", "RedTeam", "Adversarial testing, vulnerability scanning, penetration testing", "mistral-devstral", ["security", "testing"], [], 89, 2800.0, {"strategy": "plan_execute", "role": "guard"}),
+            (
+                "queen",
+                "Conductor",
+                "Orchestrates agents, routes intents, dispatches tools",
+                "cerebras-qwen-3-235b-a22b-2507",
+                ["missions", "tools", "routing", "chat"],
+                ["sk-1"],
+                234,
+                42.0,
+                {"strategy": "react", "role": "queen"},
+            ),
+            (
+                "worker",
+                "Coder",
+                "Writes, reviews, and refactors code",
+                "mistral-codestral",
+                ["code", "reasoning", "tools"],
+                ["sk-1"],
+                189,
+                1200.0,
+                {"strategy": "plan_execute", "role": "worker"},
+            ),
+            (
+                "worker",
+                "Researcher",
+                "Web search, document analysis, summarization",
+                "gemini-3-flash",
+                ["research", "tools", "summarize"],
+                ["sk-1"],
+                156,
+                210.0,
+                {"strategy": "react", "role": "worker"},
+            ),
+            (
+                "worker",
+                "Abra",
+                "Home Assistant control, IoT device management",
+                "gemini-flash-lite",
+                ["ha_control", "tools"],
+                ["sk-1"],
+                142,
+                180.0,
+                {"strategy": "react", "role": "worker"},
+            ),
+            (
+                "scout",
+                "Phantom",
+                "Exploratory research, competitive analysis, trend detection",
+                "perplexity-sonar-deep-research",
+                ["research", "exploration"],
+                [],
+                37,
+                4500.0,
+                {"strategy": "react", "role": "scout"},
+            ),
+            (
+                "drone",
+                "Heartbeat",
+                "System health checks, uptime monitoring, maintenance",
+                "cerebras-llama8b",
+                ["monitoring", "maintenance"],
+                [],
+                89,
+                35.0,
+                {"strategy": "react", "role": "drone"},
+            ),
+            (
+                "drone",
+                "DreamLoop",
+                "Background memory consolidation, pattern mining, embedding backfill",
+                "gemma-27b",
+                ["memory", "patterns"],
+                [],
+                37,
+                3200.0,
+                {"strategy": "react", "role": "drone"},
+            ),
+            (
+                "guard",
+                "Bouncer",
+                "Security gate, intent validation, privilege enforcement",
+                "mistral-small",
+                ["security", "gate"],
+                [],
+                312,
+                55.0,
+                {"strategy": "react", "role": "guard"},
+            ),
+            (
+                "guard",
+                "RedTeam",
+                "Adversarial testing, vulnerability scanning, penetration testing",
+                "mistral-devstral",
+                ["security", "testing"],
+                [],
+                89,
+                2800.0,
+                {"strategy": "plan_execute", "role": "guard"},
+            ),
         ]
-        for i, (_role, name, desc, model, caps, _skills, _tasks, _latency, _config) in enumerate(_real_agents):
-            agents[f"agent-{i+1}"] = Agent(
-                id=f"agent-{i+1}",
+        for i, (_role, name, desc, model, caps, _skills, _tasks, _latency, _config) in enumerate(
+            _real_agents
+        ):
+            agents[f"agent-{i + 1}"] = Agent(
+                id=f"agent-{i + 1}",
                 name=name,
                 description=desc,
                 model=model,
@@ -340,19 +434,37 @@ def _seed_if_empty() -> None:
         m2_id = str(uuid4())
         m3_id = str(uuid4())
         messages[m1_id] = Message(
-            id=m1_id, from_agent="RedTeam", to="admin",
-            subject="Vulnerability found in auth flow", body="XSS in /v1/auth/callback",
-            priority="critical", read=False, category="security", created_at=t,
+            id=m1_id,
+            from_agent="RedTeam",
+            to="admin",
+            subject="Vulnerability found in auth flow",
+            body="XSS in /v1/auth/callback",
+            priority="critical",
+            read=False,
+            category="security",
+            created_at=t,
         ).model_dump(mode="json")
         messages[m2_id] = Message(
-            id=m2_id, from_agent="DreamLoop", to="all",
-            subject="DreamLoop cycle 47 complete", body="Generated 12 new patterns from overnight analysis",
-            priority="info", read=False, category="mission", created_at=t,
+            id=m2_id,
+            from_agent="DreamLoop",
+            to="all",
+            subject="DreamLoop cycle 47 complete",
+            body="Generated 12 new patterns from overnight analysis",
+            priority="info",
+            read=False,
+            category="mission",
+            created_at=t,
         ).model_dump(mode="json")
         messages[m3_id] = Message(
-            id=m3_id, from_agent="Conductor", to="admin",
-            subject="Anthropic quota at 25%", body="125K of 500K tokens used this billing cycle",
-            priority="warning", read=True, category="quota", created_at=t,
+            id=m3_id,
+            from_agent="Conductor",
+            to="admin",
+            subject="Anthropic quota at 25%",
+            body="125K of 500K tokens used this billing cycle",
+            priority="warning",
+            read=True,
+            category="quota",
+            created_at=t,
         ).model_dump(mode="json")
     if len(audit_log) == 0:
         from routes.audit import AuditEntry
@@ -367,8 +479,13 @@ def _seed_if_empty() -> None:
         ]:
             eid = str(uuid4())
             audit_log[eid] = AuditEntry(
-                id=eid, action=action, actor=actor, target=target,
-                detail={}, severity=severity, created_at=t,
+                id=eid,
+                action=action,
+                actor=actor,
+                target=target,
+                detail={},
+                severity=severity,
+                created_at=t,
             ).model_dump(mode="json")
     if len(memory_entries) == 0:
         t = now()

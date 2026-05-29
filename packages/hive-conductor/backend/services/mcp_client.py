@@ -46,9 +46,11 @@ def resolve_atlassian_token(user_id: str | None) -> str | None:
                 if store.has_secret(user_id, provider):
                     return store.use_secret(user_id, provider, lambda s: s)
             except Exception as _exc:
-                __import__('logging').getLogger('hive.services.mcp_client').warning(
-                    'error_swallowed file=%s line=%d: %s',
-                    'packages/hive-conductor/backend/services/mcp_client.py', 48, _exc,
+                __import__("logging").getLogger("hive.services.mcp_client").warning(
+                    "error_swallowed file=%s line=%d: %s",
+                    "packages/hive-conductor/backend/services/mcp_client.py",
+                    48,
+                    _exc,
                 )
                 continue
     except Exception as exc:
@@ -95,7 +97,7 @@ async def test_jira_rest(*, user_id: str | None = None) -> dict[str, Any]:
             "detail": f"Jira API returned {r.status_code}",
             "site": site,
         }
-    except httpx.HTTPError as exc:
+    except httpx.HTTPError:
         return {"ok": False, "mode": "jira_rest", "detail": "Jira request failed", "site": site}
 
 
@@ -131,7 +133,12 @@ async def test_mcp_server(
             async with httpx.AsyncClient(timeout=2.0) as client:
                 r = await client.get(url)
             if r.status_code < 500:
-                return {"ok": True, "server_id": server_id, "mode": "http_local", "detail": "Local MCP reachable"}
+                return {
+                    "ok": True,
+                    "server_id": server_id,
+                    "mode": "http_local",
+                    "detail": "Local MCP reachable",
+                }
         except httpx.HTTPError:
             pass
         return {

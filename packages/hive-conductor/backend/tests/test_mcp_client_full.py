@@ -21,12 +21,12 @@ Covers:
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from typing import Any
 
-import pytest
 import httpx
+import pytest
 
 _BACKEND = pathlib.Path(__file__).resolve().parents[1]
 if str(_BACKEND) not in sys.path:
@@ -38,22 +38,26 @@ if str(_BACKEND) not in sys.path:
 
 def test_normalize_site_empty() -> None:
     from services.mcp_client import _normalize_site
+
     assert _normalize_site("") == ""
     assert _normalize_site("   ") == ""
 
 
 def test_normalize_site_adds_https_prefix() -> None:
     from services.mcp_client import _normalize_site
+
     assert _normalize_site("example.atlassian.net") == "https://example.atlassian.net"
 
 
 def test_normalize_site_strips_trailing_slash() -> None:
     from services.mcp_client import _normalize_site
+
     assert _normalize_site("https://x.atlassian.net/") == "https://x.atlassian.net"
 
 
 def test_normalize_site_preserves_existing_https() -> None:
     from services.mcp_client import _normalize_site
+
     assert _normalize_site("https://foo.atlassian.net") == "https://foo.atlassian.net"
 
 
@@ -64,6 +68,7 @@ def test_atlassian_site_url_reads_ATLASSIAN_SITE_URL_first(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services.mcp_client import atlassian_site_url
+
     monkeypatch.setenv("ATLASSIAN_SITE_URL", "https://primary.atlassian.net")
     monkeypatch.setenv("JIRA_SITE_URL", "https://fallback.atlassian.net")
     assert atlassian_site_url() == "https://primary.atlassian.net"
@@ -73,6 +78,7 @@ def test_atlassian_site_url_falls_back_to_JIRA_SITE_URL(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services.mcp_client import atlassian_site_url
+
     monkeypatch.delenv("ATLASSIAN_SITE_URL", raising=False)
     monkeypatch.setenv("JIRA_SITE_URL", "https://fallback.atlassian.net")
     assert atlassian_site_url() == "https://fallback.atlassian.net"
@@ -82,6 +88,7 @@ def test_atlassian_site_url_empty_when_neither_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services.mcp_client import atlassian_site_url
+
     monkeypatch.delenv("ATLASSIAN_SITE_URL", raising=False)
     monkeypatch.delenv("JIRA_SITE_URL", raising=False)
     assert atlassian_site_url() == ""
@@ -92,6 +99,7 @@ def test_atlassian_site_url_empty_when_neither_set(
 
 def test_resolve_token_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     from services.mcp_client import resolve_atlassian_token
+
     monkeypatch.setenv("ATLASSIAN_API_TOKEN", "env-token-1")
     monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
     assert resolve_atlassian_token(user_id="u1") == "env-token-1"
@@ -101,6 +109,7 @@ def test_resolve_token_from_jira_api_token_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services.mcp_client import resolve_atlassian_token
+
     monkeypatch.delenv("ATLASSIAN_API_TOKEN", raising=False)
     monkeypatch.setenv("JIRA_API_TOKEN", "jira-fallback")
     assert resolve_atlassian_token(user_id="u1") == "jira-fallback"
@@ -110,6 +119,7 @@ def test_resolve_token_no_user_returns_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services.mcp_client import resolve_atlassian_token
+
     monkeypatch.delenv("ATLASSIAN_API_TOKEN", raising=False)
     monkeypatch.delenv("JIRA_API_TOKEN", raising=False)
     assert resolve_atlassian_token(user_id=None) is None
@@ -239,13 +249,18 @@ async def test_jira_rest_200_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class _Resp:
         status_code = 200
-        def json(self) -> dict[str, Any]: return {"displayName": "Test User"}
+
+        def json(self) -> dict[str, Any]:
+            return {"displayName": "Test User"}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     out = await test_jira_rest(user_id=None)
@@ -263,13 +278,18 @@ async def test_jira_rest_non_200_status(monkeypatch: pytest.MonkeyPatch) -> None
 
     class _Resp:
         status_code = 403
-        def json(self) -> dict[str, Any]: return {}
+
+        def json(self) -> dict[str, Any]:
+            return {}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     out = await test_jira_rest(user_id=None)
@@ -285,7 +305,9 @@ async def test_jira_rest_httpx_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def get(self, *a: Any, **kw: Any) -> Any:
             raise httpx.HTTPError("connection refused")
@@ -309,11 +331,15 @@ async def test_jira_rest_uses_email_when_set(
 
     class _Resp:
         status_code = 200
-        def json(self) -> dict[str, Any]: return {"displayName": "U"}
+
+        def json(self) -> dict[str, Any]:
+            return {"displayName": "U"}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def get(self, url: str, *, auth: Any) -> _Resp:
             captured["auth"] = auth
@@ -350,8 +376,7 @@ async def test_mcp_server_rovo_with_token_but_no_site(
         return {"ok": False, "mode": "jira_rest", "detail": "ATLASSIAN_SITE_URL not set"}
 
     monkeypatch.setattr(mcp_client, "test_jira_rest", _jira_no)
-    monkeypatch.setattr(mcp_client, "resolve_atlassian_token",
-                       lambda user_id: "tk")
+    monkeypatch.setattr(mcp_client, "resolve_atlassian_token", lambda user_id: "tk")
     out = await mcp_client.test_mcp_server("mcp-atlassian-rovo")
     assert out["ok"] is True
     assert out["mode"] == "env_token"
@@ -366,8 +391,7 @@ async def test_mcp_server_rovo_no_token_no_jira(
         return {"ok": False, "mode": "jira_rest", "detail": "No Jira token"}
 
     monkeypatch.setattr(mcp_client, "test_jira_rest", _jira_no)
-    monkeypatch.setattr(mcp_client, "resolve_atlassian_token",
-                       lambda user_id: None)
+    monkeypatch.setattr(mcp_client, "resolve_atlassian_token", lambda user_id: None)
     out = await mcp_client.test_mcp_server("mcp-atlassian-rovo")
     assert out["ok"] is False
     assert out["server_id"] == "mcp-atlassian-rovo"
@@ -383,13 +407,17 @@ async def test_mcp_server_local_reachable(
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     out = await mcp_client.test_mcp_server(
-        "mcp-something", url="http://127.0.0.1:9876",
+        "mcp-something",
+        url="http://127.0.0.1:9876",
     )
     assert out["ok"] is True
     assert out["mode"] == "http_local"
@@ -402,14 +430,17 @@ async def test_mcp_server_local_http_error(
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def get(self, *a: Any, **kw: Any) -> Any:
             raise httpx.HTTPError("refused")
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     out = await mcp_client.test_mcp_server(
-        "mcp-something", url="http://127.0.0.1:9876",
+        "mcp-something",
+        url="http://127.0.0.1:9876",
     )
     assert out["ok"] is False
     assert "not running on loopback" in out["detail"]
@@ -427,13 +458,17 @@ async def test_mcp_server_local_5xx_is_failure(
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     out = await mcp_client.test_mcp_server(
-        "mcp-something", url="http://127.0.0.1:9876",
+        "mcp-something",
+        url="http://127.0.0.1:9876",
     )
     assert out["ok"] is False
 

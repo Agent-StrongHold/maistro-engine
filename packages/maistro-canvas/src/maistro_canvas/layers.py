@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal
 
-from maistro_canvas.types import LayerType, _MAX_REFERENCE_PHOTOS
+from maistro_canvas.types import _MAX_REFERENCE_PHOTOS, LayerType
 
 # ─────────────────────────────────────────────────────────────────────
 # Enums

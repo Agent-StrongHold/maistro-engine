@@ -103,10 +103,7 @@ class InMemoryOutcomeStore:
 
         # Two signal types: hard failures (success=False) and user thumbs-down.
         hard_failures = [o for o in self._outcomes if _matches(o) and not o.success]
-        thumb_downs = [
-            o for o in self._outcomes
-            if _matches(o) and o.success and o.thumb == "down"
-        ]
+        thumb_downs = [o for o in self._outcomes if _matches(o) and o.success and o.thumb == "down"]
 
         if not hard_failures and not thumb_downs:
             return ""

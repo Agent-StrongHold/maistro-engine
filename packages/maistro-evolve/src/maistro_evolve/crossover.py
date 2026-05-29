@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .mutate import mutate_all
 from .types import (
@@ -18,7 +18,7 @@ def _new_id() -> str:
 
 
 def _fresh_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def crossover(parent_a: PipelineGenome, parent_b: PipelineGenome) -> PipelineGenome:

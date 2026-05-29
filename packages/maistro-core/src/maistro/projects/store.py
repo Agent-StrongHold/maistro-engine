@@ -52,9 +52,7 @@ class ProjectStore(Protocol):
 
     async def delete(self, project_id: str) -> None: ...
 
-    async def list_for_user(
-        self, user_id: str, *, use_case: str | None = None
-    ) -> list[Project]:
+    async def list_for_user(self, user_id: str, *, use_case: str | None = None) -> list[Project]:
         """List projects the user owns OR is a member of.
 
         If `use_case` is provided, filter to that domain (e.g. "pm_fleet",
@@ -121,9 +119,7 @@ class InMemoryProjectStore:
             raise ProjectNotFound(project_id)
         del self._projects[project_id]
 
-    async def list_for_user(
-        self, user_id: str, *, use_case: str | None = None
-    ) -> list[Project]:
+    async def list_for_user(self, user_id: str, *, use_case: str | None = None) -> list[Project]:
         """Return projects the user owns OR is a member of.
 
         If `use_case` is provided, only projects with matching use_case are
@@ -154,9 +150,7 @@ class InMemoryProjectStore:
                 for m in p.members
             ]
         else:
-            new_members = list(p.members) + [
-                ProjectMember(user_id=user_id, role=role)
-            ]
+            new_members = list(p.members) + [ProjectMember(user_id=user_id, role=role)]
         updated = p.model_copy(update={"members": new_members, "updated_at": datetime.now(UTC)})
         self._projects[project_id] = updated
         return updated.model_copy(deep=True)

@@ -4,9 +4,8 @@ settings_defaults.py (was 65%).
 
 from __future__ import annotations
 
-import sys
 import pathlib
-from typing import Any
+import sys
 
 import pytest
 
@@ -21,6 +20,7 @@ if str(_BACKEND) not in sys.path:
 @pytest.fixture(autouse=True)
 def _wipe_program_contexts():
     import stores
+
     for k in list(stores.program_contexts.keys()):
         stores.program_contexts.pop(k)
     yield

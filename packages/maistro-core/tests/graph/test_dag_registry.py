@@ -14,7 +14,6 @@ from maistro.graph.dag_registry import (
 )
 from maistro.graph.nodes import BaseNode, NodeContext, register_node
 
-
 # --- Fixture node + DAGs --------------------------------------------------
 
 
@@ -92,12 +91,14 @@ def test_register_with_only_name_uses_name_as_dag_id_fallback() -> None:
     """The registration guard says id falls back to name. With at least
     one valid node + entry, an id-less but name-set DAG should register."""
     reg = DagRegistry()
-    desc = reg.register({
-        "name": "name-only-dag",
-        "nodes": [{"id": "n1", "kind": "test.dag_registry_node"}],
-        "edges": [],
-        "entry_node": "n1",
-    })
+    desc = reg.register(
+        {
+            "name": "name-only-dag",
+            "nodes": [{"id": "n1", "kind": "test.dag_registry_node"}],
+            "edges": [],
+            "entry_node": "n1",
+        }
+    )
     assert desc.dag_id == "name-only-dag"
     assert desc.agent_id == "dag:name-only-dag"
 
@@ -223,9 +224,7 @@ async def test_invoke_passes_snapshot_to_runner_and_returns_result() -> None:
         captured["snap"] = snap
         return {"status": "completed", "dag_id": snap["id"]}
 
-    result = await invoke_dag_agent(
-        "dag:ride", registry=reg, runner=_runner, inputs={"x": "hello"}
-    )
+    result = await invoke_dag_agent("dag:ride", registry=reg, runner=_runner, inputs={"x": "hello"})
     assert result == {"status": "completed", "dag_id": "ride"}
     assert captured["snap"]["id"] == "ride"
     # Inputs are attached under a runtime-only key the runner can lift.

@@ -17,8 +17,7 @@ def extract_signal(
     if genome.topology.nodes:
         worst_node = min(
             genome.topology.nodes,
-            key=lambda n: genome.eval_scores.get("ifeval", 0.5)
-            if n.role == "queen" else 0.5,
+            key=lambda n: genome.eval_scores.get("ifeval", 0.5) if n.role == "queen" else 0.5,
         )
         weakest_node_id = worst_node.id
 

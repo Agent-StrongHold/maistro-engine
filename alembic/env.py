@@ -2,8 +2,8 @@
 
 from logging.config import fileConfig
 
-from sqlalchemy import create_engine, pool
 from alembic import context
+from sqlalchemy import create_engine, pool
 
 config = context.config
 if config.config_file_name is not None:
@@ -18,6 +18,7 @@ target_metadata = Base.metadata
 def _get_url() -> str:
     """Get database URL from settings (avoids hardcoded credentials)."""
     from maistro.config.settings import DatabaseSettings
+
     db = DatabaseSettings()
     return db.sync_url
 

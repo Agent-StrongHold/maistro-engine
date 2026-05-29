@@ -51,20 +51,27 @@ class HillClimber:
 
     # Candidates for optimize phase — ordered by cost (cheapest first)
     OPTIMIZE_CANDIDATES = [
-        "gemini-3.5-flash",      # cheapest
-        "gpt-5-mini",            # cheap + good
-        "claude-haiku-4-5",      # fast + decent
-        "gpt-5-nano",            # ultra cheap
-        "gpt-4.1-mini",         # balanced
-        "claude-sonnet-4-6",     # strong but cheaper than opus
-        "gpt-5",                 # strong
-        "o4-mini",               # reasoning, cheaper than o3
+        "gemini-3.5-flash",  # cheapest
+        "gpt-5-mini",  # cheap + good
+        "claude-haiku-4-5",  # fast + decent
+        "gpt-5-nano",  # ultra cheap
+        "gpt-4.1-mini",  # balanced
+        "claude-sonnet-4-6",  # strong but cheaper than opus
+        "gpt-5",  # strong
+        "o4-mini",  # reasoning, cheaper than o3
     ]
 
     # Quality floor: optimize-phase model must score within this % of best
     QUALITY_FLOOR_PCT = 0.90  # 90% of best model's score
 
-    def __init__(self, dag_id: str, all_evals: list[str], target_count: int = 3, held_out_count: int = 2, phase: str = "build"):
+    def __init__(
+        self,
+        dag_id: str,
+        all_evals: list[str],
+        target_count: int = 3,
+        held_out_count: int = 2,
+        phase: str = "build",
+    ):
         self.dag_id = dag_id
         self.all_evals = list(all_evals)
         self.target_count = target_count
@@ -75,7 +82,7 @@ class HillClimber:
         self.score_history: dict[str, list[EvalScore]] = {e: [] for e in all_evals}
         self._last_target_combo: frozenset[str] = frozenset()
         self._seen_evals: set[str] = set()
-        self._rotation_pool: list[str] = list(all_evals[:target_count + held_out_count])
+        self._rotation_pool: list[str] = list(all_evals[: target_count + held_out_count])
 
     def select_evals(self) -> tuple[list[str], list[str]]:
         """Select target and held-out evals for this pass. Enforces anti-overfitting rules."""
@@ -119,8 +126,7 @@ class HillClimber:
         """Decide whether to accept a mutation based on scores."""
         # Check target improvement
         target_improved = any(
-            mutated_scores.get(e, 0) > baseline_scores.get(e, 0)
-            for e in target_evals
+            mutated_scores.get(e, 0) > baseline_scores.get(e, 0) for e in target_evals
         )
         target_no_regression = all(
             mutated_scores.get(e, 0) >= baseline_scores.get(e, 0) - 5  # 5-point tolerance
@@ -176,12 +182,14 @@ class HillClimber:
             recent = [s.score for s in scores[-5:]]
             if len(recent) >= 3 and recent[-1] < recent[0] - 15:
                 # Score dropped >15 points over recent history
-                alerts.append({
-                    "eval": eval_name,
-                    "trend": "declining",
-                    "drop": recent[0] - recent[-1],
-                    "recent_scores": recent,
-                })
+                alerts.append(
+                    {
+                        "eval": eval_name,
+                        "trend": "declining",
+                        "drop": recent[0] - recent[-1],
+                        "recent_scores": recent,
+                    }
+                )
         return alerts
 
     def is_done(self, threshold: int = 75) -> bool:
@@ -191,8 +199,7 @@ class HillClimber:
         # Check last 5 passes — all accepted with scores above threshold
         recent = self.history[-5:]
         return all(
-            r.mutation_accepted and
-            all(s >= threshold for s in r.target_scores.values())
+            r.mutation_accepted and all(s >= threshold for s in r.target_scores.values())
             for r in recent
         )
 

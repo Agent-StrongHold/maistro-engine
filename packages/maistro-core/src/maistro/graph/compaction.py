@@ -42,18 +42,12 @@ class ContextCompactor:
         parts.append(f"\n## Goal\n{blackboard.task_objective}")
         parts.append(f"\n## Iteration\n{blackboard.iteration}")
         if blackboard.node_annotations:
-            annotation_lines = [
-                f"- {k}: {v[:200]}" for k, v in blackboard.node_annotations.items()
-            ]
+            annotation_lines = [f"- {k}: {v[:200]}" for k, v in blackboard.node_annotations.items()]
             parts.append("\n## Key Decisions Made\n" + "\n".join(annotation_lines))
         if blackboard.metadata:
-            meta_lines = [
-                f"- {k}: {str(v)[:200]}" for k, v in blackboard.metadata.items()
-            ]
+            meta_lines = [f"- {k}: {str(v)[:200]}" for k, v in blackboard.metadata.items()]
             parts.append("\n## Critical Context\n" + "\n".join(meta_lines))
-        parts.append(
-            "\nProduce a concise summary preserving all facts needed for remaining nodes."
-        )
+        parts.append("\nProduce a concise summary preserving all facts needed for remaining nodes.")
         return "\n".join(parts)
 
     def _simple_compact(self, blackboard: GraphBlackboard) -> GraphBlackboard:

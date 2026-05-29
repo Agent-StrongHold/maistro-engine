@@ -58,9 +58,7 @@ class GraphEdge(BaseModel):
     # for the engineering path; arbitrary strings (UUID node-ids) also accepted
     # for the Phase 2 DAG-builder path. Pydantic tries AgentRole first; falls
     # back to str.
-    from_role: AgentRole | str = Field(
-        validation_alias=AliasChoices("from_role", "from_node")
-    )
+    from_role: AgentRole | str = Field(validation_alias=AliasChoices("from_role", "from_node"))
     to_role: AgentRole | str | None = Field(
         default=None, validation_alias=AliasChoices("to_role", "to_node")
     )
@@ -393,20 +391,20 @@ DEFAULT_SYSTEM_PROMPTS: dict[AgentRole, str] = {
 
 JSON_OUTPUT_SCHEMAS: dict[AgentRole, str] = {
     AgentRole.PLANNER: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"summary": "string", "subtasks": [{"title": "string", "description": "string", '
         '"file_paths": []}], "estimated_files": []}'
     ),
     AgentRole.CODER: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"files_changed": ["string"], "description": "string", "tests_added": false}'
     ),
     AgentRole.REVIEWER: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"approved": true, "score": 8.0, "issues": [], "suggestions": []}'
     ),
     AgentRole.SCOUT: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"relevant_files": ["string"], "patterns": "string", '
         '"dependency_map": {"file": ["import"]}, "similar_implementations": ["string"], '
         '"summary": "string"}'
@@ -414,27 +412,27 @@ JSON_OUTPUT_SCHEMAS: dict[AgentRole, str] = {
     # PM-fleet roles — all share the PMRoleOutput shape (per-capability schemas
     # are injected by the runtime via PM_CAPABILITY_PROMPTS in pm_domain.py)
     AgentRole.INTAKE: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
     ),
     AgentRole.PROGRAM_MANAGER: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
     ),
     AgentRole.RESEARCH: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
     ),
     AgentRole.DELIVERY: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
     ),
     AgentRole.RISK_DEPENDENCY: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
     ),
     AgentRole.REPORTING: (
-        '\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n'
+        "\nYou MUST respond with valid JSON matching this schema (no markdown, no extra text):\n"
         '{"capability": "string", "summary": "string", "result": {}, "source": "llm"}'
     ),
 }

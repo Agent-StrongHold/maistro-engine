@@ -39,7 +39,6 @@ from maistro.graph.nodes import (
     register_node,
 )
 
-
 # --- Test fixtures: tiny nodes registered just for these tests -------------
 
 
@@ -326,9 +325,7 @@ async def test_hitl_dag_resumes_after_submit_answer(mem_store: DurableRunStore) 
     )
     assert started.status == RunStatus.PAUSED_HITL
 
-    await mem_store.submit_hitl_answer(
-        started.run_id, "ask", {"answer": "yes"}
-    )
+    await mem_store.submit_hitl_answer(started.run_id, "ask", {"answer": "yes"})
     resumed = await resume_durable_dag(
         started.run_id,
         store=mem_store,
@@ -402,9 +399,7 @@ async def test_sqlite_paused_run_resumes_after_simulated_restart(tmp_path) -> No
     assert persisted.status == RunStatus.PAUSED_HITL
     # Submit the answer.
     await store2.submit_hitl_answer(run_id, "ask", {"answer": "shipped"})
-    final = await resume_durable_dag(
-        run_id, store=store2, node_resolver=_resolver
-    )
+    final = await resume_durable_dag(run_id, store=store2, node_resolver=_resolver)
     assert final.status == RunStatus.COMPLETED
     # And the answer survived the restart through to the downstream node.
     by_id = {nr.node_id: nr for nr in final.node_records}

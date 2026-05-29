@@ -7,7 +7,7 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import TAU_BENCH_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config
+from .prompt_builder import build_model_config, build_system_prompt
 from .scoring import extract_json_from_response
 
 
@@ -62,16 +62,22 @@ def _score_tool_usage(
     matched = 0
     for expected_name in expected:
         for mentioned in all_mentioned:
-            if expected_name.lower() == mentioned.lower() or expected_name.lower().replace("_", "") == mentioned.lower().replace("_", ""):
+            if expected_name.lower() == mentioned.lower() or expected_name.lower().replace(
+                "_", ""
+            ) == mentioned.lower().replace("_", ""):
                 matched += 1
                 break
 
     recall = matched / len(expected) if expected else 1.0
 
-    wrong_calls = [m for m in all_mentioned if not any(
-        e.lower() == m.lower() or e.lower().replace("_", "") == m.lower().replace("_", "")
-        for e in expected
-    )]
+    wrong_calls = [
+        m
+        for m in all_mentioned
+        if not any(
+            e.lower() == m.lower() or e.lower().replace("_", "") == m.lower().replace("_", "")
+            for e in expected
+        )
+    ]
     precision = 1.0 - (len(wrong_calls) * 0.2)
     precision = max(0.0, precision)
 
@@ -107,7 +113,9 @@ async def _simulate_turns(
                 for tool_name in extracted:
                     for tool_def in sample["tools"]:
                         if tool_def["name"] == tool_name:
-                            tool_results.append(f"Result from {tool_name}: Success. Operation completed.")
+                            tool_results.append(
+                                f"Result from {tool_name}: Success. Operation completed."
+                            )
                             break
                     else:
                         tool_results.append(f"Result from {tool_name}: Tool not found.")
@@ -115,7 +123,7 @@ async def _simulate_turns(
                 messages.append({"role": "user", "content": "\n".join(tool_results)})
             else:
                 break
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             break
 
     return last_response, cost
@@ -161,7 +169,7 @@ async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
                 score = _heuristic_score(sample)
                 total_score += score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             evaluated += 1
 
     avg_score = total_score / max(evaluated, 1)
@@ -179,6 +187,7 @@ async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
 
 def _heuristic_score(sample: dict[str, Any]) -> float:
     import random
+
     num_tools = len(sample.get("expected_tool_calls", []))
     base = 0.7 if num_tools == 1 else 0.5 if num_tools == 2 else 0.35
     return max(0.1, min(0.9, base + random.uniform(-0.05, 0.05)))

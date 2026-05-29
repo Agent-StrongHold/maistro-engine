@@ -7,7 +7,7 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import TERMINALBENCH_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config, build_messages
+from .prompt_builder import build_messages, build_model_config, build_system_prompt
 from .scoring import judge_score
 
 
@@ -31,7 +31,28 @@ def _score_command(response: str, sample: dict[str, Any]) -> float:
             if line and (
                 line.startswith("$")
                 or line.startswith(">")
-                or any(cmd in line.lower() for cmd in ["grep", "find", "tar", "docker", "sed", "curl", "wget", "chmod", "ls", "cat", "ssh", "ps", "kill", "du", "wc", "ss", "netstat"])
+                or any(
+                    cmd in line.lower()
+                    for cmd in [
+                        "grep",
+                        "find",
+                        "tar",
+                        "docker",
+                        "sed",
+                        "curl",
+                        "wget",
+                        "chmod",
+                        "ls",
+                        "cat",
+                        "ssh",
+                        "ps",
+                        "kill",
+                        "du",
+                        "wc",
+                        "ss",
+                        "netstat",
+                    ]
+                )
             ):
                 clean = line.lstrip("$> ").strip()
                 if clean:
@@ -91,7 +112,10 @@ async def _judge_command(
         judge_response = await asyncio.wait_for(
             llm_call(
                 [
-                    {"role": "system", "content": "You are a Linux command expert. Respond with only a number."},
+                    {
+                        "role": "system",
+                        "content": "You are a Linux command expert. Respond with only a number.",
+                    },
                     {"role": "user", "content": judge_prompt},
                 ],
                 temperature=0.0,
@@ -100,7 +124,7 @@ async def _judge_command(
             timeout=15.0,
         )
         return judge_score(judge_response)
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         return 0.0
 
 
@@ -153,7 +177,7 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
                 score = _heuristic_score(sample)
                 total_score += score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             evaluated += 1
 
     avg_score = total_score / max(evaluated, 1)
@@ -171,6 +195,7 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
 
 def _heuristic_score(sample: dict[str, Any]) -> float:
     import random
+
     num_keywords = len(sample.get("expected_command_keywords", []))
     base = 0.55 if num_keywords <= 3 else 0.4 if num_keywords <= 5 else 0.3
     return max(0.1, min(0.85, base + random.uniform(-0.05, 0.1)))

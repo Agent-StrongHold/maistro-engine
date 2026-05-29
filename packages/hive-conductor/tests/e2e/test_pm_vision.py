@@ -17,8 +17,7 @@ import os
 
 import pytest
 import pytest_asyncio
-from browser_use import Agent, Browser
-from browser_use import ChatGoogle
+from browser_use import Agent, Browser, ChatGoogle
 
 HIVE_URL = os.environ.get("HIVE_URL", "http://localhost:8101")
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-preview")
@@ -53,7 +52,8 @@ class TestPMVisionWorkflow:
             f"(name: 'Test Hive', hardware: Beast, skip modules, launch). "
             f"If you see login, log in with username 'user' password 'pmpass1234'. "
             f"Report 'SUCCESS' if you reach the main app, or 'FAILED' with reason.",
-            llm, browser,
+            llm,
+            browser,
         )
         assert "FAILED" not in result.upper() or "SUCCESS" in result.upper()
 
@@ -64,7 +64,8 @@ class TestPMVisionWorkflow:
             f"Are there navigation items in a sidebar? "
             f"Report 'LOOKS_GOOD' if the UI is functional, "
             f"'BROKEN' if there are error messages or blank screens.",
-            llm, browser,
+            llm,
+            browser,
         )
         assert "BROKEN" not in result.upper()
 
@@ -73,7 +74,8 @@ class TestPMVisionWorkflow:
             f"Navigate to {HIVE_URL}/fleet. "
             f"Does the page load? Can you see DAGs or a way to create one? "
             f"Report 'FLEET_OK' if the page works, 'FLEET_BROKEN' if not.",
-            llm, browser,
+            llm,
+            browser,
         )
         assert "BROKEN" not in result.upper()
 
@@ -83,7 +85,8 @@ class TestPMVisionWorkflow:
             f"name='Vision Test DAG', description='Created by AI agent'. "
             f"Look for a create/new button. If you find a form, fill it and submit. "
             f"Report 'CREATED' if successful, 'COULD_NOT_CREATE' if not.",
-            llm, browser,
+            llm,
+            browser,
         )
         assert "COULD_NOT" not in result.upper()
 
@@ -93,7 +96,8 @@ class TestPMVisionWorkflow:
             f"Does the Optimization Inbox page load? "
             f"What do you see — proposals, empty state, or an error? "
             f"Report 'INBOX_OK' if the page renders, 'INBOX_BROKEN' if error.",
-            llm, browser,
+            llm,
+            browser,
         )
         assert "BROKEN" not in result.upper()
 
@@ -102,7 +106,8 @@ class TestPMVisionWorkflow:
             f"Navigate to {HIVE_URL}/settings. "
             f"Can you see configuration options (model, hardware preset, etc)? "
             f"Report 'SETTINGS_OK' or 'SETTINGS_BROKEN'.",
-            llm, browser,
+            llm,
+            browser,
         )
         assert "BROKEN" not in result.upper()
 
@@ -117,6 +122,7 @@ class TestPMVisionWorkflow:
             f"4. Any visual glitches (overlapping elements, broken images)? "
             f"Give a score 1-10 and explain. "
             f"Report 'VISUAL_PASS' if score >= 6, 'VISUAL_FAIL' if < 6.",
-            llm, browser,
+            llm,
+            browser,
         )
         assert "VISUAL_FAIL" not in result.upper()

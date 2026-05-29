@@ -22,7 +22,6 @@ from maistro.graph.seeds import (
     list_seeds_for,
 )
 
-
 # --- Seed shape + identity ------------------------------------------------
 
 
@@ -80,13 +79,12 @@ def test_daily_status_seed_passes_substrate_validator() -> None:
     # fallthrough. Structural errors (no_entry, missing_node,
     # unknown_kind, edge_missing_endpoint, cycle) MUST be empty.
     structural = [
-        f for f in report.findings
-        if f.code in {"no_entry", "missing_node", "unknown_kind",
-                      "edge_missing_endpoint", "cycle"}
+        f
+        for f in report.findings
+        if f.code in {"no_entry", "missing_node", "unknown_kind", "edge_missing_endpoint", "cycle"}
     ]
     assert structural == [], (
-        f"daily-status seed has structural errors: "
-        f"{[f.message for f in structural]}"
+        f"daily-status seed has structural errors: {[f.message for f in structural]}"
     )
 
 
@@ -110,13 +108,13 @@ def test_pm_fleet_seeds_all_pass_validator() -> None:
         dag = factory()
         report = validate_dag(dag)
         structural = [
-            f for f in report.findings
-            if f.code in {"no_entry", "missing_node", "unknown_kind",
-                          "edge_missing_endpoint", "cycle"}
+            f
+            for f in report.findings
+            if f.code
+            in {"no_entry", "missing_node", "unknown_kind", "edge_missing_endpoint", "cycle"}
         ]
         assert structural == [], (
-            f"seed {factory.__name__!r} structural failures: "
-            f"{[f.message for f in structural]}"
+            f"seed {factory.__name__!r} structural failures: {[f.message for f in structural]}"
         )
 
 
@@ -168,13 +166,18 @@ async def test_daily_status_seed_walks_through_executor_with_mocked_jira(
 
     class _Resp:
         status_code = 200
-        def json(self) -> Any: return fake_issues
+
+        def json(self) -> Any:
+            return fake_issues
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
 
@@ -247,13 +250,18 @@ async def test_daily_status_seed_short_circuits_when_no_epics_match(
 
     class _Resp:
         status_code = 200
-        def json(self) -> Any: return fake_issues
+
+        def json(self) -> Any:
+            return fake_issues
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
 

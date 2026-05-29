@@ -19,9 +19,8 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
-import sys
 import pathlib
+import sys
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -36,6 +35,7 @@ if str(_BACKEND) not in sys.path:
 @pytest.fixture(autouse=True)
 def _reset_singleton():
     import services.engine as e
+
     prev = e._singleton
     e._singleton = None
     yield
@@ -107,27 +107,33 @@ def test_task_record_progress_no_subtasks_falls_back() -> None:
     from services.engine import TaskRecord
 
     # No subtasks; not completed → 0.0
-    rec = TaskRecord(_fake_task(
-        progress=SimpleNamespace(subtasks=0, completed=0, current=""),
-        status="queued",
-    ))
+    rec = TaskRecord(
+        _fake_task(
+            progress=SimpleNamespace(subtasks=0, completed=0, current=""),
+            status="queued",
+        )
+    )
     assert rec.progress == 0.0
 
     # No subtasks; completed → 1.0
-    rec = TaskRecord(_fake_task(
-        progress=SimpleNamespace(subtasks=0, completed=0, current=""),
-        status="completed",
-    ))
+    rec = TaskRecord(
+        _fake_task(
+            progress=SimpleNamespace(subtasks=0, completed=0, current=""),
+            status="completed",
+        )
+    )
     assert rec.progress == 1.0
 
 
 def test_task_record_current_step_falls_back_to_phase() -> None:
     from services.engine import TaskRecord
 
-    rec = TaskRecord(_fake_task(
-        progress=SimpleNamespace(subtasks=0, completed=0, current=""),
-        phase="phase-x",
-    ))
+    rec = TaskRecord(
+        _fake_task(
+            progress=SimpleNamespace(subtasks=0, completed=0, current=""),
+            phase="phase-x",
+        )
+    )
     assert rec.current_step == "phase-x"
 
 
@@ -165,12 +171,18 @@ async def test_start_with_no_router_key_uses_stub_agent_port(
         maistro_router_api_key = ""
 
     # Stub out TaskQueue/TaskRunner so .start doesn't try to spawn real ones
-    class _Q: pass
+    class _Q:
+        pass
+
     class _R:
-        def __init__(self, q: Any, executor: Any) -> None: pass
-        async def start(self) -> None: pass
+        def __init__(self, q: Any, executor: Any) -> None:
+            pass
+
+        async def start(self) -> None:
+            pass
 
     import types
+
     queue_mod = types.ModuleType("maistro.tasks.queue")
     queue_mod.TaskQueue = _Q  # type: ignore[attr-defined]
     runner_mod = types.ModuleType("maistro.tasks.runner")
@@ -178,7 +190,10 @@ async def test_start_with_no_router_key_uses_stub_agent_port(
     monkeypatch.setitem(sys.modules, "maistro.tasks.queue", queue_mod)
     monkeypatch.setitem(sys.modules, "maistro.tasks.runner", runner_mod)
     conductor_mod = types.ModuleType("maistro.agents.conductor")
-    async def _stub_run_task(*a: Any, **kw: Any) -> Any: return None
+
+    async def _stub_run_task(*a: Any, **kw: Any) -> Any:
+        return None
+
     conductor_mod.run_task = _stub_run_task  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "maistro.agents.conductor", conductor_mod)
 
@@ -228,6 +243,7 @@ async def test_submit_task_gated_capability_without_confirmed_raises(
     from services.engine import EngineService
 
     import maistro.agents.pm_capabilities as caps
+
     monkeypatch.setattr(caps, "is_gated", lambda c: True)
     monkeypatch.setattr(caps, "normalize_capability", lambda c: c)
 
@@ -235,7 +251,8 @@ async def test_submit_task_gated_capability_without_confirmed_raises(
     svc._queue = SimpleNamespace()  # truthy
     with pytest.raises(ValueError, match="work-item draft flow"):
         await svc.submit_task(
-            "n", "d",
+            "n",
+            "d",
             capability="any.gated_cap",
             program_context=None,  # not confirmed
         )
@@ -247,6 +264,7 @@ async def test_submit_task_success_returns_task_record(
     from services.engine import EngineService
 
     import maistro.agents.pm_capabilities as caps
+
     monkeypatch.setattr(caps, "is_gated", lambda c: False)
     monkeypatch.setattr(caps, "normalize_capability", lambda c: c)
 
@@ -257,8 +275,11 @@ async def test_submit_task_success_returns_task_record(
     svc = EngineService()
     svc._queue = _Queue()
     rec = await svc.submit_task(
-        "n", "ship hello", task_type="intake",
-        agent_id="intake", capability="route_to_pm_agent",
+        "n",
+        "ship hello",
+        task_type="intake",
+        agent_id="intake",
+        capability="route_to_pm_agent",
     )
     assert rec.id == "new-task"
     assert rec.description == "ship hello"
@@ -292,7 +313,8 @@ def test_get_task_missing_returns_none() -> None:
     from services.engine import EngineService
 
     class _Q:
-        def get(self, tid: str, *, user_id: Any) -> Any: return None
+        def get(self, tid: str, *, user_id: Any) -> Any:
+            return None
 
     svc = EngineService()
     svc._queue = _Q()
@@ -331,7 +353,8 @@ def test_delete_task_with_queue_passes_through() -> None:
     from services.engine import EngineService
 
     class _Q:
-        def remove(self, tid: str) -> bool: return tid == "exists"
+        def remove(self, tid: str) -> bool:
+            return tid == "exists"
 
     svc = EngineService()
     svc._queue = _Q()
@@ -387,8 +410,11 @@ async def test_iter_task_events_yields_then_terminates() -> None:
 
     states = [
         _fake_task(task_id="t-1", status="planning"),
-        _fake_task(task_id="t-1", status="completed",
-                   progress=SimpleNamespace(subtasks=1, completed=1, current="done")),
+        _fake_task(
+            task_id="t-1",
+            status="completed",
+            progress=SimpleNamespace(subtasks=1, completed=1, current="done"),
+        ),
     ]
     idx = [0]
 

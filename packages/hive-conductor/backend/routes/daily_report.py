@@ -19,7 +19,6 @@ from typing import Any
 import httpx
 import stores
 from fastapi import APIRouter, HTTPException, Request
-
 from services import user_credentials as cred_svc
 
 router = APIRouter(tags=["daily-report"])
@@ -74,7 +73,11 @@ async def _poll_jira(user_id: str) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(
                 "https://myjira.disney.com/rest/api/2/search",
-                params={"jql": jql, "maxResults": 15, "fields": "summary,status,assignee,issuetype,updated"},
+                params={
+                    "jql": jql,
+                    "maxResults": 15,
+                    "fields": "summary,status,assignee,issuetype,updated",
+                },
                 headers={"Authorization": f"Bearer {pat}", "Accept": "application/json"},
             )
             r.raise_for_status()
@@ -82,13 +85,15 @@ async def _poll_jira(user_id: str) -> dict[str, Any]:
             issues = []
             for i in data.get("issues", []):
                 f = i.get("fields", {})
-                issues.append({
-                    "key": i.get("key"),
-                    "summary": f.get("summary"),
-                    "status": (f.get("status") or {}).get("name"),
-                    "assignee": ((f.get("assignee") or {}).get("displayName")),
-                    "updated": f.get("updated"),
-                })
+                issues.append(
+                    {
+                        "key": i.get("key"),
+                        "summary": f.get("summary"),
+                        "status": (f.get("status") or {}).get("name"),
+                        "assignee": ((f.get("assignee") or {}).get("displayName")),
+                        "updated": f.get("updated"),
+                    }
+                )
             return {"status": "ok", "count": data.get("total", 0), "issues": issues, "jql": jql}
     except Exception as e:
         return {"status": "error", "detail": str(e), "issues": []}
@@ -174,7 +179,11 @@ def _research_summary(user_id: str) -> dict[str, Any]:
         container = get_container()
         outcome_store = getattr(container, "outcome_store", None)
         if outcome_store is None:
-            return {"status": "no_data", "detail": "Run a fleet pulse to generate research", "items": []}
+            return {
+                "status": "no_data",
+                "detail": "Run a fleet pulse to generate research",
+                "items": [],
+            }
         # get_experience_context returns a string; for v0 we surface the raw
         # recent outcomes if the store exposes them.
         outcomes = getattr(outcome_store, "_outcomes", [])
@@ -188,9 +197,11 @@ def _research_summary(user_id: str) -> dict[str, Any]:
                 if isinstance(ts, str):
                     ts = datetime.fromisoformat(ts)
             except Exception as _exc:
-                __import__('logging').getLogger('hive.routes.daily_report').warning(
-                    'error_swallowed file=%s line=%d: %s',
-                    'packages/hive-conductor/backend/routes/daily_report.py', 228, _exc,
+                __import__("logging").getLogger("hive.routes.daily_report").warning(
+                    "error_swallowed file=%s line=%d: %s",
+                    "packages/hive-conductor/backend/routes/daily_report.py",
+                    228,
+                    _exc,
                 )
                 continue
             if ts.tzinfo is None:
@@ -327,7 +338,7 @@ async def _jira_section_via_dag(user_id: str) -> dict[str, Any]:
             base_url = cloud_site
             flavor = "cloud"
 
-    from services.daily_status_runner import run_daily_status_dag  # noqa: PLC0415  lazy
+    from services.daily_status_runner import run_daily_status_dag
 
     return await run_daily_status_dag(
         user_id=user_id,
@@ -407,11 +418,13 @@ async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
             name = p.get("name", "")
             if q_lower and q_lower not in key.lower() and q_lower not in name.lower():
                 continue
-            projects.append({
-                "key": key,
-                "name": name,
-                "jql_suggestion": f"project = {key} AND updated >= -7d ORDER BY updated DESC",
-            })
+            projects.append(
+                {
+                    "key": key,
+                    "name": name,
+                    "jql_suggestion": f"project = {key} AND updated >= -7d ORDER BY updated DESC",
+                }
+            )
 
         # Sort by relevance: exact key match first, then alphabetical
         projects.sort(key=lambda p: (0 if p["key"].lower() == q_lower else 1, p["key"]))

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import HTTPException, Request
 
 from maistro.auth._types import Scope, ServiceIdentity
 from maistro.auth.provider import ServiceKeyAuthProvider

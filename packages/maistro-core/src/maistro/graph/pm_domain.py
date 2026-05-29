@@ -11,6 +11,7 @@ SOUL.md authoring can be iterated independently of node wiring. Day 5
 adds `outcome_store.get_experience_context()` injection for the
 self-improvement loop.
 """
+
 from __future__ import annotations
 
 from maistro.graph.types import (
@@ -200,7 +201,9 @@ def build_pm_graph_config(
     edges = [
         GraphEdge(from_role=AgentRole.INTAKE, to_role=AgentRole.PROGRAM_MANAGER),
         GraphEdge(from_role=AgentRole.PROGRAM_MANAGER, to_role=AgentRole.RESEARCH, parallel=True),
-        GraphEdge(from_role=AgentRole.PROGRAM_MANAGER, to_role=AgentRole.RISK_DEPENDENCY, parallel=True),
+        GraphEdge(
+            from_role=AgentRole.PROGRAM_MANAGER, to_role=AgentRole.RISK_DEPENDENCY, parallel=True
+        ),
         GraphEdge(from_role=AgentRole.PROGRAM_MANAGER, to_role=AgentRole.DELIVERY, parallel=True),
         GraphEdge(from_role=AgentRole.RESEARCH, to_role=AgentRole.REPORTING),
         GraphEdge(from_role=AgentRole.RISK_DEPENDENCY, to_role=AgentRole.REPORTING),

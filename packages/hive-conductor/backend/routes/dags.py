@@ -7,9 +7,9 @@ from uuid import uuid4
 import stores
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
+from services.edit_lock import diff_dag_snapshots, mark_edited
 
 from routes.audit import log_audit
-from services.edit_lock import diff_dag_snapshots, mark_edited
 
 router = APIRouter(tags=["dags"])
 
@@ -186,9 +186,16 @@ def add_node(dag_id: str, body: AddNodeBody) -> dict:
     if dag_id not in stores.dags:
         raise HTTPException(status_code=404, detail="dag not found")
     dag = DAGFile(**stores.dags[dag_id])
-    node = DAGNode(id=str(uuid4()), role=body.role, name=body.name,
-                   agent_id=body.agent_id, model=body.model,
-                   strategy=body.strategy, prompt=body.prompt, config=body.config)
+    node = DAGNode(
+        id=str(uuid4()),
+        role=body.role,
+        name=body.name,
+        agent_id=body.agent_id,
+        model=body.model,
+        strategy=body.strategy,
+        prompt=body.prompt,
+        config=body.config,
+    )
     dag = dag.model_copy(update={"nodes": [*dag.nodes, node], "updated_at": _now()})
     stores.dags[dag_id] = dag.model_dump(mode="json")
     return node.model_dump(mode="json")
@@ -222,8 +229,9 @@ def add_edge(dag_id: str, body: AddEdgeBody) -> dict:
     if dag_id not in stores.dags:
         raise HTTPException(status_code=404, detail="dag not found")
     dag = DAGFile(**stores.dags[dag_id])
-    edge = DAGEdge(id=str(uuid4()), from_node=body.from_node,
-                   to_node=body.to_node, condition=body.condition)
+    edge = DAGEdge(
+        id=str(uuid4()), from_node=body.from_node, to_node=body.to_node, condition=body.condition
+    )
     dag = dag.model_copy(update={"edges": [*dag.edges, edge], "updated_at": _now()})
     stores.dags[dag_id] = dag.model_dump(mode="json")
     return edge.model_dump(mode="json")
@@ -251,9 +259,11 @@ async def run_dag(dag_id: str) -> dict:
     log_audit("dag_run", "system", target=dag_id)
     exec_id = str(uuid4())
     try:
-        from services.graph_runner import execute_dag
-        from services.dag_run_store import get_dag_run_store
         import time as _time
+
+        from services.dag_run_store import get_dag_run_store
+        from services.graph_runner import execute_dag
+
         _start = _time.monotonic()
         store = get_dag_run_store()
         run = await store.start_run(run_id=exec_id)
@@ -272,24 +282,36 @@ async def run_dag(dag_id: str) -> dict:
             )
         # Record node metrics (Signal #5)
         try:
-            from services.node_metrics_store import NodeObservation, get_store as get_metrics
+            from services.node_metrics_store import NodeObservation
+            from services.node_metrics_store import get_store as get_metrics
+
             metrics = get_metrics()
             for nid, nr in result.get("node_results", {}).items():
-                metrics.record(NodeObservation(
-                    run_id=exec_id, node_id=nid, node_kind=nr.get("role", ""),
-                    project_id="", dag_id=dag_id, phase="COMPLETED" if nr.get("success") else "FAILED",
-                    latency_ms=_elapsed_ms // max(result.get("cycles", 1), 1),
-                    tokens_in=0, tokens_out=0, cost_usd=0.0,
-                    model_used=dag_data.get("nodes", [{}])[0].get("model", "gemini-3.5-flash"),
-                ))
+                metrics.record(
+                    NodeObservation(
+                        run_id=exec_id,
+                        node_id=nid,
+                        node_kind=nr.get("role", ""),
+                        project_id="",
+                        dag_id=dag_id,
+                        phase="COMPLETED" if nr.get("success") else "FAILED",
+                        latency_ms=_elapsed_ms // max(result.get("cycles", 1), 1),
+                        tokens_in=0,
+                        tokens_out=0,
+                        cost_usd=0.0,
+                        model_used=dag_data.get("nodes", [{}])[0].get("model", "gemini-3.5-flash"),
+                    )
+                )
         except Exception:
             pass
         return {"status": "completed", "execution_id": exec_id, "result": result}
     except Exception as exc:
         import logging
+
         logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)
         return {"status": "failed", "execution_id": exec_id, "error": str(exc)}
         import logging
+
         logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)
         return {"status": "failed", "execution_id": exec_id, "error": str(exc)}
 
@@ -298,9 +320,11 @@ async def run_dag(dag_id: str) -> dict:
 async def run_champion() -> dict:
     try:
         from services.graph_runner import execute_champion
+
         result = await execute_champion()
         return {"execution_id": str(uuid4()), "result": result}
     except Exception as exc:
         import logging
+
         logging.getLogger("hive.dags").warning("Champion execution failed: %s", exc)
         return {"status": "failed", "error": str(exc)}

@@ -22,13 +22,20 @@ class RetryPolicy:
 
 STAGE_POLICIES: dict[OperationStage, RetryPolicy] = {
     OperationStage.READ: RetryPolicy(
-        max_attempts=3, base_delay=0.25, max_delay=2.0,
+        max_attempts=3,
+        base_delay=0.25,
+        max_delay=2.0,
     ),
     OperationStage.EVALUATE: RetryPolicy(
-        max_attempts=2, base_delay=1.0, max_delay=8.0,
+        max_attempts=2,
+        base_delay=1.0,
+        max_delay=8.0,
     ),
     OperationStage.WRITE: RetryPolicy(
-        max_attempts=1, base_delay=0.0, max_delay=0.0, retryable=False,
+        max_attempts=1,
+        base_delay=0.0,
+        max_delay=0.0,
+        retryable=False,
     ),
 }
 
@@ -53,5 +60,5 @@ def get_delay(stage: OperationStage, attempt: int) -> float:
         return 0.0
     if stage == OperationStage.READ:
         return policy.base_delay
-    delay = policy.base_delay * (2 ** attempt)
+    delay = policy.base_delay * (2**attempt)
     return min(delay, policy.max_delay)

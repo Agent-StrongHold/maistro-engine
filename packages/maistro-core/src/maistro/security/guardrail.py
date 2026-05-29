@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -75,7 +75,7 @@ class ToolGuardrail:
 
     def _trim(self) -> None:
         if len(self._history) > self._max_history:
-            self._history = self._history[-self._max_history:]
+            self._history = self._history[-self._max_history :]
 
     def record(
         self,
@@ -107,8 +107,7 @@ class ToolGuardrail:
     ) -> GuardrailResult:
         args_hash = _hash(_canonical_args(args))
         exact_matches = [
-            r for r in self._history
-            if r.tool_name == tool_name and r.args_hash == args_hash
+            r for r in self._history if r.tool_name == tool_name and r.args_hash == args_hash
         ]
         if len(exact_matches) >= self._thresholds.block_after:
             return GuardrailResult(
@@ -128,7 +127,8 @@ class ToolGuardrail:
 
     def _evaluate(self, current: ToolCallRecord) -> GuardrailResult:
         exact = [
-            r for r in self._history[:-1]
+            r
+            for r in self._history[:-1]
             if r.tool_name == current.tool_name and r.args_hash == current.args_hash
         ]
         if len(exact) >= self._thresholds.block_after:
@@ -148,8 +148,7 @@ class ToolGuardrail:
 
         if current.error:
             same_tool_errors = [
-                r for r in self._history[:-1]
-                if r.tool_name == current.tool_name and r.error
+                r for r in self._history[:-1] if r.tool_name == current.tool_name and r.error
             ]
             if len(same_tool_errors) >= self._thresholds.same_tool_failure_block:
                 return GuardrailResult(
@@ -168,7 +167,8 @@ class ToolGuardrail:
 
         if current.result_hash and not current.error:
             idempotent = [
-                r for r in self._history[:-1]
+                r
+                for r in self._history[:-1]
                 if r.tool_name == current.tool_name
                 and r.args_hash == current.args_hash
                 and r.result_hash == current.result_hash
