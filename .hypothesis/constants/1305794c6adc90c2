@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/warden/patterns.py
-# hypothesis_version: 6.151.10
-
-['Memory wipe attempt', 'Mode switch attack', 'Role impersonation', 'Role pretend attack', 'Role reassignment', 'System prompt query']

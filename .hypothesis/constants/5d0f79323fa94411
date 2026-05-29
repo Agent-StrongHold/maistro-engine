@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/sentinel/pii_filter.py
-# hypothesis_version: 6.151.10
-
-['AKIA[0-9A-Z]{16}', 'NFKD', 'api_key', 'aws_key', 'bearer_token', 'connection_string', 'email', 'github_token', 'gitlab_token', 'ip_address', 'jwt', 'password', 'private_key']

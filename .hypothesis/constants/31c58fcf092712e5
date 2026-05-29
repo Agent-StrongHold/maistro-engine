@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/sessions/store.py
-# hypothesis_version: 6.152.9
-
-['assistant', 'content', 'role', 'user']

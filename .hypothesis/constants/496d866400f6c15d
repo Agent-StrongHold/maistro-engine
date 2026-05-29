@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/auth/__init__.py
-# hypothesis_version: 6.151.10
-
-['Scope', 'ScopeCategory', 'ServiceChecker', 'ServiceIdentity', 'ServiceKeyChecker', 'ServiceKeyClient', 'ServiceKeyRegistry', 'expand_scopes', 'require_any_scope', 'require_scope', 'setup_service_auth']
