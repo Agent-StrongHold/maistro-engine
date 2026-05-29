@@ -1,4 +1,4 @@
-from maistro_turing.self_model.types import (  # noqa: F401
+from maistro_turing.self_model.types import (
     ALL_FACETS,
     CANONICAL_FACETS,
     FACET_TO_TRAIT,
@@ -24,3 +24,30 @@ from maistro_turing.self_model.types import (  # noqa: F401
     facet_node_id,
     guess_node_kind,
 )
+
+__all__ = [
+    "ALL_FACETS",
+    "CANONICAL_FACETS",
+    "FACET_TO_TRAIT",
+    "ContributorOrigin",
+    "Hobby",
+    "Interest",
+    "Mood",
+    "NodeKind",
+    "Passion",
+    "PersonalityAnswer",
+    "PersonalityFacet",
+    "PersonalityItem",
+    "PersonalityRevision",
+    "Preference",
+    "PreferenceKind",
+    "SelfTodo",
+    "SelfTodoRevision",
+    "Skill",
+    "SkillKind",
+    "TodoStatus",
+    "Trait",
+    "current_level",
+    "facet_node_id",
+    "guess_node_kind",
+]
