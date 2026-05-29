@@ -68,7 +68,16 @@ _RATE_LIMIT_HEADER_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-_RETRY_AFTER_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*(s|sec|second|min|minute|h|hour)?", re.IGNORECASE)
+# A bare number in prose (e.g. the status code in "429 Too Many Requests")
+# must NOT be read as a retry-after value. We only accept a number when it is
+# either (a) followed by an explicit time unit, or (b) preceded by a "retry
+# after" / "try again in" style hint. Structured headers are handled separately
+# in ``_retry_after_from_headers``.
+_RETRY_AFTER_PATTERN = re.compile(
+    r"(?:(?:retry|try\s+again)[^\d]{0,12})(\d+(?:\.\d+)?)\s*(ms|s|sec|second|min|minute|h|hour)?"
+    r"|(\d+(?:\.\d+)?)\s*(ms|s|sec|seconds?|min|minute|minutes?|h|hour|hours?)\b",
+    re.IGNORECASE,
+)
 
 _NETWORK_ERROR_NAMES = frozenset({
     "ConnectionError",
@@ -121,8 +130,16 @@ def _extract_retry_after(message: str) -> float | None:
     m = _RETRY_AFTER_PATTERN.search(message)
     if not m:
         return None
-    value = float(m.group(1))
-    unit = (m.group(2) or "s").lower()
+    # Branch 1 (retry/try-again hint): groups 1+2. Branch 2 (unit required): 3+4.
+    if m.group(1) is not None:
+        value = float(m.group(1))
+        raw_unit = m.group(2)
+    else:
+        value = float(m.group(3))
+        raw_unit = m.group(4)
+    unit = (raw_unit or "s").lower()
+    if unit == "ms":
+        return value / 1000.0
     if unit.startswith("min"):
         return value * 60
     if unit.startswith("h"):
