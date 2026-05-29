@@ -7,13 +7,20 @@ via standard derivation paths.
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 
-from bip_utils import Bip32Slip10Ed25519, Bip39MnemonicGenerator, Bip39SeedGenerator
+from bip_utils import (
+    Base58Encoder,
+    Bip32Slip10Ed25519,
+    Bip39MnemonicGenerator,
+    Bip39SeedGenerator,
+)
 from nacl.signing import SigningKey, VerifyKey
 
-_ED25519_MULTIBASE_PREFIX = b"\x01\x00"
+# Multicodec prefix for an Ed25519 public key: varint(0xed) = 0xed 0x01.
+# Used by the did:key / multiformats spec; the leading multibase character
+# 'z' on the encoded value denotes base58btc.
+_ED25519_MULTICODEC_PREFIX = b"\xed\x01"
 
 _PATHS = {
     "signing": "m/0'",
@@ -35,7 +42,9 @@ class DerivedKey:
 
 class ConductorSeed:
     def __init__(self, mnemonic: str) -> None:
-        self._mnemonic = mnemonic
+        # Hold the mnemonic in a mutable buffer so zero() can overwrite the
+        # secret bytes in place rather than merely dropping a reference.
+        self._mnemonic: bytearray | None = bytearray(mnemonic.encode("utf-8"))
         self._root: Bip32Slip10Ed25519 | None = Bip32Slip10Ed25519.FromSeed(
             Bip39SeedGenerator(mnemonic).Generate()
         )
@@ -79,14 +88,22 @@ class ConductorSeed:
 
     def did_key(self, path: str = "m/44'/9000'/0'") -> str:
         pub = self.public_key(path)
-        prefixed = _ED25519_MULTIBASE_PREFIX + pub
-        encoded = base64.urlsafe_b64encode(prefixed).rstrip(b"=").decode()
+        prefixed = _ED25519_MULTICODEC_PREFIX + pub
+        # Multibase base58btc: the 'z' prefix denotes the base58btc alphabet.
+        encoded = Base58Encoder.Encode(prefixed)
         return f"did:key:z{encoded}"
 
     def mnemonic_words(self) -> list[str]:
-        return self._mnemonic.split()
+        if self._mnemonic is None:
+            return []
+        return self._mnemonic.decode("utf-8").split()
 
     def zero(self) -> None:
+        if self._mnemonic is not None:
+            # Overwrite the secret bytes in place before dropping the buffer.
+            for i in range(len(self._mnemonic)):
+                self._mnemonic[i] = 0
+            self._mnemonic = None
         self._root = None
 
     def _require_root(self) -> Bip32Slip10Ed25519:
