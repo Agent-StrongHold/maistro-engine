@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from typing import Any
 
 from ..types import EvalResult, PipelineGenome
@@ -19,57 +20,77 @@ from .scoring import (
 )
 
 
-def _evaluate_rule(response: str, rule: dict[str, Any]) -> float:
-    rule_type = rule["type"]
+def _rule_contains(response: str, rule: dict[str, Any]) -> float:
+    return 1.0 if rule["value"].lower() in response.lower() else 0.0
 
-    if rule_type == "contains":
-        return 1.0 if rule["value"].lower() in response.lower() else 0.0
-    elif rule_type == "contains_all":
-        return (
-            contains_all(response, rule["values"])
-            if "values" in rule
-            else 1.0
-            if rule["value"].lower() in response.lower()
-            else 0.0
-        )
-    elif rule_type == "not_contains":
-        return 1.0 if rule["value"].lower() not in response.lower() else 0.0
-    elif rule_type == "starts_with":
-        return starts_with(response, rule["value"])
-    elif rule_type == "ends_with":
-        return ends_with(response, rule["value"])
-    elif rule_type == "exact_match":
-        return exact_match(response, rule["value"])
-    elif rule_type == "valid_json":
-        return is_valid_json(response)
-    elif rule_type == "json_field":
-        return json_field_match(response, rule["field"], None)
-    elif rule_type == "sentence_count":
-        target = rule["value"]
-        tolerance = rule.get("tolerance", 1)
-        actual = sentence_count(response)
-        return (
-            1.0 if abs(actual - target) <= tolerance else max(0.0, 1.0 - abs(actual - target) * 0.2)
-        )
-    elif rule_type == "min_word_count":
-        return 1.0 if word_count(response) >= rule["value"] else 0.0
-    elif rule_type == "max_word_count":
-        return 1.0 if word_count(response) <= rule["value"] else 0.0
-    elif rule_type == "is_uppercase":
-        letters = [c for c in response if c.isalpha()]
-        return 1.0 if all(c.isupper() for c in letters) else 0.0
-    elif rule_type == "min_occurrences":
-        value = rule["value"]
-        count = rule["count"]
-        actual = response.count(value)
-        return 1.0 if actual >= count else actual / count
-    elif rule_type == "max_occurrences":
-        value = rule["value"]
-        count = rule["count"]
-        actual = response.count(value)
-        return 1.0 if actual <= count else max(0.0, 1.0 - (actual - count) * 0.3)
-    else:
+
+def _rule_contains_all(response: str, rule: dict[str, Any]) -> float:
+    if "values" in rule:
+        return contains_all(response, rule["values"])
+    return 1.0 if rule["value"].lower() in response.lower() else 0.0
+
+
+def _rule_not_contains(response: str, rule: dict[str, Any]) -> float:
+    return 1.0 if rule["value"].lower() not in response.lower() else 0.0
+
+
+def _rule_sentence_count(response: str, rule: dict[str, Any]) -> float:
+    target: int = rule["value"]
+    tolerance: int = rule.get("tolerance", 1)
+    actual = sentence_count(response)
+    if abs(actual - target) <= tolerance:
+        return 1.0
+    return max(0.0, 1.0 - abs(actual - target) * 0.2)
+
+
+def _rule_min_word_count(response: str, rule: dict[str, Any]) -> float:
+    return 1.0 if word_count(response) >= rule["value"] else 0.0
+
+
+def _rule_max_word_count(response: str, rule: dict[str, Any]) -> float:
+    return 1.0 if word_count(response) <= rule["value"] else 0.0
+
+
+def _rule_is_uppercase(response: str, rule: dict[str, Any]) -> float:
+    letters = [c for c in response if c.isalpha()]
+    return 1.0 if all(c.isupper() for c in letters) else 0.0
+
+
+def _rule_min_occurrences(response: str, rule: dict[str, Any]) -> float:
+    actual = response.count(rule["value"])
+    count = rule["count"]
+    return 1.0 if actual >= count else actual / count
+
+
+def _rule_max_occurrences(response: str, rule: dict[str, Any]) -> float:
+    actual = response.count(rule["value"])
+    count = rule["count"]
+    return 1.0 if actual <= count else max(0.0, 1.0 - (actual - count) * 0.3)
+
+
+_RULE_HANDLERS: dict[str, Callable[[str, dict[str, Any]], float]] = {
+    "contains": _rule_contains,
+    "contains_all": _rule_contains_all,
+    "not_contains": _rule_not_contains,
+    "starts_with": lambda response, rule: starts_with(response, rule["value"]),
+    "ends_with": lambda response, rule: ends_with(response, rule["value"]),
+    "exact_match": lambda response, rule: exact_match(response, rule["value"]),
+    "valid_json": lambda response, rule: is_valid_json(response),
+    "json_field": lambda response, rule: json_field_match(response, rule["field"], None),
+    "sentence_count": _rule_sentence_count,
+    "min_word_count": _rule_min_word_count,
+    "max_word_count": _rule_max_word_count,
+    "is_uppercase": _rule_is_uppercase,
+    "min_occurrences": _rule_min_occurrences,
+    "max_occurrences": _rule_max_occurrences,
+}
+
+
+def _evaluate_rule(response: str, rule: dict[str, Any]) -> float:
+    handler = _RULE_HANDLERS.get(rule["type"])
+    if handler is None:
         return 0.5
+    return handler(response, rule)
 
 
 def _score_response(response: str, rules: list[dict[str, Any]]) -> float:

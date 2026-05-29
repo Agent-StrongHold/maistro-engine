@@ -36,7 +36,7 @@ def crossover(parent_a: PipelineGenome, parent_b: PipelineGenome) -> PipelineGen
     child_nodes: list[NodeGenome] = [entry_node]
     node_id_map: dict[str, str] = {entry_node.id: entry_node.id}
 
-    for i, nodes in enumerate([other_a, other_b]):
+    for nodes in (other_a, other_b):
         for n in nodes:
             new_id = _new_id()
             node_id_map[n.id] = new_id

@@ -11,8 +11,16 @@ from .prompt_builder import build_messages, build_model_config, build_system_pro
 from .scoring import judge_score
 
 
-def _parse_actions(response: str) -> list[str]:
-    actions: list[str] = []
+def _action_from_dict(item: dict[str, Any]) -> str | None:
+    action_type = item.get("action") or item.get("type") or item.get("name") or ""
+    target = item.get("target") or item.get("value") or item.get("parameter") or ""
+    if not action_type:
+        return None
+    return f"{action_type}:{target}" if target else action_type
+
+
+def _parse_json_actions(response: str) -> list[str]:
+    import json
 
     json_patterns = [
         r"```(?:json)?\s*(.*?)```",
@@ -20,31 +28,31 @@ def _parse_actions(response: str) -> list[str]:
     ]
     for pat in json_patterns:
         match = re.search(pat, response, re.DOTALL)
-        if match:
-            import json
+        if not match:
+            continue
+        try:
+            data = json.loads(match.group(1))
+        except (ValueError, Exception):
+            continue
+        if not isinstance(data, list):
+            continue
+        actions: list[str] = []
+        for item in data:
+            if isinstance(item, dict):
+                parsed = _action_from_dict(item)
+                if parsed:
+                    actions.append(parsed)
+            elif isinstance(item, str):
+                actions.append(item)
+        if actions:
+            return actions
+    return []
 
-            try:
-                data = json.loads(match.group(1))
-                if isinstance(data, list):
-                    for item in data:
-                        if isinstance(item, dict):
-                            action_type = (
-                                item.get("action") or item.get("type") or item.get("name") or ""
-                            )
-                            target = (
-                                item.get("target")
-                                or item.get("value")
-                                or item.get("parameter")
-                                or ""
-                            )
-                            if action_type:
-                                actions.append(f"{action_type}:{target}" if target else action_type)
-                        elif isinstance(item, str):
-                            actions.append(item)
-                    if actions:
-                        return actions
-            except (ValueError, Exception):
-                pass
+
+def _parse_actions(response: str) -> list[str]:
+    actions = _parse_json_actions(response)
+    if actions:
+        return actions
 
     action_patterns = [
         r"step\s*\d+[\.:]\s*(.+?)(?:\n|$)",
@@ -78,7 +86,7 @@ def _score_action_sequence(
 
     proposed_text = " ".join(proposed).lower()
 
-    matched = 0
+    matched = 0.0
     for expected in expected_actions:
         exp_lower = expected.lower()
         if ":" in exp_lower:
