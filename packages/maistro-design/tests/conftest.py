@@ -1,4 +1,5 @@
 import os
+
 import pytest
 
 os.environ.setdefault("MAISTRO_DRY_RUN", "1")
@@ -17,8 +18,8 @@ def skill_registry():
 @pytest.fixture()
 def system_registry():
     from maistro_design.systems.registry import InMemoryDesignSystemRegistry
-    from maistro_design.types import DesignSystem
     from maistro_design.trust import TrustTier
+    from maistro_design.types import DesignSystem
 
     r = InMemoryDesignSystemRegistry()
     r.register(DesignSystem(slug="default", name="Default", description="Neutral default system", trust_tier=TrustTier.T0))

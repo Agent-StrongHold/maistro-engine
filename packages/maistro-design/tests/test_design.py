@@ -1,6 +1,6 @@
 """maistro-design test suite — implements all S-160 Gherkin scenarios.
 
-Contract × Scope axes per ADR-032:
+Contract x Scope axes per ADR-032:
   contract: boundary | behavioral
   scope:    unit | integration | property
 """
@@ -8,10 +8,10 @@ Contract × Scope axes per ADR-032:
 from __future__ import annotations
 
 import dataclasses
+
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
-
 
 # ─── TrustTier ───────────────────────────────────────────────────────────────
 
