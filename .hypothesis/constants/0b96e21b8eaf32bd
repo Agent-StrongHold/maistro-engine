@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/sentinel/policy.py
-# hypothesis_version: 6.151.10
-
-[', ', 'Layer 1 (Pattern)', 'Layer 2 (Heuristic)', 'Layer 2.5 (Semantic)', 'Layer 3 (LLM)', 'allowed', 'clean', 'denied', 'encoded_', 'error', 'flagged', 'high_instruction', 'llm_classification', 'maistro.sentinel', 'permission_denied', 'pii_detected', 'post_call', 'pre_call', 'prescriptive_', 'tool_result', 'warden_tool_result', 'warning']

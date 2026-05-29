@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/patterns.py
-# hypothesis_version: 6.151.10
-
-['/boot', '/dev', '/etc', '/proc', '/root', '/run/docker.sock', '/sys', '/var/run/docker.sock', ';\\s*--', '</system>', '<system>', '>/dev/sd[a-z]', 'DROP\\s+TABLE', 'TRUNCATE\\s+', 'UNION\\s+SELECT', '\\|\\s*(ba)?sh\\b', '__import__\\s*\\(', 'apply_patch', 'base64\\.b64decode', 'chmod\\s+777', 'dd\\s+if=', 'delete\\s+all', 'do\\s+anything\\s+now', 'docker\\s+rm\\s+-f', 'elevated\\s*=\\s*true', 'eval\\s*\\(', 'exec', 'exec\\s*\\(', 'fs_delete', 'fs_move', 'git\\s+reset\\s+--hard', 'ignore\\s+safety', 'iptables\\s+', 'jailbreak', 'kill\\s+-9', 'mkfs\\.', 'nc\\s+-l', 'nmap\\s+', 'os\\.system\\s*\\(', 'python\\s+-c\\s+', 'rm\\s+-rf', 'rm\\s+-rf\\s+[/~]', 'sandbox_destroy', 'sessions_send', 'sessions_spawn', 'shell', 'spawn', 'subprocess\\.\\w+', 'sudo\\s+', 'system\\s+prompt\\s*:']

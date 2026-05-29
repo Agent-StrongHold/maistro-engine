@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/external_content.py
-# hypothesis_version: 6.151.10
-
-['---', 'NFKC', 'api', 'browser', 'email', 'user_upload', 'web_fetch', 'web_search', 'webhook']
