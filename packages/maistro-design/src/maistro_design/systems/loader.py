@@ -41,8 +41,7 @@ class DesignSystemLoader:
             for t in manifest.get("typography", [])
         ]
         spacing = [
-            SpacingToken(name=s["name"], value=s["value"])
-            for s in manifest.get("spacing", [])
+            SpacingToken(name=s["name"], value=s["value"]) for s in manifest.get("spacing", [])
         ]
         return DesignSystem(
             slug=manifest["slug"],
@@ -53,9 +52,21 @@ class DesignSystemLoader:
             spacing=spacing,
             tokens_css=manifest.get("tokens_css", ""),
             components=manifest.get("components", []),
-            metadata={k: v for k, v in manifest.items()
-                      if k not in ("slug", "name", "description", "colors",
-                                   "typography", "spacing", "tokens_css", "components")},
+            metadata={
+                k: v
+                for k, v in manifest.items()
+                if k
+                not in (
+                    "slug",
+                    "name",
+                    "description",
+                    "colors",
+                    "typography",
+                    "spacing",
+                    "tokens_css",
+                    "components",
+                )
+            },
             trust_tier=trust_tier,
         )
 

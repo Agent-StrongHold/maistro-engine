@@ -28,7 +28,11 @@ class InMemoryDesignSkillRegistry:
         key = skill.slug
         with self._lock:
             existing = self._skills.get(key)
-            if existing and existing.trust_tier == TrustTier.T0 and skill.trust_tier != TrustTier.T0:
+            if (
+                existing
+                and existing.trust_tier == TrustTier.T0
+                and skill.trust_tier != TrustTier.T0
+            ):
                 logger.warning("Blocked: cannot overwrite built-in skill '%s'", key)
                 return
             self._skills[key] = skill

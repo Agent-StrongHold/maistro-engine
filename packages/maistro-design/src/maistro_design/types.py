@@ -39,7 +39,7 @@ class DiscoveryField:
     key: str
     label: str
     description: str
-    field_type: str = "text"            # text | select | multiselect | color | number
+    field_type: str = "text"  # text | select | multiselect | color | number
     options: tuple[str, ...] = ()
     required: bool = True
     default: str | None = None
@@ -64,7 +64,7 @@ class DesignSkill:
     Mirrors open-design's SKILL.md concept, backed by maistro-core's trust-tier model.
     """
 
-    slug: str                                       # kebab-case, e.g. "login-flow"
+    slug: str  # kebab-case, e.g. "login-flow"
     name: str
     mode: SkillMode
     description: str
