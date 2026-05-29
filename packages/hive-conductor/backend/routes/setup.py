@@ -53,6 +53,16 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
 
     from maistro.security.passwords import hash_password
 
+    # /v1/setup/ is a PUBLIC (unauthenticated) prefix. Setup must be a one-shot
+    # first-run operation — once complete, re-running it would let any
+    # unauthenticated caller overwrite the admin/user credentials (account
+    # takeover). Guard with the same check setup_status() reads.
+    if _is_setup_complete():
+        raise HTTPException(
+            status_code=409,
+            detail="Setup already complete. This endpoint is disabled after first-run provisioning.",
+        )
+
     hardware_preset = body.get("hardware_preset")
     admin_username = body.get("admin_username", "admin")
     admin_password = body.get("admin_password")

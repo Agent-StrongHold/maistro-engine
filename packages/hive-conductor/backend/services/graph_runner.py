@@ -18,6 +18,90 @@ from config import get_settings
 logger = logging.getLogger(__name__)
 
 
+# Static subprocess body. All untrusted values (system prompt, task description,
+# parent context) are read from environment variables at runtime — NEVER
+# templated into this source — so triple-quotes, backslashes and newlines in a
+# node prompt cannot break out of a string literal and inject Python (RCE).
+_NODE_SCRIPT = '''
+import json, os, sys
+import httpx
+
+base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
+if not base.endswith("/v1"):
+    base += "/v1"
+key = os.environ.get("LITELLM_API_KEY", "")
+model = os.environ.get("DAG_NODE_MODEL", "gemini-3.5-flash")
+system = os.environ.get("DAG_NODE_SYSTEM", "")
+task = os.environ.get("DAG_NODE_TASK", "")
+context = os.environ.get("DAG_NODE_CONTEXT", "")
+user = "Task: " + task + "\\n\\nContext:\\n" + context
+r = httpx.post(
+    base + "/chat/completions",
+    headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+    json={
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "response_format": {"type": "json_object"},
+    },
+    timeout=120,
+)
+r.raise_for_status()
+print(r.json()["choices"][0]["message"]["content"])
+'''
+
+
+def _run_node_subprocess(
+    node: dict[str, Any],
+    task_desc: str,
+    context: str,
+    base_env: dict[str, str],
+) -> dict[str, Any]:
+    """Run a single DAG node in an isolated executor.
+
+    Untrusted strings (prompt/task/context) are passed via env vars, not
+    interpolated into source. Module-level (not a closure) so it is picklable
+    for ProcessPoolExecutor.
+    """
+    from services.hyperlight_executor import get_executor
+    import asyncio as _aio
+
+    node_env = {
+        **base_env,
+        "DAG_NODE_MODEL": node.get("model", "gemini-3.5-flash"),
+        "DAG_NODE_SYSTEM": node.get("prompt", "") or "",
+        "DAG_NODE_TASK": task_desc,
+        "DAG_NODE_CONTEXT": context[:2000],
+    }
+    try:
+        executor = get_executor()
+        result = _aio.run(
+            executor.execute_node(
+                _NODE_SCRIPT,
+                env=node_env,
+                timeout_s=120,
+                allow_network=True,  # nodes need to call LiteLLM
+            )
+        )
+        if result["success"]:
+            return {
+                "role": node.get("role", "worker"),
+                "response": result["output"].strip(),
+                "success": True,
+                "isolation": result.get("isolation", "unknown"),
+            }
+        return {
+            "role": node.get("role", "worker"),
+            "response": result.get("error", "")[:500],
+            "success": False,
+            "isolation": result.get("isolation", "unknown"),
+        }
+    except Exception as e:
+        return {"role": node.get("role", "worker"), "response": str(e), "success": False}
+
+
 async def execute_dag(dag_data: dict, *, user_id: str = "", user_credentials: dict[str, str] | None = None) -> dict[str, Any]:
     """Execute a DAG — each node is its own process, scoped to user context. No cross-user data leakage."""
     import asyncio
@@ -56,39 +140,6 @@ async def execute_dag(dag_data: dict, *, user_id: str = "", user_credentials: di
 
     results: dict[str, dict[str, Any]] = {}
     completed: set[str] = set()
-
-    def run_node_subprocess(nid: str, context: str) -> dict[str, Any]:
-        """Run node in Hyperlight microVM (or subprocess fallback)."""
-        from services.hyperlight_executor import get_executor
-        import asyncio as _aio
-
-        node = node_map[nid]
-        script = f'''
-import json, httpx, os, sys
-base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
-if not base.endswith("/v1"): base += "/v1"
-key = os.environ.get("LITELLM_API_KEY", "")
-model = "{node.get("model", "gemini-3.5-flash")}"
-system = """{node.get("prompt", "").replace('"', '\\"')}"""
-user = """Task: {task_desc.replace('"', '\\"')}\\n\\nContext:\\n{context[:2000].replace('"', '\\"')}"""
-r = httpx.post(f"{{base}}/chat/completions", headers={{"Authorization": f"Bearer {{key}}", "Content-Type": "application/json"}},
-    json={{"model": model, "messages": [{{"role":"system","content":system}},{{"role":"user","content":user}}], "response_format": {{"type":"json_object"}}}}, timeout=120)
-r.raise_for_status()
-print(r.json()["choices"][0]["message"]["content"])
-'''
-        try:
-            executor = get_executor()
-            result = _aio.run(executor.execute_node(
-                script,
-                env={**node_env},
-                timeout_s=120,
-                allow_network=True,  # nodes need to call LiteLLM
-            ))
-            if result["success"]:
-                return {"role": node.get("role", "worker"), "response": result["output"].strip(), "success": True, "isolation": result.get("isolation", "unknown")}
-            return {"role": node.get("role", "worker"), "response": result.get("error", "")[:500], "success": False, "isolation": result.get("isolation", "unknown")}
-        except Exception as e:
-            return {"role": node.get("role", "worker"), "response": str(e), "success": False}
 
     # Execute in waves — execution strategy per node
     cycles = 0
@@ -218,7 +269,9 @@ print(r.json()["choices"][0]["message"]["content"])
                 futures = []
                 for nid in subprocess_nodes:
                     ctx = "\n---\n".join(results[pid]["response"] for pid in inbound[nid] if pid in results and results[pid].get("success"))
-                    futures.append(loop.run_in_executor(pool, run_node_subprocess, nid, ctx))
+                    futures.append(loop.run_in_executor(
+                        pool, _run_node_subprocess, node_map[nid], task_desc, ctx, node_env
+                    ))
                 subprocess_results = await asyncio.gather(*futures)
                 for nid, res in zip(subprocess_nodes, subprocess_results):
                     results[nid] = res

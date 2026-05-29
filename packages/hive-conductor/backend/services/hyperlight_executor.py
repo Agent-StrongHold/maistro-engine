@@ -88,22 +88,30 @@ class HyperlightExecutor:
         self, code: str, env: dict[str, str] | None, timeout_s: int, allow_network: bool, memory_mb: int
     ) -> dict[str, Any]:
         """Run in actual Hyperlight microVM."""
+        import base64
+
+        # The user code is base64-encoded and decoded at runtime — NEVER
+        # templated into the wrapper source — so triple-quotes, backslashes and
+        # newlines in the code cannot break out of the string literal and inject
+        # Python into the wrapper (RCE). Only trusted ints/bools are formatted.
+        encoded_code = base64.b64encode(code.encode("utf-8")).decode("ascii")
         # Hyperlight Python SDK pattern from microsoft/agent-framework
         script = f"""
+import base64, sys
 import hyperlight
 from hyperlight import Sandbox, SandboxConfig
 
 config = SandboxConfig(
-    memory_mb={memory_mb},
-    timeout_ms={timeout_s * 1000},
-    allow_network={allow_network},
+    memory_mb={int(memory_mb)},
+    timeout_ms={int(timeout_s) * 1000},
+    allow_network={bool(allow_network)},
 )
 
+_user_code = base64.b64decode("{encoded_code}").decode("utf-8")
 with Sandbox(config) as sandbox:
-    result = sandbox.execute_python('''{code.replace("'", "\\'")}''')
+    result = sandbox.execute_python(_user_code)
     print(result.stdout)
     if result.stderr:
-        import sys
         print(result.stderr, file=sys.stderr)
     exit(0 if result.returncode == 0 else 1)
 """
