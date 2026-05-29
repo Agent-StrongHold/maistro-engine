@@ -22,7 +22,14 @@ def system_registry():
     from maistro_design.types import DesignSystem
 
     r = InMemoryDesignSystemRegistry()
-    r.register(DesignSystem(slug="default", name="Default", description="Neutral default system", trust_tier=TrustTier.T0))
+    r.register(
+        DesignSystem(
+            slug="default",
+            name="Default",
+            description="Neutral default system",
+            trust_tier=TrustTier.T0,
+        )
+    )
     return r
 
 

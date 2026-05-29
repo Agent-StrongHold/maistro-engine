@@ -14,10 +14,10 @@ from typing import Any
 
 
 class TrustTier(StrEnum):
-    T0 = "t0"       # built-in (engine-shipped, immutable)
-    T1 = "t1"       # verified (audited third-party)
-    T2 = "t2"       # community (user-installed, unaudited)
-    T3 = "t3"       # untrusted (runtime user input / external fetch)
+    T0 = "t0"  # built-in (engine-shipped, immutable)
+    T1 = "t1"  # verified (audited third-party)
+    T2 = "t2"  # community (user-installed, unaudited)
+    T3 = "t3"  # untrusted (runtime user input / external fetch)
     SKULL = "skull"  # dangerous / blocked (Warden-flagged or banished)
 
     def min(self, other: TrustTier) -> TrustTier:
@@ -31,13 +31,13 @@ class TrustReviewRecord:
     """A Warden scan result queued for async admin review."""
 
     id: str
-    content_fingerprint: str           # sha256 hex of scanned content
+    content_fingerprint: str  # sha256 hex of scanned content
     assigned_tier: TrustTier
-    warden_recommendation: str         # "keep" | "upgrade" | "banish"
-    warden_flags: tuple[str, ...]      # patterns detected
+    warden_recommendation: str  # "keep" | "upgrade" | "banish"
+    warden_flags: tuple[str, ...]  # patterns detected
     warden_confidence: float
-    source: str                        # "discovery_field" | "design_system" | "skill"
-    source_key: str                    # e.g. field key or system slug
+    source: str  # "discovery_field" | "design_system" | "skill"
+    source_key: str  # e.g. field key or system slug
     admin_decision: str | None = None  # None = pending; set by resolve()
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -125,6 +125,7 @@ class InMemoryTrustReviewQueue:
 
 def _fingerprint(content: str) -> str:
     import hashlib
+
     return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
