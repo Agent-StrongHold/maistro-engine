@@ -26,15 +26,14 @@ from maistro_design.types import (
     DiscoveryResult,
     IncompatibleDesignSystemError,
     OutputFormat,
-    SkillModeError,
     SkillMode,
+    SkillModeError,
     SkillNotFoundError,
     TrustBannedError,
 )
 
 if TYPE_CHECKING:
     from maistro_canvas.protocols import CanvasStore, ImageGenClient
-
     from maistro_design.protocols import DesignSkillRegistry, DesignSystemRegistry
 
 
@@ -68,6 +67,60 @@ class DesignEngine:
     def _contaminate(self, tier: TrustTier) -> None:
         self._context_trust_tier = self._context_trust_tier.min(tier)
 
+    def _check_compatibility(self, skill: Any, design_system_slug: str) -> None:
+        if skill.compatible_design_systems and design_system_slug not in skill.compatible_design_systems:
+            msg = (
+                f"Skill '{skill.slug}' is not compatible with design system "
+                f"'{design_system_slug}'. "
+                f"Compatible: {skill.compatible_design_systems}"
+            )
+            raise IncompatibleDesignSystemError(msg)
+
+    def _check_image_gen(self, skill: Any) -> None:
+        if skill.mode == SkillMode.IMAGE and self._image_gen is None:
+            msg = (
+                f"Skill '{skill.slug}' requires an image generation client "
+                f"(mode={skill.mode}) but none was provided to DesignEngine."
+            )
+            raise SkillModeError(msg)
+
+    def _scan_discovery_responses(self, discovery: DiscoveryResult) -> None:
+        for key, value in discovery.responses.items():
+            if self._banish_list.is_banned(value):
+                msg = f"Discovery response for field '{key}' matches a banished pattern"
+                raise TrustBannedError(msg)
+            response_tier = scan_and_record(
+                value,
+                source="discovery_field",
+                source_key=key,
+                record_id=str(uuid.uuid4()),
+                banish_list=self._banish_list,
+                review_queue=self._trust_review_queue,
+            )
+            self._contaminate(response_tier)
+
+    def _validate_required_fields(self, skill: Any, discovery: DiscoveryResult) -> None:
+        for field in skill.discovery_form:
+            if field.required and field.key not in discovery.responses:
+                msg = (
+                    f"Required discovery field '{field.key}' ('{field.label}') "
+                    f"is missing for skill '{skill.slug}'"
+                )
+                raise DiscoveryIncompleteError(msg)
+
+    def _build_prompt_stack(self, skill: Any, system: Any, discovery: DiscoveryResult) -> str:
+        parts: list[str] = []
+        if skill.system_prompt:
+            parts.append(f"## Skill Instructions\n{skill.system_prompt}")
+        if system.design_md:
+            parts.append(f"## Design System: {system.name}\n{system.design_md}")
+        elif system.tokens_css:
+            parts.append(f"## Design Tokens ({system.name})\n```css\n{system.tokens_css}\n```")
+        if discovery.responses:
+            response_lines = "\n".join(f"- **{k}**: {v}" for k, v in discovery.responses.items())
+            parts.append(f"## Discovery Responses\n{response_lines}")
+        return "\n\n".join(parts)
+
     async def run_discovery(self, skill_slug: str) -> list[dict[str, Any]]:
         """Return the skill's discovery form as a list of serialisable dicts.
 
@@ -83,96 +136,39 @@ class DesignEngine:
         """Build a DesignProject from completed discovery responses.
 
         Pipeline:
-          1. Resolve skill + design system; check compatibility
-          2. Fail loudly if image-mode skill and no image_gen
-          3. Banish-list pre-scan each response
-          4. Warden scan each response → assign tier → contaminate context
-          5. Validate required discovery fields
-          6. Assemble prompt stack
-          7. Optionally create CanvasRecord
-          8. Return DesignProject at effective context_trust_tier
+          1. Resolve skill + design system; check compatibility and image_gen
+          2. Contaminate context with skill + system + discovery trust tiers
+          3. Scan discovery responses through banish list and Warden
+          4. Validate required discovery fields
+          5. Assemble prompt stack and optionally create a CanvasRecord
         """
-        # 1. Resolve skill
         skill = self._skills.get(discovery.skill_slug)
         if skill is None:
             msg = f"Design skill '{discovery.skill_slug}' not found"
             raise SkillNotFoundError(msg)
 
-        # 2. Resolve design system
         system = self._systems.get(discovery.design_system_slug)
         if system is None:
             msg = f"Design system '{discovery.design_system_slug}' not found"
             raise DesignSystemNotFoundError(msg)
 
-        # 3. Compatibility check
-        if skill.compatible_design_systems and discovery.design_system_slug not in skill.compatible_design_systems:
-            msg = (
-                f"Skill '{skill.slug}' is not compatible with design system "
-                f"'{discovery.design_system_slug}'. "
-                f"Compatible: {skill.compatible_design_systems}"
-            )
-            raise IncompatibleDesignSystemError(msg)
+        self._check_compatibility(skill, discovery.design_system_slug)
+        self._check_image_gen(skill)
 
-        # 4. Fail fast for image-mode without image_gen
-        if skill.mode == SkillMode.IMAGE and self._image_gen is None:
-            msg = (
-                f"Skill '{skill.slug}' requires an image generation client "
-                f"(mode={skill.mode}) but none was provided to DesignEngine."
-            )
-            raise SkillModeError(msg)
-
-        # 5. Contaminate context with skill + system trust tiers
         self._contaminate(skill.trust_tier)
         self._contaminate(system.trust_tier)
         self._contaminate(discovery.trust_tier)
 
-        # 6. Scan each discovery response through banish list + record for review
-        for key, value in discovery.responses.items():
-            if self._banish_list.is_banned(value):
-                msg = f"Discovery response for field '{key}' matches a banished pattern"
-                raise TrustBannedError(msg)
+        self._scan_discovery_responses(discovery)
+        self._validate_required_fields(skill, discovery)
 
-            response_tier = scan_and_record(
-                value,
-                source="discovery_field",
-                source_key=key,
-                record_id=str(uuid.uuid4()),
-                banish_list=self._banish_list,
-                review_queue=self._trust_review_queue,
-            )
-            self._contaminate(response_tier)
-
-        # 7. Validate required fields
-        for field in skill.discovery_form:
-            if field.required and field.key not in discovery.responses:
-                msg = (
-                    f"Required discovery field '{field.key}' ('{field.label}') "
-                    f"is missing for skill '{skill.slug}'"
-                )
-                raise DiscoveryIncompleteError(msg)
-
-        # 8. Assemble prompt stack
-        prompt_parts: list[str] = []
-        if skill.system_prompt:
-            prompt_parts.append(f"## Skill Instructions\n{skill.system_prompt}")
-        if system.design_md:
-            prompt_parts.append(f"## Design System: {system.name}\n{system.design_md}")
-        elif system.tokens_css:
-            prompt_parts.append(f"## Design Tokens ({system.name})\n```css\n{system.tokens_css}\n```")
-
-        if discovery.responses:
-            response_lines = "\n".join(f"- **{k}**: {v}" for k, v in discovery.responses.items())
-            prompt_parts.append(f"## Discovery Responses\n{response_lines}")
-
-        prompt_stack = "\n\n".join(prompt_parts)
-
+        prompt_stack = self._build_prompt_stack(skill, system, discovery)
         output = DesignOutput(
             format=OutputFormat.MARKDOWN,
             content=prompt_stack,
             trust_tier=self._context_trust_tier,
         )
 
-        # 9. Optionally create a canvas record for visual output modes
         canvas_id: str | None = None
         if self._canvas_store is not None and skill.mode in (SkillMode.IMAGE, SkillMode.TEMPLATE):
             canvas_record = await self._canvas_store.create_canvas(

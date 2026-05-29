@@ -6,7 +6,6 @@ Admin decisions feed the RLPHD loop (Reinforcement Learning for Policy via Human
 
 from __future__ import annotations
 
-import re
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -21,7 +20,7 @@ class TrustTier(StrEnum):
     T3 = "t3"       # untrusted (runtime user input / external fetch)
     SKULL = "skull"  # dangerous / blocked (Warden-flagged or banished)
 
-    def min(self, other: "TrustTier") -> "TrustTier":
+    def min(self, other: TrustTier) -> TrustTier:
         """Return the lower-trust of two tiers. Trust can only decrease."""
         _order = [TrustTier.T0, TrustTier.T1, TrustTier.T2, TrustTier.T3, TrustTier.SKULL]
         return _order[max(_order.index(self), _order.index(other))]
