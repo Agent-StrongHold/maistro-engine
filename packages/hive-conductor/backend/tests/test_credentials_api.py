@@ -37,8 +37,9 @@ def test_credentials_list_surfaces_config_fields_for_airtable() -> None:
     field_names = {f["name"] for f in airtable["config_fields"]}
     assert "base_id" in field_names
     assert "table" in field_names
-    required_for_base = next(f for f in airtable["config_fields"]
-                             if f["name"] == "base_id")["required"]
+    required_for_base = next(f for f in airtable["config_fields"] if f["name"] == "base_id")[
+        "required"
+    ]
     assert required_for_base is True
     # config_values starts empty
     assert airtable["config_values"] == {}
@@ -56,13 +57,15 @@ def test_credentials_config_put_and_get_round_trips() -> None:
     )
     assert save.status_code == 200
     assert save.json()["config"] == {
-        "base_id": "appABC123", "table": "Initiatives",
+        "base_id": "appABC123",
+        "table": "Initiatives",
     }
 
     read = c.get("/v1/credentials/airtable/config")
     assert read.status_code == 200
     assert read.json()["config"] == {
-        "base_id": "appABC123", "table": "Initiatives",
+        "base_id": "appABC123",
+        "table": "Initiatives",
     }
 
 

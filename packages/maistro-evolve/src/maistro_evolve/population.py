@@ -59,9 +59,7 @@ class PopulationStore:
             return self._store[genome_id]
         if self._db_path is not None:
             conn = sqlite3.connect(self._db_path)
-            row = conn.execute(
-                "SELECT data FROM genomes WHERE id = ?", (genome_id,)
-            ).fetchone()
+            row = conn.execute("SELECT data FROM genomes WHERE id = ?", (genome_id,)).fetchone()
             conn.close()
             if row is not None:
                 genome = PipelineGenome.model_validate_json(row[0])

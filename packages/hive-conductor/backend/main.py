@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from config import get_settings
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from logging_setup import configure_logging
@@ -15,16 +16,13 @@ from pydantic import BaseModel, ConfigDict
 from routes import (
     agents,
     audit,
-    program,
-    work_items,
     auth,
-    credentials,
     chat,
     cli,
     containers,
+    credentials,
     dag_runs,
     dags,
-    daily_report,
     eval_judge,
     feedback,
     health,
@@ -32,9 +30,8 @@ from routes import (
     mcp,
     memory,
     messages,
-    metrics as metrics_r,
     missions,
-    optimizer as optimizer_r,
+    program,
     quotas,
     schedules,
     setup,
@@ -42,14 +39,19 @@ from routes import (
     skills,
     topology,
     voice,
+    work_items,
     ws,
+)
+from routes import (
+    metrics as metrics_r,
+)
+from routes import (
+    optimizer as optimizer_r,
 )
 from routes import settings as settings_r
 from services import engine as engine_service
 from services import foundation as foundation_service
 from services.ha_tools import get_all_confirms, get_pending_confirms, respond_confirm
-
-from config import get_settings
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "frontend" / "dist"
@@ -81,10 +83,11 @@ async def respond_to_confirm(confirm_id: str, body: ConfirmResponseBody):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
+    import logging as _logging
+
     import stores
     from settings_defaults import apply_default_settings_if_needed
 
-    import logging as _logging
     _lifespan_log = _logging.getLogger("hive.lifespan")
     try:
         await foundation_service.start_foundation(get_settings())
@@ -102,29 +105,32 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # events from PM-fleet invocations. No-op if pm_runner isn't
         # importable (e.g. when MAISTRO_POC_MODE != "pm").
         from services.dag_run_store import install_pm_event_bridge
+
         install_pm_event_bridge()
     except Exception:
-        _lifespan_log.warning(
-            "pm_event_bridge_install_failed", exc_info=True
-        )
+        _lifespan_log.warning("pm_event_bridge_install_failed", exc_info=True)
     try:
         from services.scheduler import start_scheduler
+
         start_scheduler()
     except Exception as exc:
         _lifespan_log.warning("scheduler_start_failed: %s", exc, exc_info=True)
     try:
         from services.evolution import start_evolution
+
         await start_evolution()
     except Exception as exc:
         _lifespan_log.warning("evolution_start_failed: %s", exc, exc_info=True)
     yield
     try:
         from services.evolution import stop_evolution
+
         await stop_evolution()
     except Exception as exc:
         _lifespan_log.warning("evolution_stop_failed: %s", exc)
     try:
         from services.scheduler import stop_scheduler
+
         stop_scheduler()
     except Exception as exc:
         _lifespan_log.warning("scheduler_stop_failed: %s", exc)
@@ -166,6 +172,7 @@ def create_app() -> FastAPI:
     app.include_router(setup.router, prefix="/v1/setup")
     app.include_router(setup_checklist.router, prefix="/v1/setup-checklist")
     from routes import daily_report_v2
+
     app.include_router(daily_report_v2.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
@@ -193,6 +200,7 @@ def create_app() -> FastAPI:
     # Phase 6 — Canvas/Davinci DAG
     try:
         from routes.canvas import router as canvas_router
+
         app.include_router(canvas_router)
     except Exception:
         pass
@@ -200,17 +208,21 @@ def create_app() -> FastAPI:
     # Phase 7 — PM Fleet v2 (distillation, GitHub/GitLab tools, topK)
     try:
         from routes.pm_fleet_v2 import router as pm_fleet_v2_router
+
         app.include_router(pm_fleet_v2_router)
     except Exception:
         pass
 
     try:
         from routes.evolution import router as evolution_router
+
         app.include_router(evolution_router, prefix="/v1/evolution")
     except Exception as exc:
         import logging as _logging
+
         _logging.getLogger("hive.lifespan").warning(
-            "evolution_router_unavailable: %s", exc,
+            "evolution_router_unavailable: %s",
+            exc,
         )
 
     if STATIC_DIR.is_dir():

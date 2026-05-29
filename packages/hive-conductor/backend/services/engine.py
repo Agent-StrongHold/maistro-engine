@@ -106,6 +106,7 @@ class EngineService:
                 self._configured = True
             except Exception as exc:
                 import logging
+
                 logging.getLogger("hive.engine").warning(
                     "maistro-core bridge failed (%s) — falling back to stub", exc
                 )
@@ -120,7 +121,8 @@ class EngineService:
             from maistro.tasks.runner import TaskRunner
 
             pm_mode = (
-                os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower() == "pm"
+                os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower()
+                == "pm"
             )
             if pm_mode:
                 from maistro.agents.pm_runner import run_pm_task
@@ -152,6 +154,7 @@ class EngineService:
                 self._pm_catalog = catalog
         except Exception as exc:
             import logging
+
             logging.getLogger("hive.engine").warning(
                 "TaskRunner failed (%s) — mission dispatch disabled", exc
             )

@@ -42,9 +42,7 @@ class _RecordingPromptManager:
 async def test_db_load_branch_builds_agents(monkeypatch):
     # PgAgentRegistry is imported lazily inside create_agents, so patch it on
     # the source module.
-    monkeypatch.setattr(
-        "maistro.persistence.pg_agents.PgAgentRegistry", _FakeRegistry
-    )
+    monkeypatch.setattr("maistro.persistence.pg_agents.PgAgentRegistry", _FakeRegistry)
 
     instantiated: list[AgentIdentity] = []
 

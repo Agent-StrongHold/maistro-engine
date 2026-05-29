@@ -122,11 +122,13 @@ class FauxProvider:
     def seed_json(self, *objs: BaseModel | dict[str, Any]) -> FauxProvider:
         for obj in objs:
             data = obj.model_dump() if isinstance(obj, BaseModel) else obj
-            self._responses.append(FauxResponse(
-                content=json.dumps(data),
-                usage_prompt_tokens=10,
-                usage_completion_tokens=max(1, len(json.dumps(data)) // 4),
-            ))
+            self._responses.append(
+                FauxResponse(
+                    content=json.dumps(data),
+                    usage_prompt_tokens=10,
+                    usage_completion_tokens=max(1, len(json.dumps(data)) // 4),
+                )
+            )
         return self
 
     def seed_error(self, exc: Exception) -> FauxProvider:
@@ -134,11 +136,13 @@ class FauxProvider:
         return self
 
     def seed_tool_call(self, name: str, arguments: dict[str, Any] | None = None) -> FauxProvider:
-        self._responses.append(FauxResponse(
-            content="",
-            tool_calls=[ToolCallDef(name=name, arguments=arguments or {})],
-            finish_reason="tool_calls",
-        ))
+        self._responses.append(
+            FauxResponse(
+                content="",
+                tool_calls=[ToolCallDef(name=name, arguments=arguments or {})],
+                finish_reason="tool_calls",
+            )
+        )
         return self
 
     def reset(self) -> None:
@@ -242,7 +246,9 @@ def plan_output(
         "subtasks": subtasks or [],
         "estimated_files": estimated_files or [],
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )
 
 
 def code_output(
@@ -255,7 +261,9 @@ def code_output(
         "description": description,
         "tests_added": tests_added,
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )
 
 
 def review_output(
@@ -270,7 +278,9 @@ def review_output(
         "issues": issues or [],
         "suggestions": suggestions or [],
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )
 
 
 def scout_output(
@@ -285,4 +295,6 @@ def scout_output(
         "similar_implementations": [],
         "summary": summary,
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )

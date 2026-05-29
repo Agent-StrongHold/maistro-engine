@@ -38,11 +38,11 @@ from .types import (
 )
 
 __all__ = [
+    "KNOWN_DOMAINS",
     "AirtableResourceBinding",
     "DomainConfig",
     "InMemoryProjectStore",
     "JiraResourceBinding",
-    "KNOWN_DOMAINS",
     "Project",
     "ProjectAccessDenied",
     "ProjectMember",

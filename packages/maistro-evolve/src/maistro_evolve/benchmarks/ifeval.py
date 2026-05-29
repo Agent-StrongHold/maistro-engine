@@ -6,16 +6,16 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import IFEVAL_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config, build_messages
+from .prompt_builder import build_messages, build_model_config, build_system_prompt
 from .scoring import (
     contains_all,
-    starts_with,
     ends_with,
+    exact_match,
     is_valid_json,
     json_field_match,
     sentence_count,
+    starts_with,
     word_count,
-    exact_match,
 )
 
 
@@ -25,7 +25,13 @@ def _evaluate_rule(response: str, rule: dict[str, Any]) -> float:
     if rule_type == "contains":
         return 1.0 if rule["value"].lower() in response.lower() else 0.0
     elif rule_type == "contains_all":
-        return contains_all(response, rule["values"]) if "values" in rule else 1.0 if rule["value"].lower() in response.lower() else 0.0
+        return (
+            contains_all(response, rule["values"])
+            if "values" in rule
+            else 1.0
+            if rule["value"].lower() in response.lower()
+            else 0.0
+        )
     elif rule_type == "not_contains":
         return 1.0 if rule["value"].lower() not in response.lower() else 0.0
     elif rule_type == "starts_with":
@@ -42,7 +48,9 @@ def _evaluate_rule(response: str, rule: dict[str, Any]) -> float:
         target = rule["value"]
         tolerance = rule.get("tolerance", 1)
         actual = sentence_count(response)
-        return 1.0 if abs(actual - target) <= tolerance else max(0.0, 1.0 - abs(actual - target) * 0.2)
+        return (
+            1.0 if abs(actual - target) <= tolerance else max(0.0, 1.0 - abs(actual - target) * 0.2)
+        )
     elif rule_type == "min_word_count":
         return 1.0 if word_count(response) >= rule["value"] else 0.0
     elif rule_type == "max_word_count":
@@ -101,7 +109,7 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
                 sample_score = _heuristic_score(sample)
                 total_score += sample_score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             total_score += 0.0
             evaluated += 1
 
@@ -132,4 +140,5 @@ def _heuristic_score(sample: dict[str, Any]) -> float:
     if "keyword" in instruction or "include" in instruction:
         base *= 1.2
     import random
+
     return max(0.0, min(1.0, base + random.uniform(-0.1, 0.1)))

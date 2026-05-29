@@ -79,26 +79,30 @@ _RETRY_AFTER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-_NETWORK_ERROR_NAMES = frozenset({
-    "ConnectionError",
-    "ConnectTimeout",
-    "ReadTimeout",
-    "WriteTimeout",
-    "PoolTimeout",
-    "TimeoutError",
-    "RemoteProtocolError",
-    "LocalProtocolError",
-})
+_NETWORK_ERROR_NAMES = frozenset(
+    {
+        "ConnectionError",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+        "TimeoutError",
+        "RemoteProtocolError",
+        "LocalProtocolError",
+    }
+)
 
-_NETWORK_ERROR_CODES = frozenset({
-    "econnreset",
-    "econnrefused",
-    "etimedout",
-    "eai_again",
-    "epipe",
-    "enotfound",
-    "ehostunreach",
-})
+_NETWORK_ERROR_CODES = frozenset(
+    {
+        "econnreset",
+        "econnrefused",
+        "etimedout",
+        "eai_again",
+        "epipe",
+        "enotfound",
+        "ehostunreach",
+    }
+)
 
 _SSL_PATTERNS = re.compile(
     r"ssl|tls|certificate|handshake|CERTIFICATE_VERIFY_FAILED|"
@@ -186,8 +190,12 @@ def classify_error(
 
     if status_code is not None:
         return _classify_by_status(
-            error, status_code, message, headers,
-            provider=provider, model=model,
+            error,
+            status_code,
+            message,
+            headers,
+            provider=provider,
+            model=model,
             context_usage_pct=context_usage_pct,
         )
 
@@ -236,7 +244,9 @@ def classify_error(
     if error_name in _NETWORK_ERROR_NAMES or error_name == "ConnectionError":
         retryable = True
         should_compress = False
-        if ("disconnect" in message.lower() or "protocol" in message.lower()) and context_usage_pct > 0.6:
+        if (
+            "disconnect" in message.lower() or "protocol" in message.lower()
+        ) and context_usage_pct > 0.6:
             should_compress = True
         return ClassifiedError(
             category=ErrorCategory.NETWORK,
@@ -367,7 +377,9 @@ def _classify_by_status(
         )
 
     if status_code in _AUTH_HTTP_CODES:
-        if "model" in message.lower() and ("not found" in message.lower() or "access" in message.lower()):
+        if "model" in message.lower() and (
+            "not found" in message.lower() or "access" in message.lower()
+        ):
             return ClassifiedError(
                 category=ErrorCategory.MODEL_NOT_FOUND,
                 original=error,

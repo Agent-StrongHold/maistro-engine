@@ -71,15 +71,13 @@ Be complete — provide full file contents, not diffs or partial snippets."""
         # Build the prompt
         feedback_section = ""
         if subtask.feedback:
-            feedback_section = (
-                "\n\n## Previous Attempts Feedback\n" + "\n".join(subtask.feedback)
-            )
+            feedback_section = "\n\n## Previous Attempts Feedback\n" + "\n".join(subtask.feedback)
 
         user_content = f"""## Task
 {subtask.description}
 
 ## Relevant Files (hints)
-{', '.join(subtask.files_hint) or 'none provided'}
+{", ".join(subtask.files_hint) or "none provided"}
 {feedback_section}"""
 
         messages = [

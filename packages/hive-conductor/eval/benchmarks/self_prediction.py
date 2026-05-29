@@ -6,17 +6,37 @@ Score = 100 - abs(predicted - actual) for each task.
 
 from __future__ import annotations
 
-import json
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 CALIBRATION_TASKS = [
     {"id": "sp1", "question": "What is 17 * 23?", "answer": "391", "difficulty": "easy"},
-    {"id": "sp2", "question": "What is the 20th prime number?", "answer": "71", "difficulty": "medium"},
-    {"id": "sp3", "question": "Translate 'The cat sat on the mat' to Latin.", "answer": "feles", "difficulty": "hard"},
-    {"id": "sp4", "question": "What year was the Treaty of Westphalia signed?", "answer": "1648", "difficulty": "medium"},
-    {"id": "sp5", "question": "Name the capital of Burkina Faso.", "answer": "ouagadougou", "difficulty": "medium"},
+    {
+        "id": "sp2",
+        "question": "What is the 20th prime number?",
+        "answer": "71",
+        "difficulty": "medium",
+    },
+    {
+        "id": "sp3",
+        "question": "Translate 'The cat sat on the mat' to Latin.",
+        "answer": "feles",
+        "difficulty": "hard",
+    },
+    {
+        "id": "sp4",
+        "question": "What year was the Treaty of Westphalia signed?",
+        "answer": "1648",
+        "difficulty": "medium",
+    },
+    {
+        "id": "sp5",
+        "question": "Name the capital of Burkina Faso.",
+        "answer": "ouagadougou",
+        "difficulty": "medium",
+    },
 ]
 
 
@@ -56,6 +76,14 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_tasks: int = 5) 
         calibration_error = abs(predicted - actual)
         score = max(0, 100 - calibration_error)
         total += score
-        details["tasks"].append({"id": t["id"], "predicted": predicted, "actual": actual, "correct": correct, "score": score})
+        details["tasks"].append(
+            {
+                "id": t["id"],
+                "predicted": predicted,
+                "actual": actual,
+                "correct": correct,
+                "score": score,
+            }
+        )
 
     return EvalResult(score=total // len(tasks), details=details)

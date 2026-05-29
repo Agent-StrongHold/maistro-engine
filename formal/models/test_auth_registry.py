@@ -27,9 +27,11 @@ class RegistryMachine(RuleBasedStateMachine):
         key=st.text(min_size=8, max_size=30, alphabet=st.characters(whitelist_categories=("L", "N"))),
     )
     def register_service(self, name, key):
-        self.registry.load_dict({
-            name: {"key": key, "scopes": ["llm:*"]},
-        })
+        self.registry.load_dict(
+            {
+                name: {"key": key, "scopes": ["llm:*"]},
+            }
+        )
         self.registered_names.add(name)
 
     @invariant()
@@ -86,10 +88,12 @@ def test_scope_expansion():
 def test_multiple_services_independent(name_a, name_b):
     assume(name_a != name_b)
     reg = ServiceKeyRegistry()
-    reg.load_dict({
-        name_a: {"key": "key-alpha", "scopes": ["llm:*"]},
-        name_b: {"key": "key-beta", "scopes": ["memory:*"]},
-    })
+    reg.load_dict(
+        {
+            name_a: {"key": "key-alpha", "scopes": ["llm:*"]},
+            name_b: {"key": "key-beta", "scopes": ["memory:*"]},
+        }
+    )
     assert name_a in reg.services
     assert name_b in reg.services
     assert reg.services[name_a] != reg.services[name_b]

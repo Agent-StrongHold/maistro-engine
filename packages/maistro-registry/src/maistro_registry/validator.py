@@ -55,10 +55,7 @@ def validate_file(path: Path | str) -> ValidationResult:
     try:
         fm = FrontMatter.model_validate(parsed.front_matter)
     except ValidationError as exc:
-        msgs = [
-            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}"
-            for err in exc.errors()
-        ]
+        msgs = [f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in exc.errors()]
         return ValidationResult(path=p, errors=msgs)
 
     return ValidationResult(path=p, front_matter=fm)

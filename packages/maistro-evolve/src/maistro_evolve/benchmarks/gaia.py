@@ -7,7 +7,7 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import GAIA_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config, build_messages
+from .prompt_builder import build_messages, build_model_config, build_system_prompt
 from .scoring import judge_score
 
 
@@ -56,7 +56,10 @@ async def _judge_answer(
         judge_response = await asyncio.wait_for(
             llm_call(
                 [
-                    {"role": "system", "content": "You are a strict answer judge. Respond with only a number."},
+                    {
+                        "role": "system",
+                        "content": "You are a strict answer judge. Respond with only a number.",
+                    },
                     {"role": "user", "content": judge_prompt},
                 ],
                 temperature=0.0,
@@ -66,7 +69,7 @@ async def _judge_answer(
         )
         score = judge_score(judge_response)
         return score
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         return 0.0
 
 
@@ -117,7 +120,7 @@ async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
                 score = _heuristic_score(sample)
                 total_score += score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             evaluated += 1
 
     avg_score = total_score / max(evaluated, 1)
@@ -135,6 +138,7 @@ async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
 
 def _heuristic_score(sample: dict[str, Any]) -> float:
     import random
+
     level = sample.get("level", 1)
     base = 0.75 if level == 1 else 0.55
     return max(0.1, min(0.95, base + random.uniform(-0.1, 0.1)))

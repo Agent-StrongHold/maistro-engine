@@ -5,9 +5,9 @@ No code in this package may be modified by Turing or any automated process.
 CI gate auto-rejects PRs touching cage/ or eval/.
 """
 
-from cage.turing_cage import TuringCage
 from cage.immutable_paths import IMMUTABLE_PATHS, is_immutable
 from cage.memory_rules import MemoryRules
 from cage.permission_boundary import PermissionBoundary
+from cage.turing_cage import TuringCage
 
-__all__ = ["TuringCage", "IMMUTABLE_PATHS", "is_immutable", "MemoryRules", "PermissionBoundary"]
+__all__ = ["IMMUTABLE_PATHS", "MemoryRules", "PermissionBoundary", "TuringCage", "is_immutable"]

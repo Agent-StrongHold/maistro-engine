@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 from maistro_evolve.benchmarks.scoring import (
-    exact_match,
-    contains_any,
     contains_all,
-    not_contains,
-    starts_with,
+    contains_any,
     ends_with,
+    exact_match,
+    extract_json_from_response,
+    function_call_match,
     is_valid_json,
     json_field_match,
-    sentence_count,
-    word_count,
-    function_call_match,
-    extract_json_from_response,
     judge_score,
+    not_contains,
+    sentence_count,
+    starts_with,
+    word_count,
 )
 
 
@@ -39,7 +39,9 @@ class TestContains:
         assert contains_any("hello world", ["fox"]) == 0.0
 
     def test_contains_all(self):
-        assert contains_all("superposition and entanglement", ["superposition", "entanglement"]) == 1.0
+        assert (
+            contains_all("superposition and entanglement", ["superposition", "entanglement"]) == 1.0
+        )
 
     def test_contains_all_partial(self):
         assert contains_all("superposition only", ["superposition", "entanglement"]) == 0.0

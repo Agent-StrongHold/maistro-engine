@@ -10,15 +10,44 @@ from __future__ import annotations
 
 import ast
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 TASKS = [
-    {"id": "c1", "prompt": "Write a Python function `fibonacci(n)` that returns the nth Fibonacci number (0-indexed, fib(0)=0, fib(1)=1).", "tests": ["fibonacci(0)==0", "fibonacci(1)==1", "fibonacci(10)==55"]},
-    {"id": "c2", "prompt": "Write a Python function `is_palindrome(s)` that returns True if the string is a palindrome (case-insensitive, ignoring spaces).", "tests": ["is_palindrome('racecar')==True", "is_palindrome('hello')==False", "is_palindrome('A man a plan a canal Panama'.replace(' ',''))==True"]},
-    {"id": "c3", "prompt": "Write a Python function `flatten(lst)` that flattens a nested list.", "tests": ["flatten([1,[2,[3]]])==[1,2,3]", "flatten([])==[]", "flatten([[1,2],[3]])==[1,2,3]"]},
-    {"id": "c4", "prompt": "Write a Python function `most_common(lst)` that returns the most common element.", "tests": ["most_common([1,2,2,3])==2", "most_common(['a','b','a'])==('a')"]},
-    {"id": "c5", "prompt": "Write a Python function `merge_sorted(a, b)` that merges two sorted lists into one sorted list.", "tests": ["merge_sorted([1,3],[2,4])==[1,2,3,4]", "merge_sorted([],[1])==[1]"]},
+    {
+        "id": "c1",
+        "prompt": "Write a Python function `fibonacci(n)` that returns the nth Fibonacci number (0-indexed, fib(0)=0, fib(1)=1).",
+        "tests": ["fibonacci(0)==0", "fibonacci(1)==1", "fibonacci(10)==55"],
+    },
+    {
+        "id": "c2",
+        "prompt": "Write a Python function `is_palindrome(s)` that returns True if the string is a palindrome (case-insensitive, ignoring spaces).",
+        "tests": [
+            "is_palindrome('racecar')==True",
+            "is_palindrome('hello')==False",
+            "is_palindrome('A man a plan a canal Panama'.replace(' ',''))==True",
+        ],
+    },
+    {
+        "id": "c3",
+        "prompt": "Write a Python function `flatten(lst)` that flattens a nested list.",
+        "tests": [
+            "flatten([1,[2,[3]]])==[1,2,3]",
+            "flatten([])==[]",
+            "flatten([[1,2],[3]])==[1,2,3]",
+        ],
+    },
+    {
+        "id": "c4",
+        "prompt": "Write a Python function `most_common(lst)` that returns the most common element.",
+        "tests": ["most_common([1,2,2,3])==2", "most_common(['a','b','a'])==('a')"],
+    },
+    {
+        "id": "c5",
+        "prompt": "Write a Python function `merge_sorted(a, b)` that merges two sorted lists into one sorted list.",
+        "tests": ["merge_sorted([1,3],[2,4])==[1,2,3,4]", "merge_sorted([],[1])==[1]"],
+    },
 ]
 
 _SECURITY_PATTERNS = [re.compile(r"(os\.system|subprocess|eval\(|exec\(|__import__)")]
@@ -59,10 +88,10 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_tasks: int = 5) 
         if valid_syntax:
             try:
                 ns: dict[str, Any] = {}
-                exec(code, ns)  # noqa: S102 — controlled eval environment
+                exec(code, ns)
                 for test_expr in t["tests"]:
                     try:
-                        if eval(test_expr, ns):  # noqa: S307
+                        if eval(test_expr, ns):
                             tests_passed += 1
                     except Exception:
                         pass
@@ -72,6 +101,13 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_tasks: int = 5) 
         test_score = int(70 * tests_passed / len(t["tests"])) if t["tests"] else 0
         score = test_score + (15 if valid_syntax else 0) + (15 if not has_security_issue else 0)
         total += score
-        details["tasks"].append({"id": t["id"], "tests_passed": tests_passed, "total_tests": len(t["tests"]), "score": score})
+        details["tasks"].append(
+            {
+                "id": t["id"],
+                "tests_passed": tests_passed,
+                "total_tests": len(t["tests"]),
+                "score": score,
+            }
+        )
 
     return EvalResult(score=total // len(tasks), details=details)

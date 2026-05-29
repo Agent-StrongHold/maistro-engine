@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .types import FitnessComponents, PipelineGenome
 
-
 _HARD_GATE_THRESHOLDS: dict[str, float] = {
     "ifeval": 0.25,
     "bfcl": 0.20,
@@ -64,7 +63,7 @@ def _latency_efficiency(genome: PipelineGenome) -> float:
 def _diversity_bonus(genome: PipelineGenome, population: list[PipelineGenome]) -> float:
     if len(population) < 2:
         return 0.0
-    from .diversity import trait_vector, _euclidean
+    from .diversity import _euclidean, trait_vector
 
     v = trait_vector(genome)
     distances = []

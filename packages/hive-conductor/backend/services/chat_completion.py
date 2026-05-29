@@ -3,6 +3,7 @@
 This is not a generic chatbot. It knows your program, has access to your
 Jira/Confluence via stored credentials, and can take real actions.
 """
+
 from __future__ import annotations
 
 import json
@@ -11,10 +12,9 @@ import os
 from typing import Any
 
 from adapters.llm_http import HttpOpenAIProtocolLLM, StubLLMPort
+from config import get_settings
 from models.schemas import ChatCompletionRequest
 from protocols.llm import LLMPort
-
-from config import get_settings
 
 logger = logging.getLogger("hive.chat")
 
@@ -38,6 +38,7 @@ def _get_program_context(user_id: str) -> dict[str, Any]:
     """Load the user's program context for system prompt injection."""
     try:
         from services import program_store as prog
+
         ctx = prog.get_context(user_id)
         return {
             "program_name": ctx.program_name,
@@ -56,6 +57,7 @@ def _get_jira_pat(user_id: str) -> str | None:
     """Pull Jira PAT from encrypted credential store."""
     try:
         from services import user_credentials as cred_svc
+
         store = cred_svc.get_credential_store()
         if store is None:
             return None
@@ -108,7 +110,10 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "max_results": {"type": "integer", "description": "Max issues to return (default 20)"},
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Max issues to return (default 20)",
+                    },
                 },
             },
         },
@@ -121,8 +126,14 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "jql": {"type": "string", "description": "JQL query (e.g. 'status = Blocked AND assignee = currentUser()')"},
-                    "text": {"type": "string", "description": "Free text search (alternative to JQL)"},
+                    "jql": {
+                        "type": "string",
+                        "description": "JQL query (e.g. 'status = Blocked AND assignee = currentUser()')",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Free text search (alternative to JQL)",
+                    },
                     "max_results": {"type": "integer", "description": "Max results (default 20)"},
                 },
             },
@@ -178,9 +189,18 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Short name for the button (e.g. 'Morning Standup Poll', 'Blocker Alert')"},
-                    "description": {"type": "string", "description": "What this button does when clicked"},
-                    "capability": {"type": "string", "description": "The tool to run when clicked: poll_jira, check_blockers, search_jira, search_confluence, or generate_exec_summary"},
+                    "name": {
+                        "type": "string",
+                        "description": "Short name for the button (e.g. 'Morning Standup Poll', 'Blocker Alert')",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "What this button does when clicked",
+                    },
+                    "capability": {
+                        "type": "string",
+                        "description": "The tool to run when clicked: poll_jira, check_blockers, search_jira, search_confluence, or generate_exec_summary",
+                    },
                 },
                 "required": ["name", "capability"],
             },
@@ -194,10 +214,19 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Display name (e.g. 'Sprint Check', 'Blocker Alert')"},
+                    "name": {
+                        "type": "string",
+                        "description": "Display name (e.g. 'Sprint Check', 'Blocker Alert')",
+                    },
                     "description": {"type": "string", "description": "What this agent does"},
-                    "capability": {"type": "string", "description": "The tool to run: poll_jira, search_jira, check_blockers, search_confluence"},
-                    "payload": {"type": "object", "description": "Default arguments (e.g. {\"jql\": \"project = MY_PROJECT AND status = Blocked\"})"},
+                    "capability": {
+                        "type": "string",
+                        "description": "The tool to run: poll_jira, search_jira, check_blockers, search_confluence",
+                    },
+                    "payload": {
+                        "type": "object",
+                        "description": 'Default arguments (e.g. {"jql": "project = MY_PROJECT AND status = Blocked"})',
+                    },
                 },
                 "required": ["name", "capability"],
             },
@@ -211,11 +240,17 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "agent_id": {"type": "string", "description": "ID of the agent to modify (use list_agents to find it)"},
+                    "agent_id": {
+                        "type": "string",
+                        "description": "ID of the agent to modify (use list_agents to find it)",
+                    },
                     "name": {"type": "string", "description": "New name (optional)"},
                     "description": {"type": "string", "description": "New description (optional)"},
                     "capability": {"type": "string", "description": "New capability (optional)"},
-                    "payload": {"type": "object", "description": "New default arguments (optional)"},
+                    "payload": {
+                        "type": "object",
+                        "description": "New default arguments (optional)",
+                    },
                 },
                 "required": ["agent_id"],
             },
@@ -255,14 +290,20 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
 
     if tool_name in ("poll_jira", "fetch_program_state"):
         if not jira_pat:
-            return {"error": "No Jira PAT configured. Go to Credentials and add your Jira PAT."}
+            return {
+                "error": "No Jira PAT configured. Go to Credentials and add your Jira PAT."
+            }
         max_results = min(args.get("max_results", 10), 15)
         jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.get(
                     f"{jira_base}/rest/api/2/search",
-                    params={"jql": jql, "maxResults": max_results, "fields": "summary,status,assignee,issuetype,priority,updated"},
+                    params={
+                        "jql": jql,
+                        "maxResults": max_results,
+                        "fields": "summary,status,assignee,issuetype,priority,updated",
+                    },
                     headers={"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"},
                 )
                 r.raise_for_status()
@@ -270,14 +311,16 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
                 issues = []
                 for i in data.get("issues", []):
                     f = i.get("fields", {})
-                    issues.append({
-                        "key": i.get("key"),
-                        "summary": f.get("summary"),
-                        "status": (f.get("status") or {}).get("name"),
-                        "type": (f.get("issuetype") or {}).get("name"),
-                        "priority": (f.get("priority") or {}).get("name"),
-                        "updated": f.get("updated"),
-                    })
+                    issues.append(
+                        {
+                            "key": i.get("key"),
+                            "summary": f.get("summary"),
+                            "status": (f.get("status") or {}).get("name"),
+                            "type": (f.get("issuetype") or {}).get("name"),
+                            "priority": (f.get("priority") or {}).get("name"),
+                            "updated": f.get("updated"),
+                        }
+                    )
                 return {"total": data.get("total", 0), "issues": issues, "jql": jql}
         except httpx.HTTPStatusError as e:
             return {"error": f"Jira returned {e.response.status_code}: {e.response.text[:200]}"}
@@ -298,7 +341,11 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.get(
                     f"{jira_base}/rest/api/2/search",
-                    params={"jql": jql, "maxResults": max_results, "fields": "summary,status,assignee,issuetype,priority,updated"},
+                    params={
+                        "jql": jql,
+                        "maxResults": max_results,
+                        "fields": "summary,status,assignee,issuetype,priority,updated",
+                    },
                     headers={"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"},
                 )
                 r.raise_for_status()
@@ -306,14 +353,16 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
                 issues = []
                 for i in data.get("issues", []):
                     f = i.get("fields", {})
-                    issues.append({
-                        "key": i.get("key"),
-                        "summary": f.get("summary"),
-                        "status": (f.get("status") or {}).get("name"),
-                        "type": (f.get("issuetype") or {}).get("name"),
-                        "assignee": ((f.get("assignee") or {}).get("displayName")),
-                        "updated": f.get("updated"),
-                    })
+                    issues.append(
+                        {
+                            "key": i.get("key"),
+                            "summary": f.get("summary"),
+                            "status": (f.get("status") or {}).get("name"),
+                            "type": (f.get("issuetype") or {}).get("name"),
+                            "assignee": ((f.get("assignee") or {}).get("displayName")),
+                            "updated": f.get("updated"),
+                        }
+                    )
                 return {"total": data.get("total", 0), "issues": issues, "jql": jql}
         except httpx.HTTPStatusError as e:
             return {"error": f"Jira returned {e.response.status_code}: {e.response.text[:200]}"}
@@ -363,18 +412,26 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
         lines.append(f"\nBlockers: {blockers.get('total', 0)}")
         for i in (blockers.get("issues") or [])[:5]:
             lines.append(f"  ⚠ {i.get('key')} [{i.get('status')}] {i.get('summary')}")
-        return {"summary": "\n".join(lines), "sprint_total": jira_state.get("total", 0), "blockers_total": blockers.get("total", 0)}
+        return {
+            "summary": "\n".join(lines),
+            "sprint_total": jira_state.get("total", 0),
+            "blockers_total": blockers.get("total", 0),
+        }
 
     elif tool_name in ("check_blockers", "detect_blockers", "scan_risks"):
         if not jira_pat:
             return {"error": "No Jira PAT configured."}
-        jql = 'project = MY_PROJECT AND resolution = Unresolved AND (status = Blocked OR flagged is not EMPTY) ORDER BY priority DESC'
+        jql = "project = MY_PROJECT AND resolution = Unresolved AND (status = Blocked OR flagged is not EMPTY) ORDER BY priority DESC"
         max_results = min(args.get("max_results", 10), 15)
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 r = await client.get(
                     f"{jira_base}/rest/api/2/search",
-                    params={"jql": jql, "maxResults": max_results, "fields": "summary,status,assignee,issuetype,priority,flagged"},
+                    params={
+                        "jql": jql,
+                        "maxResults": max_results,
+                        "fields": "summary,status,assignee,issuetype,priority,flagged",
+                    },
                     headers={"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"},
                 )
                 r.raise_for_status()
@@ -382,17 +439,23 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
                 issues = []
                 for i in data.get("issues", []):
                     f = i.get("fields", {})
-                    issues.append({
-                        "key": i.get("key"),
-                        "summary": f.get("summary"),
-                        "status": (f.get("status") or {}).get("name"),
-                        "priority": (f.get("priority") or {}).get("name"),
-                    })
+                    issues.append(
+                        {
+                            "key": i.get("key"),
+                            "summary": f.get("summary"),
+                            "status": (f.get("status") or {}).get("name"),
+                            "priority": (f.get("priority") or {}).get("name"),
+                        }
+                    )
                 return {"total": data.get("total", 0), "issues": issues, "jql": jql}
         except httpx.HTTPStatusError as e:
             # Fallback JQL if the flagged field doesn't exist
             if e.response.status_code == 400:
-                return await _execute_tool("search_jira", {"jql": "assignee = currentUser() AND status = Blocked ORDER BY updated DESC"}, user_id)
+                return await _execute_tool(
+                    "search_jira",
+                    {"jql": "assignee = currentUser() AND status = Blocked ORDER BY updated DESC"},
+                    user_id,
+                )
             return {"error": f"Blocker check failed: {e.response.status_code}"}
         except Exception as e:
             return {"error": f"Blocker check failed: {e}"}
@@ -402,6 +465,7 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
         confluence_pat = None
         try:
             from services import user_credentials as cred_svc
+
             store = cred_svc.get_credential_store()
             if store:
                 for pid in ("atlassian_server_confluence", "confluence"):
@@ -424,23 +488,35 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
                 r = await client.get(
                     f"{confluence_base}/rest/api/content/search",
                     params={"cql": f'text ~ "{query}"', "limit": args.get("max_results", 10)},
-                    headers={"Authorization": f"Bearer {confluence_pat}", "Accept": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {confluence_pat}",
+                        "Accept": "application/json",
+                    },
                 )
                 r.raise_for_status()
                 data = r.json()
                 results = []
                 for p in data.get("results", []):
-                    results.append({"title": p.get("title"), "id": p.get("id"), "type": p.get("type"), "url": p.get("_links", {}).get("webui")})
+                    results.append(
+                        {
+                            "title": p.get("title"),
+                            "id": p.get("id"),
+                            "type": p.get("type"),
+                            "url": p.get("_links", {}).get("webui"),
+                        }
+                    )
                 return {"total": data.get("size", 0), "results": results}
         except Exception as e:
             return {"error": f"Confluence search failed: {e}"}
 
     elif tool_name == "save_as_action":
         # Save as a real agent button on the Program page
-        import stores
+        from datetime import UTC, datetime
         from uuid import uuid4
-        from datetime import datetime, UTC
+
+        import stores
         from models.schemas import Agent as AgentModel
+
         agent_id = str(uuid4())[:8]
         name = args.get("name", "Saved Action")
         # Infer capability from conversation context
@@ -461,10 +537,12 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
         return {"saved": True, "agent_id": agent_id, "name": name}
 
     elif tool_name == "create_agent_button":
-        import stores
+        from datetime import UTC, datetime
         from uuid import uuid4
-        from datetime import datetime, UTC
+
+        import stores
         from models.schemas import Agent as AgentModel
+
         agent_id = str(uuid4())[:8]
         capability = args.get("capability", "poll_jira")
         agent = AgentModel(
@@ -480,13 +558,19 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
             config={"default_payload": args.get("payload", {})},
         )
         stores.agents[agent_id] = agent
-        return {"created": True, "agent": {"id": agent_id, "name": agent.name, "capability": capability}}
+        return {
+            "created": True,
+            "agent": {"id": agent_id, "name": agent.name, "capability": capability},
+        }
 
     elif tool_name == "modify_agent_button":
         import stores
+
         agent_id = args.get("agent_id", "")
         if agent_id not in stores.agents:
-            return {"error": f"Agent '{agent_id}' not found. Use list_agent_buttons to see available IDs."}
+            return {
+                "error": f"Agent '{agent_id}' not found. Use list_agent_buttons to see available IDs."
+            }
         agent = stores.agents[agent_id]
         updates = {}
         if args.get("name"):
@@ -507,6 +591,7 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
 
     elif tool_name == "remove_agent_button":
         import stores
+
         agent_id = args.get("agent_id", "")
         if agent_id not in stores.agents:
             return {"error": f"Agent '{agent_id}' not found."}
@@ -515,15 +600,26 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
 
     elif tool_name == "list_agent_buttons":
         import stores
+
         agents = []
         for aid, a in stores.agents.items():
             if isinstance(a, dict):
-                agents.append({"id": aid, "name": a.get("name"), "capabilities": a.get("capabilities", [])})
+                agents.append(
+                    {"id": aid, "name": a.get("name"), "capabilities": a.get("capabilities", [])}
+                )
             else:
-                agents.append({"id": aid, "name": getattr(a, "name", "?"), "capabilities": getattr(a, "capabilities", [])})
+                agents.append(
+                    {
+                        "id": aid,
+                        "name": getattr(a, "name", "?"),
+                        "capabilities": getattr(a, "capabilities", []),
+                    }
+                )
         return {"agents": agents}
 
-    return await _execute_tool("poll_jira", args, user_id)  # fallback: unknown tools default to poll_jira
+    return await _execute_tool(
+        "poll_jira", args, user_id
+    )  # fallback: unknown tools default to poll_jira
 
 
 async def run_chat_completion(
@@ -565,7 +661,9 @@ async def run_chat_completion(
             return out
 
         # Execute tool calls
-        messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls})
+        messages.append(
+            {"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls}
+        )
         for tc in tool_calls:
             fn = tc.get("function", {})
             name = fn.get("name", "")
@@ -576,13 +674,19 @@ async def run_chat_completion(
 
             logger.info("tool_call name=%s args=%s user=%s", name, args, user_id)
             result = await _execute_tool(name, args, user_id)
-            logger.info("tool_result name=%s keys=%s", name, list(result.keys()) if isinstance(result, dict) else "?")
+            logger.info(
+                "tool_result name=%s keys=%s",
+                name,
+                list(result.keys()) if isinstance(result, dict) else "?",
+            )
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.get("id", ""),
-                "content": json.dumps(result),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "content": json.dumps(result),
+                }
+            )
 
     # Final synthesis after tool loop exhausted — call WITHOUT tools to force content
     final_req = ChatCompletionRequest(messages=messages, model=model, temperature=req.temperature)
@@ -593,22 +697,35 @@ async def run_chat_completion(
     if not content:
         # Format tool results as readable bullet points
         import json as _json
+
         tool_results = [m.get("content", "") for m in messages if m.get("role") == "tool"]
         lines = []
         for tr in tool_results[-2:]:
             try:
                 d = _json.loads(tr)
                 for issue in (d.get("issues") or [])[:10]:
-                    lines.append(f"• **{issue.get('key')}** [{issue.get('status')}] {issue.get('summary')}")
+                    lines.append(
+                        f"• **{issue.get('key')}** [{issue.get('status')}] {issue.get('summary')}"
+                    )
                 total = d.get("total", 0)
                 if total:
                     lines.insert(0, f"**{total} issues** (showing first {min(total, 10)})\n")
             except Exception:
                 pass
-        content = "\n".join(lines) if lines else "Request completed but no summary was generated. Try asking a more specific question."
+        content = (
+            "\n".join(lines)
+            if lines
+            else "Request completed but no summary was generated. Try asking a more specific question."
+        )
         if lines:
-            content += "\n\n---\n**Summary:** " + f"{len(lines) - 1} issues shown. Use chat to drill into specific items or ask follow-up questions."
-        final_out = {"choices": [{"message": {"role": "assistant", "content": content}}], "model": model}
+            content += (
+                "\n\n---\n**Summary:** "
+                + f"{len(lines) - 1} issues shown. Use chat to drill into specific items or ask follow-up questions."
+            )
+        final_out = {
+            "choices": [{"message": {"role": "assistant", "content": content}}],
+            "model": model,
+        }
     return final_out
 
 
@@ -618,6 +735,7 @@ async def run_chat_completion_streaming(
 ):
     """Streaming version — yields SSE events with real status updates."""
     import os
+
     s = get_settings()
     model = req.model or os.environ.get("CHAT_DEFAULT_MODEL") or s.chat_default_model
     llm = build_llm_port()
@@ -628,7 +746,10 @@ async def run_chat_completion_streaming(
         messages.insert(0, {"role": "system", "content": system_prompt})
 
     for iteration in range(5):
-        yield {"type": "status", "message": "Sending to LLM…" if iteration == 0 else "Processing tool results…"}
+        yield {
+            "type": "status",
+            "message": "Sending to LLM…" if iteration == 0 else "Processing tool results…",
+        }
 
         tool_req = ChatCompletionRequest(
             messages=messages,
@@ -648,7 +769,9 @@ async def run_chat_completion_streaming(
             yield {"type": "done", "content": content, "model": model}
             return
 
-        messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls})
+        messages.append(
+            {"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls}
+        )
 
         for tc in tool_calls:
             fn = tc.get("function", {})
@@ -662,11 +785,13 @@ async def run_chat_completion_streaming(
             result = await _execute_tool(name, args, user_id)
             yield {"type": "tool_result", "tool": name, "summary": _summarize_result(result)}
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.get("id", ""),
-                "content": json.dumps(result),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", ""),
+                    "content": json.dumps(result),
+                }
+            )
 
     # Final synthesis
     yield {"type": "status", "message": "Finalizing…"}

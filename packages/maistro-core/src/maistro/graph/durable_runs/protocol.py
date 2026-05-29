@@ -45,9 +45,7 @@ class DurableRunStore(Protocol):
         paused_wait runs whose resume_at has passed)."""
         ...
 
-    async def list_for_project(
-        self, project_id: str, *, limit: int = 25
-    ) -> list[DurableRunRecord]:
+    async def list_for_project(self, project_id: str, *, limit: int = 25) -> list[DurableRunRecord]:
         """List recent runs for a project (UI: project detail page)."""
         ...
 

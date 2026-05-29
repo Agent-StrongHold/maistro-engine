@@ -23,14 +23,10 @@ def can_spawn(role: DepthRole) -> bool:
 
 def validate_depth(depth: int, max_depth: int) -> None:
     if depth > max_depth:
-        raise ValueError(
-            f"Depth {depth} exceeds max_depth {max_depth}"
-        )
+        raise ValueError(f"Depth {depth} exceeds max_depth {max_depth}")
 
 
-def compute_subgraph_depths(
-    parent_depth: int, max_depth: int, num_children: int
-) -> list[int]:
+def compute_subgraph_depths(parent_depth: int, max_depth: int, num_children: int) -> list[int]:
     child_depth = parent_depth + 1
     if child_depth > max_depth:
         raise ValueError(

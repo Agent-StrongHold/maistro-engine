@@ -20,7 +20,7 @@ when a future persistent backing lands.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -65,7 +65,9 @@ def mark_edited(
     by_field = _locks.setdefault(dag_id, {})
     for path in field_paths:
         by_field[path] = _LockRecord(
-            locked_until=expires, user_id=user_id, last_field=path,
+            locked_until=expires,
+            user_id=user_id,
+            last_field=path,
         )
 
 
@@ -99,9 +101,7 @@ def locked_fields(
     """Return the active locked field paths for a DAG (sorted, ascending)."""
     by_field = _locks.get(dag_id, {})
     cutoff = _now(now)
-    return sorted(
-        path for path, rec in by_field.items() if rec.locked_until > cutoff
-    )
+    return sorted(path for path, rec in by_field.items() if rec.locked_until > cutoff)
 
 
 def clear(dag_id: str | None = None) -> None:
@@ -130,20 +130,15 @@ def diff_dag_snapshots(
     return changed
 
 
-def _diff_top_level(
-    old: dict[str, Any], new: dict[str, Any], changed: list[str]
-) -> None:
-    for key in ("name", "description", "entry_node", "max_cycles",
-                "run_scout", "status"):
+def _diff_top_level(old: dict[str, Any], new: dict[str, Any], changed: list[str]) -> None:
+    for key in ("name", "description", "entry_node", "max_cycles", "run_scout", "status"):
         old_v = old.get(key)
         new_v = new.get(key)
         if old_v != new_v:
             changed.append(key)
 
 
-def _diff_node_list(
-    old: dict[str, Any], new: dict[str, Any], changed: list[str]
-) -> None:
+def _diff_node_list(old: dict[str, Any], new: dict[str, Any], changed: list[str]) -> None:
     old_by_id = {n["id"]: n for n in (old.get("nodes") or [])}
     new_by_id = {n["id"]: n for n in (new.get("nodes") or [])}
     # Added + removed nodes
@@ -153,15 +148,12 @@ def _diff_node_list(
         changed.append(f"nodes[{removed_id}]")
     # Modified nodes — per-field
     for shared_id in old_by_id.keys() & new_by_id.keys():
-        for fld in ("role", "name", "agent_id", "model", "strategy",
-                    "prompt", "config"):
+        for fld in ("role", "name", "agent_id", "model", "strategy", "prompt", "config"):
             if old_by_id[shared_id].get(fld) != new_by_id[shared_id].get(fld):
                 changed.append(f"nodes[{shared_id}].{fld}")
 
 
-def _diff_edge_list(
-    old: dict[str, Any], new: dict[str, Any], changed: list[str]
-) -> None:
+def _diff_edge_list(old: dict[str, Any], new: dict[str, Any], changed: list[str]) -> None:
     old_by_id = {e["id"]: e for e in (old.get("edges") or [])}
     new_by_id = {e["id"]: e for e in (new.get("edges") or [])}
     for added_id in new_by_id.keys() - old_by_id.keys():

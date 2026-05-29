@@ -51,7 +51,9 @@ def log_audit(
 
 
 @router.get("")
-def list_entries(action: str | None = None, severity: str | None = None, actor: str | None = None) -> list[dict]:
+def list_entries(
+    action: str | None = None, severity: str | None = None, actor: str | None = None
+) -> list[dict]:
     entries = list(stores.audit_log.values())
     if action is not None:
         entries = [e for e in entries if getattr(e, "action", "") == action]

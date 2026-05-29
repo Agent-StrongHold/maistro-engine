@@ -10,8 +10,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from maistro_server.api.schemas import HealthResponse
 from maistro.config.settings import Settings, get_settings
+from maistro_server.api.schemas import HealthResponse
 
 router = APIRouter(tags=["health"])
 

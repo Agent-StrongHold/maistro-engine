@@ -135,9 +135,7 @@ def _next_nodes(
             continue
         if edge.to_role is None:
             continue
-        cond_met = edge.condition is None or evaluate_condition(
-            edge.condition, plan, code, review
-        )
+        cond_met = edge.condition is None or evaluate_condition(edge.condition, plan, code, review)
         if not cond_met:
             continue
         if edge.parallel:
@@ -247,7 +245,9 @@ class GraphRun:
             return self._build_result()
 
         try:
-            return await self._execute(llm_call, model, temperature, timeout, max_retries, backoff_config)
+            return await self._execute(
+                llm_call, model, temperature, timeout, max_retries, backoff_config
+            )
         except asyncio.CancelledError:
             self._transition(GraphPhase.CANCELLING)
             for nr in self.node_runs:
@@ -257,6 +257,7 @@ class GraphRun:
             return self._build_result()
         except Exception as exc:
             from maistro.resilience.classifier import classify_error
+
             self.classified_error = classify_error(exc)
             self._transition(GraphPhase.FAILED)
             return self._build_result()
@@ -270,8 +271,10 @@ class GraphRun:
         max_retries: int,
         backoff_config: BackoffConfig | None,
     ) -> HyperagentOutput:
-        config = self.config or self.task.graph_config or GraphConfig(
-            nodes=[AgentRole.PLANNER, AgentRole.CODER, AgentRole.REVIEWER]
+        config = (
+            self.config
+            or self.task.graph_config
+            or GraphConfig(nodes=[AgentRole.PLANNER, AgentRole.CODER, AgentRole.REVIEWER])
         )
 
         self._transition(GraphPhase.RUNNING)
@@ -284,34 +287,58 @@ class GraphRun:
             max_iterations=config.max_cycles * len(config.nodes) * 3
         )
 
-        await self._emit(graph_started(
-            self.run_id,
-            nodes=[n.value for n in config.nodes],
-            entry=config.entry.value,
-            model=model,
-        ))
+        await self._emit(
+            graph_started(
+                self.run_id,
+                nodes=[n.value for n in config.nodes],
+                entry=config.entry.value,
+                model=model,
+            )
+        )
 
         if config.run_scout:
-            await self._run_scout(llm_call, model, temperature, timeout, max_retries, backoff_config, budget)
+            await self._run_scout(
+                llm_call, model, temperature, timeout, max_retries, backoff_config, budget
+            )
 
         active: list[AgentRole] = [config.entry]
         cycle = 0
 
         while active and cycle < config.max_cycles and not self._cancel_requested:
-            await self._emit(cycle_started(
-                self.run_id, cycle=cycle, active=[a.value for a in active],
-            ))
+            await self._emit(
+                cycle_started(
+                    self.run_id,
+                    cycle=cycle,
+                    active=[a.value for a in active],
+                )
+            )
 
             node_runs = [
                 self._create_node_run(
-                    role, config, model, temperature, max_retries,
-                    llm_call, timeout, backoff_config, budget, cycle,
+                    role,
+                    config,
+                    model,
+                    temperature,
+                    max_retries,
+                    llm_call,
+                    timeout,
+                    backoff_config,
+                    budget,
+                    cycle,
                 )
                 for role in active
             ]
 
             await asyncio.gather(
-                *[nr.execute(llm_call, timeout=timeout, backoff_config=backoff_config, iteration_budget=budget) for nr in node_runs],
+                *[
+                    nr.execute(
+                        llm_call,
+                        timeout=timeout,
+                        backoff_config=backoff_config,
+                        iteration_budget=budget,
+                    )
+                    for nr in node_runs
+                ],
                 return_exceptions=True,
             )
 
@@ -335,15 +362,24 @@ class GraphRun:
         result = self._build_result()
 
         if self.phase == GraphPhase.COMPLETED:
-            await self._emit(graph_completed(
-                self.run_id, success=success, cycles=cycle,
-                review_score=self.review.score if self.review else None,
-            ))
+            await self._emit(
+                graph_completed(
+                    self.run_id,
+                    success=success,
+                    cycles=cycle,
+                    review_score=self.review.score if self.review else None,
+                )
+            )
         else:
-            await self._emit(graph_failed(
-                self.run_id, cycles=cycle,
-                failed_nodes=[nr.role.value for nr in self.node_runs if nr.phase == NodePhase.FAILED],
-            ))
+            await self._emit(
+                graph_failed(
+                    self.run_id,
+                    cycles=cycle,
+                    failed_nodes=[
+                        nr.role.value for nr in self.node_runs if nr.phase == NodePhase.FAILED
+                    ],
+                )
+            )
 
         return result
 
@@ -365,10 +401,15 @@ class GraphRun:
 
         system_prompt = _build_system_prompt(role, node_config)
         bb = self.blackboard or GraphBlackboard(
-            task_objective=self.task.description, workspace=self.task.workspace,
+            task_objective=self.task.description,
+            workspace=self.task.workspace,
         )
         user_prompt = _blackboard_prefix(role, bb) + strategy.build_user_prompt(
-            self.task, bb, self.plan, self.code, self.review,
+            self.task,
+            bb,
+            self.plan,
+            self.code,
+            self.review,
         )
 
         nr = NodeRun(
@@ -398,10 +439,20 @@ class GraphRun:
         budget: IterationBudget,
     ) -> None:
         nr = self._create_node_run(
-            AgentRole.SCOUT, self.config or GraphConfig(nodes=[]),
-            model, temperature, max_retries, llm_call, timeout, backoff_config, budget, -1,
+            AgentRole.SCOUT,
+            self.config or GraphConfig(nodes=[]),
+            model,
+            temperature,
+            max_retries,
+            llm_call,
+            timeout,
+            backoff_config,
+            budget,
+            -1,
         )
-        await nr.execute(llm_call, timeout=timeout, backoff_config=backoff_config, iteration_budget=budget)
+        await nr.execute(
+            llm_call, timeout=timeout, backoff_config=backoff_config, iteration_budget=budget
+        )
         self.node_runs.append(nr)
 
         if nr.parsed_output is not None and self.blackboard is not None and nr.strategy is not None:

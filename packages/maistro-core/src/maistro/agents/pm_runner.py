@@ -15,6 +15,7 @@ for self-optimizing cycles + beam search.
 Rollback path: `MAISTRO_PM_USE_STUBS=true` env var reverts to the
 legacy `_run_stub()` dispatch in `tools.pm_stubs`.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,7 @@ from maistro.tools.browser import BrowserClient, BrowserToolError
 # regression vs v0 baseline.
 # ----------------------------------------------------------------------------
 _pm_outcome_store: object | None = None  # InMemoryOutcomeStore | OutcomeStore protocol
-_pm_event_bus: object | None = None      # EventBus
+_pm_event_bus: object | None = None  # EventBus
 
 
 def set_pm_outcome_store(store: object | None) -> None:
@@ -95,6 +96,7 @@ async def _record_outcome(
         return
     try:
         from maistro.memory.types import Outcome
+
         await _pm_outcome_store.record(  # type: ignore[attr-defined]
             Outcome(
                 task_type=role.value,
@@ -120,6 +122,7 @@ async def _emit_pm_event(event_type: str, payload: dict[str, Any]) -> None:
         return
     try:
         from maistro.events.bus import Event, EventCategory
+
         await _pm_event_bus.emit(  # type: ignore[attr-defined]
             Event(
                 category=EventCategory.AGENT,
@@ -130,6 +133,7 @@ async def _emit_pm_event(event_type: str, payload: dict[str, Any]) -> None:
         )
     except Exception:
         logger.warning("pm_event_emit_failed", event_type=event_type)
+
 
 _log = logging.getLogger("hive.engine.pm")
 logger = structlog.get_logger()
@@ -418,7 +422,10 @@ def _parse_pm_output(raw: str, capability: str) -> PMRoleOutput:
         )
     data.setdefault("capability", capability)
     data.setdefault("summary", "")
-    data.setdefault("result", {k: v for k, v in data.items() if k not in {"capability", "summary", "result", "source"}})
+    data.setdefault(
+        "result",
+        {k: v for k, v in data.items() if k not in {"capability", "summary", "result", "source"}},
+    )
     data.setdefault("source", "llm")
     try:
         return PMRoleOutput.model_validate(data)
@@ -431,7 +438,9 @@ def _parse_pm_output(raw: str, capability: str) -> PMRoleOutput:
         )
 
 
-def _wrap_for_hive(output: PMRoleOutput, agent_label: str, task_description: str) -> ConductorOutput:
+def _wrap_for_hive(
+    output: PMRoleOutput, agent_label: str, task_description: str
+) -> ConductorOutput:
     """Wrap PMRoleOutput in the legacy ConductorOutput shape the Hive
     backend expects until the program_hyperagent surface is migrated to
     HyperagentOutput (v0.5)."""
@@ -511,6 +520,7 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     experience_context = await _get_experience_context(role)
     # --- emit node-started event for observability + eval-judge subscribers ---
     import time as _time
+
     _start = _time.monotonic()
     await _emit_pm_event(
         "pm_node_started",
@@ -533,9 +543,7 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     elif capability in _NO_DATA_WITHOUT_TOOLS:
         out = _no_data_response(capability, payload)
     else:
-        messages = _build_messages(
-            role, capability, payload, experience_context=experience_context
-        )
+        messages = _build_messages(role, capability, payload, experience_context=experience_context)
         try:
             raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
         except Exception as exc:
@@ -566,7 +574,9 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
 
     # --- record outcome + emit completion event ---
     duration_ms = int((_time.monotonic() - _start) * 1000)
-    success = out.source == "llm"  # source="no_data" counts as "not a real success" for the feedback loop
+    success = (
+        out.source == "llm"
+    )  # source="no_data" counts as "not a real success" for the feedback loop
     await _record_outcome(
         role=role,
         capability=capability,

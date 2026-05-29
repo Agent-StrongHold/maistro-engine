@@ -13,7 +13,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Callable, Awaitable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger("hive.canvas_dag")
 
@@ -53,7 +54,7 @@ CANVAS_DAG = {
         },
         {
             "id": "critic",
-            "prompt": "Score this visual output 0-100 on: composition (25), color harmony (25), style adherence (25), technical quality (25). Identify the single biggest improvement. Output JSON: {\"score\": int, \"composition\": int, \"color\": int, \"style\": int, \"technical\": int, \"improvement\": str}. Image description: {compositor}",
+            "prompt": 'Score this visual output 0-100 on: composition (25), color harmony (25), style adherence (25), technical quality (25). Identify the single biggest improvement. Output JSON: {"score": int, "composition": int, "color": int, "style": int, "technical": int, "improvement": str}. Image description: {compositor}',
             "model": "gemini-3.5-pro",
             "role": "critic",
             "optimizable": ["prompt"],
@@ -95,7 +96,7 @@ async def visual_quality_eval(output: str, context: dict[str, Any] | None = None
         "- Color coherence (25 pts): Do colors work together harmoniously?\n"
         "- Style consistency (25 pts): Does it maintain a unified artistic style?\n"
         "- Detail richness (25 pts): Are textures, lighting, and depth well-described?\n\n"
-        "Reply with JSON only: {\"score\": int, \"composition\": int, \"color\": int, \"style\": int, \"detail\": int, \"rationale\": str}"
+        'Reply with JSON only: {"score": int, "composition": int, "color": int, "style": int, "detail": int, "rationale": str}'
     )
 
     try:
@@ -107,7 +108,10 @@ async def visual_quality_eval(output: str, context: dict[str, Any] | None = None
                     "model": "claude-opus-4-6",
                     "messages": [
                         {"role": "system", "content": judge_prompt},
-                        {"role": "user", "content": f"Image description to judge:\n\n{output[:3000]}"},
+                        {
+                            "role": "user",
+                            "content": f"Image description to judge:\n\n{output[:3000]}",
+                        },
                     ],
                     "response_format": {"type": "json_object"},
                 },

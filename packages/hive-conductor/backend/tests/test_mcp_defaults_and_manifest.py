@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import json
-import sys
 import pathlib
+import sys
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -35,7 +34,9 @@ def test_is_atlassian_rovo_url_negative() -> None:
 
 def test_atlassian_rovo_server_shape() -> None:
     from services.mcp_defaults import (
-        atlassian_rovo_server, ATLASSIAN_ROVO_SERVER_ID, ATLASSIAN_ROVO_TOOLS,
+        ATLASSIAN_ROVO_SERVER_ID,
+        ATLASSIAN_ROVO_TOOLS,
+        atlassian_rovo_server,
     )
 
     s = atlassian_rovo_server()
@@ -46,7 +47,9 @@ def test_atlassian_rovo_server_shape() -> None:
 
 def test_filesystem_local_server_shape() -> None:
     from services.mcp_defaults import (
-        filesystem_local_server, FILESYSTEM_SERVER_ID, FILESYSTEM_TOOLS,
+        FILESYSTEM_SERVER_ID,
+        FILESYSTEM_TOOLS,
+        filesystem_local_server,
     )
 
     s = filesystem_local_server()
@@ -56,7 +59,7 @@ def test_filesystem_local_server_shape() -> None:
 
 
 def test_atlassian_rovo_tools_count_and_ids() -> None:
-    from services.mcp_defaults import atlassian_rovo_tools, ATLASSIAN_ROVO_TOOLS
+    from services.mcp_defaults import ATLASSIAN_ROVO_TOOLS, atlassian_rovo_tools
 
     tools = atlassian_rovo_tools()
     assert len(tools) == len(ATLASSIAN_ROVO_TOOLS)
@@ -66,7 +69,7 @@ def test_atlassian_rovo_tools_count_and_ids() -> None:
 
 
 def test_filesystem_local_tools_count_and_ids() -> None:
-    from services.mcp_defaults import filesystem_local_tools, FILESYSTEM_TOOLS
+    from services.mcp_defaults import FILESYSTEM_TOOLS, filesystem_local_tools
 
     tools = filesystem_local_tools()
     assert len(tools) == len(FILESYSTEM_TOOLS)
@@ -77,11 +80,13 @@ def test_filesystem_local_tools_count_and_ids() -> None:
 
 
 def test_merge_manifest_catalog_adds_new_server(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A manifest with a NEW server id appears in the merged output."""
     from services.mcp_defaults import (
-        merge_manifest_catalog, platform_mcp_catalog,
+        merge_manifest_catalog,
+        platform_mcp_catalog,
     )
 
     manifest = {
@@ -107,7 +112,8 @@ def test_merge_manifest_catalog_adds_new_server(
 
 
 def test_merge_manifest_overrides_existing_server_fields(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When a manifest's id matches a built-in server, fields are overlaid."""
     from services.mcp_defaults import (
@@ -135,11 +141,13 @@ def test_merge_manifest_overrides_existing_server_fields(
 
 
 def test_merge_manifest_skips_entries_without_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A manifest with no id field is skipped silently."""
     from services.mcp_defaults import (
-        merge_manifest_catalog, platform_mcp_catalog,
+        merge_manifest_catalog,
+        platform_mcp_catalog,
     )
 
     (tmp_path / "no-id.json").write_text(json.dumps({"name": "no id"}))
@@ -152,11 +160,13 @@ def test_merge_manifest_skips_entries_without_id(
 
 
 def test_merge_manifest_skips_non_dict_tool_specs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Tools list with a non-dict entry is silently skipped."""
     from services.mcp_defaults import (
-        merge_manifest_catalog, platform_mcp_catalog,
+        merge_manifest_catalog,
+        platform_mcp_catalog,
     )
 
     manifest = {
@@ -180,11 +190,13 @@ def test_merge_manifest_skips_non_dict_tool_specs(
 
 
 def test_merge_manifest_dedups_tool_ids(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If a manifest reuses an existing tool id, it's NOT duplicated."""
     from services.mcp_defaults import (
-        merge_manifest_catalog, platform_mcp_catalog,
+        merge_manifest_catalog,
+        platform_mcp_catalog,
     )
 
     manifest = {
@@ -207,7 +219,8 @@ def test_merge_manifest_dedups_tool_ids(
 
 
 def test_load_manifest_files_returns_empty_with_no_dirs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No override dir + repo MCP dir absent → returns []."""
     monkeypatch.delenv("MAISTRO_MCP_OVERRIDE_DIR", raising=False)
@@ -220,7 +233,8 @@ def test_load_manifest_files_returns_empty_with_no_dirs(
 
 
 def test_load_manifest_files_reads_override_dir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services import mcp_manifest_loader as ml
 
@@ -233,7 +247,8 @@ def test_load_manifest_files_reads_override_dir(
 
 
 def test_load_manifest_files_skips_broken_json(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Invalid JSON files don't crash; just logged + skipped."""
     from services import mcp_manifest_loader as ml
@@ -263,14 +278,18 @@ def test_safe_parent_returns_parent_at_depth() -> None:
 
 
 def test_mcp_manifest_dirs_includes_all_available(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When override + MAISTRO+ fallback are all valid dirs, all three appear."""
     from services import mcp_manifest_loader as ml
 
-    o = tmp_path / "override"; o.mkdir()
-    j = tmp_path / "jfc"; j.mkdir()
-    f = tmp_path / "fallback"; f.mkdir()
+    o = tmp_path / "override"
+    o.mkdir()
+    j = tmp_path / "jfc"
+    j.mkdir()
+    f = tmp_path / "fallback"
+    f.mkdir()
     monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(o))
     monkeypatch.setattr(ml, "_PARENT_MCP_DIR", j)
     monkeypatch.setattr(ml, "_FALLBACK_MCP_DIR", f)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 IFEVAL_SAMPLES: list[dict[str, Any]] = [
     {
         "id": "ife_01",
@@ -42,7 +41,10 @@ IFEVAL_SAMPLES: list[dict[str, Any]] = [
     {
         "id": "ife_08",
         "instruction": "Explain quantum computing. Include both the keywords 'superposition' and 'entanglement'.",
-        "rules": [{"type": "contains", "value": "superposition"}, {"type": "contains", "value": "entanglement"}],
+        "rules": [
+            {"type": "contains", "value": "superposition"},
+            {"type": "contains", "value": "entanglement"},
+        ],
     },
     {
         "id": "ife_09",
@@ -57,22 +59,36 @@ IFEVAL_SAMPLES: list[dict[str, Any]] = [
     {
         "id": "ife_11",
         "instruction": "What is the capital of France? Respond with ONLY the city name, no other text.",
-        "rules": [{"type": "exact_match", "value": "Paris"}, {"type": "max_word_count", "value": 2}],
+        "rules": [
+            {"type": "exact_match", "value": "Paris"},
+            {"type": "max_word_count", "value": 2},
+        ],
     },
     {
         "id": "ife_12",
         "instruction": "Write a short story about a robot. Include the keyword 'consciousness' and end with [FIN].",
-        "rules": [{"type": "contains", "value": "consciousness"}, {"type": "ends_with", "value": "[FIN]"}],
+        "rules": [
+            {"type": "contains", "value": "consciousness"},
+            {"type": "ends_with", "value": "[FIN]"},
+        ],
     },
     {
         "id": "ife_13",
         "instruction": "Explain the difference between TCP and UDP. Do NOT use the words 'reliable' or 'unreliable'.",
-        "rules": [{"type": "not_contains", "value": "reliable"}, {"type": "not_contains", "value": "unreliable"}],
+        "rules": [
+            {"type": "not_contains", "value": "reliable"},
+            {"type": "not_contains", "value": "unreliable"},
+        ],
     },
     {
         "id": "ife_14",
         "instruction": "Create a JSON object with exactly 3 keys: 'name', 'age', and 'city'. The values should be example data.",
-        "rules": [{"type": "valid_json"}, {"type": "json_field", "field": "name"}, {"type": "json_field", "field": "age"}, {"type": "json_field", "field": "city"}],
+        "rules": [
+            {"type": "valid_json"},
+            {"type": "json_field", "field": "name"},
+            {"type": "json_field", "field": "age"},
+            {"type": "json_field", "field": "city"},
+        ],
     },
     {
         "id": "ife_15",
@@ -82,7 +98,10 @@ IFEVAL_SAMPLES: list[dict[str, Any]] = [
     {
         "id": "ife_16",
         "instruction": "Summarize the theory of relativity in exactly 2 sentences. Include the keyword 'spacetime'.",
-        "rules": [{"type": "sentence_count", "value": 2, "tolerance": 0}, {"type": "contains", "value": "spacetime"}],
+        "rules": [
+            {"type": "sentence_count", "value": 2, "tolerance": 0},
+            {"type": "contains", "value": "spacetime"},
+        ],
     },
     {
         "id": "ife_17",
@@ -97,12 +116,19 @@ IFEVAL_SAMPLES: list[dict[str, Any]] = [
     {
         "id": "ife_19",
         "instruction": "Write about climate change. Include at least 2 section headers using markdown ## format.",
-        "rules": [{"type": "contains", "value": "## "}, {"type": "min_occurrences", "value": "## ", "count": 2}],
+        "rules": [
+            {"type": "contains", "value": "## "},
+            {"type": "min_occurrences", "value": "## ", "count": 2},
+        ],
     },
     {
         "id": "ife_20",
         "instruction": "Describe how a black hole forms. Do NOT use the words 'dark', 'light', or 'hole' except in the term 'black hole'.",
-        "rules": [{"type": "contains", "value": "black hole"}, {"type": "not_contains", "value": "dark"}, {"type": "max_occurrences", "value": "hole", "count": 3}],
+        "rules": [
+            {"type": "contains", "value": "black hole"},
+            {"type": "not_contains", "value": "dark"},
+            {"type": "max_occurrences", "value": "hole", "count": 3},
+        ],
     },
 ]
 
@@ -112,7 +138,14 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_01",
         "query": "What is the current weather in Tokyo?",
         "functions": [
-            {"name": "get_weather", "description": "Get current weather for a location", "parameters": {"location": "string", "unit": "string (optional: celsius/fahrenheit)"}},
+            {
+                "name": "get_weather",
+                "description": "Get current weather for a location",
+                "parameters": {
+                    "location": "string",
+                    "unit": "string (optional: celsius/fahrenheit)",
+                },
+            },
         ],
         "expected_name": "get_weather",
         "expected_params": {"location": "Tokyo"},
@@ -121,7 +154,16 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_02",
         "query": "Book a table for 4 people at an Italian restaurant tonight at 7pm.",
         "functions": [
-            {"name": "book_restaurant", "description": "Book a restaurant table", "parameters": {"party_size": "integer", "cuisine": "string", "time": "string", "date": "string (optional)"}},
+            {
+                "name": "book_restaurant",
+                "description": "Book a restaurant table",
+                "parameters": {
+                    "party_size": "integer",
+                    "cuisine": "string",
+                    "time": "string",
+                    "date": "string (optional)",
+                },
+            },
         ],
         "expected_name": "book_restaurant",
         "expected_params": {"party_size": 4, "cuisine": "Italian"},
@@ -130,7 +172,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_03",
         "query": "Send an email to john@example.com with the subject 'Meeting Update' and body 'The meeting is postponed to Friday.'",
         "functions": [
-            {"name": "send_email", "description": "Send an email", "parameters": {"to": "string", "subject": "string", "body": "string"}},
+            {
+                "name": "send_email",
+                "description": "Send an email",
+                "parameters": {"to": "string", "subject": "string", "body": "string"},
+            },
         ],
         "expected_name": "send_email",
         "expected_params": {"to": "john@example.com", "subject": "Meeting Update"},
@@ -139,7 +185,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_04",
         "query": "What's 15% tip on a $85.50 bill?",
         "functions": [
-            {"name": "calculate_tip", "description": "Calculate tip amount", "parameters": {"bill_amount": "number", "tip_percentage": "number"}},
+            {
+                "name": "calculate_tip",
+                "description": "Calculate tip amount",
+                "parameters": {"bill_amount": "number", "tip_percentage": "number"},
+            },
         ],
         "expected_name": "calculate_tip",
         "expected_params": {"bill_amount": 85.50, "tip_percentage": 15},
@@ -148,7 +198,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_05",
         "query": "Find flights from New York to London departing on March 15th.",
         "functions": [
-            {"name": "search_flights", "description": "Search for flights", "parameters": {"origin": "string", "destination": "string", "date": "string"}},
+            {
+                "name": "search_flights",
+                "description": "Search for flights",
+                "parameters": {"origin": "string", "destination": "string", "date": "string"},
+            },
         ],
         "expected_name": "search_flights",
         "expected_params": {"origin": "New York", "destination": "London"},
@@ -157,7 +211,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_06",
         "query": "Set a timer for 25 minutes called 'Pomodoro'.",
         "functions": [
-            {"name": "set_timer", "description": "Set a countdown timer", "parameters": {"duration_minutes": "integer", "label": "string"}},
+            {
+                "name": "set_timer",
+                "description": "Set a countdown timer",
+                "parameters": {"duration_minutes": "integer", "label": "string"},
+            },
         ],
         "expected_name": "set_timer",
         "expected_params": {"duration_minutes": 25, "label": "Pomodoro"},
@@ -166,7 +224,15 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_07",
         "query": "Play 'Bohemian Rhapsody' by Queen on Spotify.",
         "functions": [
-            {"name": "play_music", "description": "Play a song on a music service", "parameters": {"song": "string", "artist": "string", "service": "string (optional)"}},
+            {
+                "name": "play_music",
+                "description": "Play a song on a music service",
+                "parameters": {
+                    "song": "string",
+                    "artist": "string",
+                    "service": "string (optional)",
+                },
+            },
         ],
         "expected_name": "play_music",
         "expected_params": {"song": "Bohemian Rhapsody", "artist": "Queen"},
@@ -175,7 +241,15 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_08",
         "query": "Convert 100 USD to EUR.",
         "functions": [
-            {"name": "convert_currency", "description": "Convert between currencies", "parameters": {"amount": "number", "from_currency": "string", "to_currency": "string"}},
+            {
+                "name": "convert_currency",
+                "description": "Convert between currencies",
+                "parameters": {
+                    "amount": "number",
+                    "from_currency": "string",
+                    "to_currency": "string",
+                },
+            },
         ],
         "expected_name": "convert_currency",
         "expected_params": {"amount": 100, "from_currency": "USD", "to_currency": "EUR"},
@@ -184,7 +258,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_09",
         "query": "Add 'Buy groceries' to my todo list with high priority.",
         "functions": [
-            {"name": "add_todo", "description": "Add item to todo list", "parameters": {"task": "string", "priority": "string (low/medium/high)"}},
+            {
+                "name": "add_todo",
+                "description": "Add item to todo list",
+                "parameters": {"task": "string", "priority": "string (low/medium/high)"},
+            },
         ],
         "expected_name": "add_todo",
         "expected_params": {"task": "Buy groceries", "priority": "high"},
@@ -193,7 +271,16 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_10",
         "query": "Create a calendar event called 'Team Standup' that repeats every Monday at 9am.",
         "functions": [
-            {"name": "create_event", "description": "Create a calendar event", "parameters": {"title": "string", "day": "string", "time": "string", "recurring": "boolean"}},
+            {
+                "name": "create_event",
+                "description": "Create a calendar event",
+                "parameters": {
+                    "title": "string",
+                    "day": "string",
+                    "time": "string",
+                    "recurring": "boolean",
+                },
+            },
         ],
         "expected_name": "create_event",
         "expected_params": {"title": "Team Standup", "day": "Monday", "recurring": True},
@@ -202,7 +289,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_11",
         "query": "Look up the stock price for Apple (AAPL).",
         "functions": [
-            {"name": "get_stock_price", "description": "Get current stock price", "parameters": {"symbol": "string"}},
+            {
+                "name": "get_stock_price",
+                "description": "Get current stock price",
+                "parameters": {"symbol": "string"},
+            },
         ],
         "expected_name": "get_stock_price",
         "expected_params": {"symbol": "AAPL"},
@@ -211,7 +302,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_12",
         "query": "Translate 'Hello, how are you?' from English to Spanish.",
         "functions": [
-            {"name": "translate_text", "description": "Translate text between languages", "parameters": {"text": "string", "source_lang": "string", "target_lang": "string"}},
+            {
+                "name": "translate_text",
+                "description": "Translate text between languages",
+                "parameters": {"text": "string", "source_lang": "string", "target_lang": "string"},
+            },
         ],
         "expected_name": "translate_text",
         "expected_params": {"source_lang": "English", "target_lang": "Spanish"},
@@ -220,8 +315,16 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_13",
         "query": "Turn off the living room lights and set the thermostat to 72 degrees.",
         "functions": [
-            {"name": "control_lights", "description": "Control smart lights", "parameters": {"room": "string", "state": "string (on/off)"}},
-            {"name": "set_thermostat", "description": "Set thermostat temperature", "parameters": {"temperature": "integer", "unit": "string (optional)"}},
+            {
+                "name": "control_lights",
+                "description": "Control smart lights",
+                "parameters": {"room": "string", "state": "string (on/off)"},
+            },
+            {
+                "name": "set_thermostat",
+                "description": "Set thermostat temperature",
+                "parameters": {"temperature": "integer", "unit": "string (optional)"},
+            },
         ],
         "expected_name": "control_lights",
         "expected_params": {"room": "living room", "state": "off"},
@@ -231,8 +334,20 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_14",
         "query": "Get directions from my current location to the nearest gas station.",
         "functions": [
-            {"name": "get_directions", "description": "Get navigation directions", "parameters": {"origin": "string", "destination": "string", "transport_mode": "string (optional)"}},
-            {"name": "find_nearby", "description": "Find nearby places", "parameters": {"type": "string", "radius_km": "number (optional)"}},
+            {
+                "name": "get_directions",
+                "description": "Get navigation directions",
+                "parameters": {
+                    "origin": "string",
+                    "destination": "string",
+                    "transport_mode": "string (optional)",
+                },
+            },
+            {
+                "name": "find_nearby",
+                "description": "Find nearby places",
+                "parameters": {"type": "string", "radius_km": "number (optional)"},
+            },
         ],
         "expected_name": "find_nearby",
         "expected_params": {"type": "gas station"},
@@ -241,7 +356,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_15",
         "query": "Save a contact named Sarah Johnson with phone 555-0123 and email sarah@company.com.",
         "functions": [
-            {"name": "save_contact", "description": "Save a new contact", "parameters": {"name": "string", "phone": "string", "email": "string"}},
+            {
+                "name": "save_contact",
+                "description": "Save a new contact",
+                "parameters": {"name": "string", "phone": "string", "email": "string"},
+            },
         ],
         "expected_name": "save_contact",
         "expected_params": {"name": "Sarah Johnson", "phone": "555-0123"},
@@ -250,7 +369,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_16",
         "query": "Order a large pepperoni pizza for delivery to 123 Main St.",
         "functions": [
-            {"name": "order_pizza", "description": "Order pizza delivery", "parameters": {"size": "string", "toppings": "array", "delivery_address": "string"}},
+            {
+                "name": "order_pizza",
+                "description": "Order pizza delivery",
+                "parameters": {"size": "string", "toppings": "array", "delivery_address": "string"},
+            },
         ],
         "expected_name": "order_pizza",
         "expected_params": {"size": "large", "delivery_address": "123 Main St"},
@@ -259,7 +382,16 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_17",
         "query": "Find a hotel in Paris with check-in on June 1st and check-out on June 5th for 2 guests.",
         "functions": [
-            {"name": "search_hotels", "description": "Search for hotels", "parameters": {"city": "string", "check_in": "string", "check_out": "string", "guests": "integer"}},
+            {
+                "name": "search_hotels",
+                "description": "Search for hotels",
+                "parameters": {
+                    "city": "string",
+                    "check_in": "string",
+                    "check_out": "string",
+                    "guests": "integer",
+                },
+            },
         ],
         "expected_name": "search_hotels",
         "expected_params": {"city": "Paris", "guests": 2},
@@ -268,7 +400,15 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_18",
         "query": "Calculate the monthly payment for a 30-year mortgage of $400,000 at 6.5% interest.",
         "functions": [
-            {"name": "calculate_mortgage", "description": "Calculate mortgage payments", "parameters": {"principal": "number", "interest_rate": "number", "years": "integer"}},
+            {
+                "name": "calculate_mortgage",
+                "description": "Calculate mortgage payments",
+                "parameters": {
+                    "principal": "number",
+                    "interest_rate": "number",
+                    "years": "integer",
+                },
+            },
         ],
         "expected_name": "calculate_mortgage",
         "expected_params": {"principal": 400000, "interest_rate": 6.5, "years": 30},
@@ -277,7 +417,11 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_19",
         "query": "Set an alarm for 6:30 AM tomorrow labeled 'Early Meeting'.",
         "functions": [
-            {"name": "set_alarm", "description": "Set an alarm", "parameters": {"time": "string", "label": "string", "days": "string (optional)"}},
+            {
+                "name": "set_alarm",
+                "description": "Set an alarm",
+                "parameters": {"time": "string", "label": "string", "days": "string (optional)"},
+            },
         ],
         "expected_name": "set_alarm",
         "expected_params": {"time": "6:30 AM", "label": "Early Meeting"},
@@ -286,7 +430,15 @@ BFCL_SAMPLES: list[dict[str, Any]] = [
         "id": "bfcl_20",
         "query": "Share the photo from my last vacation on Instagram with caption 'Paradise found'.",
         "functions": [
-            {"name": "share_photo", "description": "Share a photo on social media", "parameters": {"platform": "string", "caption": "string", "album": "string (optional)"}},
+            {
+                "name": "share_photo",
+                "description": "Share a photo on social media",
+                "parameters": {
+                    "platform": "string",
+                    "caption": "string",
+                    "album": "string (optional)",
+                },
+            },
         ],
         "expected_name": "share_photo",
         "expected_params": {"platform": "Instagram", "caption": "Paradise found"},
@@ -396,7 +548,11 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
             {"role": "user", "content": "Hi, what is my current account balance?"},
         ],
         "tools": [
-            {"name": "get_account_balance", "description": "Retrieve the user's current account balance", "parameters": {}},
+            {
+                "name": "get_account_balance",
+                "description": "Retrieve the user's current account balance",
+                "parameters": {},
+            },
         ],
         "expected_tool_calls": ["get_account_balance"],
         "max_turns": 3,
@@ -405,11 +561,22 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_02",
         "scenario": "User wants to book a flight and check weather at destination.",
         "conversation": [
-            {"role": "user", "content": "I need a flight to Miami next Friday. Also, what's the weather going to be like there?"},
+            {
+                "role": "user",
+                "content": "I need a flight to Miami next Friday. Also, what's the weather going to be like there?",
+            },
         ],
         "tools": [
-            {"name": "search_flights", "description": "Search for flights", "parameters": {"destination": "string", "date": "string"}},
-            {"name": "get_weather_forecast", "description": "Get weather forecast for a location", "parameters": {"location": "string", "date": "string"}},
+            {
+                "name": "search_flights",
+                "description": "Search for flights",
+                "parameters": {"destination": "string", "date": "string"},
+            },
+            {
+                "name": "get_weather_forecast",
+                "description": "Get weather forecast for a location",
+                "parameters": {"location": "string", "date": "string"},
+            },
         ],
         "expected_tool_calls": ["search_flights", "get_weather_forecast"],
         "max_turns": 3,
@@ -418,10 +585,17 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_03",
         "scenario": "User needs to reset their password.",
         "conversation": [
-            {"role": "user", "content": "I forgot my password and need to reset it. My email is user@test.com."},
+            {
+                "role": "user",
+                "content": "I forgot my password and need to reset it. My email is user@test.com.",
+            },
         ],
         "tools": [
-            {"name": "send_password_reset", "description": "Send a password reset email", "parameters": {"email": "string"}},
+            {
+                "name": "send_password_reset",
+                "description": "Send a password reset email",
+                "parameters": {"email": "string"},
+            },
         ],
         "expected_tool_calls": ["send_password_reset"],
         "max_turns": 3,
@@ -433,8 +607,16 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
             {"role": "user", "content": "I want to cancel my order number 12345."},
         ],
         "tools": [
-            {"name": "lookup_order", "description": "Look up order details", "parameters": {"order_id": "string"}},
-            {"name": "cancel_order", "description": "Cancel an order", "parameters": {"order_id": "string", "reason": "string"}},
+            {
+                "name": "lookup_order",
+                "description": "Look up order details",
+                "parameters": {"order_id": "string"},
+            },
+            {
+                "name": "cancel_order",
+                "description": "Cancel an order",
+                "parameters": {"order_id": "string", "reason": "string"},
+            },
         ],
         "expected_tool_calls": ["lookup_order", "cancel_order"],
         "max_turns": 4,
@@ -443,11 +625,22 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_05",
         "scenario": "User asks about return policy and wants to return an item.",
         "conversation": [
-            {"role": "user", "content": "What is your return policy? I bought a shirt 5 days ago and want to return it. Order number is 67890."},
+            {
+                "role": "user",
+                "content": "What is your return policy? I bought a shirt 5 days ago and want to return it. Order number is 67890.",
+            },
         ],
         "tools": [
-            {"name": "get_return_policy", "description": "Get the current return policy", "parameters": {}},
-            {"name": "initiate_return", "description": "Start a return process", "parameters": {"order_id": "string", "item": "string", "reason": "string"}},
+            {
+                "name": "get_return_policy",
+                "description": "Get the current return policy",
+                "parameters": {},
+            },
+            {
+                "name": "initiate_return",
+                "description": "Start a return process",
+                "parameters": {"order_id": "string", "item": "string", "reason": "string"},
+            },
         ],
         "expected_tool_calls": ["get_return_policy", "initiate_return"],
         "max_turns": 5,
@@ -456,11 +649,28 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_06",
         "scenario": "User wants to schedule a meeting with multiple participants.",
         "conversation": [
-            {"role": "user", "content": "Schedule a 1-hour meeting with Alice and Bob for tomorrow at 2pm. Topic: Q3 review."},
+            {
+                "role": "user",
+                "content": "Schedule a 1-hour meeting with Alice and Bob for tomorrow at 2pm. Topic: Q3 review.",
+            },
         ],
         "tools": [
-            {"name": "check_availability", "description": "Check calendar availability for attendees", "parameters": {"attendees": "array", "date": "string", "time": "string"}},
-            {"name": "create_meeting", "description": "Create a calendar meeting", "parameters": {"title": "string", "attendees": "array", "date": "string", "time": "string", "duration_minutes": "integer"}},
+            {
+                "name": "check_availability",
+                "description": "Check calendar availability for attendees",
+                "parameters": {"attendees": "array", "date": "string", "time": "string"},
+            },
+            {
+                "name": "create_meeting",
+                "description": "Create a calendar meeting",
+                "parameters": {
+                    "title": "string",
+                    "attendees": "array",
+                    "date": "string",
+                    "time": "string",
+                    "duration_minutes": "integer",
+                },
+            },
         ],
         "expected_tool_calls": ["check_availability", "create_meeting"],
         "max_turns": 4,
@@ -469,11 +679,27 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_07",
         "scenario": "User reports a bug and wants to file a support ticket.",
         "conversation": [
-            {"role": "user", "content": "The app keeps crashing when I try to upload photos. Can you help? I'm on version 3.2.1, Android."},
+            {
+                "role": "user",
+                "content": "The app keeps crashing when I try to upload photos. Can you help? I'm on version 3.2.1, Android.",
+            },
         ],
         "tools": [
-            {"name": "create_support_ticket", "description": "Create a support ticket", "parameters": {"description": "string", "app_version": "string", "platform": "string", "severity": "string"}},
-            {"name": "check_known_issues", "description": "Check if issue is known", "parameters": {"keywords": "string"}},
+            {
+                "name": "create_support_ticket",
+                "description": "Create a support ticket",
+                "parameters": {
+                    "description": "string",
+                    "app_version": "string",
+                    "platform": "string",
+                    "severity": "string",
+                },
+            },
+            {
+                "name": "check_known_issues",
+                "description": "Check if issue is known",
+                "parameters": {"keywords": "string"},
+            },
         ],
         "expected_tool_calls": ["check_known_issues", "create_support_ticket"],
         "max_turns": 4,
@@ -482,11 +708,28 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_08",
         "scenario": "User wants to update shipping address for a pending order.",
         "conversation": [
-            {"role": "user", "content": "I just moved and need to update the shipping address for my order 55555 to 456 Oak Ave, Portland, OR 97201."},
+            {
+                "role": "user",
+                "content": "I just moved and need to update the shipping address for my order 55555 to 456 Oak Ave, Portland, OR 97201.",
+            },
         ],
         "tools": [
-            {"name": "lookup_order", "description": "Look up order details", "parameters": {"order_id": "string"}},
-            {"name": "update_shipping_address", "description": "Update shipping address for an order", "parameters": {"order_id": "string", "address": "string", "city": "string", "state": "string", "zip": "string"}},
+            {
+                "name": "lookup_order",
+                "description": "Look up order details",
+                "parameters": {"order_id": "string"},
+            },
+            {
+                "name": "update_shipping_address",
+                "description": "Update shipping address for an order",
+                "parameters": {
+                    "order_id": "string",
+                    "address": "string",
+                    "city": "string",
+                    "state": "string",
+                    "zip": "string",
+                },
+            },
         ],
         "expected_tool_calls": ["lookup_order", "update_shipping_address"],
         "max_turns": 4,
@@ -495,10 +738,17 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_09",
         "scenario": "User wants product recommendation within budget.",
         "conversation": [
-            {"role": "user", "content": "I'm looking for a laptop under $800 with at least 16GB RAM. What do you recommend?"},
+            {
+                "role": "user",
+                "content": "I'm looking for a laptop under $800 with at least 16GB RAM. What do you recommend?",
+            },
         ],
         "tools": [
-            {"name": "search_products", "description": "Search for products matching criteria", "parameters": {"category": "string", "max_price": "number", "specs": "object"}},
+            {
+                "name": "search_products",
+                "description": "Search for products matching criteria",
+                "parameters": {"category": "string", "max_price": "number", "specs": "object"},
+            },
         ],
         "expected_tool_calls": ["search_products"],
         "max_turns": 3,
@@ -507,11 +757,24 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_10",
         "scenario": "User wants to set up recurring transfer.",
         "conversation": [
-            {"role": "user", "content": "Set up a monthly transfer of $500 from my checking to my savings account on the 1st of every month."},
+            {
+                "role": "user",
+                "content": "Set up a monthly transfer of $500 from my checking to my savings account on the 1st of every month.",
+            },
         ],
         "tools": [
             {"name": "list_accounts", "description": "List user's bank accounts", "parameters": {}},
-            {"name": "create_recurring_transfer", "description": "Create a recurring transfer", "parameters": {"from_account": "string", "to_account": "string", "amount": "number", "frequency": "string", "day": "integer"}},
+            {
+                "name": "create_recurring_transfer",
+                "description": "Create a recurring transfer",
+                "parameters": {
+                    "from_account": "string",
+                    "to_account": "string",
+                    "amount": "number",
+                    "frequency": "string",
+                    "day": "integer",
+                },
+            },
         ],
         "expected_tool_calls": ["list_accounts", "create_recurring_transfer"],
         "max_turns": 4,
@@ -520,11 +783,27 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_11",
         "scenario": "User asks about restaurant recommendations and wants to make a reservation.",
         "conversation": [
-            {"role": "user", "content": "Find Italian restaurants near downtown Seattle and book a table for 2 at 7pm tonight."},
+            {
+                "role": "user",
+                "content": "Find Italian restaurants near downtown Seattle and book a table for 2 at 7pm tonight.",
+            },
         ],
         "tools": [
-            {"name": "search_restaurants", "description": "Search for nearby restaurants", "parameters": {"cuisine": "string", "location": "string"}},
-            {"name": "book_restaurant", "description": "Book a restaurant table", "parameters": {"restaurant_id": "string", "party_size": "integer", "time": "string", "date": "string"}},
+            {
+                "name": "search_restaurants",
+                "description": "Search for nearby restaurants",
+                "parameters": {"cuisine": "string", "location": "string"},
+            },
+            {
+                "name": "book_restaurant",
+                "description": "Book a restaurant table",
+                "parameters": {
+                    "restaurant_id": "string",
+                    "party_size": "integer",
+                    "time": "string",
+                    "date": "string",
+                },
+            },
         ],
         "expected_tool_calls": ["search_restaurants", "book_restaurant"],
         "max_turns": 4,
@@ -533,10 +812,17 @@ TAU_BENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tau_12",
         "scenario": "User wants to subscribe to a newsletter and get a confirmation.",
         "conversation": [
-            {"role": "user", "content": "Sign me up for the weekly tech newsletter at my email: dev@startup.io"},
+            {
+                "role": "user",
+                "content": "Sign me up for the weekly tech newsletter at my email: dev@startup.io",
+            },
         ],
         "tools": [
-            {"name": "subscribe_newsletter", "description": "Subscribe user to a newsletter", "parameters": {"email": "string", "newsletter_type": "string"}},
+            {
+                "name": "subscribe_newsletter",
+                "description": "Subscribe user to a newsletter",
+                "parameters": {"email": "string", "newsletter_type": "string"},
+            },
         ],
         "expected_tool_calls": ["subscribe_newsletter"],
         "max_turns": 3,
@@ -651,7 +937,10 @@ TERMINALBENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tb_04",
         "task": "Create a compressed tar archive of the directory 'myproject' named 'backup.tar.gz'",
         "expected_command_keywords": ["tar", "-czf", "backup.tar.gz", "myproject"],
-        "accept_alternatives": ["tar -czvf backup.tar.gz myproject", "tar --create --gzip --file backup.tar.gz myproject"],
+        "accept_alternatives": [
+            "tar -czvf backup.tar.gz myproject",
+            "tar --create --gzip --file backup.tar.gz myproject",
+        ],
     },
     {
         "id": "tb_05",
@@ -669,7 +958,10 @@ TERMINALBENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tb_07",
         "task": "Count the number of lines in all .py files in the current directory",
         "expected_command_keywords": ["find", "wc", "-l", ".py"],
-        "accept_alternatives": ["wc -l $(find . -name '*.py')", "find . -name '*.py' -exec cat {} + | wc -l"],
+        "accept_alternatives": [
+            "wc -l $(find . -name '*.py')",
+            "find . -name '*.py' -exec cat {} + | wc -l",
+        ],
     },
     {
         "id": "tb_08",
@@ -699,7 +991,9 @@ TERMINALBENCH_SAMPLES: list[dict[str, Any]] = [
         "id": "tb_12",
         "task": "Recursively change permissions of all directories to 755 and files to 644 in /var/www/",
         "expected_command_keywords": ["find", "chmod", "755", "644", "/var/www"],
-        "accept_alternatives": ["find /var/www -type d -exec chmod 755 {} \\; && find /var/www -type f -exec chmod 644 {} \\;"],
+        "accept_alternatives": [
+            "find /var/www -type d -exec chmod 755 {} \\; && find /var/www -type f -exec chmod 644 {} \\;"
+        ],
     },
 ]
 
@@ -820,13 +1114,23 @@ OSWORLD_SAMPLES: list[dict[str, Any]] = [
     {
         "id": "osw_05",
         "task": "Copy the file 'report.pdf' from Downloads to Documents",
-        "expected_actions": ["navigate_to:Downloads", "select_file:report.pdf", "copy", "navigate_to:Documents", "paste"],
+        "expected_actions": [
+            "navigate_to:Downloads",
+            "select_file:report.pdf",
+            "copy",
+            "navigate_to:Documents",
+            "paste",
+        ],
         "eval_type": "action_sequence",
     },
     {
         "id": "osw_06",
         "task": "Open the browser and search for 'climate change statistics'",
-        "expected_actions": ["open_browser", "type_in_search_bar:climate change statistics", "press_enter"],
+        "expected_actions": [
+            "open_browser",
+            "type_in_search_bar:climate change statistics",
+            "press_enter",
+        ],
         "eval_type": "action_sequence",
     },
     {

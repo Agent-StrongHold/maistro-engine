@@ -12,16 +12,24 @@ router = APIRouter(tags=["evolution"])
 def evolution_status() -> dict:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         return svc.status()
     except RuntimeError:
-        return {"running": False, "cycle_count": 0, "population_size": 0, "last_error": None, "tournament": {}}
+        return {
+            "running": False,
+            "cycle_count": 0,
+            "population_size": 0,
+            "last_error": None,
+            "tournament": {},
+        }
 
 
 @router.get("/population")
 def list_population() -> list[dict]:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         if svc.population is None:
             return []
@@ -34,6 +42,7 @@ def list_population() -> list[dict]:
 def get_genome(genome_id: str) -> dict:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         if svc.population is None:
             raise HTTPException(status_code=404, detail="population not initialized")
@@ -49,6 +58,7 @@ def get_genome(genome_id: str) -> dict:
 def get_champion() -> dict:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         if svc.population is None:
             return {"genome": None, "fitness": None}
@@ -64,6 +74,7 @@ def get_champion() -> dict:
 def get_lineage(genome_id: str) -> list[dict]:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         if svc.population is None:
             return []
@@ -77,6 +88,7 @@ def get_lineage(genome_id: str) -> list[dict]:
 def tournament_leaderboard(benchmark: str | None = None) -> list[dict]:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         if svc.tournament is None:
             return []
@@ -93,6 +105,7 @@ def tournament_battles(
 ) -> list[dict]:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         if svc.tournament is None:
             return []
@@ -105,6 +118,7 @@ def tournament_battles(
 def tournament_stats() -> dict:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         if svc.tournament is None:
             return {}
@@ -124,7 +138,9 @@ class SeedPopulationBody(BaseModel):
 async def seed_population(body: SeedPopulationBody) -> dict:
     try:
         from services.evolution import get_evolution_service
+
         from maistro_evolve.diversity import emergency_spawn
+
         svc = get_evolution_service()
         if svc.population is None:
             raise HTTPException(status_code=503, detail="population not initialized")
@@ -141,6 +157,7 @@ async def seed_population(body: SeedPopulationBody) -> dict:
 async def trigger_cycle() -> dict:
     try:
         from services.evolution import get_evolution_service
+
         svc = get_evolution_service()
         await svc._run_one_cycle()
         return {"status": "completed", "cycle_count": svc.cycle_count}

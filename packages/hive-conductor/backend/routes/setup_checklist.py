@@ -13,12 +13,10 @@ at read time — no background job needed.
 from __future__ import annotations
 
 import logging
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-
 from services import user_credentials as cred_svc
 
 router = APIRouter(tags=["setup-checklist"])
@@ -84,9 +82,11 @@ def _load_dismissals(user_id: str) -> dict[str, datetime]:
         try:
             persisted.delete(_STORE_NAME, key)
         except Exception as _exc:
-            __import__('logging').getLogger('hive.routes.setup_checklist').warning(
-                'error_swallowed file=%s line=%d: %s',
-                'packages/hive-conductor/backend/routes/setup_checklist.py', 86, _exc,
+            __import__("logging").getLogger("hive.routes.setup_checklist").warning(
+                "error_swallowed file=%s line=%d: %s",
+                "packages/hive-conductor/backend/routes/setup_checklist.py",
+                86,
+                _exc,
             )
             pass
     return out
@@ -117,8 +117,12 @@ def _delete_dismissal(user_id: str, item_id: str) -> None:
         persisted.delete(_STORE_NAME, _dismiss_key(user_id, item_id))
     except Exception as exc:
         import logging as _logging
+
         _logging.getLogger("hive.setup_checklist").warning(
-            "dismiss_delete_failed user=%s item=%s: %s", user_id, item_id, exc,
+            "dismiss_delete_failed user=%s item=%s: %s",
+            user_id,
+            item_id,
+            exc,
         )
 
 
@@ -203,9 +207,7 @@ def _build_catalog() -> list[dict[str, Any]]:
         {
             "id": "cred_atlassian_server_confluence",
             "title": "Add your Confluence PAT",
-            "description": (
-                "Lets agents read Confluence pages (RFCs, runbooks, status docs)."
-            ),
+            "description": ("Lets agents read Confluence pages (RFCs, runbooks, status docs)."),
             "link_label": "Open Credentials",
             "link_href": "/credentials",
             "external_help": (
@@ -246,8 +248,7 @@ def _build_catalog() -> list[dict[str, Any]]:
             "id": "cred_github",
             "title": "Add your GitHub PAT",
             "description": (
-                "Used for repository and PR context when the fleet ties work-items "
-                "back to code."
+                "Used for repository and PR context when the fleet ties work-items back to code."
             ),
             "link_label": "Open Credentials",
             "link_href": "/credentials",

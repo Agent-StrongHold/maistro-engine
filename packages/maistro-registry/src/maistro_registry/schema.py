@@ -126,9 +126,7 @@ class FrontMatter(BaseModel):
     @classmethod
     def _validate_id(cls, v: str) -> str:
         if not _is_valid_id(v):
-            raise ValueError(
-                f"id must match ^(ADR|SPEC)-NNN$, got {v!r}"
-            )
+            raise ValueError(f"id must match ^(ADR|SPEC)-NNN$, got {v!r}")
         return v
 
     @field_validator(

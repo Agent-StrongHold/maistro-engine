@@ -61,8 +61,7 @@ def parse_json_response(content: str) -> dict:
                 pass
 
         raise LLMParseError(
-            f"Could not parse LLM response as JSON: {e}. "
-            f"Content (first 500 chars): {content[:500]}"
+            f"Could not parse LLM response as JSON: {e}. Content (first 500 chars): {content[:500]}"
         )
 
 

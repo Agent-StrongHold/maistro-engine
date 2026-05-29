@@ -47,10 +47,10 @@ from maistro.types.feedback import (
     ViolationCategory,
     ViolationMetrics,
 )
-from maistro.types.intent import Intent, TIER_ORDER
+from maistro.types.intent import TIER_ORDER, Intent
 from maistro.types.memory import (
-    INHERITANCE_PRIORITY,
     CONTRADICT_DELTA,
+    INHERITANCE_PRIORITY,
     REINFORCE_DELTA,
     WEIGHT_BOUNDS,
     EpisodicMemory,
@@ -92,6 +92,11 @@ from maistro.types.spec import (
 from maistro.types.tool import ToolCall, ToolDefinition, ToolResult
 
 __all__ = [
+    "CONTRADICT_DELTA",
+    "INHERITANCE_PRIORITY",
+    "REINFORCE_DELTA",
+    "TIER_ORDER",
+    "WEIGHT_BOUNDS",
     "AgentConfig",
     "AgentError",
     "AgentIdentity",
@@ -102,15 +107,13 @@ __all__ = [
     "AuthConfig",
     "AuthError",
     "CORSConfig",
-    "ClassificationError",
     "ClarifyingQuestion",
+    "ClassificationError",
     "ConfigError",
-    "CONTRADICT_DELTA",
     "EpisodicMemory",
     "Event",
     "ExecutionMode",
     "GateResult",
-    "INHERITANCE_PRIORITY",
     "InjectionError",
     "Intent",
     "Invariant",
@@ -129,13 +132,12 @@ __all__ = [
     "Outcome",
     "PermissionDeniedError",
     "PropertyTest",
-    "ProviderConfig",
     "Provenance",
+    "ProviderConfig",
     "QuotaExhaustedError",
     "QuotaReserveError",
     "RateLimitConfig",
     "ReactorStatus",
-    "REINFORCE_DELTA",
     "ReasoningResult",
     "ReviewFinding",
     "ReviewResult",
@@ -155,7 +157,6 @@ __all__ = [
     "SpecStatus",
     "StrongholdError",
     "TaskTypeConfig",
-    "TIER_ORDER",
     "TokenExpiredError",
     "ToolCall",
     "ToolDefinition",
@@ -170,6 +171,5 @@ __all__ = [
     "Violation",
     "ViolationCategory",
     "ViolationMetrics",
-    "WEIGHT_BOUNDS",
     "WardenVerdict",
 ]

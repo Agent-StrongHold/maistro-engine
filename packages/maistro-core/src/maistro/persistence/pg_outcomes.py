@@ -104,7 +104,7 @@ class PgOutcomeStore:
                        COUNT(*) AS request_count,
                        SUM(CASE WHEN success THEN 1 ELSE 0 END) AS success_count,
                        ROUND(AVG(response_time_ms)::numeric, 1) AS avg_response_ms
-                   FROM outcomes"""  # noqa: S608  # nosec B608
+                   FROM outcomes"""  # nosec B608
 
         async with self._pool.acquire() as conn:
             if days > 0:
@@ -113,14 +113,14 @@ class PgOutcomeStore:
                     f"""{select_cols}
                        WHERE created_at >= $1
                        GROUP BY {group_by}
-                       ORDER BY total_tokens DESC""",  # noqa: S608
+                       ORDER BY total_tokens DESC""",
                     cutoff,
                 )
             else:
                 rows = await conn.fetch(
                     f"""{select_cols}
                        GROUP BY {group_by}
-                       ORDER BY total_tokens DESC""",  # noqa: S608
+                       ORDER BY total_tokens DESC""",
                 )
 
         return [
@@ -160,7 +160,7 @@ class PgOutcomeStore:
                  FROM outcomes
                  WHERE created_at >= $1
                  GROUP BY day, {group_by}
-                 ORDER BY day"""  # noqa: S608  # nosec B608
+                 ORDER BY day"""  # nosec B608
         else:
             query = """
                 SELECT DATE(created_at AT TIME ZONE 'UTC') AS day,

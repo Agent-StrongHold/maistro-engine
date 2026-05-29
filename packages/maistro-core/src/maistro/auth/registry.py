@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from maistro.auth._types import Scope, ServiceIdentity, expand_scopes
+from maistro.auth._types import ServiceIdentity, expand_scopes
 
 logger = logging.getLogger("maistro.auth.registry")
 

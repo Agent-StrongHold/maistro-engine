@@ -135,8 +135,10 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         # best-effort — don't fail Setup over a settings shape mismatch.
         import logging as _logging
+
         _logging.getLogger("hive.setup").warning(
-            "default_model_set_failed: %s", exc,
+            "default_model_set_failed: %s",
+            exc,
         )
 
     kv = _get_kv()
@@ -146,7 +148,9 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     result = {"setup_complete": True, "config": config}
     if config_mnemonic is not None:
         result["mnemonic"] = config_mnemonic
-        result["mnemonic_warning"] = "Write these words down. This is the only time they will be shown. They are your root of trust for everything."
+        result["mnemonic_warning"] = (
+            "Write these words down. This is the only time they will be shown. They are your root of trust for everything."
+        )
     return result
 
 

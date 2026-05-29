@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from config import get_settings
 from fastapi import APIRouter
-from models.schemas import HealthResponse, ReadyResponse
+from models.schemas import ReadyResponse
 
 _START = time.monotonic()
 _STARTED_AT = datetime.now(UTC).isoformat()
@@ -19,6 +19,7 @@ def health() -> dict:
     uptime = time.monotonic() - _START
     try:
         from services.foundation import get_foundation
+
         f = get_foundation()
         vault_enabled = f.vault_available
         state_enabled = f.state_available
@@ -49,6 +50,7 @@ def health() -> dict:
 def ready() -> ReadyResponse:
     try:
         from services.foundation import get_foundation
+
         f = get_foundation()
         checks = {
             "api": True,
