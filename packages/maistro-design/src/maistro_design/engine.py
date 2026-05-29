@@ -1,7 +1,7 @@
 """DesignEngine — discovery form → Warden scan → trust assignment → prompt stack.
 
 The engine builds the prompt stack and creates artifacts but does NOT call an LLM.
-The caller passes the assembled output to maistro-core's conduit (ADR-019 / ADR-058).
+The caller passes the assembled output to maistro-core's conduit (ADR-019 / ADR-061).
 
 Trust contamination: context_trust_tier is monotonically decreasing per instance.
 One engine instance per session; callers manage session lifecycle.

@@ -1,5 +1,5 @@
 ---
-id: ADR-058
+id: ADR-061
 title: "maistro-design — composable design skills + design systems package"
 repo: maistro-engine
 kind: adr
@@ -25,7 +25,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-058 — maistro-design: composable design skills + design systems
+# ADR-061 — maistro-design: composable design skills + design systems
 
 ## Context
 

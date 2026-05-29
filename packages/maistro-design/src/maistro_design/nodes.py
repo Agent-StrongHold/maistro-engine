@@ -1,7 +1,7 @@
 """DesignOrchestrateNode — DAG node wrapping DesignEngine.generate().
 
 Registered under kind "design.orchestrate" so design workflows compose
-with the maistro-core graph executor (ADR-042 / ADR-058).
+with the maistro-core graph executor (ADR-042 / ADR-061).
 """
 
 from __future__ import annotations
