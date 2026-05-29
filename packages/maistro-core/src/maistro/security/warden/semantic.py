@@ -77,18 +77,16 @@ _PRESCRIPTIVE_PATTERNS: list[re.Pattern[str]] = [
     ]
 ]
 
-_CODE_SYNTAX = re.compile(
-    r"(?:def |async def |class |import |from .+ import |return |raise |assert |yield |await )"
-)
-
-
 def semantic_tool_poisoning_scan(text: str) -> tuple[bool, list[str]]:
     text_lower = text.lower()
     flags: list[str] = []
 
-    if _CODE_SYNTAX.search(text_lower[:200]):
-        return False, flags
-
+    # NOTE: We deliberately do NOT short-circuit when code-syntax tokens
+    # (def/class/import/...) appear. Prefixing a poisoned payload with e.g.
+    # "import os" previously disabled this entire layer, letting tool-poisoning
+    # comments through. Benign code is protected from false positives by the
+    # flag logic below, which requires a *prescriptive instruction* combined
+    # with a dangerous action or sensitive object before flagging.
     has_actions = any(p.search(text_lower) for p in _DANGEROUS_ACTIONS)
     has_objects = any(p.search(text_lower) for p in _SENSITIVE_OBJECTS)
     has_prescriptive = any(p.search(text_lower) for p in _PRESCRIPTIVE_PATTERNS)
