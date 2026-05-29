@@ -6,13 +6,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from tools.registry.generator import (
+from maistro_registry.generator import (
     Registry,
     RegistryEntry,
     build_registry,
     write_registry,
 )
-from tools.registry.schema import FrontMatter
+from maistro_registry.schema import FrontMatter
 
 
 def _make_fm(
