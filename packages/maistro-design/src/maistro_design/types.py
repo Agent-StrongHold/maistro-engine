@@ -8,7 +8,6 @@ from enum import StrEnum
 from typing import Any
 
 from maistro.types.errors import AgentError
-
 from maistro_design.trust import TrustTier
 
 
