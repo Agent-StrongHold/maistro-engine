@@ -8,7 +8,7 @@ to fit within the hardware envelope.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, assert_type
 
 import pytest
 
@@ -130,3 +130,25 @@ class TestPresetToConfig:
         p = resolve_preset("potato")
         cfg = p.to_config()
         assert cfg["reactor_enabled"] is False
+
+    def test_to_config_is_a_statically_known_method(self) -> None:
+        # Regression: to_config used to be monkey-patched onto the class with a
+        # ``# type: ignore[attr-defined]``, so it was invisible to the type
+        # checker at every call site. It must be a real method on the class
+        # whose return type mypy --strict statically infers as dict[str, Any].
+        # Imported directly (not via the untyped fixture) so the type flows.
+        from maistro.config.presets import HARDWARE_PRESETS, HardwarePreset
+
+        assert "to_config" in vars(HardwarePreset)
+        cfg = HARDWARE_PRESETS["laptop"].to_config()
+        assert_type(cfg, dict[str, Any])
+        assert set(cfg) == {
+            "hardware_preset",
+            "conductor_data_dir",
+            "conductor_state_db",
+            "db_backend",
+            "reactor_enabled",
+            "max_agents",
+            "networking",
+            "gpu_available",
+        }
