@@ -1,6 +1,6 @@
 """maistro-design — composable design skills + design systems + canvas engine.
 
-Public API surface. Import from here for stable, ADR-058-governed access.
+Public API surface. Import from here for stable, ADR-061-governed access.
 """
 
 from maistro_design.engine import DesignEngine
