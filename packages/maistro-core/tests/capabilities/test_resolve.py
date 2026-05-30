@@ -47,3 +47,30 @@ async def test_safe_noop_no_provider_returns_none(reg: CapabilityRegistry):
 def test_validate_boot_raises_when_hard_required_unfilled(reg: CapabilityRegistry):
     with pytest.raises(RuntimeError, match="llm"):
         reg.validate_boot()
+
+
+async def test_baseline_equals_unhealthy_active_returns_none(reg: CapabilityRegistry):
+    # approval slot's baseline is "inbox"; if inbox itself is active AND unhealthy,
+    # the self-baseline guard must return None (not the failed provider).
+    reg.register(FakeProvider("inbox", "approval", healthy=False))
+    reg.activate("approval", "inbox")
+    assert await reg.resolve("approval") is None
+
+
+async def test_auto_selects_lowest_trust_tier_when_no_active(reg: CapabilityRegistry):
+    reg.register(FakeProvider("hi", "search", tier="t5"))
+    reg.register(FakeProvider("lo", "search", tier="t0"))
+    chosen = await reg.resolve("search")  # no activate() — auto-select by trust tier
+    assert chosen is not None and chosen.name == "lo"
+
+
+def test_validate_boot_passes_when_hard_required_has_provider(reg: CapabilityRegistry):
+    reg.register(FakeProvider("litellm", "llm"))
+    reg.validate_boot()  # must not raise
+
+
+def test_validate_boot_raises_when_hard_required_disabled(reg: CapabilityRegistry):
+    reg.register(FakeProvider("litellm", "llm"))
+    reg.set_enabled("llm", False)
+    with pytest.raises(RuntimeError, match="disabled"):
+        reg.validate_boot()

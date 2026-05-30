@@ -3,30 +3,8 @@ from __future__ import annotations
 import pytest
 
 from maistro.capabilities.registry import CapabilityRegistry
-from maistro.capabilities.types import FallbackPolicy, ProviderHealth, SlotSpec
-
-
-class FakeProvider:
-    def __init__(self, name: str, slot: str, *, healthy: bool = True, tier: str = "t0") -> None:
-        self._name, self._slot, self._healthy, self._tier = name, slot, healthy, tier
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def slot(self) -> str:
-        return self._slot
-
-    @property
-    def trust_tier(self) -> str:
-        return self._tier
-
-    def requires(self) -> tuple[str, ...]:
-        return ()
-
-    async def healthcheck(self) -> ProviderHealth:
-        return ProviderHealth(healthy=self._healthy)
+from maistro.capabilities.tests_fakes import FakeProvider
+from maistro.capabilities.types import FallbackPolicy, SlotSpec
 
 
 @pytest.fixture()
