@@ -15,6 +15,7 @@ related:
   - maistro-engine#ADR-028
   - maistro-engine#ADR-052
   - maistro-engine#ADR-056
+  - maistro-engine#ADR-068
 supersedes: []
 blocks: []
 blocked-by: []

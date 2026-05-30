@@ -74,6 +74,15 @@ Extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) (Four-Repo Gover
 - Stronghold-only code (Keycloak, K8s, Redis, tenant isolation) stays in the Stronghold repo.
 - When in doubt, it goes in maistro-core. Multi-tenant concerns are the exception, not the rule.
 
+### Scope vs. tenancy (amended by ADR-068)
+
+The "no `org_id` in core" shorthand conflated **scope** with **tenancy**. Corrected: core
+carries the *soft scope axes* `global > org > team > user > agent > session` (a user may be
+in multiple teams/orgs); only the **hard `tenant` boundary** — fully segmented, one tenant
+per user — is Stronghold-only. So `org`/`team` filters in maistro-core (ADR-013/015/016/017)
+are legitimate scope, not tenancy. See ADR-068 for the full hierarchy and how it feeds the
+authorization model.
+
 ## Consequences
 
 - maistro-engine becomes the single source of truth for the Python runtime

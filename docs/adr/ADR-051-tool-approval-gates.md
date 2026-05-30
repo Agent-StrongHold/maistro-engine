@@ -13,6 +13,7 @@ related:
   - maistro-engine#ADR-028
   - maistro-engine#ADR-054
   - maistro-engine#ADR-056
+  - maistro-engine#ADR-068
 supersedes: []
 blocks: []
 blocked-by: []
@@ -103,7 +104,8 @@ approval:
 
 - `maistro-engine:src/maistro/security/sentinel/`
 - ADR-050 reversibility taxonomy (provides `impact_estimator`).
-- ADR-028 privilege separation (orthogonal; process-level, not task-level).
+- ADR-028 privilege separation — **unified by ADR-068**: it is the *authorize* step that
+  precedes this *approve* step in one ordered evaluation (not orthogonal, as originally framed).
 
 ## Out of scope
 
