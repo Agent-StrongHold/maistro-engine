@@ -59,6 +59,13 @@ def build_scope_filter(agent_id, user_id, team_id, org_id) -> list[tuple[str, st
 def matches_scope(mem: EpisodicMemory, filters) -> bool: ...  # cross-tenant leakage prevention
 ```
 
+> **Single source of truth.** `WEIGHT_BOUNDS`, `REINFORCE_DELTA`, and `CONTRADICT_DELTA` are
+> defined **only** in `maistro.types.memory`. Protocol signatures and store implementations
+> MUST `from maistro.types.memory import REINFORCE_DELTA` rather than re-spelling the literal
+> `0.05` as a parameter default — inline literals are how these drift. (A CI lint catching
+> `delta: float = 0.05` defaults outside `types/memory.py` is the enforcement; tier-specific
+> decay deltas are a possible v1 refinement, out of scope here.)
+
 ## Acceptance criteria
 
 - [ ] `WEIGHT_BOUNDS[MemoryTier.REGRET] == (0.6, 1.0)` — structurally unforgettable

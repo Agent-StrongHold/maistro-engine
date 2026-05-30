@@ -39,7 +39,11 @@ The Conductor Seed (ADR-021) is encrypted at rest but decrypted into process mem
 
 ## Decision
 
-Four integration modes, all selectable in the setup wizard (ADR-020). Each replaces or augments the seed source from ADR-021.
+Four integration modes, all selectable in the setup wizard (ADR-020). Modes 1–3 **replace**
+the seed source from ADR-021 with hardware; **Mode 4 is the ADR-021 software seed itself** and
+is always available. Hardware is therefore optional and post-init — ADR-021 bootstraps first
+with no hardware, then migrates if the operator selects a hardware mode (no ADR-021 ↔ ADR-022
+bootstrap cycle).
 
 ### Mode 1: Ledger / Trezor as seed source
 
