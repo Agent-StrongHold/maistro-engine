@@ -34,11 +34,11 @@ in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR expli
 ## Tier 1 — load-bearing now (things already-shipped code/ADRs depend on)
 
 ### Security & authorization substrate
-- ✅ **Warden + Sentinel spec ADR** — detection taxonomy (layered heuristics → LLM-judge), the
+- ✅ **Warden + Sentinel spec ADR** *(drafted ADR-073, PR #83)* — detection taxonomy (layered heuristics → LLM-judge), the
   hybrid policy model (code detectors + DB-stored declarative thresholds/allow-lists/approver-
   matrix, RBAC-gated online edits, human-readable export), PDP/PEP, decision audit. *ADR-068/050/051
   delegate enforcement to this; it's code-only today.*
-- ✅ **Threat-model ADR** — assets/adversaries/trust-boundaries; **anchor: malicious third-party
+- ✅ **Threat-model ADR** *(drafted ADR-072, PR #83)* — assets/adversaries/trust-boundaries; **anchor: malicious third-party
   code** (skill/MCP/dependency); defense = signing + microVM (ADR-069) + trust tiers + SBOM.
 - ☐ **Approver-policy-matrix schema** — concrete format of `(action, for-scope) → approved-by`
   (←ADR-068).
@@ -50,7 +50,7 @@ in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR expli
 - ☐ **RLPHD predictor SPEC** — model class, features, θ update rule, cold-start (←ADR-068 follow-up SPEC).
 
 ### Governance dialectic — Policy ⇄ ADR deconfliction
-- ✅ **Policy⇄ADR deconfliction-loop ADR** *(decided 2026-05-30)* — the learning policy engine
+- ✅ **Policy⇄ADR deconfliction-loop ADR** *(drafted ADR-074, PR #83)* — the learning policy engine
   (Warden/Sentinel adaptive weights + RLPHD) = *revealed preference*; ADRs = *declared intent*. When a
   learned-policy change conflicts with an ADR (or N deployed artifacts), it **never auto-activates** —
   held (fail-safe, ADR stays source of truth) → admin review with impact analysis (which ADR clause,
@@ -63,7 +63,7 @@ in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR expli
   deployed contracts before commit. All outcomes audited as VCs (ADR-024/068). *Closes a real hole in
   decision #7 / ADR-068 / ADR-070: online-mutable + adaptive policy could silently drift from the ADRs
   with no reconciliation path.* Requires ADRs to carry machine-checkable invariants (ADR-032 tie-in).
-- ☐ **Policy-conformance SPEC** *(required by the deconfliction ADR)* — the comparison engine. A
+- ✅ **Policy-conformance SPEC** *(drafted SPEC-184, PR #83)* — the comparison engine. A
   candidate policy decision is checked against authorities in **strict precedence order, stopping at
   the first conflict**: **(1) ADRs** → **(2) Specs** → **(3) prior policy decisions**. The hierarchy is
   legal: ADRs = constitution (near-inviolable; safety ADRs do not bend), Specs = statutes (derived from
