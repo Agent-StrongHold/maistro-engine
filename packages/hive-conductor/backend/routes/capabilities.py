@@ -149,6 +149,62 @@ def _approval_view(req: Any) -> dict[str, Any]:
     }
 
 
+# --- self_repair (SPEC-188) -------------------------------------------------
+
+
+def _self_repair_provider() -> Any | None:
+    reg = _registry()
+    name = reg.active_name("self_repair") or "rule_based_repair"
+    provider = reg.provider("self_repair", name)
+    return provider if (provider is not None and hasattr(provider, "run_once")) else None
+
+
+def _proposal_view(result: Any) -> dict[str, Any]:
+    p = result.proposal
+    return {
+        "resource": p.resource,
+        "symptom": p.symptom,
+        "action": p.action,
+        "params": p.params,
+        "tier": p.tier,
+        "rationale": p.rationale,
+        "decision": str(result.decision),
+        "detail": result.detail,
+    }
+
+
+def _cycle_view(provider: Any) -> dict[str, Any]:
+    cycle = provider.last_cycle
+    proposals = [_proposal_view(r) for r in cycle.results] if cycle is not None else []
+    return {
+        "ts": cycle.ts if cycle is not None else "",
+        "proposals": proposals,
+        "governor": provider.governor_state(),
+    }
+
+
+@router.get("/self-repair/proposals")
+def self_repair_proposals() -> dict[str, Any]:
+    provider = _self_repair_provider()
+    if provider is None:
+        return {"ts": "", "proposals": [], "governor": {}}
+    return _cycle_view(provider)
+
+
+@router.post("/self-repair/run")
+async def self_repair_run() -> dict[str, Any]:
+    from services.capabilities_wiring import run_self_repair_once
+
+    cycle = await run_self_repair_once(_registry())
+    if cycle is None:
+        raise HTTPException(status_code=503, detail="self_repair unavailable (disabled or no provider)")
+    log_audit("self_repair_run", "system", detail={"proposals": len(cycle.results)})
+    provider = _self_repair_provider()
+    if provider is not None:
+        return _cycle_view(provider)
+    return {"ts": cycle.ts, "proposals": [], "governor": {}}
+
+
 @router.get("/approvals")
 def list_approvals() -> dict[str, Any]:
     inbox = _approval_inbox()

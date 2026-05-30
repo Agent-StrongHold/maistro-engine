@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from maistro.capabilities.http_client import HttpxAsyncHttp
 from maistro.capabilities.providers.host_health import HostHealthAction, HostHealthMonitor
+from maistro.capabilities.providers.self_repair import RuleBasedRepair
 
 if TYPE_CHECKING:
     from config import Settings
@@ -72,6 +73,35 @@ def _register_host_health(
     registry.register(HostHealthMonitor(http))
     registry.register(HostHealthAction(http, autonomy=config.infra_autonomy, approval=inbox))
     logger.info("registered host-health infra providers -> %s", url)
+    _register_self_repair(registry, config)
+
+
+def _register_self_repair(registry: CapabilityRegistry, config: Settings) -> None:
+    """Register the self_repair provider once infra_monitor/infra_action exist (SPEC-188)."""
+    monitor = registry.provider("infra_monitor", "host_health")
+    action = registry.provider("infra_action", "host_health")
+    if monitor is None or action is None:
+        return
+    registry.register(
+        RuleBasedRepair(
+            infra_monitor=monitor,
+            infra_action=action,
+            autonomy=config.infra_autonomy,
+        )
+    )
+    logger.info("registered self_repair provider (autonomy=%s)", config.infra_autonomy)
+
+
+async def run_self_repair_once(registry: CapabilityRegistry) -> Any | None:
+    """Resolve the self_repair slot and run one cycle, or None if unavailable.
+
+    Resolution is the kill-switch: a disabled slot (or unavailable provider)
+    resolves to None (SAFE_NOOP), so nothing runs — no special-casing needed.
+    """
+    provider = await registry.resolve("self_repair")
+    if provider is None or not hasattr(provider, "run_once"):
+        return None
+    return await provider.run_once()
 
 
 def _apply_activation(registry: CapabilityRegistry, settings_model: SettingsModel) -> None:

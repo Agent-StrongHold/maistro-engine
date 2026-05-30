@@ -111,6 +111,64 @@ def test_activation_ignores_unknown_slot() -> None:
     wire_capabilities(reg, settings_model=settings_model, config=_cfg(), vault=None)
 
 
+def test_registers_self_repair_when_infra_present() -> None:
+    reg = default_capability_registry()
+    wire_capabilities(
+        reg,
+        settings_model=SettingsModel(),
+        config=_cfg(host_health_url="http://host:8150"),
+        vault=None,
+    )
+    assert "rule_based_repair" in reg.installed("self_repair")
+
+
+def test_no_self_repair_without_infra() -> None:
+    reg = default_capability_registry()
+    wire_capabilities(reg, settings_model=SettingsModel(), config=_cfg(host_health_url=None), vault=None)
+    assert reg.installed("self_repair") == []
+
+
+class _FakeSelfRepair:
+    name = "rule_based_repair"
+    slot = "self_repair"
+    trust_tier = "t0"
+
+    def __init__(self) -> None:
+        self.runs = 0
+
+    def requires(self) -> tuple[str, ...]:
+        return ()
+
+    async def healthcheck(self):
+        from maistro.capabilities.types import ProviderHealth
+
+        return ProviderHealth(healthy=True)
+
+    async def run_once(self):
+        from maistro.capabilities.slots.self_repair import RepairCycleResult
+
+        self.runs += 1
+        return RepairCycleResult(ts="t", results=[])
+
+
+async def test_run_self_repair_once_runs_when_enabled() -> None:
+    from services.capabilities_wiring import run_self_repair_once
+
+    reg = default_capability_registry()
+    reg.register(_FakeSelfRepair())
+    cycle = await run_self_repair_once(reg)
+    assert cycle is not None  # provider resolved + ran
+
+
+async def test_run_self_repair_once_killswitch_when_slot_disabled() -> None:
+    from services.capabilities_wiring import run_self_repair_once
+
+    reg = default_capability_registry()
+    reg.register(_FakeSelfRepair())
+    reg.set_enabled("self_repair", False)  # kill-switch → resolve None → no run
+    assert await run_self_repair_once(reg) is None
+
+
 def test_engine_exposes_a_capability_registry_in_stub_mode() -> None:
     # The API reaches capabilities via the engine; it must exist even with no
     # real maistro-core container wired (stub/dev mode).
