@@ -115,7 +115,7 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
         # Poll for completion
         import asyncio
 
-        for _ in range(30):  # max 30 polls × 2s = 60s
+        for _ in range(30):  # max 30 polls x 2s = 60s
             await asyncio.sleep(2)
             r = await client.get(f"{OPSAGENT_BASE}/chatbot/chat/{job_id}", headers=_headers())
             if r.status_code != 200:

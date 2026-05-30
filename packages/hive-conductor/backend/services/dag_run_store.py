@@ -17,6 +17,7 @@ demo loop.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import uuid
 from collections import defaultdict, deque
@@ -134,10 +135,8 @@ class DagRunStore:
                 run.events = run.events[-MAX_EVENTS_PER_RUN:]
         # Fan out to SSE subscribers.
         for q in self._subscribers.get(run_id, []):
-            try:
+            with contextlib.suppress(asyncio.QueueFull):
                 q.put_nowait(ev)
-            except asyncio.QueueFull:
-                pass
         return ev
 
     async def finish_run(self, run_id: str) -> None:

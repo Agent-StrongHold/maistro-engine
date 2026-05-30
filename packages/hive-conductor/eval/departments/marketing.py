@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class BrandVoice(RubricEval):
     department = "marketing"
     eval_name = "brand_voice"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "consistent_tone",
             "weight": 25,
@@ -45,7 +46,7 @@ class BrandVoice(RubricEval):
 class CTAClarity(RubricEval):
     department = "marketing"
     eval_name = "cta_clarity"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_cta",
             "weight": 30,
@@ -92,7 +93,7 @@ class CTAClarity(RubricEval):
 class AudienceTargeting(RubricEval):
     department = "marketing"
     eval_name = "audience_targeting"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "identifies_audience",
             "weight": 25,
@@ -128,7 +129,7 @@ class AudienceTargeting(RubricEval):
 class ChannelFit(RubricEval):
     department = "marketing"
     eval_name = "channel_fit"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "appropriate_length",
             "weight": 25,
@@ -159,7 +160,7 @@ class ChannelFit(RubricEval):
 class Measurability(RubricEval):
     department = "marketing"
     eval_name = "measurability"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_metrics",
             "weight": 30,

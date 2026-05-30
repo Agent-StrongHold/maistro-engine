@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pathlib
 import sys
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -246,7 +246,7 @@ async def test_execute_dag_builds_config_and_returns_shape(
 
     class _Result:
         total_cycles = 1
-        node_results = [_NR("n1"), _NR("n2")]
+        node_results: ClassVar = [_NR("n1"), _NR("n2")]
 
     async def _run_graph(**kw: Any) -> Any:
         captured.update(kw)
@@ -286,7 +286,7 @@ async def test_execute_dag_entry_node_fallback_to_first_node(
 
     class _Result:
         total_cycles = 0
-        node_results: list[Any] = []
+        node_results: ClassVar[list[Any]] = []
 
     async def _run_graph(**kw: Any) -> Any:
         captured["entry"] = kw["config"].entry
@@ -325,7 +325,7 @@ def test_genome_to_dag_maps_nodes_and_edges() -> None:
                 setattr(self, k, v)
 
     class _Topo:
-        nodes = [
+        nodes: ClassVar = [
             _Node(
                 id="abc123def",
                 role="planner",
@@ -337,7 +337,7 @@ def test_genome_to_dag_maps_nodes_and_edges() -> None:
                 max_tool_rounds=3,
             ),
         ]
-        edges = [
+        edges: ClassVar = [
             _Edge(id="e1", from_node="abc123def", to_node=None, condition=None),
         ]
         entry_node = "abc123def"
@@ -424,8 +424,8 @@ async def test_execute_champion_success_path(
     import services.graph_runner as gr
 
     class _Topo:
-        nodes: list[Any] = []
-        edges: list[Any] = []
+        nodes: ClassVar[list[Any]] = []
+        edges: ClassVar[list[Any]] = []
         entry_node = ""
         max_cycles = 1
         use_scout = False
@@ -476,7 +476,7 @@ async def test_execute_dag_streaming_yields_full_lifecycle(
 
     class _Result:
         total_cycles = 1
-        node_results = [_NR()]
+        node_results: ClassVar = [_NR()]
 
     async def _run_graph(**kw: Any) -> Any:
         return _Result()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class SourceAttribution(RubricEval):
     department = "deep_research"
     eval_name = "source_attribution"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_citations",
             "weight": 30,
@@ -37,7 +38,7 @@ class SourceAttribution(RubricEval):
 class ClaimFactuality(RubricEval):
     department = "deep_research"
     eval_name = "claim_factuality"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "hedges_uncertainty",
             "weight": 25,
@@ -70,7 +71,7 @@ class ClaimFactuality(RubricEval):
 class Completeness(RubricEval):
     department = "deep_research"
     eval_name = "completeness"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_sections",
             "weight": 25,
@@ -95,7 +96,7 @@ class Completeness(RubricEval):
 class Synthesis(RubricEval):
     department = "deep_research"
     eval_name = "synthesis"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "connects_sources",
             "weight": 30,
@@ -129,7 +130,7 @@ class Synthesis(RubricEval):
 class Actionability(RubricEval):
     department = "deep_research"
     eval_name = "actionability"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_recommendations",
             "weight": 30,

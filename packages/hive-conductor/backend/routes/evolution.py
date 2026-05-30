@@ -51,7 +51,7 @@ def get_genome(genome_id: str) -> dict:
             raise HTTPException(status_code=404, detail="genome not found")
         return genome.model_dump(mode="json")
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="evolution service not started")
+        raise HTTPException(status_code=503, detail="evolution service not started") from None
 
 
 @router.get("/champion")
@@ -150,7 +150,7 @@ async def seed_population(body: SeedPopulationBody) -> dict:
             svc.population.add(g)
         return {"seeded": len(spawned), "population_size": len(svc.population.list_all())}
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="evolution service not started")
+        raise HTTPException(status_code=503, detail="evolution service not started") from None
 
 
 @router.post("/cycle")
@@ -162,6 +162,6 @@ async def trigger_cycle() -> dict:
         await svc._run_one_cycle()
         return {"status": "completed", "cycle_count": svc.cycle_count}
     except RuntimeError:
-        raise HTTPException(status_code=503, detail="evolution service not started")
+        raise HTTPException(status_code=503, detail="evolution service not started") from None
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

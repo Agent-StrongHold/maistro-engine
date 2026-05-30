@@ -23,7 +23,7 @@ def _bootstrap_or_503():
 
         return get_session_defaults
     except ImportError:
-        raise HTTPException(status_code=503, detail="maistro-bootstrap not available")
+        raise HTTPException(status_code=503, detail="maistro-bootstrap not available") from None
 
 
 @router.get("/session")

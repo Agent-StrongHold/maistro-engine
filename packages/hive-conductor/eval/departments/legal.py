@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class ClauseCompleteness(RubricEval):
     department = "legal"
     eval_name = "clause_completeness"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_definitions",
             "weight": 20,
@@ -52,7 +53,7 @@ class ClauseCompleteness(RubricEval):
 class AmbiguityScore(RubricEval):
     department = "legal"
     eval_name = "ambiguity_score"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "no_vague_terms",
             "weight": 25,
@@ -93,7 +94,7 @@ class AmbiguityScore(RubricEval):
 class RiskExposure(RubricEval):
     department = "legal"
     eval_name = "risk_exposure"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "identifies_risks",
             "weight": 25,
@@ -122,7 +123,7 @@ class RiskExposure(RubricEval):
 class Jurisdiction(RubricEval):
     department = "legal"
     eval_name = "jurisdiction"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "specifies_jurisdiction",
             "weight": 30,
@@ -159,7 +160,7 @@ class Jurisdiction(RubricEval):
 class PlainLanguage(RubricEval):
     department = "legal"
     eval_name = "plain_language"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "short_sentences",
             "weight": 25,

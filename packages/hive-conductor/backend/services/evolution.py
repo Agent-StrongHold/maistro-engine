@@ -24,7 +24,8 @@ def get_evolution_service() -> _EvolutionService:
 async def start_evolution() -> None:
     global _service
     _service = _EvolutionService()
-    asyncio.ensure_future(_service.run_loop())
+    # Keep a reference to the background task so it isn't garbage-collected mid-flight.
+    _service.task = asyncio.ensure_future(_service.run_loop())
 
 
 async def stop_evolution() -> None:
@@ -40,6 +41,7 @@ class _EvolutionService:
         self._population: Any = None
         self._cycle_count = 0
         self._last_cycle_error: str | None = None
+        self.task: asyncio.Task[None] | None = None
         self._tournament: Any = None
 
     def stop(self) -> None:
