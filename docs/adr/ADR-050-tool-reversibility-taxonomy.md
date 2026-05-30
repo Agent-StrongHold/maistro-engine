@@ -87,7 +87,9 @@ class SentinelPolicy(Protocol):
 
 ## Open questions
 
-1. **Single code registry shared with recipe-overlay refs (ADR-053)?** Recommend yes — one registry for impact estimators, compensators, merge resolvers, dynamic gates.
+1. **Single code registry shared with recipe-overlay refs (ADR-053)?** **Resolved by ADR-069:
+   yes** — one registry for impact estimators, compensators, merge resolvers, and dynamic gates,
+   with microVM-isolated execution under the ADR-068 authorization envelope.
 2. **Default for external MCP tools.** Recommend `IRREVERSIBLE` (safe) with explicit Sentinel policy override. Stronger option: refuse to register without a tag.
 3. **Partial failure inside a compensator.** Recommend explicit: compensator failures bubble as `CompensatorError` and escalate via ADR-051 bubble-up path ("compensator failed; what now?").
 4. **Tag inheritance for tools-as-agents (A2A delegation).** Recommend the delegate carries the strictest tag of its callable tools — propagate up.

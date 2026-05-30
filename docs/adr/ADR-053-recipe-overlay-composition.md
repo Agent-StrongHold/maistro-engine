@@ -72,6 +72,11 @@ The base recipe declares which fields a future tenant overlay may touch via per-
 
 Fields with `merge: ref` carry a `name@version` string: `impact_estimator: "stripe.charge.dollars@v2"`. The substrate maintains a code registry alongside the recipe registry. Registry refs require explicit version; substrate refuses to load a recipe with an unversioned ref. Compatibility is semver: `v2.x` accepts `v2.y` overlays; major-version bumps require explicit recipe update.
 
+> The code registry — storage, signing, resolution, and crucially the **microVM-isolated
+> execution** of registered code — is fully specified in **ADR-069**. The `CodeRegistry` protocol
+> sketched below is its load/resolve surface; ADR-069 adds `invoke()` (Hyperlight microVM,
+> fail-closed) under the ADR-068 authorization envelope.
+
 ## Interface (sketch)
 
 ```python

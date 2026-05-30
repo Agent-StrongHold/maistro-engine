@@ -3,7 +3,7 @@ id: ADR-030
 title: Four-Repo Governance — Substrate + Three Templated Products
 repo: maistro-engine
 kind: adr
-status: Accepted
+status: Superseded
 created: 2026-05-07
 accepted: 2026-05-07
 substrate: [maistro-engine#ADR-019]
@@ -25,6 +25,15 @@ owners:
 ---
 
 # ADR-030: Four-Repo Governance — Substrate + Three Templated Products
+
+> **⚠️ SUPERSEDED (2026-05-30) by the monorepo consolidation.** The four-repo / templated-peers
+> model below is **no longer current**. `maistro-engine` is now a single **consolidation
+> monorepo** that *contains* the Agent Conductor app (`packages/hive-conductor`) and the canvas
+> ability (`packages/maistro-canvas`); **Stronghold** and the **Canvas book-maker POC** are
+> downstream products that *import* the engine. `Project_mAIstro` and `AgentTuring` were absorbed
+> into this repo (their substance lives in `packages/` and `docs/`), not maintained as separate
+> templated peers. See `CONSOLIDATION-PLAN.md`, ADR-019, and `CLAUDE.md` for the current
+> structure. This ADR is retained as historical record; do not cite it as the live model.
 
 ## Context
 
