@@ -34,6 +34,7 @@ produce zero proposals and an empty result.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -195,7 +196,6 @@ def _build_snapshot_for_dag(
             key=lambda v: v.get("scored_at", ""),
             reverse=True,
         )
-        latest = verdicts_sorted[0]
         # Use the WORST score as baseline — that's what needs improvement
         worst_score = min(float(v.get("score", 100)) for v in verdicts)
         eval_baseline = max(0.0, (100 - worst_score) / 100.0)
@@ -218,7 +218,7 @@ def _build_snapshot_for_dag(
     for nid in all_node_ids:
         m = metrics.get(nid, {})
         th = thumbs.get(nid, {"up": 0, "down": 0, "comments": []})
-        # Signal #1 error_code: fraction of failures × weight
+        # Signal #1 error_code: fraction of failures x weight
         n = m.get("count", 0)
         failed = m.get("failed", 0)
         err_score = (failed / max(n, 1)) * WEIGHT_ERROR_CODE if n else 0.0
@@ -310,10 +310,14 @@ def _propose_for_snapshot(
             continue
         # Match by target_node_id OR by role name (eval-judge may use either)
         target = tp.get("target_node_id", "")
-        if target and target != snapshot.target_node_id and target != "_dag_level_":
-            # Try matching by role — eval-judge often uses role names
-            if snapshot.target_node_id != "_dag_level_":
-                continue
+        # Try matching by role — eval-judge often uses role names
+        if (
+            target
+            and target != snapshot.target_node_id
+            and target != "_dag_level_"
+            and snapshot.target_node_id != "_dag_level_"
+        ):
+            continue
         proposals.append(
             {
                 "class": CLASS_PROPOSE,
@@ -523,23 +527,80 @@ def get_rejected_buffer(dag_id: str = "") -> list[dict[str, Any]]:
     return list(_rejected_buffer)
 
 
-def _apply_topology_mutation(proposal: dict[str, Any]) -> None:
-    """Apply an accepted topology mutation to the DAG in stores."""
-    from uuid import uuid4
+def _apply_node_field_mutation(node: dict[str, Any], kind: str, tp: dict[str, Any]) -> None:
+    """Mutate a single matched node's field in place, per `kind`."""
+    if kind == "swap_model":
+        node["model"] = tp.get("to_value", node.get("model"))
+    elif kind == "rewrite_prompt":
+        node["prompt"] = tp.get("to_value", node.get("prompt"))
+    elif kind == "change_schema":
+        node.setdefault("config", {})["output_schema"] = tp.get("to_value", "")
+    elif kind == "change_temperature":
+        with contextlib.suppress(ValueError, TypeError):
+            node["temperature"] = float(tp.get("to_value", 0.3))
+    elif kind == "change_max_tokens":
+        with contextlib.suppress(ValueError, TypeError):
+            node["max_tokens"] = int(tp.get("to_value", 4096))
+    elif kind == "change_strategy":
+        node["strategy"] = tp.get("to_value", "direct")
+    elif kind == "rename_node":
+        node["name"] = tp.get("to_value", node.get("name"))
+    elif kind == "change_role":
+        node["role"] = tp.get("to_value", node.get("role"))
+    elif kind == "upgrade_execution_tier":
+        # REQUIRES ADMIN APPROVAL — optimizer can propose but never auto-apply
+        # Upgrading from light→heavy or heavy→container is a security decision
+        node.setdefault("config", {})["execution_tier"] = tp.get("to_value", "")
+        node["config"]["tier_approved_by"] = "admin"  # must be set by admin accept
 
-    import stores
 
-    dag_id = proposal.get("dag_id", "")
-    tp = proposal.get("topology_proposal") or {}
-    kind = tp.get("kind", "")
-    target = tp.get("target_node_id", "")
+def _apply_edge_field_mutation(edge: dict[str, Any], kind: str, tp: dict[str, Any]) -> None:
+    """Mutate a single matched edge's field in place, per `kind`."""
+    if kind == "tune_edge_weight":
+        with contextlib.suppress(ValueError, TypeError):
+            edge["weight"] = float(tp.get("to_value", 1.0))
+    elif kind == "set_edge_condition":
+        edge["condition"] = tp.get("to_value", "")
 
-    if not dag_id or dag_id not in stores.dags:
+
+# Kinds that mutate a single target node's field.
+_NODE_FIELD_KINDS = frozenset(
+    {
+        "swap_model",
+        "rewrite_prompt",
+        "change_schema",
+        "change_temperature",
+        "change_max_tokens",
+        "change_strategy",
+        "rename_node",
+        "change_role",
+        "upgrade_execution_tier",
+    }
+)
+# Kinds that mutate a matched edge's field (matched on from_node==target, to_node==from_value).
+_EDGE_FIELD_KINDS = frozenset({"tune_edge_weight", "set_edge_condition"})
+
+
+def _reorder_node(nodes: list[dict[str, Any]], target: str) -> None:
+    """Swap the target node with the node immediately after it, in place."""
+    ids = [n["id"] for n in nodes]
+    if target not in ids:
         return
+    idx = ids.index(target)
+    if idx < len(nodes) - 1:
+        nodes[idx], nodes[idx + 1] = nodes[idx + 1], nodes[idx]
 
-    dag = dict(stores.dags[dag_id])
-    nodes = dag.get("nodes", [])
-    edges = dag.get("edges", [])
+
+def _apply_structural_mutation(
+    dag: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    kind: str,
+    target: str,
+    tp: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Apply a structural/graph-level mutation, returning the (possibly new) node/edge lists."""
+    from uuid import uuid4
 
     if kind == "add_node":
         new_id = str(uuid4())[:8]
@@ -556,106 +617,56 @@ def _apply_topology_mutation(proposal: dict[str, Any]) -> None:
         # Add edge from target to new node
         if target:
             edges.append({"id": str(uuid4())[:8], "from_node": target, "to_node": new_id})
-
     elif kind == "drop_node":
         nodes = [n for n in nodes if n.get("id") != target]
         edges = [e for e in edges if e.get("from_node") != target and e.get("to_node") != target]
-
     elif kind == "reorder":
-        # Swap target with the node after it
-        ids = [n["id"] for n in nodes]
-        if target in ids:
-            idx = ids.index(target)
-            if idx < len(nodes) - 1:
-                nodes[idx], nodes[idx + 1] = nodes[idx + 1], nodes[idx]
-
-    elif kind == "swap_model":
-        for n in nodes:
-            if n.get("id") == target:
-                n["model"] = tp.get("to_value", n.get("model"))
-
-    elif kind == "rewrite_prompt":
-        for n in nodes:
-            if n.get("id") == target:
-                n["prompt"] = tp.get("to_value", n.get("prompt"))
-
+        _reorder_node(nodes, target)
     elif kind == "add_edge":
         edges.append(
             {"id": str(uuid4())[:8], "from_node": target, "to_node": tp.get("to_value", "")}
         )
-
     elif kind == "remove_edge":
         edges = [
             e
             for e in edges
             if not (e.get("from_node") == target and e.get("to_node") == tp.get("to_value"))
         ]
-
-    elif kind == "tune_edge_weight":
-        for e in edges:
-            if e.get("from_node") == target and e.get("to_node") == tp.get("from_value"):
-                try:
-                    e["weight"] = float(tp.get("to_value", 1.0))
-                except (ValueError, TypeError):
-                    pass
-
-    elif kind == "set_edge_condition":
-        for e in edges:
-            if e.get("from_node") == target and e.get("to_node") == tp.get("from_value"):
-                e["condition"] = tp.get("to_value", "")
-
-    elif kind == "change_schema":
-        for n in nodes:
-            if n.get("id") == target:
-                n.setdefault("config", {})["output_schema"] = tp.get("to_value", "")
-
-    elif kind == "change_temperature":
-        for n in nodes:
-            if n.get("id") == target:
-                try:
-                    n["temperature"] = float(tp.get("to_value", 0.3))
-                except (ValueError, TypeError):
-                    pass
-
-    elif kind == "change_max_tokens":
-        for n in nodes:
-            if n.get("id") == target:
-                try:
-                    n["max_tokens"] = int(tp.get("to_value", 4096))
-                except (ValueError, TypeError):
-                    pass
-
-    elif kind == "change_strategy":
-        for n in nodes:
-            if n.get("id") == target:
-                n["strategy"] = tp.get("to_value", "direct")
-
     elif kind == "change_max_cycles":
-        try:
+        with contextlib.suppress(ValueError, TypeError):
             dag["max_cycles"] = int(tp.get("to_value", 5))
-        except (ValueError, TypeError):
-            pass
-
     elif kind == "change_entry":
         dag["entry_node"] = tp.get("to_value", dag.get("entry_node"))
 
-    elif kind == "rename_node":
-        for n in nodes:
-            if n.get("id") == target:
-                n["name"] = tp.get("to_value", n.get("name"))
+    return nodes, edges
 
-    elif kind == "change_role":
-        for n in nodes:
-            if n.get("id") == target:
-                n["role"] = tp.get("to_value", n.get("role"))
 
-    elif kind == "upgrade_execution_tier":
-        # REQUIRES ADMIN APPROVAL — optimizer can propose but never auto-apply
-        # Upgrading from light→heavy or heavy→container is a security decision
+def _apply_topology_mutation(proposal: dict[str, Any]) -> None:
+    """Apply an accepted topology mutation to the DAG in stores."""
+    import stores
+
+    dag_id = proposal.get("dag_id", "")
+    tp = proposal.get("topology_proposal") or {}
+    kind = tp.get("kind", "")
+    target = tp.get("target_node_id", "")
+
+    if not dag_id or dag_id not in stores.dags:
+        return
+
+    dag = dict(stores.dags[dag_id])
+    nodes = dag.get("nodes", [])
+    edges = dag.get("edges", [])
+
+    if kind in _NODE_FIELD_KINDS:
         for n in nodes:
             if n.get("id") == target:
-                n.setdefault("config", {})["execution_tier"] = tp.get("to_value", "")
-                n["config"]["tier_approved_by"] = "admin"  # must be set by admin accept
+                _apply_node_field_mutation(n, kind, tp)
+    elif kind in _EDGE_FIELD_KINDS:
+        for e in edges:
+            if e.get("from_node") == target and e.get("to_node") == tp.get("from_value"):
+                _apply_edge_field_mutation(e, kind, tp)
+    else:
+        nodes, edges = _apply_structural_mutation(dag, nodes, edges, kind, target, tp)
 
     dag["nodes"] = nodes
     dag["edges"] = edges

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class RequirementsCompleteness(RubricEval):
     department = "product_management"
     eval_name = "requirements_completeness"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_user_stories",
             "weight": 20,
@@ -48,7 +49,7 @@ class RequirementsCompleteness(RubricEval):
 class StakeholderAlignment(RubricEval):
     department = "product_management"
     eval_name = "stakeholder_alignment"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "identifies_stakeholders",
             "weight": 25,
@@ -83,7 +84,7 @@ class StakeholderAlignment(RubricEval):
 class PrioritizationLogic(RubricEval):
     department = "product_management"
     eval_name = "prioritization_logic"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "uses_framework",
             "weight": 25,
@@ -116,7 +117,7 @@ class PrioritizationLogic(RubricEval):
 class DecompositionQuality(RubricEval):
     department = "product_management"
     eval_name = "decomposition_quality"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "atomic_tasks",
             "weight": 25,
@@ -149,7 +150,7 @@ class DecompositionQuality(RubricEval):
 class TimelineRealism(RubricEval):
     department = "product_management"
     eval_name = "timeline_realism"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_dates",
             "weight": 20,

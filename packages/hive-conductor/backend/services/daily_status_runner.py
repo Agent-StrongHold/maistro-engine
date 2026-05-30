@@ -16,7 +16,7 @@ for an observability surface.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from maistro.graph.dag_registry import DagRegistry
 from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus, run_durable_dag
@@ -182,7 +182,7 @@ class _MissingNode:
     """Sentinel for `by_id.get(...) or _missing()` — keeps the lookups
     branch-free + None-safe."""
 
-    output: dict[str, Any] = {}
+    output: ClassVar[dict[str, Any]] = {}
 
 
 def _missing() -> _MissingNode:

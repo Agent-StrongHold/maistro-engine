@@ -210,7 +210,7 @@ def test_merge_manifest_dedups_tool_ids(
     servers, tools = platform_mcp_catalog()
     # Run twice in a row; the second pass must NOT add the same tool again
     first_servers, first_tools = merge_manifest_catalog(servers, tools)
-    second_servers, second_tools = merge_manifest_catalog(first_servers, first_tools)
+    _, second_tools = merge_manifest_catalog(first_servers, first_tools)
     # Tool count stable
     assert len(second_tools) == len(first_tools)
 

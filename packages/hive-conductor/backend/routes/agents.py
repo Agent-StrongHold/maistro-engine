@@ -6,8 +6,6 @@ from typing import Any
 from uuid import uuid4
 
 import stores
-
-logger = logging.getLogger("hive.agents")
 from fastapi import APIRouter, HTTPException, Request
 from models.schemas import Agent
 from pydantic import BaseModel, ConfigDict
@@ -16,6 +14,8 @@ from services.pm_fleet import is_pm_poc_mode, list_pm_agents
 
 from maistro.agents.pm_capabilities import CAPABILITY_TO_WORK_ITEM, is_gated
 from routes.audit import log_audit
+
+logger = logging.getLogger("hive.agents")
 
 router = APIRouter(tags=["agents"])
 

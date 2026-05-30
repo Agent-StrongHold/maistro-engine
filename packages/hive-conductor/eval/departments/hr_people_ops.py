@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class LegalCompliance(RubricEval):
     department = "hr_people_ops"
     eval_name = "legal_compliance"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "no_discriminatory_language",
             "weight": 30,
@@ -56,7 +57,7 @@ class LegalCompliance(RubricEval):
 class ToneAppropriateness(RubricEval):
     department = "hr_people_ops"
     eval_name = "tone_appropriateness"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "professional",
             "weight": 25,
@@ -92,7 +93,7 @@ class ToneAppropriateness(RubricEval):
 class PolicyAccuracy(RubricEval):
     department = "hr_people_ops"
     eval_name = "policy_accuracy"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "specific_policy_refs",
             "weight": 25,
@@ -126,7 +127,7 @@ class PolicyAccuracy(RubricEval):
 class HRActionability(RubricEval):
     department = "hr_people_ops"
     eval_name = "actionability"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "clear_next_steps",
             "weight": 30,
@@ -161,7 +162,7 @@ class HRActionability(RubricEval):
 class Confidentiality(RubricEval):
     department = "hr_people_ops"
     eval_name = "confidentiality"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "no_pii_exposed",
             "weight": 30,

@@ -85,7 +85,7 @@ def screenshot_site(url):
             buf = page.screenshot(type="png")
             b.close()
             return buf
-    except:
+    except Exception:
         return None
 
 
@@ -115,12 +115,12 @@ def get_fix(our_b64, ref_b64s):
     raw = resp.json()["choices"][0]["message"]["content"]
     try:
         return json.loads(raw)
-    except:
+    except Exception:
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if m:
             try:
                 return json.loads(m.group())
-            except:
+            except Exception:
                 pass
     return {"score": 0, "issue": "parse error", "css": ""}
 
@@ -137,13 +137,21 @@ def restart():
     return  # Server already running externally
     subprocess.run(["pkill", "-f", f"uvicorn.*--port {PORT}"], capture_output=True)
     time.sleep(1)
-    subprocess.Popen(
-        [str(ROOT / "../../.venv/bin/uvicorn"), "main:app", "--host", "0.0.0.0", "--port", PORT],
-        cwd=str(ROOT / "backend"),
-        stdout=open("/tmp/hive-climb.log", "a"),
-        stderr=subprocess.STDOUT,
-        env={**os.environ, "PYTHONPATH": f"{ROOT}/backend:{ROOT}/../maistro-core/src:{ROOT}"},
-    )
+    with open("/tmp/hive-climb.log", "a") as log:
+        subprocess.Popen(
+            [
+                str(ROOT / "../../.venv/bin/uvicorn"),
+                "main:app",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                PORT,
+            ],
+            cwd=str(ROOT / "backend"),
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            env={**os.environ, "PYTHONPATH": f"{ROOT}/backend:{ROOT}/../maistro-core/src:{ROOT}"},
+        )
     time.sleep(3)
 
 

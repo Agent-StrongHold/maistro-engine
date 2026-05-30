@@ -16,7 +16,7 @@ import asyncio
 import pathlib
 import sys
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -312,7 +312,6 @@ def test_fire_schedule_no_template_id_skips_audit() -> None:
         r = _ScheduleRunner()
         asyncio.run(r._fire_schedule("s2", stores.schedules._data["s2"]))  # type: ignore[attr-defined]
         # No new audit entry (no template means schedule isn't actionable)
-        after = len(stores.audit_log)
         new_for_s2 = [
             e for e in list(stores.audit_log.values())[before:] if e.get("target") == "s2"
         ]
@@ -343,7 +342,7 @@ def test_tick_swallows_fire_exception(
     monkeypatch.setattr(_ScheduleRunner, "_fire_schedule", _boom)
 
     class _FakeStores:
-        schedules = {"s": _Sched()}
+        schedules: ClassVar = {"s": _Sched()}
 
     monkeypatch.setitem(sys.modules, "stores", _FakeStores)
 

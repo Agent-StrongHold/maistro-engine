@@ -173,6 +173,43 @@ def test_init_vault_exception_swallowed(
 # --- _init_state -------------------------------------------------------
 
 
+_state_flush_count = [0]
+
+
+class _StubState:
+    def __init__(self, **kw: Any) -> None:
+        pass
+
+    def flush(self) -> None:
+        _state_flush_count[0] += 1
+
+    def close(self) -> None:
+        pass
+
+
+class _StubPersist:
+    def __init__(self, *a: Any) -> None:
+        pass
+
+    def initialize(self) -> None:
+        pass
+
+    def list_all(self, store_name: str, model_class: Any) -> list[Any]:
+        return []
+
+    def list_all_raw(self, store_name: str) -> list[Any]:
+        return []
+
+    def put(self, *a: Any, **kw: Any) -> None:
+        pass
+
+    def put_raw(self, *a: Any, **kw: Any) -> None:
+        pass
+
+    def delete(self, *a: Any, **kw: Any) -> None:
+        pass
+
+
 def test_init_state_success_wires_persisted_store(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -181,49 +218,17 @@ def test_init_state_success_wires_persisted_store(
 
     from services.foundation import Foundation
 
-    flushed = [0]
-
-    class _State:
-        def __init__(self, **kw: Any) -> None:
-            pass
-
-        def flush(self) -> None:
-            flushed[0] += 1
-
-        def close(self) -> None:
-            pass
-
-    class _Persist:
-        def __init__(self, *a: Any) -> None:
-            pass
-
-        def initialize(self) -> None:
-            pass
-
-        def list_all(self, store_name: str, model_class: Any) -> list[Any]:
-            return []
-
-        def list_all_raw(self, store_name: str) -> list[Any]:
-            return []
-
-        def put(self, *a: Any, **kw: Any) -> None:
-            pass
-
-        def put_raw(self, *a: Any, **kw: Any) -> None:
-            pass
-
-        def delete(self, *a: Any, **kw: Any) -> None:
-            pass
+    _state_flush_count[0] = 0
 
     state_mod = types.ModuleType("maistro.state")
-    state_mod.State = _State  # type: ignore[attr-defined]
-    state_mod.PersistedStore = _Persist  # type: ignore[attr-defined]
+    state_mod.State = _StubState  # type: ignore[attr-defined]
+    state_mod.PersistedStore = _StubPersist  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "maistro.state", state_mod)
 
     fnd = Foundation()
     fnd._init_state(_StubSettings(tmp_path), tmp_path)
     assert fnd.state_available is True
-    assert flushed[0] == 1
+    assert _state_flush_count[0] == 1
 
 
 def test_init_state_exception_falls_back_to_in_memory(

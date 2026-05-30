@@ -101,6 +101,215 @@ def _run_node_subprocess(
         return {"role": node.get("role", "worker"), "response": str(e), "success": False}
 
 
+async def _tool_web_search(
+    tool_config: dict[str, Any], parent_outputs: dict[str, Any], task_desc: str
+) -> str:
+    iterate_over = tool_config.get("iterate_over", "")
+    queries: list[str] = []
+    if iterate_over and "." in iterate_over:
+        src_node, src_field = iterate_over.split(".", 1)
+        src_data = parent_outputs.get(src_node, "")
+        try:
+            parsed = json.loads(src_data) if isinstance(src_data, str) else src_data
+            queries = parsed.get(src_field, []) if isinstance(parsed, dict) else []
+        except (json.JSONDecodeError, AttributeError):
+            queries = [task_desc]
+    elif tool_config.get("queries_from_input"):
+        template = tool_config.get("query_template", "{input}")
+        queries = [template.replace("{input}", task_desc)]
+    if not queries:
+        queries = [task_desc]
+
+    from services.tool_executor import web_search
+
+    all_results = []
+    max_r = tool_config.get("max_results", 5)
+    for q in queries[:5]:
+        sr = await web_search(q, max_results=max_r)
+        all_results.append(sr)
+    return json.dumps(all_results, indent=2)
+
+
+async def _tool_clarify(tool_config: dict[str, Any], task_desc: str) -> str:
+    from services.tool_executor import clarify
+
+    questions = tool_config.get("questions", [])
+    answers = await clarify(questions, {"input": task_desc})
+    return "\n".join(
+        f"Q: {q}\nA: {answers.get(str(i + 1), answers.get(q, 'Not specified'))}\n"
+        for i, q in enumerate(questions)
+    )
+
+
+async def _tool_browse_url(tool_config: dict[str, Any]) -> str:
+    from services.tool_executor import browse_url
+
+    url = tool_config.get("url", "")
+    task = tool_config.get("task", "Extract key information")
+    br = await browse_url(url, task)
+    return json.dumps(br, indent=2)
+
+
+async def _run_tool_node(
+    node: dict[str, Any],
+    nid: str,
+    inbound: dict[str, set[str]],
+    results: dict[str, dict[str, Any]],
+    task_desc: str,
+) -> None:
+    """Execute a tool node (in place into ``results``) instead of an LLM call."""
+    role = node.get("role", "worker")
+    tool_name = node.get("tool")
+    try:
+        from services.tool_executor import TOOLS
+
+        tool_fn = TOOLS.get(tool_name)
+        if not tool_fn:
+            results[nid] = {
+                "role": role,
+                "response": f"Unknown tool: {tool_name}",
+                "success": False,
+            }
+            return
+        tool_config = node.get("tool_config", {})
+        parent_outputs = {
+            pid: results[pid]["response"]
+            for pid in inbound[nid]
+            if pid in results and results[pid].get("success")
+        }
+
+        if tool_name == "web_search":
+            response = await _tool_web_search(tool_config, parent_outputs, task_desc)
+        elif tool_name == "clarify":
+            response = await _tool_clarify(tool_config, task_desc)
+        elif tool_name == "browse_url":
+            response = await _tool_browse_url(tool_config)
+        else:
+            result = await tool_fn(task_desc)
+            response = json.dumps(result) if isinstance(result, dict) else str(result)
+        results[nid] = {"role": role, "response": response, "success": True}
+    except Exception as e:
+        logger.error(f"Tool node {nid} failed: {e}")
+        results[nid] = {"role": role, "response": f"Tool error: {e}", "success": False}
+
+
+def _classify_node_execution(node: dict[str, Any], nid: str) -> str:
+    """Classify a node as 'async' (in-process) or 'subprocess' (isolated).
+
+    Security classification determines execution tier:
+    - trust_boundary: what data/systems can this node access?
+    - dangerous_tools: does it use shell, file write, network?
+    - task_policy: does it exceed budget/rate limits?
+    """
+    config = node.get("config", {})
+    tier = config.get("execution_tier", "")
+    capabilities = config.get("capabilities", [])
+
+    is_dangerous = any(c in ("shell", "file_write", "code_exec", "browser") for c in capabilities)
+    needs_secrets = any(c in ("jira_write", "deploy", "git_push") for c in capabilities)
+    needs_filesystem = any(
+        c in ("code_exec", "file_write", "repo_clone", "pytest") for c in capabilities
+    )
+    is_untrusted = config.get("untrusted", False)
+
+    if tier in ("light", "safe"):
+        return "async"
+    if is_untrusted or needs_filesystem:
+        if config.get("tier_approved_by") != "admin":
+            logger.warning(
+                "node_tier_not_approved node=%s tier=container — running as subprocess. "
+                "Admin must approve via optimizer.",
+                nid,
+            )
+        return "subprocess"
+    if is_dangerous or needs_secrets or tier in ("container", "heavy"):
+        return "subprocess"
+    return "async"
+
+
+def _build_dependency_graph(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]]
+) -> tuple[dict[str, dict[str, Any]], dict[str, set[str]]]:
+    """Return (node_map, inbound) where inbound[node] is the set of upstream node ids."""
+    node_map = {n["id"]: n for n in nodes}
+    inbound: dict[str, set[str]] = {n["id"]: set() for n in nodes}
+    for e in edges:
+        src, dst = e.get("from_node", ""), e.get("to_node", "")
+        if src and dst and src in node_map and dst in node_map:
+            inbound[dst].add(src)
+    return node_map, inbound
+
+
+async def _run_llm_node(
+    node: dict[str, Any],
+    nid: str,
+    inbound: dict[str, set[str]],
+    results: dict[str, dict[str, Any]],
+    task_desc: str,
+) -> None:
+    """Run an in-process node: a tool node, or an LLM call. Writes into ``results``."""
+    role = node.get("role", "worker")
+
+    # --- TOOL NODE: execute tool instead of LLM ---
+    if node.get("tool"):
+        await _run_tool_node(node, nid, inbound, results, task_desc)
+        return
+    # --- END TOOL NODE ---
+
+    model = node.get("model", os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash"))
+    system = node.get("prompt", "") or f"You are a {node.get('name', 'worker')} agent."
+    user_content = f"Task: {task_desc}"
+    parent_outputs = [
+        results[pid]["response"]
+        for pid in inbound[nid]
+        if pid in results and results[pid].get("success")
+    ]
+    if parent_outputs:
+        user_content += "\n\nContext from previous steps:\n" + "\n---\n".join(parent_outputs[-3:])
+    messages = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_content},
+    ]
+    try:
+        response = await _build_llm_call()(messages, model=model)
+        results[nid] = {"role": role, "response": response, "success": True}
+    except Exception as e:
+        results[nid] = {"role": role, "response": str(e), "success": False}
+
+
+async def _run_subprocess_wave(
+    subprocess_nodes: list[str],
+    node_map: dict[str, dict[str, Any]],
+    inbound: dict[str, set[str]],
+    results: dict[str, dict[str, Any]],
+    task_desc: str,
+    node_env: dict[str, str],
+) -> None:
+    """Run heavy/risky nodes each in their own process; write results in place."""
+    if not subprocess_nodes:
+        return
+    import asyncio
+    import concurrent.futures
+
+    with concurrent.futures.ProcessPoolExecutor(max_workers=len(subprocess_nodes)) as pool:
+        loop = asyncio.get_event_loop()
+        futures = []
+        for nid in subprocess_nodes:
+            ctx = "\n---\n".join(
+                results[pid]["response"]
+                for pid in inbound[nid]
+                if pid in results and results[pid].get("success")
+            )
+            futures.append(
+                loop.run_in_executor(
+                    pool, _run_node_subprocess, node_map[nid], task_desc, ctx, node_env
+                )
+            )
+        subprocess_results = await asyncio.gather(*futures)
+        for nid, res in zip(subprocess_nodes, subprocess_results, strict=True):
+            results[nid] = res
+
+
 async def execute_dag(
     dag_data: dict, *, user_id: str = "", user_credentials: dict[str, str] | None = None
 ) -> dict[str, Any]:
@@ -128,14 +337,7 @@ async def execute_dag(
     task_desc = dag_data.get("description", dag_data.get("name", ""))
 
     # Build dependency graph
-    node_map = {n["id"]: n for n in nodes}
-    inbound: dict[str, set[str]] = {n["id"]: set() for n in nodes}
-    outbound: dict[str, set[str]] = {n["id"]: set() for n in nodes}
-    for e in edges:
-        src, dst = e.get("from_node", ""), e.get("to_node", "")
-        if src and dst and src in node_map and dst in node_map:
-            inbound[dst].add(src)
-            outbound[src].add(dst)
+    node_map, inbound = _build_dependency_graph(nodes, edges)
 
     results: dict[str, dict[str, Any]] = {}
     completed: set[str] = set()
@@ -149,206 +351,28 @@ async def execute_dag(
         if not ready:
             break
 
-        import concurrent.futures
-
         # Group by execution tier — uses security infrastructure
         async_nodes = []
         subprocess_nodes = []
         for nid in ready:
-            node = node_map[nid]
-            tier = node.get("config", {}).get("execution_tier", "")
-            role = node.get("role", "")
-            capabilities = node.get("config", {}).get("capabilities", [])
-
-            # Security classification determines execution tier:
-            # - trust_boundary: what data/systems can this node access?
-            # - dangerous_tools: does it use shell, file write, network?
-            # - task_policy: does it exceed budget/rate limits?
-            is_dangerous = any(
-                c in ("shell", "file_write", "code_exec", "browser") for c in capabilities
-            )
-            needs_secrets = any(c in ("jira_write", "deploy", "git_push") for c in capabilities)
-            needs_filesystem = any(
-                c in ("code_exec", "file_write", "repo_clone", "pytest") for c in capabilities
-            )
-            is_untrusted = node.get("config", {}).get("untrusted", False)
-
-            if tier == "light" or tier == "safe":
-                async_nodes.append(nid)
-            elif is_untrusted or needs_filesystem:
-                if node.get("config", {}).get("tier_approved_by") != "admin":
-                    logger.warning(
-                        "node_tier_not_approved node=%s tier=container — running as subprocess. Admin must approve via optimizer.",
-                        nid,
-                    )
-                subprocess_nodes.append(nid)
-            elif is_dangerous or needs_secrets or tier == "container" or tier == "heavy":
+            if _classify_node_execution(node_map[nid], nid) == "subprocess":
                 subprocess_nodes.append(nid)
             else:
                 async_nodes.append(nid)
 
-        # Run async nodes (light, safe — in-process, no GIL issue for I/O)
-        async def run_node_inline(nid: str) -> None:
-            node = node_map[nid]
-            prompt = node.get("prompt", "")
-            model = node.get("model", os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash"))
-
-            # --- TOOL NODE: execute tool instead of LLM ---
-            tool_name = node.get("tool")
-            if tool_name:
-                try:
-                    from services.tool_executor import TOOLS
-
-                    tool_fn = TOOLS.get(tool_name)
-                    if not tool_fn:
-                        results[nid] = {
-                            "role": node.get("role", "worker"),
-                            "response": f"Unknown tool: {tool_name}",
-                            "success": False,
-                        }
-                        return
-                    tool_config = node.get("tool_config", {})
-                    parent_outputs = {
-                        pid: results[pid]["response"]
-                        for pid in inbound[nid]
-                        if pid in results and results[pid].get("success")
-                    }
-
-                    if tool_name == "web_search":
-                        # Execute search queries from parent node output or config
-                        iterate_over = tool_config.get("iterate_over", "")
-                        queries = []
-                        if iterate_over and "." in iterate_over:
-                            src_node, src_field = iterate_over.split(".", 1)
-                            src_data = parent_outputs.get(src_node, "")
-                            try:
-                                parsed = (
-                                    json.loads(src_data) if isinstance(src_data, str) else src_data
-                                )
-                                queries = (
-                                    parsed.get(src_field, []) if isinstance(parsed, dict) else []
-                                )
-                            except (json.JSONDecodeError, AttributeError):
-                                queries = [task_desc]
-                        elif tool_config.get("queries_from_input"):
-                            template = tool_config.get("query_template", "{input}")
-                            queries = [template.replace("{input}", task_desc)]
-                        if not queries:
-                            queries = [task_desc]
-
-                        from services.tool_executor import web_search
-
-                        all_results = []
-                        max_r = tool_config.get("max_results", 5)
-                        for q in queries[:5]:
-                            sr = await web_search(q, max_results=max_r)
-                            all_results.append(sr)
-                        results[nid] = {
-                            "role": node.get("role", "worker"),
-                            "response": json.dumps(all_results, indent=2),
-                            "success": True,
-                        }
-
-                    elif tool_name == "clarify":
-                        from services.tool_executor import clarify
-
-                        questions = tool_config.get("questions", [])
-                        ctx = {"input": task_desc}
-                        answers = await clarify(questions, ctx)
-                        # Format as readable brief
-                        brief = "\n".join(
-                            f"Q: {q}\nA: {answers.get(str(i + 1), answers.get(q, 'Not specified'))}\n"
-                            for i, q in enumerate(questions)
-                        )
-                        results[nid] = {
-                            "role": node.get("role", "worker"),
-                            "response": brief,
-                            "success": True,
-                        }
-
-                    elif tool_name == "browse_url":
-                        from services.tool_executor import browse_url
-
-                        url = tool_config.get("url", "")
-                        task = tool_config.get("task", "Extract key information")
-                        br = await browse_url(url, task)
-                        results[nid] = {
-                            "role": node.get("role", "worker"),
-                            "response": json.dumps(br, indent=2),
-                            "success": True,
-                        }
-
-                    else:
-                        result = await tool_fn(task_desc)
-                        results[nid] = {
-                            "role": node.get("role", "worker"),
-                            "response": json.dumps(result)
-                            if isinstance(result, dict)
-                            else str(result),
-                            "success": True,
-                        }
-                except Exception as e:
-                    logger.error(f"Tool node {nid} failed: {e}")
-                    results[nid] = {
-                        "role": node.get("role", "worker"),
-                        "response": f"Tool error: {e}",
-                        "success": False,
-                    }
-                return
-            # --- END TOOL NODE ---
-
-            system = prompt or f"You are a {node.get('name', 'worker')} agent."
-            user_content = f"Task: {task_desc}"
-            parent_outputs = [
-                results[pid]["response"]
-                for pid in inbound[nid]
-                if pid in results and results[pid].get("success")
-            ]
-            if parent_outputs:
-                user_content += "\n\nContext from previous steps:\n" + "\n---\n".join(
-                    parent_outputs[-3:]
-                )
-            messages = [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ]
-            try:
-                response = await _build_llm_call()(messages, model=model)
-                results[nid] = {
-                    "role": node.get("role", "worker"),
-                    "response": response,
-                    "success": True,
-                }
-            except Exception as e:
-                results[nid] = {
-                    "role": node.get("role", "worker"),
-                    "response": str(e),
-                    "success": False,
-                }
-
         # Run subprocess nodes (heavy, risky — own process, own GIL)
-        if subprocess_nodes:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=len(subprocess_nodes)) as pool:
-                loop = asyncio.get_event_loop()
-                futures = []
-                for nid in subprocess_nodes:
-                    ctx = "\n---\n".join(
-                        results[pid]["response"]
-                        for pid in inbound[nid]
-                        if pid in results and results[pid].get("success")
-                    )
-                    futures.append(
-                        loop.run_in_executor(
-                            pool, _run_node_subprocess, node_map[nid], task_desc, ctx, node_env
-                        )
-                    )
-                subprocess_results = await asyncio.gather(*futures)
-                for nid, res in zip(subprocess_nodes, subprocess_results):
-                    results[nid] = res
+        await _run_subprocess_wave(
+            subprocess_nodes, node_map, inbound, results, task_desc, node_env
+        )
 
-        # Run async nodes concurrently
+        # Run async nodes concurrently (light, safe — in-process, no GIL issue for I/O)
         if async_nodes:
-            await asyncio.gather(*[run_node_inline(nid) for nid in async_nodes])
+            await asyncio.gather(
+                *[
+                    _run_llm_node(node_map[nid], nid, inbound, results, task_desc)
+                    for nid in async_nodes
+                ]
+            )
 
         completed.update(ready)
         cycles += 1

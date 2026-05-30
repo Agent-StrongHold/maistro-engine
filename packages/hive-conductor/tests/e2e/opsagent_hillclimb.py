@@ -5,6 +5,7 @@ scores each response, picks the Pareto-optimal config.
 """
 
 import asyncio
+import contextlib
 import json
 import os
 import time
@@ -57,10 +58,8 @@ async def ask_question(browser, question):
     elapsed = time.time() - start
 
     response = ""
-    try:
+    with contextlib.suppress(Exception):
         response = result.final_result()
-    except:
-        pass
 
     return {"question": question, "response": response[:1000], "latency_s": elapsed}
 

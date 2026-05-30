@@ -63,7 +63,7 @@ def test_model_store_set_and_get_no_persist() -> None:
     assert len(s) == 1
     assert list(iter(s)) == ["k"]
     assert s.get("missing", "default") == "default"
-    assert "k" in s.keys()
+    assert list(s.keys()) == ["k"]
     assert any(v.id == "k" for v in s.values())
     assert any(k == "k" for k, _ in s.items())
 

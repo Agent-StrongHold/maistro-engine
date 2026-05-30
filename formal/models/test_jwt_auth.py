@@ -72,7 +72,6 @@ def test_valid_claims_return_auth_context():
 
 
 def test_dot_path_extraction():
-    provider = _make_provider(claims={"sub": "u1", "a": {"b": {"c": "deep"}}})
     result = JWTAuthProvider._extract_nested({"a": {"b": {"c": "deep"}}}, "a.b.c")
     assert result == "deep"
 
