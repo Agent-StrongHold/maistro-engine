@@ -184,6 +184,11 @@ Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-e
 - Pattern reference: `compemperor/engram` drift-detection
 - Engine-side; products inherit
 
+**[engine-099] Recency-summarizer skills + description-optimizer — Proposed; `gap-impl` — v1.1**
+- `recency-summary` + `restore-context` personal skills (recency bands + topic summaries + forward-looking block + `low/med/high` fidelity + source citations); prototype the SPEC-189 context-engine methodology
+- TODO: run the skill-creator **description-optimizer** to tune triggering (generate ~20 trigger-eval queries → `run_loop`)
+- Native home / substrate: `engine#SPEC-189` (lossless rolling context assembly)
+
 ---
 
 ## `Project_mAIstro` items
