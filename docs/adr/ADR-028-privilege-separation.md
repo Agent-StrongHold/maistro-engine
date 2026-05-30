@@ -1,3 +1,30 @@
+---
+id: ADR-028
+title: "Admin / User Privilege Separation — Mandatory two-tier model"
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+  - maistro-engine#ADR-024
+implements: []
+related:
+  - maistro-engine#ADR-020
+  - maistro-engine#ADR-022
+  - maistro-engine#ADR-023
+  - maistro-engine#ADR-029
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-028: Admin / User Privilege Separation — Mandatory two-tier model
 
 **Status:** Proposed

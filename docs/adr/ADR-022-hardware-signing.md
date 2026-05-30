@@ -1,3 +1,28 @@
+---
+id: ADR-022
+title: 'Hardware Signing Devices — Ledger / Trezor / YubiKey / Mobile'
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+implements: []
+related:
+  - maistro-engine#ADR-020
+  - maistro-engine#ADR-023
+  - maistro-engine#ADR-028
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-022: Hardware Signing Devices — Ledger / Trezor / YubiKey / Mobile
 
 **Status:** Proposed

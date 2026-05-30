@@ -1,4 +1,25 @@
-# ADR-043: Credential Pool and Automatic Key Rotation
+---
+id: ADR-063
+title: Credential Pool and Automatic Key Rotation
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-05-20
+substrate: []
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-063: Credential Pool and Automatic Key Rotation
 
 **Status:** Accepted
 **Date:** 2026-05-20
@@ -187,7 +208,7 @@ maistro/credentials/
 
 - PR: (pending)
 - Issue: (pending)
-- Follow-up ADRs: ADR-044 (persistent credential store), ADR-045 (distributed pool)
+- Follow-up work (unwritten): persistent credential store; distributed pool
 
 ---
 

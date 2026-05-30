@@ -1,3 +1,27 @@
+---
+id: ADR-003
+title: Agent runtime gap analysis (archived branch resolution)
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-001
+implements: []
+related: []  # roadmap doc: the gap→tranche ADR ranges in the body are planning
+             # numbers, not semantic edges. The original numbering predates the
+             # canvas/substrate 041-046 renumber (now ADR-062..067), so pinning them
+             # as machine-readable edges would mis-link this to unrelated canvas ADRs.
+supersedes: []
+blocks: []
+blocked-by: []
+contracts: []
+tests: []
+layer: Agents
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-003: Agent runtime gap analysis (archived branch resolution)
 
 **Status:** Accepted  

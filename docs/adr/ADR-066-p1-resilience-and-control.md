@@ -1,15 +1,38 @@
-# ADR-046: P1 Resilience and Control
+---
+id: ADR-066
+title: P1 Resilience and Control
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-20
+substrate:
+  - maistro-engine#ADR-038
+  - maistro-engine#ADR-062
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Reliability
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-066: P1 Resilience and Control
 
 **Status:** Proposed
 **Date:** 2026-05-20
 **Tranche:** T5
-**Depends on:** ADR-038 (reliability taxonomy), ADR-042 (graph execution protocol)
+**Depends on:** ADR-038 (reliability taxonomy), ADR-062 (graph execution protocol)
 
 ---
 
 ## Context
 
-ADR-042 introduced `GraphRun`, `NodeRun`, `NodeStrategy`, and `IterationBudget` as the
+ADR-062 introduced `GraphRun`, `NodeRun`, `NodeStrategy`, and `IterationBudget` as the
 graph execution protocol. It deliberately excluded several operational concerns to separate
 mechanical correctness from resilience and control. Six P1 improvements from the competitive
 analysis fill those gaps:
@@ -723,7 +746,7 @@ maistro/
 ## Dependencies
 
 - ADR-038 (reliability taxonomy) — retry policies extend ADR-038 primitives
-- ADR-042 (graph execution protocol) — depth, compaction, steering integrate with
+- ADR-062 (graph execution protocol) — depth, compaction, steering integrate with
   `GraphRun` and `NodeRun`
 - ADR-037 (observability taxonomy) — metrics for compaction, rate coordination, probing
 
@@ -1156,7 +1179,7 @@ Feature: Context length probing
 
 ## Source references
 
-- `packages/maistro-core/src/maistro/graph/executor.py` — existing executor (ADR-042 target)
+- `packages/maistro-core/src/maistro/graph/executor.py` — existing executor (ADR-062 target)
 - `packages/maistro-core/src/maistro/resilience/` — existing resilience module (ADR-038)
 - `docs/analysis/COMPETITIVE-IMPROVEMENTS.md` — IMP-008, IMP-009, IMP-016, IMP-023, IMP-025, IMP-044
 - Hermes `SubgraphRegistry` — depth-based role assignment pattern

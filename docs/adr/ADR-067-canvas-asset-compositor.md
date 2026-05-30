@@ -1,5 +1,5 @@
 ---
-id: ADR-041
+id: ADR-067
 title: Canvas Asset Compositor — Scene Graph, Occlusion, Prompt Composition
 repo: maistro-engine
 kind: adr
@@ -26,7 +26,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-041: Canvas Asset Compositor
+# ADR-067: Canvas Asset Compositor
 
 ## Context
 
