@@ -43,3 +43,30 @@ class InfraMonitor(CapabilityProvider, Protocol):
 class InfraAction(CapabilityProvider, Protocol):
     def allowed_actions(self) -> tuple[str, ...]: ...
     async def act(self, action: str, params: dict[str, Any]) -> ActionResult: ...
+
+
+_READ_ACTIONS = {"docker_logs", "ollama_list", "snapraid_status"}
+_REVERSIBLE_ACTIONS = {"restart_container", "restart_service", "ollama_pull"}
+_DESTRUCTIVE_ACTIONS = {"restart_stack", "docker_prune"}
+_VM_READ = {"status"}
+_VM_REVERSIBLE = {"start"}
+_VM_DESTRUCTIVE = {"stop", "reboot"}
+
+
+def tier_for(action: str, params: dict[str, Any]) -> ActionTier:
+    """Classify a host action by blast radius. Unknown -> DESTRUCTIVE (fail safe)."""
+    if action in _READ_ACTIONS:
+        return ActionTier.READ
+    if action in _REVERSIBLE_ACTIONS:
+        return ActionTier.REVERSIBLE
+    if action in _DESTRUCTIVE_ACTIONS:
+        return ActionTier.DESTRUCTIVE
+    if action == "vm_control":
+        vm_action = str(params.get("action", ""))
+        if vm_action in _VM_READ:
+            return ActionTier.READ
+        if vm_action in _VM_REVERSIBLE:
+            return ActionTier.REVERSIBLE
+        if vm_action in _VM_DESTRUCTIVE:
+            return ActionTier.DESTRUCTIVE
+    return ActionTier.DESTRUCTIVE
