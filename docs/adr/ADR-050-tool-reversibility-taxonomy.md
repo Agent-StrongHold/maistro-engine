@@ -51,6 +51,12 @@ Reversible tools register a `compensator` (a code-registry ref) that is itself `
 
 Irreversible tools register an `impact_estimator` (code-registry ref) for ADR-051 to weight the approval UI, and ideally an `idempotency_key` builder per ADR-038. External MCP tools that declare neither default to `irreversible` with no estimator — safe by default; explicit downgrade requires a Sentinel policy.
 
+> **Result caching (amended 2026-05-30).** A tool may additionally declare itself `deterministic`;
+> only then are its results memoised, keyed by `(tool, args, version)` with a TTL. Non-deterministic
+> tools, `reversible` tools with observable side-effects, and `irreversible` tools are **never**
+> cached (a cached side-effecting call would silently skip the effect). Determinism is opt-in and
+> explicit; the safe default is no caching.
+
 ## Interface (sketch)
 
 ```python

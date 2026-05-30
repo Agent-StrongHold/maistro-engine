@@ -100,6 +100,19 @@ def propose_widen(m: Memory, target: Scope) -> ConsentTask:
     return ConsentTask(prompt=f"You learned {m.summary}; share with {target}?", approver=m.owner)
 ```
 
+### (D) Retrieval ranking
+
+At recall, memories are ranked by a **hybrid** score, scaled by the memory's current weight:
+
+```
+score = (bm25_relevance + vector_similarity) * memory_weight
+```
+
+The lexical term (BM25 / pg_trgm) catches exact and id/keyword matches; the vector term (embeddings
+per ADR-079) catches semantic/paraphrase matches; multiplying by `memory_weight` surfaces
+reinforced/wisdom memories first and suppresses decayed ones. Return the top-k. This pins ADR-016's
+under-specified "weight x word-overlap" retrieval.
+
 ## Acceptance criteria
 
 - [ ] Memories weight-decay over time unless refreshed; every access refreshes the decay timer.

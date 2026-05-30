@@ -52,6 +52,13 @@ Three layers, all active by default:
 > i.e. it must be proven good (first-run approved + verified) before the scheduler (ADR-046) is
 > permitted to run it without a human in the loop. First-run-approve → verify → then scheduled
 > auto-run is allowed.
+>
+> **Rollback of a multi-step (saga) flow (amended 2026-05-30).** When a multi-step flow fails
+> partway, the **default** is to run each completed step's compensator (ADR-050) in **reverse
+> order**; a compensator that itself fails bubbles back to this gate ("compensator failed; what
+> now?"), and the ADR-071 reconciler drives the rollback. A **recipe may declare per-flow
+> exceptions** — forward-recovery (retry/repair forward, for steps that genuinely cannot be
+> undone) or a custom strategy — overriding the reverse-compensation default for that flow.
 
 **3. Learned trust.** Substrate maintains a per-`(tenant, agent, tool, context-hash)` trust store. After N approvals over M days without a single denial, a pattern auto-promotes to `no further prompt`. Tenant opt-in; revocable; per-tool always-deny override always wins.
 
