@@ -118,6 +118,8 @@ in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR expli
   bootstrap.
 - ☐ **Agent-as-data lifecycle** — AgentCard versioning, retirement, hot-swap.
 - ☐ **Multi-conductor (HA) resume** (←ADR-056 single-conductor v0).
+- ☐ **Task queue + lane-scheduling depth** — queue semantics (priority, fairness, backpressure at
+  intake), ADR-010 LIVE/BACKGROUND depth, cancellation propagation into the queue (←ADR-010/018).
 
 ### Router, models, prompts, classifier
 - ☐ **Router scoring ADR** — formula weights/tuning, scarcity input source, task-type bonuses
