@@ -1,6 +1,6 @@
 ---
 id: ADR-068
-title: "Unified Authorization & Elevation — one model for who-may, what-class, and human-in-the-loop"
+title: "Unified Authorization & Elevation — tiers, an approver graph, sudo-style self-elevation, and RLPHD predictive approval"
 repo: maistro-engine
 kind: adr
 status: Proposed
@@ -31,202 +31,249 @@ owners:
 
 **Status:** Proposed
 **Date:** 2026-05-29
-**Amends:** ADR-028 (adds the agent principal + 2FA leg to the elevation flow), ADR-051
-(retires the "ADR-028 is orthogonal" framing — they are two axes of one decision),
-ADR-019 / Key Design Decision 7 (scope hierarchy: `tenant > org > team > user`)
+**Amends:** ADR-028 (configurable roles + approver graph + the agent principal — retires
+its "Full RBAC out of scope"), ADR-051 (its layer-3 "learned trust" becomes RLPHD;
+"orthogonal to ADR-028" retired), ADR-019 / Key Design Decision 7 (scope hierarchy)
 
 ---
 
 ## Context
 
 Four ADRs each own one slice of "may this action run, and does a human need to see it
-first," but none states how they compose, and one of them contradicts another:
+first," none states how they compose, and they contradict:
 
 - **ADR-028 (privilege separation)** — *who* the principal is. A mandatory two-tier
-  `admin`/`user` split; privileged operations route through admin via wallet-signed
-  elevation. This is **process / identity level**.
-- **ADR-050 (reversibility taxonomy)** — *what class* the action is.
-  `internal | reversible | irreversible` tag on every tool call. The **classifier** the
-  other layers read.
-- **ADR-051 (approval gates)** — *whether this specific call* needs a human right now.
-  Plan-preview / impact escalation / learned trust. This is **task / runtime level**, and
-  its Context explicitly calls ADR-028 *"orthogonal; process-level, not task-level."*
-- **ADR-054 (task budgets)** — *whether there is spend left*. A cost/token/step/wall-clock
-  ceiling per task that "composes with ADR-051 approval gates."
+  `admin`/`user` split; privileged ops route through admin via wallet-signed elevation.
+  Explicitly puts **"Full RBAC (roles beyond admin/user)" out of scope**.
+- **ADR-050 (reversibility taxonomy)** — *what class* the action is
+  (`internal | reversible | irreversible`). The classifier the others read.
+- **ADR-051 (approval gates)** — *whether this call* needs a human now (plan-preview /
+  impact escalation / a crude "N approvals → auto-promote" learned-trust). Its Context calls
+  ADR-028 *"orthogonal; process-level, not task-level."*
+- **ADR-054 (task budgets)** — *whether spend remains*.
 
-The result is real ambiguity the implementation already tripped on: the hive-conductor
-`_PROTECTED_OPS` middleware had to guess whether a DAG-run POST is an ADR-028 privilege
-check, an ADR-051 approval gate, both, or neither — and in what order. "Orthogonal" is not
-an evaluation order.
+This produced real ambiguity the implementation tripped on (hive-conductor `_PROTECTED_OPS`
+had to guess whether a DAG-run POST is a privilege check, an approval gate, both, and in what
+order), and three structural gaps the two-tier model can't express:
 
-The user's framing is the unifying insight: there is **one set of actions any authenticated
-principal may take ambiently**, and **a second set that requires *elevation* in the UI and
-*2FA* for agents** — and the DID/wallet identity (ADR-023/024) is what makes the agent-2FA
-leg the *same cryptographic act* as a human approving "send 1000 sats." ADR-028's elevation
-flow only ever modelled a *human* admin signing; it never modelled an *agent* principal
-authenticating its own irreversible call. That gap is why the two layers looked orthogonal.
+1. **More than two outcomes.** Actions need a *ladder*: open → role/team-auto → self-elevation
+   → delegated-approval → admin-elevation → blocked.
+2. **Self-elevation (sudo).** A user clears a within-authority gate by re-authenticating with
+   **their own** password/passkey — they are not asking *admin*, they are proving liveness +
+   intent over authority they already hold. An **agent cannot do this**; it must send its
+   owning human a **scoped 2FA** approval request.
+3. **A relational approver graph.** "Team-1 approves team-2," manager→employee, parent→child.
+   *Who* may satisfy a gate for principal P is a configurable relation, not just "admin."
+
+And ADR-051's learned-trust is too crude: a counter ("5 approvals, 0 denials → promote") can't
+express *confidence*, can't get *more* cautious after a surprising denial, and can't act on a
+borderline call the human just taught it to allow.
 
 ## Decision
 
-Authorization is **one decision evaluated over three independent axes**, in a fixed order.
-The axes are not orthogonal — they are *and*-combined: an action runs only if it passes all
-of them.
+### A. Principals, roles, scope (amends ADR-028 + ADR-019)
 
-### The three axes
-
-| Axis | Source ADR | Question | Values |
-|------|-----------|----------|--------|
-| **Principal** | ADR-028 + scope (ADR-019) | Who is asking, at what scope, with what privilege? | `admin` / `user`; scope `global > org > team > user > agent > session` |
-| **Class** | ADR-050 | What is the side-effect nature of the action? | `internal` / `reversible` / `irreversible` |
-| **Budget** | ADR-054 | Is there cost/token/step/wall-clock headroom? | within / over |
-
-### Two action bands (the user's "ambient vs guarded" split)
-
-Collapsing principal × class yields exactly two bands:
-
-- **Band A — ambient.** `internal` and `reversible` actions, requested by a principal whose
-  scope grants the capability. Run with **no gate**. Available to *any* authenticated user
-  **and** to agents acting within their delegated scope. (Examples: read memory, create a
-  schedule, run a reversible tool with a registered compensator.)
-
-- **Band B — guarded.** `irreversible` actions, **or** any action requiring a capability
-  outside the principal's scope/privilege. These require a **human-in-the-loop signature**
-  before execution:
-  - **UI principal (human user)** → **elevation**: admin signs via wallet (ADR-022/023),
-    OR a time-boxed delegation, OR a standing policy VC (the three ADR-028 modes).
-  - **Agent principal** → **2FA**: the agent signs the action with its own DID key
-    (ADR-023/024). The signature is the agent's second factor; the HITL gate (ADR-051)
-    decides whether a *human* co-signature is additionally required based on impact.
-
-The wallet/DID signature is **one primitive serving both legs** — human elevation and agent
-2FA are the same `sign(action)` act, recorded as a VC (ADR-024). This is the property that
-makes approval composable across humans and agents.
-
-### Evaluation order (the precedence ADR-051 was missing)
-
-For every tool call / privileged operation, substrate evaluates **in this order** and
-**stops at the first denial**:
+Roles and the scope hierarchy are **core**, not Stronghold:
 
 ```
-1. CLASSIFY   reversibility tier (ADR-050) + privilege requirement (ADR-028)
-              + budget cost estimate (ADR-054). Pure; no side effects.
-
-2. AUTHORIZE  (ADR-028 + scope) Does the principal's privilege + scope grant the
-              capability at all?
-                • granted        → continue
-                • not granted    → require ELEVATION (human) or 2FA (agent).
-                                   No signature ⇒ DENY (401/403-equivalent).
-
-3. BUDGET     (ADR-054) Does the call fit the remaining task budget?
-                • fits           → continue
-                • over           → raise an ADR-051 "approve more budget?" gate; DENY on
-                                   refusal. Budget veto cannot be bypassed by elevation.
-
-4. APPROVE    (ADR-051) Only for Band B (irreversible). Run the layered gate:
-              plan-preview ∪ impact-escalation ∪ learned-trust. The signature from
-              step 2 IS the approval artifact when impact warrants HITL.
-                • approved / trusted → EXECUTE
-                • denied / timeout   → DENY (+ compensator if mid-saga, ADR-050)
+scope (soft, in core):   global > org > team > user > agent > session
+tenant (hard, Stronghold-only): full segmentation; one tenant per user
 ```
 
-Band A actions short-circuit: they pass step 2 (in-scope) and step 4 (not irreversible) with
-no prompt, subject only to the step-3 budget check.
+- `admin`/`user` (ADR-028) become the **base roles** of a configurable role system. Admin
+  retains the Conductor Seed (ADR-021) and is always a valid root approver. This **retires
+  ADR-028's "Full RBAC out of scope"** — configurable roles + an approver graph are now in
+  scope for core (the homelab Conductor needs team-1/team-2 too). Custom *AgentSpec* role
+  definitions (Medley) and `tenant` isolation (Stronghold) remain out of scope.
+- A user may belong to **multiple teams/orgs** within a tenant.
+- An **agent** is a principal that always acts **on behalf of an owning human** and holds a
+  **subset** of that human's authority — never more. (This is the missing piece that made
+  ADR-028 and ADR-051 look orthogonal: ADR-028 only ever modelled a human signing.)
 
-### Why order matters
+### B. The gating-tier ladder
 
-- **Authorize before approve.** A principal who lacks the capability entirely must never
-  reach a content-bearing approval prompt — that would leak the action's existence and
-  invite social-engineering of the approver. Capability is a structural gate (ADR-028's
-  thesis: "structural, not behavioral"); approval is a judgement gate.
-- **Budget is a hard veto, not an approvable.** Over-budget raises a gate, but elevation
-  cannot *override* a zero balance — only a human explicitly granting more budget can. This
-  prevents "just elevate past the ceiling" as an exfiltration path.
-- **Reversibility feeds, never decides.** ADR-050 is the classifier the other two axes read;
-  it issues no allow/deny itself.
+Every action resolves, per `(action, requesting principal's role/scope)`, to exactly one
+tier (most-specific policy wins):
 
-## Scope hierarchy (amends ADR-019 / Key Design Decision 7)
+| Tier | Cleared by | Agent equivalent |
+|------|-----------|------------------|
+| `open` | nobody — auto for everyone | same |
+| `role/team-auto` | auto **iff** principal's role/team ∈ allow-set, else falls to the next applicable gate | same (within owner's authority) |
+| `self-elevation` (**sudo**) | the **principal re-authenticates** (own password / passkey) — within-authority, high-consequence confirmation | agent **cannot**; it sends its owning human a **scoped 2FA** request (this action, these args, short TTL) |
+| `delegated-approval` | **any member of the approver scope** resolved from the policy matrix (§C) — beyond the principal's own authority | same approver scope; the agent's request carries its owner identity |
+| `admin-elevation` | the **root/admin** signature specifically | same — admin only |
+| `blocked` | nobody (admin break-glass only, if ever) | same |
 
-The principal axis needs a scope model, and the existing "no `org_id` in maistro-core" rule
-was conflating *scope* with *tenancy*. Corrected hierarchy, narrowest → widest:
+`internal`/`reversible` actions (ADR-050) default to `open` or `role/team-auto`;
+`irreversible` actions default to **at least** `self-elevation` and escalate by impact
+(ADR-051 §2) and by whether they exceed the principal's authority (→ `delegated-approval`).
+
+### C. Approver graph — policy matrix
+
+Who may satisfy a `delegated-approval` (or stand in for `admin-elevation` where delegated) is
+a **declarative binding**, not a fixed tree:
+
+```yaml
+policy:
+  - action: deploy            # name or reversibility/impact class
+    for-scope: team:2         # the requesting principal's scope
+    approved-by: team:1       # ANY member of this scope may approve
+  - action: spend
+    for-scope: user:*         # any user
+    approved-by: role:manager # role-relative
+```
+
+Resolution: pick the most-specific binding for `(action, requester-scope)`; the approver set
+= members of `approved-by`. **Admin is always an implicit root approver.** Self-elevation is
+the degenerate case where `approved-by == the principal themselves` (re-auth).
+
+This expresses your examples directly: users A,B (team 1) run `X` at `role/team-auto`; users
+C,D (team 2) hit `delegated-approval` for `X` with `approved-by: team:1`; manager→employee and
+parent→child are the same binding with different scopes.
+
+### D. Elevation, two flavors, and the agent leg
+
+- **Self-elevation (sudo)** — human re-auths (password/passkey) for an action **within** their
+  granted authority. Proves liveness + intent. Recorded as a **short-TTL elevation grant**
+  (the ADR-028 time-boxed mode, scoped to the action class).
+- **Agent → scoped 2FA** — an agent NEVER holds a password and NEVER self-elevates. To take an
+  action that would require self-elevation for its owner, it emits a **scoped approval request**
+  (single action, concrete args, short TTL) to its owning human, who signs it. The human's
+  signature is the agent's second factor.
+- **Delegated / admin approval** — signed by a member of the approver scope (§C).
+- **One signing substrate**: local human factor = password/passkey; remote or agent-relayed =
+  DID/wallet signature (ADR-023/024). Every grant/denial is recorded as a VC (ADR-024) and an
+  audit event (ADR-037). "Send 1000 sats," "delete directory," and "agent X may post once" are
+  the same cryptographic act.
+
+### E. RLPHD — Reinforcement-Learned Policy from Human Decisions (replaces ADR-051 layer-3)
+
+ADR-051's counter-based learned-trust is replaced by a **confidence-calibrated predictor** of
+the human's own approval policy:
+
+- For any pending gate, a per-`(principal, action-class, context)` model estimates
+  `p = P(the human approves | action, args, context, history)`.
+- Substrate **auto-acts only when `p ≥ θ`**, the adaptive confidence threshold for that
+  `(principal, action-class, gate)`. The predicted confidence is **surfaced** ("I'm 78% sure
+  you'd approve — acting in N s unless you stop me") and logged.
+- **Every human decision updates both the predictor and θ** — the threshold *is* part of the
+  signal:
+  - Human **denies** a high-confidence prediction (say p=0.65) → **raise θ** (demand more
+    certainty before auto-acting) **and** correct the predictor down.
+  - Human **approves** a low-confidence one (p=0.20) → **lower θ** near that margin (more
+    willing on borderline) **and** correct the predictor up.
+  - Approvals and denials both sharpen calibration; surprises move θ more than confirmations.
+- **Hard limits (non-negotiable):** RLPHD may only stand in for tiers the human has opted to
+  let it learn — `role/team-auto`, `self-elevation`, and `delegated-approval` **where the
+  approver opted in**. It can **never** auto-clear `admin-elevation` or `blocked`, and can
+  **never** bypass the budget hard-veto (§F step 3). Per-`(principal, action-class)`; never
+  global; never cross-principal; revocable; a per-action always-ask override always wins.
+- The detailed model class, feature vector, and update rule are deferred to a follow-up SPEC;
+  this ADR fixes the *policy* (confidence-gated, dual-signal, hard-limited).
+
+### F. Evaluation order
+
+For every tool call / privileged operation, in this order, **stop at first deny**:
+
+Enforced by the existing security substrate — **no new component**: **Warden** scans untrusted
+input at the trust boundary (Principle 6) and contributes a risk signal into CLASSIFY;
+**Sentinel** is the policy decision + enforcement point (PDP/PEP) that resolves the tier,
+consults the approver matrix, runs the RLPHD gate, and emits the allow/deny. ADR-050/051
+already place tool-call policy in Sentinel — this ADR is the model Sentinel evaluates.
 
 ```
-user  <  team  <  org (a team of teams)  <  tenant
+1. CLASSIFY  reversibility (ADR-050) + tier (§B, from policy) + cost (ADR-054)
+             + Warden risk score on untrusted args (Principle 6). Pure; no side effects.
+2. AUTHORIZE Does the principal's role/scope grant the capability at all?
+             (agent authority = its own ∩ its owner's). No grant ⇒ it is at least
+             `delegated-approval`/`admin-elevation`, never `self-elevation`.
+3. BUDGET    (ADR-054) Hard veto. Over-budget ⇒ ADR-051 "approve more budget?" gate;
+             elevation/RLPHD CANNOT bypass a zero balance — only an explicit grant.
+4. GATE      Resolve the §B tier:
+               open / role-auto-in-set        → EXECUTE
+               self-elevation                 → human re-auth | agent→scoped-2FA-to-owner
+               delegated-approval             → approver scope signs (§C);
+                                                RLPHD may auto-satisfy iff p≥θ AND opted-in
+               admin-elevation                → admin signs (RLPHD excluded)
+               blocked                        → DENY
+5. EXECUTE / on denied-mid-saga → compensator (ADR-050).
 ```
 
-- **user / team / org** are **soft scope axes inside a tenant**. A user can belong to
-  multiple teams and orgs in the same tenant. `org`/`team` scoping **is legitimate in
-  maistro-core** as a scope axis — the engine keeps `global > org > team > user > agent >
-  session`.
-- **tenant** is the **hard isolation boundary, Stronghold-only**. Tenants are fully
-  segmented; a user belongs to exactly one tenant and needs a *separate user* to act in
-  another. Core never sees `tenant`.
-
-So Key Design Decision 7 is amended from "no org_id in core" to: *core carries the soft scope
-axes (incl. org/team) and global→session isolation; Stronghold adds the hard `tenant`
-boundary.* ADR-013/015/016/017 org filters were always correct — the term "org" had simply
-been read as "tenant."
+Authorize precedes approve so a principal lacking the capability never sees a content-bearing
+prompt (no existence leak, no social-engineering the approver). Reversibility (ADR-050) feeds
+the tier; it never decides.
 
 ## Interface (sketch)
 
 ```python
-class ActionBand(StrEnum):
-    AMBIENT = "ambient"   # Band A
-    GUARDED = "guarded"   # Band B
+class Tier(StrEnum):
+    OPEN = "open"; ROLE_AUTO = "role_team_auto"; SELF_ELEVATION = "self_elevation"
+    DELEGATED = "delegated_approval"; ADMIN = "admin_elevation"; BLOCKED = "blocked"
+
+class Principal(BaseModel):
+    id: str
+    kind: Literal["human", "agent"]
+    roles: list[str]
+    scopes: list[str]                 # e.g. ["team:1", "org:acme"]
+    owner: str | None = None          # required when kind == "agent"
 
 class AuthzDecision(BaseModel):
-    band: ActionBand
-    authorized: bool                 # step 2
-    elevation_required: bool         # human signature needed
-    twofa_required: bool             # agent signature needed
-    within_budget: bool              # step 3
-    approval: ApprovalDecision | None  # step 4 (ADR-051), None for Band A
+    tier: Tier
+    authorized: bool                  # step 2
+    needs: Literal["none","self_elevation","scoped_2fa","delegated","admin"]
+    approver_scope: str | None        # resolved from the policy matrix (§C)
+    within_budget: bool               # step 3
+    rlphd: RlphdVerdict | None        # predicted p, threshold θ, auto-acted?
     reason: str
 
-class AuthorizationService(Protocol):
-    def classify(self, call: ToolCall, principal: Principal) -> ActionClass: ...   # ADR-050+028
-    async def authorize(self, call: ToolCall, principal: Principal) -> AuthzDecision: ...
-    # authorize() runs steps 1-4 in order; raises NOTHING — it returns a decision the
-    # caller (Sentinel / route middleware) enforces.
+# Realized by Sentinel; NOT a new component. Warden feeds the risk signal into step 1.
+class SentinelPolicy(Protocol):                # extends the ADR-050 SentinelPolicy
+    def resolve_tier(self, call: ToolCall, p: Principal) -> Tier: ...      # §B/§C
+    async def authorize(self, call: ToolCall, p: Principal) -> AuthzDecision: ...  # §F 1-4
+
+class Warden(Protocol):
+    def risk(self, untrusted: ToolArgs) -> RiskScore: ...   # boundary scan → CLASSIFY input
 ```
 
-The hive-conductor `_PROTECTED_OPS` table is the **first concrete implementation** of step 2
-for the HTTP surface: privileged/irreversible routes (containers, dag-run, optimizer,
-pm-fleet) map to a required capability; admin passes; a user without elevation gets the
-"elevate to proceed" path; an agent presents a signed token. WebSocket handlers enforce the
-same `authorize()` because BaseHTTPMiddleware does not run for the websocket scope.
+**Enforcement points.** Sentinel is the per-tool-call PDP/PEP (in-process, MCP gateway, and
+A2A boundaries). Warden scans untrusted content at every trust boundary and supplies the risk
+input. The hive-conductor `_PROTECTED_OPS` table is the **coarse HTTP front gate** — the first
+concrete implementation of §F step 2+4 for the route surface — but the authoritative decision
+is Sentinel's at the tool-call boundary. WebSocket handlers must call the same `authorize()`
+(BaseHTTPMiddleware does not run for the websocket scope).
 
 ## Acceptance criteria
 
-- [ ] `authorize()` evaluates the four steps in the stated order and short-circuits on first
-      deny; property test: no Band-A action ever raises a prompt.
-- [ ] A capability outside the principal's scope returns `authorized=False` with
-      `elevation_required` (human) or `twofa_required` (agent) — **before** any approval
-      prompt is constructed.
-- [ ] An over-budget call cannot be executed by elevation alone; only an explicit
-      budget-grant clears it.
-- [ ] Agent principals satisfy Band B via a DID-key signature (ADR-023/024) recorded as a VC;
-      human principals satisfy it via the three ADR-028 elevation modes.
-- [ ] A single signed-VC artifact serves both the ADR-028 elevation record and the ADR-051
-      `ApprovalDecision.decided_by`.
-- [ ] hive-conductor: privileged HTTP routes AND the matching WebSocket handlers both call
-      `authorize()`; unauthenticated WS connections are closed (1008) before accept.
-- [ ] Audit: every Band-B grant/denial/expiry recorded as a signed VC (ADR-024, ADR-037).
+- [ ] `authorize()` runs §F steps in order, short-circuits on first deny; property test: no
+      `open`/in-set `role_auto` action ever raises a prompt.
+- [ ] A within-authority gated action is cleared by the principal's **own** re-auth
+      (self-elevation) — not by admin — and recorded as a short-TTL grant.
+- [ ] An **agent** with the same action gets `needs == scoped_2fa`; its owner's signature over
+      the scoped request clears it; the agent never receives a password.
+- [ ] A beyond-authority action resolves `approver_scope` from the policy matrix; **any**
+      member of that scope can approve; admin always can.
+- [ ] Over-budget cannot be cleared by elevation or RLPHD — only an explicit budget grant.
+- [ ] RLPHD auto-acts only when `p ≥ θ`; a denial of a high-`p` call **raises** θ, an approval
+      of a low-`p` call **lowers** θ; both update the predictor. Never auto-clears
+      `admin_elevation`/`blocked`; per-`(principal, action-class)`, revocable.
+- [ ] Every elevation/approval/denial/expiry is a signed VC (ADR-024) + event (ADR-037).
 
 ## Consequences
 
-- ADR-051's Context line "ADR-028 ... orthogonal" is **superseded** by this ADR: they are
-  the *authorize* and *approve* steps of one ordered evaluation.
-- ADR-028's elevation flow gains an **agent principal** with a 2FA leg; the human flow is
-  unchanged.
-- ADR-019 / Decision 7 are amended for the scope hierarchy (separate doc edit in this PR).
-- Downstream: the staged hive-conductor security cluster (WS auth, hyperlight fail-closed,
-  audit anti-spoof, `_PROTECTED_OPS` gating) now has a canonical model to implement against,
-  and its previously-failing tests should assert the *documented* model (privileged ops are
-  admin's domain / require elevation), not the pre-model open behavior.
+- **ADR-028**: "Full RBAC out of scope" retired (configurable roles + approver graph in core);
+  gains the agent principal and the self-elevation vs delegated distinction.
+- **ADR-051**: layer-3 learned-trust → RLPHD; "orthogonal to ADR-028" retired (authorize
+  precedes approve).
+- **ADR-019 / Decision 7**: amended for `tenant > org > team > user` (separate edits in this PR).
+- **hive-conductor**: the staged security cluster (`_PROTECTED_OPS`, WS auth, audit anti-spoof)
+  implements §F; its previously-failing tests assert the *documented* model (privileged ops
+  need elevation / route to an approver), not the pre-model open behavior.
+- **Follow-up SPEC**: RLPHD predictor mechanics (model class, features, θ update rule, cold-start).
 
 ## Out of scope
 
-- The notification channel for approval prompts (product-level, per ADR-051).
-- The on-disk schema of the learned-trust and elevation-grant stores.
-- Multi-tenant (`tenant`) isolation mechanics — Stronghold (ADR-019).
-- Full RBAC beyond admin/user + scope axes (ADR-028 out-of-scope still holds).
+- RLPHD model internals (follow-up SPEC).
+- Notification channel for approval/2FA prompts (product-level, ADR-051).
+- On-disk schema of the elevation-grant, approver-policy, and RLPHD stores.
+- `tenant` isolation mechanics — Stronghold (ADR-019).
+- Custom AgentSpec role definitions — Medley plugin (ADR-028 out-of-scope still holds).

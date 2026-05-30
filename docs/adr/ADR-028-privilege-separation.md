@@ -65,10 +65,13 @@ When a user needs an admin-only operation:
 3. Admin signs via wallet app (ADR-022, ADR-023) — same UX for "send 1000 sats" and "delete directory"
 4. Signature recorded as VC (ADR-024), operation proceeds
 
-> **Amended by ADR-068:** this flow models a *human* admin signing. ADR-068 adds the
-> **agent principal**, whose second factor is its own DID-key signature (ADR-023/024) over
-> the action — the same cryptographic act as a human elevation. Authorization (this ADR) is
-> the *authorize* step that precedes the ADR-051 *approve* step.
+> **Amended by ADR-068:** this flow models a *human admin* signing. ADR-068 generalises it:
+> (a) **self-elevation (sudo)** — a user clears a *within-authority* gate with their **own**
+> password/passkey, not by asking admin; (b) the **agent principal** cannot self-elevate and
+> instead sends its owning human a **scoped 2FA** request; (c) `admin`/`user` become the base
+> of a **configurable role system + approver graph** in core (retiring "Full RBAC out of
+> scope" below). Authorization (this ADR) is the *authorize* step preceding the ADR-051
+> *approve* step; both are enforced by Sentinel (Warden supplies the trust-boundary risk).
 
 Three elevation modes:
 - **Inline ask** (default) — admin signs each operation individually
@@ -136,9 +139,10 @@ class PrivilegeService:
 
 ## Out of scope
 
-- Full RBAC (roles beyond admin/user)
+- ~~Full RBAC (roles beyond admin/user)~~ — **now in scope per ADR-068**: configurable roles +
+  a policy-matrix approver graph live in core. `admin`/`user` here are the base roles.
 - Custom AgentSpec role definitions (Medley plugin territory)
-- Multi-tenant isolation (Stronghold concern)
+- Multi-tenant `tenant` isolation (Stronghold concern; `org`/`team` scope axes are core per ADR-068)
 
 ## Source references
 

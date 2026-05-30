@@ -48,6 +48,12 @@ Three layers, all active by default:
 
 **3. Learned trust.** Substrate maintains a per-`(tenant, agent, tool, context-hash)` trust store. After N approvals over M days without a single denial, a pattern auto-promotes to `no further prompt`. Tenant opt-in; revocable; per-tool always-deny override always wins.
 
+> **Superseded by ADR-068 (RLPHD).** The counter-based promotion here is replaced by a
+> confidence-calibrated predictor of the human's approval policy: auto-act only when predicted
+> `p ≥ θ`, where each human decision updates both the predictor *and* the adaptive threshold θ
+> (a surprising denial raises θ; a borderline approval lowers it). Same hard limits — never
+> auto-clears `admin-elevation`/`blocked`, never bypasses the budget veto.
+
 While waiting for any approval, the agent continues on non-dependent steps from its plan DAG. Blocks only on steps that consume the pending call's output.
 
 ## Interface (sketch)
