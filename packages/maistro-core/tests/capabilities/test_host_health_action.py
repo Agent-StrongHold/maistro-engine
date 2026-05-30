@@ -62,3 +62,38 @@ async def test_detect_only_never_executes():
     act = HostHealthAction(http=http, autonomy="detect_only", approval=AutoApprove())
     res = await act.act("restart_container", {"name": "x"})
     assert res.ok is False and not http.calls
+
+
+async def test_approve_all_gates_reversible():
+    http = FakeHttp()
+    act = HostHealthAction(http=http, autonomy="approve_all", approval=AutoDeny())
+    res = await act.act("restart_container", {"name": "x"})
+    assert res.ok is False and res.blocked_pending_approval and not http.calls
+
+
+async def test_approve_all_runs_read_free():
+    http = FakeHttp()
+    act = HostHealthAction(http=http, autonomy="approve_all", approval=AutoDeny())
+    res = await act.act("docker_logs", {})
+    assert res.ok and http.calls
+
+
+async def test_approve_all_gates_destructive_then_runs_after_approval():
+    http = FakeHttp()
+    act = HostHealthAction(http=http, autonomy="approve_all", approval=AutoApprove())
+    res = await act.act("docker_prune", {})
+    assert res.ok and http.calls
+
+
+async def test_action_not_in_allowlist_refused():
+    http = FakeHttp()
+    act = HostHealthAction(http=http, autonomy="auto_safe", approval=AutoApprove())
+    res = await act.act("rm_rf_everything", {})
+    assert res.ok is False and not http.calls
+
+
+async def test_destructive_with_no_approval_provider_blocks():
+    http = FakeHttp()
+    act = HostHealthAction(http=http, autonomy="auto_safe", approval=None)
+    res = await act.act("docker_prune", {})
+    assert res.ok is False and res.blocked_pending_approval and not http.calls
