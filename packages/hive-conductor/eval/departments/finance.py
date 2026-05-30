@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class NumericalAccuracy(RubricEval):
     department = "finance"
     eval_name = "numerical_accuracy"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_numbers",
             "weight": 25,
@@ -39,7 +40,7 @@ class NumericalAccuracy(RubricEval):
 class RegulatoryCompliance(RubricEval):
     department = "finance"
     eval_name = "regulatory_compliance"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "mentions_regulations",
             "weight": 25,
@@ -75,7 +76,7 @@ class RegulatoryCompliance(RubricEval):
 class RiskIdentification(RubricEval):
     department = "finance"
     eval_name = "risk_identification"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "identifies_risks",
             "weight": 25,
@@ -111,7 +112,7 @@ class RiskIdentification(RubricEval):
 class AssumptionTransparency(RubricEval):
     department = "finance"
     eval_name = "assumption_transparency"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "states_assumptions",
             "weight": 30,
@@ -146,7 +147,7 @@ class AssumptionTransparency(RubricEval):
 class DecisionClarity(RubricEval):
     department = "finance"
     eval_name = "decision_clarity"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "clear_recommendation",
             "weight": 30,

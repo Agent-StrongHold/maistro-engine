@@ -7,6 +7,7 @@ HttpOpenAILLMClient — thin httpx wrapper implementing maistro.protocols.llm.LL
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -100,10 +101,8 @@ class _HttpOpenAILLMClient:
         # Minimal streaming: fall back to non-streaming and yield as single chunk
         result = await self.complete(messages, model, **kwargs)
         content = ""
-        try:
+        with contextlib.suppress(KeyError, IndexError):
             content = result["choices"][0]["message"]["content"]
-        except (KeyError, IndexError):
-            pass
         yield content
 
 

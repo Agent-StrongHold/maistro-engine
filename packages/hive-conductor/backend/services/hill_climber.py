@@ -15,7 +15,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -47,10 +47,10 @@ class HillClimber:
     PHASE_OPTIMIZE = "optimize"
 
     # Best models — used during build phase, quality ceiling reference during optimize
-    BEST_MODELS = ["o3-pro", "claude-opus-4-6"]
+    BEST_MODELS: ClassVar[list[str]] = ["o3-pro", "claude-opus-4-6"]
 
     # Candidates for optimize phase — ordered by cost (cheapest first)
-    OPTIMIZE_CANDIDATES = [
+    OPTIMIZE_CANDIDATES: ClassVar[list[str]] = [
         "gemini-3.5-flash",  # cheapest
         "gpt-5-mini",  # cheap + good
         "claude-haiku-4-5",  # fast + decent

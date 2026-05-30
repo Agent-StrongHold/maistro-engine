@@ -5,12 +5,12 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+# Import models so Alembic can detect them
+from maistro.memory.store import Base
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-
-# Import models so Alembic can detect them
-from maistro.memory.store import Base
 
 target_metadata = Base.metadata
 

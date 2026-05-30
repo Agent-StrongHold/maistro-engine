@@ -53,7 +53,6 @@ def test_start_then_get_returns_instance(monkeypatch: pytest.MonkeyPatch) -> Non
     import services.evolution as evo
 
     started: list[Any] = []
-    real_create = asyncio.ensure_future
 
     def _capture(coro: Any) -> Any:
         started.append(coro)

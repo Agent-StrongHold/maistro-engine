@@ -1,4 +1,4 @@
-"""Department DAGs — 45 optimizable DAG definitions (9 departments × 5 each).
+"""Department DAGs — 45 optimizable DAG definitions (9 departments x 5 each).
 
 Each DAG is a dict with:
   - id: unique identifier
