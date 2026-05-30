@@ -149,7 +149,12 @@ parent→child are the same binding with different scopes.
 ### E. RLPHD — Reinforcement-Learned Policy from Human Decisions (replaces ADR-051 layer-3)
 
 ADR-051's counter-based learned-trust is replaced by a **confidence-calibrated predictor** of
-the human's own approval policy:
+the human's own approval policy. **RLPHD is glass-box, not ML/LLM** (clarified 2026-05-30): it is
+**interpretable parameter-tuning of explicit gate parameters** (the threshold `θ`, per-feature
+weights) — every parameter is human-readable, overridable, and hand-editable in the DB config
+(ADR-078). "Learning" = the transparent dual-signal nudging of those parameters below; there is no
+opaque model. This is what makes it auditable and reconcilable by the ADR-074 deconfliction loop
+(you cannot deconflict a black box):
 
 - For any pending gate, a per-`(principal, action-class, context)` model estimates
   `p = P(the human approves | action, args, context, history)`.

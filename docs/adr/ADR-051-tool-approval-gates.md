@@ -46,6 +46,13 @@ Three layers, all active by default:
 
 **2. Per-call escalation.** An irreversible call whose `impact_estimator` (ADR-050) output exceeds a recipe-declared threshold raises an inline gate regardless of plan-level approval. Thresholds are per-resource (dollars, recipient count, audience, tokens, etc.) — collapsed into one prompt if multiple thresholds trip in the same window.
 
+> **Scheduled / unattended irreversible actions (amended 2026-05-30).** An irreversible action
+> requires human approval **at least on its first run**. A *scheduled* (recurring/unattended)
+> irreversible action may only auto-run after its **verification has succeeded at least once** —
+> i.e. it must be proven good (first-run approved + verified) before the scheduler (ADR-046) is
+> permitted to run it without a human in the loop. First-run-approve → verify → then scheduled
+> auto-run is allowed.
+
 **3. Learned trust.** Substrate maintains a per-`(tenant, agent, tool, context-hash)` trust store. After N approvals over M days without a single denial, a pattern auto-promotes to `no further prompt`. Tenant opt-in; revocable; per-tool always-deny override always wins.
 
 > **Superseded by ADR-068 (RLPHD).** The counter-based promotion here is replaced by a

@@ -68,6 +68,10 @@ emitting one plan: expand a tree of candidate decompositions (Tree-of-Thoughts),
 rollouts** (dry-run / cheap-model cost+success estimate), **back up a value estimate**
 (AlphaZero-style), and commit the best. The value function is **learned from ADR-017 outcomes +
 maistro-evolve**; the nearest Repertoire templates seed the search as priors (the policy prior).
+Plan scoring is **interpretable, glass-box** (per ADR-089/ADR-068): an explicit weighted function
+over cost / success-estimate / risk / reuse-distance, whose weights are editable config (ADR-078)
+and auditable — not a black-box value net. "Learned" means those weights and the rollout estimates
+are tuned from outcomes, not that the score is opaque.
 
 ### Run — Pregel supersteps under a Borg-style reconciler
 SuperPlanner emits **parallel-safe waves** (ADR-052); MasterOrchestrator executes them as

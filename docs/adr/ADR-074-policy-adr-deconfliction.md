@@ -41,7 +41,10 @@ The system now has two sources of truth that can disagree:
 
 - **ADRs = declared intent** — what the team decided it wants, top-down, a priori.
 - **The learning policy engine = revealed preference** — what the team actually approves, distilled
-  from real human decisions (ADR-073 Sentinel's DB policy + ADR-068 RLPHD adaptive weights).
+  from real human decisions (ADR-073 Sentinel's DB policy + ADR-068 RLPHD adaptive weights). Note the
+  RLPHD weights are **interpretable, hand-editable parameters, not an opaque model** (ADR-068) —
+  which is precisely what makes this deconfliction tractable: you can read, diff, and reconcile a
+  drifted parameter against an ADR invariant; you could not do that to a black box.
 
 When a learned-policy change drifts into conflict with an ADR, *that divergence is the most valuable
 signal in the system*: either the ADR is stale, or the learning is noise/poisoning. Neither is
