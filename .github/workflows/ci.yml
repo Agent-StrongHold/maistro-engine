@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, integration, merge/main-into-integration, research/pm-fleet-poc]
+    branches: [main, integration, develop, merge/main-into-integration]
   pull_request:
-    branches: [main, integration, research/pm-fleet-poc]
+    branches: [main, integration, develop]
 
 permissions:
   contents: read
