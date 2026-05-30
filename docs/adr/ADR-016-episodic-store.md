@@ -1,3 +1,26 @@
+---
+id: ADR-016
+title: EpisodicMemory + 7-tier weights + InMemoryEpisodicStore
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-013
+  - maistro-engine#ADR-014
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Memory
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-016: EpisodicMemory + 7-tier weights + InMemoryEpisodicStore
 
 **Status:** Accepted  

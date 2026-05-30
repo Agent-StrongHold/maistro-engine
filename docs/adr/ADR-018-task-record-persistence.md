@@ -1,3 +1,26 @@
+---
+id: ADR-018
+title: Persist TaskRecord at queue/runner boundaries
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-011
+  - maistro-engine#ADR-012
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-018: Persist TaskRecord at queue/runner boundaries
 
 **Status:** Accepted  

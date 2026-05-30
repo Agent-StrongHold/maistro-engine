@@ -1,3 +1,29 @@
+---
+id: ADR-009
+title: Spawner pattern
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-004
+  - maistro-engine#ADR-005
+  - maistro-engine#ADR-006
+  - maistro-engine#ADR-007
+  - maistro-engine#ADR-008
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Agents
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-009: Spawner pattern
 
 **Status:** Accepted  

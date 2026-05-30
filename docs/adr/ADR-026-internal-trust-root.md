@@ -1,3 +1,28 @@
+---
+id: ADR-026
+title: "Internal Trust Root — Local CA from Conductor Seed"
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+  - maistro-engine#ADR-024
+implements: []
+related:
+  - maistro-engine#ADR-020
+  - maistro-engine#ADR-029
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-026: Internal Trust Root — Local CA from Conductor Seed
 
 **Status:** Proposed

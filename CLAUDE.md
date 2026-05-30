@@ -38,7 +38,7 @@ maistro-engine (this monorepo)
 
 Agent Conductor ships **here**; the Canvas book-maker and Stronghold are downstream products that **import** the engine (Stronghold is a planned refactor, not yet done).
 
-**ADR-019** defines the canonical source split: maistro-core = product-agnostic shared runtime (no `org_id`); multi-tenancy/security-posture/feature-toggles live in the importing product (Stronghold). 64 ADRs (ADR-000 through ADR-057); notable: ADR-036 (ontology), ADR-038 (reliability), ADR-042 (graph execution protocol), ADR-057 (memory exposure mode).
+**ADR-019** defines the canonical source split: maistro-core = product-agnostic shared runtime (no `org_id`); multi-tenancy/security-posture/feature-toggles live in the importing product (Stronghold). 64 ADRs (ADR-000 through ADR-057); notable: ADR-036 (ontology), ADR-038 (reliability), ADR-062 (graph execution protocol), ADR-057 (memory exposure mode).
 
 ### Naming convention
 
@@ -70,7 +70,7 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Quota** | `maistro.quota` | Token usage tracking per provider per billing cycle |
 | **Sessions** | `maistro.sessions` | Conversation history with TTL pruning |
 | **Intents** | `maistro.agents.intents` | task_type → agent_name routing table |
-| **Graph** | `maistro.graph` | DAG execution: node types, executor, optimizer, phases (ADR-042) |
+| **Graph** | `maistro.graph` | DAG execution: node types, executor, optimizer, phases (ADR-062) |
 | **Ontology** | `maistro.ontology` | Semantic object layer and registry (ADR-036) |
 | **Resilience** | `maistro.resilience` | Reliability taxonomy and circuit-breaking (ADR-038) |
 | **Identity** | `maistro.identity` | Identity management |
@@ -212,7 +212,7 @@ maistro-engine/
 │   │       ├── tasks/           # queue, runner, models
 │   │       ├── tools/           # sandbox, git, browser
 │   │       ├── types/           # AgentConfig, AgentError, shared dataclasses
-│   │       ├── graph/           # DAG execution: node, executor, optimizer, phases (ADR-042)
+│   │       ├── graph/           # DAG execution: node, executor, optimizer, phases (ADR-062)
 │   │       ├── ontology/        # Semantic object layer, registry (ADR-036)
 │   │       ├── resilience/      # Reliability taxonomy, circuit-breaking (ADR-038)
 │   │       ├── identity/        # Identity management

@@ -1,3 +1,30 @@
+---
+id: ADR-023
+title: 'Agent Crypto Operations & Spending Policy'
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+  - maistro-engine#ADR-022
+implements: []
+related:
+  - maistro-engine#ADR-024
+  - maistro-engine#ADR-025
+  - maistro-engine#ADR-027
+  - maistro-engine#ADR-028
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-023: Agent Crypto Operations & Spending Policy
 
 **Status:** Proposed

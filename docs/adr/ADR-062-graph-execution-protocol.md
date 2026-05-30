@@ -1,4 +1,25 @@
-# ADR-042: Graph Execution Protocol
+---
+id: ADR-062
+title: Graph Execution Protocol
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-05-19
+substrate: []
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Orchestration
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-062: Graph Execution Protocol
 
 **Status:** Accepted
 **Date:** 2026-05-19
@@ -389,4 +410,4 @@ maistro/graph/
 
 - PR: (pending)
 - Issue: (pending)
-- Follow-up ADRs: ADR-043 (persistent execution log), ADR-044 (subgraph nesting)
+- Follow-up work (unwritten): persistent execution log; subgraph nesting

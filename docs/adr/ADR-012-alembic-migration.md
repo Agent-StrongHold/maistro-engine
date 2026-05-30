@@ -1,3 +1,25 @@
+---
+id: ADR-012
+title: First Alembic migration (memory tables + pgvector)
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-011
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-012: First Alembic migration (memory tables + pgvector)
 
 **Status:** Accepted  
