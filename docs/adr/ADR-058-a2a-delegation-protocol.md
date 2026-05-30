@@ -134,13 +134,13 @@ class Transport(Protocol):
 - [ ] `agent.delegate.*` events emitted; federated hops produce a signed audit VC; no event carries `org_id`.
 - [ ] Hypothesis property test: for any delegation tree, depth never exceeds `max_depth` and no agent id appears twice in any root-to-leaf path.
 
-## Open questions
+## Resolved decisions (v0)
 
-1. **Result model: sync vs queued.** In-process delegation is naturally synchronous (await the sub-agent). Federated could be sync (await peer) or fire-and-poll via `TaskLifecycleManager`. Recommend **sync await with a deadline** for v0 (simplest, matches SPEC-008 latency budget); keep `TaskQueue`/`WorkerPool` for an async-batch follow-up, not v0.
-2. **Is `TaskLifecycleManager`/`WorkerPool` in scope for v0?** Recommend **no** — the broker + two transports + budgets are the MVP; the worker pool is async-delegation machinery we don't need until a real fan-out workload appears. Mark it explicitly experimental rather than shipping a sleeping stub.
-3. **Trust tiers for local delegation.** Should a `t2` agent be allowed to delegate to a `t1`-tooled agent (privilege escalation)? Recommend the broker enforce **target.trust_tier ≤ caller.trust_tier** unless `sub_agents` explicitly lists it (SPEC-012 privilege separation).
-4. **Peer identity source of truth.** Pin peers by DID (ADR-024) vs by URL+key only. Recommend DID-pinning when the peer publishes `did:web`, URL+key fallback otherwise, with a config flag to require DID.
-5. **Token-budget accounting across transports.** Local hops can read real usage once graph token accounting lands (PR #52); federated hops must trust the peer's reported usage. Recommend treat peer-reported usage as advisory and additionally enforce the wall-clock `deadline`.
+1. **Result model → sync await with a deadline (v0).** In-process delegation awaits the sub-agent; federated awaits the peer — both bounded by a deadline (matches the SPEC-008 latency budget). Async fire-and-poll (`TaskQueue`/`WorkerPool`) is an **async-batch follow-up**, not v0.
+2. **`TaskLifecycleManager`/`WorkerPool` → not in v0.** The broker + two transports + budgets are the MVP; the worker pool is marked **explicitly experimental** rather than shipped as a sleeping stub.
+3. **Trust tiers for local delegation → enforce `target.trust_tier ≤ caller.trust_tier`.** Unless the caller's `sub_agents` explicitly lists the target (SPEC-012 privilege separation; consistent with the ADR-068 rule that an agent holds a subset of its caller's authority).
+4. **Peer identity → DID-pin when available.** Pin peers by DID (ADR-024) when the peer publishes `did:web`; URL+key fallback otherwise; a config flag can require DID.
+5. **Token-budget across transports → real local, advisory federated.** Local hops read real usage once graph token accounting lands; federated hops treat the peer's reported usage as **advisory** and additionally enforce the wall-clock `deadline`.
 
 ## Source references
 

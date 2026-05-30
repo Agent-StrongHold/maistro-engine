@@ -290,7 +290,8 @@ class GraphRun:
 
 ```python
 class GraphEvent(BaseModel):
-    type: str  # "graph_start", "node_start", "node_complete", "node_retry", "graph_complete", "graph_failed"
+    # Past-tense per the ADR-037 naming convention (matches the emitted code names).
+    type: str  # "graph_started", "node_started", "node_completed", "node_retrying", "node_failed", "graph_completed", "graph_failed"
     run_id: str
     node_id: str | None = None
     role: AgentRole | None = None
