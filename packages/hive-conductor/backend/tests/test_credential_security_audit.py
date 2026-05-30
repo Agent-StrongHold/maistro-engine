@@ -23,14 +23,8 @@ fails CI:
 from __future__ import annotations
 
 import pathlib
-import sys
 
 from fastapi.testclient import TestClient
-
-_BACKEND = pathlib.Path(__file__).resolve().parents[1]
-if str(_BACKEND) not in sys.path:
-    sys.path.insert(0, str(_BACKEND))
-
 from main import app
 
 

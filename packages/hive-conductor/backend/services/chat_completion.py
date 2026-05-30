@@ -281,345 +281,403 @@ PM_TOOLS = [
 ]
 
 
-async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> dict[str, Any]:
-    """Execute a PM tool for real. No stubs. Calls Jira REST API directly."""
+_JIRA_BASE = "https://myjira.disney.com"
+
+
+def _jira_headers(jira_pat: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"}
+
+
+async def _tool_poll_jira(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    if not jira_pat:
+        return {"error": "No Jira PAT configured. Go to Credentials and add your Disney Jira PAT."}
     import httpx
 
-    jira_pat = _get_jira_pat(user_id)
-    jira_base = "https://myjira.disney.com"
-
-    if tool_name in ("poll_jira", "fetch_program_state"):
-        if not jira_pat:
-            return {
-                "error": "No Jira PAT configured. Go to Credentials and add your Disney Jira PAT."
-            }
-        max_results = min(args.get("max_results", 10), 15)
-        jql = "project = JEDAI AND updated >= -7d ORDER BY updated DESC"
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.get(
-                    f"{jira_base}/rest/api/2/search",
-                    params={
-                        "jql": jql,
-                        "maxResults": max_results,
-                        "fields": "summary,status,assignee,issuetype,priority,updated",
-                    },
-                    headers={"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"},
-                )
-                r.raise_for_status()
-                data = r.json()
-                issues = []
-                for i in data.get("issues", []):
-                    f = i.get("fields", {})
-                    issues.append(
-                        {
-                            "key": i.get("key"),
-                            "summary": f.get("summary"),
-                            "status": (f.get("status") or {}).get("name"),
-                            "type": (f.get("issuetype") or {}).get("name"),
-                            "priority": (f.get("priority") or {}).get("name"),
-                            "updated": f.get("updated"),
-                        }
-                    )
-                return {"total": data.get("total", 0), "issues": issues, "jql": jql}
-        except httpx.HTTPStatusError as e:
-            return {"error": f"Jira returned {e.response.status_code}: {e.response.text[:200]}"}
-        except Exception as e:
-            return {"error": f"Jira connection failed: {e}"}
-
-    elif tool_name == "search_jira":
-        if not jira_pat:
-            return {"error": "No Jira PAT configured."}
-        jql = args.get("jql") or ""
-        text = args.get("text") or ""
-        if not jql and text:
-            jql = f'text ~ "{text}" ORDER BY updated DESC'
-        if not jql:
-            return {"error": "Provide 'jql' or 'text' to search"}
-        max_results = min(args.get("max_results", 10), 15)
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.get(
-                    f"{jira_base}/rest/api/2/search",
-                    params={
-                        "jql": jql,
-                        "maxResults": max_results,
-                        "fields": "summary,status,assignee,issuetype,priority,updated",
-                    },
-                    headers={"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"},
-                )
-                r.raise_for_status()
-                data = r.json()
-                issues = []
-                for i in data.get("issues", []):
-                    f = i.get("fields", {})
-                    issues.append(
-                        {
-                            "key": i.get("key"),
-                            "summary": f.get("summary"),
-                            "status": (f.get("status") or {}).get("name"),
-                            "type": (f.get("issuetype") or {}).get("name"),
-                            "assignee": ((f.get("assignee") or {}).get("displayName")),
-                            "updated": f.get("updated"),
-                        }
-                    )
-                return {"total": data.get("total", 0), "issues": issues, "jql": jql}
-        except httpx.HTTPStatusError as e:
-            return {"error": f"Jira returned {e.response.status_code}: {e.response.text[:200]}"}
-        except Exception as e:
-            return {"error": f"Jira search failed: {e}"}
-
-    elif tool_name in ("get_issue", "get_jira_issue"):
-        if not jira_pat:
-            return {"error": "No Jira PAT configured."}
-        issue_key = args.get("issue_key") or args.get("key") or ""
-        if not issue_key:
-            return {"error": "issue_key is required"}
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.get(
-                    f"{jira_base}/rest/api/2/issue/{issue_key}",
-                    headers={"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"},
-                )
-                r.raise_for_status()
-                data = r.json()
-                f = data.get("fields", {})
-                return {
-                    "key": data.get("key"),
-                    "summary": f.get("summary"),
+    max_results = min(args.get("max_results", 10), 15)
+    jql = "project = JEDAI AND updated >= -7d ORDER BY updated DESC"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(
+                f"{_JIRA_BASE}/rest/api/2/search",
+                params={
+                    "jql": jql,
+                    "maxResults": max_results,
+                    "fields": "summary,status,assignee,issuetype,priority,updated",
+                },
+                headers=_jira_headers(jira_pat),
+            )
+            r.raise_for_status()
+            data = r.json()
+            issues = [
+                {
+                    "key": i.get("key"),
+                    "summary": (f := i.get("fields", {})).get("summary"),
                     "status": (f.get("status") or {}).get("name"),
-                    "assignee": ((f.get("assignee") or {}).get("displayName")),
                     "type": (f.get("issuetype") or {}).get("name"),
                     "priority": (f.get("priority") or {}).get("name"),
-                    "description": (f.get("description") or "")[:2000],
-                    "labels": f.get("labels", []),
-                    "created": f.get("created"),
                     "updated": f.get("updated"),
                 }
-        except httpx.HTTPStatusError as e:
-            return {"error": f"Jira returned {e.response.status_code}"}
-        except Exception as e:
-            return {"error": f"Get issue failed: {e}"}
+                for i in data.get("issues", [])
+            ]
+            return {"total": data.get("total", 0), "issues": issues, "jql": jql}
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Jira returned {e.response.status_code}: {e.response.text[:200]}"}
+    except Exception as e:
+        return {"error": f"Jira connection failed: {e}"}
 
-    elif tool_name == "generate_exec_summary":
-        # Chain: pull Jira state + blockers, format as text for LLM
-        jira_state = await _execute_tool("poll_jira", {"max_results": 10}, user_id)
-        blockers = await _execute_tool("check_blockers", {}, user_id)
-        # Format as readable text so LLM doesn't try to call more tools
-        lines = [f"Sprint: {jira_state.get('total', 0)} active issues"]
-        for i in (jira_state.get("issues") or [])[:5]:
-            lines.append(f"  • {i.get('key')} [{i.get('status')}] {i.get('summary')}")
-        lines.append(f"\nBlockers: {blockers.get('total', 0)}")
-        for i in (blockers.get("issues") or [])[:5]:
-            lines.append(f"  ⚠ {i.get('key')} [{i.get('status')}] {i.get('summary')}")
-        return {
-            "summary": "\n".join(lines),
-            "sprint_total": jira_state.get("total", 0),
-            "blockers_total": blockers.get("total", 0),
-        }
 
-    elif tool_name in ("check_blockers", "detect_blockers", "scan_risks"):
-        if not jira_pat:
-            return {"error": "No Jira PAT configured."}
-        jql = "project = JEDAI AND resolution = Unresolved AND (status = Blocked OR flagged is not EMPTY) ORDER BY priority DESC"
-        max_results = min(args.get("max_results", 10), 15)
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.get(
-                    f"{jira_base}/rest/api/2/search",
-                    params={
-                        "jql": jql,
-                        "maxResults": max_results,
-                        "fields": "summary,status,assignee,issuetype,priority,flagged",
-                    },
-                    headers={"Authorization": f"Bearer {jira_pat}", "Accept": "application/json"},
-                )
-                r.raise_for_status()
-                data = r.json()
-                issues = []
-                for i in data.get("issues", []):
-                    f = i.get("fields", {})
-                    issues.append(
-                        {
-                            "key": i.get("key"),
-                            "summary": f.get("summary"),
-                            "status": (f.get("status") or {}).get("name"),
-                            "priority": (f.get("priority") or {}).get("name"),
-                        }
-                    )
-                return {"total": data.get("total", 0), "issues": issues, "jql": jql}
-        except httpx.HTTPStatusError as e:
-            # Fallback JQL if the flagged field doesn't exist
-            if e.response.status_code == 400:
-                return await _execute_tool(
-                    "search_jira",
-                    {"jql": "assignee = currentUser() AND status = Blocked ORDER BY updated DESC"},
-                    user_id,
-                )
-            return {"error": f"Blocker check failed: {e.response.status_code}"}
-        except Exception as e:
-            return {"error": f"Blocker check failed: {e}"}
+async def _tool_search_jira(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    if not jira_pat:
+        return {"error": "No Jira PAT configured."}
+    import httpx
 
-    elif tool_name == "search_confluence":
-        # Use Disney on-prem Confluence PAT
-        confluence_pat = None
-        try:
-            from services import user_credentials as cred_svc
+    jql = args.get("jql") or ""
+    text = args.get("text") or ""
+    if not jql and text:
+        jql = f'text ~ "{text}" ORDER BY updated DESC'
+    if not jql:
+        return {"error": "Provide 'jql' or 'text' to search"}
+    max_results = min(args.get("max_results", 10), 15)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(
+                f"{_JIRA_BASE}/rest/api/2/search",
+                params={
+                    "jql": jql,
+                    "maxResults": max_results,
+                    "fields": "summary,status,assignee,issuetype,priority,updated",
+                },
+                headers=_jira_headers(jira_pat),
+            )
+            r.raise_for_status()
+            data = r.json()
+            issues = [
+                {
+                    "key": i.get("key"),
+                    "summary": (f := i.get("fields", {})).get("summary"),
+                    "status": (f.get("status") or {}).get("name"),
+                    "type": (f.get("issuetype") or {}).get("name"),
+                    "assignee": ((f.get("assignee") or {}).get("displayName")),
+                    "updated": f.get("updated"),
+                }
+                for i in data.get("issues", [])
+            ]
+            return {"total": data.get("total", 0), "issues": issues, "jql": jql}
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Jira returned {e.response.status_code}: {e.response.text[:200]}"}
+    except Exception as e:
+        return {"error": f"Jira search failed: {e}"}
 
-            store = cred_svc.get_credential_store()
-            if store:
-                for pid in ("atlassian_server_confluence", "confluence"):
-                    try:
-                        if store.has_secret(user_id, pid):
-                            confluence_pat = store.use_secret(user_id, pid, lambda s: s)
-                            break
-                    except Exception:
-                        continue
-        except Exception:
-            pass
-        if not confluence_pat:
-            return {"error": "No Confluence PAT configured."}
-        query = args.get("query", "")
-        if not query:
-            return {"error": "query is required"}
-        confluence_base = "https://mywiki.disney.com"
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.get(
-                    f"{confluence_base}/rest/api/content/search",
-                    params={"cql": f'text ~ "{query}"', "limit": args.get("max_results", 10)},
-                    headers={
-                        "Authorization": f"Bearer {confluence_pat}",
-                        "Accept": "application/json",
-                    },
-                )
-                r.raise_for_status()
-                data = r.json()
-                results = []
-                for p in data.get("results", []):
-                    results.append(
-                        {
-                            "title": p.get("title"),
-                            "id": p.get("id"),
-                            "type": p.get("type"),
-                            "url": p.get("_links", {}).get("webui"),
-                        }
-                    )
-                return {"total": data.get("size", 0), "results": results}
-        except Exception as e:
-            return {"error": f"Confluence search failed: {e}"}
 
-    elif tool_name == "save_as_action":
-        # Save as a real agent button on the Program page
-        from datetime import UTC, datetime
-        from uuid import uuid4
+async def _tool_get_issue(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    if not jira_pat:
+        return {"error": "No Jira PAT configured."}
+    import httpx
 
-        import stores
-        from models.schemas import Agent as AgentModel
-
-        agent_id = str(uuid4())[:8]
-        name = args.get("name", "Saved Action")
-        # Infer capability from conversation context
-        capability = args.get("capability", "poll_jira")
-        agent = AgentModel(
-            id=agent_id,
-            name=name,
-            description=args.get("description", "Saved from chat"),
-            status="idle",
-            model="gemini-3.5-flash",
-            capabilities=[capability],
-            primary_capability=capability,
-            primary_action_label=name,
-            created_at=datetime.now(UTC),
-            config={},
-        )
-        stores.agents[agent_id] = agent
-        return {"saved": True, "agent_id": agent_id, "name": name}
-
-    elif tool_name == "create_agent_button":
-        from datetime import UTC, datetime
-        from uuid import uuid4
-
-        import stores
-        from models.schemas import Agent as AgentModel
-
-        agent_id = str(uuid4())[:8]
-        capability = args.get("capability", "poll_jira")
-        agent = AgentModel(
-            id=agent_id,
-            name=args.get("name", "New Agent"),
-            description=args.get("description", ""),
-            status="idle",
-            model="gemini-3.5-flash",
-            capabilities=[capability],
-            primary_capability=capability,
-            primary_action_label=args.get("name", "Run"),
-            created_at=datetime.now(UTC),
-            config={"default_payload": args.get("payload", {})},
-        )
-        stores.agents[agent_id] = agent
-        return {
-            "created": True,
-            "agent": {"id": agent_id, "name": agent.name, "capability": capability},
-        }
-
-    elif tool_name == "modify_agent_button":
-        import stores
-
-        agent_id = args.get("agent_id", "")
-        if agent_id not in stores.agents:
+    issue_key = args.get("issue_key") or args.get("key") or ""
+    if not issue_key:
+        return {"error": "issue_key is required"}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(
+                f"{_JIRA_BASE}/rest/api/2/issue/{issue_key}",
+                headers=_jira_headers(jira_pat),
+            )
+            r.raise_for_status()
+            data = r.json()
+            f = data.get("fields", {})
             return {
-                "error": f"Agent '{agent_id}' not found. Use list_agent_buttons to see available IDs."
+                "key": data.get("key"),
+                "summary": f.get("summary"),
+                "status": (f.get("status") or {}).get("name"),
+                "assignee": ((f.get("assignee") or {}).get("displayName")),
+                "type": (f.get("issuetype") or {}).get("name"),
+                "priority": (f.get("priority") or {}).get("name"),
+                "description": (f.get("description") or "")[:2000],
+                "labels": f.get("labels", []),
+                "created": f.get("created"),
+                "updated": f.get("updated"),
             }
-        agent = stores.agents[agent_id]
-        updates = {}
-        if args.get("name"):
-            updates["name"] = args["name"]
-        if args.get("description"):
-            updates["description"] = args["description"]
-        if args.get("capability"):
-            updates["capabilities"] = [args["capability"]]
-            updates["primary_capability"] = args["capability"]
-        if hasattr(agent, "model_copy"):
-            agent = agent.model_copy(update=updates)
+    except httpx.HTTPStatusError as e:
+        return {"error": f"Jira returned {e.response.status_code}"}
+    except Exception as e:
+        return {"error": f"Get issue failed: {e}"}
+
+
+async def _tool_generate_exec_summary(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    # Chain: pull Jira state + blockers, format as text for LLM
+    jira_state = await _execute_tool("poll_jira", {"max_results": 10}, user_id)
+    blockers = await _execute_tool("check_blockers", {}, user_id)
+    # Format as readable text so LLM doesn't try to call more tools
+    lines = [f"Sprint: {jira_state.get('total', 0)} active issues"]
+    for i in (jira_state.get("issues") or [])[:5]:
+        lines.append(f"  • {i.get('key')} [{i.get('status')}] {i.get('summary')}")
+    lines.append(f"\nBlockers: {blockers.get('total', 0)}")
+    for i in (blockers.get("issues") or [])[:5]:
+        lines.append(f"  ⚠ {i.get('key')} [{i.get('status')}] {i.get('summary')}")
+    return {
+        "summary": "\n".join(lines),
+        "sprint_total": jira_state.get("total", 0),
+        "blockers_total": blockers.get("total", 0),
+    }
+
+
+async def _tool_check_blockers(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    if not jira_pat:
+        return {"error": "No Jira PAT configured."}
+    import httpx
+
+    jql = (
+        "project = JEDAI AND resolution = Unresolved AND "
+        "(status = Blocked OR flagged is not EMPTY) ORDER BY priority DESC"
+    )
+    max_results = min(args.get("max_results", 10), 15)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(
+                f"{_JIRA_BASE}/rest/api/2/search",
+                params={
+                    "jql": jql,
+                    "maxResults": max_results,
+                    "fields": "summary,status,assignee,issuetype,priority,flagged",
+                },
+                headers=_jira_headers(jira_pat),
+            )
+            r.raise_for_status()
+            data = r.json()
+            issues = [
+                {
+                    "key": i.get("key"),
+                    "summary": (f := i.get("fields", {})).get("summary"),
+                    "status": (f.get("status") or {}).get("name"),
+                    "priority": (f.get("priority") or {}).get("name"),
+                }
+                for i in data.get("issues", [])
+            ]
+            return {"total": data.get("total", 0), "issues": issues, "jql": jql}
+    except httpx.HTTPStatusError as e:
+        # Fallback JQL if the flagged field doesn't exist
+        if e.response.status_code == 400:
+            return await _execute_tool(
+                "search_jira",
+                {"jql": "assignee = currentUser() AND status = Blocked ORDER BY updated DESC"},
+                user_id,
+            )
+        return {"error": f"Blocker check failed: {e.response.status_code}"}
+    except Exception as e:
+        return {"error": f"Blocker check failed: {e}"}
+
+
+def _get_confluence_pat(user_id: str) -> str | None:
+    try:
+        from services import user_credentials as cred_svc
+
+        store = cred_svc.get_credential_store()
+        if not store:
+            return None
+        for pid in ("atlassian_server_confluence", "confluence"):
+            try:
+                if store.has_secret(user_id, pid):
+                    return store.use_secret(user_id, pid, lambda s: s)
+            except Exception:
+                continue
+    except Exception:
+        return None
+    return None
+
+
+async def _tool_search_confluence(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    confluence_pat = _get_confluence_pat(user_id)
+    if not confluence_pat:
+        return {"error": "No Confluence PAT configured."}
+    query = args.get("query", "")
+    if not query:
+        return {"error": "query is required"}
+    import httpx
+
+    confluence_base = "https://mywiki.disney.com"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(
+                f"{confluence_base}/rest/api/content/search",
+                params={"cql": f'text ~ "{query}"', "limit": args.get("max_results", 10)},
+                headers={"Authorization": f"Bearer {confluence_pat}", "Accept": "application/json"},
+            )
+            r.raise_for_status()
+            data = r.json()
+            results = [
+                {
+                    "title": p.get("title"),
+                    "id": p.get("id"),
+                    "type": p.get("type"),
+                    "url": p.get("_links", {}).get("webui"),
+                }
+                for p in data.get("results", [])
+            ]
+            return {"total": data.get("size", 0), "results": results}
+    except Exception as e:
+        return {"error": f"Confluence search failed: {e}"}
+
+
+async def _tool_save_as_action(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    # Save as a real agent button on the Program page
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    import stores
+    from models.schemas import Agent as AgentModel
+
+    agent_id = str(uuid4())[:8]
+    name = args.get("name", "Saved Action")
+    # Infer capability from conversation context
+    capability = args.get("capability", "poll_jira")
+    stores.agents[agent_id] = AgentModel(
+        id=agent_id,
+        name=name,
+        description=args.get("description", "Saved from chat"),
+        status="idle",
+        model="gemini-3.5-flash",
+        capabilities=[capability],
+        primary_capability=capability,
+        primary_action_label=name,
+        created_at=datetime.now(UTC),
+        config={},
+    )
+    return {"saved": True, "agent_id": agent_id, "name": name}
+
+
+async def _tool_create_agent_button(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    from datetime import UTC, datetime
+    from uuid import uuid4
+
+    import stores
+    from models.schemas import Agent as AgentModel
+
+    agent_id = str(uuid4())[:8]
+    capability = args.get("capability", "poll_jira")
+    agent = AgentModel(
+        id=agent_id,
+        name=args.get("name", "New Agent"),
+        description=args.get("description", ""),
+        status="idle",
+        model="gemini-3.5-flash",
+        capabilities=[capability],
+        primary_capability=capability,
+        primary_action_label=args.get("name", "Run"),
+        created_at=datetime.now(UTC),
+        config={"default_payload": args.get("payload", {})},
+    )
+    stores.agents[agent_id] = agent
+    return {
+        "created": True,
+        "agent": {"id": agent_id, "name": agent.name, "capability": capability},
+    }
+
+
+async def _tool_modify_agent_button(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    import stores
+
+    agent_id = args.get("agent_id", "")
+    if agent_id not in stores.agents:
+        return {
+            "error": f"Agent '{agent_id}' not found. Use list_agent_buttons to see available IDs."
+        }
+    agent = stores.agents[agent_id]
+    updates = {}
+    if args.get("name"):
+        updates["name"] = args["name"]
+    if args.get("description"):
+        updates["description"] = args["description"]
+    if args.get("capability"):
+        updates["capabilities"] = [args["capability"]]
+        updates["primary_capability"] = args["capability"]
+    if hasattr(agent, "model_copy"):
+        agent = agent.model_copy(update=updates)
+    else:
+        for k, v in updates.items():
+            if isinstance(agent, dict):
+                agent[k] = v
+    stores.agents[agent_id] = agent
+    return {"modified": True, "agent_id": agent_id, "updates": updates}
+
+
+async def _tool_remove_agent_button(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    import stores
+
+    agent_id = args.get("agent_id", "")
+    if agent_id not in stores.agents:
+        return {"error": f"Agent '{agent_id}' not found."}
+    removed = stores.agents.pop(agent_id)
+    return {"removed": True, "agent_id": agent_id, "name": removed.get("name", "")}
+
+
+async def _tool_list_agent_buttons(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    import stores
+
+    agents = []
+    for aid, a in stores.agents.items():
+        if isinstance(a, dict):
+            agents.append(
+                {"id": aid, "name": a.get("name"), "capabilities": a.get("capabilities", [])}
+            )
         else:
-            for k, v in updates.items():
-                if isinstance(agent, dict):
-                    agent[k] = v
-        stores.agents[agent_id] = agent
-        return {"modified": True, "agent_id": agent_id, "updates": updates}
+            agents.append(
+                {
+                    "id": aid,
+                    "name": getattr(a, "name", "?"),
+                    "capabilities": getattr(a, "capabilities", []),
+                }
+            )
+    return {"agents": agents}
 
-    elif tool_name == "remove_agent_button":
-        import stores
 
-        agent_id = args.get("agent_id", "")
-        if agent_id not in stores.agents:
-            return {"error": f"Agent '{agent_id}' not found."}
-        removed = stores.agents.pop(agent_id)
-        return {"removed": True, "agent_id": agent_id, "name": removed.get("name", "")}
+# Tool name (and aliases) → handler. Unknown tools fall back to poll_jira.
+_TOOL_HANDLERS: dict[str, Any] = {
+    "poll_jira": _tool_poll_jira,
+    "fetch_program_state": _tool_poll_jira,
+    "search_jira": _tool_search_jira,
+    "get_issue": _tool_get_issue,
+    "get_jira_issue": _tool_get_issue,
+    "generate_exec_summary": _tool_generate_exec_summary,
+    "check_blockers": _tool_check_blockers,
+    "detect_blockers": _tool_check_blockers,
+    "scan_risks": _tool_check_blockers,
+    "search_confluence": _tool_search_confluence,
+    "save_as_action": _tool_save_as_action,
+    "create_agent_button": _tool_create_agent_button,
+    "modify_agent_button": _tool_modify_agent_button,
+    "remove_agent_button": _tool_remove_agent_button,
+    "list_agent_buttons": _tool_list_agent_buttons,
+}
 
-    elif tool_name == "list_agent_buttons":
-        import stores
 
-        agents = []
-        for aid, a in stores.agents.items():
-            if isinstance(a, dict):
-                agents.append(
-                    {"id": aid, "name": a.get("name"), "capabilities": a.get("capabilities", [])}
-                )
-            else:
-                agents.append(
-                    {
-                        "id": aid,
-                        "name": getattr(a, "name", "?"),
-                        "capabilities": getattr(a, "capabilities", []),
-                    }
-                )
-        return {"agents": agents}
-
-    return await _execute_tool(
-        "poll_jira", args, user_id
-    )  # fallback: unknown tools default to poll_jira
+async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> dict[str, Any]:
+    """Execute a PM tool for real. No stubs. Calls Jira REST API directly."""
+    jira_pat = _get_jira_pat(user_id)
+    handler = _TOOL_HANDLERS.get(tool_name, _tool_poll_jira)
+    return await handler(args, user_id, jira_pat)
 
 
 async def run_chat_completion(
@@ -695,38 +753,40 @@ async def run_chat_completion(
     choice = (final_out.get("choices") or [{}])[0]
     content = choice.get("message", {}).get("content")
     if not content:
-        # Format tool results as readable bullet points
-        import json as _json
-
-        tool_results = [m.get("content", "") for m in messages if m.get("role") == "tool"]
-        lines = []
-        for tr in tool_results[-2:]:
-            try:
-                d = _json.loads(tr)
-                for issue in (d.get("issues") or [])[:10]:
-                    lines.append(
-                        f"• **{issue.get('key')}** [{issue.get('status')}] {issue.get('summary')}"
-                    )
-                total = d.get("total", 0)
-                if total:
-                    lines.insert(0, f"**{total} issues** (showing first {min(total, 10)})\n")
-            except Exception:
-                pass
-        content = (
-            "\n".join(lines)
-            if lines
-            else "Request completed but no summary was generated. Try asking a more specific question."
-        )
-        if lines:
-            content += (
-                "\n\n---\n**Summary:** "
-                + f"{len(lines) - 1} issues shown. Use chat to drill into specific items or ask follow-up questions."
-            )
+        synth = _synthesize_fallback_content(messages)
         final_out = {
-            "choices": [{"message": {"role": "assistant", "content": content}}],
+            "choices": [{"message": {"role": "assistant", "content": synth}}],
             "model": model,
         }
     return final_out
+
+
+def _synthesize_fallback_content(messages: list[dict[str, Any]]) -> str:
+    """Format the most recent tool results as readable bullet points for the user."""
+    tool_results = [m.get("content", "") for m in messages if m.get("role") == "tool"]
+    lines: list[str] = []
+    for tr in tool_results[-2:]:
+        try:
+            d = json.loads(tr)
+        except Exception:
+            continue
+        for issue in (d.get("issues") or [])[:10]:
+            lines.append(f"• **{issue.get('key')}** [{issue.get('status')}] {issue.get('summary')}")
+        total = d.get("total", 0)
+        if total:
+            lines.insert(0, f"**{total} issues** (showing first {min(total, 10)})\n")
+
+    if not lines:
+        return (
+            "Request completed but no summary was generated. Try asking a more specific question."
+        )
+    content = "\n".join(lines)
+    content += (
+        "\n\n---\n**Summary:** "
+        + f"{len(lines) - 1} issues shown. Use chat to drill into specific items "
+        "or ask follow-up questions."
+    )
+    return content
 
 
 async def run_chat_completion_streaming(

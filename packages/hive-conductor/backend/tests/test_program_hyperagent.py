@@ -20,7 +20,7 @@ from __future__ import annotations
 import pathlib
 import sys
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from fastapi import HTTPException
@@ -232,7 +232,7 @@ async def test_run_program_pulse_submits_autonomous_action(
         agent_id = "agent-1"
         capability = "auto_capability"
         reason = "because"
-        payload: dict[str, Any] = {}
+        payload: ClassVar[dict[str, Any]] = {}
 
         def as_dict(self) -> dict[str, Any]:
             return {"agent_id": self.agent_id, "capability": self.capability}
@@ -280,7 +280,7 @@ async def test_run_program_pulse_submit_failure_swallowed(
         agent_id = "a"
         capability = "c"
         reason = "r"
-        payload: dict[str, Any] = {}
+        payload: ClassVar[dict[str, Any]] = {}
 
         def as_dict(self) -> dict[str, Any]:
             return {"a": "x"}
@@ -318,7 +318,7 @@ async def test_run_program_pulse_skips_non_autonomous_actions(
         agent_id = "a"
         capability = "needs_human"
         reason = "r"
-        payload: dict[str, Any] = {}
+        payload: ClassVar[dict[str, Any]] = {}
 
         def as_dict(self) -> dict[str, Any]:
             return {}

@@ -172,9 +172,28 @@ def _seed_if_empty() -> None:
 
     if is_pm_poc_mode():
         return
+    _seed_missions()
+    _seed_mission_steps()
+    _seed_schedules()
+    _seed_skills()
+    _seed_agents()
+    _seed_mcp_servers()
+    _seed_mcp_tools()
+    _seed_containers()
+    _seed_memory_entries_a()
+    _seed_dags()
+    _seed_messages()
+    _seed_audit_log()
+    _seed_memory_entries_b()
+
+
+def _seed_missions() -> None:
     if len(missions) == 0:
         missions["m-1"] = _mission("m-1", "Deploy canary", "running", 0.6)
         missions["m-2"] = _mission("m-2", "Backfill embeddings", "pending", 0.0)
+
+
+def _seed_mission_steps() -> None:
     if len(mission_steps) == 0:
         t = now()
         mission_steps["m-1"] = [
@@ -205,6 +224,9 @@ def _seed_if_empty() -> None:
                 error=None,
             ),
         ]
+
+
+def _seed_schedules() -> None:
     if len(schedules) == 0:
         t = now()
         schedules["sch-1"] = Schedule(
@@ -219,6 +241,9 @@ def _seed_if_empty() -> None:
             created_at=t,
             updated_at=t,
         )
+
+
+def _seed_skills() -> None:
     if len(skills) == 0:
         skills["sk-1"] = Skill(
             id="sk-1",
@@ -234,6 +259,9 @@ def _seed_if_empty() -> None:
             tags=["network"],
             parameters=[{"name": "url", "type": "string", "required": True}],
         )
+
+
+def _seed_agents() -> None:
     if len(agents) == 0:
         t = now()
         _real_agents = [
@@ -355,6 +383,9 @@ def _seed_if_empty() -> None:
                 created_at=t,
                 config=_config,
             )
+
+
+def _seed_mcp_servers() -> None:
     if len(mcp_servers) == 0:
         t = now()
         mcp_servers["mcp-1"] = MCPServer(
@@ -368,6 +399,9 @@ def _seed_if_empty() -> None:
             version="0.4.0",
             capabilities=["tools"],
         )
+
+
+def _seed_mcp_tools() -> None:
     if len(mcp_tools) == 0:
         mcp_tools["t-1"] = MCPTool(
             id="t-1",
@@ -377,6 +411,9 @@ def _seed_if_empty() -> None:
             input_schema={"type": "object", "properties": {"path": {"type": "string"}}},
             category="fs",
         )
+
+
+def _seed_containers() -> None:
     if len(containers) == 0:
         t = now()
         containers["c-1"] = Container(
@@ -394,8 +431,15 @@ def _seed_if_empty() -> None:
             started_at=t,
             labels={"app": "hive"},
         )
-    if len(memory_entries) == 0:
-        t = now()
+
+
+def _seed_memory_entries_a() -> None:
+    # No-op placeholder retained from the original seed flow; memory_entries are
+    # seeded later by _seed_memory_entries_b.
+    return
+
+
+def _seed_dags() -> None:
     if len(dags) == 0:
         from routes.dags import DAGEdge, DAGFile, DAGNode
 
@@ -426,6 +470,9 @@ def _seed_if_empty() -> None:
             created_at=t,
             updated_at=t,
         ).model_dump(mode="json")
+
+
+def _seed_messages() -> None:
     if len(messages) == 0:
         from routes.messages import Message
 
@@ -466,6 +513,9 @@ def _seed_if_empty() -> None:
             category="quota",
             created_at=t,
         ).model_dump(mode="json")
+
+
+def _seed_audit_log() -> None:
     if len(audit_log) == 0:
         from routes.audit import AuditEntry
 
@@ -487,6 +537,9 @@ def _seed_if_empty() -> None:
                 severity=severity,
                 created_at=t,
             ).model_dump(mode="json")
+
+
+def _seed_memory_entries_b() -> None:
     if len(memory_entries) == 0:
         t = now()
         memory_entries["mem-1"] = MemoryEntry(

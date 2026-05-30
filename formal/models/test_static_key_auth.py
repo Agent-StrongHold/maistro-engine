@@ -29,7 +29,7 @@ class StaticKeyMachine(RuleBasedStateMachine):
     )
     def try_authenticate(self, token):
         try:
-            ctx = asyncio.run(self.provider.authenticate(f"Bearer {token}", headers={}))
+            asyncio.run(self.provider.authenticate(f"Bearer {token}", headers={}))
             assert token == API_KEY
         except ValueError:
             assert token != API_KEY

@@ -149,8 +149,8 @@ def _composite(
 ) -> list[float]:
     costs = norm_cost or [0.0] * len(success_rates)
     return [
-        round(W_SUCCESS * s + W_LATENCY * l + W_THUMB * t + W_COST * c, 4)
-        for s, l, t, c in zip(success_rates, norm_latency, norm_thumb_down, costs, strict=False)
+        round(W_SUCCESS * s + W_LATENCY * lat + W_THUMB * t + W_COST * c, 4)
+        for s, lat, t, c in zip(success_rates, norm_latency, norm_thumb_down, costs, strict=False)
     ]
 
 
@@ -202,9 +202,9 @@ def compare_variants(
         return {"dag_id": dag_id, "group_by": group_by, "variants": [], "winner": ""}
 
     labels = list(buckets.keys())
-    success_rates = [buckets[l].success_rate for l in labels]
-    p95s = [float(buckets[l].p95_latency) for l in labels]
-    thumbs_down = [buckets[l].thumb_down_rate for l in labels]
+    success_rates = [buckets[label].success_rate for label in labels]
+    p95s = [float(buckets[label].p95_latency) for label in labels]
+    thumbs_down = [buckets[label].thumb_down_rate for label in labels]
 
     norm_lat = _normalize(p95s, invert=True)
     norm_thumb = _normalize(thumbs_down, invert=True)

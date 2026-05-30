@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class InvertedPyramid(RubricEval):
     department = "press_releases"
     eval_name = "inverted_pyramid"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "lead_has_who_what",
             "weight": 25,
@@ -39,7 +40,7 @@ class InvertedPyramid(RubricEval):
 class QuoteQuality(RubricEval):
     department = "press_releases"
     eval_name = "quote_quality"
-    criteria = [
+    criteria: ClassVar = [
         {"name": "has_quotes", "weight": 30, "check": lambda o, c: o.count('"') >= 4},
         {
             "name": "attributed",
@@ -66,7 +67,7 @@ class QuoteQuality(RubricEval):
 class FactualAccuracy(RubricEval):
     department = "press_releases"
     eval_name = "factual_accuracy"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "specific_numbers",
             "weight": 25,
@@ -102,7 +103,7 @@ class FactualAccuracy(RubricEval):
 class APStyle(RubricEval):
     department = "press_releases"
     eval_name = "ap_style"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "dateline",
             "weight": 25,
@@ -123,7 +124,7 @@ class APStyle(RubricEval):
 class Newsworthiness(RubricEval):
     department = "press_releases"
     eval_name = "newsworthiness"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "timeliness",
             "weight": 25,

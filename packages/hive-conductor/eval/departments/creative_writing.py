@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -23,7 +24,7 @@ _BAD_WORDS = {
 class AgeAppropriateness(RubricEval):
     department = "creative_writing"
     eval_name = "age_appropriateness"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "no_inappropriate",
             "weight": 40,
@@ -54,7 +55,7 @@ class AgeAppropriateness(RubricEval):
 class StoryArc(RubricEval):
     department = "creative_writing"
     eval_name = "story_arc"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_beginning",
             "weight": 20,
@@ -90,7 +91,7 @@ class StoryArc(RubricEval):
 class CharacterConsistency(RubricEval):
     department = "creative_writing"
     eval_name = "character_consistency"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "named_character",
             "weight": 25,
@@ -123,7 +124,7 @@ class CharacterConsistency(RubricEval):
 class WordCount(RubricEval):
     department = "creative_writing"
     eval_name = "word_count"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "meets_minimum",
             "weight": 40,
@@ -145,11 +146,11 @@ class WordCount(RubricEval):
 class ReadAloudQuality(RubricEval):
     department = "creative_writing"
     eval_name = "read_aloud_quality"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "varied_sentence_length",
             "weight": 25,
-            "check": lambda o, c: len(set(len(s.split()) for s in o.split("."))) >= 3,
+            "check": lambda o, c: len({len(s.split()) for s in o.split(".")}) >= 3,
         },
         {
             "name": "dialogue_present",

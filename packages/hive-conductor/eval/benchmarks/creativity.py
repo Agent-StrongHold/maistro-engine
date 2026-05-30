@@ -35,8 +35,8 @@ class EvalResult:
 
 
 def _count_items(text: str) -> list[str]:
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    items = [l for l in lines if re.match(r"^[\d\-\*\•]", l) or len(l) > 10]
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    items = [line for line in lines if re.match(r"^[\d\-\*\•]", line) or len(line) > 10]
     return items if items else lines
 
 
@@ -53,9 +53,9 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_prompts: int = 3
         fluency = min(30, len(items) * 6)
 
         # Flexibility: how many distinct first words (proxy for categories)
-        first_words = set(
+        first_words = {
             item.split()[1] if len(item.split()) > 1 else item.split()[0] for item in items
-        )
+        }
         flexibility = min(30, len(first_words) * 8)
 
         # Originality: how many items are NOT in common answers

@@ -43,7 +43,7 @@ class RegisterBody(BaseModel):
     def validate_username(cls, value: str) -> str:
         name = value.strip()
         if not _USERNAME_RE.match(name):
-            msg = "Username must be 3–32 characters (letters, numbers, underscore, hyphen)."
+            msg = "Username must be 3-32 characters (letters, numbers, underscore, hyphen)."
             raise ValueError(msg)
         return name
 

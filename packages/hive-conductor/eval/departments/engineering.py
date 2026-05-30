@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import ClassVar
 
 from eval.departments import RubricEval
 
@@ -10,7 +11,7 @@ from eval.departments import RubricEval
 class TestsPass(RubricEval):
     department = "engineering"
     eval_name = "tests_pass"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_test_code",
             "weight": 25,
@@ -43,7 +44,7 @@ class TestsPass(RubricEval):
 class Coverage(RubricEval):
     department = "engineering"
     eval_name = "coverage"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "tests_all_functions",
             "weight": 30,
@@ -68,7 +69,7 @@ class Coverage(RubricEval):
 class Security(RubricEval):
     department = "engineering"
     eval_name = "security"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "input_validation",
             "weight": 25,
@@ -101,7 +102,7 @@ class Security(RubricEval):
 class StyleMatch(RubricEval):
     department = "engineering"
     eval_name = "style_match"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "has_docstrings",
             "weight": 30,
@@ -117,7 +118,7 @@ class StyleMatch(RubricEval):
         {
             "name": "reasonable_length",
             "weight": 20,
-            "check": lambda o, c: all(len(l) <= 120 for l in o.split("\n") if l.strip()),
+            "check": lambda o, c: all(len(ln) <= 120 for ln in o.split("\n") if ln.strip()),
         },
         {
             "name": "consistent_naming",
@@ -132,12 +133,12 @@ class StyleMatch(RubricEval):
 class ReviewScore(RubricEval):
     department = "engineering"
     eval_name = "review_score"
-    criteria = [
+    criteria: ClassVar = [
         {
             "name": "readable",
             "weight": 25,
             "check": lambda o, c: any(
-                l.strip().startswith("#") or l.strip().startswith("//") for l in o.split("\n")
+                ln.strip().startswith("#") or ln.strip().startswith("//") for ln in o.split("\n")
             ),
         },
         {

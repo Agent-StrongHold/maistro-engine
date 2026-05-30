@@ -168,8 +168,6 @@ async def hill_climb_params(
     """Test parameter variations, return any that beat baseline."""
     import asyncio
 
-    results = []
-
     async def test_param(param: str, value: float) -> dict[str, Any]:
         variant = copy.deepcopy(dag_data)
         for n in variant.get("nodes", []):
@@ -231,7 +229,6 @@ def _filter_above_knee(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     # Estimate cost from model (rough $/1M tokens)
     MODEL_COST = {
         "gemini-3.1-flash-lite": 0.02,
-        "gemini-3.5-flash": 0.20,
         "gemini-3.5-flash": 0.15,
         "gemini-3.5-pro": 1.25,
         "gpt-4.1-nano": 0.05,
@@ -324,7 +321,6 @@ async def hill_climb_models(
     # Pareto-optimal selection: best quality/cost/latency composite
     MODEL_COST = {
         "gemini-3.1-flash-lite": 0.02,
-        "gemini-3.5-flash": 0.20,
         "gemini-3.5-flash": 0.15,
         "gemini-3.5-pro": 1.25,
         "gpt-4.1-nano": 0.05,
