@@ -62,13 +62,16 @@ class CapabilityRegistry:
             self._slot(slot).enabled = enabled
 
     def is_enabled(self, slot: str) -> bool:
-        return self._slot(slot).enabled
+        with self._lock:
+            return self._slot(slot).enabled
 
     def installed(self, slot: str) -> list[str]:
-        return list(self._slot(slot).providers.keys())
+        with self._lock:
+            return list(self._slot(slot).providers.keys())
 
     def active_name(self, slot: str) -> str | None:
-        return self._slot(slot).active
+        with self._lock:
+            return self._slot(slot).active
 
     async def resolve(self, slot: str) -> CapabilityProvider | None:
         """Resolve the provider to use, or None to apply the slot's fallback.
@@ -108,8 +111,16 @@ class CapabilityRegistry:
         return chosen
 
     def validate_boot(self) -> None:
-        """Raise if any HARD_REQUIRED slot has no provider to resolve."""
+        """Raise if any HARD_REQUIRED slot cannot be satisfied at boot.
+
+        Checks presence (a provider is installed) and that the slot is enabled.
+        NOTE: provider *health* is async and is enforced at resolve() time, not here.
+        """
         with self._lock:
             for name, state in self._slots.items():
-                if state.spec.fallback_policy is FallbackPolicy.HARD_REQUIRED and not state.providers:
+                if state.spec.fallback_policy is not FallbackPolicy.HARD_REQUIRED:
+                    continue
+                if not state.providers:
                     raise RuntimeError(f"hard_required slot '{name}' has no provider")
+                if not state.enabled:
+                    raise RuntimeError(f"hard_required slot '{name}' is disabled")
