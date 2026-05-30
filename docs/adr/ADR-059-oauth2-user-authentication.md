@@ -11,7 +11,7 @@ implements: []
 related:
   - maistro-engine#ADR-019
   - maistro-engine#ADR-020
-  - maistro-engine#ADR-044
+  - maistro-engine#ADR-064
   - maistro-engine#SPEC-014
 supersedes: []
 blocks: []
@@ -138,7 +138,7 @@ class IdentityLinkStore(Protocol):
 - `maistro-engine:packages/maistro-core/src/maistro/vault.py` — age-encrypted token storage.
 - ADR-020 setup wizard ("OAuth-first where possible").
 - ADR-024 DID/VC (`HiveUser.did`; future session VCs).
-- ADR-044 secret redaction (`gho_*`, JWT, OAuth callback).
+- ADR-064 secret redaction (`gho_*`, JWT, OAuth callback).
 - SPEC-014 LiteLLM provider OAuth (distinct flow — provider credentials, not user login).
 - ADR-019 governance — product-agnostic, no `org_id`.
 

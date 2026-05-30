@@ -1,4 +1,25 @@
-# ADR-045: Test harness with full wiring factory
+---
+id: ADR-065
+title: Test harness with full wiring factory
+repo: maistro-engine
+kind: adr
+status: Proposed
+created: 2026-05-20
+substrate: []
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-065: Test harness with full wiring factory
 
 **Status:** Proposed
 **Date:** 2026-05-20

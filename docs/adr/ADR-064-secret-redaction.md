@@ -1,4 +1,25 @@
-# ADR-044: Comprehensive Secret Redaction
+---
+id: ADR-064
+title: Comprehensive Secret Redaction
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-05-20
+substrate: []
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
+# ADR-064: Comprehensive Secret Redaction
 
 **Status:** Accepted
 **Date:** 2026-05-20
@@ -183,7 +204,7 @@ redaction by mutating `os.environ`.
    through `redact()` before rendering.
 2. **Error messages** — `AgentError` and `MaistroError` pass their `detail` string
    through `redact()` in `__str__`.
-3. **Trajectory recordings** — the graph executor (ADR-042) calls `redact()` on the
+3. **Trajectory recordings** — the graph executor (ADR-062) calls `redact()` on the
    `NodeRun.to_result()` output before persisting.
 
 These are three separate integration points, not part of this ADR's implementation

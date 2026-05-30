@@ -1,3 +1,25 @@
+---
+id: ADR-013
+title: "Memory types — Learning, EpisodicMemory, Outcome, scopes, tiers"
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-002
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Memory
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-013: Memory types — Learning, EpisodicMemory, Outcome, scopes, tiers
 
 **Status:** Accepted  

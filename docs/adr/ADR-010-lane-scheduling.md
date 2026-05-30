@@ -1,3 +1,25 @@
+---
+id: ADR-010
+title: Lane-based scheduling (LIVE vs BACKGROUND)
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-004
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Orchestration
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-010: Lane-based scheduling (LIVE vs BACKGROUND)
 
 **Status:** Accepted  
