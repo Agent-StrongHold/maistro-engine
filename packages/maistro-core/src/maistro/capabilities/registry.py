@@ -8,7 +8,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from maistro.capabilities.types import SlotSpec
+from maistro.capabilities.types import FallbackPolicy, SlotSpec
 
 if TYPE_CHECKING:
     from maistro.capabilities.protocols import CapabilityProvider
@@ -69,3 +69,47 @@ class CapabilityRegistry:
 
     def active_name(self, slot: str) -> str | None:
         return self._slot(slot).active
+
+    async def resolve(self, slot: str) -> CapabilityProvider | None:
+        """Resolve the provider to use, or None to apply the slot's fallback.
+
+        disabled → fallback; else active (or first by trust tier); healthcheck;
+        unhealthy → fallback. Fallback = baseline provider (if policy BASELINE) else None.
+        """
+        with self._lock:
+            state = self._slot(slot)
+            spec = state.spec
+            enabled = state.enabled
+            chosen_name = state.active
+            providers = dict(state.providers)
+
+        def _baseline() -> CapabilityProvider | None:
+            if spec.fallback_policy is FallbackPolicy.BASELINE and spec.baseline_provider:
+                return providers.get(spec.baseline_provider)
+            return None
+
+        if not enabled:
+            return _baseline()
+
+        if chosen_name is None:
+            candidates = sorted(providers.values(), key=lambda p: p.trust_tier)
+            chosen = candidates[0] if candidates else None
+        else:
+            chosen = providers.get(chosen_name)
+
+        if chosen is None:
+            return _baseline()
+
+        health = await chosen.healthcheck()
+        if not health.healthy:
+            logger.warning("Provider %s unhealthy for slot %s: %s", chosen.name, slot, health.detail)
+            fb = _baseline()
+            return fb if (fb is not None and fb.name != chosen.name) else None
+        return chosen
+
+    def validate_boot(self) -> None:
+        """Raise if any HARD_REQUIRED slot has no provider to resolve."""
+        with self._lock:
+            for name, state in self._slots.items():
+                if state.spec.fallback_policy is FallbackPolicy.HARD_REQUIRED and not state.providers:
+                    raise RuntimeError(f"hard_required slot '{name}' has no provider")
