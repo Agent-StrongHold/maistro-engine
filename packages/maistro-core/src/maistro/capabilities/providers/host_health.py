@@ -112,7 +112,11 @@ class HostHealthAction:
         return ("HOST_HEALTH_URL", "HOST_HEALTH_TOKEN")
 
     async def healthcheck(self) -> ProviderHealth:
-        return ProviderHealth(healthy=True)
+        try:
+            await self._http.get_json("/health")
+            return ProviderHealth(healthy=True)
+        except Exception as exc:
+            return ProviderHealth(healthy=False, detail=str(exc))
 
     def allowed_actions(self) -> tuple[str, ...]:
         return _ALLOWED

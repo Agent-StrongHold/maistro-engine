@@ -51,7 +51,8 @@ class InboxApproval:
         await pending.event.wait()
         decision = pending.decision
         self._pending.pop(req.request_id, None)
-        assert decision is not None  # set before event fired
+        if decision is None:  # pragma: no cover - decision is always set before event fires
+            raise RuntimeError("approval resolved without a decision")
         return decision
 
     # --- UI/CLI/API surface ---

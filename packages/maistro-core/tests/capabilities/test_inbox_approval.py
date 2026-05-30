@@ -23,7 +23,7 @@ async def test_request_blocks_until_resolved():
 async def test_deny():
     inbox = InboxApproval()
     req = ApprovalRequest(action="docker_prune", params={}, tier="destructive", requester="op")
-    asyncio.get_event_loop().call_soon(lambda: inbox.resolve(req.request_id, approved=False, actor="blake"))
+    asyncio.get_running_loop().call_soon(lambda: inbox.resolve(req.request_id, approved=False, actor="blake"))
     decision = await inbox.request(req)
     assert decision.approved is False
 
