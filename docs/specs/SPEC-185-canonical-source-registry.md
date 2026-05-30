@@ -257,6 +257,19 @@ Real-time markets, live sports (mostly), products/commerce pricing, real estate,
 (lyrics, streaming catalogs) have **no keyless canonical** — the data is the vendor's business. These
 stay `marketplace_vertical` keyed/opt-in, or fall back to the opt-in keyed general-web provider.
 
+**General web search** has no clean canonical (you cannot rebuild Google). The general-web fallback
+`web_search` provider is filled by one of these **opt-in** options:
+- **SearXNG (self-hosted)** — a meta-search aggregator the operator runs themselves. Offered as an
+  opt-in provider **for those who want it**, tagged **`license: AGPL-3.0` / self-host-only /
+  do-not-bundle**: mAIstro calls it over HTTP (arm's-length — no AGPL obligation on mAIstro) but never
+  ships or modifies it. Reliability is best-effort (it scrapes upstream engines). The operator already
+  runs one at `10.10.21.104:8888` (85 engines) that can fill this slot directly.
+- **Tavily / Exa** — keyed metered APIs with clean, LLM-ready results.
+- **`llm_native_search` models** — Perplexity Sonar, Gemini Google-Search grounding, OpenRouter
+  `:online`, xAI Grok live search: search **and** synthesis in one call (a "smart search" — reasoned,
+  cited answer, not raw links). `billing_model` metered/subscription; the SPEC-186 L1 answer cache
+  means each such smart-search is paid for once then served free.
+
 ## Acceptance criteria
 
 - [ ] A `CapabilitySource` Protocol exists (per the contract above), `mypy --strict` clean; it is a
