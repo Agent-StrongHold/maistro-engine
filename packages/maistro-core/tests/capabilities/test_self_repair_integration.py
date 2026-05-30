@@ -33,11 +33,15 @@ class _Monitor:
     async def snapshot(self) -> InfraHealth:
         return InfraHealth(
             ts="t",
-            resources={"docker": ResourceHealth("down", {"stacks": [{"project": "media", "status": "down"}]})},
+            resources={"docker": ResourceHealth(
+                "degraded", {"containers": [{"name": "litellm", "state": "unhealthy"}]}
+            )},
         )
 
 
-async def test_destructive_remediation_blocks_until_approved_then_hits_host() -> None:
+async def test_remediation_blocks_until_approved_then_hits_host() -> None:
+    # Under approve_all even a reversible restart is gated; it parks pending
+    # approval and only hits the host once resolved.
     sent: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -46,8 +50,8 @@ async def test_destructive_remediation_blocks_until_approved_then_hits_host() ->
 
     http = HttpxAsyncHttp("http://h:8150", transport=httpx.MockTransport(handler))
     inbox = InboxApproval()
-    action = HostHealthAction(http, autonomy="auto_safe", approval=inbox)
-    repair = RuleBasedRepair(infra_monitor=_Monitor(), infra_action=action, autonomy="auto_safe")
+    action = HostHealthAction(http, autonomy="approve_all", approval=inbox)
+    repair = RuleBasedRepair(infra_monitor=_Monitor(), infra_action=action, autonomy="approve_all")
 
     cycle = await repair.run_once()
     (r,) = cycle.results
@@ -58,13 +62,12 @@ async def test_destructive_remediation_blocks_until_approved_then_hits_host() ->
     assert sent == []
     pending = inbox.pending()
     assert len(pending) == 1
-    assert pending[0].action == "restart_stack"
-    assert pending[0].tier == "destructive"
+    assert pending[0].action == "restart_container"
 
     # Approve through the inbox → the host action now fires.
     assert inbox.resolve(pending[0].request_id, approved=True, actor="tester") is True
     await asyncio.gather(*list(repair._tasks))  # noqa: SLF001
-    assert sent == ["/action/restart_stack"]
+    assert sent == ["/action/restart_container"]
 
 
 async def test_denied_remediation_never_hits_host() -> None:
@@ -74,8 +77,8 @@ async def test_denied_remediation_never_hits_host() -> None:
         transport=httpx.MockTransport(lambda r: (sent.append(r.url.path), httpx.Response(200, json={}))[1]),
     )
     inbox = InboxApproval()
-    action = HostHealthAction(http, autonomy="auto_safe", approval=inbox)
-    repair = RuleBasedRepair(infra_monitor=_Monitor(), infra_action=action, autonomy="auto_safe")
+    action = HostHealthAction(http, autonomy="approve_all", approval=inbox)
+    repair = RuleBasedRepair(infra_monitor=_Monitor(), infra_action=action, autonomy="approve_all")
 
     await repair.run_once()
     await asyncio.sleep(0)
