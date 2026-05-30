@@ -11,24 +11,18 @@ code but no ADR, plus (c) second-order decisions the recent ADRs opened.
 
 ## Legend
 
-| Mark | Meaning |
-|------|---------|
-| ✍️ | **DRAFTED** — ADR written (PR open) |
-| ✅ | **DECIDED** — answer banked in the design session; ADR not yet written |
-| ☐ | **OPEN** — needs a decision |
-| ⏸ | **DEFERRED** — explicit non-goal / v2.0+ (recorded so it isn't re-litigated) |
-| 🏰 | **STRONGHOLD** — decision is that the engine does *not* own this; it's Stronghold's scope |
+Status per item:
+- ☐ **open** — needs a decision
+- ✅ **decided** — answer banked (ADR pending) or drafted; the PR is noted inline
 
-> "🏰 Stronghold" is a real decision (per ADR-019/068 scope split), not an omission. Engine ships
-> protocols/hooks where useful; the policy/enforcement lives in Stronghold.
-
-`(←ADR-NNN)` marks an item the named ADR explicitly deferred.
+Dispositions that are *not* engine decisions (Stronghold / Turing / deferred-to-vN / no-opinion) live
+in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR explicitly deferred.
 
 ---
 
 ## Status snapshot
 
-- ✍️ **Drafted (PRs #76–81):** renumber+backfill · ADR-068 unified authz · consistency fixes ·
+- **Drafted (PRs #76–81):** renumber+backfill · ADR-068 unified authz · consistency fixes ·
   ADR-026 immutable CA · ADR-069 code registry · supersede ADR-030 · open-Q closures ·
   ADR-070 Repertoire pattern · ADR-071 task planner/orchestration.
 - ✅ **Banked, ADR pending:** Warden/Sentinel+threat-model · web/session · config-mgmt · skills
@@ -54,6 +48,30 @@ code but no ADR, plus (c) second-order decisions the recent ADRs opened.
   actually computed/enforced (←ADR-068, ADR-058).
 - ☐ **Authz-decision audit format** — fields, tamper-evidence (←ADR-068).
 - ☐ **RLPHD predictor SPEC** — model class, features, θ update rule, cold-start (←ADR-068 follow-up SPEC).
+
+### Governance dialectic — Policy ⇄ ADR deconfliction
+- ✅ **Policy⇄ADR deconfliction-loop ADR** *(decided 2026-05-30)* — the learning policy engine
+  (Warden/Sentinel adaptive weights + RLPHD) = *revealed preference*; ADRs = *declared intent*. When a
+  learned-policy change conflicts with an ADR (or N deployed artifacts), it **never auto-activates** —
+  held (fail-safe, ADR stays source of truth) → admin review with impact analysis (which ADR clause,
+  which N artifacts, the evidence behind the learning). Three outcomes: **revert the learning** (ADR
+  wins; teaches predictor down), **scoped exception** (coexist; waiver + expiry), **amend ADR + reconcile
+  the N artifacts** (learning wins; PR to the ADR + fix conflicts). Direction gated by ADR centrality:
+  **safety-critical ADRs don't bend** — a drift against them is a **policy-poisoning signal** → security
+  review, default revert (this is the threat-anchor immune system). **The conflict-check IS the Repertoire
+  *Rehearse* step (ADR-070):** a learned change is a *Compose*; it must *Rehearse* against ADR invariants +
+  deployed contracts before commit. All outcomes audited as VCs (ADR-024/068). *Closes a real hole in
+  decision #7 / ADR-068 / ADR-070: online-mutable + adaptive policy could silently drift from the ADRs
+  with no reconciliation path.* Requires ADRs to carry machine-checkable invariants (ADR-032 tie-in).
+- ☐ **Policy-conformance SPEC** *(required by the deconfliction ADR)* — the comparison engine. A
+  candidate policy decision is checked against authorities in **strict precedence order, stopping at
+  the first conflict**: **(1) ADRs** → **(2) Specs** → **(3) prior policy decisions**. The hierarchy is
+  legal: ADRs = constitution (near-inviolable; safety ADRs do not bend), Specs = statutes (derived from
+  ADRs; usually win, amendable only if the parent ADR allows), prior policy = case-law precedent (a new
+  decision may supersede old precedent with recorded rationale — this is how the learned policy evolves).
+  The SPEC defines how each layer's invariants are expressed + checked, what "conflict" means per layer,
+  and the routing into the ADR's three outcomes. Needs ADRs + Specs to carry machine-checkable invariants
+  (ADR-031/032) and the prior-policy store to be queryable (the DB policy store, decision #7).
 
 ### Web / session / client-auth
 - ✅ **Web-session security ADR** — opaque server-side session (live privilege re-resolution, instant
@@ -87,9 +105,9 @@ code but no ADR, plus (c) second-order decisions the recent ADRs opened.
 ## Tier 2 — production readiness
 
 ### Orchestration & agents
-- ✍️ **Planner/orchestration** — ADR-071 (SuperPlanner+MasterOrchestrator as Repertoire ensemble:
-  template-match → MCTS/ToT → Pregel supersteps + Borg reconciler + speculative exec).
-- ✍️ **Repertoire pattern** — ADR-070 (cross-cutting reuse-first cascade).
+- ✅ **Planner/orchestration** — ADR-071, drafted PR #81 (SuperPlanner+MasterOrchestrator as Repertoire
+  ensemble: template-match → MCTS/ToT → Pregel supersteps + Borg reconciler + speculative exec).
+- ✅ **Repertoire pattern** — ADR-070, drafted PR #81 (cross-cutting reuse-first cascade).
 - ☐ **Builders pipeline ADR** — the Frank/Mason/Auditor stage machine (spec→tests→code→audit),
   runtime-version lifecycle (ready/draining/retired), Quartermaster spec-emission + template store.
   *Code-only; only ADR-032 (contracts) touches it. A Repertoire instance.*
@@ -122,7 +140,7 @@ code but no ADR, plus (c) second-order decisions the recent ADRs opened.
 
 ### Quota / billing / rate-limiting
 - ☐ **Cost attribution + quota policy ADR** — per-user/agent/task spend; rate-limiting/throttling.
-- 🏰 **Billing / invoicing / metering** — Stronghold (multi-tenant commercial).
+- **Billing / invoicing / metering** — Stronghold (multi-tenant commercial).
 
 ---
 
@@ -136,7 +154,7 @@ code but no ADR, plus (c) second-order decisions the recent ADRs opened.
 - ☐ **Cross-scope memory sharing & consent** — promotion (user→team→org), read-authority, cross-agent
   discovery (←ADR-057 covers write authority only).
 - ☐ **Memory-v2 design** (←ADR-034).
-- ✅ **Data lifecycle (engine side) = basic delete only**; 🏰 retention/RTBF/residency/audit-integrity/
+- ✅ **Data lifecycle (engine side) = basic delete only**;  retention/RTBF/residency/audit-integrity/
   compliance → Stronghold.
 - ☐ **maistro-evolve** — ✅ experimental, no stability contract (intended: genome=recipe, fitness=
   outcomes, one-way→registry). ADR marks it experimental.
@@ -156,14 +174,14 @@ code but no ADR, plus (c) second-order decisions the recent ADRs opened.
 - ☐ **Account recovery + key-compromise + offboarding ADR** — lost-seed recovery, admin-signed
   device re-enroll, offboard revokes sessions/VCs, SLIP39 multi-admin.
 - ☐ **DID method choice** — did:key vs did:web defaults, Universal Resolver (←ADR-024 deferred).
-- ⏸ On-chain DID methods, DIDComm v2 transport — Medley/v2 (←ADR-024/027).
+- On-chain DID methods, DIDComm v2 transport — Medley/v2 (←ADR-024/027).
 
 ### Canvas (product)
 - ☐ **Canvas pipeline ADR(s)** — image-gen pipeline, streaming/SSE generation progress, parallel
   render, pagination, skill-marketplace integration (←ADR-042/043).
 - ☐ **Lulu print / PDF-X fulfilment** (←ADR-041).
 - ☐ **Book-maker product** — wizard UX, templates, export formats, collaboration.
-- ⏸ Cross-tenant asset sharing → 🏰 Stronghold (←ADR-041/044/045).
+- Cross-tenant asset sharing →  Stronghold (←ADR-041/044/045).
 
 ### Governance / testing / release
 - ☐ **Testing-strategy ADR** — coverage targets, mutation-kill, property-based, formal-conformance,
@@ -172,7 +190,7 @@ code but no ADR, plus (c) second-order decisions the recent ADRs opened.
 - ☐ **Changelog / release-notes / deprecation-policy ADR** (changelog = 0).
 - ☐ **Incident response / runbooks ADR.**
 - ☐ **Error taxonomy + user-facing messages.**
-- ⏸ i18n / a11y / mobile-PWA — product-UX, later.
+- i18n / a11y / mobile-PWA — product-UX, later.
 
 ---
 
@@ -205,16 +223,16 @@ Turing ADRs, not folded into the general engine corpus.* (Code exists; **zero** 
 ## Not in this backlog — see `OUT-OF-SCOPE.md`
 
 Dispositions that are *settled as not-our-call* live in **`OUT-OF-SCOPE.md`**, not here:
-- 🏰 **Stronghold scope** — multi-tenant isolation, RTBF/retention/residency/audit-integrity/compliance,
+- **Stronghold scope** — multi-tenant isolation, RTBF/retention/residency/audit-integrity/compliance,
   policy-engine choice, multi-region, cross-tenant sharing, billing.
-- 🔭 **Deferred to v1/v2/v3** — ontology facets/query-language, semantic session search, canvas
+- **Deferred to v1/v2/v3** — ontology facets/query-language, semantic session search, canvas
   pagination/streaming, substrate CA distribution, scheduler multi-replica, inbound messaging, etc.
-- ⚪ **No opinion** — tooling choices, dashboard layouts, channel selection, per-product SLO numbers.
-- 🧠 **Turing scope** — the autonoetic ADRs above are tracked here but are out of the *general engine*
+- **No opinion** — tooling choices, dashboard layouts, channel selection, per-product SLO numbers.
+- **Turing scope** — the autonoetic ADRs above are tracked here but are out of the *general engine*
   corpus (Turing's own set).
 
 This backlog is the source of truth for **in-scope, still-open** engine decisions only.
 
 ---
 
-*Maintenance: check items off as ADRs land; move ✅→✍️ when drafted, ✍️→done when merged.*
+*Maintenance: check items off as ADRs land; move ✅→ when drafted, →done when merged.*

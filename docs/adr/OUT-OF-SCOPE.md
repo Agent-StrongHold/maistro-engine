@@ -8,16 +8,16 @@ Companion docs: **`ADR-INDEX.md`** (in-scope, decided) · **`DECISION-BACKLOG.md
 
 | Bucket | Meaning |
 |--------|---------|
-| ⚪ **No opinion** | The engine deliberately takes no position; left to the consumer / product / operator / implementer. |
-| 🏰 **Stronghold scope** | Owned by the Stronghold product, not maistro-core. Engine may ship a protocol/hook; the policy lives there. |
-| 🧠 **Turing scope** | Owned by Turing's **own ADR set** (`packages/maistro-turing/`). Out of the *general engine corpus*, not out of the repo. |
-| 🔭 **Deferred to v1/v2/v3** | We *will* decide — scheduled for a later version. Punted on purpose, not forgotten. |
+| **No opinion** | The engine deliberately takes no position; left to the consumer / product / operator / implementer. |
+| **Stronghold scope** | Owned by the Stronghold product, not maistro-core. Engine may ship a protocol/hook; the policy lives there. |
+| **Turing scope** | Owned by Turing's **own ADR set** (`packages/maistro-turing/`). Out of the *general engine corpus*, not out of the repo. |
+| **Deferred to v1/v2/v3** | We *will* decide — scheduled for a later version. Punted on purpose, not forgotten. |
 
 `(←ADR-NNN)` = where the disposition was first recorded.
 
 ---
 
-## ⚪ No opinion — engine declines; left to the consumer/product
+## No opinion — engine declines; left to the consumer/product
 
 - Specific YAML linter / CI runner choice (←ADR-031, "implementation detail").
 - Pact / contract-test tooling choice (`pact-python` vs hand-rolled) (←ADR-032).
@@ -32,7 +32,7 @@ Companion docs: **`ADR-INDEX.md`** (in-scope, decided) · **`DECISION-BACKLOG.md
 
 ---
 
-## 🏰 Stronghold scope — owned by the Stronghold product
+## Stronghold scope — owned by the Stronghold product
 
 - Multi-tenant **`tenant` hard isolation**; tenant-scoped cutover / migration sequencing (←ADR-019/041/044/045).
 - **Data RTBF / retention / residency / audit-log integrity / compliance mapping** (SOC2 / GDPR / EU-AI-Act / OWASP Agentic Top-10). *Engine ships only basic delete; the policy is Stronghold's* (user decision 2026-05-30).
@@ -47,7 +47,7 @@ Companion docs: **`ADR-INDEX.md`** (in-scope, decided) · **`DECISION-BACKLOG.md
 
 ---
 
-## 🧠 Turing scope — Turing's own ADR set (`packages/maistro-turing/`)
+## Turing scope — Turing's own ADR set (`packages/maistro-turing/`)
 
 The autonoetic self-model is product-specific (per ADR-030's "Turing-only" boundary, now in-repo).
 These get **Turing ADRs**, not general-engine ADRs — out of *this* corpus, tracked in
@@ -62,7 +62,7 @@ These get **Turing ADRs**, not general-engine ADRs — out of *this* corpus, tra
 
 ---
 
-## 🔭 Deferred to v1 / v2 / v3 — scheduled, punted on purpose
+## Deferred to v1 / v2 / v3 — scheduled, punted on purpose
 
 **v2.0**
 - Ontology **Kinetic + Dynamic facets**; ontology **graph-query / traversal language** (←ADR-036).
@@ -85,7 +85,7 @@ These get **Turing ADRs**, not general-engine ADRs — out of *this* corpus, tra
 
 ---
 
-## ❓ Questions raised — no decision yet
+## Questions raised — no decision yet
 
 These are **in-scope and open** — not deferred, not declined; we just haven't decided. The full,
 prioritized list lives in **`DECISION-BACKLOG.md`**. Tier-1 headlines:
