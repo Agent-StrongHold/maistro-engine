@@ -40,6 +40,14 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
     "types-PyYAML>=6.0",
+    # Third-party libs imported by package source (identity, warden, canvas) but
+    # not pulled by the root `uv sync` — needed so `uv run mypy`/`uv run pytest`
+    # resolve them in CI (otherwise import-not-found). Match runtime versions.
+    "bip-utils>=2.9",
+    "pynacl>=1.5",
+    "regex>=2024.5.15",
+    "types-regex>=2024.5.15",
+    "pillow>=11.0",
 ]
 browser = ["playwright>=1.49"]
 scheduling = ["apscheduler>=3.11"]
@@ -110,6 +118,12 @@ pythonpath = [
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+
+# `maistro.models.*` lives in the hive-conductor app (not on the mypy src path
+# for the package type-check); treat its imports as missing rather than erroring.
+[[tool.mypy.overrides]]
+module = ["maistro.models.*"]
+ignore_missing_imports = true
 
 [tool.uv.sources]
 maistro-bootstrap = { path = "packages/maistro-bootstrap", editable = true }
