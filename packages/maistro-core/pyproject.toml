@@ -17,6 +17,9 @@ dependencies = [
     "argon2-cffi>=23.1",
 ]
 
+[project.scripts]
+maistro = "maistro.cli:main"
+
 [project.optional-dependencies]
 llm = [
     "litellm>=1.60",

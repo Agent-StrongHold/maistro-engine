@@ -29,6 +29,7 @@ from maistro.types.errors import ConfigError
 
 if TYPE_CHECKING:
     from maistro.agents.base import Agent
+    from maistro.capabilities.registry import CapabilityRegistry
     from maistro.protocols.memory import LearningStore, OutcomeStore, SessionStore
     from maistro.protocols.quota import QuotaTracker
     from maistro.security.sentinel.audit import AuditLog
@@ -54,6 +55,7 @@ class Container:
     sentinel: Sentinel
     context_builder: ContextBuilder
     intent_registry: IntentRegistry
+    capabilities: CapabilityRegistry = None  # type: ignore[assignment]  # wired in create_container
     agents: dict[str, Agent] = field(default_factory=dict)
     audit_log: AuditLog | None = None
     conduit: Any = None
@@ -64,6 +66,10 @@ class Container:
             from maistro.conduit import Conduit as ConduitPipeline
 
             self.conduit = ConduitPipeline(self)
+        if self.capabilities is None:
+            from maistro.capabilities.bootstrap import default_capability_registry
+
+            self.capabilities = default_capability_registry()
 
     async def route_request(
         self,
@@ -113,6 +119,10 @@ async def create_container(config: AgentConfig) -> Container:
         audit_log=audit_log,
     )
 
+    from maistro.capabilities.bootstrap import default_capability_registry
+
+    capabilities = default_capability_registry()
+
     container = Container(
         config=config,
         router=router,
@@ -127,6 +137,7 @@ async def create_container(config: AgentConfig) -> Container:
         sentinel=sentinel,
         context_builder=context_builder,
         intent_registry=intent_registry,
+        capabilities=capabilities,
         audit_log=audit_log,
     )
 

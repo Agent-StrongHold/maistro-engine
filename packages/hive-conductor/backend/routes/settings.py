@@ -6,7 +6,7 @@ import httpx
 import stores
 from config import get_settings
 from fastapi import APIRouter
-from models.schemas import SettingsModel
+from models.schemas import CapabilitySetting, SettingsModel
 from pydantic import BaseModel, ConfigDict
 
 from routes.audit import log_audit
@@ -43,13 +43,19 @@ class PatchSettingsBody(BaseModel):
     auto_save_sessions: bool | None = None
     telemetry_enabled: bool | None = None
     log_level: str | None = None
+    capabilities: dict[str, CapabilitySetting] | None = None
 
 
 @router.patch("", response_model=SettingsModel)
 def patch_settings(body: PatchSettingsBody) -> SettingsModel:
     updates = body.model_dump(exclude_none=True)
+    # model_copy(update=...) skips validation, so keep nested models as instances
+    # (not the dicts model_dump produced) — otherwise capabilities is stored as
+    # plain dicts and downstream readers (the bridge) break.
+    if body.capabilities is not None:
+        updates["capabilities"] = body.capabilities
     stores.settings = stores.settings.model_copy(update=updates)
-    log_audit("settings_patch", "system", detail=updates)
+    log_audit("settings_patch", "system", detail=body.model_dump(exclude_none=True))
     return stores.settings
 
 
