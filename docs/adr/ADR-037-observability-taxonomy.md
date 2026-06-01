@@ -55,6 +55,15 @@ Every public engine entry point creates a span. Engine code that adds a public f
 
 ### Required metrics
 
+> **Ownership model (metrics & events).** ADR-037 owns the observability **substrate** — the
+> naming convention (`maistro_*` metrics; dot-namespaced `<domain>.<entity>` event topics, see
+> below), the emission primitives, and this registry contract. It does **not** enumerate every
+> metric. Downstream ADRs **declare** their own metrics/events *conforming to this contract*:
+> ADR-038 (`maistro_circuit_state`, `maistro_slo_remaining_budget_seconds`, `circuit.state_change`),
+> ADR-050 (`maistro_tool_reversibility_count`, `tool.compensator_invoked`), ADR-051
+> (`approval.gate.*`), ADR-054 (`maistro_sandbox_provision_duration_seconds`). The list below is
+> the engine-core **baseline**, not the exhaustive inventory.
+
 Engine ships these out of the box; products inherit via the Copier templates (ADR-033):
 
 - `maistro_llm_tokens_total` — counter; labels: `model`, `service_key`, `direction=in|out`

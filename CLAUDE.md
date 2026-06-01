@@ -175,7 +175,7 @@ print('OK')
 4. **Scoring formula.** `quality^(qw*p) / cost^cw` with scarcity-based cost and task-type speed bonuses.
 5. **Memory must forget.** Decay without reinforcement, weight floors for wisdom/regrets.
 6. **All input is untrusted.** Warden scans at every trust boundary. Sentinel validates tool calls.
-7. **No org_id in maistro-core.** Multi-tenant isolation is Stronghold-specific. Scope isolation (global → team → user → agent → session) is kept.
+7. **Scope axes in core; hard tenancy in Stronghold (ADR-068).** maistro-core keeps the *soft* scope axes `global → org → team → user → agent → session` (a user may be in multiple teams/orgs). Only the *hard* `tenant` boundary — fully segmented, one tenant per user — is Stronghold-specific. (Supersedes the older "no org_id in core" shorthand, which conflated scope with tenancy.)
 8. **The canvas ability is standalone.** `maistro-canvas` needs no Conductor or Stronghold; the book-maker POC frontend imports it and runs on a mini-PC with a P40 image-gen server.
 
 ---

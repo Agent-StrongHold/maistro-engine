@@ -73,6 +73,21 @@ Properties:
 
 Short-lived (90-day), auto-rotated, covering all conductor-served hostnames (dashboard, DID document, message board, Lightning endpoint, Electrum port).
 
+### Root CA is immutable; only leaves rotate
+
+The **root CA is immutable** for the life of the seed: `HKDF(seed, "maistro-tls-ca-v1", instance)`
+has a fixed salt, so `restore seed → identical root CA`, and the install ceremony (below) is a
+one-time act per device. **Routine rotation is leaf-only** (the 90-day re-issue above); the root
+key never changes under normal operation. This is what makes "the seed backs up everything"
+true — a device that trusted the root once keeps trusting it across conductor reinstalls.
+
+**Device compromise** revokes *that device's* leaf cert + install VC; the root is untouched, so
+every other device is unaffected. **Root compromise** is the rare emergency: there is no in-place
+root rotation (it would silently invalidate every installed trust anchor and break "seed = CA").
+Recovery is a deliberate ceremony — provision a **new instance identity** (new seed, or a bumped
+`info=instance_name`), then re-run the trust install on every device. The `salt` is a versioned
+constant (`-v1`); a future `-v2` is a one-way migration, never an automatic rotation.
+
 ### TLS modes (operator choice)
 
 | Mode | Behavior |
@@ -90,7 +105,8 @@ QR-code-based one-time install URL at `/trust/<token>`:
 2. Detects platform, presents right install path
 3. Per-platform matrix (macOS, Windows, Linux, iOS, Android)
 4. Install ceremony recorded as a Verifiable Credential (ADR-024)
-5. Device compromise → VC revoked from dashboard → CA rotated
+5. Device compromise → that device's leaf cert + install VC revoked from dashboard. The **root
+   CA is NOT rotated** (see "Root CA is immutable") — only the compromised device loses trust.
 
 ### DID anchoring
 
@@ -117,7 +133,9 @@ class LocalCA:
     def get_ca_cert_pem(self) -> str: ...
     def issue_leaf(self, hostnames: list[str]) -> str: ...  # returns leaf PEM
     def get_ca_fingerprint(self) -> str: ...
-    def rotate(self) -> None: ...  # advances HKDF salt
+    def rotate_leaves(self) -> None: ...  # re-issue 90-day leaf certs; root CA unchanged
+    # No rotate_root(): the root is immutable from the seed. Root compromise → new instance
+    # identity + re-run the trust ceremony (see "Root CA is immutable").
 
 class TrustInstaller:
     def generate_install_url(self, ttl_hours: int = 24) -> str: ...
@@ -127,7 +145,10 @@ class TrustInstaller:
 
 ## Acceptance criteria
 
-- [ ] CA derived deterministically from seed; same seed → same CA across reinstalls
+- [ ] CA derived deterministically from seed; same seed → same root CA across reinstalls
+- [ ] Root CA is immutable: no API rotates the root in place; `rotate_leaves()` re-issues leaves only
+- [ ] Device compromise revokes only that device's leaf + VC; other devices' trust is unaffected
+- [ ] Root rotation requires a new instance identity (new seed or bumped `instance_name`/salt `-v2`) + re-ceremony
 - [ ] CA cert includes Name Constraints restricting issuance to conductor's hostnames
 - [ ] Leaf certs auto-rotated at 90-day intervals
 - [ ] QR install ceremony works on macOS/Windows/Linux/iOS/Android browsers
