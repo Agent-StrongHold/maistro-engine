@@ -330,7 +330,7 @@ async def _persist_agent_record(
     """Upsert a built-in agent identity into the Postgres registry (best-effort)."""
     try:
         # maistro.models lives in the hive-conductor app (no py.typed); owned elsewhere.
-        from maistro.models.agent import AgentRecord  # type: ignore[import-untyped]
+        from maistro.models.agent import AgentRecord
 
         record = AgentRecord(
             name=identity.name,
