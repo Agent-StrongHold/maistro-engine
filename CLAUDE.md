@@ -8,7 +8,7 @@
 
 ## Architecture
 
-Monorepo with 6 packages + the hive-conductor app. The canonical shared runtime that powers Agent Conductor, Agent Stronghold, and Canvas Studio.
+Monorepo with 7 packages + the hive-conductor app. The canonical shared runtime that powers Agent Conductor, Agent Stronghold, and Canvas Studio.
 
 ```
 packages/
@@ -17,6 +17,7 @@ packages/
 ├── maistro-server/    # FastAPI app (replaces conductor-router)
 ├── maistro-turing/    # Autonoetic self-model extensions
 ├── maistro-evolve/    # Elo tournament optimizer for agent self-improvement
+├── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check for docs
 ├── hive-conductor/    # Agent Conductor app (FastAPI backend + React frontend)
 └── maistro-bootstrap/ # Bootstrap stub (WIP)
 ```
@@ -31,7 +32,7 @@ maistro-engine (this repo)
   └─→ Canvas Studio (standalone book builder) — maistro-canvas + P40 image gen server
 ```
 
-**ADR-019** defines the canonical source split: maistro-core = shared runtime, Stronghold = multi-tenant only. 43 ADRs total (ADR-000–ADR-042); notable recent ones: ADR-036 (ontology), ADR-038 (reliability), ADR-042 (graph execution protocol).
+**ADR-019** defines the canonical source split: maistro-core = shared runtime, Stronghold = multi-tenant only. 64 ADRs (ADR-000 through ADR-057; see docs/adr/ for the current set); notable: ADR-036 (ontology), ADR-038 (reliability), ADR-042 (graph execution protocol), ADR-057 (memory exposure mode).
 
 ### Naming convention
 
@@ -69,6 +70,15 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Identity** | `maistro.identity` | Identity management |
 | **Scheduling** | `maistro.scheduling` | Scheduling (distinct from the scheduler/ placeholder) |
 | **Prompts** | `maistro.prompts` | Prompt templates |
+| **Capabilities** | `maistro.capabilities` | Slots, providers, registry, discovery; self-repair governor (SPEC-184/188) |
+| **Credentials** | `maistro.credentials` | Per-user encrypted credentials for PM integrations |
+| **Projects** | `maistro.projects` | Per-user / team-shared project workspaces |
+| **Testing** | `maistro.testing` | Shared test utilities / fixtures |
+| **Privilege** | `maistro.privilege` | Admin / user1 two-tier privilege separation (SPEC-012) |
+| **Vault** | `maistro.vault` | age-encrypted secrets vault (SPEC-011) |
+| **Reactor** | `maistro.reactor` | 1kHz event-driven reactor loop (SPEC-013) |
+| **State** | `maistro.state` | SQLite singleton-writer invariant (SPEC-010) |
+| **CLI** | `maistro.cli` | `maistro` command — thin client of the hive-conductor API |
 
 ### maistro-canvas (standalone book builder)
 
@@ -113,10 +123,10 @@ pip install -e packages/maistro-turing
 pip install -e packages/maistro-canvas
 pip install -e packages/maistro-evolve
 
-# Run core tests (~375 tests)
+# Run core tests
 PYTHONPATH=packages/maistro-core/src pytest packages/maistro-core/tests/ -q
 
-# Run all package tests (~525 total; maistro-turing has no tests yet)
+# Run all package tests (maistro-turing has no tests yet)
 PYTHONPATH=packages/maistro-core/src:packages/maistro-canvas/src:packages/maistro-turing/src \
   pytest packages/maistro-core/tests packages/maistro-server/tests \
   packages/maistro-canvas/tests packages/maistro-evolve/tests -q
@@ -180,8 +190,18 @@ maistro-engine/
 │   │       ├── builders/        # contracts, runtime, orchestrator, spec, verifier
 │   │       ├── classifier/      # engine, keyword, llm_fallback, complexity
 │   │       ├── config/          # settings, loader
+│   │       ├── capabilities/    # slots, providers, registry; self-repair (SPEC-184/188)
+│   │       ├── credentials/     # per-user encrypted PM-integration creds
+│   │       ├── projects/        # per-user / team project workspaces
+│   │       ├── testing/         # shared test utilities
 │   │       ├── conduit.py       # Request pipeline
 │   │       ├── container.py     # DI wiring
+│   │       ├── cli.py           # `maistro` CLI (thin client of hive-conductor API)
+│   │       ├── constants.py     # named constants
+│   │       ├── privilege.py     # admin/user1 privilege separation (SPEC-012)
+│   │       ├── vault.py         # age-encrypted secrets vault (SPEC-011)
+│   │       ├── reactor.py       # 1kHz reactor loop (SPEC-013)
+│   │       ├── state.py         # SQLite singleton writer (SPEC-010)
 │   │       ├── events/          # bus, handlers, recipes
 │   │       ├── integrations/    # HA, CoinSwarm, Turing bridges
 │   │       ├── memory/          # learnings, episodic, scopes, outcomes
@@ -233,6 +253,8 @@ maistro-engine/
 │   │   ├── pyproject.toml
 │   │   └── src/maistro_evolve/  # Elo tournament optimizer (crossover, mutate, fitness, harness)
 │   │
+│   ├── maistro-registry/        # ADR/spec registry CLI (parser, validator, linker, dag, schema)
+│   │
 │   └── hive-conductor/          # Agent Conductor app (no pyproject.toml — requirements.txt)
 │       ├── backend/             # FastAPI app
 │       │   ├── main.py          # Entrypoint + route registration
@@ -245,7 +267,9 @@ maistro-engine/
 │       └── frontend/            # React SPA
 │
 ├── formal/                      # Property-based conformance tests (Hypothesis); separate CI flow
-├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-042)
+├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-057)
+├── docs/specs/                  # SPEC-NNN design specs (e.g. SPEC-184 capabilities, SPEC-188 self-repair)
+├── specs/                       # Topical spec notes (channels, conductor, infra, intelligence, security, tools)
 ├── src/maistro/                 # Old layout (agent spec/spawner/recipes + model pricing)
 └── pyproject.toml               # uv workspace root (uv.lock is source of truth)
 ```
