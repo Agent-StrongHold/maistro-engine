@@ -44,7 +44,10 @@ def _wire_self_repair():
         if request.url.path == "/full":
             return httpx.Response(200, json={
                 "timestamp": "t",
-                "docker": {"containers": [{"name": "litellm", "status": "down"}]},
+                "docker": {
+                    "unhealthy": ["litellm"],
+                    "containers": [{"name": "litellm", "status": "Up 2h (unhealthy)", "healthy": False}],
+                },
             })
         return httpx.Response(200, json={"status": "ok", "detail": "done"})
 

@@ -63,17 +63,100 @@ class HostHealthMonitor:
             )
         return InfraHealth(
             ts=str(data.get("timestamp", "")),
-            resources={
-                s: ResourceHealth(status="ok", detail=_as_dict(data.get(s)))
-                for s in _SECTIONS
-            },
+            resources={s: _NORMALIZERS[s](_as_dict(data.get(s))) for s in _SECTIONS},
         )
 
 
-def _as_dict(value: object) -> dict[str, object]:
+def _as_dict(value: object) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {"value": value}
+
+
+# --- /full normalization: the host API's raw shape → a stable contract -------
+#
+# This is the anti-corruption layer between the host-health API's command-output
+# shapes and the contract self_repair's diagnosis reads. It also encodes the host
+# author's remediation policy via per-container state: only `unhealthy` (Up but
+# healthcheck failing) is an auto-remediation candidate; `restarting`
+# (crash-looping) needs a human, not another kick; `stopped` is intentional.
+
+_CONTAINER_OK = "healthy"
+
+
+def _norm_docker(raw: dict[str, Any]) -> ResourceHealth:
+    if str(raw.get("status", "")).lower() == "error":
+        return ResourceHealth(status="down", detail={"error": str(raw.get("detail", ""))})
+    unhealthy = {str(n) for n in raw.get("unhealthy", []) if isinstance(raw.get("unhealthy"), list)}
+    restarting = {str(n) for n in raw.get("restarting", []) if isinstance(raw.get("restarting"), list)}
+    stopped = {str(n) for n in raw.get("stopped", []) if isinstance(raw.get("stopped"), list)}
+    names = [str(c.get("name", "")) for c in raw.get("containers", []) if isinstance(c, dict)]
+    # If only buckets were provided, derive names from them.
+    names = names or sorted(unhealthy | restarting | stopped)
+
+    containers = []
+    for name in names:
+        if name in unhealthy:
+            state = "unhealthy"
+        elif name in restarting:
+            state = "restarting"
+        elif name in stopped:
+            state = "stopped"
+        else:
+            state = _CONTAINER_OK
+        containers.append({"name": name, "state": state})
+
+    # Degraded only when there is something actionable/abnormal (unhealthy or
+    # crash-looping). `stopped` alone is intentional absence, not degradation.
+    degraded = bool(unhealthy or restarting)
+    return ResourceHealth(status="degraded" if degraded else "ok", detail={"containers": containers})
+
+
+def _norm_services(raw: dict[str, Any]) -> ResourceHealth:
+    systemd = raw.get("systemd")
+    units = (
+        [{"name": str(u), "status": str(s)} for u, s in systemd.items()]
+        if isinstance(systemd, dict)
+        else []
+    )
+    degraded = any(u["status"].lower() == "failed" for u in units)
+    return ResourceHealth(status="degraded" if degraded else "ok", detail={"units": units})
+
+
+def _norm_storage(raw: dict[str, Any]) -> ResourceHealth:
+    zpool = str(raw.get("zpool", ""))
+    healthy = "healthy" in zpool.lower() and "ERROR" not in zpool
+    if not zpool:  # nothing reported → assume ok, no pool to act on
+        healthy = True
+    pools = [{"name": "vmpool", "healthy": healthy, "detail": zpool}] if zpool else []
+    return ResourceHealth(status="ok" if healthy else "degraded", detail={"pools": pools})
+
+
+def _norm_vms(raw: dict[str, Any]) -> ResourceHealth:
+    vms = raw.get("vms")
+    norm = (
+        [{"vmid": str(v.get("vmid", "")), "status": str(v.get("status", ""))}
+         for v in vms if isinstance(v, dict)]
+        if isinstance(vms, list)
+        else []
+    )
+    # No expected-state signal in /full → never auto-degrade (a stopped VM may be
+    # intentional). VMs are observed, not auto-remediated, in v1.
+    return ResourceHealth(status="ok", detail={"vms": norm})
+
+
+def _norm_gpu(raw: dict[str, Any]) -> ResourceHealth:
+    status = "down" if str(raw.get("status", "")).lower() == "error" else "ok"
+    return ResourceHealth(status=status, detail={"gpus": raw.get("gpus", [])})
+
+
+_NORMALIZERS = {
+    "gpu": _norm_gpu,
+    "storage": _norm_storage,
+    "docker": _norm_docker,
+    "vms": _norm_vms,
+    "services": _norm_services,
+}
 
 
 _ALLOWED = (
