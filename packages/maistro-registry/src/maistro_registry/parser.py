@@ -69,8 +69,6 @@ def parse_file(path: Path | str) -> ParsedFile:
     if data is None:
         data = {}
     if not isinstance(data, dict):
-        raise ValueError(
-            f"{p}: front-matter must be a YAML mapping, got {type(data).__name__}"
-        )
+        raise ValueError(f"{p}: front-matter must be a YAML mapping, got {type(data).__name__}")
 
     return ParsedFile(path=p, front_matter=data, body=body)

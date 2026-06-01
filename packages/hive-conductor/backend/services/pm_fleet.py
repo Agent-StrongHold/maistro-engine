@@ -6,6 +6,8 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+from models.schemas import Agent
+
 from maistro.agents.pm_fleet import (
     PM_FLEET,
     agent_status_for_user,
@@ -13,7 +15,6 @@ from maistro.agents.pm_fleet import (
     fleet_card_dict,
     get_pm_def,
 )
-from models.schemas import Agent
 
 _STATUS_TO_HIVE: dict[str, str] = {
     "idle": "idle",
@@ -23,16 +24,23 @@ _STATUS_TO_HIVE: dict[str, str] = {
 
 
 def is_pm_poc_mode() -> bool:
-    return (
-        os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower() == "pm"
-    )
+    return os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower() == "pm"
 
 
 def list_pm_agents(tasks: list[Any], *, user_id: str = "") -> list[Agent]:
     now = datetime.now(UTC)
     agents: list[Agent] = []
     # Only show agents whose primary capability actually works
-    _WORKING_CAPABILITIES = {"poll_jira", "fetch_program_state", "scan_risks", "check_blockers", "detect_blockers", "search_jira", "generate_exec_summary", "search_confluence"}
+    _WORKING_CAPABILITIES = {
+        "poll_jira",
+        "fetch_program_state",
+        "scan_risks",
+        "check_blockers",
+        "detect_blockers",
+        "search_jira",
+        "generate_exec_summary",
+        "search_confluence",
+    }
     for defn in PM_FLEET:
         if defn.primary_capability not in _WORKING_CAPABILITIES:
             continue
@@ -60,18 +68,27 @@ def list_pm_agents(tasks: list[Any], *, user_id: str = "") -> list[Agent]:
         )
     # Append user-created agents from stores
     import stores as _stores
+
     for aid, a in _stores.agents.items():
         if hasattr(a, "name"):
             agents.append(a)
         elif isinstance(a, dict):
-            agents.append(Agent(
-                id=aid, name=a.get("name", "?"), description=a.get("description", ""),
-                model=a.get("model", "auto"), status="idle",
-                capabilities=a.get("capabilities", []),
-                primary_capability=a.get("capabilities", [""])[0] if a.get("capabilities") else "",
-                primary_action_label=a.get("name", "Run"),
-                created_at=now, config=a.get("config", {}),
-            ))
+            agents.append(
+                Agent(
+                    id=aid,
+                    name=a.get("name", "?"),
+                    description=a.get("description", ""),
+                    model=a.get("model", "auto"),
+                    status="idle",
+                    capabilities=a.get("capabilities", []),
+                    primary_capability=a.get("capabilities", [""])[0]
+                    if a.get("capabilities")
+                    else "",
+                    primary_action_label=a.get("name", "Run"),
+                    created_at=now,
+                    config=a.get("config", {}),
+                )
+            )
     return agents
 
 

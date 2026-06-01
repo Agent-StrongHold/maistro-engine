@@ -54,9 +54,11 @@ class TestCommandExecution:
         """Nonexistent command should return error result."""
         result = await shell.run("this_command_does_not_exist_xyz")
         assert result.returncode != 0
-        assert ("not found" in result.stderr.lower() or
-                "syntax" in result.stderr.lower() or
-                result.returncode == -1)
+        assert (
+            "not found" in result.stderr.lower()
+            or "syntax" in result.stderr.lower()
+            or result.returncode == -1
+        )
 
 
 class TestSecurityMeasures:

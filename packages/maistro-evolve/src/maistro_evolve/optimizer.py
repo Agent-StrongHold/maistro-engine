@@ -17,8 +17,7 @@ def extract_signal(
     if genome.topology.nodes:
         worst_node = min(
             genome.topology.nodes,
-            key=lambda n: genome.eval_scores.get("ifeval", 0.5)
-            if n.role == "queen" else 0.5,
+            key=lambda n: genome.eval_scores.get("ifeval", 0.5) if n.role == "queen" else 0.5,
         )
         weakest_node_id = worst_node.id
 
@@ -54,7 +53,7 @@ async def optimize_prompt(
 
     if llm_call is not None:
         try:
-            result = await llm_call(meta_prompt)
+            result: str = await llm_call(meta_prompt)
             return result
         except Exception:
             pass

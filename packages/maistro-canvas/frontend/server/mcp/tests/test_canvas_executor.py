@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
-
 from stronghold.tools.canvas_book import CanvasBookExecutor
 from stronghold.types.tool import ToolResult
 

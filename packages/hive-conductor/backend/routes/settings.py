@@ -4,7 +4,6 @@ import logging
 
 import httpx
 import stores
-from config import get_settings
 from fastapi import APIRouter
 from models.schemas import CapabilitySetting, SettingsModel
 from pydantic import BaseModel, ConfigDict
@@ -82,6 +81,7 @@ def settings_models() -> dict:
 
 def _fetch_available_models() -> list[str]:
     import os
+
     base = os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL") or ""
     key = os.environ.get("LITELLM_API_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
     if not base:
@@ -95,7 +95,7 @@ def _fetch_available_models() -> list[str]:
         resp.raise_for_status()
         data = resp.json()
         model_ids = [m.get("id", m.get("model", "")) for m in data.get("data", [])]
-        return sorted(set(m for m in model_ids if m)) or [stores.settings.default_model]
+        return sorted({m for m in model_ids if m}) or [stores.settings.default_model]
     except Exception:
         logger.debug("model list fetch failed, returning default")
         return [stores.settings.default_model]

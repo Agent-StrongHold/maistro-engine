@@ -35,8 +35,7 @@ class ModelStore:
         if self._persisted is None:
             return
         self._data = {
-            m.id: m
-            for m in self._persisted.list_all(self._store_name, self._model_class)
+            m.id: m for m in self._persisted.list_all(self._store_name, self._model_class)
         }
         logger.info(
             "ModelStore(%s) loaded %d items from SQLite",

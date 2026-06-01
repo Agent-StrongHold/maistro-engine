@@ -115,6 +115,9 @@ class FrontMatter(BaseModel):
     contracts: list[Contract] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
 
+    # Provenance: repo paths (packages/…, apps/…) this record governs/derives from.
+    source: list[str] = Field(default_factory=list)
+
     # Classification
     layer: Layer
     owners: list[str] = Field(default_factory=list)
@@ -123,9 +126,7 @@ class FrontMatter(BaseModel):
     @classmethod
     def _validate_id(cls, v: str) -> str:
         if not _is_valid_id(v):
-            raise ValueError(
-                f"id must match ^(ADR|SPEC)-NNN$, got {v!r}"
-            )
+            raise ValueError(f"id must match ^(ADR|SPEC)-NNN$, got {v!r}")
         return v
 
     @field_validator(

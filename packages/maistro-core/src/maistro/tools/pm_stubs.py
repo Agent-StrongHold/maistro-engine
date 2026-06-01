@@ -162,7 +162,9 @@ PM_STUB_HANDLERS: dict[str, Any] = {
         "summary": "Program on track; two medium risks under review.",
         "source": "stub",
     },
-    "create_initiative": lambda p: stub_create_work_item("initiative", p or {}, "create_initiative"),
+    "create_initiative": lambda p: stub_create_work_item(
+        "initiative", p or {}, "create_initiative"
+    ),
     "create_epic": lambda p: stub_create_work_item("epic", p or {}, "create_epic"),
     "create_story": lambda p: stub_create_work_item("user_story", p or {}, "create_story"),
     "create_dev_task": lambda p: stub_create_work_item("dev_task", p or {}, "create_dev_task"),

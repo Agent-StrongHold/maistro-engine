@@ -19,7 +19,6 @@ The cage is enforced at the hypervisor level, not just in Python.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import subprocess
@@ -42,7 +41,9 @@ class HyperlightExecutor:
             try:
                 result = subprocess.run(
                     [sys.executable, "-c", "import hyperlight; print(hyperlight.__version__)"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 self._available = result.returncode == 0
                 if self._available:
@@ -60,18 +61,19 @@ class HyperlightExecutor:
         memory_mb: int = 256,
     ) -> dict[str, Any]:
         """Execute code in an isolated microVM.
-        
+
         Args:
             code: Python code to execute
             env: environment variables to pass (filtered — no secrets unless explicit)
             timeout_s: max execution time
             allow_network: whether the VM can make outbound requests
             memory_mb: memory limit for the VM
-        
+
         Returns:
             {"output": str, "success": bool, "duration_ms": int, "isolation": str}
         """
         import time
+
         start = time.monotonic()
 
         if self.available:
@@ -85,25 +87,38 @@ class HyperlightExecutor:
         return result
 
     async def _run_hyperlight(
-        self, code: str, env: dict[str, str] | None, timeout_s: int, allow_network: bool, memory_mb: int
+        self,
+        code: str,
+        env: dict[str, str] | None,
+        timeout_s: int,
+        allow_network: bool,
+        memory_mb: int,
     ) -> dict[str, Any]:
         """Run in actual Hyperlight microVM."""
+        import base64
+
+        # The user code is base64-encoded and decoded at runtime — NEVER
+        # templated into the wrapper source — so triple-quotes, backslashes and
+        # newlines in the code cannot break out of the string literal and inject
+        # Python into the wrapper (RCE). Only trusted ints/bools are formatted.
+        encoded_code = base64.b64encode(code.encode("utf-8")).decode("ascii")
         # Hyperlight Python SDK pattern from microsoft/agent-framework
         script = f"""
+import base64, sys
 import hyperlight
 from hyperlight import Sandbox, SandboxConfig
 
 config = SandboxConfig(
-    memory_mb={memory_mb},
-    timeout_ms={timeout_s * 1000},
-    allow_network={allow_network},
+    memory_mb={int(memory_mb)},
+    timeout_ms={int(timeout_s) * 1000},
+    allow_network={bool(allow_network)},
 )
 
+_user_code = base64.b64decode("{encoded_code}").decode("utf-8")
 with Sandbox(config) as sandbox:
-    result = sandbox.execute_python('''{code.replace("'", "\\'")}''')
+    result = sandbox.execute_python(_user_code)
     print(result.stdout)
     if result.stderr:
-        import sys
         print(result.stderr, file=sys.stderr)
     exit(0 if result.returncode == 0 else 1)
 """
@@ -111,13 +126,17 @@ with Sandbox(config) as sandbox:
         result = await loop.run_in_executor(None, self._subprocess_run, script, env, timeout_s)
         return {**result, "isolation": "hyperlight-microvm"}
 
-    async def _run_subprocess(self, code: str, env: dict[str, str] | None, timeout_s: int) -> dict[str, Any]:
+    async def _run_subprocess(
+        self, code: str, env: dict[str, str] | None, timeout_s: int
+    ) -> dict[str, Any]:
         """Fallback: subprocess isolation (no hypervisor, but still separate process)."""
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, self._subprocess_run, code, env, timeout_s)
         return {**result, "isolation": "subprocess"}
 
-    def _subprocess_run(self, code: str, env: dict[str, str] | None, timeout_s: int) -> dict[str, Any]:
+    def _subprocess_run(
+        self, code: str, env: dict[str, str] | None, timeout_s: int
+    ) -> dict[str, Any]:
         """Run code in a subprocess."""
         run_env = {
             "PATH": os.environ.get("PATH", ""),
@@ -129,7 +148,9 @@ with Sandbox(config) as sandbox:
         try:
             result = subprocess.run(
                 [sys.executable, "-c", code],
-                capture_output=True, text=True, timeout=timeout_s,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
                 env=run_env,
             )
             return {
@@ -151,6 +172,8 @@ def get_executor() -> HyperlightExecutor:
     return _executor
 
 
-async def execute_in_microvm(code: str, env: dict[str, str] | None = None, allow_network: bool = False) -> dict[str, Any]:
+async def execute_in_microvm(
+    code: str, env: dict[str, str] | None = None, allow_network: bool = False
+) -> dict[str, Any]:
     """Convenience: execute code in a microVM (or fallback)."""
     return await _executor.execute_node(code, env=env, allow_network=allow_network)

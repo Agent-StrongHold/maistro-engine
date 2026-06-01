@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/strikes.py
-# hypothesis_version: 6.151.10
-
-[100, 'disabled', 'elevated', 'is_locked', 'last_appeal', 'last_violation_at', 'locked', 'locked_until', 'maistro.strikes', 'normal', 'scrutiny_level', 'strike_count', 'user_id', 'user_input', 'violation_count']

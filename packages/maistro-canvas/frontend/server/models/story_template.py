@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any, ClassVar
 
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
@@ -10,7 +11,7 @@ from .base import BaseModel, _utcnow
 
 class StoryTemplate(BaseModel, table=True):
     __tablename__ = "story_templates"
-    __table_args__ = {"extend_existing": True}
+    __table_args__: ClassVar[dict[str, Any]] = {"extend_existing": True}
 
     slug: str = Field(unique=True, index=True)
     display_title: str

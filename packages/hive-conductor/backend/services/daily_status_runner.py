@@ -16,9 +16,9 @@ for an observability surface.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
-from maistro.graph.dag_registry import DagRegistry, invoke_dag_agent
+from maistro.graph.dag_registry import DagRegistry
 from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus, run_durable_dag
 from maistro.graph.nodes import BaseNode, get_node
 from maistro.graph.seeds import daily_status_seed
@@ -50,8 +50,9 @@ def _node_resolver(node_id: str, dag: dict[str, Any]) -> BaseNode:
     raise KeyError(node_id)
 
 
-def _inject_jira_credentials(dag: dict[str, Any], *, pat: str, base_url: str,
-                             flavor: str = "server") -> dict[str, Any]:
+def _inject_jira_credentials(
+    dag: dict[str, Any], *, pat: str, base_url: str, flavor: str = "server"
+) -> dict[str, Any]:
     """Mutate (in-place) the daily-status DAG snapshot's jira_poll inputs to
     include the per-request user PAT + base URL. The DAG snapshot itself
     came from the registry's frozen copy; this is the per-call overlay."""
@@ -95,7 +96,7 @@ async def run_daily_status_dag(
             user_id=user_id,
             project_id=project_id,
         )
-    except Exception as exc:  # noqa: BLE001  defensive: never crash the page
+    except Exception as exc:
         logger.warning("daily_status_dag_run_failed: %s", exc)
         return {
             "status": "error",
@@ -111,7 +112,7 @@ async def run_daily_status_dag(
         from services.node_metrics_store import record_run_completion
 
         record_run_completion(result)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # metrics ingestion must never fail the user-facing daily report
         logger.warning("daily_status_metrics_ingest_failed: %s", exc)
 
@@ -141,9 +142,7 @@ def _result_to_jira_section(
             }
         return {
             "status": "error",
-            "detail": (
-                result.error_message or f"daily-status run failed: {result.error_code}"
-            ),
+            "detail": (result.error_message or f"daily-status run failed: {result.error_code}"),
             "issues": [],
             "source": "dag:daily-status",
         }
@@ -174,7 +173,7 @@ def _result_to_jira_section(
         "issues": issues,
         "count": int(jp_out.get("count") or 0),
         "epics_kept": int(filt_out.get("kept") or 0),
-        "source": f"dag:daily-status",
+        "source": "dag:daily-status",
         "flavor": flavor,
     }
 
@@ -182,7 +181,8 @@ def _result_to_jira_section(
 class _MissingNode:
     """Sentinel for `by_id.get(...) or _missing()` — keeps the lookups
     branch-free + None-safe."""
-    output: dict[str, Any] = {}
+
+    output: ClassVar[dict[str, Any]] = {}
 
 
 def _missing() -> _MissingNode:

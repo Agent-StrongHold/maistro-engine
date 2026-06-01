@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.auth._types import Scope
 from maistro.auth.provider import ServiceKeyAuthProvider
 from maistro.auth.registry import ServiceKeyRegistry

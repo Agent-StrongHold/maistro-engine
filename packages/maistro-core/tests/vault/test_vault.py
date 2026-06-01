@@ -6,11 +6,8 @@ All tests should FAIL until the vault module is implemented.
 
 from __future__ import annotations
 
-import os
 import subprocess
-import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -171,7 +168,7 @@ class TestVaultFailClosed:
     def test_missing_required_secret_raises(
         self, tmp_vault_dir: Path, age_keypair: dict[str, str]
     ) -> None:
-        from maistro.vault import Vault, SecretMissingError
+        from maistro.vault import SecretMissingError, Vault
 
         vault_file = tmp_vault_dir / "secrets.age"
         subprocess.run(
@@ -193,9 +190,9 @@ class TestVaultCredentialPrefixScanning:
     """AC: Bouncer pattern set is the first 8 bytes of SHA-256 of each credential."""
 
     def test_credential_prefix_derivation(self) -> None:
-        from maistro.vault import credential_prefix
-
         import hashlib
+
+        from maistro.vault import credential_prefix
 
         value = "sk-super-secret-api-key"
         expected = hashlib.sha256(value.encode()).digest()[:8]

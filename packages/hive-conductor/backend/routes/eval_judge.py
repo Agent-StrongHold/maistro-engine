@@ -88,11 +88,19 @@ def _events_to_node_records(events: list[dict[str, Any]]) -> list[Any]:
         nid = str(payload.get("node_id") or ev.get("role") or "")
         if not nid:
             continue
-        rec = by_node.setdefault(nid, _NR(
-            node_id=nid, kind=ev.get("capability", ""),
-            phase="", latency_ms=0, tokens_in=0, tokens_out=0,
-            error_code=None, error_message=None,
-        ))
+        rec = by_node.setdefault(
+            nid,
+            _NR(
+                node_id=nid,
+                kind=ev.get("capability", ""),
+                phase="",
+                latency_ms=0,
+                tokens_in=0,
+                tokens_out=0,
+                error_code=None,
+                error_message=None,
+            ),
+        )
         if "completed" in et:
             rec.phase = "COMPLETED"
             rec.latency_ms = int(payload.get("latency_ms") or 0)

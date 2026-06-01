@@ -1,10 +1,10 @@
-import pytest
-
 from server.mcp.canvas_templates import (
+    COMPOSITION_ZONES,
     CROUCH_GEO,
     LIGHTING_TOKENS,
     MOOD_TOKENS,
     POSES,
+    SCENE_TYPES,
     SITTING_GEO,
     STANDING_GEO,
     STYLE_TOKENS,
@@ -16,9 +16,6 @@ from server.mcp.canvas_templates import (
     Pose,
     PropDef,
     SceneDef,
-    ScenePlan,
-    SceneTemplate,
-    SceneType,
     StyleToken,
     build_background_prompt,
     build_character_design,
@@ -26,10 +23,6 @@ from server.mcp.canvas_templates import (
     build_prop_prompt,
     build_scene_template,
     generate_scene_plan,
-)
-from server.mcp.canvas_templates import (
-    COMPOSITION_ZONES,
-    SCENE_TYPES,
 )
 
 REQUIRED_GEO_FIELDS = (
@@ -140,7 +133,7 @@ class TestStyleTokens:
         assert len(STYLE_TOKENS) == 7
 
     def test_each_has_technique_string(self):
-        for key, token in STYLE_TOKENS.items():
+        for _key, token in STYLE_TOKENS.items():
             assert isinstance(token, StyleToken)
             assert isinstance(token.technique, str)
             assert len(token.technique) > 0
@@ -168,7 +161,7 @@ class TestLightingTokens:
         assert len(LIGHTING_TOKENS) == 6
 
     def test_each_has_direction_and_color_temp(self):
-        for key, token in LIGHTING_TOKENS.items():
+        for _key, token in LIGHTING_TOKENS.items():
             assert isinstance(token, LightingToken)
             assert isinstance(token.direction, str)
             assert len(token.direction) > 0

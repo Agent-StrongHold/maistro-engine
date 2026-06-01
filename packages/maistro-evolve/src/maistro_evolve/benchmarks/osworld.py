@@ -7,12 +7,20 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import OSWORLD_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config, build_messages
+from .prompt_builder import build_messages, build_model_config, build_system_prompt
 from .scoring import judge_score
 
 
-def _parse_actions(response: str) -> list[str]:
-    actions: list[str] = []
+def _action_from_dict(item: dict[str, Any]) -> str | None:
+    action_type = item.get("action") or item.get("type") or item.get("name") or ""
+    target = item.get("target") or item.get("value") or item.get("parameter") or ""
+    if not action_type:
+        return None
+    return f"{action_type}:{target}" if target else action_type
+
+
+def _parse_json_actions(response: str) -> list[str]:
+    import json
 
     json_patterns = [
         r"```(?:json)?\s*(.*?)```",
@@ -20,23 +28,31 @@ def _parse_actions(response: str) -> list[str]:
     ]
     for pat in json_patterns:
         match = re.search(pat, response, re.DOTALL)
-        if match:
-            import json
-            try:
-                data = json.loads(match.group(1))
-                if isinstance(data, list):
-                    for item in data:
-                        if isinstance(item, dict):
-                            action_type = item.get("action") or item.get("type") or item.get("name") or ""
-                            target = item.get("target") or item.get("value") or item.get("parameter") or ""
-                            if action_type:
-                                actions.append(f"{action_type}:{target}" if target else action_type)
-                        elif isinstance(item, str):
-                            actions.append(item)
-                    if actions:
-                        return actions
-            except (ValueError, Exception):
-                pass
+        if not match:
+            continue
+        try:
+            data = json.loads(match.group(1))
+        except (ValueError, Exception):
+            continue
+        if not isinstance(data, list):
+            continue
+        actions: list[str] = []
+        for item in data:
+            if isinstance(item, dict):
+                parsed = _action_from_dict(item)
+                if parsed:
+                    actions.append(parsed)
+            elif isinstance(item, str):
+                actions.append(item)
+        if actions:
+            return actions
+    return []
+
+
+def _parse_actions(response: str) -> list[str]:
+    actions = _parse_json_actions(response)
+    if actions:
+        return actions
 
     action_patterns = [
         r"step\s*\d+[\.:]\s*(.+?)(?:\n|$)",
@@ -70,7 +86,7 @@ def _score_action_sequence(
 
     proposed_text = " ".join(proposed).lower()
 
-    matched = 0
+    matched = 0.0
     for expected in expected_actions:
         exp_lower = expected.lower()
         if ":" in exp_lower:
@@ -102,8 +118,8 @@ async def _judge_os_actions(
     llm_call: Any,
 ) -> float:
     proposed = _parse_actions(response)
-    proposed_text = "\n".join(f"  {i+1}. {a}" for i, a in enumerate(proposed))
-    expected_text = "\n".join(f"  {i+1}. {a}" for i, a in enumerate(expected_actions))
+    proposed_text = "\n".join(f"  {i + 1}. {a}" for i, a in enumerate(proposed))
+    expected_text = "\n".join(f"  {i + 1}. {a}" for i, a in enumerate(expected_actions))
 
     judge_prompt = (
         f"Task: {task}\n\n"
@@ -117,7 +133,10 @@ async def _judge_os_actions(
         judge_response = await asyncio.wait_for(
             llm_call(
                 [
-                    {"role": "system", "content": "You are a desktop automation expert. Respond with only a number."},
+                    {
+                        "role": "system",
+                        "content": "You are a desktop automation expert. Respond with only a number.",
+                    },
                     {"role": "user", "content": judge_prompt},
                 ],
                 temperature=0.0,
@@ -126,7 +145,7 @@ async def _judge_os_actions(
             timeout=15.0,
         )
         return judge_score(judge_response)
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         return 0.0
 
 
@@ -184,7 +203,7 @@ async def run_osworld(genome: PipelineGenome, llm_call: Any) -> EvalResult:
                 score = _heuristic_score(sample)
                 total_score += score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             evaluated += 1
 
     avg_score = total_score / max(evaluated, 1)
@@ -202,6 +221,7 @@ async def run_osworld(genome: PipelineGenome, llm_call: Any) -> EvalResult:
 
 def _heuristic_score(sample: dict[str, Any]) -> float:
     import random
+
     num_actions = len(sample.get("expected_actions", []))
     base = 0.6 if num_actions <= 2 else 0.45 if num_actions <= 3 else 0.3
     return max(0.1, min(0.85, base + random.uniform(-0.05, 0.1)))

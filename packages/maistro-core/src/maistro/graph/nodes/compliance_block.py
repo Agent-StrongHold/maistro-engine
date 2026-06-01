@@ -25,7 +25,9 @@ from .base import BaseNode, NodeContext
 class ComplianceBlockIn(BaseModel):
     rule_id: str = Field(description="Stable identifier for this policy rule")
     severity: float = Field(
-        default=1.0, ge=0.0, le=10.0,
+        default=1.0,
+        ge=0.0,
+        le=10.0,
         description="Magnitude of the negative signal (downstream weights subtract this)",
     )
     reason: str = Field(default="", description="Human-readable explanation of why this fired")

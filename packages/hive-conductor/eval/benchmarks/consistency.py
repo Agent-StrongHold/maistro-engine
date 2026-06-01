@@ -7,9 +7,9 @@ Score = 100 - (variance_penalty). High variance = low score.
 from __future__ import annotations
 
 import re
-from collections import Counter
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 QUESTION_SETS = [
     {
@@ -79,6 +79,13 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_sets: int = 3) -
 
         score = keyword_score + consistency_score
         total += score
-        details["sets"].append({"topic": qs["topic"], "unique_answers": unique, "keyword_hits": keyword_hits, "score": score})
+        details["sets"].append(
+            {
+                "topic": qs["topic"],
+                "unique_answers": unique,
+                "keyword_hits": keyword_hits,
+                "score": score,
+            }
+        )
 
     return EvalResult(score=total // len(sets), details=details)

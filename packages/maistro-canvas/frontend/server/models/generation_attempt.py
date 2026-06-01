@@ -1,4 +1,5 @@
 import uuid
+from typing import Any, ClassVar
 
 from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
@@ -9,7 +10,7 @@ from .base import BaseModel
 
 class GenerationAttempt(BaseModel, table=True):
     __tablename__ = "generation_attempts"
-    __table_args__ = {"extend_existing": True}
+    __table_args__: ClassVar[dict[str, Any]] = {"extend_existing": True}
 
     order_id: uuid.UUID | None = Field(default=None, foreign_key="orders.id", index=True)
     template_id: uuid.UUID | None = Field(default=None, foreign_key="story_templates.id")

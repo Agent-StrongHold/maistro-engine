@@ -53,6 +53,16 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
 
     from maistro.security.passwords import hash_password
 
+    # /v1/setup/ is a PUBLIC (unauthenticated) prefix. Setup must be a one-shot
+    # first-run operation — once complete, re-running it would let any
+    # unauthenticated caller overwrite the admin/user credentials (account
+    # takeover). Guard with the same check setup_status() reads.
+    if _is_setup_complete():
+        raise HTTPException(
+            status_code=409,
+            detail="Setup already complete. This endpoint is disabled after first-run provisioning.",
+        )
+
     hardware_preset = body.get("hardware_preset")
     admin_username = body.get("admin_username", "admin")
     admin_password = body.get("admin_password")
@@ -125,8 +135,10 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         # best-effort — don't fail Setup over a settings shape mismatch.
         import logging as _logging
+
         _logging.getLogger("hive.setup").warning(
-            "default_model_set_failed: %s", exc,
+            "default_model_set_failed: %s",
+            exc,
         )
 
     kv = _get_kv()
@@ -136,7 +148,9 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     result = {"setup_complete": True, "config": config}
     if config_mnemonic is not None:
         result["mnemonic"] = config_mnemonic
-        result["mnemonic_warning"] = "Write these words down. This is the only time they will be shown. They are your root of trust for everything."
+        result["mnemonic_warning"] = (
+            "Write these words down. This is the only time they will be shown. They are your root of trust for everything."
+        )
     return result
 
 

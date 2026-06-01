@@ -2,11 +2,11 @@ from .loader import load_all_templates, load_template, yaml_to_story_template
 from .seed import PRODUCTS, seed_all, seed_products, seed_templates
 
 __all__ = [
-    "load_template",
+    "PRODUCTS",
     "load_all_templates",
-    "yaml_to_story_template",
+    "load_template",
+    "seed_all",
     "seed_products",
     "seed_templates",
-    "seed_all",
-    "PRODUCTS",
+    "yaml_to_story_template",
 ]

@@ -10,9 +10,7 @@ import re
 
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
-        re.compile(
-            r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"
-        ),
+        re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
         "[REDACTED_PRIVATE_KEY]",
     ),
     (
@@ -44,9 +42,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
         "[REDACTED_JWT]",
     ),
     (
-        re.compile(
-            r"(?:sk-ant-|sk_live_|sk_test_|sk-|ghp_|AIza|xoxb-|pplx-)[A-Za-z0-9_-]+"
-        ),
+        re.compile(r"(?:sk-ant-|sk_live_|sk_test_|sk-|ghp_|AIza|xoxb-|pplx-)[A-Za-z0-9_-]+"),
         "[REDACTED_API_KEY]",
     ),
 ]

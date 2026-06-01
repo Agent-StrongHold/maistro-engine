@@ -59,7 +59,7 @@ class TaskQueue:
             return self._queue[priority].pop(0)
 
         for tier in priority_order:
-            if tier in self._queue and self._queue[tier]:
+            if self._queue.get(tier):
                 return self._queue[tier].pop(0)
 
         return None

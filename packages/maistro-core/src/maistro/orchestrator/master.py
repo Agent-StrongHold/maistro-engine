@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Callable, Coroutine
+from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger("maistro.orchestrator")

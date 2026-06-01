@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/auth/registry.py
-# hypothesis_version: 6.151.10
-
-[',', '-', 'SERVICE_KEYS_FILE', 'SERVICE_KEY_', 'SERVICE_SCOPES_', '_', 'key', 'scopes', 'services']

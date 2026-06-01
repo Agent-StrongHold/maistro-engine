@@ -57,7 +57,7 @@ class TestExtractDominantColor:
         img = Image.new("RGBA", (100, 100), (100, 100, 100, 255))
         draw = ImageDraw.Draw(img)
         draw.rectangle([0, 0, 50, 100], fill=(200, 200, 200, 255))
-        r, g, b = extract_dominant_color(img)
+        r, _g, _b = extract_dominant_color(img)
         assert 100 < r < 200
 
     def test_transparent_image(self):

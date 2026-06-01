@@ -6,11 +6,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from maistro.tasks.models import TaskCreate, TaskResponse, TaskResult
+from maistro.tasks.queue import TaskQueue, get_task_queue
 from maistro_server.api.auth import RequireAuth
 from maistro_server.api.principal import AuthenticatedPrincipal
 from maistro_server.api.schemas import PaginatedTasks, TaskCancelledResponse, TaskCreatedResponse
-from maistro.tasks.models import TaskCreate, TaskResponse, TaskResult
-from maistro.tasks.queue import TaskQueue, get_task_queue
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 

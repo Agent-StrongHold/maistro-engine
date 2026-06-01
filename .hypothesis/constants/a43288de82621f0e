@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/quota/billing.py
-# hypothesis_version: 6.152.9
-
-[30.0, '%Y-%m', '%Y-%m-%d', 'daily']

@@ -28,10 +28,10 @@ These tests verify:
 
 from __future__ import annotations
 
-import sys
 import pathlib
-from datetime import UTC, datetime
+import sys
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -90,9 +90,11 @@ def _wipe_verdicts():
 def test_build_evidence_payload_strips_enum_prefix() -> None:
     from services.eval_judge import _build_evidence_payload
 
-    run = _Run(node_records=[
-        _NR("n1", "jira.poll", "NodePhase.COMPLETED", 150, 5, 12),
-    ])
+    run = _Run(
+        node_records=[
+            _NR("n1", "jira.poll", "NodePhase.COMPLETED", 150, 5, 12),
+        ]
+    )
     payload = _build_evidence_payload(run)
     assert payload["run_id"] == "r-001"
     assert payload["dag_id"] == "daily-status"
@@ -134,7 +136,7 @@ def test_parse_pure_json_verdict() -> None:
 def test_parse_fenced_json_verdict() -> None:
     from services.eval_judge import _parse_verdict
 
-    raw = "```json\n{\"score\": 72, \"rationale\": \"ok\"}\n```"
+    raw = '```json\n{"score": 72, "rationale": "ok"}\n```'
     out = _parse_verdict(raw)
     assert out["score"] == 72
 
@@ -143,7 +145,7 @@ def test_parse_verdict_with_leading_prose() -> None:
     """Some LLMs prepend a sentence; the regex fallback finds the {…}."""
     from services.eval_judge import _parse_verdict
 
-    raw = "Here's my verdict:\n{\"score\": 50, \"rationale\": \"meh\"}"
+    raw = 'Here\'s my verdict:\n{"score": 50, "rationale": "meh"}'
     out = _parse_verdict(raw)
     assert out["score"] == 50
 
@@ -185,14 +187,13 @@ def test_parse_regex_fallback_finds_obj_but_fails_to_parse() -> None:
 async def test_score_run_llm_exception_with_persist_false() -> None:
     """LLM raises + persist=False — verdict returned, NOT stored.
     Hits the no-persist branch (216→218)."""
-    from services.eval_judge import score_run
     import stores
+    from services.eval_judge import score_run
 
     async def _boom(messages: list[dict], **kw: Any) -> str:
         raise RuntimeError("upstream 500")
 
-    out = await score_run(_Run(run_id="r-no-persist-err"),
-                          llm_call=_boom, persist=False)
+    out = await score_run(_Run(run_id="r-no-persist-err"), llm_call=_boom, persist=False)
     assert out["status"] == "error"
     assert "r-no-persist-err" not in stores.eval_verdicts
 
@@ -233,15 +234,20 @@ def test_validate_clamps_score_below_zero() -> None:
 def test_validate_strips_unknown_proposal_keys() -> None:
     from services.eval_judge import _validate_verdict
 
-    out = _validate_verdict({
-        "score": 50, "rationale": "x",
-        "topology_proposal": {
-            "kind": "tune_param", "target_node_id": "n1",
-            "from_value": "0.3", "to_value": "0.7",
-            "expected_improvement": "more diversity",
-            "hacker_field": "bogus",
-        },
-    })
+    out = _validate_verdict(
+        {
+            "score": 50,
+            "rationale": "x",
+            "topology_proposal": {
+                "kind": "tune_param",
+                "target_node_id": "n1",
+                "from_value": "0.3",
+                "to_value": "0.7",
+                "expected_improvement": "more diversity",
+                "hacker_field": "bogus",
+            },
+        }
+    )
     assert "hacker_field" not in out["topology_proposal"]
     assert out["topology_proposal"]["kind"] == "tune_param"
 
@@ -249,9 +255,13 @@ def test_validate_strips_unknown_proposal_keys() -> None:
 def test_validate_drops_non_dict_proposal() -> None:
     from services.eval_judge import _validate_verdict
 
-    out = _validate_verdict({
-        "score": 80, "rationale": "x", "topology_proposal": "not-a-dict",
-    })
+    out = _validate_verdict(
+        {
+            "score": 80,
+            "rationale": "x",
+            "topology_proposal": "not-a-dict",
+        }
+    )
     assert out["topology_proposal"] is None
 
 
@@ -273,8 +283,8 @@ def test_validate_score_not_int_coerces_to_zero() -> None:
 
 
 async def test_score_run_with_stub_llm_writes_verdict() -> None:
-    from services.eval_judge import score_run
     import stores
+    from services.eval_judge import score_run
 
     async def _stub(messages: list[dict], **kw: Any) -> str:
         return '{"score": 88, "rationale": "solid run", "topology_proposal": null}'
@@ -292,8 +302,8 @@ async def test_score_run_with_stub_llm_writes_verdict() -> None:
 
 
 async def test_score_run_persist_false_skips_storage() -> None:
-    from services.eval_judge import score_run
     import stores
+    from services.eval_judge import score_run
 
     async def _stub(messages: list[dict], **kw: Any) -> str:
         return '{"score": 50, "rationale": "x"}'
@@ -303,8 +313,8 @@ async def test_score_run_persist_false_skips_storage() -> None:
 
 
 async def test_score_run_llm_exception_writes_error_verdict() -> None:
-    from services.eval_judge import score_run
     import stores
+    from services.eval_judge import score_run
 
     async def _boom(messages: list[dict], **kw: Any) -> str:
         raise RuntimeError("upstream 500")
@@ -345,14 +355,15 @@ async def test_score_run_falls_back_to_default_llm_when_unavailable(
 
     # Patch the lazy import path
     import services.graph_runner as gr
+
     monkeypatch.setattr(gr, "_build_llm_call", _bad_import)
     out = await ej.score_run(_Run(run_id="r-no-llm"))
     assert out["status"] == "error"
 
 
 def test_persist_with_empty_run_id_is_noop() -> None:
-    from services.eval_judge import _persist
     import stores
+    from services.eval_judge import _persist
 
     _persist(_Run(run_id=""), {"score": 50, "status": "ok"})
     assert "" not in stores.eval_verdicts
@@ -361,8 +372,9 @@ def test_persist_with_empty_run_id_is_noop() -> None:
 def test_get_verdict_returns_persisted_or_none() -> None:
     from services.eval_judge import _persist, get_verdict
 
-    _persist(_Run(run_id="r-G"), {"score": 99, "status": "ok"},
-             now=datetime(2026, 5, 22, tzinfo=UTC))
+    _persist(
+        _Run(run_id="r-G"), {"score": 99, "status": "ok"}, now=datetime(2026, 5, 22, tzinfo=UTC)
+    )
     out = get_verdict("r-G")
     assert out is not None
     assert out["score"] == 99
@@ -375,8 +387,10 @@ def test_get_verdict_returns_persisted_or_none() -> None:
 def test_get_verdict_endpoint_returns_persisted(authed_client: Any) -> None:
     from services.eval_judge import _persist
 
-    _persist(_Run(run_id="r-V"), {"score": 70, "rationale": "ok",
-                                  "topology_proposal": None, "status": "ok"})
+    _persist(
+        _Run(run_id="r-V"),
+        {"score": 70, "rationale": "ok", "topology_proposal": None, "status": "ok"},
+    )
     r = authed_client.get("/v1/eval-judge/r-V")
     assert r.status_code == 200
     assert r.json()["score"] == 70
@@ -390,10 +404,12 @@ def test_get_verdict_endpoint_404(authed_client: Any) -> None:
 def test_list_verdicts_endpoint_returns_newest_first(authed_client: Any) -> None:
     from services.eval_judge import _persist
 
-    _persist(_Run(run_id="r-old"), {"score": 50, "status": "ok"},
-             now=datetime(2026, 1, 1, tzinfo=UTC))
-    _persist(_Run(run_id="r-new"), {"score": 80, "status": "ok"},
-             now=datetime(2026, 5, 22, tzinfo=UTC))
+    _persist(
+        _Run(run_id="r-old"), {"score": 50, "status": "ok"}, now=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    _persist(
+        _Run(run_id="r-new"), {"score": 80, "status": "ok"}, now=datetime(2026, 5, 22, tzinfo=UTC)
+    )
     r = authed_client.get("/v1/eval-judge?limit=10")
     assert r.status_code == 200
     items = r.json()
@@ -415,8 +431,8 @@ def test_trigger_score_endpoint_runs_against_dag_run_store(
     authed_client: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Seed a fake run into dag_run_store, stub the LLM, hit POST."""
-    from services.dag_run_store import get_dag_run_store
     import services.eval_judge as ej
+    from services.dag_run_store import get_dag_run_store
 
     async def _stub_llm(messages: list[dict], **kw: Any) -> str:
         return '{"score": 91, "rationale": "ace"}'
@@ -426,19 +442,22 @@ def test_trigger_score_endpoint_runs_against_dag_run_store(
 
     # Patch route's score_run import to use our stubbed LLM
     import routes.eval_judge as routes_ej
+
     monkeypatch.setattr(routes_ej, "score_run", _patched_score)
 
     # Seed a fake run via dag_run_store's public start_run + append_event
     import asyncio
+
     store = get_dag_run_store()
 
     async def _seed() -> str:
         run = await store.start_run(user_id="testuser", run_id="r-trigger")
         await store.append_event(
-            "r-trigger", event_type="pm_node_completed",
-            role="filter", capability="transform.filter_by_type",
-            payload={"node_id": "filter", "latency_ms": 200,
-                     "tokens_in": 5, "tokens_out": 10},
+            "r-trigger",
+            event_type="pm_node_completed",
+            role="filter",
+            capability="transform.filter_by_type",
+            payload={"node_id": "filter", "latency_ms": 200, "tokens_in": 5, "tokens_out": 10},
         )
         await store.finish_run("r-trigger")
         return run.id
@@ -462,12 +481,18 @@ def test_events_to_node_records_handles_completed_and_failed() -> None:
     from routes.eval_judge import _events_to_node_records
 
     events = [
-        {"event_type": "pm_node_completed", "role": "n1", "capability": "k",
-         "payload": {"node_id": "n1", "latency_ms": 100,
-                     "tokens_in": 1, "tokens_out": 2}},
-        {"event_type": "pm_node_failed", "role": "n2", "capability": "k",
-         "payload": {"node_id": "n2", "error_code": "RuntimeError",
-                     "error_message": "boom"}},
+        {
+            "event_type": "pm_node_completed",
+            "role": "n1",
+            "capability": "k",
+            "payload": {"node_id": "n1", "latency_ms": 100, "tokens_in": 1, "tokens_out": 2},
+        },
+        {
+            "event_type": "pm_node_failed",
+            "role": "n2",
+            "capability": "k",
+            "payload": {"node_id": "n2", "error_code": "RuntimeError", "error_message": "boom"},
+        },
     ]
     recs = _events_to_node_records(events)
     by = {r.node_id: r for r in recs}
@@ -481,8 +506,12 @@ def test_events_to_node_records_skips_anonymous_events() -> None:
     from routes.eval_judge import _events_to_node_records
 
     events = [
-        {"event_type": "log", "role": "", "capability": "",
-         "payload": {"node_id": ""}},  # no id → skipped
+        {
+            "event_type": "log",
+            "role": "",
+            "capability": "",
+            "payload": {"node_id": ""},
+        },  # no id → skipped
     ]
     assert _events_to_node_records(events) == []
 
@@ -494,8 +523,12 @@ def test_events_to_node_records_unknown_event_type_keeps_empty_phase() -> None:
     from routes.eval_judge import _events_to_node_records
 
     events = [
-        {"event_type": "pm_node_started", "role": "n1", "capability": "k",
-         "payload": {"node_id": "n1", "latency_ms": 0}},
+        {
+            "event_type": "pm_node_started",
+            "role": "n1",
+            "capability": "k",
+            "payload": {"node_id": "n1", "latency_ms": 0},
+        },
     ]
     recs = _events_to_node_records(events)
     assert len(recs) == 1

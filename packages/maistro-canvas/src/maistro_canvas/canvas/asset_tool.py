@@ -69,7 +69,8 @@ class AssetTool:
             msg = f"unknown action {action!r}; valid: {_VALID_ACTIONS}"
             raise ValueError(msg)
         handler = getattr(self, f"_action_{action}")
-        return await handler(args)
+        result: dict[str, Any] = await handler(args)
+        return result
 
     # ── Definitions ─────────────────────────────────────────────────
 
@@ -167,12 +168,12 @@ class AssetTool:
         if "plan" in args:
             plan_dict = args["plan"]
             world_style = _deser_world_style(plan_dict["world_style"])
-            from maistro_canvas.canvas.asset_compositor import (  # type: ignore[unused-import]
+            from maistro_canvas.canvas.asset_compositor import (
                 PlannedRender,
                 RenderPlan,
             )
 
-            rendered = tuple(
+            rendered_plans = tuple(
                 PlannedRender(
                     instance_id=p["instance_id"],
                     parent_chain=tuple(p["parent_chain"]),
@@ -188,7 +189,7 @@ class AssetTool:
                 canvas_id=plan_dict["canvas_id"],
                 page_index=plan_dict.get("page_index"),
                 world_style=world_style,
-                rendered=rendered,
+                rendered=rendered_plans,
             )
         else:
             world_style = _deser_world_style(args["world_style"])

@@ -146,6 +146,24 @@ if TYPE_CHECKING:
     from maistro.types.agent import AgentIdentity
 
 
+def _extract_user_text(messages: list[dict[str, Any]]) -> str:
+    """Extract the latest user message text (handling string + content-block forms)."""
+    for msg in reversed(messages):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return " ".join(
+                p.get("text", "")
+                for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            )
+        return ""
+    return ""
+
+
 class Agent:
     """A running agent instance. All behavior determined by identity + strategy."""
 
@@ -170,6 +188,7 @@ class Agent:
         tracer: TracingBackend | None = None,
         tool_executor: Any = None,
         tool_registry: Any = None,
+        agent_resolver: Any = None,
     ) -> None:
         self.identity = identity
         self._strategy = strategy
@@ -189,15 +208,20 @@ class Agent:
         self._tool_executor = tool_executor
         self._tool_registry = tool_registry
         self._tracer = tracer
+        # Resolves a sub-agent name -> Agent for delegation. Callable or mapping.
+        self._agent_resolver = agent_resolver
 
     async def handle(
         self,
         messages: list[dict[str, Any]],
         auth: Any,
         *,
+        intent: Any = None,
         session_id: str | None = None,
         model_override: str | None = None,
         status_callback: Any = None,
+        classified_task_type: str = "",
+        _delegation_depth: int = 0,
     ) -> AgentResponse:
         trace = (
             self._tracer.create_trace(
@@ -210,28 +234,9 @@ class Agent:
             else None
         )
 
-        user_text = ""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                content = msg.get("content", "")
-                if isinstance(content, str):
-                    user_text = content
-                elif isinstance(content, list):
-                    user_text = " ".join(
-                        p.get("text", "")
-                        for p in content
-                        if isinstance(p, dict) and p.get("type") == "text"
-                    )
-                break
+        user_text = _extract_user_text(messages)
 
-        if trace:
-            with trace.span("warden.user_input") as ws:
-                ws.set_input({"text_length": len(user_text)})
-                warden_verdict = await self._warden.scan(user_text, "user_input")
-                ws.set_output({"clean": warden_verdict.clean, "flags": warden_verdict.flags})
-        else:
-            warden_verdict = await self._warden.scan(user_text, "user_input")
-
+        warden_verdict = await self._run_warden(user_text, trace)
         if not warden_verdict.clean:
             if trace:
                 trace.score("blocked", 1.0, comment=f"flags: {warden_verdict.flags}")
@@ -240,47 +245,14 @@ class Agent:
                 f"Blocked by Warden: {', '.join(warden_verdict.flags)}",
             )
 
-        session_history_count = 0
-        if session_id and self._session_store:
-            history = await self._session_store.get_history(session_id)
-            if history:
-                session_history_count = len(history)
-                if messages and messages[0].get("role") == "system":
-                    messages = [messages[0], *history, *messages[1:]]
-                else:
-                    messages = [*history, *messages]
+        messages, session_history_count = await self._inject_session_history(messages, session_id)
 
         org_id = getattr(auth, "org_id", "")
         team_id = getattr(auth, "team_id", "")
 
-        if trace:
-            with trace.span("prompt.build") as ps:
-                ps.set_input({"message_count": len(messages)})
-                context_messages, injected_learning_ids = await self._context_builder.build(
-                    messages,
-                    self.identity,
-                    prompt_manager=self._prompt_manager,
-                    learning_store=self._learning_store,
-                    agent_id=self.identity.name,
-                    org_id=org_id,
-                    team_id=team_id,
-                )
-                ps.set_output(
-                    {
-                        "context_message_count": len(context_messages),
-                        "learnings_injected": len(injected_learning_ids),
-                    }
-                )
-        else:
-            context_messages, injected_learning_ids = await self._context_builder.build(
-                messages,
-                self.identity,
-                prompt_manager=self._prompt_manager,
-                learning_store=self._learning_store,
-                agent_id=self.identity.name,
-                org_id=org_id,
-                team_id=team_id,
-            )
+        context_messages, injected_learning_ids = await self._build_context(
+            messages, org_id, team_id, trace
+        )
 
         tool_defs: list[dict[str, Any]] | None = None
         if self.identity.tools:
@@ -290,6 +262,97 @@ class Agent:
             ]
 
         model = model_override or self.identity.model
+        strategy_kwargs = self._build_strategy_kwargs(
+            auth, trace, status_callback, classified_task_type
+        )
+
+        result = await self._run_strategy(
+            context_messages, model, tool_defs, strategy_kwargs, trace
+        )
+        if result is None:
+            return AgentResponse(
+                content="I encountered an internal error. Please try again.",
+                agent_name=self.identity.name,
+            )
+
+        # Delegation: the strategy decided to route to a sub-agent. Resolve the
+        # target and return *its* response. Without this, a DelegateStrategy
+        # result (response=None, done=False, delegate_to=<name>) would fall
+        # through and produce an empty AgentResponse.
+        if result.delegate_to:
+            delegated = await self._delegate(
+                result,
+                auth=auth,
+                session_id=session_id,
+                model_override=model_override,
+                status_callback=status_callback,
+                classified_task_type=classified_task_type,
+                depth=_delegation_depth,
+                trace=trace,
+            )
+            if delegated is not None:
+                return delegated
+
+        tool_had_failures = bool(
+            result.tool_history
+            and any(
+                str(h.get("result", "")).startswith("Error")
+                or "error" in str(h.get("result", ""))[:50].lower()
+                for h in result.tool_history
+            )
+        )
+        if tool_had_failures:
+            await self._extract_rca(result, user_text, org_id, team_id, trace)
+
+        await self._extract_learnings(result, user_text, org_id, team_id, trace)
+
+        if self._learning_promoter and injected_learning_ids:
+            await self._learning_promoter.check_and_promote(org_id=org_id)
+
+        await self._persist_run(
+            result,
+            auth=auth,
+            user_text=user_text,
+            model=model,
+            session_id=session_id,
+            org_id=org_id,
+            team_id=team_id,
+            tool_had_failures=tool_had_failures,
+            injected_learning_ids=injected_learning_ids,
+        )
+
+        if trace:
+            self._finalize_trace(trace, result, model, session_history_count, injected_learning_ids)
+
+        return AgentResponse(
+            content=result.response or "",
+            agent_name=self.identity.name,
+        )
+
+    async def _inject_session_history(
+        self,
+        messages: list[dict[str, Any]],
+        session_id: str | None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Prepend prior session history to ``messages`` (after a leading system
+        message, if present). Returns ``(messages, history_count)``."""
+        if not (session_id and self._session_store):
+            return messages, 0
+        history = await self._session_store.get_history(session_id)
+        if not history:
+            return messages, 0
+        if messages and messages[0].get("role") == "system":
+            return [messages[0], *history, *messages[1:]], len(history)
+        return [*history, *messages], len(history)
+
+    def _build_strategy_kwargs(
+        self,
+        auth: Any,
+        trace: Any,
+        status_callback: Any,
+        classified_task_type: str,
+    ) -> dict[str, Any]:
+        """Assemble the keyword arguments passed into the reasoning strategy."""
         strategy_kwargs: dict[str, Any] = {}
         if trace:
             strategy_kwargs["trace"] = trace
@@ -300,27 +363,112 @@ class Agent:
         if status_callback:
             strategy_kwargs["status_callback"] = status_callback
         strategy_kwargs["identity"] = self.identity
+        if classified_task_type:
+            strategy_kwargs["classified_task_type"] = classified_task_type
+        return strategy_kwargs
 
+    async def _persist_run(
+        self,
+        result: Any,
+        *,
+        auth: Any,
+        user_text: str,
+        model: str,
+        session_id: str | None,
+        org_id: str,
+        team_id: str,
+        tool_had_failures: bool,
+        injected_learning_ids: list[int],
+    ) -> None:
+        """Persist session history, the outcome record, and learning feedback."""
+        if session_id and self._session_store and result.response:
+            save_msgs: list[dict[str, str]] = []
+            if user_text:
+                save_msgs.append({"role": "user", "content": user_text})
+            save_msgs.append({"role": "assistant", "content": result.response})
+            await self._session_store.append_messages(session_id, save_msgs)
+
+        if self._outcome_store:
+            await self._record_outcome(
+                result, auth, model, session_id, org_id, team_id, tool_had_failures
+            )
+
+        if injected_learning_ids and self._learning_store:
+            await self._learning_store.mark_outcome(
+                injected_learning_ids,
+                success=not tool_had_failures,
+                org_id=org_id,
+            )
+
+    async def _run_warden(self, user_text: str, trace: Any) -> Any:
+        """Scan user input through the Warden, recording a trace span when on."""
+        if not trace:
+            return await self._warden.scan(user_text, "user_input")
+        with trace.span("warden.user_input") as ws:
+            ws.set_input({"text_length": len(user_text)})
+            warden_verdict = await self._warden.scan(user_text, "user_input")
+            ws.set_output({"clean": warden_verdict.clean, "flags": warden_verdict.flags})
+        return warden_verdict
+
+    async def _build_context(
+        self,
+        messages: list[dict[str, Any]],
+        org_id: str,
+        team_id: str,
+        trace: Any,
+    ) -> tuple[list[dict[str, Any]], list[int]]:
+        """Build the agent's prompt context, recording a trace span when on."""
+        if not trace:
+            return await self._context_builder.build(
+                messages,
+                self.identity,
+                prompt_manager=self._prompt_manager,
+                learning_store=self._learning_store,
+                agent_id=self.identity.name,
+                org_id=org_id,
+                team_id=team_id,
+            )
+        with trace.span("prompt.build") as ps:
+            ps.set_input({"message_count": len(messages)})
+            context_messages, injected_learning_ids = await self._context_builder.build(
+                messages,
+                self.identity,
+                prompt_manager=self._prompt_manager,
+                learning_store=self._learning_store,
+                agent_id=self.identity.name,
+                org_id=org_id,
+                team_id=team_id,
+            )
+            ps.set_output(
+                {
+                    "context_message_count": len(context_messages),
+                    "learnings_injected": len(injected_learning_ids),
+                }
+            )
+        return context_messages, injected_learning_ids
+
+    async def _run_strategy(
+        self,
+        context_messages: list[dict[str, Any]],
+        model: str,
+        tool_defs: list[dict[str, Any]] | None,
+        strategy_kwargs: dict[str, Any],
+        trace: Any,
+    ) -> Any:
+        """Run the reasoning strategy. Returns the result, or ``None`` on a
+        handled error (caller returns a generic error response)."""
         try:
-            if trace:
-                with trace.span("strategy.reason") as ss:
-                    ss.set_input({"model": model, "tools": len(tool_defs) if tool_defs else 0})
-                    result = await self._strategy.reason(
-                        context_messages,
-                        model,
-                        self._llm,
-                        tools=tool_defs,
-                        tool_executor=self._tool_executor,
-                        **strategy_kwargs,
-                    )
-                    ss.set_output(
-                        {
-                            "done": result.done,
-                            "tool_rounds": len(result.tool_history) if result.tool_history else 0,
-                            "response_length": len(result.response or ""),
-                        }
-                    )
-            else:
+            if not trace:
+                return await self._strategy.reason(
+                    context_messages,
+                    model,
+                    self._llm,
+                    tools=tool_defs,
+                    tool_executor=self._tool_executor,
+                    **strategy_kwargs,
+                )
+            with trace.span("strategy.reason") as ss:
+                ss.set_input({"model": model, "tools": len(tool_defs) if tool_defs else 0})
                 result = await self._strategy.reason(
                     context_messages,
                     model,
@@ -329,6 +477,14 @@ class Agent:
                     tool_executor=self._tool_executor,
                     **strategy_kwargs,
                 )
+                ss.set_output(
+                    {
+                        "done": result.done,
+                        "tool_rounds": len(result.tool_history) if result.tool_history else 0,
+                        "response_length": len(result.response or ""),
+                    }
+                )
+            return result
         except (ValueError, RuntimeError, TimeoutError, OSError) as exc:
             import logging as _log
 
@@ -341,171 +497,237 @@ class Agent:
             if trace:
                 trace.score("strategy_error", 0.0, "Strategy raised an exception")
                 trace.end()
-            return AgentResponse(
-                content="I encountered an internal error. Please try again.",
-                agent_name=self.identity.name,
-            )
+            return None
 
-        tool_had_failures = bool(
-            result.tool_history
-            and any(
-                str(h.get("result", "")).startswith("Error")
-                or "error" in str(h.get("result", ""))[:50].lower()
-                for h in result.tool_history
-            )
-        )
-        if (
-            tool_had_failures
-            and self._rca_extractor
-            and self._learning_store
-            and result.tool_history
-        ):
-            if trace:
-                with trace.span("rca.extraction") as rs:
-                    rca = await self._rca_extractor.extract_rca(
-                        user_text,
-                        result.tool_history,
-                    )
-                    if rca:
-                        rca.agent_id = self.identity.name
-                        rca.org_id = org_id
-                        rca.team_id = team_id
-                        await self._learning_store.store(rca)
-                        rs.set_output({"rca": rca.learning[:200]})
-                    else:
-                        rs.set_output({"rca": "none"})
-            else:
-                rca = await self._rca_extractor.extract_rca(
-                    user_text,
-                    result.tool_history,
-                )
+    async def _extract_rca(
+        self,
+        result: Any,
+        user_text: str,
+        org_id: str,
+        team_id: str,
+        trace: Any,
+    ) -> None:
+        """Extract + store a root-cause-analysis learning from tool failures."""
+        if not (self._rca_extractor and self._learning_store and result.tool_history):
+            return
+        if trace:
+            with trace.span("rca.extraction") as rs:
+                rca = await self._rca_extractor.extract_rca(user_text, result.tool_history)
                 if rca:
                     rca.agent_id = self.identity.name
+                    rca.org_id = org_id
+                    rca.team_id = team_id
                     await self._learning_store.store(rca)
+                    rs.set_output({"rca": rca.learning[:200]})
+                else:
+                    rs.set_output({"rca": "none"})
+        else:
+            rca = await self._rca_extractor.extract_rca(user_text, result.tool_history)
+            if rca:
+                rca.agent_id = self.identity.name
+                await self._learning_store.store(rca)
 
-        if result.tool_history and self._learning_extractor and self._learning_store:
-            if trace:
-                with trace.span("learning.extraction") as ls:
-                    corrections = self._learning_extractor.extract_corrections(
-                        user_text,
-                        result.tool_history,
-                    )
-                    positives = self._learning_extractor.extract_positive_patterns(
-                        user_text,
-                        result.tool_history,
-                    )
-                    all_learnings = corrections + positives
-                    for learning in all_learnings:
-                        learning.agent_id = self.identity.name
-                        learning.org_id = org_id
-                        learning.team_id = team_id
-                        await self._learning_store.store(learning)
-                    ls.set_output(
-                        {
-                            "corrections": len(corrections),
-                            "positives": len(positives),
-                        }
-                    )
-            else:
+    async def _extract_learnings(
+        self,
+        result: Any,
+        user_text: str,
+        org_id: str,
+        team_id: str,
+        trace: Any,
+    ) -> None:
+        """Extract + store corrections (and, when traced, positive patterns)."""
+        if not (result.tool_history and self._learning_extractor and self._learning_store):
+            return
+        if trace:
+            with trace.span("learning.extraction") as ls:
                 corrections = self._learning_extractor.extract_corrections(
-                    user_text,
-                    result.tool_history,
+                    user_text, result.tool_history
                 )
-                for learning in corrections:
+                positives = self._learning_extractor.extract_positive_patterns(
+                    user_text, result.tool_history
+                )
+                for learning in corrections + positives:
                     learning.agent_id = self.identity.name
                     learning.org_id = org_id
                     learning.team_id = team_id
                     await self._learning_store.store(learning)
-
-        if self._learning_promoter and injected_learning_ids:
-            await self._learning_promoter.check_and_promote(org_id=org_id)
-
-        if session_id and self._session_store and result.response:
-            save_msgs: list[dict[str, str]] = []
-            if user_text:
-                save_msgs.append({"role": "user", "content": user_text})
-            save_msgs.append({"role": "assistant", "content": result.response})
-            await self._session_store.append_messages(session_id, save_msgs)
-
-        if self._outcome_store:
-            from maistro.types.memory import Outcome
-
-            charge_info: dict[str, Any] = {
-                "charged_microchips": 0,
-                "pricing_version": "",
-            }
-            if self._coin_ledger:
-                charge_info = await self._coin_ledger.charge_usage(
-                    request_id=session_id or "",
-                    org_id=org_id,
-                    team_id=team_id,
-                    user_id=getattr(auth, "user_id", ""),
-                    model_used=model,
-                    provider="",
-                    input_tokens=result.input_tokens,
-                    output_tokens=result.output_tokens,
-                )
-
-            outcome = Outcome(
-                request_id=session_id or "",
-                task_type="",
-                model_used=model,
-                provider="",
-                tool_calls=[
+                ls.set_output(
                     {
-                        "name": str(h.get("tool_name", "")),
-                        "success": not str(h.get("result", "")).startswith("Error"),
+                        "corrections": len(corrections),
+                        "positives": len(positives),
                     }
-                    for h in (result.tool_history or [])
-                ],
-                success=not tool_had_failures,
-                error_type="tool_error" if tool_had_failures else "",
+                )
+        else:
+            corrections = self._learning_extractor.extract_corrections(
+                user_text, result.tool_history
+            )
+            for learning in corrections:
+                learning.agent_id = self.identity.name
+                learning.org_id = org_id
+                learning.team_id = team_id
+                await self._learning_store.store(learning)
+
+    async def _record_outcome(
+        self,
+        result: Any,
+        auth: Any,
+        model: str,
+        session_id: str | None,
+        org_id: str,
+        team_id: str,
+        tool_had_failures: bool,
+    ) -> None:
+        """Charge usage (when a ledger is wired) and persist an Outcome record."""
+        from maistro.types.memory import Outcome
+
+        assert self._outcome_store is not None
+
+        charge_info: dict[str, Any] = {
+            "charged_microchips": 0,
+            "pricing_version": "",
+        }
+        if self._coin_ledger:
+            charge_info = await self._coin_ledger.charge_usage(
+                request_id=session_id or "",
                 org_id=org_id,
                 team_id=team_id,
                 user_id=getattr(auth, "user_id", ""),
-                agent_id=self.identity.name,
+                model_used=model,
+                provider="",
                 input_tokens=result.input_tokens,
                 output_tokens=result.output_tokens,
-                charged_microchips=int(str(charge_info.get("charged_microchips", 0))),
-                pricing_version=str(charge_info.get("pricing_version", "")),
             )
-            await self._outcome_store.record(outcome)
 
-        if injected_learning_ids and self._learning_store:
-            await self._learning_store.mark_outcome(
-                injected_learning_ids,
-                success=not tool_had_failures,
-                org_id=org_id,
+        outcome = Outcome(
+            request_id=session_id or "",
+            task_type="",
+            model_used=model,
+            provider="",
+            tool_calls=[
+                {
+                    "name": str(h.get("tool_name", "")),
+                    "success": not str(h.get("result", "")).startswith("Error"),
+                }
+                for h in (result.tool_history or [])
+            ],
+            success=not tool_had_failures,
+            error_type="tool_error" if tool_had_failures else "",
+            org_id=org_id,
+            team_id=team_id,
+            user_id=getattr(auth, "user_id", ""),
+            agent_id=self.identity.name,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            charged_microchips=int(str(charge_info.get("charged_microchips", 0))),
+            pricing_version=str(charge_info.get("pricing_version", "")),
+        )
+        await self._outcome_store.record(outcome)
+
+    def _finalize_trace(
+        self,
+        trace: Any,
+        result: Any,
+        model: str,
+        session_history_count: int,
+        injected_learning_ids: list[int],
+    ) -> None:
+        """Attach summary metadata to the trace and end it."""
+        tool_success_count = 0
+        tool_fail_count = 0
+        tools_used: list[str] = []
+        for th in result.tool_history or []:
+            r = str(th.get("result", ""))
+            tools_used.append(str(th.get("tool_name", "")))
+            if r.startswith("Error") or "error" in r[:50].lower():
+                tool_fail_count += 1
+            else:
+                tool_success_count += 1
+
+        trace.update(
+            {
+                "agent": self.identity.name,
+                "model": model,
+                "response_length": str(len(result.response or "")),
+                "tool_calls_total": str(len(result.tool_history) if result.tool_history else 0),
+                "tool_calls_success": str(tool_success_count),
+                "tool_calls_failed": str(tool_fail_count),
+                "tools_used": ",".join(dict.fromkeys(tools_used)),
+                "session_history_injected": str(session_history_count),
+                "learnings_injected": str(len(injected_learning_ids)),
+            }
+        )
+        trace.end()
+
+    async def _delegate(
+        self,
+        result: Any,
+        *,
+        auth: Any,
+        session_id: str | None,
+        model_override: str | None,
+        status_callback: Any,
+        classified_task_type: str,
+        depth: int,
+        trace: Any,
+    ) -> AgentResponse | None:
+        """Invoke the sub-agent chosen by the reasoning strategy.
+
+        Returns the sub-agent's :class:`AgentResponse`, or ``None`` if the
+        target cannot be resolved (caller then falls back to normal handling).
+        """
+        import logging as _log
+
+        log = _log.getLogger("maistro.agent")
+        target_name = result.delegate_to
+
+        _MAX_DELEGATION_DEPTH = 5
+        if depth >= _MAX_DELEGATION_DEPTH:
+            log.warning(
+                "Delegation depth limit reached: agent=%s target=%s depth=%d",
+                self.identity.name,
+                target_name,
+                depth,
             )
+            if trace:
+                trace.score("delegation_depth_exceeded", 0.0, comment=target_name)
+                trace.end()
+            return AgentResponse(
+                content="Delegation chain too deep; aborting.",
+                agent_name=self.identity.name,
+            )
+
+        target = self._resolve_agent(target_name)
+        if target is None:
+            log.warning(
+                "Delegation target unresolved: agent=%s target=%s",
+                self.identity.name,
+                target_name,
+            )
+            return None
+
+        delegate_text = result.delegate_message or ""
+        delegate_messages = [{"role": "user", "content": delegate_text}]
 
         if trace:
-            tool_success_count = 0
-            tool_fail_count = 0
-            tools_used: list[str] = []
-            for th in result.tool_history or []:
-                r = str(th.get("result", ""))
-                tools_used.append(str(th.get("tool_name", "")))
-                if r.startswith("Error") or "error" in r[:50].lower():
-                    tool_fail_count += 1
-                else:
-                    tool_success_count += 1
+            trace.update({"delegated_to": target_name})
 
-            trace.update(
-                {
-                    "agent": self.identity.name,
-                    "model": model,
-                    "response_length": str(len(result.response or "")),
-                    "tool_calls_total": str(len(result.tool_history) if result.tool_history else 0),
-                    "tool_calls_success": str(tool_success_count),
-                    "tool_calls_failed": str(tool_fail_count),
-                    "tools_used": ",".join(dict.fromkeys(tools_used)),
-                    "session_history_injected": str(session_history_count),
-                    "learnings_injected": str(len(injected_learning_ids)),
-                }
-            )
-            trace.end()
-
-        return AgentResponse(
-            content=result.response or "",
-            agent_name=self.identity.name,
+        return await target.handle(
+            messages=delegate_messages,
+            auth=auth,
+            session_id=session_id,
+            model_override=model_override,
+            status_callback=status_callback,
+            classified_task_type=classified_task_type,
+            _delegation_depth=depth + 1,
         )
+
+    def _resolve_agent(self, name: str) -> Agent | None:
+        """Look up a sub-agent by name via the configured resolver.
+
+        The resolver may be a callable ``name -> Agent | None`` or a mapping.
+        """
+        resolver = self._agent_resolver
+        if resolver is None:
+            return None
+        target = resolver(name) if callable(resolver) else resolver.get(name)
+        return target if isinstance(target, Agent) else None

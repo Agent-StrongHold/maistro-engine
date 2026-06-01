@@ -10,6 +10,7 @@ Per-request auth: PATs go in headers, never env. URLs come from env
 Compatible with Cloud Rovo MCP post-migration: same headers, same JSON-RPC
 shape; only the URL changes.
 """
+
 from __future__ import annotations
 
 import os
@@ -109,11 +110,10 @@ class AtlassianMCPClient:
             except httpx.HTTPError as exc:
                 raise AtlassianMCPError(f"healthz unreachable: {exc}") from exc
         if resp.status_code >= 400:
-            raise AtlassianMCPError(
-                f"healthz returned {resp.status_code}: {resp.text[:300]}"
-            )
+            raise AtlassianMCPError(f"healthz returned {resp.status_code}: {resp.text[:300]}")
         try:
-            return resp.json()
+            health: dict[str, Any] = resp.json()
+            return health
         except ValueError:
             return {"status": resp.text}
 
@@ -192,14 +192,10 @@ class AtlassianMCPClient:
         args: dict[str, Any] = {"text": text, "max_results": max_results}
         if project:
             args["project"] = project
-        result = await self.call_tool(
-            "jira_search_by_text", args, jira_pat=jira_pat
-        )
-        return self._parse_jira_search(result, jql=f"text ~ \"{text}\"")
+        result = await self.call_tool("jira_search_by_text", args, jira_pat=jira_pat)
+        return self._parse_jira_search(result, jql=f'text ~ "{text}"')
 
-    async def jira_get_my_issues(
-        self, *, max_results: int = 25, jira_pat: str
-    ) -> JiraSearchResult:
+    async def jira_get_my_issues(self, *, max_results: int = 25, jira_pat: str) -> JiraSearchResult:
         result = await self.call_tool(
             "jira_get_my_issues",
             {"max_results": max_results},
@@ -209,12 +205,8 @@ class AtlassianMCPClient:
             result, jql="assignee = currentUser() OR reporter = currentUser()"
         )
 
-    async def jira_get_issue(
-        self, issue_key: str, *, jira_pat: str
-    ) -> JiraIssue:
-        result = await self.call_tool(
-            "jira_get_issue", {"issue_key": issue_key}, jira_pat=jira_pat
-        )
+    async def jira_get_issue(self, issue_key: str, *, jira_pat: str) -> JiraIssue:
+        result = await self.call_tool("jira_get_issue", {"issue_key": issue_key}, jira_pat=jira_pat)
         # mcp-jedai-atlassian shape: result is either an issue dict or wraps one in "content"
         issue = result.get("issue") or result.get("content") or result
         if isinstance(issue, list) and issue:
@@ -234,9 +226,7 @@ class AtlassianMCPClient:
             confluence_pat=confluence_pat,
         )
 
-    async def confluence_get_page(
-        self, page_id: str, *, confluence_pat: str
-    ) -> dict[str, Any]:
+    async def confluence_get_page(self, page_id: str, *, confluence_pat: str) -> dict[str, Any]:
         return await self.call_tool(
             "confluence_get_page",
             {"page_id": page_id},
@@ -256,9 +246,7 @@ class AtlassianMCPClient:
         if not isinstance(raw_issues, list):
             raw_issues = []
         issues = tuple(
-            AtlassianMCPClient._parse_jira_issue(i)
-            for i in raw_issues
-            if isinstance(i, dict)
+            AtlassianMCPClient._parse_jira_issue(i) for i in raw_issues if isinstance(i, dict)
         )
         total = int(result.get("total", len(issues)))
         return JiraSearchResult(issues=issues, total=total, jql=jql)
@@ -269,19 +257,13 @@ class AtlassianMCPClient:
         fields = d.get("fields") if isinstance(d.get("fields"), dict) else d
         assignee_obj = fields.get("assignee") if isinstance(fields, dict) else None
         assignee = (
-            assignee_obj.get("displayName")
-            if isinstance(assignee_obj, dict)
-            else assignee_obj
+            assignee_obj.get("displayName") if isinstance(assignee_obj, dict) else assignee_obj
         )
         status_obj = fields.get("status") if isinstance(fields, dict) else None
-        status = (
-            status_obj.get("name") if isinstance(status_obj, dict) else (status_obj or "")
-        )
+        status = status_obj.get("name") if isinstance(status_obj, dict) else (status_obj or "")
         issuetype_obj = fields.get("issuetype") if isinstance(fields, dict) else None
         issuetype = (
-            issuetype_obj.get("name")
-            if isinstance(issuetype_obj, dict)
-            else (issuetype_obj or "")
+            issuetype_obj.get("name") if isinstance(issuetype_obj, dict) else (issuetype_obj or "")
         )
         labels = fields.get("labels", []) if isinstance(fields, dict) else []
         return JiraIssue(
@@ -291,8 +273,10 @@ class AtlassianMCPClient:
             assignee=str(assignee) if assignee else None,
             issuetype=str(issuetype or ""),
             url=str(d.get("self") or d.get("url") or "") or None,
-            description=str(fields.get("description", "") if isinstance(fields, dict) else "")[:2000],
-            labels=tuple(str(l) for l in labels) if isinstance(labels, list) else (),
+            description=str(fields.get("description", "") if isinstance(fields, dict) else "")[
+                :2000
+            ],
+            labels=tuple(str(lbl) for lbl in labels) if isinstance(labels, list) else (),
         )
 
 

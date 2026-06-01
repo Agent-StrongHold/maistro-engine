@@ -19,11 +19,11 @@ from typing import TypedDict
 class DomainConfig(TypedDict, total=False):
     """Per-domain frontend hint shipped to the UI shell."""
 
-    use_case: str           # the value stored on Project.use_case
-    mount_path: str         # URL prefix the SPA mounts at (gateway proxy key)
-    display_name: str       # human-readable label for nav + project picker
-    icon: str               # one-char emoji / icon hint
-    description: str        # tooltip / onboarding helper text
+    use_case: str  # the value stored on Project.use_case
+    mount_path: str  # URL prefix the SPA mounts at (gateway proxy key)
+    display_name: str  # human-readable label for nav + project picker
+    icon: str  # one-char emoji / icon hint
+    description: str  # tooltip / onboarding helper text
     default_dag_seeds: list[str]  # default DAG ids seeded on first project create
 
 

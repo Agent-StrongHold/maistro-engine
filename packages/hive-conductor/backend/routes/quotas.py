@@ -43,19 +43,21 @@ def list_providers() -> list[dict]:
             used = info.get("used_tokens", 0)
             remaining = info.get("remaining_tokens", free - used)
             limit = free if free < 999_999_999 else None
-            result.append({
-                "provider": name.title(),
-                "status": info.get("status", "active"),
-                "billing_cycle": info.get("billing_cycle", "monthly"),
-                "cycle_key": info.get("cycle_key", ""),
-                "used_tokens": used,
-                "free_tokens": free,
-                "remaining_tokens": remaining,
-                "limit": limit,
-                "usage_pct": info.get("usage_pct", 0.0),
-                "request_count": info.get("request_count", 0),
-                "unit": "tokens",
-            })
+            result.append(
+                {
+                    "provider": name.title(),
+                    "status": info.get("status", "active"),
+                    "billing_cycle": info.get("billing_cycle", "monthly"),
+                    "cycle_key": info.get("cycle_key", ""),
+                    "used_tokens": used,
+                    "free_tokens": free,
+                    "remaining_tokens": remaining,
+                    "limit": limit,
+                    "usage_pct": info.get("usage_pct", 0.0),
+                    "request_count": info.get("request_count", 0),
+                    "unit": "tokens",
+                }
+            )
         return result
     except Exception:
         logger.warning("Failed to fetch quotas from conductor-router, using fallback")
@@ -81,18 +83,20 @@ def list_models() -> list[dict]:
         raw = r.json()
         result = []
         for name, info in raw.items():
-            result.append({
-                "model": name,
-                "provider": info.get("provider", "unknown"),
-                "tier": info.get("tier", "medium"),
-                "quality": info.get("quality", 0.0),
-                "speed": info.get("speed", 0),
-                "usage_pct": info.get("usage_pct", 0.0),
-                "available": info.get("available", True),
-                "context": info.get("context"),
-                "modality": info.get("modality"),
-                "strengths": info.get("strengths", []),
-            })
+            result.append(
+                {
+                    "model": name,
+                    "provider": info.get("provider", "unknown"),
+                    "tier": info.get("tier", "medium"),
+                    "quality": info.get("quality", 0.0),
+                    "speed": info.get("speed", 0),
+                    "usage_pct": info.get("usage_pct", 0.0),
+                    "available": info.get("available", True),
+                    "context": info.get("context"),
+                    "modality": info.get("modality"),
+                    "strengths": info.get("strengths", []),
+                }
+            )
         return result
     except Exception:
         logger.warning("Failed to fetch models from conductor-router, using fallback")

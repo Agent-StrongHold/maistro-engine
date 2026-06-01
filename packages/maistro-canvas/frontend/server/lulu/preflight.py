@@ -48,37 +48,13 @@ def _in_to_pt(inches: float) -> float:
     return inches * 72.0
 
 
-def preflight_interior(
-    pdf_path: str | Path,
-    pod_package_id: str,
-    expected_page_count: int | None = None,
-    allow_extra_blank: bool = True,
-) -> PreflightResult:
-    result = PreflightResult()
-    path = Path(pdf_path)
-
-    if not path.exists():
-        result.passed = False
-        result.issues.append(PreflightIssue("error", "FILE_NOT_FOUND", f"PDF not found: {path}"))
-        return result
-
-    try:
-        reader = PdfReader(str(path))
-    except Exception as e:
-        result.passed = False
-        result.issues.append(PreflightIssue("error", "INVALID_PDF", f"Cannot read PDF: {e}"))
-        return result
-
-    result.page_count = len(reader.pages)
-
-    fmt = PICTURE_BOOK_FORMATS.get(pod_package_id)
-    if not fmt:
-        result.passed = False
-        result.issues.append(
-            PreflightIssue("error", "UNKNOWN_PACKAGE", f"Unknown package: {pod_package_id}")
-        )
-        return result
-
+def _check_page_count(
+    result: PreflightResult,
+    fmt: dict,
+    expected_page_count: int | None,
+    allow_extra_blank: bool,
+) -> None:
+    """Append page-count related issues to ``result``."""
     if result.page_count < fmt["min_pages"]:
         result.issues.append(
             PreflightIssue(
@@ -130,8 +106,10 @@ def preflight_interior(
             )
         )
 
-    first_page = reader.pages[0]
-    mediabox = first_page.mediabox
+
+def _check_page_size(result: PreflightResult, fmt: dict, first_page: object) -> None:
+    """Record page dimensions and append a size-mismatch issue if needed."""
+    mediabox = first_page.mediabox  # type: ignore[attr-defined]
     result.page_width_pt = float(mediabox.width)
     result.page_height_pt = float(mediabox.height)
 
@@ -162,6 +140,9 @@ def preflight_interior(
             )
         )
 
+
+def _check_file_size(result: PreflightResult, path: Path) -> None:
+    """Append file-size related issues to ``result``."""
     file_size_mb = path.stat().st_size / (1024 * 1024)
     max_file_size_mb = 300
     if file_size_mb > max_file_size_mb:
@@ -184,6 +165,42 @@ def preflight_interior(
                 {"file_size_mb": round(file_size_mb, 4)},
             )
         )
+
+
+def preflight_interior(
+    pdf_path: str | Path,
+    pod_package_id: str,
+    expected_page_count: int | None = None,
+    allow_extra_blank: bool = True,
+) -> PreflightResult:
+    result = PreflightResult()
+    path = Path(pdf_path)
+
+    if not path.exists():
+        result.passed = False
+        result.issues.append(PreflightIssue("error", "FILE_NOT_FOUND", f"PDF not found: {path}"))
+        return result
+
+    try:
+        reader = PdfReader(str(path))
+    except Exception as e:
+        result.passed = False
+        result.issues.append(PreflightIssue("error", "INVALID_PDF", f"Cannot read PDF: {e}"))
+        return result
+
+    result.page_count = len(reader.pages)
+
+    fmt = PICTURE_BOOK_FORMATS.get(pod_package_id)
+    if not fmt:
+        result.passed = False
+        result.issues.append(
+            PreflightIssue("error", "UNKNOWN_PACKAGE", f"Unknown package: {pod_package_id}")
+        )
+        return result
+
+    _check_page_count(result, fmt, expected_page_count, allow_extra_blank)
+    _check_page_size(result, fmt, reader.pages[0])
+    _check_file_size(result, path)
 
     result.passed = len(result.errors) == 0
     if result.passed:

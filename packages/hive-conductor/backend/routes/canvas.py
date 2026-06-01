@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from pydantic import BaseModel
-
 from services.canvas_dag import CANVAS_DAG, CanvasHillClimber, visual_quality_eval
 
 router = APIRouter(prefix="/v1/canvas", tags=["canvas"])

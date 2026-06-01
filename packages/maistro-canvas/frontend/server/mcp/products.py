@@ -241,7 +241,7 @@ def list_products() -> list[dict]:
             "margin_usd": p.margin(),
             "margin_pct": round(p.margin() / p.retail_price_usd * 100, 1),
             "page_count": p.page_count,
-            "trim_size": f"{p.trim_width_in}×{p.trim_height_in}",
+            "trim_size": f"{p.trim_width_in}x{p.trim_height_in}",
             "binding": p.binding,
             "paper": p.paper,
         }

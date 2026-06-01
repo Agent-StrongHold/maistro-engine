@@ -155,21 +155,13 @@ class TestRedactPrivateKeys:
         assert "FAKEKEYDATA" not in result
 
     def test_ec_private_key(self):
-        key_block = (
-            "-----BEGIN EC PRIVATE KEY-----\n"
-            "FAKEECKEYDATA==\n"
-            "-----END EC PRIVATE KEY-----"
-        )
+        key_block = "-----BEGIN EC PRIVATE KEY-----\nFAKEECKEYDATA==\n-----END EC PRIVATE KEY-----"
         result = redact(key_block)
         assert "[REDACTED_PRIVATE_KEY]" in result
         assert "FAKEECKEYDATA" not in result
 
     def test_generic_private_key(self):
-        key_block = (
-            "-----BEGIN PRIVATE KEY-----\n"
-            "FAKEGENERICKEY==\n"
-            "-----END PRIVATE KEY-----"
-        )
+        key_block = "-----BEGIN PRIVATE KEY-----\nFAKEGENERICKEY==\n-----END PRIVATE KEY-----"
         result = redact(key_block)
         assert "[REDACTED_PRIVATE_KEY]" in result
         assert "FAKEGENERICKEY" not in result
@@ -220,7 +212,6 @@ class TestRedactJWTs:
     def test_jwt_in_auth_header(self):
         token = "eyJ" + "A" * 80
         result = redact(f"Bearer {token}")
-        assert "FAKE" not in result or True
         assert token not in result
 
     def test_jwt_with_dashes_and_underscores(self):
@@ -274,10 +265,7 @@ class TestRedactQueryParams:
 
 class TestRedactMultipleSecrets:
     def test_multiple_secrets_in_one_text(self):
-        text = (
-            f"db=postgres://fu:fp@host/db key={'sk-' + 'FAKE123'} "
-            f"auth=Bearer FAKE_TOKEN"
-        )
+        text = f"db=postgres://fu:fp@host/db key={'sk-' + 'FAKE123'} auth=Bearer FAKE_TOKEN"
         result = redact(text)
         assert "[REDACTED_DB_CONNECTION]" in result
         assert "[REDACTED_API_KEY]" in result
@@ -285,12 +273,7 @@ class TestRedactMultipleSecrets:
 
     def test_multiline_with_mixed_secrets(self):
         sk_key = "sk-" + "FAKEVALUE12345"
-        text = (
-            f"connecting to db...\n"
-            f"postgres://fu:fp@host/db\n"
-            f"using key {sk_key}\n"
-            f"all good"
-        )
+        text = f"connecting to db...\npostgres://fu:fp@host/db\nusing key {sk_key}\nall good"
         result = redact(text)
         assert result.count("[REDACTED_") >= 2
         assert "all good" in result
@@ -312,7 +295,9 @@ class TestRedactNoFalsePositives:
 
 class TestRedactCompiledAtImportTime:
     def test_patterns_are_compiled(self):
-        from maistro.security.redact import _PATTERNS
         import re
+
+        from maistro.security.redact import _PATTERNS
+
         for pattern, _ in _PATTERNS:
             assert isinstance(pattern, re.Pattern)

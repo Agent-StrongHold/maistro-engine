@@ -61,11 +61,7 @@ def _make_openai_response(fr: FauxResponse) -> dict[str, Any]:
 
 
 def _make_stream_chunk(fr: FauxResponse, token: str, is_last: bool = False) -> dict[str, Any]:
-    delta: dict[str, Any] = {}
-    if is_last:
-        delta = {}
-    else:
-        delta = {"content": token}
+    delta: dict[str, Any] = {} if is_last else {"content": token}
 
     return {
         "id": "faux-stream",
@@ -122,11 +118,13 @@ class FauxProvider:
     def seed_json(self, *objs: BaseModel | dict[str, Any]) -> FauxProvider:
         for obj in objs:
             data = obj.model_dump() if isinstance(obj, BaseModel) else obj
-            self._responses.append(FauxResponse(
-                content=json.dumps(data),
-                usage_prompt_tokens=10,
-                usage_completion_tokens=max(1, len(json.dumps(data)) // 4),
-            ))
+            self._responses.append(
+                FauxResponse(
+                    content=json.dumps(data),
+                    usage_prompt_tokens=10,
+                    usage_completion_tokens=max(1, len(json.dumps(data)) // 4),
+                )
+            )
         return self
 
     def seed_error(self, exc: Exception) -> FauxProvider:
@@ -134,11 +132,13 @@ class FauxProvider:
         return self
 
     def seed_tool_call(self, name: str, arguments: dict[str, Any] | None = None) -> FauxProvider:
-        self._responses.append(FauxResponse(
-            content="",
-            tool_calls=[ToolCallDef(name=name, arguments=arguments or {})],
-            finish_reason="tool_calls",
-        ))
+        self._responses.append(
+            FauxResponse(
+                content="",
+                tool_calls=[ToolCallDef(name=name, arguments=arguments or {})],
+                finish_reason="tool_calls",
+            )
+        )
         return self
 
     def reset(self) -> None:
@@ -163,7 +163,12 @@ class FauxProvider:
         max_tokens: int | None = None,
         temperature: float | None = None,
         metadata: dict[str, Any] | None = None,
+        **extra: Any,
     ) -> dict[str, Any]:
+        # Tolerate (and record) forward-compatible kwargs the graph node passes
+        # through `llm_call`, e.g. `response_schema`. A test double must accept
+        # the same call contract as the real provider rather than TypeError on
+        # an unknown keyword.
         entry: dict[str, Any] = {
             "messages": messages,
             "model": model,
@@ -173,6 +178,7 @@ class FauxProvider:
             "max_tokens": max_tokens,
             "temperature": temperature,
             "metadata": metadata,
+            "extra": extra,
             "timestamp": time.monotonic(),
         }
         self._call_log.append(entry)
@@ -229,7 +235,8 @@ class FauxProvider:
     ) -> str:
         resp_dict = await self.complete(messages, model, **kwargs)
         choice = resp_dict["choices"][0]
-        return choice["message"]["content"]
+        content: str = choice["message"]["content"]
+        return content
 
 
 def plan_output(
@@ -242,7 +249,9 @@ def plan_output(
         "subtasks": subtasks or [],
         "estimated_files": estimated_files or [],
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )
 
 
 def code_output(
@@ -255,7 +264,9 @@ def code_output(
         "description": description,
         "tests_added": tests_added,
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )
 
 
 def review_output(
@@ -270,7 +281,9 @@ def review_output(
         "issues": issues or [],
         "suggestions": suggestions or [],
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )
 
 
 def scout_output(
@@ -285,4 +298,6 @@ def scout_output(
         "similar_implementations": [],
         "summary": summary,
     }
-    return FauxResponse(content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20)
+    return FauxResponse(
+        content=json.dumps(data), usage_prompt_tokens=10, usage_completion_tokens=20
+    )

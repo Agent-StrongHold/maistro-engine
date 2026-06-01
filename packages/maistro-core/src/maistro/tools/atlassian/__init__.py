@@ -9,6 +9,7 @@ this module's state.
 after migration the same caller switches to Rovo Cloud by changing the
 MCP URL — credential pattern is unchanged.
 """
+
 from __future__ import annotations
 
 from maistro.tools.atlassian.client import (

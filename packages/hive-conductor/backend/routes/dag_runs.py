@@ -10,6 +10,7 @@ SSE is the live-update path. Frontend opens the stream when the user
 clicks "View live run" on the Fleet pulse page; updates the react-flow
 node states in real time.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -58,7 +59,7 @@ async def stream_run_events(run_id: str, request: Request) -> StreamingResponse:
                     break
                 try:
                     ev = await asyncio.wait_for(q.get(), timeout=15.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keepalive\n\n"  # SSE comment line; ignored by clients
                     continue
                 payload = {

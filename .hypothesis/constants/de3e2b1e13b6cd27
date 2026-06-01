@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/formal/conftest.py
-# hypothesis_version: 6.151.10
-
-['--nightly', '100', '10000', 'markers', 'nightly', 'store_true']

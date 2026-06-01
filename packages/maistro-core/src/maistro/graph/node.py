@@ -39,18 +39,87 @@ def _strip_json_block(text: str) -> str:
     return m.group(1).strip() if m else text.strip()
 
 
-def _build_system_prompt(role: AgentRole, node_config: NodeConfig | None = None) -> str:
-    base = (
-        (node_config.system_prompt if node_config and node_config.system_prompt else None)
-        or DEFAULT_SYSTEM_PROMPTS.get(role, "")
+def _coerce_int(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _read_usage(usage: Any) -> tuple[int, int]:
+    """Extract (tokens_in, tokens_out) from a usage object or mapping.
+
+    Accepts common provider shapes: prompt_tokens/completion_tokens (OpenAI),
+    input_tokens/output_tokens (Anthropic), or tokens_in/tokens_out.
+    """
+    if usage is None:
+        return 0, 0
+
+    def _get(*names: str) -> int:
+        for name in names:
+            if isinstance(usage, dict):
+                if name in usage:
+                    return _coerce_int(usage[name])
+            elif hasattr(usage, name):
+                return _coerce_int(getattr(usage, name))
+        return 0
+
+    tokens_in = _get("tokens_in", "prompt_tokens", "input_tokens")
+    tokens_out = _get("tokens_out", "completion_tokens", "output_tokens")
+    return tokens_in, tokens_out
+
+
+def _normalize_llm_result(result: Any) -> tuple[str, int, int]:
+    """Normalize an llm_call result into (text, tokens_in, tokens_out).
+
+    Backwards compatible with clients that return a plain ``str`` (usage 0/0).
+    Also supports:
+      * a 2-tuple ``(text, usage)``
+      * an object/mapping carrying ``text``/``content`` plus a ``usage`` field
+    """
+    if isinstance(result, str):
+        return result, 0, 0
+
+    if isinstance(result, tuple) and len(result) == 2:
+        text, usage = result
+        ti, to = _read_usage(usage)
+        return str(text), ti, to
+
+    # Object or mapping that carries both text and usage.
+    if isinstance(result, dict):
+        text = result.get("text") or result.get("content") or ""
+        usage = result.get("usage")
+    else:
+        text = getattr(result, "text", None) or getattr(result, "content", None) or ""
+        usage = getattr(result, "usage", None)
+    ti, to = _read_usage(usage)
+    return str(text), ti, to
+
+
+def _to_agent_role(role: AgentRole | str) -> AgentRole | None:
+    """Coerce a role identifier to its :class:`AgentRole`, or ``None`` if it is
+    an arbitrary kind string with no enum member."""
+    if isinstance(role, AgentRole):
+        return role
+    try:
+        return AgentRole(role)
+    except ValueError:
+        return None
+
+
+def _build_system_prompt(role: AgentRole | str, node_config: NodeConfig | None = None) -> str:
+    role_enum = _to_agent_role(role)
+    base = (node_config.system_prompt if node_config and node_config.system_prompt else None) or (
+        DEFAULT_SYSTEM_PROMPTS.get(role_enum, "") if role_enum is not None else ""
     )
-    schema_suffix = JSON_OUTPUT_SCHEMAS.get(role, "")
+    schema_suffix = JSON_OUTPUT_SCHEMAS.get(role_enum, "") if role_enum is not None else ""
     return base + schema_suffix
 
 
-def _blackboard_prefix(role: AgentRole, bb: GraphBlackboard | None) -> str:
+def _blackboard_prefix(role: AgentRole | str, bb: GraphBlackboard | None) -> str:
     if bb is None:
         return ""
+    role_str = role.value if isinstance(role, AgentRole) else role
     lines: list[str] = [f"## Pipeline Objective\n{bb.task_objective}\n"]
 
     if bb.scout_context:
@@ -77,9 +146,9 @@ def _blackboard_prefix(role: AgentRole, bb: GraphBlackboard | None) -> str:
             f"{te.test_output[:400]}\n"
         )
 
-    annotation = bb.node_annotations.get(role.value)
+    annotation = bb.node_annotations.get(role_str)
     if annotation:
-        lines.append(f"## Hyperagent Note for {role.upper()}\n{annotation}\n")
+        lines.append(f"## Hyperagent Note for {role_str.upper()}\n{annotation}\n")
 
     if bb.iteration > 0:
         lines.append(f"## Optimization Context\nIteration {bb.iteration}.")
@@ -95,6 +164,8 @@ class BeamCandidate:
     parse_error: str | None = None
     score: float = 0.0
     tokens_used: int = 0
+    tokens_in: int = 0
+    tokens_out: int = 0
     duration_s: float = 0.0
     error: Exception | None = None
 
@@ -202,9 +273,13 @@ class NodeRun:
         self.started_at = time.monotonic()
 
         if self._emit_event:
-            await self._emit_event(node_started(
-                self.run_id, self.node_id, self.role.value,
-            ))
+            await self._emit_event(
+                node_started(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                )
+            )
 
         try:
             if self.beam_width > 1:
@@ -216,12 +291,17 @@ class NodeRun:
             self.completed_at = time.monotonic()
             self.duration_s = self.completed_at - (self.started_at or self.completed_at)
             if self._emit_event:
-                await self._emit_event(node_failed(
-                    self.run_id, self.node_id, self.role.value, reason="cancelled",
-                ))
+                await self._emit_event(
+                    node_failed(
+                        self.run_id,
+                        self.node_id,
+                        self.role.value,
+                        reason="cancelled",
+                    )
+                )
             return
         except Exception as exc:
-            self._finish_failure(exc)
+            await self._finish_failure(exc)
             return
 
         self.completed_at = time.monotonic()
@@ -247,84 +327,127 @@ class NodeRun:
                 return
 
             if not self.circuit.allow_request():
-                self._finish_failure(LLMProviderError("Circuit breaker open for node"))
+                await self._finish_failure(LLMProviderError("Circuit breaker open for node"))
                 return
 
             if iteration_budget is not None and not iteration_budget.consume():
-                self._finish_failure(LLMProviderError("Iteration budget exhausted"))
+                await self._finish_failure(LLMProviderError("Iteration budget exhausted"))
                 return
 
             try:
-                schema = self.strategy.output_type.model_json_schema() if self.strategy and hasattr(self.strategy, 'output_type') else None
-                raw = await asyncio.wait_for(
-                    llm_call(messages, model=self.model, temperature=self.temperature, response_schema=schema),
+                schema = (
+                    self.strategy.output_type.model_json_schema()
+                    if self.strategy and hasattr(self.strategy, "output_type")
+                    else None
+                )
+                result = await asyncio.wait_for(
+                    llm_call(
+                        messages,
+                        model=self.model,
+                        temperature=self.temperature,
+                        response_schema=schema,
+                    ),
                     timeout=timeout,
                 )
+                raw, tokens_in, tokens_out = _normalize_llm_result(result)
                 self.circuit.record_success()
                 self.raw_response = raw
+                self.tokens_in += tokens_in
+                self.tokens_out += tokens_out
 
                 parsed = self._parse_output(raw)
                 if parsed is None:
-                    self.circuit.record_failure()
                     last_exc = LLMProviderError(f"Failed to parse output for {self.role.value}")
-                    if attempt < self.max_retries - 1:
-                        self._transition(NodePhase.RETRYING)
-                        self.retry_count += 1
-                        delay = jittered_backoff(attempt, base_delay=0.1, max_delay=1.0)
-                        await asyncio.sleep(delay)
-                        self._transition(NodePhase.RUNNING)
+                    await self._handle_parse_failure(attempt)
                     continue
 
-                self.parsed_output = parsed
-                self.score = self.strategy.score_output(parsed)
-                self._transition(NodePhase.SUCCEEDED)
-
-                if self._emit_event:
-                    await self._emit_event(node_completed(
-                        self.run_id, self.node_id, self.role.value,
-                        score=self.score,
-                    ))
+                await self._finish_success(parsed)
                 return
 
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                classified = classify_error(
-                    exc, provider=self.model, model=self.model,
-                )
-                self.error_classifications.append(classified)
                 last_exc = exc
-                self.circuit.record_failure()
-
-                if classified.retryable and attempt < self.max_retries - 1:
-                    self._transition(NodePhase.RETRYING)
-                    self.retry_count += 1
-                    delay = compute_backoff(attempt + 1, backoff_config, retry_after=classified.retry_after_seconds)
-                    if delay < 0:
-                        self._finish_failure(exc, classified)
-                        return
-                    logger.warning(
-                        "node_retry",
-                        node_id=self.node_id,
-                        role=self.role.value,
-                        attempt=attempt + 1,
-                        category=classified.category.value,
-                        delay=delay,
-                    )
-                    if self._emit_event:
-                        await self._emit_event(node_retrying(
-                            self.run_id, self.node_id, self.role.value,
-                            attempt=attempt + 1,
-                            category=classified.category.value,
-                        ))
-                    await asyncio.sleep(delay)
-                    self._transition(NodePhase.RUNNING)
-                else:
-                    self._finish_failure(exc, classified)
+                should_retry = await self._handle_attempt_exception(exc, attempt, backoff_config)
+                if not should_retry:
                     return
 
         if last_exc is not None:
-            self._finish_failure(last_exc)
+            await self._finish_failure(last_exc)
+
+    async def _handle_parse_failure(self, attempt: int) -> None:
+        """Record a parse failure and, if retries remain, schedule a backoff retry."""
+        self.circuit.record_failure()
+        if attempt < self.max_retries - 1:
+            self._transition(NodePhase.RETRYING)
+            self.retry_count += 1
+            delay = jittered_backoff(attempt, base_delay=0.1, max_delay=1.0)
+            await asyncio.sleep(delay)
+            self._transition(NodePhase.RUNNING)
+
+    async def _finish_success(self, parsed: Any) -> None:
+        """Store a successfully parsed output, score it, and emit completion."""
+        assert self.strategy is not None
+        self.parsed_output = parsed
+        self.score = self.strategy.score_output(parsed)
+        self._transition(NodePhase.SUCCEEDED)
+
+        if self._emit_event:
+            await self._emit_event(
+                node_completed(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                    score=self.score,
+                )
+            )
+
+    async def _handle_attempt_exception(
+        self,
+        exc: Exception,
+        attempt: int,
+        backoff_config: BackoffConfig,
+    ) -> bool:
+        """Classify a failed attempt and either schedule a retry (return True to
+        continue the loop) or finish the node as failed (return False)."""
+        classified = classify_error(exc, provider=self.model, model=self.model)
+        self.error_classifications.append(classified)
+        self.circuit.record_failure()
+
+        if not (classified.retryable and attempt < self.max_retries - 1):
+            await self._finish_failure(exc, classified)
+            return False
+
+        self._transition(NodePhase.RETRYING)
+        self.retry_count += 1
+        delay = compute_backoff(
+            attempt + 1, backoff_config, retry_after=classified.retry_after_seconds
+        )
+        if delay < 0:
+            await self._finish_failure(exc, classified)
+            return False
+
+        logger.warning(
+            "node_retry",
+            node_id=self.node_id,
+            role=self.role.value,
+            attempt=attempt + 1,
+            category=classified.category.value,
+            delay=delay,
+        )
+        if self._emit_event:
+            await self._emit_event(
+                node_retrying(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                    attempt=attempt + 1,
+                    category=classified.category.value,
+                )
+            )
+        await asyncio.sleep(delay)
+        self._transition(NodePhase.RUNNING)
+        return True
 
     async def _execute_beam(
         self,
@@ -352,9 +475,13 @@ class NodeRun:
             if isinstance(result, BeamCandidate):
                 candidates.append(result)
             elif isinstance(result, (Exception, BaseException)):
-                candidates.append(BeamCandidate(
-                    index=i, raw_response="", error=Exception(str(result)),
-                ))
+                candidates.append(
+                    BeamCandidate(
+                        index=i,
+                        raw_response="",
+                        error=Exception(str(result)),
+                    )
+                )
 
         self.beam_candidates = candidates
 
@@ -362,7 +489,7 @@ class NodeRun:
         if not scored:
             first_error = next((c.error for c in candidates if c.error), None)
             if first_error:
-                self._finish_failure(first_error)
+                await self._finish_failure(first_error)
             return
 
         best = max(scored, key=lambda c: c.score)
@@ -370,16 +497,21 @@ class NodeRun:
         self.raw_response = best.raw_response
         self.parsed_output = best.parsed_output
         self.score = best.score
-        self.tokens_in = sum(c.tokens_used for c in candidates)
+        self.tokens_in = sum(c.tokens_in for c in candidates)
+        self.tokens_out = sum(c.tokens_out for c in candidates)
         self._transition(NodePhase.SUCCEEDED)
 
         if self._emit_event:
-            await self._emit_event(node_completed(
-                self.run_id, self.node_id, self.role.value,
-                score=self.score,
-                beam_width=self.beam_width,
-                beam_succeeded=len(scored),
-            ))
+            await self._emit_event(
+                node_completed(
+                    self.run_id,
+                    self.node_id,
+                    self.role.value,
+                    score=self.score,
+                    beam_width=self.beam_width,
+                    beam_succeeded=len(scored),
+                )
+            )
 
     async def _beam_attempt(
         self,
@@ -395,23 +527,35 @@ class NodeRun:
         if iteration_budget is not None and not iteration_budget.consume():
             raise LLMProviderError("Iteration budget exhausted")
 
-        raw = await asyncio.wait_for(
+        result = await asyncio.wait_for(
             llm_call(messages, model=self.model, temperature=self.temperature),
             timeout=timeout,
         )
+        raw, tokens_in, tokens_out = _normalize_llm_result(result)
         elapsed = time.monotonic() - start
 
         parsed = self._parse_output_raw(raw)
         if parsed is None:
             return BeamCandidate(
-                index=index, raw_response=raw, parse_error="failed to parse",
+                index=index,
+                raw_response=raw,
+                parse_error="failed to parse",
                 duration_s=elapsed,
+                tokens_used=tokens_in + tokens_out,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
             )
 
         score = self.strategy.score_output(parsed)
         return BeamCandidate(
-            index=index, raw_response=raw, parsed_output=parsed,
-            score=score, duration_s=elapsed,
+            index=index,
+            raw_response=raw,
+            parsed_output=parsed,
+            score=score,
+            duration_s=elapsed,
+            tokens_used=tokens_in + tokens_out,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
         )
 
     def _parse_output(self, raw: str) -> Any | None:
@@ -431,7 +575,7 @@ class NodeRun:
             logger.debug("node_parse_error", node_id=self.node_id, error=str(exc))
             return None
 
-    def _finish_failure(
+    async def _finish_failure(
         self,
         exc: Exception,
         classified: ClassifiedError | None = None,
@@ -445,19 +589,25 @@ class NodeRun:
             self.duration_s = self.completed_at - (self.started_at or self.completed_at)
 
         if self._emit_event:
+            # node_failed is the most important event to deliver reliably; await
+            # it on the same path as every other emit rather than fire-and-forget.
             try:
-                coro = self._emit_event(node_failed(
-                    self.run_id, self.node_id, self.role.value,
-                    category=classified.category.value,
-                    error=str(exc)[:200],
-                ))
-                import asyncio as _aio
-                loop = _aio.get_running_loop()
-                loop.create_task(coro)
-            except Exception as _exc:
-                _log_b110 = __import__('structlog').get_logger('maistro.graph.node')
-                _log_b110.warning('error_swallowed', error=str(_exc), file='packages/maistro-core/src/maistro/graph/node.py', line=456)
-                pass
+                await self._emit_event(
+                    node_failed(
+                        self.run_id,
+                        self.node_id,
+                        self.role.value,
+                        category=classified.category.value,
+                        error=str(exc)[:200],
+                    )
+                )
+            except Exception:
+                logger.warning(
+                    "node_failed_emit_error",
+                    node_id=self.node_id,
+                    role=self.role.value,
+                    exc_info=True,
+                )
 
     def to_result(self) -> GraphNodeResult:
         success = self.phase == NodePhase.SUCCEEDED

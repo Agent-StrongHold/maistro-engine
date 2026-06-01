@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 import json
 
 import pytest
 
+from maistro.graph.run import GraphRun
 from maistro.graph.types import (
     AgentRole,
-    CodeOutput,
-    GraphBlackboard,
     GraphConfig,
     GraphEdge,
     GraphTask,
     PlanOutput,
-    ReviewOutput,
 )
-from maistro.graph.run import GraphRun
 from maistro.testing.faux_provider import (
     FauxProvider,
     FauxResponse,
@@ -25,6 +21,11 @@ from maistro.testing.faux_provider import (
     review_output,
     scout_output,
 )
+
+# NOTE: tests drive coroutines with native `async def` + `await`, run by
+# pytest-asyncio (auto mode). Do NOT use asyncio.get_event_loop().run_until_
+# complete(): under auto mode the loop state left by earlier async tests makes
+# get_event_loop() raise, producing order-dependent ("flaky") failures.
 
 
 class TestFauxResponse:
@@ -51,79 +52,73 @@ class TestFauxResponse:
 
 
 class TestFauxProviderBasic:
-    def test_default_response_when_empty(self):
+    async def test_default_response_when_empty(self):
         provider = FauxProvider()
-        result = asyncio.get_event_loop().run_until_complete(
-            provider([{"role": "user", "content": "hello"}])
-        )
+        result = await provider([{"role": "user", "content": "hello"}])
         assert "faux plan" in result
 
-    def test_seeded_response_returned(self):
+    async def test_seeded_response_returned(self):
         provider = FauxProvider()
         provider.seed(FauxResponse(content="hello world"))
-        result = asyncio.get_event_loop().run_until_complete(
-            provider([{"role": "user", "content": "hi"}])
-        )
+        result = await provider([{"role": "user", "content": "hi"}])
         assert result == "hello world"
 
-    def test_sequenced_responses(self):
+    async def test_sequenced_responses(self):
         provider = FauxProvider()
         provider.seed(
             FauxResponse(content="first"),
             FauxResponse(content="second"),
             FauxResponse(content="third"),
         )
-        loop = asyncio.get_event_loop()
-        assert loop.run_until_complete(provider([])) == "first"
-        assert loop.run_until_complete(provider([])) == "second"
-        assert loop.run_until_complete(provider([])) == "third"
-        assert loop.run_until_complete(provider([])) == "first" or "faux plan" in loop.run_until_complete(provider([]))
+        assert await provider([]) == "first"
+        assert await provider([]) == "second"
+        assert await provider([]) == "third"
+        # Past the seeded list → default response.
+        assert (await provider([])) == "first" or "faux plan" in (await provider([]))
 
-    def test_seed_json_with_dict(self):
+    async def test_seed_json_with_dict(self):
         provider = FauxProvider()
         provider.seed_json({"summary": "test plan", "subtasks": []})
-        result = asyncio.get_event_loop().run_until_complete(provider([]))
+        result = await provider([])
         parsed = json.loads(result)
         assert parsed["summary"] == "test plan"
 
-    def test_seed_json_with_pydantic(self):
+    async def test_seed_json_with_pydantic(self):
         provider = FauxProvider()
         provider.seed_json(PlanOutput(summary="pydantic plan"))
-        result = asyncio.get_event_loop().run_until_complete(provider([]))
+        result = await provider([])
         parsed = json.loads(result)
         assert parsed["summary"] == "pydantic plan"
 
-    def test_seed_error(self):
+    async def test_seed_error(self):
         provider = FauxProvider()
         provider.seed_error(ConnectionError("network down"))
         with pytest.raises(ConnectionError, match="network down"):
-            asyncio.get_event_loop().run_until_complete(provider([]))
+            await provider([])
 
-    def test_seed_tool_call(self):
+    async def test_seed_tool_call(self):
         provider = FauxProvider()
         provider.seed_tool_call("run_code", {"language": "python", "code": "print(1)"})
-        result = asyncio.get_event_loop().run_until_complete(
-            provider.complete([{"role": "user", "content": "run"}])
-        )
+        result = await provider.complete([{"role": "user", "content": "run"}])
         choice = result["choices"][0]
         assert choice["finish_reason"] == "tool_calls"
         assert len(choice["message"]["tool_calls"]) == 1
         tc = choice["message"]["tool_calls"][0]
         assert tc["function"]["name"] == "run_code"
 
-    def test_call_log(self):
+    async def test_call_log(self):
         provider = FauxProvider()
         msgs = [{"role": "user", "content": "hello"}]
-        asyncio.get_event_loop().run_until_complete(provider(msgs, model="test-model"))
+        await provider(msgs, model="test-model")
         assert provider.call_count == 1
         assert provider.last_messages() == msgs
         entry = provider.last_call()
         assert entry["model"] == "test-model"
 
-    def test_reset(self):
+    async def test_reset(self):
         provider = FauxProvider()
         provider.seed(FauxResponse(content="x"))
-        asyncio.get_event_loop().run_until_complete(provider([]))
+        await provider([])
         assert provider.call_count == 1
         provider.reset()
         assert provider.call_count == 0
@@ -131,17 +126,17 @@ class TestFauxProviderBasic:
 
 
 class TestFauxProviderComplete:
-    def test_returns_openai_format(self):
+    async def test_returns_openai_format(self):
         provider = FauxProvider()
-        provider.seed(FauxResponse(
-            content="test response",
-            usage_prompt_tokens=50,
-            usage_completion_tokens=25,
-            model="faux://test-model",
-        ))
-        result = asyncio.get_event_loop().run_until_complete(
-            provider.complete([{"role": "user", "content": "hi"}])
+        provider.seed(
+            FauxResponse(
+                content="test response",
+                usage_prompt_tokens=50,
+                usage_completion_tokens=25,
+                model="faux://test-model",
+            )
         )
+        result = await provider.complete([{"role": "user", "content": "hi"}])
         assert result["object"] == "chat.completion"
         assert result["model"] == "faux://test-model"
         assert result["choices"][0]["message"]["content"] == "test response"
@@ -150,49 +145,41 @@ class TestFauxProviderComplete:
         assert result["usage"]["completion_tokens"] == 25
         assert result["usage"]["total_tokens"] == 75
 
-    def test_tool_calls_in_response(self):
+    async def test_tool_calls_in_response(self):
         provider = FauxProvider()
-        provider.seed(FauxResponse(
-            content="",
-            tool_calls=[
-                ToolCallDef(name="func_a", arguments={"x": 1}, call_id="call_0"),
-                ToolCallDef(name="func_b", arguments={"y": 2}),
-            ],
-            finish_reason="tool_calls",
-        ))
-        result = asyncio.get_event_loop().run_until_complete(
-            provider.complete([{"role": "user", "content": "go"}])
+        provider.seed(
+            FauxResponse(
+                content="",
+                tool_calls=[
+                    ToolCallDef(name="func_a", arguments={"x": 1}, call_id="call_0"),
+                    ToolCallDef(name="func_b", arguments={"y": 2}),
+                ],
+                finish_reason="tool_calls",
+            )
         )
+        result = await provider.complete([{"role": "user", "content": "go"}])
         tcs = result["choices"][0]["message"]["tool_calls"]
         assert len(tcs) == 2
         assert tcs[0]["id"] == "call_0"
         assert tcs[0]["function"]["name"] == "func_a"
         assert json.loads(tcs[0]["function"]["arguments"]) == {"x": 1}
 
-    def test_metadata_logged(self):
+    async def test_metadata_logged(self):
         provider = FauxProvider()
         meta = {"trace_id": "abc123"}
-        asyncio.get_event_loop().run_until_complete(
-            provider.complete(
-                [{"role": "user", "content": "hi"}],
-                metadata=meta,
-            )
+        await provider.complete(
+            [{"role": "user", "content": "hi"}],
+            metadata=meta,
         )
         assert provider.last_call()["metadata"] == meta
 
 
 class TestFauxProviderStream:
-    def test_stream_yields_sse_chunks(self):
+    async def test_stream_yields_sse_chunks(self):
         provider = FauxProvider()
         provider.seed(FauxResponse(content="hello world"))
 
-        async def collect():
-            chunks = []
-            async for chunk in provider.stream([{"role": "user", "content": "hi"}]):
-                chunks.append(chunk)
-            return chunks
-
-        chunks = asyncio.get_event_loop().run_until_complete(collect())
+        chunks = [chunk async for chunk in provider.stream([{"role": "user", "content": "hi"}])]
         assert len(chunks) >= 3
         data_chunks = [c for c in chunks if c.startswith("data: {")]
         reassembled = ""
@@ -203,33 +190,55 @@ class TestFauxProviderStream:
         assert reassembled == "hello world"
         assert chunks[-1] == "data: [DONE]\n\n"
 
-    def test_stream_error_propagates(self):
+    async def test_stream_error_propagates(self):
         provider = FauxProvider()
         provider.seed_error(ValueError("stream broke"))
 
-        async def collect():
-            chunks = []
-            async for chunk in provider.stream([{"role": "user", "content": "hi"}]):
-                chunks.append(chunk)
-            return chunks
-
         with pytest.raises(ValueError, match="stream broke"):
-            asyncio.get_event_loop().run_until_complete(collect())
+            async for _chunk in provider.stream([{"role": "user", "content": "hi"}]):
+                pass
 
 
 class TestFauxProviderCallable:
-    def test_callable_returns_string(self):
+    async def test_callable_returns_string(self):
         provider = FauxProvider()
         provider.seed(FauxResponse(content="direct call"))
-        result = asyncio.get_event_loop().run_until_complete(
-            provider([{"role": "user", "content": "test"}])
-        )
+        result = await provider([{"role": "user", "content": "test"}])
         assert result == "direct call"
 
-    def test_callable_logs_call(self):
+    async def test_callable_logs_call(self):
         provider = FauxProvider()
-        asyncio.get_event_loop().run_until_complete(provider([]))
+        await provider([])
         assert provider.call_count == 1
+
+
+class TestFauxProviderResponseSchema:
+    """Regression: the graph node calls llm_call(..., response_schema=...).
+    The FauxProvider must accept (and record) that forward-compatible kwarg
+    rather than TypeError — otherwise every graph node fails deterministically
+    in the harness."""
+
+    async def test_complete_accepts_response_schema(self):
+        provider = FauxProvider()
+        provider.seed(FauxResponse(content="ok"))
+        result = await provider.complete(
+            [{"role": "user", "content": "hi"}],
+            temperature=0.0,
+            response_schema={"type": "object"},
+        )
+        assert result["choices"][0]["message"]["content"] == "ok"
+        assert provider.last_call()["extra"]["response_schema"] == {"type": "object"}
+
+    async def test_callable_accepts_response_schema(self):
+        provider = FauxProvider()
+        provider.seed(FauxResponse(content="ok"))
+        result = await provider(
+            [{"role": "user", "content": "hi"}],
+            model="m",
+            temperature=0.0,
+            response_schema={"type": "object"},
+        )
+        assert result == "ok"
 
 
 class TestHelperFactories:
@@ -260,12 +269,15 @@ class TestHelperFactories:
 
 
 class TestFauxProviderWithGraphExecutor:
-    def test_full_pipeline_deterministic(self):
+    async def test_full_pipeline_deterministic(self):
         provider = FauxProvider()
         provider.seed(
-            plan_output(summary="test plan", subtasks=[
-                {"title": "do thing", "description": "implement it", "file_paths": ["main.py"]},
-            ]),
+            plan_output(
+                summary="test plan",
+                subtasks=[
+                    {"title": "do thing", "description": "implement it", "file_paths": ["main.py"]},
+                ],
+            ),
             code_output(files_changed=["main.py"], description="implemented"),
             review_output(approved=True, score=9.0),
         )
@@ -281,9 +293,7 @@ class TestFauxProviderWithGraphExecutor:
         )
         graph_run = GraphRun(task=task, config=config)
 
-        result = asyncio.get_event_loop().run_until_complete(
-            graph_run.start(provider, model="faux://test-model")
-        )
+        result = await graph_run.start(provider, model="faux://test-model")
 
         assert result.success is True
         assert result.plan is not None
@@ -295,7 +305,7 @@ class TestFauxProviderWithGraphExecutor:
         assert result.review.score == 9.0
         assert provider.call_count == 3
 
-    def test_pipeline_with_failure(self):
+    async def test_pipeline_with_failure(self):
         provider = FauxProvider()
         provider.seed(
             plan_output(summary="failing plan"),
@@ -309,13 +319,11 @@ class TestFauxProviderWithGraphExecutor:
         )
         graph_run = GraphRun(task=task, config=config)
 
-        result = asyncio.get_event_loop().run_until_complete(
-            graph_run.start(provider, model="faux://test-model", max_retries=0)
-        )
+        result = await graph_run.start(provider, model="faux://test-model", max_retries=0)
 
         assert result.success is False
 
-    def test_pipeline_with_scout(self):
+    async def test_pipeline_with_scout(self):
         provider = FauxProvider()
         provider.seed(
             scout_output(relevant_files=["app.py"], summary="found files"),
@@ -336,9 +344,7 @@ class TestFauxProviderWithGraphExecutor:
         )
         graph_run = GraphRun(task=task, config=config)
 
-        result = asyncio.get_event_loop().run_until_complete(
-            graph_run.start(provider, model="faux://test-model")
-        )
+        result = await graph_run.start(provider, model="faux://test-model")
 
         assert result.success is True
         assert result.blackboard is not None
@@ -346,7 +352,7 @@ class TestFauxProviderWithGraphExecutor:
         assert "app.py" in result.blackboard.scout_context.relevant_files
         assert provider.call_count == 4
 
-    def test_messages_captured_per_node(self):
+    async def test_messages_captured_per_node(self):
         provider = FauxProvider()
         provider.seed(
             plan_output(summary="test"),
@@ -362,9 +368,7 @@ class TestFauxProviderWithGraphExecutor:
             entry=AgentRole.PLANNER,
         )
         graph_run = GraphRun(task=task, config=config)
-        asyncio.get_event_loop().run_until_complete(
-            graph_run.start(provider, model="faux://test-model")
-        )
+        await graph_run.start(provider, model="faux://test-model")
 
         assert provider.call_count == 2
         planner_msgs = provider.call_log[0]["messages"]
@@ -378,62 +382,56 @@ class TestFauxProviderProtocolConformance:
         provider = FauxProvider()
         assert isinstance(provider, LLMClient)
 
-    def test_works_as_llm_call_callable(self):
+    async def test_works_as_llm_call_callable(self):
         provider = FauxProvider()
         provider.seed_json({"summary": "callable test", "subtasks": [], "estimated_files": []})
 
-        async def run():
-            result = await provider(
-                [{"role": "user", "content": "test"}],
-                model="faux://test-model",
-            )
-            return result
-
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = await provider(
+            [{"role": "user", "content": "test"}],
+            model="faux://test-model",
+        )
         assert isinstance(result, str)
         parsed = json.loads(result)
         assert parsed["summary"] == "callable test"
 
 
 class TestFauxProviderEdgeCases:
-    def test_empty_content(self):
+    async def test_empty_content(self):
         provider = FauxProvider()
         provider.seed(FauxResponse(content=""))
-        result = asyncio.get_event_loop().run_until_complete(provider([]))
+        result = await provider([])
         assert result == ""
 
-    def test_very_long_content(self):
+    async def test_very_long_content(self):
         provider = FauxProvider()
         long_content = "x" * 100_000
         provider.seed(FauxResponse(content=long_content))
-        result = asyncio.get_event_loop().run_until_complete(provider([]))
+        result = await provider([])
         assert result == long_content
 
-    def test_unicode_content(self):
+    async def test_unicode_content(self):
         provider = FauxProvider()
         provider.seed(FauxResponse(content="Hello, world! Bonjour! Hola!"))
-        result = asyncio.get_event_loop().run_until_complete(provider([]))
+        result = await provider([])
         assert "Bonjour" in result
 
-    def test_sequential_errors_then_success(self):
+    async def test_sequential_errors_then_success(self):
         provider = FauxProvider()
         provider.seed_error(TimeoutError("timeout"))
         provider.seed_error(ConnectionError("reset"))
         provider.seed(FauxResponse(content="finally works"))
 
-        loop = asyncio.get_event_loop()
         with pytest.raises(TimeoutError):
-            loop.run_until_complete(provider([]))
+            await provider([])
         with pytest.raises(ConnectionError):
-            loop.run_until_complete(provider([]))
-        result = loop.run_until_complete(provider([]))
+            await provider([])
+        result = await provider([])
         assert result == "finally works"
 
-    def test_multiple_resets(self):
+    async def test_multiple_resets(self):
         provider = FauxProvider()
         provider.seed(FauxResponse(content="a"), FauxResponse(content="b"))
-        loop = asyncio.get_event_loop()
-        assert loop.run_until_complete(provider([])) == "a"
+        assert await provider([]) == "a"
         provider.reset()
-        assert loop.run_until_complete(provider([])) == "a"
-        assert loop.run_until_complete(provider([])) == "b"
+        assert await provider([]) == "a"
+        assert await provider([]) == "b"

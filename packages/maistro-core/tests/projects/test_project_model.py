@@ -24,7 +24,6 @@ from maistro.projects import (
     RepoResourceBinding,
 )
 
-
 # --- Project type — has_member / role_of / can_mutate ---------------------
 
 
@@ -46,12 +45,14 @@ def test_explicit_editor_can_mutate_but_viewer_cannot() -> None:
     p = Project(id="p1", owner_user_id="alice", name="Ship payments")
     from maistro.projects.types import ProjectMember
 
-    p = p.model_copy(update={
-        "members": [
-            ProjectMember(user_id="bob", role=ProjectMemberRole.EDITOR),
-            ProjectMember(user_id="carol", role=ProjectMemberRole.VIEWER),
-        ]
-    })
+    p = p.model_copy(
+        update={
+            "members": [
+                ProjectMember(user_id="bob", role=ProjectMemberRole.EDITOR),
+                ProjectMember(user_id="carol", role=ProjectMemberRole.VIEWER),
+            ]
+        }
+    )
     assert p.role_of("bob") == ProjectMemberRole.EDITOR
     assert p.role_of("carol") == ProjectMemberRole.VIEWER
     assert p.can_mutate("bob") is True
@@ -66,7 +67,9 @@ def test_resource_bindings_carry_descriptions() -> None:
         name="Ship payments",
         profile_markdown="Build the next-gen payments engine for Disney+",
         jira_bindings=[
-            JiraResourceBinding(project_key="PAY", flavor="server", site_url="https://myjira.disney.com")
+            JiraResourceBinding(
+                project_key="PAY", flavor="server", site_url="https://myjira.disney.com"
+            )
         ],
         airtable_bindings=[
             AirtableResourceBinding(

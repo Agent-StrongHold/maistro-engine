@@ -13,9 +13,11 @@ them.
 v0.5 persists to postgres; v0 in-memory is sufficient for the live
 demo loop.
 """
+
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import uuid
 from collections import defaultdict, deque
@@ -30,9 +32,9 @@ MAX_SSE_QUEUE = 200
 @dataclass
 class DagRunEvent:
     run_id: str
-    event_type: str        # pm_node_started | pm_node_completed | pm_node_failed
-    role: str              # e.g. "intake", "delivery"
-    capability: str        # e.g. "create_initiative", "poll_jira"
+    event_type: str  # pm_node_started | pm_node_completed | pm_node_failed
+    role: str  # e.g. "intake", "delivery"
+    capability: str  # e.g. "create_initiative", "poll_jira"
     payload: dict[str, Any] = field(default_factory=dict)
     timestamp: float = field(default_factory=time.time)
 
@@ -102,10 +104,7 @@ class DagRunStore:
         async with self._lock:
             # If we're at capacity, manually evict before append (otherwise
             # the deque drops eldest silently and our dict grows unbounded).
-            if (
-                self._order.maxlen is not None
-                and len(self._order) >= self._order.maxlen
-            ):
+            if self._order.maxlen is not None and len(self._order) >= self._order.maxlen:
                 stale = self._order.popleft()
                 self._runs.pop(stale, None)
                 self._subscribers.pop(stale, None)
@@ -136,10 +135,8 @@ class DagRunStore:
                 run.events = run.events[-MAX_EVENTS_PER_RUN:]
         # Fan out to SSE subscribers.
         for q in self._subscribers.get(run_id, []):
-            try:
+            with contextlib.suppress(asyncio.QueueFull):
                 q.put_nowait(ev)
-            except asyncio.QueueFull:
-                pass
         return ev
 
     async def finish_run(self, run_id: str) -> None:
@@ -191,6 +188,7 @@ def get_dag_run_store() -> DagRunStore:
 # subscribe to maistro's pm_node_* events and write them to the store.
 # -------------------------------------------------------------------------
 
+
 def install_pm_event_bridge(
     *,
     store: DagRunStore | None = None,
@@ -227,7 +225,7 @@ def install_pm_event_bridge(
             pass
 
     # Create + bind an EventBus instance, then wire pm_runner's hook.
-    from maistro.events.bus import EventBus, Trigger, EventCategory
+    from maistro.events.bus import EventBus, Trigger
 
     bus = EventBus()
     trigger = Trigger(

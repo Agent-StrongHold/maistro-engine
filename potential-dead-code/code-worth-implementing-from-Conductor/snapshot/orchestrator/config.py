@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 import yaml
 
@@ -71,10 +70,15 @@ class ConductorConfig:
         if not isinstance(self.max_retries, int) or self.max_retries < 1:
             errors.append("max_retries must be a positive integer")
 
-        if not isinstance(self.accept_threshold, (int, float)) or not (0 <= self.accept_threshold <= 10):
+        if not isinstance(self.accept_threshold, (int, float)) or not (
+            0 <= self.accept_threshold <= 10
+        ):
             errors.append("accept_threshold must be a number between 0 and 10")
 
-        if not isinstance(self.max_working_memory_tokens, int) or self.max_working_memory_tokens < 100:
+        if (
+            not isinstance(self.max_working_memory_tokens, int)
+            or self.max_working_memory_tokens < 100
+        ):
             errors.append("max_working_memory_tokens must be an integer >= 100")
 
         if errors:
@@ -122,6 +126,7 @@ class ConductorConfig:
         unknown_keys = set(raw.keys()) - known_fields - {"tests", "toolchains"}
         if unknown_keys:
             import logging
+
             logging.getLogger(__name__).warning("Unknown config keys ignored: %s", unknown_keys)
 
         return cls(tests=tests, toolchains=toolchains, **filtered_raw)

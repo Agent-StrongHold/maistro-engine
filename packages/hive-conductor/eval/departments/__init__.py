@@ -7,7 +7,7 @@ and returns 0-100 based on criteria specific to that department.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any, ClassVar
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class RubricEval:
 
     department: str = ""
     eval_name: str = ""
-    criteria: list[dict[str, Any]] = []  # [{"name": str, "weight": int, "check": callable}]
+    criteria: ClassVar[list[dict[str, Any]]] = []  # [{"name", "weight", "check": callable}]
 
     async def score(self, output: str, context: dict[str, Any] | None = None) -> EvalResult:
         total_weight = sum(c["weight"] for c in self.criteria)
@@ -34,7 +34,11 @@ class RubricEval:
             passed = c["check"](output, context or {})
             points = c["weight"] if passed else 0
             earned += points
-            details["criteria"].append({"name": c["name"], "passed": passed, "points": points, "max": c["weight"]})
+            details["criteria"].append(
+                {"name": c["name"], "passed": passed, "points": points, "max": c["weight"]}
+            )
 
         score = int(100 * earned / total_weight) if total_weight else 0
-        return EvalResult(score=score, department=self.department, eval_name=self.eval_name, details=details)
+        return EvalResult(
+            score=score, department=self.department, eval_name=self.eval_name, details=details
+        )

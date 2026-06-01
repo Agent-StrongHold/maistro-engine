@@ -12,9 +12,11 @@ from maistro.auth.registry import ServiceKeyRegistry
 
 def _make_registry(key="sk-svc-test-key-123", scopes=("llm:*",)):
     reg = ServiceKeyRegistry()
-    reg.load_dict({
-        "test-service": {"key": key, "scopes": list(scopes)},
-    })
+    reg.load_dict(
+        {
+            "test-service": {"key": key, "scopes": list(scopes)},
+        }
+    )
     return reg
 
 
@@ -150,9 +152,11 @@ def test_bearer_sk_svc_prefix_accepted(key):
 def test_x_service_key_takes_priority():
     reg = _make_registry(key="key-x")
     provider = ServiceKeyAuthProvider(reg)
-    identity = provider.authenticate({
-        "x-service-key": "key-x",
-        "authorization": "Bearer sk-svc-other",
-    })
+    identity = provider.authenticate(
+        {
+            "x-service-key": "key-x",
+            "authorization": "Bearer sk-svc-other",
+        }
+    )
     assert identity is not None
     assert identity.name == "test-service"

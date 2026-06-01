@@ -31,6 +31,7 @@ def _init_engine() -> None:
     _seed_test_user()
 
     import tempfile
+
     from services import user_credentials as cred_svc
 
     cred_svc.init_credential_store(tempfile.mkdtemp(prefix="hive-cred-test-"))
