@@ -1,5 +1,5 @@
 ---
-id: SPEC-189
+id: SPEC-191
 title: "Code-health remediation backlog — cyclomatic complexity, god objects, dead code, security, and duplication debt across the monorepo"
 repo: maistro-engine
 kind: spec
@@ -19,7 +19,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-189: Code-Health Remediation Backlog
+# SPEC-191: Code-Health Remediation Backlog
 
 ## Context
 

@@ -9,8 +9,11 @@ The user wants to create a new SPEC. The argument is $ARGUMENTS (the short title
 Front matter is machine-validated by maistro-registry (`extra = forbid` — unknown or missing fields fail). Get it exactly right.
 
 Steps:
-1. Run `ls docs/specs/ | sort | tail -3` to find the highest existing SPEC number.
-2. Compute the next number, zero-padded to 3 digits (e.g. SPEC-189). The id MUST match `^SPEC-\d{3}$`.
+1. Run `ls docs/specs/ | sort | tail -3` to find the highest SPEC number on this branch.
+   IMPORTANT: also check numbers claimed by other open PR branches, or you will collide with
+   an in-flight spec the local tree can't see:
+   `for n in $(gh pr list --state open --json number -q '.[].number'); do gh pr view $n --json files -q '.files[].path'; done | grep -oE 'SPEC-[0-9]+' | sort -u | tail`
+2. Compute the next number above ALL of those, zero-padded to 3 digits (e.g. SPEC-201). The id MUST match `^SPEC-\d{3}$`.
 3. Convert $ARGUMENTS to kebab-case for the filename slug → `docs/specs/SPEC-NNN-<slug>.md`.
 4. Use today's date from the environment for `created` (YYYY-MM-DD). Do NOT guess.
 5. Write the file with this exact front-matter shape, filling in real values:
