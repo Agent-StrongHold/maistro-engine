@@ -42,6 +42,10 @@ def _walk(root: Path) -> Iterable[Path]:
     seen: set[Path] = set()
     for pattern in _WALK_PATTERNS:
         for p in root.glob(pattern):
+            # Template files (e.g. ADR-000-template.md) carry placeholder front
+            # matter and are not real records — skip them.
+            if "template" in p.stem.lower():
+                continue
             if p.suffix == ".md" and p.is_file() and p not in seen:
                 seen.add(p)
                 yield p

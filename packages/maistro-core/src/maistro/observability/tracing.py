@@ -1,9 +1,15 @@
-"""Langfuse tracing integration for agent calls."""
+"""Agent tracing via OpenTelemetry — vendor-neutral.
+
+Spans are emitted through the OpenTelemetry API, so any OTLP-compatible backend
+(Arize/Phoenix, Langfuse, Honeycomb, Jaeger, …) can receive them by configuring an
+exporter at application startup. With no TracerProvider/exporter configured, the OTel
+API falls back to a no-op tracer and these decorators add negligible overhead. This
+replaces the previous direct Langfuse SDK integration — the backend is now a
+deployment choice (OTLP endpoint), not a hard dependency.
+"""
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import functools
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar
@@ -15,66 +21,43 @@ logger = structlog.get_logger()
 P = ParamSpec("P")
 T = TypeVar("T")
 
-# Lazy Langfuse client — initialized on first use
-_langfuse: Any | None = None
-_langfuse_checked = False
 
+def _get_tracer() -> Any | None:
+    """Return an OpenTelemetry tracer, or None if OpenTelemetry is not installed.
 
-def get_langfuse() -> Any | None:
-    """Get or create Langfuse client. Returns None if not configured."""
-    global _langfuse, _langfuse_checked
-    if _langfuse_checked:
-        return _langfuse
-
-    _langfuse_checked = True
+    Install the exporter stack via the `observability` extra to actually emit spans.
+    """
     try:
-        import os
-
-        # Only initialize if keys are actually configured
-        if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
-            return None
-        from langfuse import Langfuse
-
-        _langfuse = Langfuse()
-        # Verify it actually works by checking the attribute exists
-        if not hasattr(_langfuse, "trace"):
-            _langfuse = None
-        return _langfuse
-    except Exception:
-        logger.warning("langfuse_not_configured")
-        _langfuse = None
+        from opentelemetry import trace
+    except ImportError:
         return None
+    return trace.get_tracer("maistro.agents")
 
 
 def trace_agent(name: str) -> Callable[[Callable[P, T]], Callable[P, T]]:
-    """Decorator to trace an agent function with Langfuse."""
+    """Wrap an async agent call in an OpenTelemetry span.
+
+    No-ops gracefully when OpenTelemetry is absent or no exporter is configured.
+    """
 
     def decorator(fn: Callable[P, T]) -> Callable[P, T]:
         @functools.wraps(fn)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            langfuse = get_langfuse()
-
-            if langfuse is None:
+            tracer = _get_tracer()
+            if tracer is None:
                 return await fn(*args, **kwargs)  # type: ignore[misc,no-any-return]
 
-            try:
-                trace = langfuse.trace(name=name)
-                span = trace.span(name=f"{name}.run")
-            except Exception:
-                # If tracing setup fails, run without tracing
-                return await fn(*args, **kwargs)  # type: ignore[misc,no-any-return]
+            from opentelemetry.trace import Status, StatusCode
 
-            try:
-                result = await fn(*args, **kwargs)  # type: ignore[misc]
-                span.end(output=str(result)[:500])
-                return result  # type: ignore[no-any-return]
-            except Exception as exc:
-                span.end(output=f"error: {exc}", level="ERROR")
-                raise
-            finally:
-                # Non-blocking flush — run in thread to avoid blocking the event loop
-                with contextlib.suppress(Exception):
-                    asyncio.get_running_loop().run_in_executor(None, langfuse.flush)
+            with tracer.start_as_current_span(name) as span:
+                try:
+                    result = await fn(*args, **kwargs)  # type: ignore[misc]
+                    span.set_attribute("maistro.output_preview", str(result)[:500])
+                    return result  # type: ignore[no-any-return]
+                except Exception as exc:
+                    span.record_exception(exc)
+                    span.set_status(Status(StatusCode.ERROR, str(exc)))
+                    raise
 
         return wrapper  # type: ignore[return-value]
 

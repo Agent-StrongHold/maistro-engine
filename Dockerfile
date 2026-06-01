@@ -1,4 +1,6 @@
 # ─── Build stage ───────────────────────────────────────
+# Tip: pin by digest for reproducibility, e.g. python:3.12-slim@sha256:<digest>,
+# and rebuild on a schedule so security patches are picked up.
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
@@ -20,19 +22,35 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies + headless Chromium runtime deps for
-# browser-use (Day 4 — RESEARCH agent's web tool). The Chromium binary
-# itself comes from `playwright install chromium` below.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    # Browsers installed to a world-readable path so the non-root runtime user
+    # can find Chromium (default ~/.cache/ms-playwright is root-only).
+    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+
+# System layer. Hardening vs the previous image:
+#   - apt-get upgrade applies Debian security patches the base tag froze.
+#   - docker.io (the whole engine) replaced by a static docker CLI (see COPY below).
+#   - curl + wget removed; the HEALTHCHECK now uses stdlib Python.
+#   - autoremove/clean drop orphaned deps and caches.
+# NOTE: the libnss3…fonts-liberation block is the Chromium runtime surface for the
+#       RESEARCH browser tool and is the single largest remaining CVE source. Strongly
+#       consider moving browser-use into a SEPARATE research-worker image so this API
+#       image sheds it entirely.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     git \
-    docker.io \
-    curl \
-    wget \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 \
     fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get autoremove -y --purge \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/*
+
+# Static docker CLI only (talks to a mounted /var/run/docker.sock) — replaces the
+# heavyweight docker.io package and its containerd/runc dependency tree.
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
@@ -55,22 +73,24 @@ RUN uv pip install --system \
     "openai>=1.40,<2" \
     "httpx>=0.27.0"
 
-# Install browser-use + Playwright + Chromium for the RESEARCH role's
-# web tool (Day 4). Pinned versions chosen for stability; v1 may relax
-# to a range. browser-use uses Playwright under the hood; we install
-# Chromium binary explicitly (apt deps already in the system layer
-# above). gemini-3.1-flash-lite drives browser actions via the JedAI
-# gateway (configured at runtime in maistro.tools.browser.client).
+# Install browser-use + Playwright + Chromium for the RESEARCH role's web tool.
+# Installed into PLAYWRIGHT_BROWSERS_PATH (set above) so the non-root user can use it.
 RUN uv pip install --system \
     "browser-use>=0.1.40" \
     "playwright>=1.49.0" \
  && python -m playwright install chromium
 
+# Drop root: run as an unprivileged system user and own the app + browser dirs.
+RUN useradd --system --no-create-home --uid 10001 app \
+ && chown -R app:app /app /opt/playwright
+USER 10001
+
 EXPOSE 8000
 
 STOPSIGNAL SIGTERM
 
+# stdlib healthcheck — no curl in the image. Exits 0 on HTTP 200, 1 otherwise.
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health/live || exit 1
+    CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live', timeout=4).status==200 else 1)"]
 
 CMD ["uvicorn", "maistro_server.main:app", "--host", "0.0.0.0", "--port", "8000"]

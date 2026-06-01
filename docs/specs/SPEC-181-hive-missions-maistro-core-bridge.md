@@ -13,9 +13,6 @@ implements: []
 related:
   - maistro-engine#SPEC-176
   - maistro-engine#SPEC-180
-source:
-  - packages/hive-conductor/
-  - packages/maistro-core/
 contracts:
   - boundary
 tests: []

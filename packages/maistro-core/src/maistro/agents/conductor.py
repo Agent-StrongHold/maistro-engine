@@ -11,17 +11,14 @@ parses/validates the response with Pydantic.
 from __future__ import annotations
 
 import asyncio
-import functools
 import json
 import os
 import random
+from dataclasses import dataclass
 
 import httpx
 import structlog
-from pydantic_ai import Agent
-from pydantic_ai.models import KnownModelName
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic import ValidationError
 
 from maistro.agents.circuit_breaker import CircuitOpenError, llm_circuit
 from maistro.agents.prompts import CONDUCTOR_SYSTEM
@@ -61,52 +58,60 @@ def _get_tier_config(tier: int | None) -> TierConfig:
     return DEFAULT_TIERS[t]
 
 
-@functools.lru_cache(maxsize=16)
+@dataclass(frozen=True)
+class ConductorCall:
+    """Resolved parameters for one conductor LLM call against the OpenAI-compatible gateway."""
+
+    model: str
+    base_url: str | None
+    api_key: str
+    system_prompt: str
+
+
 def build_conductor(
-    model: str | KnownModelName | None = None,
+    model: str | None = None,
     base_url: str | None = None,
-    use_json_mode: bool = False,
-) -> Agent[None, ConductorOutput] | Agent[None, str]:
-    """Build a conductor agent with the given model.
+    use_json_mode: bool = False,  # retained for signature compatibility; JSON is now always used
+) -> ConductorCall:
+    """Resolve the call parameters for the conductor.
 
-    When use_json_mode=True (for Ollama models), returns a str-output agent
-    that uses JSON response_format. The caller must parse the JSON into
-    ConductorOutput manually.
-
-    Agents are cached by (model, base_url, use_json_mode) to avoid re-compiling schemas.
+    The conductor talks directly to the OpenAI-compatible LiteLLM gateway over HTTP
+    (no pydantic-ai). It always requests JSON output and validates the result into
+    ConductorOutput — i.e. the former Ollama JSON-mode path is now the only path.
     """
-    system_prompt = CONDUCTOR_SYSTEM
-    output_type: type = ConductorOutput
-
     litellm_key = os.environ.get("LITELLM_MASTER_KEY", "")
     api_key = litellm_key if litellm_key else "ollama"
-
-    if use_json_mode:
-        system_prompt = CONDUCTOR_SYSTEM + _CONDUCTOR_JSON_SCHEMA
-        output_type = str
-
-    if base_url:
-        model_name = (model or "openai:maistro-default").removeprefix("openai:")
-        provider = OpenAIProvider(base_url=base_url, api_key=api_key)
-        openai_model = OpenAIChatModel(model_name, provider=provider)
-        return Agent(
-            model=openai_model,
-            system_prompt=system_prompt,
-            output_type=output_type,
-            retries=3,
-            model_settings={
-                "extra_body": {"response_format": {"type": "json_object"}},
-            }
-            if use_json_mode
-            else None,
-        )
-
-    return Agent(
-        model=model or "openai:maistro-default",
-        system_prompt=system_prompt,
-        output_type=output_type,
-        retries=3,
+    model_name = (model or "openai:maistro-default").removeprefix("openai:")
+    system_prompt = CONDUCTOR_SYSTEM + _CONDUCTOR_JSON_SCHEMA
+    return ConductorCall(
+        model=model_name, base_url=base_url, api_key=api_key, system_prompt=system_prompt
     )
+
+
+async def _call_gateway(
+    call: ConductorCall, user_prompt: str, max_tokens: int, timeout: float
+) -> str:
+    """POST one chat-completion to the OpenAI-compatible gateway; return the message content."""
+    if not call.base_url:
+        raise LLMProviderError(
+            "conductor: no gateway base_url configured (set MAISTRO_LLM_BASE_URL)"
+        )
+    url = call.base_url.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": call.model,
+        "messages": [
+            {"role": "system", "content": call.system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "response_format": {"type": "json_object"},
+        "max_tokens": max_tokens,
+    }
+    headers = {"Authorization": f"Bearer {call.api_key}"}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    return str(data["choices"][0]["message"]["content"])
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -117,22 +122,25 @@ def _is_retryable(exc: Exception) -> bool:
         return True
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in _RETRYABLE_STATUS_CODES
+    # A malformed/invalid JSON response is often transient — re-prompt may fix it.
+    if isinstance(exc, (json.JSONDecodeError, ValidationError, KeyError)):
+        return True
     return False
 
 
 def _parse_json_output(raw: str) -> ConductorOutput:
-    """Parse raw JSON string from Ollama into a validated ConductorOutput."""
+    """Parse a raw JSON string from the gateway into a validated ConductorOutput."""
     data = json.loads(raw)
     return ConductorOutput.model_validate(data)
 
 
 async def _run_with_retry(
-    agent: Agent,
+    call: ConductorCall,
     prompt: str,
     tier_config: TierConfig,
-    use_json_mode: bool = False,
+    max_tokens: int,
 ) -> ConductorOutput:
-    """Run the agent with timeout and retry logic for transient failures."""
+    """Call the gateway with timeout and retry logic for transient failures."""
     if not llm_circuit.allow_request():
         raise CircuitOpenError(llm_circuit)
 
@@ -141,12 +149,13 @@ async def _run_with_retry(
     for attempt in range(tier_config.max_llm_retries):
         try:
             llm_requests_total.inc()
-            result = await asyncio.wait_for(agent.run(prompt), timeout=tier_config.timeout)
+            raw = await asyncio.wait_for(
+                _call_gateway(call, prompt, max_tokens, tier_config.timeout),
+                timeout=tier_config.timeout,
+            )
+            result = _parse_json_output(raw)
             llm_circuit.record_success()
-
-            if use_json_mode:
-                return _parse_json_output(result.output)
-            return result.output  # type: ignore[return-value]
+            return result
         except TimeoutError as exc:
             last_exc = exc
             await logger.awarning(
@@ -218,25 +227,25 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
     max_tokens = settings.max_tokens_per_task
 
     tier_config = _get_tier_config(task.tier)
-    resolved_model, base_url, use_json_mode = resolve_model(tier_config.model)
+    resolved_model, base_url, _use_json_mode = resolve_model(tier_config.model)
 
     await logger.ainfo(
         "conductor_start",
         tier=tier_config.tier,
         model=resolved_model,
         base_url=base_url or "default",
-        json_mode=use_json_mode,
+        json_mode=True,
         max_tokens=max_tokens,
         description=task.description[:DESCRIPTION_LOG_PREVIEW_LEN],
     )
 
-    agent = build_conductor(model=resolved_model, base_url=base_url, use_json_mode=use_json_mode)
+    call = build_conductor(model=resolved_model, base_url=base_url)
 
     constraints_text = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
     prompt = (
         f"Task: {task.description}\n\nWorkspace: {task.workspace}\nConstraints:\n{constraints_text}"
     )
 
-    result = await _run_with_retry(agent, prompt, tier_config, use_json_mode=use_json_mode)  # type: ignore[arg-type]
+    result = await _run_with_retry(call, prompt, tier_config, max_tokens=max_tokens)
     await logger.ainfo("conductor_complete", success=result.success)
     return result

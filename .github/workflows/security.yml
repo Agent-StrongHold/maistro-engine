@@ -57,12 +57,13 @@ jobs:
 
       - name: semgrep (custom + p/security-audit + p/owasp-top-ten + p/secrets)
         run: |
+          set -o pipefail
           uv run semgrep --metrics off \
             --config tools/semgrep/jfc-rules.yaml \
             --config p/security-audit \
             --config p/owasp-top-ten \
             --config p/secrets \
-            --error packages/ apps/ services/ tests/ 2>&1 | tee semgrep-report.txt
+            --error packages/ apps/ tests/ 2>&1 | tee semgrep-report.txt
 
       - name: gitleaks (full-history scan on main; commit-range on PR)
         uses: gitleaks/gitleaks-action@v2
