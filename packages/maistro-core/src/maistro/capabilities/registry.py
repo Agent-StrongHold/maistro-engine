@@ -65,6 +65,11 @@ class CapabilityRegistry:
         with self._lock:
             return self._slot(slot).enabled
 
+    def slots(self) -> list[str]:
+        """All defined slot names (for listing/introspection)."""
+        with self._lock:
+            return list(self._slots.keys())
+
     def installed(self, slot: str) -> list[str]:
         with self._lock:
             return list(self._slot(slot).providers.keys())
@@ -72,6 +77,16 @@ class CapabilityRegistry:
     def active_name(self, slot: str) -> str | None:
         with self._lock:
             return self._slot(slot).active
+
+    def provider(self, slot: str, name: str) -> CapabilityProvider | None:
+        """Return the installed provider instance by name, or None if not installed.
+
+        The live instance (not just its name) — so callers can share a single
+        stateful provider (e.g. the approval inbox) across the action that awaits
+        it and the route that resolves it. Raises KeyError on an unknown slot.
+        """
+        with self._lock:
+            return self._slot(slot).providers.get(name)
 
     async def resolve(self, slot: str) -> CapabilityProvider | None:
         """Resolve the provider to use, or None to apply the slot's fallback.

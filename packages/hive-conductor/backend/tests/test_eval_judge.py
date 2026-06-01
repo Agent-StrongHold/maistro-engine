@@ -462,7 +462,9 @@ def test_trigger_score_endpoint_runs_against_dag_run_store(
         await store.finish_run("r-trigger")
         return run.id
 
-    rid = asyncio.get_event_loop().run_until_complete(_seed())
+    # asyncio.run() uses a fresh loop — robust regardless of prior async tests
+    # (get_event_loop() can return a closed loop under pytest-asyncio auto mode).
+    rid = asyncio.run(_seed())
     assert rid == "r-trigger"
 
     r = authed_client.post(f"/v1/eval-judge/{rid}")

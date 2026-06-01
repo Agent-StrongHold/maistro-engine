@@ -53,6 +53,9 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/mcp/servers": "mcp.write",
         "/v1/agents": "agents.write",
         "/v1/skills": "skills.write",
+        # Capability discovery + approval resolution (approving a destructive
+        # infra action is high-stakes) — gate behind config.write.
+        "/v1/capabilities": "config.write",
     },
     "PUT": {
         "/v1/settings": "config.write",
@@ -63,6 +66,7 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
     "PATCH": {
         "/v1/settings": "config.write",
         "/v1/mcp/servers": "mcp.write",
+        "/v1/capabilities": "config.write",
     },
 }
 
