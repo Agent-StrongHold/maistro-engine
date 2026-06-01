@@ -19,8 +19,7 @@ import os
 import sys
 
 import httpx
-from browser_use import Agent, Browser
-from browser_use import ChatGoogle
+from browser_use import Agent, Browser, ChatGoogle
 
 HIVE_URL = os.environ.get("HIVE_URL", "http://localhost:8101")
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-preview")
@@ -65,24 +64,32 @@ async def run_pm_workflow():
         r = await pm.api("get", "/v1/setup/status")
         assert r.status_code == 200
         if not r.json().get("setup_complete"):
-            r = await pm.api("post", "/v1/setup/complete", json={
-                "hardware_preset": "beast",
-                "conductor_name": "PM Agent Hive",
-                "admin_username": "admin",
-                "admin_password": "adminpass123",
-                "user_username": "pmuser",
-                "user_password": "pmpass1234",
-                "optional_modules": [],
-            })
+            r = await pm.api(
+                "post",
+                "/v1/setup/complete",
+                json={
+                    "hardware_preset": "beast",
+                    "conductor_name": "PM Agent Hive",
+                    "admin_username": "admin",
+                    "admin_password": "adminpass123",
+                    "user_username": "pmuser",
+                    "user_password": "pmpass1234",
+                    "optional_modules": [],
+                },
+            )
             assert r.status_code == 200, f"Setup failed: {r.text}"
         print("   ✅ Setup complete")
 
         # ─── Step 2: Login via API ───
         print("\n🐝 Step 2: Login via API...")
-        r = await pm.api("post", "/v1/auth/login", json={
-            "username": "pmuser",
-            "password": "pmpass1234",
-        })
+        r = await pm.api(
+            "post",
+            "/v1/auth/login",
+            json={
+                "username": "pmuser",
+                "password": "pmpass1234",
+            },
+        )
         assert r.status_code == 200, f"Login failed: {r.text}"
         pm.session_cookie = r.cookies.get("hive_session")
         assert pm.session_cookie, "No session cookie"
@@ -100,10 +107,14 @@ async def run_pm_workflow():
 
         # ─── Step 4: Create DAG via API ───
         print("\n🐝 Step 4: Create DAG via API...")
-        r = await pm.api("post", "/v1/dags", json={
-            "name": "Daily Standup Report",
-            "description": "Gather team updates and produce a summary",
-        })
+        r = await pm.api(
+            "post",
+            "/v1/dags",
+            json={
+                "name": "Daily Standup Report",
+                "description": "Gather team updates and produce a summary",
+            },
+        )
         assert r.status_code == 201, f"Create failed: {r.text}"
         dag = r.json()
         pm.dag_id = dag["id"]
@@ -134,11 +145,15 @@ async def run_pm_workflow():
 
         # ─── Step 7: Submit feedback via API ───
         print("\n🐝 Step 7: Submit thumbs-up feedback via API...")
-        r = await pm.api("post", f"/v1/dag-runs/{pm.run_id}/feedback", json={
-            "thumb": "up",
-            "comment": "Great standup summary, covered all teams!",
-            "dag_id": pm.dag_id,
-        })
+        r = await pm.api(
+            "post",
+            f"/v1/dag-runs/{pm.run_id}/feedback",
+            json={
+                "thumb": "up",
+                "comment": "Great standup summary, covered all teams!",
+                "dag_id": pm.dag_id,
+            },
+        )
         # 200 = recorded, 404 = run not in event store (still valid)
         assert r.status_code in (200, 404), f"Feedback failed: {r.text}"
         print(f"   ✅ Feedback submitted (status: {r.status_code})")
@@ -174,9 +189,13 @@ async def run_pm_workflow():
 
         # ─── Step 11: Edit DAG via API (Signal #2) ───
         print("\n🐝 Step 11: Edit DAG (triggers edit-lock)...")
-        r = await pm.api("put", f"/v1/dags/{pm.dag_id}", json={
-            "description": "Updated: gather updates, blockers, and wins from all teams",
-        })
+        r = await pm.api(
+            "put",
+            f"/v1/dags/{pm.dag_id}",
+            json={
+                "description": "Updated: gather updates, blockers, and wins from all teams",
+            },
+        )
         assert r.status_code == 200
         assert "blockers" in r.json()["description"]
         print("   ✅ DAG edited (field now locked for 30 days)")

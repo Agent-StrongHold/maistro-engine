@@ -15,7 +15,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 
 @dataclass
@@ -47,18 +47,18 @@ class HillClimber:
     PHASE_OPTIMIZE = "optimize"
 
     # Best models — used during build phase, quality ceiling reference during optimize
-    BEST_MODELS = ["o3-pro", "claude-opus-4-6"]
+    BEST_MODELS: ClassVar[list[str]] = ["o3-pro", "claude-opus-4-6"]
 
     # Candidates for optimize phase — ordered by cost (cheapest first)
-    OPTIMIZE_CANDIDATES = [
-        "gemini-3.5-flash",      # cheapest
-        "gpt-5-mini",            # cheap + good
-        "claude-haiku-4-5",      # fast + decent
-        "gpt-5-nano",            # ultra cheap
-        "gpt-4.1-mini",         # balanced
-        "claude-sonnet-4-6",     # strong but cheaper than opus
-        "gpt-5",                 # strong
-        "o4-mini",               # reasoning, cheaper than o3
+    OPTIMIZE_CANDIDATES: ClassVar[list[str]] = [
+        "gemini-3.5-flash",  # cheapest
+        "gpt-5-mini",  # cheap + good
+        "claude-haiku-4-5",  # fast + decent
+        "gpt-5-nano",  # ultra cheap
+        "gpt-4.1-mini",  # balanced
+        "claude-sonnet-4-6",  # strong but cheaper than opus
+        "gpt-5",  # strong
+        "o4-mini",  # reasoning, cheaper than o3
     ]
 
     # Quality floor: optimize-phase model must score within this % of best
@@ -71,7 +71,14 @@ class HillClimber:
     # improvement while only a -5 dip counted as a regression, ratcheting on noise.
     NOISE_MARGIN = 5
 
-    def __init__(self, dag_id: str, all_evals: list[str], target_count: int = 3, held_out_count: int = 2, phase: str = "build"):
+    def __init__(
+        self,
+        dag_id: str,
+        all_evals: list[str],
+        target_count: int = 3,
+        held_out_count: int = 2,
+        phase: str = "build",
+    ):
         self.dag_id = dag_id
         self.all_evals = list(all_evals)
         self.target_count = target_count
@@ -82,7 +89,7 @@ class HillClimber:
         self.score_history: dict[str, list[EvalScore]] = {e: [] for e in all_evals}
         self._last_target_combo: frozenset[str] = frozenset()
         self._seen_evals: set[str] = set()
-        self._rotation_pool: list[str] = list(all_evals[:target_count + held_out_count])
+        self._rotation_pool: list[str] = list(all_evals[: target_count + held_out_count])
 
     def select_evals(self) -> tuple[list[str], list[str]]:
         """Select target and held-out evals for this pass. Enforces anti-overfitting rules."""
@@ -144,7 +151,8 @@ class HillClimber:
         """
         # Noise-aware target improvement: gain must exceed the judge noise floor.
         target_improved = any(
-            mutated_scores.get(e, 0) >= baseline_scores.get(e, 0) + self._improve_threshold(e, score_stdev)
+            mutated_scores.get(e, 0)
+            >= baseline_scores.get(e, 0) + self._improve_threshold(e, score_stdev)
             for e in target_evals
         )
         target_no_regression = all(
@@ -201,12 +209,14 @@ class HillClimber:
             recent = [s.score for s in scores[-5:]]
             if len(recent) >= 3 and recent[-1] < recent[0] - 15:
                 # Score dropped >15 points over recent history
-                alerts.append({
-                    "eval": eval_name,
-                    "trend": "declining",
-                    "drop": recent[0] - recent[-1],
-                    "recent_scores": recent,
-                })
+                alerts.append(
+                    {
+                        "eval": eval_name,
+                        "trend": "declining",
+                        "drop": recent[0] - recent[-1],
+                        "recent_scores": recent,
+                    }
+                )
         return alerts
 
     def is_done(self, threshold: int = 75) -> bool:
@@ -216,8 +226,7 @@ class HillClimber:
         # Check last 5 passes — all accepted with scores above threshold
         recent = self.history[-5:]
         return all(
-            r.mutation_accepted and
-            all(s >= threshold for s in r.target_scores.values())
+            r.mutation_accepted and all(s >= threshold for s in r.target_scores.values())
             for r in recent
         )
 

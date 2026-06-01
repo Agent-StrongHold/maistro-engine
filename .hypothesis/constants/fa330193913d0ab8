@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/types/errors.py
-# hypothesis_version: 6.152.9
-
-['AGENT_ERROR', 'AUTH_ERROR', 'CLASSIFICATION_ERROR', 'CONFIG_ERROR', 'INJECTION_DETECTED', 'NO_MODELS_AVAILABLE', 'PERMISSION_DENIED', 'QUOTA_EXHAUSTED', 'ROUTING_ERROR', 'SECURITY_ERROR', 'SKILL_ERROR', 'TOKEN_EXPIRED', 'TOOL_ERROR', 'TRUST_VIOLATION']

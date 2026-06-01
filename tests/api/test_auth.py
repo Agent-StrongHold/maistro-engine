@@ -12,11 +12,11 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
+
+from maistro.config.settings import Settings, get_settings
 from maistro_server.api.auth import verify_api_key
 from maistro_server.api.health import router as health_router
 from maistro_server.api.tasks import router as tasks_router
-
-from maistro.config.settings import Settings, get_settings
 
 
 def _make_app(api_keys: list[str]) -> FastAPI:

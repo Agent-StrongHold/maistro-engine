@@ -1,111 +1,38 @@
-"""Memory types: Learning, EpisodicMemory, Outcome, tiers, scopes (ADR-013)."""
+"""Memory types: Learning, EpisodicMemory, Outcome, tiers, scopes (ADR-013).
+
+Single source of truth lives in :mod:`maistro.types.memory`. This module used to
+carry a divergent, shorter copy of these dataclasses (missing rca_category,
+rca_prevention, success_after_use, failure_after_use, charged_microchips,
+pricing_version). Concrete stores/extractors imported from here while protocols
+and persistence imported from maistro.types.memory, which caused AttributeError
+and TypeError at runtime. It now re-exports the canonical (full) definitions so
+every Learning/Outcome/EpisodicMemory usage resolves to the same class.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from enum import StrEnum
+from maistro.types.memory import (
+    CONTRADICT_DELTA,
+    INHERITANCE_PRIORITY,
+    REINFORCE_DELTA,
+    WEIGHT_BOUNDS,
+    EpisodicMemory,
+    Learning,
+    MemoryScope,
+    MemoryTier,
+    Outcome,
+    SkillMutation,
+)
 
-
-class MemoryTier(StrEnum):
-    OBSERVATION = "observation"
-    HYPOTHESIS = "hypothesis"
-    OPINION = "opinion"
-    LESSON = "lesson"
-    REGRET = "regret"
-    AFFIRMATION = "affirmation"
-    WISDOM = "wisdom"
-
-
-WEIGHT_BOUNDS: dict[MemoryTier, tuple[float, float]] = {
-    MemoryTier.OBSERVATION: (0.1, 0.5),
-    MemoryTier.HYPOTHESIS: (0.2, 0.6),
-    MemoryTier.OPINION: (0.3, 0.8),
-    MemoryTier.LESSON: (0.5, 0.9),
-    MemoryTier.REGRET: (0.6, 1.0),
-    MemoryTier.AFFIRMATION: (0.6, 1.0),
-    MemoryTier.WISDOM: (0.9, 1.0),
-}
-
-REINFORCE_DELTA: float = 0.05
-CONTRADICT_DELTA: float = 0.05
-
-
-class MemoryScope(StrEnum):
-    GLOBAL = "global"
-    ORGANIZATION = "organization"
-    TEAM = "team"
-    USER = "user"
-    AGENT = "agent"
-    SESSION = "session"
-
-
-@dataclass
-class Learning:
-    category: str = "general"
-    trigger_keys: list[str] = field(default_factory=list)
-    learning: str = ""
-    tool_name: str = ""
-    source_query: str = ""
-    org_id: str = ""
-    team_id: str = ""
-    agent_id: str | None = None
-    user_id: str | None = None
-    scope: MemoryScope = MemoryScope.AGENT
-    hit_count: int = 0
-    status: str = "active"
-    id: int | None = None
-
-
-@dataclass
-class EpisodicMemory:
-    memory_id: str = ""
-    tier: MemoryTier = MemoryTier.OBSERVATION
-    content: str = ""
-    weight: float = 0.3
-    org_id: str = ""
-    team_id: str = ""
-    agent_id: str | None = None
-    user_id: str | None = None
-    scope: MemoryScope = MemoryScope.AGENT
-    source: str = ""
-    context: dict[str, str] = field(default_factory=dict)
-    reinforcement_count: int = 0
-    contradiction_count: int = 0
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    last_accessed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    deleted: bool = False
-
-
-@dataclass
-class Outcome:
-    request_id: str = ""
-    task_type: str = ""
-    model_used: str = ""
-    provider: str = ""
-    tool_calls: list[dict[str, object]] = field(default_factory=list)
-    success: bool = True
-    error_type: str = ""
-    response_time_ms: int = 0
-    org_id: str = ""
-    team_id: str = ""
-    user_id: str = ""
-    agent_id: str | None = None
-    input_tokens: int = 0
-    output_tokens: int = 0
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    id: int | None = None
-    # Phase 2 additions — per-project memory + per-DAG telemetry. Defaults
-    # keep existing callers byte-identical; new code passes these so
-    # get_experience_context can return a project-scoped failure narrative
-    # without polluting another project's learning loop.
-    project_id: str = ""
-    dag_id: str = ""
-    dag_run_id: str = ""
-    node_id: str = ""
-    # For Phase 5/6 optimizer signals — extended outcomes the user-thumbs
-    # widget + eval-judge can land on this same record without needing a
-    # parallel store.
-    thumb: str = ""  # "" | "up" | "down"
-    thumb_comment: str = ""
-    eval_judge_score: float | None = None  # 0..100 if eval-judge ran
+__all__ = [
+    "CONTRADICT_DELTA",
+    "INHERITANCE_PRIORITY",
+    "REINFORCE_DELTA",
+    "WEIGHT_BOUNDS",
+    "EpisodicMemory",
+    "Learning",
+    "MemoryScope",
+    "MemoryTier",
+    "Outcome",
+    "SkillMutation",
+]

@@ -125,7 +125,17 @@ def test_execute_denied_without_flag(command):
 
 
 @given(
-    command=st.sampled_from(["python script.py", "pytest tests/", "ruff check src/", "git status", "npm install", "pip install pkg", "uv sync"]),
+    command=st.sampled_from(
+        [
+            "python script.py",
+            "pytest tests/",
+            "ruff check src/",
+            "git status",
+            "npm install",
+            "pip install pkg",
+            "uv sync",
+        ]
+    ),
 )
 @settings(max_examples=20)
 def test_execute_allowed_safe_commands(command):

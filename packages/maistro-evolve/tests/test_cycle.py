@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
-from maistro_evolve.cycle import EvolutionCycle, EvolutionConfig
+from maistro_evolve.cycle import EvolutionConfig, EvolutionCycle
 from maistro_evolve.harness import EvalHarness
 from maistro_evolve.population import PopulationStore
 from maistro_evolve.tournament import EloTournament
-from maistro_evolve.types import PipelineGenome, DAGTopology, NodeGenome, EvalWeights
+from maistro_evolve.types import DAGTopology, EvalWeights, NodeGenome, PipelineGenome
 
 
 def _genome(name="test"):
@@ -17,12 +16,27 @@ def _genome(name="test"):
         id=f"g-{name}",
         name=name,
         topology=DAGTopology(
-            nodes=[NodeGenome(id="q1", role="queen", strategy="react", model="gpt-4", temperature=0.3, max_tokens=4096, system_prompt="test", max_tool_rounds=5)],
-            edges=[], entry_node="q1", max_cycles=3, beam_width=1, use_scout=False,
+            nodes=[
+                NodeGenome(
+                    id="q1",
+                    role="queen",
+                    strategy="react",
+                    model="gpt-4",
+                    temperature=0.3,
+                    max_tokens=4096,
+                    system_prompt="test",
+                    max_tool_rounds=5,
+                )
+            ],
+            edges=[],
+            entry_node="q1",
+            max_cycles=3,
+            beam_width=1,
+            use_scout=False,
         ),
         eval_weights=EvalWeights(),
-        created_at=datetime.now(timezone.utc).isoformat(),
-        updated_at=datetime.now(timezone.utc).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
+        updated_at=datetime.now(UTC).isoformat(),
     )
 
 
@@ -183,7 +197,16 @@ class TestEvalHarness:
     def test_real_harness(self):
         harness = EvalHarness(use_real_benchmarks=True)
         assert len(harness._benchmarks) == 8
-        for name in ["ifeval", "bfcl", "swebench", "terminalbench", "tau_bench", "gaia", "ragas", "osworld"]:
+        for name in [
+            "ifeval",
+            "bfcl",
+            "swebench",
+            "terminalbench",
+            "tau_bench",
+            "gaia",
+            "ragas",
+            "osworld",
+        ]:
             assert name in harness._benchmarks
 
     @pytest.mark.asyncio

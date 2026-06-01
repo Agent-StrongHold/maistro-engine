@@ -72,7 +72,13 @@ class _Histogram:
     def __init__(self, name: str, help_text: str, buckets: tuple[float, ...] | None = None) -> None:
         self.name = name
         self.help = help_text
-        self.buckets = buckets or self._DEFAULT_BUCKETS
+        finite = buckets or self._DEFAULT_BUCKETS
+        # Prometheus requires a terminal +Inf bucket so the largest bucket count
+        # always equals the total observation count (le semantics). Append it if
+        # the caller did not already supply one.
+        if not finite or finite[-1] != float("inf"):
+            finite = (*finite, float("inf"))
+        self.buckets = finite
         self._counts: dict[tuple[tuple[str, str], ...], list[int]] = {}
         self._sums: dict[tuple[tuple[str, str], ...], float] = defaultdict(float)
         self._totals: dict[tuple[tuple[str, str], ...], int] = defaultdict(int)
@@ -101,7 +107,7 @@ class _Histogram:
                         "count": self._totals[key],
                         "buckets": dict(
                             zip(
-                                [str(b) for b in self.buckets],
+                                ["+Inf" if b == float("inf") else str(b) for b in self.buckets],
                                 self._counts.get(key, [0] * len(self.buckets)),
                                 strict=True,
                             )

@@ -34,7 +34,6 @@ from maistro_registry.validator import ValidationResult, validate_file
 _WALK_PATTERNS: tuple[str, ...] = (
     "docs/adr/ADR-*.md",
     "docs/specs/**/*.md",
-    "specs/**/*.md",
 )
 
 
@@ -42,9 +41,12 @@ def _walk(root: Path) -> Iterable[Path]:
     seen: set[Path] = set()
     for pattern in _WALK_PATTERNS:
         for p in root.glob(pattern):
-            # Template files (e.g. ADR-000-template.md) carry placeholder front
-            # matter and are not real records — skip them.
-            if "template" in p.stem.lower():
+            # Skip scaffolding templates (e.g. ADR-000-template.md): they carry
+            # placeholder ids/dates by design and are not real registry records.
+            # Match the "-template.md" suffix precisely — a substring check on
+            # "template" would wrongly skip real records like
+            # ADR-033-templates-and-copier-workflow.md.
+            if p.name.endswith("-template.md"):
                 continue
             if p.suffix == ".md" and p.is_file() and p not in seen:
                 seen.add(p)
@@ -125,9 +127,7 @@ def cmd_lint(args: argparse.Namespace) -> int:
     results = [validate_file(f) for f in files]
     valid_fms = [r.front_matter for r in results if r.front_matter is not None]
 
-    cycles: list[Cycle] = (
-        find_cycles(valid_fms, "supersedes") + find_cycles(valid_fms, "blocks")
-    )
+    cycles: list[Cycle] = find_cycles(valid_fms, "supersedes") + find_cycles(valid_fms, "blocks")
     for c in cycles:
         print(f"  CYCLE: {c.render()}")
 
@@ -176,9 +176,7 @@ def cmd_generate(args: argparse.Namespace) -> int:
     json_path, md_path = write_registry(registry, out_dir)
 
     print(
-        f"wrote {len(registry.entries)} entries to:\n"
-        f"  {json_path}\n"
-        f"  {md_path}",
+        f"wrote {len(registry.entries)} entries to:\n  {json_path}\n  {md_path}",
         file=sys.stderr,
     )
     return 0
@@ -207,27 +205,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_val.set_defaults(func=cmd_validate)
 
     p_walk = sub.add_parser("walk", help="walk a repo root and validate found files")
-    p_walk.add_argument(
-        "root", nargs="?", default=".", help="repo root (default: cwd)"
-    )
+    p_walk.add_argument("root", nargs="?", default=".", help="repo root (default: cwd)")
     p_walk.set_defaults(func=cmd_walk)
 
     p_lint = sub.add_parser(
         "lint",
         help="walk + validate + DAG cycle check + local link check",
     )
-    p_lint.add_argument(
-        "root", nargs="?", default=".", help="repo root (default: cwd)"
-    )
+    p_lint.add_argument("root", nargs="?", default=".", help="repo root (default: cwd)")
     p_lint.set_defaults(func=cmd_lint)
 
     p_gen = sub.add_parser(
         "generate",
         help="walk + validate + write registry.json + registry.md",
     )
-    p_gen.add_argument(
-        "root", nargs="?", default=".", help="repo root (default: cwd)"
-    )
+    p_gen.add_argument("root", nargs="?", default=".", help="repo root (default: cwd)")
     p_gen.add_argument(
         "--output",
         "-o",

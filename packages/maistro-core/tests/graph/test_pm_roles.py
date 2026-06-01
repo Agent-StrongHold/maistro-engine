@@ -5,6 +5,7 @@ extend the engineering-only graph dicts with 6 PM roles. Engineering
 defaults must remain intact; PM roles must be discoverable through the
 same dicts.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -75,9 +76,7 @@ def test_pm_role_has_json_output_schema(role: AgentRole) -> None:
     assert schema, f"PM role {role.value} is missing a JSON_OUTPUT_SCHEMA"
     # The PM v0 schema is the PMRoleOutput shape — all four fields must appear.
     for field in ("capability", "summary", "result", "source"):
-        assert field in schema, (
-            f"Schema for {role.value} missing field '{field}': {schema}"
-        )
+        assert field in schema, f"Schema for {role.value} missing field '{field}': {schema}"
 
 
 @pytest.mark.parametrize("role", PM_ROLES)

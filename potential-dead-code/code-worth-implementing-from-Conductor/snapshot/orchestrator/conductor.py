@@ -21,8 +21,8 @@ from orchestrator.memory.knowledge_graph import KnowledgeGraph
 from orchestrator.memory.layer0 import Layer0
 from orchestrator.memory.layer1 import Layer1
 from orchestrator.memory.layer2 import Layer2
-from orchestrator.planner import Plan, PlannerAgent, Subtask
-from orchestrator.reviewer import ReviewerAgent, ReviewSummary
+from orchestrator.planner import PlannerAgent, Subtask
+from orchestrator.reviewer import ReviewerAgent
 from orchestrator.tools.file_ops import FileOps
 from orchestrator.tools.shell import Shell
 from orchestrator.tools.test_runner import TestRunner, TestResult
@@ -61,9 +61,7 @@ class Conductor:
         self._test_runner = TestRunner(self._shell, config.tests.command)
 
         # Training
-        self._data_collector = TrainingDataCollector(
-            config.project_id, config.training_data_dir
-        )
+        self._data_collector = TrainingDataCollector(config.project_id, config.training_data_dir)
 
     async def close(self) -> None:
         await self._gateway.close()

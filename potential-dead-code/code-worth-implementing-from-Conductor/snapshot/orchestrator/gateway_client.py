@@ -95,7 +95,9 @@ class GatewayClient:
                 backoff = INITIAL_BACKOFF_SECONDS * (2**attempt)
                 await asyncio.sleep(backoff)
 
-        raise GatewayError(f"Request to {path} failed after {self._max_retries} attempts: {last_error}")
+        raise GatewayError(
+            f"Request to {path} failed after {self._max_retries} attempts: {last_error}"
+        )
 
     async def health(self) -> dict:
         resp = await self._request_with_retry("GET", "/health", timeout=5)
@@ -104,9 +106,7 @@ class GatewayClient:
     async def chat(self, messages: list[dict], **kwargs) -> GatewayCompletion:
         """Single completion via /v1/chat/completions."""
         payload = {"messages": messages, **kwargs}
-        resp = await self._request_with_retry(
-            "POST", "/v1/chat/completions", json=payload
-        )
+        resp = await self._request_with_retry("POST", "/v1/chat/completions", json=payload)
         data = resp.json()
 
         # Safe extraction with defaults
@@ -144,9 +144,7 @@ class GatewayClient:
         if n_candidates:
             payload["n_candidates"] = n_candidates
 
-        resp = await self._request_with_retry(
-            "POST", "/v1/ultra-think", json=payload
-        )
+        resp = await self._request_with_retry("POST", "/v1/ultra-think", json=payload)
         return resp.json()
 
     async def load_project(

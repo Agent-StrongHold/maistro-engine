@@ -40,14 +40,8 @@ class Foundation:
         await self._init_reactor(settings, data_dir)
 
     def _init_vault(self, settings: Settings, data_dir: Path) -> None:
-        vault_path = (
-            settings.conductor_vault_path
-            or str(data_dir / "secrets.age")
-        )
-        identity_path = (
-            settings.conductor_identity_path
-            or str(data_dir / "admin.key")
-        )
+        vault_path = settings.conductor_vault_path or str(data_dir / "secrets.age")
+        identity_path = settings.conductor_identity_path or str(data_dir / "admin.key")
         try:
             from maistro.vault import Vault
 

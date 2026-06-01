@@ -4,7 +4,20 @@ Author-facing summary of the conventions you need to know to land changes here. 
 
 ## Branch model
 
-`feature/* → integration → main`. Integration is the QA tier. Feature branches base off integration. Detail: [`docs/adr/ADR-001-branching-strategy.md`](docs/adr/ADR-001-branching-strategy.md).
+Four tiers; work flows **upward**, every promotion is a pull request (never a direct push):
+
+```
+feat/* bug/* idea/* doc/* chore/*  →  develop  →  integration  →  main
+```
+
+- **Topic branches** (`feat/*`, `bug/*`, `idea/*`, `doc/*`, `chore/*`, `fix/*`) — branch off **`develop`**, PR into `develop`.
+- **`develop`** — active feature-integration tier (PR-gated, 0 approvals).
+- **`integration`** — stabilized QA tier; receives PRs from `develop` (PR-gated, 0 approvals).
+- **`main`** — release-grade; receives PRs from `integration` only (PR-gated, **1 approval**).
+
+All three branches are **protected**: PR required, no force-push, no deletion, **linear history**. Because linear history is enforced, **merge via squash or rebase — not merge commits.** Required CI status checks are added per-branch as each CI job reaches reliable green.
+
+Detail: [`ADR-060`](docs/adr/ADR-060-four-tier-branch-model.md) (supersedes [`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
 
 ## How to add an ADR
 
@@ -18,19 +31,19 @@ Status lifecycle: `Proposed → Accepted → Implemented → Superseded`, plus `
 
 ## How to add a spec
 
-Specs are heavier than ADRs — they carry acceptance criteria. Same front-matter schema as ADRs but with `kind: spec`. Specs go in the relevant product repo, not engine, **unless** the spec is engine-level substrate. Use `Substrate: [maistro-engine#ADR-NNN]` to pin a product spec to engine substrate.
+Specs are heavier than ADRs — they carry acceptance criteria. Same front-matter schema as ADRs but with `kind: spec`. Engine-level specs live here in `docs/specs/`. Specs for a downstream product that imports the engine (e.g. Stronghold, the canvas book-maker) belong with that product; pin them back to engine substrate with `substrate: [maistro-engine#ADR-NNN]`.
 
 Detail: [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md) §front-matter, [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md) §contracts.
 
 ## How to cite substrate
 
-Use `<repo>#<id>` in references. Valid repos: `maistro-engine`, `Project_mAIstro`, `AgentTuring`, `stronghold`. Examples:
+Use `<repo>#<ID>` in front-matter references, where `<ID>` is `ADR-NNN` or `SPEC-NNN`. Valid repos: `maistro-engine`, `Project_mAIstro`, `AgentTuring`, `stronghold` (the latter three are transitional cross-repo refs while sibling trees consolidate into this monorepo — see [`CONSOLIDATION-PLAN.md`](CONSOLIDATION-PLAN.md)). Examples:
 
-- `[engine#ADR-036]` — engine architectural decision
-- `[turing#turing-001]` — AgentTuring backlog item
-- `[sh#ADR-010]` — stronghold ADR
+- `maistro-engine#ADR-036` — engine architectural decision
+- `maistro-engine#SPEC-178` — engine spec
+- `stronghold#ADR-010` — a Stronghold ADR
 
-The registry validates these — every reference must resolve to an existing record.
+The registry validates these — every reference must match `<repo>#(ADR|SPEC)-NNN` and resolve to an existing record. (Backlog ids like `engine-001` are a separate concept — they live in [`BACKLOG.md`](BACKLOG.md), not in front-matter refs.)
 
 ## Layered contracts (acceptance criteria)
 
@@ -58,22 +71,24 @@ Stronghold's anti-import posture is a supply-chain stance. The rest of the repos
 The registry CLI lints front-matter, resolves cross-repo refs, and checks the supersedes/blocks DAG for cycles:
 
 ```bash
-python -m tools.registry.cli walk docs/adr docs/specs   # dump every record
-python -m tools.registry.cli lint docs/adr docs/specs   # validate
-python -m tools.registry.cli generate docs/adr docs/specs registry/  # emit registry.json + registry.md
+python -m maistro_registry.cli validate <file>...   # validate specific files
+python -m maistro_registry.cli walk .                # walk the repo + validate found records
+python -m maistro_registry.cli lint .                # walk + validate + DAG cycle + link check
+python -m maistro_registry.cli generate .            # emit registry.json + registry.md
 ```
+
+(Installed as the `maistro-registry` console script too — `maistro-registry lint .`.)
 
 CI runs `lint` in warn-only mode currently. Hard-fail flips after day 30 of registry adoption (per `engine-001`).
 
 ## Tests
 
-Markers (per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md)):
+Two markers are registered in `pyproject.toml` (per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md)):
 
-- `@pytest.mark.contract` — boundary-layer Pydantic tests
-- `@pytest.mark.behavioral` — Hypothesis property tests on ADR invariants
-- `@pytest.mark.scope(...)` — scope marker for test-tier partitioning
+- `@pytest.mark.contract(...)` — contract axis: `boundary | behavioral | cross_service`
+- `@pytest.mark.scope(...)` — scope axis: `unit | integration | e2e | property`
 
-Run `pytest -m contract` for fast boundary tests; `pytest -m behavioral` for property tests.
+So a Hypothesis property test on an ADR invariant is `@pytest.mark.contract("behavioral")` and/or `@pytest.mark.scope("property")` — not a standalone `behavioral` marker. Run e.g. `pytest -m "contract"` for contract-tagged tests; `pytest -m "scope"` for scope-tagged.
 
 ## Commit style
 

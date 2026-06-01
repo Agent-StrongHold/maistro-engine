@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Optional
 
 from .types import PipelineGenome
+
+
+def _fitness_key(genome: PipelineGenome) -> float:
+    score = genome.fitness_score
+    assert score is not None
+    return score
 
 
 class PopulationStore:
     def __init__(self, db_path: str | Path | None = None) -> None:
         self._store: dict[str, PipelineGenome] = {}
-        self._db_path = Optional[str]
+        self._db_path: str | None
         if db_path is not None:
             self._db_path = str(db_path)
             self._init_db()
@@ -59,9 +64,7 @@ class PopulationStore:
             return self._store[genome_id]
         if self._db_path is not None:
             conn = sqlite3.connect(self._db_path)
-            row = conn.execute(
-                "SELECT data FROM genomes WHERE id = ?", (genome_id,)
-            ).fetchone()
+            row = conn.execute("SELECT data FROM genomes WHERE id = ?", (genome_id,)).fetchone()
             conn.close()
             if row is not None:
                 genome = PipelineGenome.model_validate_json(row[0])
@@ -86,7 +89,7 @@ class PopulationStore:
         scored = [g for g in all_genomes if g.fitness_score is not None]
         if not scored:
             return None
-        return max(scored, key=lambda g: g.fitness_score)
+        return max(scored, key=_fitness_key)
 
     def get_lineage(self, genome_id: str) -> list[PipelineGenome]:
         chain: list[PipelineGenome] = []
@@ -104,7 +107,7 @@ class PopulationStore:
         scored = [g for g in all_genomes if g.fitness_score is not None]
         if not scored:
             return 0
-        scored.sort(key=lambda g: g.fitness_score)
+        scored.sort(key=_fitness_key)
         cutoff = max(1, int(len(scored) * pct))
         to_remove = scored[:cutoff]
         for g in to_remove:
@@ -114,5 +117,5 @@ class PopulationStore:
     def get_breeding_pool(self, top_n: int) -> list[PipelineGenome]:
         all_genomes = self.list_all()
         scored = [g for g in all_genomes if g.fitness_score is not None]
-        scored.sort(key=lambda g: g.fitness_score, reverse=True)
+        scored.sort(key=_fitness_key, reverse=True)
         return scored[:top_n]

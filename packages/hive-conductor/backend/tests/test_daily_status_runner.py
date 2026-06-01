@@ -7,13 +7,13 @@ it must reach ≥95% line + ≥95% branch coverage with strong assertions
 
 from __future__ import annotations
 
+import pathlib
+import sys
 from typing import Any
 
 import httpx
 import pytest
 
-import sys
-import pathlib
 _BACKEND_DIR = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_BACKEND_DIR))
 
@@ -24,7 +24,6 @@ from services.daily_status_runner import (  # noqa: E402
     _result_to_jira_section,
     run_daily_status_dag,
 )
-
 
 # --- _get_registry: idempotent + carries the seed ---------------------------
 
@@ -98,8 +97,13 @@ class _FakeRecord:
     """Minimal stand-in for DurableRunRecord — only the fields the helper
     reads."""
 
-    def __init__(self, status: Any, node_records: list[Any],
-                 error_code: str | None = None, error_message: str | None = None) -> None:
+    def __init__(
+        self,
+        status: Any,
+        node_records: list[Any],
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
         self.status = status
         self.node_records = node_records
         self.error_code = error_code
@@ -107,9 +111,13 @@ class _FakeRecord:
 
 
 class _FakeNodeRec:
-    def __init__(self, node_id: str, output: dict[str, Any] | None = None,
-                 error_code: str | None = None,
-                 error_message: str | None = None) -> None:
+    def __init__(
+        self,
+        node_id: str,
+        output: dict[str, Any] | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
         self.node_id = node_id
         self.output = output
         self.error_code = error_code
@@ -124,10 +132,20 @@ def test_result_to_jira_section_completed_returns_ok_with_issues() -> None:
         output={
             "count": 2,
             "issues": [
-                {"key": "P-1", "summary": "Ship X", "status": "Done", "updated": "t1",
-                 "url": "https://myjira.disney.com/browse/P-1"},
-                {"key": "P-2", "summary": "Hire Y", "status": "Open", "updated": "t2",
-                 "url": "https://myjira.disney.com/browse/P-2"},
+                {
+                    "key": "P-1",
+                    "summary": "Ship X",
+                    "status": "Done",
+                    "updated": "t1",
+                    "url": "https://myjira.disney.com/browse/P-1",
+                },
+                {
+                    "key": "P-2",
+                    "summary": "Hire Y",
+                    "status": "Open",
+                    "updated": "t2",
+                    "url": "https://myjira.disney.com/browse/P-2",
+                },
             ],
         },
     )
@@ -152,8 +170,10 @@ def test_result_to_jira_section_failed_permission_returns_auth_failed() -> None:
         error_message="jira_auth_failed status=401 base=https://myjira.disney.com",
     )
     rec = _FakeRecord(
-        RunStatus.FAILED, [jp_record],
-        error_code="PermissionError", error_message="propagated",
+        RunStatus.FAILED,
+        [jp_record],
+        error_code="PermissionError",
+        error_message="propagated",
     )
     section = _result_to_jira_section(rec, base_url="https://myjira.disney.com", flavor="server")
     assert section["status"] == "auth_failed"
@@ -166,12 +186,15 @@ def test_result_to_jira_section_other_failure_returns_error() -> None:
     from maistro.graph.durable_runs import RunStatus
 
     jp_record = _FakeNodeRec(
-        "jira_poll", error_code="RuntimeError",
+        "jira_poll",
+        error_code="RuntimeError",
         error_message="jira_http_error status=500",
     )
     rec = _FakeRecord(
-        RunStatus.FAILED, [jp_record],
-        error_code="RuntimeError", error_message="propagated",
+        RunStatus.FAILED,
+        [jp_record],
+        error_code="RuntimeError",
+        error_message="propagated",
     )
     section = _result_to_jira_section(rec, base_url="https://x", flavor="server")
     assert section["status"] == "error"
@@ -216,18 +239,26 @@ async def test_run_daily_status_dag_completes_with_mocked_jira(
 
     class _Resp:
         status_code = 200
-        def json(self) -> Any: return fake_issues
+
+        def json(self) -> Any:
+            return fake_issues
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     section = await run_daily_status_dag(
-        user_id="u1", project_id="p1", pat="tk",
-        base_url="https://myjira.disney.com", flavor="server",
+        user_id="u1",
+        project_id="p1",
+        pat="tk",
+        base_url="https://myjira.disney.com",
+        flavor="server",
     )
     assert section["status"] == "ok"
     assert section["count"] == 1
@@ -242,18 +273,26 @@ async def test_run_daily_status_dag_401_returns_auth_failed(
 ) -> None:
     class _Resp:
         status_code = 401
-        def json(self) -> Any: return {}
+
+        def json(self) -> Any:
+            return {}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     section = await run_daily_status_dag(
-        user_id="u1", project_id="p1", pat="bad",
-        base_url="https://myjira.disney.com", flavor="server",
+        user_id="u1",
+        project_id="p1",
+        pat="bad",
+        base_url="https://myjira.disney.com",
+        flavor="server",
     )
     assert section["status"] == "auth_failed"
     assert section["issues"] == []
@@ -272,8 +311,11 @@ async def test_run_daily_status_dag_catches_unexpected_exception(
 
     monkeypatch.setattr(runner, "run_durable_dag", _boom)
     section = await run_daily_status_dag(
-        user_id="u1", project_id="p1", pat="tk",
-        base_url="https://myjira.disney.com", flavor="server",
+        user_id="u1",
+        project_id="p1",
+        pat="tk",
+        base_url="https://myjira.disney.com",
+        flavor="server",
     )
     assert section["status"] == "error"
     assert "RuntimeError" in section["detail"]

@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.resilience.classifier import (
-    ClassifiedError,
     ErrorCategory,
     _classify_402,
     _extract_retry_after,
@@ -235,8 +232,31 @@ class TestExtractRetryAfter:
     def test_no_match(self):
         assert _extract_retry_after("generic error") is None
 
-    def test_bare_number(self):
+    def test_bare_number_with_retry_keyword(self):
+        # "retry after N" is an explicit retry hint, so honour it.
         assert _extract_retry_after("retry after 45") == 45.0
+
+    def test_bare_number_in_prose_ignored(self):
+        # A bare number with neither a unit nor a retry keyword must NOT
+        # be parsed as a retry-after value. The status code leaking into
+        # the error message is the canonical trap.
+        assert _extract_retry_after("429 Too Many Requests for model gpt-4") is None
+
+    def test_seconds_short_unit(self):
+        assert _extract_retry_after("5s") == 5.0
+
+    def test_milliseconds_unit(self):
+        assert _extract_retry_after("retry after 500ms") == 0.5
+
+    def test_status_code_429_prose_stays_retryable(self):
+        # End-to-end: a 429 whose body merely repeats the status code must
+        # remain retryable. A spurious retry_after=429 would exceed
+        # max_delay (60) and make compute_backoff abort the retry.
+        err = _HttpError("429 Too Many Requests for model gpt-4", 429)
+        r = classify_error(err)
+        assert r.category == ErrorCategory.RATE_LIMIT
+        assert r.retryable is True
+        assert r.retry_after_seconds is None
 
 
 class TestClassify402:

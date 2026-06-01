@@ -38,15 +38,18 @@ def setup_done(client: httpx.Client):
     assert r.status_code == 200
     if r.json().get("setup_complete"):
         return True
-    r = client.post("/v1/setup/complete", json={
-        "hardware_preset": "beast",
-        "conductor_name": "PM Test Hive",
-        "admin_username": "admin",
-        "admin_password": "adminpass123",
-        "user_username": "pmuser",
-        "user_password": "pmpass1234",
-        "optional_modules": [],
-    })
+    r = client.post(
+        "/v1/setup/complete",
+        json={
+            "hardware_preset": "beast",
+            "conductor_name": "PM Test Hive",
+            "admin_username": "admin",
+            "admin_password": "adminpass123",
+            "user_username": "pmuser",
+            "user_password": "pmpass1234",
+            "optional_modules": [],
+        },
+    )
     assert r.status_code == 200, f"Setup failed: {r.text}"
     assert r.json()["setup_complete"] is True
     return True
@@ -55,10 +58,13 @@ def setup_done(client: httpx.Client):
 @pytest.fixture(scope="module")
 def session(client: httpx.Client, setup_done):
     """Login as the PM user and return the session cookie."""
-    r = client.post("/v1/auth/login", json={
-        "username": "pmuser",
-        "password": "pmpass1234",
-    })
+    r = client.post(
+        "/v1/auth/login",
+        json={
+            "username": "pmuser",
+            "password": "pmpass1234",
+        },
+    )
     assert r.status_code == 200, f"Login failed: {r.text}"
     cookie = r.cookies.get("hive_session")
     assert cookie, "No session cookie returned"
@@ -100,10 +106,13 @@ class TestAuth:
         assert data["user"]["username"] == "pmuser"
 
     def test_login_wrong_password(self, client: httpx.Client, setup_done):
-        r = client.post("/v1/auth/login", json={
-            "username": "pmuser",
-            "password": "wrongpass",
-        })
+        r = client.post(
+            "/v1/auth/login",
+            json={
+                "username": "pmuser",
+                "password": "wrongpass",
+            },
+        )
         assert r.status_code == 401
 
 
@@ -112,10 +121,13 @@ class TestDAGLifecycle:
 
     @pytest.fixture(scope="class")
     def dag(self, client: httpx.Client, session) -> dict:
-        r = client.post("/v1/dags", json={
-            "name": "Daily Standup Report",
-            "description": "Gather team updates and produce a summary",
-        })
+        r = client.post(
+            "/v1/dags",
+            json={
+                "name": "Daily Standup Report",
+                "description": "Gather team updates and produce a summary",
+            },
+        )
         assert r.status_code == 201, f"Create DAG failed: {r.text}"
         dag = r.json()
         assert dag["name"] == "Daily Standup Report"
@@ -157,11 +169,14 @@ class TestDAGLifecycle:
 
     def test_07_submit_feedback(self, client: httpx.Client, session, dag):
         exec_id = dag.get("_last_execution_id", "test-run-1")
-        r = client.post(f"/v1/dag-runs/{exec_id}/feedback", json={
-            "thumb": "up",
-            "comment": "Great standup summary!",
-            "dag_id": dag["id"],
-        })
+        r = client.post(
+            f"/v1/dag-runs/{exec_id}/feedback",
+            json={
+                "thumb": "up",
+                "comment": "Great standup summary!",
+                "dag_id": dag["id"],
+            },
+        )
         # 200 = recorded, 404 = run not in store (still valid test path)
         assert r.status_code in (200, 404)
 
@@ -186,9 +201,12 @@ class TestDAGLifecycle:
 
     def test_11_update_dag(self, client: httpx.Client, session, dag):
         """Signal #2: user edits trigger edit-lock."""
-        r = client.put(f"/v1/dags/{dag['id']}", json={
-            "description": "Updated: gather team updates, blockers, and wins",
-        })
+        r = client.put(
+            f"/v1/dags/{dag['id']}",
+            json={
+                "description": "Updated: gather team updates, blockers, and wins",
+            },
+        )
         assert r.status_code == 200
         assert "Updated" in r.json()["description"]
 

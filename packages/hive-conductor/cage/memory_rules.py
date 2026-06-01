@@ -16,11 +16,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 
-class MemoryTier(str, Enum):
+class MemoryTier(StrEnum):
     EPHEMERAL = "ephemeral"
     DURABLE = "durable"
     PERMANENT = "permanent"
@@ -37,13 +37,17 @@ class MemoryViolation:
 class MemoryRules:
     """Enforces memory tier constraints. Returns violations instead of raising."""
 
-    def check_write(self, tier: MemoryTier, key: str, existing: Any | None) -> MemoryViolation | None:
-        if tier == MemoryTier.PERMANENT:
-            if existing is not None:
-                return MemoryViolation("write", tier, key, "permanent memory is read-only after creation")
-        if tier == MemoryTier.DURABLE:
-            if existing is not None:
-                return MemoryViolation("write", tier, key, "durable memory is append-only; cannot overwrite")
+    def check_write(
+        self, tier: MemoryTier, key: str, existing: Any | None
+    ) -> MemoryViolation | None:
+        if tier == MemoryTier.PERMANENT and existing is not None:
+            return MemoryViolation(
+                "write", tier, key, "permanent memory is read-only after creation"
+            )
+        if tier == MemoryTier.DURABLE and existing is not None:
+            return MemoryViolation(
+                "write", tier, key, "durable memory is append-only; cannot overwrite"
+            )
         return None
 
     def check_delete(self, tier: MemoryTier, key: str) -> MemoryViolation | None:
@@ -53,8 +57,12 @@ class MemoryRules:
             return MemoryViolation("delete", tier, key, "durable memory cannot be deleted")
         return None
 
-    def check_timestamp(self, proposed: datetime, now: datetime | None = None) -> MemoryViolation | None:
+    def check_timestamp(
+        self, proposed: datetime, now: datetime | None = None
+    ) -> MemoryViolation | None:
         now = now or datetime.now(UTC)
         if proposed < now:
-            return MemoryViolation("timestamp", MemoryTier.DURABLE, "", "cannot backdate timestamps")
+            return MemoryViolation(
+                "timestamp", MemoryTier.DURABLE, "", "cannot backdate timestamps"
+            )
         return None

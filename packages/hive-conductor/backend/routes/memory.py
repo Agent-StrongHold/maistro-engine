@@ -95,9 +95,7 @@ def reinforce_entry(entry_id: str) -> MemoryEntry:
         raise HTTPException(status_code=404, detail="not found")
     entry = stores.memory_entries[entry_id]
     t = _now()
-    entry = entry.model_copy(
-        update={"accessed_count": entry.accessed_count + 1, "updated_at": t}
-    )
+    entry = entry.model_copy(update={"accessed_count": entry.accessed_count + 1, "updated_at": t})
     stores.memory_entries[entry_id] = entry
     return entry
 
@@ -109,9 +107,7 @@ def decay_entry(entry_id: str) -> MemoryEntry:
     entry = stores.memory_entries[entry_id]
     t = _now()
     new_count = max(0, entry.accessed_count - 1)
-    entry = entry.model_copy(
-        update={"accessed_count": new_count, "updated_at": t}
-    )
+    entry = entry.model_copy(update={"accessed_count": new_count, "updated_at": t})
     stores.memory_entries[entry_id] = entry
     return entry
 

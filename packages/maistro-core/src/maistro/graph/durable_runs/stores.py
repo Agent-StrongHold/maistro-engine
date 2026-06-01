@@ -15,7 +15,6 @@ from typing import Any
 
 from .types import DurableRunRecord, RunStatus
 
-
 # --- In-memory implementation ---------------------------------------------
 
 
@@ -35,7 +34,7 @@ class InMemoryDurableRunStore:
             return self._rows[record.run_id]
 
     async def get(self, run_id: str) -> DurableRunRecord | None:
-        return self._rows.get(run_id).model_copy(deep=True) if run_id in self._rows else None
+        return self._rows[run_id].model_copy(deep=True) if run_id in self._rows else None
 
     async def update(self, record: DurableRunRecord) -> DurableRunRecord:
         async with self._lock:
@@ -67,9 +66,7 @@ class InMemoryDurableRunStore:
                 break
         return out
 
-    async def list_for_project(
-        self, project_id: str, *, limit: int = 25
-    ) -> list[DurableRunRecord]:
+    async def list_for_project(self, project_id: str, *, limit: int = 25) -> list[DurableRunRecord]:
         runs = [r for r in self._rows.values() if r.project_id == project_id]
         runs.sort(key=lambda r: r.started_at, reverse=True)
         return [r.model_copy(deep=True) for r in runs[:limit]]
@@ -78,16 +75,14 @@ class InMemoryDurableRunStore:
         self,
         run_id: str,
         node_id: str,
-        answer: dict,
+        answer: dict[str, Any],
     ) -> DurableRunRecord:
         async with self._lock:
             r = self._rows.get(run_id)
             if r is None:
                 raise KeyError(f"no such run: {run_id!r}")
             if r.status != RunStatus.PAUSED_HITL:
-                raise ValueError(
-                    f"run {run_id!r} not paused on HITL (status={r.status})"
-                )
+                raise ValueError(f"run {run_id!r} not paused on HITL (status={r.status})")
             if r.current_node_id != node_id:
                 raise ValueError(
                     f"run {run_id!r} waiting on node {r.current_node_id!r}, not {node_id!r}"
@@ -159,7 +154,9 @@ class SqliteDurableRunStore:
         return {
             "run_id": record.run_id,
             "dag_id": record.dag_id,
-            "status": record.status.value if hasattr(record.status, "value") else str(record.status),
+            "status": record.status.value
+            if hasattr(record.status, "value")
+            else str(record.status),
             "current_node_id": record.current_node_id,
             "project_id": record.project_id,
             "user_id": record.user_id,
@@ -196,20 +193,16 @@ class SqliteDurableRunStore:
         limit: int = 100,
         project_id: str | None = None,
     ) -> list[DurableRunRecord]:
-        return await asyncio.to_thread(
-            _list_by_status_sync, self, status, limit, project_id
-        )
+        return await asyncio.to_thread(_list_by_status_sync, self, status, limit, project_id)
 
-    async def list_for_project(
-        self, project_id: str, *, limit: int = 25
-    ) -> list[DurableRunRecord]:
+    async def list_for_project(self, project_id: str, *, limit: int = 25) -> list[DurableRunRecord]:
         return await asyncio.to_thread(_list_for_project_sync, self, project_id, limit)
 
     async def submit_hitl_answer(
         self,
         run_id: str,
         node_id: str,
-        answer: dict,
+        answer: dict[str, Any],
     ) -> DurableRunRecord:
         async with self._lock:
             # Don't call self.get / self.update — those would re-acquire the
@@ -220,9 +213,7 @@ class SqliteDurableRunStore:
                 if current is None:
                     raise KeyError(f"no such run: {run_id!r}")
                 if current.status != RunStatus.PAUSED_HITL:
-                    raise ValueError(
-                        f"run {run_id!r} not paused on HITL (status={current.status})"
-                    )
+                    raise ValueError(f"run {run_id!r} not paused on HITL (status={current.status})")
                 if current.current_node_id != node_id:
                     raise ValueError(
                         f"run {run_id!r} waiting on node "
@@ -250,9 +241,7 @@ class SqliteDurableRunStore:
 # responsive. They must NOT be `async def` (to_thread can't await coroutines).
 
 
-def _create_sync(
-    store: "SqliteDurableRunStore", record: DurableRunRecord
-) -> DurableRunRecord:
+def _create_sync(store: SqliteDurableRunStore, record: DurableRunRecord) -> DurableRunRecord:
     row = store._to_row(record)
     with store._connect() as conn:
         conn.execute(
@@ -271,19 +260,13 @@ def _create_sync(
     return record.model_copy(deep=True)
 
 
-def _get_sync(
-    store: "SqliteDurableRunStore", run_id: str
-) -> DurableRunRecord | None:
+def _get_sync(store: SqliteDurableRunStore, run_id: str) -> DurableRunRecord | None:
     with store._connect() as conn:
-        row = conn.execute(
-            "SELECT * FROM durable_runs WHERE run_id = ?", (run_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM durable_runs WHERE run_id = ?", (run_id,)).fetchone()
     return store._from_row(row) if row else None
 
 
-def _update_sync(
-    store: "SqliteDurableRunStore", record: DurableRunRecord
-) -> DurableRunRecord:
+def _update_sync(store: SqliteDurableRunStore, record: DurableRunRecord) -> DurableRunRecord:
     row = store._to_row(record)
     with store._connect() as conn:
         cur = conn.execute(
@@ -321,7 +304,7 @@ def _update_sync(
 
 
 def _list_by_status_sync(
-    store: "SqliteDurableRunStore",
+    store: SqliteDurableRunStore,
     status: RunStatus,
     limit: int,
     project_id: str | None,
@@ -339,7 +322,7 @@ def _list_by_status_sync(
 
 
 def _list_for_project_sync(
-    store: "SqliteDurableRunStore", project_id: str, limit: int
+    store: SqliteDurableRunStore, project_id: str, limit: int
 ) -> list[DurableRunRecord]:
     with store._connect() as conn:
         rows = conn.execute(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
+from typing import Any
 
 from maistro.events.bus import (
     Event,
@@ -152,6 +152,85 @@ class TestEventBus:
         assert received == ["hello"]
 
 
+class TestEmitRobustness:
+    async def test_bad_payload_trigger_does_not_stop_other_triggers(self):
+        # A numeric-comparison condition against a non-numeric payload must not
+        # abort the whole emit loop; later triggers/subscribers must still run.
+        bus = EventBus()
+        fired_names: list[str] = []
+
+        # First trigger: gt comparison against a non-numeric payload value.
+        bus.add_trigger(
+            Trigger(
+                name="numeric",
+                event_types=["fitness"],
+                conditions=[TriggerCondition(field="fitness", op="gt", value=0.5)],
+                action_type="log",
+            )
+        )
+        # Second trigger: a plain match that should still fire.
+        bus.add_trigger(
+            Trigger(
+                name="plain",
+                event_types=["fitness"],
+                action_type="log",
+            )
+        )
+        bus.register_handler("log", lambda t, e: _append(fired_names, t.name))
+
+        received: list[str] = []
+        bus.subscribe(lambda e: _append(received, e.event_type))
+
+        # payload fitness is non-numeric → float() would raise inside matches.
+        fired = await bus.emit(Event(event_type="fitness", payload={"fitness": "n/a"}))
+
+        # The bad numeric trigger must not match (and must not raise), and the
+        # plain trigger plus the subscriber must still run.
+        assert "plain" in fired_names
+        assert [t.name for t in fired] == ["plain"]
+        assert received == ["fitness"]
+
+    async def test_missing_template_key_does_not_silently_drop_action(self):
+        # A handler whose message template references a payload key that is
+        # missing must still run (the action must not be silently dropped).
+        from maistro.events.handlers import conductor_chat_action
+
+        captured: dict[str, Any] = {}
+
+        async def fake_post(url, json, headers, timeout):
+            captured["message"] = json["messages"][0]["content"]
+
+            class _Resp:
+                status_code = 200
+
+            return _Resp()
+
+        import maistro.events.handlers as handlers_mod
+
+        class _FakeClient:
+            post = staticmethod(fake_post)
+
+        handlers_mod.set_service_client(_FakeClient())  # type: ignore[arg-type]
+        try:
+            trigger = Trigger(
+                name="escalate",
+                action_type="conductor_chat",
+                action_config={
+                    "message": "Agent {agent_id} severity {severity}",
+                    "api_key": "k",
+                },
+            )
+            # payload is missing 'agent_id' → naive .format(**payload) raises KeyError.
+            event = Event(event_type="warden_block", payload={"severity": "high"})
+            await conductor_chat_action(trigger, event)
+        finally:
+            handlers_mod.set_service_client(None)
+
+        # The action ran and produced a message; the missing key did not abort it.
+        assert "message" in captured, "action was silently dropped on missing template key"
+        assert "high" in captured["message"]
+
+
 class TestRecipes:
     def test_coinswarm_fitness_alert(self):
         t = coinswarm_fitness_alert(fitness_threshold=0.3)
@@ -215,13 +294,13 @@ class TestIntegrations:
         bus = EventBus()
         received = []
         bus.subscribe(lambda e: _append(received, e.event_type))
-        cs = CoinSwarmIntegration(event_bus=bus)
+        CoinSwarmIntegration(event_bus=bus)
 
     async def test_turing_handles_coinswarm_event(self):
         from maistro.integrations.turing import TuringIntegration
 
-        t = TuringIntegration(chat_url="http://not-real:9101")
-        event = Event(
+        TuringIntegration(chat_url="http://not-real:9101")
+        Event(
             category=EventCategory.TRADING,
             event_type="evolution_cycle_complete",
             source="coinswarm",

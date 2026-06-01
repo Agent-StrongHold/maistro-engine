@@ -11,6 +11,7 @@ This module provides:
   - optimize_skill(): run one SkillOpt pass on a skill
   - optimize_tool(): run one pass on a tool definition
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ MAX_REJECTED_BUFFER = 20
 @dataclass
 class SkillDocument:
     """A versioned skill document — the optimizable artifact."""
+
     id: str
     name: str
     content: str  # The SKILL.md text
@@ -42,12 +44,14 @@ class SkillDocument:
 
     def apply_edit(self, new_content: str, score: float, rationale: str) -> None:
         """Accept an edit — bump version, record history."""
-        self.history.append({
-            "version": self.version,
-            "content": self.content,
-            "score": self.score,
-            "replaced_at": datetime.now(UTC).isoformat(),
-        })
+        self.history.append(
+            {
+                "version": self.version,
+                "content": self.content,
+                "score": self.score,
+                "replaced_at": datetime.now(UTC).isoformat(),
+            }
+        )
         self.content = new_content
         self.score = score
         self.version += 1
@@ -62,6 +66,7 @@ class SkillDocument:
 @dataclass
 class ToolDefinition:
     """An optimizable tool definition."""
+
     id: str
     name: str
     description: str
@@ -112,12 +117,17 @@ async def optimize_skill(
 
     messages = [
         {"role": "system", "content": SKILL_OPT_PROMPT.format(lr=TEXTUAL_LEARNING_RATE)},
-        {"role": "user", "content": json.dumps({
-            "current_skill": skill.content,
-            "successes": successes[:5],
-            "failures": failures[:5],
-            "rejected_edits": skill.rejected_edits[-5:],
-        })},
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "current_skill": skill.content,
+                    "successes": successes[:5],
+                    "failures": failures[:5],
+                    "rejected_edits": skill.rejected_edits[-5:],
+                }
+            ),
+        },
     ]
 
     try:
@@ -125,7 +135,11 @@ async def optimize_skill(
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": "gemini-3.5-flash", "messages": messages, "response_format": {"type": "json_object"}},
+                json={
+                    "model": "gemini-3.5-flash",
+                    "messages": messages,
+                    "response_format": {"type": "json_object"},
+                },
             )
             r.raise_for_status()
             return json.loads(r.json()["choices"][0]["message"]["content"])
@@ -146,17 +160,25 @@ async def optimize_tool(
         base = base.rstrip("/") + "/v1"
 
     messages = [
-        {"role": "system", "content": (
-            "You optimize tool definitions for AI agents. Given a tool's current description, "
-            "parameter schema, and recent call results (successes/failures), propose improvements. "
-            "Return JSON: {\"new_description\": \"...\", \"new_parameters\": {...}, \"rationale\": \"...\"}"
-        )},
-        {"role": "user", "content": json.dumps({
-            "tool_name": tool.name,
-            "current_description": tool.description,
-            "current_parameters": tool.parameters,
-            "recent_calls": call_results[:10],
-        })},
+        {
+            "role": "system",
+            "content": (
+                "You optimize tool definitions for AI agents. Given a tool's current description, "
+                "parameter schema, and recent call results (successes/failures), propose improvements. "
+                'Return JSON: {"new_description": "...", "new_parameters": {...}, "rationale": "..."}'
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "tool_name": tool.name,
+                    "current_description": tool.description,
+                    "current_parameters": tool.parameters,
+                    "recent_calls": call_results[:10],
+                }
+            ),
+        },
     ]
 
     try:
@@ -164,7 +186,11 @@ async def optimize_tool(
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": "gemini-3.5-flash", "messages": messages, "response_format": {"type": "json_object"}},
+                json={
+                    "model": "gemini-3.5-flash",
+                    "messages": messages,
+                    "response_format": {"type": "json_object"},
+                },
             )
             r.raise_for_status()
             return json.loads(r.json()["choices"][0]["message"]["content"])

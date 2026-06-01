@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import pytest
 import respx
 from httpx import Response
@@ -32,7 +31,9 @@ class TestSlotAcquisition:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_acquire_and_release_worker(self, config: GatewayConfig, client: httpx.AsyncClient):
+    async def test_acquire_and_release_worker(
+        self, config: GatewayConfig, client: httpx.AsyncClient
+    ):
         """Worker slots can be acquired and released."""
         mgr = SlotManager(config, client)
 
@@ -86,7 +87,9 @@ class TestSlotProtection:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_slot_0_cannot_be_released(self, config: GatewayConfig, client: httpx.AsyncClient):
+    async def test_slot_0_cannot_be_released(
+        self, config: GatewayConfig, client: httpx.AsyncClient
+    ):
         """Template slot (0) should not be releasable as a worker."""
         mgr = SlotManager(config, client)
 
@@ -95,7 +98,9 @@ class TestSlotProtection:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_restore_to_template_slot_raises(self, config: GatewayConfig, client: httpx.AsyncClient):
+    async def test_restore_to_template_slot_raises(
+        self, config: GatewayConfig, client: httpx.AsyncClient
+    ):
         """Cannot restore into the template slot itself."""
         mgr = SlotManager(config, client)
 
@@ -108,7 +113,9 @@ class TestSlotAPICalls:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_save_template_calls_llama_api(self, config: GatewayConfig, client: httpx.AsyncClient):
+    async def test_save_template_calls_llama_api(
+        self, config: GatewayConfig, client: httpx.AsyncClient
+    ):
         """save_template should POST to /slots/0?action=save."""
         route = respx.post("http://mock-llama:8080/slots/0?action=save").mock(
             return_value=Response(200, json={"status": "ok"})
@@ -122,7 +129,9 @@ class TestSlotAPICalls:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_restore_template_to_worker(self, config: GatewayConfig, client: httpx.AsyncClient):
+    async def test_restore_template_to_worker(
+        self, config: GatewayConfig, client: httpx.AsyncClient
+    ):
         """restore_template_to_worker should POST to /slots/{worker}?action=restore."""
         route = respx.post("http://mock-llama:8080/slots/2?action=restore").mock(
             return_value=Response(200, json={"status": "ok"})
@@ -136,7 +145,9 @@ class TestSlotAPICalls:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_save_template_handles_error(self, config: GatewayConfig, client: httpx.AsyncClient):
+    async def test_save_template_handles_error(
+        self, config: GatewayConfig, client: httpx.AsyncClient
+    ):
         """save_template should propagate errors."""
         respx.post("http://mock-llama:8080/slots/0?action=save").mock(
             return_value=Response(500, json={"error": "internal error"})

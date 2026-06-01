@@ -20,7 +20,8 @@ def start_scheduler() -> None:
     if _runner is not None:
         return
     _runner = _ScheduleRunner()
-    asyncio.ensure_future(_runner.run())
+    # Keep a reference to the background task so it isn't garbage-collected mid-flight.
+    _runner.task = asyncio.ensure_future(_runner.run())
 
 
 def stop_scheduler() -> None:
@@ -35,6 +36,7 @@ class _ScheduleRunner:
         self._running = True
         self._last_check: datetime | None = None
         self._last_repair: datetime | None = None
+        self.task: asyncio.Task[None] | None = None
 
     def stop(self) -> None:
         self._running = False
@@ -126,9 +128,7 @@ def _should_fire(cron_expr: str, last: datetime, now: datetime) -> bool:
     if not all(checks):
         return False
     delta = now - last
-    if delta < timedelta(minutes=1):
-        return False
-    return True
+    return delta >= timedelta(minutes=1)
 
 
 def _field_matches(field: str, value: int, low: int, high: int) -> bool:

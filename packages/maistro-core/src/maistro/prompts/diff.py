@@ -40,6 +40,16 @@ def compute_diff(
         n=context_lines,
     )
 
+    # difflib.unified_diff emits file headers as the first two lines, formatted
+    # exactly as "--- <fromfile>" and "+++ <tofile>" (note the trailing space and
+    # label). Content lines are "-"/"+" followed by arbitrary text — which may
+    # itself be "--" or "++", e.g. a removed markdown "---" rule. We must not
+    # confuse those content lines with file headers, or line numbers drift.
+    file_headers = (
+        f"--- {old_label}",
+        f"+++ {new_label}",
+    )
+
     result: list[DiffLine] = []
     old_lineno = 0
     new_lineno = 0
@@ -47,12 +57,12 @@ def compute_diff(
     for line in diff:
         stripped = line.rstrip("\n")
 
-        if line.startswith("---") or line.startswith("+++"):
+        if stripped.startswith(file_headers):
             result.append(DiffLine(op="header", content=stripped))
         elif line.startswith("@@"):
             result.append(DiffLine(op="header", content=stripped))
             parts = stripped.split()
-            if len(parts) >= 3:  # noqa: PLR2004
+            if len(parts) >= 3:
                 try:
                     old_lineno = abs(int(parts[1].split(",")[0]))
                     new_lineno = int(parts[2].split(",")[0])

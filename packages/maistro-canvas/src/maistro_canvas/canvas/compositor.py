@@ -246,7 +246,7 @@ class PilCompositorService:
         canvas: CanvasRecord,
         layers: list[LayerRecord],
     ) -> CompositeResult:
-        from maistro_canvas.types import CompositeResult  # noqa: PLC0415
+        from maistro_canvas.types import CompositeResult
 
         canvas_w, canvas_h = canvas.width, canvas.height
         bg_color = _parse_hex_color(canvas.background_color)
@@ -331,7 +331,7 @@ class PilCompositorService:
             return await asyncio.to_thread(_encode_webp, img, quality)
         if target in ("jpg", "jpeg"):
             return await asyncio.to_thread(_encode_jpg, img, quality)
-        from maistro_canvas.types import UnsupportedFormatError  # noqa: PLC0415
+        from maistro_canvas.types import UnsupportedFormatError
 
         raise UnsupportedFormatError(f"unsupported format: {fmt!r}")
 

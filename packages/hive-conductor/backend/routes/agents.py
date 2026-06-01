@@ -6,17 +6,16 @@ from typing import Any
 from uuid import uuid4
 
 import stores
-
-logger = logging.getLogger("hive.agents")
 from fastapi import APIRouter, HTTPException, Request
 from models.schemas import Agent
 from pydantic import BaseModel, ConfigDict
+from services.engine import get_engine
+from services.pm_fleet import is_pm_poc_mode, list_pm_agents
 
 from maistro.agents.pm_capabilities import CAPABILITY_TO_WORK_ITEM, is_gated
-
 from routes.audit import log_audit
-from services.engine import get_engine
-from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode, list_pm_agents
+
+logger = logging.getLogger("hive.agents")
 
 router = APIRouter(tags=["agents"])
 
@@ -32,9 +31,12 @@ def _user_id(request: Request) -> str:
 
 def _build_invoke_context(user_id: str) -> dict[str, Any]:
     """Build program_context with credentials for agent invocation."""
-    from services import program_store as prog, user_credentials as cred_svc
+    from services import program_store as prog
+    from services import user_credentials as cred_svc
+
     try:
         from maistro.agents.program_context import context_for_task
+
         ctx = prog.get_context(user_id)
         pctx = context_for_task(ctx)
     except Exception:
@@ -103,12 +105,16 @@ async def invoke_agent(agent_id: str, body: InvokeBody, request: Request) -> dic
     uid = _user_id(request)
     # Execute directly via the same tool execution the chat uses — real data, no queue
     from services.chat_completion import _execute_tool
+
     result = await _execute_tool(body.capability, body.payload, uid)
     log_audit(
         "agent_invoke",
         uid,
         target=agent_id,
-        detail={"capability": body.capability, "result_keys": list(result.keys()) if isinstance(result, dict) else []},
+        detail={
+            "capability": body.capability,
+            "result_keys": list(result.keys()) if isinstance(result, dict) else [],
+        },
     )
     return {"status": "completed", "capability": body.capability, "result": result}
 

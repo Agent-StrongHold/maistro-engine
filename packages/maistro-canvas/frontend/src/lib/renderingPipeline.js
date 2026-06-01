@@ -9,149 +9,23 @@ import {
   generateScenePlan,
 } from "./templateEngine";
 import { normalizeCharacter, buildFaceMask } from "./characterNormalizer";
+import { pipelineImage, editImage } from "./llmClient";
 
-const AZURE_KEY = import.meta.env.VITE_AZURE_KEY || "";
-const AZURE_ENDPOINT = import.meta.env.VITE_AZURE_ENDPOINT || "";
-const AZURE_DEPLOYMENTS = ["gpt-image-1-5", "gpt-image-2-1"];
-const AZURE_DRAFT_DEPLOYMENTS = ["gpt-image-1-mini"];
-const AZURE_API_VERSION = "2025-04-01-preview";
-const AZURE_API_VERSION_FALLBACK = "2025-03-01-preview";
-const GEMINI_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+// Provider credentials live server-side only (see server.js /api/llm/*).
+// These wrappers preserve the original signatures while delegating the
+// actual provider calls to the Express proxy.
 
-async function azureImageGen(prompt, size = "1024x1024", quality = "medium") {
-  if (!AZURE_KEY || !AZURE_ENDPOINT) throw new Error("No Azure config");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 180000);
-  try {
-    const body = JSON.stringify({ prompt, n: 1, size, quality });
-    for (const dep of AZURE_DEPLOYMENTS) {
-      for (const apiVer of [AZURE_API_VERSION, AZURE_API_VERSION_FALLBACK]) {
-        try {
-          const res = await fetch(
-            `${AZURE_ENDPOINT}/openai/deployments/${dep}/images/generations?api-version=${apiVer}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "api-key": AZURE_KEY },
-              body,
-              signal: controller.signal,
-            }
-          );
-          if (!res.ok) {
-            const e = await res.json().catch(() => ({}));
-            if (res.status === 404 || res.status === 400) continue;
-            throw new Error(e.error?.message || `Azure ${res.status}`);
-          }
-          const data = await res.json();
-          const img = data.data?.[0];
-          if (!img) throw new Error("No image from Azure");
-          if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
-          if (img.url) return img.url;
-          throw new Error("No image data");
-        } catch (err) {
-          if (err.name === "AbortError") throw err;
-          continue;
-        }
-      }
-    }
-    throw new Error("All Azure deployments failed");
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function dataUrlToBlob(dataUrl) {
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) return null;
-  const mime = match[1];
-  const base64 = match[2];
-  const binStr = atob(base64);
-  const arr = new Uint8Array(binStr.length);
-  for (let i = 0; i < binStr.length; i++) arr[i] = binStr.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
-
+// Edit one or more images via the server proxy (Azure multipart server-side).
 export async function azureImageEdit(imageDataUrls, prompt, size = "1024x1024", quality = "medium", inputFidelity = 0.8) {
-  if (!AZURE_KEY || !AZURE_ENDPOINT) throw new Error("No Azure config");
-
-  const urls = Array.isArray(imageDataUrls) ? imageDataUrls : [imageDataUrls];
-  const blobs = urls.map((u) => dataUrlToBlob(u)).filter(Boolean);
-  if (blobs.length === 0) throw new Error("No valid images for edit");
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 180000);
-
-  const errors = [];
-
-  try {
-    for (const dep of AZURE_DEPLOYMENTS) {
-      try {
-        const form = new FormData();
-        for (const blob of blobs) {
-          const ext = blob.type.includes("png") ? "png" : "jpg";
-          form.append("image[]", blob, `image.${ext}`);
-        }
-        form.append("prompt", prompt);
-        form.append("size", size);
-        form.append("n", "1");
-        form.append("quality", quality);
-        if (inputFidelity != null) {
-          form.append("input_fidelity", inputFidelity >= 0.7 ? "high" : "low");
-        }
-
-        const res = await fetch(
-          `${AZURE_ENDPOINT}/openai/deployments/${dep}/images/edits?api-version=${AZURE_API_VERSION}`,
-          {
-            method: "POST",
-            headers: { "api-key": AZURE_KEY },
-            body: form,
-            signal: controller.signal,
-          }
-        );
-
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          const msg = e.error?.message || `Azure edit ${res.status} on ${dep}`;
-          errors.push(msg);
-          if (res.status === 404 || res.status === 400) continue;
-          if (res.status === 429) continue;
-          throw new Error(msg);
-        }
-        const data = await res.json();
-        const img = data.data?.[0];
-        if (!img) throw new Error("No edited image");
-        if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
-        if (img.url) return img.url;
-        throw new Error("No image data");
-      } catch (err) {
-        if (err.name === "AbortError") throw err;
-        errors.push(err.message);
-        continue;
-      }
-    }
-    throw new Error(`All Azure edit deployments failed: ${errors.join("; ")}`);
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-async function geminiImageGen(prompt) {
-  if (!GEMINI_KEY) throw new Error("No Gemini key");
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `Generate an image: ${prompt}` }] }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-      }),
-    }
-  );
-  if (!res.ok) throw new Error(`Gemini ${res.status}`);
-  const data = await res.json();
-  const part = data?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData);
-  if (!part) throw new Error("No image from Gemini");
-  return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+  const url = await editImage({
+    images: imageDataUrls,
+    prompt,
+    size,
+    quality,
+    input_fidelity: inputFidelity,
+  });
+  if (!url) throw new Error("No edited image");
+  return url;
 }
 
 function makePlaceholder(label) {
@@ -173,16 +47,10 @@ function makePlaceholder(label) {
 }
 
 async function generateImage(prompt, size, quality = "medium") {
-  if (AZURE_KEY && AZURE_ENDPOINT) {
-    try {
-      return await azureImageGen(prompt, size, quality);
-    } catch {}
-  }
-  if (GEMINI_KEY) {
-    try {
-      return await geminiImageGen(prompt);
-    } catch {}
-  }
+  try {
+    const url = await pipelineImage({ prompt, size, quality });
+    if (url) return url;
+  } catch { /* fall through to placeholder */ }
   return makePlaceholder(prompt.slice(0, 40));
 }
 
@@ -635,42 +503,10 @@ export { generateImage, makePlaceholder };
 // Generates a single layer at draft quality (512x512, quality "low").
 
 async function azureDraftGen(prompt, size = "1024x1024", quality = "low") {
-  if (!AZURE_KEY || !AZURE_ENDPOINT) throw new Error("No Azure config");
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
-  try {
-    const body = JSON.stringify({ prompt, n: 1, size, quality });
-    for (const dep of AZURE_DRAFT_DEPLOYMENTS) {
-      try {
-        const res = await fetch(
-          `${AZURE_ENDPOINT}/openai/deployments/${dep}/images/generations?api-version=${AZURE_API_VERSION}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "api-key": AZURE_KEY },
-            body,
-            signal: controller.signal,
-          }
-        );
-        if (!res.ok) {
-          if (res.status === 404 || res.status === 400 || res.status === 429) continue;
-          const e = await res.json().catch(() => ({}));
-          throw new Error(e.error?.message || `Azure draft ${res.status}`);
-        }
-        const data = await res.json();
-        const img = data.data?.[0];
-        if (!img) throw new Error("No image from Azure draft");
-        if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
-        if (img.url) return img.url;
-        throw new Error("No image data");
-      } catch (err) {
-        if (err.name === "AbortError") throw err;
-        continue;
-      }
-    }
-    throw new Error("Draft deployments failed");
-  } finally {
-    clearTimeout(timeout);
-  }
+  // Draft tier uses the mini deployments, selected server-side.
+  const url = await pipelineImage({ prompt, size, quality, tier: "draft" });
+  if (!url) throw new Error("Draft deployments failed");
+  return url;
 }
 
 export async function renderLayerDraft(prompt, onProgress, referenceImage, layerType) {

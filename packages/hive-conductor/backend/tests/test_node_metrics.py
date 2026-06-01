@@ -19,8 +19,8 @@ the observation list. Covers:
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -71,22 +71,42 @@ def isolated_store(monkeypatch: pytest.MonkeyPatch):
 def test_append_and_len(isolated_store: Any) -> None:
     from services.node_metrics_store import NodeObservation
 
-    isolated_store.append(NodeObservation(
-        run_id="r1", node_id="n1", node_kind="jira.poll", project_id="p",
-        dag_id="d", phase="COMPLETED", latency_ms=100,
-        tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-    ))
+    isolated_store.append(
+        NodeObservation(
+            run_id="r1",
+            node_id="n1",
+            node_kind="jira.poll",
+            project_id="p",
+            dag_id="d",
+            phase="COMPLETED",
+            latency_ms=100,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model_used="",
+        )
+    )
     assert len(isolated_store) == 1
 
 
 def test_clear_drops_all_observations(isolated_store: Any) -> None:
     from services.node_metrics_store import NodeObservation
 
-    isolated_store.append(NodeObservation(
-        run_id="r", node_id="n", node_kind="x", project_id="p", dag_id="d",
-        phase="COMPLETED", latency_ms=1, tokens_in=0, tokens_out=0,
-        cost_usd=0.0, model_used="",
-    ))
+    isolated_store.append(
+        NodeObservation(
+            run_id="r",
+            node_id="n",
+            node_kind="x",
+            project_id="p",
+            dag_id="d",
+            phase="COMPLETED",
+            latency_ms=1,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model_used="",
+        )
+    )
     isolated_store.clear()
     assert len(isolated_store) == 0
 
@@ -96,11 +116,21 @@ def test_ring_buffer_evicts_oldest_at_capacity() -> None:
 
     store = NodeMetricsStore(max_observations=3)
     for i in range(5):
-        store.append(NodeObservation(
-            run_id=f"r{i}", node_id=f"n{i}", node_kind="x", project_id="p",
-            dag_id="d", phase="COMPLETED", latency_ms=i,
-            tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-        ))
+        store.append(
+            NodeObservation(
+                run_id=f"r{i}",
+                node_id=f"n{i}",
+                node_kind="x",
+                project_id="p",
+                dag_id="d",
+                phase="COMPLETED",
+                latency_ms=i,
+                tokens_in=0,
+                tokens_out=0,
+                cost_usd=0.0,
+                model_used="",
+            )
+        )
     assert len(store) == 3
     # Only the last 3 survived
     agg = store.aggregate(window_seconds=3600)
@@ -110,16 +140,32 @@ def test_ring_buffer_evicts_oldest_at_capacity() -> None:
 # --- filter coverage -----------------------------------------------------
 
 
-def _seed_n(store: Any, kind: str, project: str, latency: int,
-            phase: str = "COMPLETED", node_id: str = "x",
-            dag_id: str = "d") -> None:
+def _seed_n(
+    store: Any,
+    kind: str,
+    project: str,
+    latency: int,
+    phase: str = "COMPLETED",
+    node_id: str = "x",
+    dag_id: str = "d",
+) -> None:
     from services.node_metrics_store import NodeObservation
 
-    store.append(NodeObservation(
-        run_id="r", node_id=node_id, node_kind=kind, project_id=project,
-        dag_id=dag_id, phase=phase, latency_ms=latency,
-        tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-    ))
+    store.append(
+        NodeObservation(
+            run_id="r",
+            node_id=node_id,
+            node_kind=kind,
+            project_id=project,
+            dag_id=dag_id,
+            phase=phase,
+            latency_ms=latency,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model_used="",
+        )
+    )
 
 
 def test_filter_node_kind(isolated_store: Any) -> None:
@@ -150,25 +196,43 @@ def test_filter_dag_id(isolated_store: Any) -> None:
     assert agg["count"] == 1
 
 
-def test_filter_window_cutoff_excludes_old_observations(
-    isolated_store: Any
-) -> None:
+def test_filter_window_cutoff_excludes_old_observations(isolated_store: Any) -> None:
     """A recorded_at older than the cutoff must be excluded."""
     from services.node_metrics_store import NodeObservation
 
     now = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
-    isolated_store.append(NodeObservation(
-        run_id="r", node_id="n", node_kind="x", project_id="p", dag_id="d",
-        phase="COMPLETED", latency_ms=10,
-        tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-        recorded_at=now - timedelta(hours=2),
-    ))
-    isolated_store.append(NodeObservation(
-        run_id="r", node_id="n", node_kind="x", project_id="p", dag_id="d",
-        phase="COMPLETED", latency_ms=20,
-        tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-        recorded_at=now,
-    ))
+    isolated_store.append(
+        NodeObservation(
+            run_id="r",
+            node_id="n",
+            node_kind="x",
+            project_id="p",
+            dag_id="d",
+            phase="COMPLETED",
+            latency_ms=10,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model_used="",
+            recorded_at=now - timedelta(hours=2),
+        )
+    )
+    isolated_store.append(
+        NodeObservation(
+            run_id="r",
+            node_id="n",
+            node_kind="x",
+            project_id="p",
+            dag_id="d",
+            phase="COMPLETED",
+            latency_ms=20,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model_used="",
+            recorded_at=now,
+        )
+    )
     # 1-hour window relative to `now` → only the second observation
     agg = isolated_store.aggregate(window_seconds=3600, now=now)
     assert agg["count"] == 1
@@ -213,16 +277,36 @@ def test_aggregate_success_rate(isolated_store: Any) -> None:
 def test_aggregate_tokens_and_cost(isolated_store: Any) -> None:
     from services.node_metrics_store import NodeObservation
 
-    isolated_store.append(NodeObservation(
-        run_id="r", node_id="n", node_kind="x", project_id="p", dag_id="d",
-        phase="COMPLETED", latency_ms=100,
-        tokens_in=10, tokens_out=20, cost_usd=0.05, model_used="m",
-    ))
-    isolated_store.append(NodeObservation(
-        run_id="r", node_id="n", node_kind="x", project_id="p", dag_id="d",
-        phase="COMPLETED", latency_ms=200,
-        tokens_in=30, tokens_out=60, cost_usd=0.15, model_used="m",
-    ))
+    isolated_store.append(
+        NodeObservation(
+            run_id="r",
+            node_id="n",
+            node_kind="x",
+            project_id="p",
+            dag_id="d",
+            phase="COMPLETED",
+            latency_ms=100,
+            tokens_in=10,
+            tokens_out=20,
+            cost_usd=0.05,
+            model_used="m",
+        )
+    )
+    isolated_store.append(
+        NodeObservation(
+            run_id="r",
+            node_id="n",
+            node_kind="x",
+            project_id="p",
+            dag_id="d",
+            phase="COMPLETED",
+            latency_ms=200,
+            tokens_in=30,
+            tokens_out=60,
+            cost_usd=0.15,
+            model_used="m",
+        )
+    )
     agg = isolated_store.aggregate(window_seconds=3600)
     assert agg["tokens_in_total"] == 40
     assert agg["tokens_in_mean"] == 20.0
@@ -273,7 +357,9 @@ def test_list_observations_filter_by_node_kind(isolated_store: Any) -> None:
     _seed_n(isolated_store, "kind-A", "p", 1)
     _seed_n(isolated_store, "kind-B", "p", 2)
     items = isolated_store.list_observations(
-        node_kind="kind-A", window_seconds=3600, limit=100,
+        node_kind="kind-A",
+        window_seconds=3600,
+        limit=100,
     )
     assert len(items) == 1
     assert items[0]["node_kind"] == "kind-A"
@@ -336,15 +422,19 @@ def test_record_run_completion_phase_enum_coerced() -> None:
     """phase coming in as 'NodePhase.COMPLETED' (string repr of StrEnum)
     must normalize to bare 'COMPLETED' for the aggregator's match."""
     from services.node_metrics_store import (
-        NodeMetricsStore, record_run_completion, set_store,
+        NodeMetricsStore,
+        record_run_completion,
+        set_store,
     )
 
     store = NodeMetricsStore()
     set_store(store)
     try:
-        run = _FakeRun(node_records=[
-            _FakeNodeRec("n1", "x", "NodePhase.COMPLETED", 100, 0, 0),
-        ])
+        run = _FakeRun(
+            node_records=[
+                _FakeNodeRec("n1", "x", "NodePhase.COMPLETED", 100, 0, 0),
+            ]
+        )
         record_run_completion(run)
         agg = store.aggregate(window_seconds=3600)
         assert agg["succeeded"] == 1
@@ -357,7 +447,9 @@ def test_set_store_swaps_module_singleton() -> None:
     """The bridge / tests can hot-swap the store via set_store; the
     contract is parallel to feedback_service.set_outcome_store."""
     from services.node_metrics_store import (
-        NodeMetricsStore, get_store, set_store,
+        NodeMetricsStore,
+        get_store,
+        set_store,
     )
 
     original = get_store()
@@ -373,9 +465,7 @@ def test_set_store_swaps_module_singleton() -> None:
 # --- HTTP route tests ----------------------------------------------------
 
 
-def test_metrics_endpoint_returns_aggregate(
-    authed_client: Any, isolated_store: Any
-) -> None:
+def test_metrics_endpoint_returns_aggregate(authed_client: Any, isolated_store: Any) -> None:
     _seed_n(isolated_store, "x", "p", 100)
     _seed_n(isolated_store, "x", "p", 200)
     r = authed_client.get("/v1/dag-metrics")
@@ -423,9 +513,7 @@ def test_metrics_observations_endpoint_returns_list(
     assert items[0]["node_kind"] == "alpha"
 
 
-def test_metrics_observations_limit_clamped(
-    authed_client: Any, isolated_store: Any
-) -> None:
+def test_metrics_observations_limit_clamped(authed_client: Any, isolated_store: Any) -> None:
     """limit param is clamped to [1, 1000]; below 1 → 1, above 1000 → 1000."""
     for i in range(5):
         _seed_n(isolated_store, "x", "p", i)

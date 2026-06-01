@@ -11,7 +11,7 @@ from typing import Any
 
 import httpx
 
-from maistro.events.bus import Event, EventCategory, EventBus
+from maistro.events.bus import Event, EventBus, EventCategory
 
 logger = logging.getLogger("maistro.integrations.ha")
 
@@ -48,7 +48,8 @@ class HomeAssistantIntegration:
         async with httpx.AsyncClient(timeout=10) as client:
             r = await client.get(f"{self._url}/api/states", headers=self._headers())
             r.raise_for_status()
-            return r.json()
+            states: list[dict[str, Any]] = r.json()
+            return states
 
     async def get_state(self, entity_id: str) -> dict[str, Any] | None:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -59,7 +60,8 @@ class HomeAssistantIntegration:
             if r.status_code == 404:
                 return None
             r.raise_for_status()
-            return r.json()
+            state: dict[str, Any] = r.json()
+            return state
 
     async def call_service(
         self,
@@ -75,7 +77,8 @@ class HomeAssistantIntegration:
                 headers=self._headers(),
             )
             r.raise_for_status()
-            return r.json()
+            result: list[dict[str, Any]] = r.json()
+            return result
 
     async def control_device(
         self,

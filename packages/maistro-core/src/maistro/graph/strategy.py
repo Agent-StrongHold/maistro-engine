@@ -55,9 +55,7 @@ class PlannerStrategy:
     ) -> str:
         constraints = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
         return (
-            f"Task: {task.description}\n\n"
-            f"Workspace: {task.workspace}\n"
-            f"Constraints:\n{constraints}"
+            f"Task: {task.description}\n\nWorkspace: {task.workspace}\nConstraints:\n{constraints}"
         )
 
     def score_output(self, output: BaseModel) -> float:
@@ -232,9 +230,7 @@ class PMStrategy:
         # The blackboard_prefix() in node.py prepends scout_context, annotations,
         # iteration info; this user-prompt body provides the task + (eventually)
         # the per-capability prompt template from pm_domain.py.
-        constraints = (
-            "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
-        )
+        constraints = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
         return f"Task: {task.description}\nConstraints:\n{constraints}"
 
     def score_output(self, output: BaseModel) -> float:
@@ -272,8 +268,12 @@ STRATEGY_REGISTRY: dict[AgentRole, NodeStrategy] = {
 }
 
 
-def get_strategy(role: AgentRole) -> NodeStrategy:
-    strategy = STRATEGY_REGISTRY.get(role)
+def get_strategy(role: AgentRole | str) -> NodeStrategy:
+    try:
+        role_enum = role if isinstance(role, AgentRole) else AgentRole(role)
+    except ValueError:
+        role_enum = None
+    strategy = STRATEGY_REGISTRY.get(role_enum) if role_enum is not None else None
     if strategy is None:
         raise ValueError(f"No strategy registered for role {role}")
     return strategy

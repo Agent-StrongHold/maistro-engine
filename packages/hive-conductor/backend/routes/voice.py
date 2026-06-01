@@ -42,7 +42,9 @@ class VoiceIntentResponse(BaseModel):
 
 
 @router.post("/intent", response_model=VoiceIntentResponse)
-async def voice_intent(body: VoiceIntentBody, authorization: str | None = Header(None)) -> VoiceIntentResponse:
+async def voice_intent(
+    body: VoiceIntentBody, authorization: str | None = Header(None)
+) -> VoiceIntentResponse:
     _verify_key(authorization)
 
     context_parts = [body.text]
@@ -60,20 +62,27 @@ async def voice_intent(body: VoiceIntentBody, authorization: str | None = Header
     )
 
     from adapters.llm_http import HttpOpenAIProtocolLLM
-
     from config import get_settings
+
     settings = get_settings()
-    key = settings.litellm_api_key.get_secret_value() if settings.litellm_api_key else os.environ.get("LITELLM_API_KEY", "")
+    key = (
+        settings.litellm_api_key.get_secret_value()
+        if settings.litellm_api_key
+        else os.environ.get("LITELLM_API_KEY", "")
+    )
     base = settings.litellm_api_base or os.environ.get("LITELLM_API_BASE", "")
     if base and key:
         llm = HttpOpenAIProtocolLLM(base_url=base, api_key=key, variant="chat_completions")
         model = settings.chat_default_model or "cerebras-qwen-3-235b-a22b-2507"
     else:
         from services.chat_completion import build_llm_port
+
         llm = build_llm_port()
         model = req.model or settings.chat_default_model or "cerebras-qwen-3-235b-a22b-2507"
 
-    result = await run_chat_completion(req, return_actions=True, skip_summary=True, _llm=llm, _model=model)
+    result = await run_chat_completion(
+        req, return_actions=True, skip_summary=True, _llm=llm, _model=model
+    )
 
     actions: list[dict[str, Any]] = result.get("actions", [])
     reply = ""
@@ -88,7 +97,13 @@ async def voice_intent(body: VoiceIntentBody, authorization: str | None = Header
     elif reply:
         intent = "conversation"
 
-    logger.info("voice intent: text=%r room=%r intent=%s actions=%d", body.text, body.room, intent, len(actions))
+    logger.info(
+        "voice intent: text=%r room=%r intent=%s actions=%d",
+        body.text,
+        body.room,
+        intent,
+        len(actions),
+    )
 
     return VoiceIntentResponse(
         understood=bool(reply or actions),

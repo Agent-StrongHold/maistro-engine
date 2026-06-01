@@ -7,6 +7,7 @@ import logging
 import os
 import socket
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 import yaml
@@ -47,20 +48,20 @@ def _validate_url_not_private(url: str, field_name: str) -> None:
             raise ValueError(msg)
 
 
-def load_yaml_config(path: str | Path | None = None) -> MaistroYamlConfig:
-    config_path = path or os.getenv("MAISTRO_CONFIG", "config/maistro.yaml")
-    config_path = Path(str(config_path))
+def _load_raw_yaml(config_path: Path) -> dict[str, Any]:
+    """Read + parse the YAML config file, returning {} if it does not exist."""
+    if not config_path.exists():
+        return {}
+    try:
+        with open(config_path) as f:
+            return yaml.safe_load(f) or {}
+    except yaml.YAMLError as e:
+        msg = f"Invalid YAML in {config_path}: {e}"
+        raise ValueError(msg) from e
 
-    if config_path.exists():
-        try:
-            with open(config_path) as f:
-                raw: dict = yaml.safe_load(f) or {}
-        except yaml.YAMLError as e:
-            msg = f"Invalid YAML in {config_path}: {e}"
-            raise ValueError(msg) from e
-    else:
-        raw = {}
 
+def _apply_env_overrides(raw: dict[str, Any]) -> dict[str, str | None]:
+    """Overlay top-level secret/URL env vars onto ``raw``. Returns the override map."""
     env_overrides: dict[str, str | None] = {
         "database_url": os.getenv("DATABASE_URL"),
         "litellm_url": os.getenv("LITELLM_URL"),
@@ -73,7 +74,11 @@ def load_yaml_config(path: str | Path | None = None) -> MaistroYamlConfig:
     for key, val in env_overrides.items():
         if val is not None:
             raw[key] = val
+    return env_overrides
 
+
+def _validate_secrets(env_overrides: dict[str, str | None]) -> None:
+    """Enforce minimum-length rules on secret env vars."""
     router_key = env_overrides.get("router_api_key")
     if router_key and len(router_key) < 32:
         logger.warning(
@@ -92,6 +97,9 @@ def load_yaml_config(path: str | Path | None = None) -> MaistroYamlConfig:
         msg = f"MAISTRO_WEBHOOK_SECRET must be at least 16 characters, got {len(webhook_secret)}"
         raise ValueError(msg)
 
+
+def _apply_cors_and_limits(raw: dict[str, Any]) -> None:
+    """Validate + apply CORS origins and request-limit env vars onto ``raw``."""
     cors_origins = os.getenv("MAISTRO_CORS_ORIGINS")
     if cors_origins:
         origins = [o.strip() for o in cors_origins.split(",")]
@@ -115,37 +123,38 @@ def load_yaml_config(path: str | Path | None = None) -> MaistroYamlConfig:
     if max_body:
         raw["max_request_body_bytes"] = int(max_body)
 
-    jwks_url = os.getenv("MAISTRO_JWKS_URL")
-    if jwks_url:
-        _validate_url_not_private(jwks_url, "MAISTRO_JWKS_URL")
-        raw.setdefault("auth", {})["jwks_url"] = jwks_url
 
-    auth_issuer = os.getenv("MAISTRO_AUTH_ISSUER")
-    if auth_issuer:
-        _validate_url_not_private(auth_issuer, "MAISTRO_AUTH_ISSUER")
-        raw.setdefault("auth", {})["issuer"] = auth_issuer
+def _apply_auth_env(raw: dict[str, Any]) -> None:
+    """Validate + apply OAuth/JWKS auth env vars onto ``raw``."""
+    # (env var, auth-config key, whether the URL must not be private)
+    auth_url_vars = (
+        ("MAISTRO_JWKS_URL", "jwks_url", True),
+        ("MAISTRO_AUTH_ISSUER", "issuer", True),
+        ("MAISTRO_AUTH_AUDIENCE", "audience", False),
+        ("MAISTRO_AUTH_CLIENT_ID", "client_id", False),
+        ("MAISTRO_AUTH_AUTHORIZATION_URL", "authorization_url", True),
+        ("MAISTRO_AUTH_TOKEN_URL", "token_url", True),
+        ("MAISTRO_AUTH_CLIENT_SECRET", "client_secret", False),
+    )
+    for env_name, config_key, must_be_public in auth_url_vars:
+        value = os.getenv(env_name)
+        if not value:
+            continue
+        if must_be_public:
+            _validate_url_not_private(value, env_name)
+        raw.setdefault("auth", {})[config_key] = value
 
-    auth_audience = os.getenv("MAISTRO_AUTH_AUDIENCE")
-    if auth_audience:
-        raw.setdefault("auth", {})["audience"] = auth_audience
 
-    auth_client_id = os.getenv("MAISTRO_AUTH_CLIENT_ID")
-    if auth_client_id:
-        raw.setdefault("auth", {})["client_id"] = auth_client_id
+def load_yaml_config(path: str | Path | None = None) -> MaistroYamlConfig:
+    config_path = path or os.getenv("MAISTRO_CONFIG", "config/maistro.yaml")
+    config_path = Path(str(config_path))
 
-    auth_authorization_url = os.getenv("MAISTRO_AUTH_AUTHORIZATION_URL")
-    if auth_authorization_url:
-        _validate_url_not_private(auth_authorization_url, "MAISTRO_AUTH_AUTHORIZATION_URL")
-        raw.setdefault("auth", {})["authorization_url"] = auth_authorization_url
+    raw = _load_raw_yaml(config_path)
 
-    auth_token_url = os.getenv("MAISTRO_AUTH_TOKEN_URL")
-    if auth_token_url:
-        _validate_url_not_private(auth_token_url, "MAISTRO_AUTH_TOKEN_URL")
-        raw.setdefault("auth", {})["token_url"] = auth_token_url
-
-    auth_client_secret = os.getenv("MAISTRO_AUTH_CLIENT_SECRET")
-    if auth_client_secret:
-        raw.setdefault("auth", {})["client_secret"] = auth_client_secret
+    env_overrides = _apply_env_overrides(raw)
+    _validate_secrets(env_overrides)
+    _apply_cors_and_limits(raw)
+    _apply_auth_env(raw)
 
     config = MaistroYamlConfig(**raw)
     set_yaml_config(config)

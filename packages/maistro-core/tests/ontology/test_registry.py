@@ -39,9 +39,7 @@ def test_in_memory_satisfies_protocol(ontology: InMemoryOntology) -> None:
 
 def test_register_and_query(ontology: InMemoryOntology) -> None:
     ontology.register("Person", Person)
-    alice = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
     ontology.upsert(alice)
 
     results = ontology.query("Person")
@@ -80,9 +78,7 @@ def test_upsert_invalid_semantic_raises(ontology: InMemoryOntology) -> None:
 
 def test_get_returns_entity(ontology: InMemoryOntology) -> None:
     ontology.register("Person", Person)
-    alice = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
     ontology.upsert(alice)
 
     got = ontology.get(alice.id)
@@ -97,12 +93,8 @@ def test_get_returns_none_for_unknown_id(ontology: InMemoryOntology) -> None:
 
 def test_query_filters_on_semantic_fields(ontology: InMemoryOntology) -> None:
     ontology.register("Person", Person)
-    alice = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
-    bob = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Bob", "age": 25}
-    )
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
+    bob = OntologyEntity(kind="Person").with_semantic({"name": "Bob", "age": 25})
     ontology.upsert(alice)
     ontology.upsert(bob)
 
@@ -114,12 +106,8 @@ def test_query_filters_on_semantic_fields(ontology: InMemoryOntology) -> None:
 def test_query_isolates_kinds(ontology: InMemoryOntology) -> None:
     ontology.register("Person", Person)
     ontology.register("Document", Document)
-    alice = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
-    doc = OntologyEntity(kind="Document").with_semantic(
-        {"title": "T", "body": "B"}
-    )
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
+    doc = OntologyEntity(kind="Document").with_semantic({"title": "T", "body": "B"})
     ontology.upsert(alice)
     ontology.upsert(doc)
 
@@ -134,18 +122,14 @@ def test_query_isolates_kinds(ontology: InMemoryOntology) -> None:
 
 def test_upsert_returns_validated_form(ontology: InMemoryOntology) -> None:
     ontology.register("Person", Person)
-    alice = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
     stored = ontology.upsert(alice)
     assert stored.get_semantic() == {"name": "Alice", "age": 30}
 
 
 def test_upsert_overwrites_same_id(ontology: InMemoryOntology) -> None:
     ontology.register("Person", Person)
-    e = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
+    e = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
     ontology.upsert(e)
 
     updated = e.with_semantic({"name": "Alice Updated", "age": 31})
@@ -159,9 +143,7 @@ def test_upsert_overwrites_same_id(ontology: InMemoryOntology) -> None:
 def test_get_returns_deep_copy(ontology: InMemoryOntology) -> None:
     """Mutating the returned entity should not affect storage."""
     ontology.register("Person", Person)
-    alice = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
     ontology.upsert(alice)
 
     got = ontology.get(alice.id)
@@ -176,9 +158,7 @@ def test_get_returns_deep_copy(ontology: InMemoryOntology) -> None:
 def test_query_returns_deep_copy(ontology: InMemoryOntology) -> None:
     """Mutating a query result should not affect storage."""
     ontology.register("Person", Person)
-    alice = OntologyEntity(kind="Person").with_semantic(
-        {"name": "Alice", "age": 30}
-    )
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
     ontology.upsert(alice)
 
     results = ontology.query("Person")

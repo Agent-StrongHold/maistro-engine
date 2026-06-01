@@ -59,9 +59,7 @@ class InMemoryOntology:
 
     def upsert(self, entity: OntologyEntity) -> OntologyEntity:
         if entity.kind not in self._kinds:
-            raise KindNotRegisteredError(
-                f"kind {entity.kind!r} not registered"
-            )
+            raise KindNotRegisteredError(f"kind {entity.kind!r} not registered")
 
         # Validate SEMANTIC facet against registered model. This raises
         # Pydantic ValidationError on bad data, which propagates to the

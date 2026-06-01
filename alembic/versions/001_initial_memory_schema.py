@@ -51,9 +51,7 @@ def upgrade() -> None:
         sa.Column("embedding", sa.Text, nullable=True),  # vector(1536) — managed by pgvector
     )
     # pgvector column added separately so the extension must exist first
-    op.execute(
-        "ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS embedding vector(1536)"
-    )
+    op.execute("ALTER TABLE memory_entries ADD COLUMN IF NOT EXISTS embedding vector(1536)")
 
     # ── knowledge_nodes (KnowledgeNode) ────────────────────────────
     op.create_table(

@@ -29,8 +29,9 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from routes.audit import log_audit
 from services.feedback_service import ALLOWED_THUMBS, record_thumb
+
+from routes.audit import log_audit
 
 router = APIRouter(tags=["dag-feedback"])
 
