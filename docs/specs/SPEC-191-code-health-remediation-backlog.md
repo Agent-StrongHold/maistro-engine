@@ -77,12 +77,22 @@ become a focused PR. Re-run `/code-health` after each tier to confirm the grade 
 
 ### P1 — F/E-grade functions (CC > 30) — highest-risk refactors
 
-The two **core hot paths** dominate overall risk and should go first:
+The two **core hot paths** dominated overall risk. Both are **already refactored on `develop`** —
+this backlog was first measured against the `feat/host-health-real-signals` stack, which forked before
+those commits landed and still carries the stale monolithic copies. The feat stack has made **no**
+changes to either file since the merge-base, so when feat → develop merges these files resolve cleanly
+to `develop`'s refactored version — do **not** re-refactor them on the feat stack (it would only create
+a conflict where none exists).
 
-- [ ] **`maistro-core/.../agents/base.py:193 Agent.handle()` — CC 70 / 319 lines.** Core request path. Decompose into strategy/step helpers.
-- [ ] **`hive-conductor/.../services/chat_completion.py:249 _execute_tool()` — CC 72 / 278 lines.** Split per tool-type / phase.
+- [x] **`maistro-core/.../agents/base.py Agent.handle()` — was CC 70 / 319 lines.** Decomposed on
+  `develop` (`3f67b30`, `2f2f9af`) into `_run_warden` / `_build_context` / `_run_strategy` /
+  `_extract_rca` / `_extract_learnings` / `_record_outcome` / `_finalize_trace` / `_inject_session_history`;
+  `handle()` body ~318 → ~118 lines. Coverage via `tests/agents/test_delegation.py`.
+- [x] **`hive-conductor/.../services/chat_completion.py _execute_tool()` — was CC 72 / 278 lines.**
+  Decomposed on `develop` into a `_TOOL_HANDLERS` dispatch dict + per-tool handlers
+  (`_tool_poll_jira`, `_tool_search_jira`, …); `_execute_tool()` reduced to a handler lookup + call.
 
-Then the rest of F/E:
+Then the rest of F/E (still outstanding on `develop`):
 
 | CC | Grade | Location |
 |---:|:--:|---|
@@ -199,7 +209,7 @@ they collapse to a single source of truth + re-export? Tracked in Open questions
 ## Acceptance criteria
 
 - [ ] P0 items (6) closed — each a one-line/small PR.
-- [ ] The 2 core F-grade hot paths (`Agent.handle`, `_execute_tool`) refactored to ≤ grade C, with behavior pinned by existing/added tests first (TDD).
+- [x] The 2 core F-grade hot paths (`Agent.handle`, `_execute_tool`) refactored to ≤ grade C — done on `develop` (`3f67b30`, `2f2f9af`); see P1 note. Outstanding only on the feat stack as stale copies, which resolve on merge.
 - [ ] A decision recorded (here or a follow-up ADR) on: (a) the `types.*` duplication, and (b) whether `quality` analyzers become a non-blocking CI job.
 - [ ] Re-running `/code-health` shows the F-count at 0 and the D/E-count reduced.
 
