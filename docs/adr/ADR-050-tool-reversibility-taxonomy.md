@@ -12,6 +12,7 @@ related:
   - maistro-engine#ADR-051
   - maistro-engine#ADR-055
   - maistro-engine#ADR-056
+  - maistro-engine#ADR-068
 supersedes: []
 blocks: []
 blocked-by: []
@@ -50,6 +51,12 @@ Reversible tools register a `compensator` (a code-registry ref) that is itself `
 
 Irreversible tools register an `impact_estimator` (code-registry ref) for ADR-051 to weight the approval UI, and ideally an `idempotency_key` builder per ADR-038. External MCP tools that declare neither default to `irreversible` with no estimator — safe by default; explicit downgrade requires a Sentinel policy.
 
+> **Result caching (amended 2026-05-30).** A tool may additionally declare itself `deterministic`;
+> only then are its results memoised, keyed by `(tool, args, version)` with a TTL. Non-deterministic
+> tools, `reversible` tools with observable side-effects, and `irreversible` tools are **never**
+> cached (a cached side-effecting call would silently skip the effect). Determinism is opt-in and
+> explicit; the safe default is no caching.
+
 ## Interface (sketch)
 
 ```python
@@ -86,7 +93,9 @@ class SentinelPolicy(Protocol):
 
 ## Open questions
 
-1. **Single code registry shared with recipe-overlay refs (ADR-053)?** Recommend yes — one registry for impact estimators, compensators, merge resolvers, dynamic gates.
+1. **Single code registry shared with recipe-overlay refs (ADR-053)?** **Resolved by ADR-069:
+   yes** — one registry for impact estimators, compensators, merge resolvers, and dynamic gates,
+   with microVM-isolated execution under the ADR-068 authorization envelope.
 2. **Default for external MCP tools.** Recommend `IRREVERSIBLE` (safe) with explicit Sentinel policy override. Stronger option: refuse to register without a tag.
 3. **Partial failure inside a compensator.** Recommend explicit: compensator failures bubble as `CompensatorError` and escalate via ADR-051 bubble-up path ("compensator failed; what now?").
 4. **Tag inheritance for tools-as-agents (A2A delegation).** Recommend the delegate carries the strictest tag of its callable tools — propagate up.

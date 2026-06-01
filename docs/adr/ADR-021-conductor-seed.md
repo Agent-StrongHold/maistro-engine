@@ -5,11 +5,11 @@ repo: maistro-engine
 kind: adr
 status: Proposed
 created: 2026-05-07
-substrate:
-  - maistro-engine#ADR-022
+substrate: []
 implements: []
 related:
   - maistro-engine#ADR-020
+  - maistro-engine#ADR-022
   - maistro-engine#ADR-023
   - maistro-engine#ADR-024
   - maistro-engine#ADR-028
@@ -28,7 +28,13 @@ owners:
 
 **Status:** Proposed
 **Date:** 2026-05-07
-**Depends on:** ADR-022 (Hardware Signing)
+**Depends on:** nothing — this is the HD root of trust, generated standalone.
+
+> **Bootstrap order (resolves the apparent ADR-021 ↔ ADR-022 cycle).** The software seed
+> initializes **first** and with no hardware: BIP39 generate → BIP32 derive → encrypted local
+> storage (Mode 4, the default). ADR-022 hardware signing is **optional and post-init** — it
+> *replaces or augments* the seed source (Modes 1–3), selectable in the setup wizard or later.
+> So ADR-022 is `related`, not `substrate`: the seed never requires hardware to exist.
 
 ---
 

@@ -72,6 +72,11 @@ The base recipe declares which fields a future tenant overlay may touch via per-
 
 Fields with `merge: ref` carry a `name@version` string: `impact_estimator: "stripe.charge.dollars@v2"`. The substrate maintains a code registry alongside the recipe registry. Registry refs require explicit version; substrate refuses to load a recipe with an unversioned ref. Compatibility is semver: `v2.x` accepts `v2.y` overlays; major-version bumps require explicit recipe update.
 
+> The code registry — storage, signing, resolution, and crucially the **microVM-isolated
+> execution** of registered code — is fully specified in **ADR-069**. The `CodeRegistry` protocol
+> sketched below is its load/resolve surface; ADR-069 adds `invoke()` (Hyperlight microVM,
+> fail-closed) under the ADR-068 authorization envelope.
+
 ## Interface (sketch)
 
 ```python
@@ -105,13 +110,13 @@ class RecipeRegistry:  # extends ADR-006
 - [ ] Lint rule: `tools[].reversibility`, `tools[].compensator`, `tools[].impact_estimator` are never `overridable: true` (CI check).
 - [ ] Span `recipe.render_effective` per ADR-037.
 
-## Open questions
+## Resolved decisions (v0)
 
-1. **Effective-recipe cache key.** `(base_name, overlay_hash, code_registry_version)`? Recommend yes; invalidate on registry or overlay change.
-2. **Hot-reload of overlays at runtime.** Out of scope for v0. Restart-to-pick-up is acceptable.
-3. **A/B testing of overlays.** Substrate-level concern? Recommend defer; a future ADR can add a `selector` field that the registry consults.
-4. **Overlay-of-overlays.** Should a single product overlay support a sub-overlay (env-specific dev/staging/prod)? Recommend defer; if a real case appears, model as multiple product overlays with explicit precedence.
-5. **Linter coverage beyond lock-listed fields.** Auto-detect new code-shaped fields (`impact_estimator`, `*_compensator`, `*_resolver`)? Recommend explicit lock-list with PR-time review of additions.
+1. **Effective-recipe cache key → `(base_name, overlay_hash, code_registry_version)`.** Invalidate on any registry or overlay change.
+2. **Hot-reload of overlays → no (v0).** Restart-to-pick-up is acceptable; **deferred**.
+3. **A/B testing of overlays → deferred.** A future ADR may add a `selector` field the registry consults.
+4. **Overlay-of-overlays → deferred.** If a real env-specific (dev/staging/prod) case appears, model it as multiple product overlays with explicit precedence rather than nesting.
+5. **Linter coverage → explicit lock-list + PR-time review.** New code-shaped fields (`impact_estimator`, `*_compensator`, `*_resolver`) are added to the lock-list deliberately at PR review, not auto-detected.
 
 ## Source references
 
