@@ -8,12 +8,17 @@ from eval.departments import RubricEval
 class RequirementsCompleteness(RubricEval):
     department = "product_management"
     eval_name = "requirements_completeness"
+    # Criteria use STRUCTURAL checks (proximity/order regexes), not bare substring
+    # presence, so they cannot be satisfied by keyword-stuffing — an optimizer must
+    # produce the actual artifact shape, not just sprinkle the right words.
     criteria = [
-        {"name": "has_user_stories", "weight": 20, "check": lambda o, c: "as a" in o.lower() and "i want" in o.lower()},
-        {"name": "has_acceptance_criteria", "weight": 25, "check": lambda o, c: any(w in o.lower() for w in ["acceptance criteria", "given", "when", "then"])},
+        # A real user story: "As a <role>, I want <goal>" on/near the same line.
+        {"name": "has_user_stories", "weight": 20, "check": lambda o, c: bool(re.search(r"\bas an?\b.{1,80}?\bi want\b", o, re.I | re.S))},
+        # Acceptance criteria: the literal phrase, OR a full Given/When/Then in order.
+        {"name": "has_acceptance_criteria", "weight": 25, "check": lambda o, c: ("acceptance criteria" in o.lower()) or bool(re.search(r"\bgiven\b.{1,200}?\bwhen\b.{1,200}?\bthen\b", o, re.I | re.S))},
         {"name": "has_non_functional", "weight": 20, "check": lambda o, c: any(w in o.lower() for w in ["performance", "security", "scalability", "availability"])},
         {"name": "has_constraints", "weight": 15, "check": lambda o, c: any(w in o.lower() for w in ["constraint", "limitation", "assumption", "out of scope"])},
-        {"name": "measurable", "weight": 20, "check": lambda o, c: bool(re.search(r"\d+%|\d+\s*(ms|seconds|users)", o))},
+        {"name": "measurable", "weight": 20, "check": lambda o, c: bool(re.search(r"\d+\s*%|\d+\s*(ms|seconds|users|requests)", o))},
     ]
 
 
