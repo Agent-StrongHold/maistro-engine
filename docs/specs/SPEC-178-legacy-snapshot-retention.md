@@ -13,9 +13,7 @@ implements: []
 related:
   - maistro-engine#SPEC-175
   - maistro-engine#SPEC-177
-source: []
-contracts:
-  - process
+contracts: []
 tests: []
 layer: Foundation
 owners:
