@@ -13,7 +13,6 @@ implements: []
 related:
   - maistro-engine#SPEC-175
   - maistro-engine#SPEC-177
-source: []
 contracts: []
 tests: []
 layer: Foundation

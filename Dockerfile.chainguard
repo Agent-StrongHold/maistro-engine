@@ -1,0 +1,29 @@
+# Multi-stage Chainguard build for the maistro-server API (proof-of-concept).
+# Build from repo root:  docker build -f Dockerfile.chainguard -t maistro-server:chainguard .
+#
+# Pattern: fat -dev builder (has shell/pip/apk) creates a self-contained venv;
+# thin runtime (no shell, no pip, nonroot uid 65532, 0-CVE base) copies only the venv.
+
+# ---- fat builder ----
+FROM cgr.dev/chainguard/python:latest-dev AS builder
+WORKDIR /app
+ENV PATH="/app/venv/bin:$PATH"
+RUN python -m venv /app/venv
+COPY pyproject.toml uv.lock README.md ./
+COPY packages/maistro-core   packages/maistro-core
+COPY packages/maistro-server packages/maistro-server
+# Non-editable install so the venv is fully self-contained (nothing to copy at runtime).
+RUN pip install --no-cache-dir \
+      "./packages/maistro-core[llm,sandbox,observability]" \
+      "./packages/maistro-server"
+
+# ---- thin runtime: 0-CVE base, nonroot, no shell/pip ----
+FROM cgr.dev/chainguard/python:latest
+WORKDIR /app
+ENV PATH="/app/venv/bin:$PATH" PYTHONUNBUFFERED=1
+COPY --from=builder /app/venv /app/venv
+EXPOSE 8000
+# exec-form, stdlib healthcheck (no curl/shell in the image)
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
+  CMD ["python","-c","import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live',timeout=4).status==200 else 1)"]
+ENTRYPOINT ["python","-m","uvicorn","maistro_server.main:app","--host","0.0.0.0","--port","8000"]

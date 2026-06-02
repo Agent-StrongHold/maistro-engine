@@ -13,9 +13,6 @@ substrate:
 implements: []
 related:
   - maistro-engine#SPEC-178
-source:
-  - potential-dead-code/code-worth-implementing-from-legacy/
-  - potential-dead-code/legacy-maistro-site/src/maistro/agents/graph.py
 contracts:
   - boundary
   - behavioral

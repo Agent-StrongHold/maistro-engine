@@ -64,6 +64,13 @@ class HillClimber:
     # Quality floor: optimize-phase model must score within this % of best
     QUALITY_FLOOR_PCT = 0.90  # 90% of best model's score
 
+    # Judge noise floor (points on the 0-100 rubric). A single LLM-judge score is
+    # stochastic, so an improvement must clear this margin to count as real rather
+    # than noise. The regression tolerances below are multiples of the same floor,
+    # making accept/reject symmetric — previously a +1 noise blip counted as an
+    # improvement while only a -5 dip counted as a regression, ratcheting on noise.
+    NOISE_MARGIN = 5
+
     def __init__(
         self,
         dag_id: str,
@@ -116,26 +123,46 @@ class HillClimber:
 
         return targets, held_out
 
+    def _improve_threshold(self, eval_name: str, score_stdev: dict[str, float] | None) -> float:
+        """Minimum gain (points) for an improvement to clear the judge noise floor.
+
+        With a per-eval stdev estimate (e.g. from scoring the same output N times),
+        require ~2 sigma so the gain is unlikely to be sampling noise; otherwise fall
+        back to the flat NOISE_MARGIN.
+        """
+        if score_stdev and eval_name in score_stdev:
+            return max(float(self.NOISE_MARGIN), 2.0 * score_stdev[eval_name])
+        return float(self.NOISE_MARGIN)
+
     def evaluate_mutation(
         self,
         target_evals: list[str],
         held_out_evals: list[str],
         baseline_scores: dict[str, int],
         mutated_scores: dict[str, int],
+        score_stdev: dict[str, float] | None = None,
     ) -> PassResult:
-        """Decide whether to accept a mutation based on scores."""
-        # Check target improvement
+        """Decide whether to accept a mutation based on scores.
+
+        A mutation is accepted only when at least one target eval improves by more than
+        the judge noise floor (NOISE_MARGIN, or ~2 sigma when score_stdev is supplied),
+        AND no target eval regresses beyond NOISE_MARGIN, AND no held-out eval regresses
+        beyond 2*NOISE_MARGIN. This prevents the optimizer from ratcheting on noise.
+        """
+        # Noise-aware target improvement: gain must exceed the judge noise floor.
         target_improved = any(
-            mutated_scores.get(e, 0) > baseline_scores.get(e, 0) for e in target_evals
+            mutated_scores.get(e, 0)
+            >= baseline_scores.get(e, 0) + self._improve_threshold(e, score_stdev)
+            for e in target_evals
         )
         target_no_regression = all(
-            mutated_scores.get(e, 0) >= baseline_scores.get(e, 0) - 5  # 5-point tolerance
+            mutated_scores.get(e, 0) >= baseline_scores.get(e, 0) - self.NOISE_MARGIN
             for e in target_evals
         )
 
-        # Check held-out non-regression
+        # Check held-out non-regression (allow up to 2x the noise floor).
         held_out_ok = all(
-            mutated_scores.get(e, 0) >= baseline_scores.get(e, 0) - 10  # 10-point tolerance
+            mutated_scores.get(e, 0) >= baseline_scores.get(e, 0) - 2 * self.NOISE_MARGIN
             for e in held_out_evals
         )
 

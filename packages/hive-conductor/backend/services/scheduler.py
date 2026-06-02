@@ -35,6 +35,7 @@ class _ScheduleRunner:
     def __init__(self) -> None:
         self._running = True
         self._last_check: datetime | None = None
+        self._last_repair: datetime | None = None
         self.task: asyncio.Task[None] | None = None
 
     def stop(self) -> None:
@@ -48,6 +49,32 @@ class _ScheduleRunner:
                 await self._tick()
             except Exception as exc:
                 logger.warning("Schedule tick failed: %s", exc)
+            try:
+                await self._self_repair_tick()
+            except Exception as exc:
+                logger.warning("Self-repair tick failed: %s", exc)
+
+    async def _self_repair_tick(self) -> None:
+        """Run the self_repair loop on its configured cadence (SPEC-188).
+
+        Resolution is the kill-switch: a disabled slot resolves to None and
+        nothing runs. interval <= 0 disables the periodic loop entirely.
+        """
+        from config import get_settings
+
+        interval = get_settings().self_repair_interval_s
+        if interval <= 0:
+            return
+        now = datetime.now(UTC)
+        if self._last_repair is not None and (now - self._last_repair).total_seconds() < interval:
+            return
+        self._last_repair = now
+
+        from services.capabilities_wiring import run_self_repair_once
+        from services.engine import get_engine
+
+        registry = get_engine().capabilities
+        await run_self_repair_once(registry)
 
     async def _tick(self) -> None:
         now = datetime.now(UTC)

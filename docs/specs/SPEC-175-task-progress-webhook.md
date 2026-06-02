@@ -14,8 +14,6 @@ implements: []
 related:
   - maistro-engine#ADR-018
   - maistro-engine#SPEC-178
-source:
-  - potential-dead-code/code-worth-implementing-from-Project-mAIstro/conductor-orchestrator/progress.py
 contracts:
   - boundary
   - behavioral
