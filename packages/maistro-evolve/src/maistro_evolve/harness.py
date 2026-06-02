@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .types import EvalResult, PipelineGenome
+
+logger = logging.getLogger("maistro_evolve.harness")
 
 BenchmarkRunner = Callable[[PipelineGenome, Any], Awaitable[EvalResult]]
 
@@ -61,7 +64,16 @@ class EvalHarness:
 
             for name, runner in REAL_BENCHMARKS.items():
                 self.register_benchmark(name, runner)
-        except ImportError:
+        except ImportError as exc:
+            # Falling back to random-number stubs SILENTLY would let evolution
+            # optimize against pure noise with no signal that it happened. Make
+            # it loud — a stub fallback during a real run is a serious problem.
+            logger.warning(
+                "evolve_harness_stub_fallback: real benchmarks failed to import "
+                "(%s); fitness scores will be RANDOM stubs, not real evals — "
+                "results must not be trusted. Stub results carry metadata.stub=True.",
+                exc,
+            )
             self._register_default_stubs()
 
     async def evaluate_genome(

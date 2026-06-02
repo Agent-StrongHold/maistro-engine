@@ -13,10 +13,6 @@ implements: []
 related:
   - maistro-engine#ADR-033
   - maistro-engine#SPEC-176
-source:
-  - packages/maistro-bootstrap/
-  - docs/install/resolver-matrix.md
-  - docs/install/examples/
 contracts:
   - boundary
 tests:

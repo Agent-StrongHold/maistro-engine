@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     poc_mode: str = ""
     maistro_base_url: str = "http://localhost:8000"
 
+    # Host-health API (:8150) backing the infra_monitor / infra_action capability
+    # slots. Token is read from the vault (key HOST_HEALTH_TOKEN) with this env as
+    # fallback. URL empty → infra providers are not wired (slots stay SAFE_NOOP).
+    host_health_url: str | None = None
+    host_health_token: SecretStr | None = None
+    infra_autonomy: Literal["approve_all", "auto_safe", "detect_only"] = "auto_safe"
+    # self_repair (SPEC-188) cadence; <=0 disables the periodic loop (API still works).
+    self_repair_interval_s: int = 90
+
 
 @lru_cache
 def get_settings() -> Settings:
