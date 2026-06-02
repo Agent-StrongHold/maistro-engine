@@ -1,4 +1,5 @@
-department: hr_people_ops
+kind: department
+name: hr_people_ops
 evals:
   - name: legal_compliance
     criteria:

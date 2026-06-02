@@ -1,4 +1,5 @@
-department: finance
+kind: department
+name: finance
 evals:
   - name: numerical_accuracy
     criteria:

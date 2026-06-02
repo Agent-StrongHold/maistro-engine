@@ -1,11 +1,11 @@
 """YAML-to-RubricEval loader (ADR-060).
 
-Loads a department or persona YAML template and returns instantiated
-RubricEval objects ready to call .score(output, context).
+Loads a template YAML (kind: department|creator|author) and returns
+instantiated RubricEval objects ready to call .score(output, context).
 
 Usage
 -----
-    evals = load_department("eval/departments/yaml/marketing.yaml")
+    evals = load_department("templates/marketing.yaml")
     result = await evals[0].score(my_text)
 """
 
@@ -19,6 +19,9 @@ import yaml
 from eval.departments import RubricEval
 from eval.vocabulary import evaluate
 
+# Canonical template root — one tree, kind: field discriminates department/creator/author.
+_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+
 
 def _make_check(criterion_spec: dict[str, Any]):
     check_spec = dict(criterion_spec["check"])
@@ -29,8 +32,7 @@ def _make_check(criterion_spec: dict[str, Any]):
     return check
 
 
-def _build_rubric_eval(department: str, eval_spec: dict[str, Any]) -> RubricEval:
-    """Build one RubricEval subclass instance from a single eval spec dict."""
+def _build_rubric_eval(name: str, eval_spec: dict[str, Any]) -> RubricEval:
     criteria = [
         {
             "name": c["name"],
@@ -40,10 +42,10 @@ def _build_rubric_eval(department: str, eval_spec: dict[str, Any]) -> RubricEval
         for c in eval_spec.get("criteria", [])
     ]
     DynamicEval = type(
-        f"Yaml_{department}_{eval_spec['name']}",
+        f"Yaml_{name}_{eval_spec['name']}",
         (RubricEval,),
         {
-            "department": department,
+            "department": name,
             "eval_name": eval_spec["name"],
             "criteria": criteria,
         },
@@ -52,21 +54,22 @@ def _build_rubric_eval(department: str, eval_spec: dict[str, Any]) -> RubricEval
 
 
 def load_department(path: str | Path) -> list[RubricEval]:
-    """Load a department YAML and return one RubricEval per eval block."""
+    """Load a template YAML and return one RubricEval per eval block."""
     data = yaml.safe_load(Path(path).read_text())
-    department = data["department"]
-    return [_build_rubric_eval(department, ev) for ev in data.get("evals", [])]
-
-
-_YAML_DIR = Path(__file__).parent / "departments" / "yaml"
+    # Support both new schema (name:) and legacy (department:) key.
+    name = data.get("name") or data["department"]
+    return [_build_rubric_eval(name, ev) for ev in data.get("evals", [])]
 
 
 def all_departments() -> dict[str, list[RubricEval]]:
-    """Return {department_name: [RubricEval, ...]} for every YAML template found."""
+    """Return {name: [RubricEval, ...]} for every kind=department template."""
     result: dict[str, list[RubricEval]] = {}
-    if not _YAML_DIR.exists():
+    if not _TEMPLATES_DIR.exists():
         return result
-    for yaml_file in sorted(_YAML_DIR.glob("*.yaml")):
+    for yaml_file in sorted(_TEMPLATES_DIR.glob("*.yaml")):
+        data = yaml.safe_load(yaml_file.read_text())
+        if data.get("kind") != "department":
+            continue
         evals = load_department(yaml_file)
         if evals:
             result[evals[0].department] = evals

@@ -1,4 +1,5 @@
-department: legal
+kind: department
+name: legal
 evals:
   - name: clause_completeness
     criteria:

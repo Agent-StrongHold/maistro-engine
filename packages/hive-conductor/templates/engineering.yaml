@@ -1,4 +1,5 @@
-department: engineering
+kind: department
+name: engineering
 evals:
   - name: tests_pass
     criteria:

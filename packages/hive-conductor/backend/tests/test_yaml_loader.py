@@ -14,7 +14,7 @@ from eval.departments import RubricEval
 from eval.loader import all_departments, load_department
 from eval.scorer import RubricScorer
 
-YAML_DIR = Path(__file__).resolve().parents[2] / "eval" / "departments" / "yaml"
+YAML_DIR = Path(__file__).resolve().parents[2] / "templates"
 
 # ---------------------------------------------------------------------------
 # Loader basics

@@ -1,4 +1,5 @@
-department: creative_writing
+kind: department
+name: creative_writing
 evals:
   - name: age_appropriateness
     criteria:

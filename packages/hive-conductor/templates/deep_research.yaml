@@ -1,4 +1,5 @@
-department: deep_research
+kind: department
+name: deep_research
 evals:
   - name: source_attribution
     criteria:

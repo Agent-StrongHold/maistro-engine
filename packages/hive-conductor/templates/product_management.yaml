@@ -1,4 +1,5 @@
-department: product_management
+kind: department
+name: product_management
 evals:
   - name: requirements_completeness
     criteria:

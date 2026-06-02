@@ -1,4 +1,5 @@
-department: marketing
+kind: department
+name: marketing
 evals:
   - name: brand_voice
     criteria:

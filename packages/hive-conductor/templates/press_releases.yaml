@@ -1,4 +1,5 @@
-department: press_releases
+kind: department
+name: press_releases
 evals:
   - name: inverted_pyramid
     criteria:
