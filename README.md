@@ -104,7 +104,7 @@ request ──► conduit ──► classifier ──► orchestrator ──► 
 - All architectural decisions are recorded as ADRs under `docs/adr/` (ADR-000 through ADR-057).
 - The cross-repo inventory of every ADR and spec lives at [`docs/INVENTORY-ADRS-SPECS.md`](docs/INVENTORY-ADRS-SPECS.md).
 - Front-matter and cross-reference conventions are defined in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md); acceptance criteria are layered contracts per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md).
-- **Frozen legacy archives** (reference only, not importable code) live under [`potential-dead-code/`](potential-dead-code/README.md); retention/deletion sequencing is in [`SPEC-178`](docs/specs/SPEC-178-legacy-snapshot-retention.md).
+- **Legacy archives:** the former `potential-dead-code/` reference trees were **removed** once their behavior shipped under `packages/` ([`SPEC-178`](docs/specs/SPEC-178-legacy-snapshot-retention.md)); provenance remains in git history and the sibling repos.
 
 ## Contributing
 
@@ -134,7 +134,6 @@ maistro-engine/
 │   └── hive-conductor/               # Agent Conductor reference app (frontend + backend + Docker)
 ├── apps/
 │   └── maistro-gateway-node-flutter/ # Native gateway node (Flutter; see SPEC-179)
-├── potential-dead-code/              # Frozen legacy snapshots (not on PYTHONPATH; SPEC-178)
 ├── formal/                           # Property-based conformance tests (Hypothesis; separate CI)
 ├── templates/                        # Copier templates (per ADR-033)
 ├── scripts/                          # Repo maintenance scripts

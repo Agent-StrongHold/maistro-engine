@@ -54,7 +54,7 @@ node_modules/
 .cursor/hooks/*.log
 
 # Frozen snapshots — do not commit at repo root (see docs/specs/SPEC-178-legacy-snapshot-retention.md).
-# Retained reference trees live only under potential-dead-code/; these patterns block accidental re-vendor at root.
+# These patterns block accidental re-vendoring of large snapshot trees at repo root.
 code-worth-implementing-from-dev-ai-env/
 code-worth-implementing-from-n8n_automation/
 code-worth-implementing-from-Owui_mods/
