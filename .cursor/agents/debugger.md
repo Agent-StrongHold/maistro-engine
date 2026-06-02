@@ -14,7 +14,7 @@ When invoked:
 
 1. Capture the full error message and stack trace.
 2. Locate the failing line and the condition that triggered it.
-3. Explain root cause with file and line references (under `packages/` or `potential-dead-code/` only as historical context).
+3. Explain root cause with file and line references (under `packages/`).
 4. Propose the smallest change that fixes the cause, not the symptom.
 5. Suggest how to verify (exact `uv run pytest ...` path or command).
 

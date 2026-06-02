@@ -2,7 +2,7 @@
 
 Numbered specifications that live in this monorepo (distinct from sibling `Project_mAIstro/specs/` trees). Each file is `SPEC-NNN-<slug>.md` with front-matter per [`ADR-031`](../adr/ADR-031-front-matter-and-registry.md).
 
-Frozen **reference** trees that specs port from (hyperagent bundle, gateway snapshot, and so on) are archived under [`potential-dead-code/`](../../potential-dead-code/README.md), not at repo root — see [SPEC-178](./SPEC-178-legacy-snapshot-retention.md).
+Frozen **reference** trees that specs ported from (hyperagent bundle, gateway snapshot) were archived under `potential-dead-code/` and have since been **removed** ([SPEC-178](./SPEC-178-legacy-snapshot-retention.md)); provenance lives in git history and the sibling repos.
 
 | ID | Document |
 |---|---|

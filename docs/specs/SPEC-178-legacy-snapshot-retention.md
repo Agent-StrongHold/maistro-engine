@@ -3,10 +3,10 @@ id: SPEC-178
 title: Legacy snapshot directories — retention and removal
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-05-13
-accepted: null
-implemented: null
+accepted: 2026-06-02
+implemented: 2026-06-02
 substrate:
   - maistro-engine#ADR-002
 implements: []
