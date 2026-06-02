@@ -72,9 +72,11 @@ class Contract(StrEnum):
 # Local id pattern: e.g. ADR-024, SPEC-138
 _ID_PATTERN = re.compile(r"^(ADR|SPEC)-\d{3}$")
 
-# Cross-repo reference pattern: e.g. maistro-engine#ADR-024
+# Cross-repo reference pattern: e.g. maistro-engine#ADR-024.
+# Other repos may use their own ID scheme (Project_mAIstro uses S-NNN for specs),
+# so references accept ADR/SPEC/S; our own IDs stay strict via _ID_PATTERN.
 _REF_PATTERN = re.compile(
-    r"^(maistro-engine|Project_mAIstro|AgentTuring|stronghold)#(ADR|SPEC)-\d{3}$"
+    r"^(maistro-engine|Project_mAIstro|AgentTuring|stronghold)#(ADR|SPEC|S)-\d{3}$"
 )
 
 

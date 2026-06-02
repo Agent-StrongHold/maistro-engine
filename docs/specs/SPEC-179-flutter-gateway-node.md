@@ -12,8 +12,6 @@ substrate:
 implements: []
 related:
   - maistro-engine#SPEC-176
-source:
-  - Sibling gateway product repository (native node reference apps + shared Swift kit; not vendored here)
 contracts:
   - boundary
   - behavioral

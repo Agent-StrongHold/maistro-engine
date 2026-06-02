@@ -31,6 +31,9 @@ _CANONICAL_SLOTS: tuple[SlotSpec, ...] = (
         fallback_policy=FallbackPolicy.BASELINE,
         baseline_provider="inbox",
     ),
+    # self_repair (SPEC-188): SAFE_NOOP. Core defines the slot; the app supplies
+    # the provider, which needs the app-wired infra_monitor/infra_action.
+    SlotSpec(name="self_repair", fallback_policy=FallbackPolicy.SAFE_NOOP),
 )
 
 

@@ -8,11 +8,8 @@ dependencies = [
     "maistro-core>=0.1.0",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
-    "pydantic-ai>=0.1",
     "fastmcp>=2.0",
-    "litellm>=1.60",
     "langfuse>=2.60",
-    "docker>=7.0",
 ]
 
 [project.optional-dependencies]

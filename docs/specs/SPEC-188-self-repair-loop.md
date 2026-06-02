@@ -108,22 +108,33 @@ With `infra_action.autonomy = detect_only`, step 4 records proposals but dispatc
 
 ### Diagnosis — explicit rule table (v1)
 
-Symptom → candidate remediation is a static, auditable table keyed on `(resource, status, signal)`.
-The action is always one already on SPEC-187's allowlist; self_repair never synthesizes new actions.
+Symptom → candidate remediation is a static, auditable table. The action is always one already on
+SPEC-187's allowlist; self_repair never synthesizes new actions. The table reads the **normalized**
+snapshot the `infra_monitor` provider emits (an anti-corruption layer over the host-health API's raw
+`/full` shapes), and the policy is grounded in the **host API's own classification** of container
+state — which already distinguishes a fixable container from a crash-loop from an intentional stop.
 
-| Resource | Symptom signal | Candidate action | Tier (from SPEC-187) |
-|---|---|---|---|
-| `docker` | a managed container `status=down`/`unhealthy` | `restart_container{name}` | reversible |
-| `docker` | a whole stack down (compose project) | `restart_stack{project}` | destructive |
-| `services` | a systemd unit `failed` | `restart_service{name}` | reversible |
-| `vms` | an allowlisted VM `stopped` (expected running) | `vm_control{vmid, action:start}` | reversible |
-| `gpu` | model server unreachable but host up | `restart_container{ollama|litellm}` | reversible |
-| `storage` | ZFS pool `degraded` | **no auto-action** → propose-only, escalate to human | n/a |
-| any | unknown symptom | no proposal; record `undiagnosed` for human review | n/a |
+| Resource | Normalized signal | Candidate action | Tier | Notes |
+|---|---|---|---|---|
+| `docker` | container `state=unhealthy` (Up, healthcheck failing) | `restart_container{name}` | reversible | the only docker auto-fix |
+| `docker` | container `state=restarting` (crash-loop) | **no auto-action** → propose-only | n/a | "needs a human, not another kick" |
+| `docker` | container `state=stopped` (Exited/Dead) | **ignored** — no proposal | n/a | intentional absence, not in scope |
+| `services` | systemd unit `status=failed` | `restart_service{name}` | reversible | |
+| `storage` | ZFS pool not healthy | **no auto-action** → propose-only | n/a | data risk → human review |
+| `vms` / `gpu` | — | **observed only** | n/a | no expected-state signal in `/full`; not auto-remediated in v1 |
+| any | section degraded/down, no recognized cause | no proposal; record `undiagnosed` | n/a | fail safe to escalation |
+
+**Realism note (vs. the original draft):** the live `/full` carries per-container health buckets
+(`unhealthy`/`restarting`/`stopped`), systemd unit states, and a `zpool` string — but **no**
+compose-project "stack" status, no "model-server-reachable" signal in the `gpu` section, and no
+expected-state for VMs. So v1 auto-remediation is realistically just `restart_container` (unhealthy)
+and `restart_service` (failed) — both **reversible**. `restart_stack`/`docker_prune`/`vm_control`
+remain operator-initiated; self_repair does not auto-propose destructive actions from health signals.
+The approval path is still exercised under `autonomy=approve_all` (where even reversible fixes gate).
 
 Unknown or ambiguous symptoms produce **no action** — fail safe to escalation, never guess. Storage
-degradation (data risk) is deliberately propose-only in v1. An optional LLM step may attach a
-human-readable `rationale`/explanation to a proposal but **cannot change the action or its tier**.
+degradation (data risk) and crash-loops are deliberately propose-only. An optional LLM step may attach
+a human-readable `rationale` to a proposal but **cannot change the action or its tier**.
 
 ### Safety governor — "never make it worse"
 
@@ -178,12 +189,13 @@ Per the platform's UI-parity rule, every self_repair operation is an API call fi
       `infra_monitor` unavailable, `run_once()` returns a typed empty cycle, never raises.
 - [ ] `evaluate(health)` is pure (no side effects) and maps each rule-table symptom to the expected
       `RepairProposal` (action + tier); unknown symptoms yield **no** proposal (`undiagnosed`).
-- [ ] A `down` managed container yields a `restart_container` proposal; with `auto_safe` it executes
+- [ ] An `unhealthy` container yields a `restart_container` proposal; with `auto_safe` it executes
       via `infra_action` without approval (reversible tier).
-- [ ] A whole-stack-down symptom yields a `restart_stack` proposal that is **blocked pending
-      approval** (destructive) and only executes after the `approval` slot resolves — end-to-end with
-      the baseline inbox.
-- [ ] Storage `degraded` produces a **propose-only** result (no action dispatched) and an escalation
+- [ ] A `restarting` (crash-loop) container is **propose-only** (never auto-restarted), and a
+      `stopped` container yields **no** proposal (intentional absence).
+- [ ] Under `autonomy=approve_all`, a reversible remediation is **blocked pending approval** and only
+      executes after the `approval` slot resolves — end-to-end with the baseline inbox (deny → no-op).
+- [ ] Storage not-healthy produces a **propose-only** result (no action dispatched) and an escalation
       event.
 - [ ] Safety governor: after the per-resource attempt budget is exhausted within the window,
       `run_once()` dispatches **no** further action for that resource and emits an escalation

@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     host_health_url: str | None = None
     host_health_token: SecretStr | None = None
     infra_autonomy: Literal["approve_all", "auto_safe", "detect_only"] = "auto_safe"
+    # self_repair (SPEC-188) cadence; <=0 disables the periodic loop (API still works).
+    self_repair_interval_s: int = 90
 
 
 @lru_cache

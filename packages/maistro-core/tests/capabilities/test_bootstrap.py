@@ -15,10 +15,18 @@ def test_returns_a_capability_registry() -> None:
 
 def test_defines_canonical_slots() -> None:
     reg = default_capability_registry()
-    # The three Phase-1b slots must exist, enabled, with the policies SPEC-184 declares.
+    # The Phase-1b + self_repair slots must exist, enabled, per SPEC-184/188.
     assert reg.is_enabled("infra_monitor") is True
     assert reg.is_enabled("infra_action") is True
     assert reg.is_enabled("approval") is True
+    assert reg.is_enabled("self_repair") is True
+
+
+def test_self_repair_slot_has_no_core_provider() -> None:
+    # self_repair is SAFE_NOOP: core defines the slot; the app supplies the
+    # provider (it needs the app-wired infra_monitor/infra_action).
+    reg = default_capability_registry()
+    assert reg.installed("self_repair") == []
 
 
 def test_approval_baseline_inbox_is_installed() -> None:

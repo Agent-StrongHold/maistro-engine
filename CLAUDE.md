@@ -17,6 +17,7 @@ packages/
 ├── maistro-server/    # FastAPI app (replaces conductor-router)
 ├── maistro-turing/    # Autonoetic self-model extensions
 ├── maistro-evolve/    # Elo tournament optimizer for agent self-improvement
+├── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check for docs
 ├── hive-conductor/    # Agent Conductor app (FastAPI backend + React frontend)
 ├── maistro-bootstrap/ # Bootstrap stub (WIP)
 └── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check docs
@@ -76,9 +77,11 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Identity** | `maistro.identity` | Identity management |
 | **Scheduling** | `maistro.scheduling` | Scheduling (distinct from the scheduler/ placeholder) |
 | **Prompts** | `maistro.prompts` | Prompt templates |
+| **Capabilities** | `maistro.capabilities` | Slots, providers, registry, discovery; self-repair governor (SPEC-184/188) |
 | **Credentials** | `maistro.credentials` | Per-user encrypted credentials for PM integrations |
 | **Projects** | `maistro.projects` | User workspaces: domains, meta-DAGs, PM Fleet, Canvas/Engineering |
 | **Testing** | `maistro.testing` | Shared test utilities/fixtures |
+| **CLI** | `maistro.cli` | `maistro` command — thin client of the hive-conductor API |
 
 Root-level modules: `reactor.py` (1kHz reactor loop), `vault.py` (age-encrypted secrets), `privilege.py`, `state.py`.
 
@@ -194,8 +197,18 @@ maistro-engine/
 │   │       ├── builders/        # contracts, runtime, orchestrator, spec, verifier
 │   │       ├── classifier/      # engine, keyword, llm_fallback, complexity
 │   │       ├── config/          # settings, loader
+│   │       ├── capabilities/    # slots, providers, registry; self-repair (SPEC-184/188)
+│   │       ├── credentials/     # per-user encrypted PM-integration creds
+│   │       ├── projects/        # per-user / team project workspaces
+│   │       ├── testing/         # shared test utilities
 │   │       ├── conduit.py       # Request pipeline
 │   │       ├── container.py     # DI wiring
+│   │       ├── cli.py           # `maistro` CLI (thin client of hive-conductor API)
+│   │       ├── constants.py     # named constants
+│   │       ├── privilege.py     # admin/user1 privilege separation (SPEC-012)
+│   │       ├── vault.py         # age-encrypted secrets vault (SPEC-011)
+│   │       ├── reactor.py       # 1kHz reactor loop (SPEC-013)
+│   │       ├── state.py         # SQLite singleton writer (SPEC-010)
 │   │       ├── events/          # bus, handlers, recipes
 │   │       ├── integrations/    # HA, CoinSwarm, Turing bridges
 │   │       ├── memory/          # learnings, episodic, scopes, outcomes
@@ -247,6 +260,8 @@ maistro-engine/
 │   │   ├── pyproject.toml
 │   │   └── src/maistro_evolve/  # Elo tournament optimizer (crossover, mutate, fitness, harness)
 │   │
+│   ├── maistro-registry/        # ADR/spec registry CLI (parser, validator, linker, dag, schema)
+│   │
 │   └── hive-conductor/          # Agent Conductor app (no pyproject.toml — requirements.txt)
 │       ├── backend/             # FastAPI app
 │       │   ├── main.py          # Entrypoint + route registration
@@ -260,6 +275,8 @@ maistro-engine/
 │
 ├── formal/                      # Property-based conformance tests (Hypothesis); separate CI flow
 ├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-057)
+├── docs/specs/                  # SPEC-NNN design specs (e.g. SPEC-184 capabilities, SPEC-188 self-repair)
+├── specs/                       # Topical spec notes (channels, conductor, infra, intelligence, security, tools)
 ├── src/maistro/                 # Old layout (agent spec/spawner/recipes + model pricing)
 └── pyproject.toml               # uv workspace root (uv.lock is source of truth)
 ```
