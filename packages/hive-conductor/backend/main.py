@@ -16,6 +16,9 @@ from pydantic import BaseModel, ConfigDict
 from routes import (
     agents,
     audit,
+    capabilities,
+    program,
+    work_items,
     auth,
     chat,
     cli,
@@ -167,6 +170,7 @@ def create_app() -> FastAPI:
     app.include_router(containers.router, prefix="/v1/containers")
     app.include_router(memory.router, prefix="/v1/memory")
     app.include_router(settings_r.router, prefix="/v1/settings")
+    app.include_router(capabilities.router, prefix="/v1/capabilities")
     app.include_router(voice.router, prefix="/v1/voice")
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")

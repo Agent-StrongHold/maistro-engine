@@ -43,6 +43,9 @@ def _walk(root: Path) -> Iterable[Path]:
         for p in root.glob(pattern):
             # Skip scaffolding templates (e.g. ADR-000-template.md): they carry
             # placeholder ids/dates by design and are not real registry records.
+            # Match the "-template.md" suffix precisely — a substring check on
+            # "template" would wrongly skip real records like
+            # ADR-033-templates-and-copier-workflow.md.
             if p.name.endswith("-template.md"):
                 continue
             if p.suffix == ".md" and p.is_file() and p not in seen:

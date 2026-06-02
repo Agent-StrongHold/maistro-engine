@@ -112,6 +112,11 @@ class MaistroCoreBridge:
     def __init__(self) -> None:
         self._container: Any = None
 
+    @property
+    def container(self) -> Any:
+        """The wired maistro-core Container (holds the CapabilityRegistry), or None."""
+        return self._container
+
     async def start(self, settings: Settings) -> None:
         import os
 
