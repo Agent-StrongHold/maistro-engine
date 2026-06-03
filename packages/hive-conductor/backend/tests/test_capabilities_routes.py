@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+from unittest.mock import MagicMock
 
 import httpx
 from fastapi.testclient import TestClient
 from main import app
+
+
+def _mock_request(username: str = "test") -> MagicMock:
+    req = MagicMock()
+    req.state.user = {"username": username}
+    return req
 
 
 def _login(username: str = "testuser", password: str = "testpass") -> TestClient:
@@ -20,6 +27,7 @@ def _config_writer(task_id: str) -> TestClient:
     from datetime import UTC, datetime
 
     import stores
+
     from maistro.security.passwords import hash_password
 
     uid = f"caproute-{task_id}"
@@ -118,11 +126,12 @@ def test_resolve_unknown_approval_404() -> None:
 async def test_destructive_action_blocks_until_approved_then_completes() -> None:
     """A destructive infra_action is held pending approval, surfaces in the
     approvals inbox, and only completes once resolved through the API."""
+    from routes import capabilities as cap_routes
+    from services.engine import get_engine
+
     from maistro.capabilities.bootstrap import default_capability_registry
     from maistro.capabilities.http_client import HttpxAsyncHttp
     from maistro.capabilities.providers.host_health import HostHealthAction
-    from routes import capabilities as cap_routes
-    from services.engine import get_engine
 
     reg = default_capability_registry()
     inbox = reg.provider("approval", "inbox")
@@ -154,7 +163,8 @@ async def test_destructive_action_blocks_until_approved_then_completes() -> None
 
         out = cap_routes.resolve_approval(
             pending[0]["request_id"],
-            cap_routes.ResolveApprovalBody(approved=True, actor="tester"),
+            cap_routes.ResolveApprovalBody(approved=True),
+            _mock_request("tester"),
         )
         assert out["resolved"] is True
 
@@ -166,11 +176,12 @@ async def test_destructive_action_blocks_until_approved_then_completes() -> None
 
 
 async def test_destructive_action_denied_does_not_execute() -> None:
+    from routes import capabilities as cap_routes
+    from services.engine import get_engine
+
     from maistro.capabilities.bootstrap import default_capability_registry
     from maistro.capabilities.http_client import HttpxAsyncHttp
     from maistro.capabilities.providers.host_health import HostHealthAction
-    from routes import capabilities as cap_routes
-    from services.engine import get_engine
 
     reg = default_capability_registry()
     inbox = reg.provider("approval", "inbox")
@@ -194,7 +205,9 @@ async def test_destructive_action_denied_does_not_execute() -> None:
                 break
             await asyncio.sleep(0.005)
         rid = cap_routes.list_approvals()["pending"][0]["request_id"]
-        cap_routes.resolve_approval(rid, cap_routes.ResolveApprovalBody(approved=False))
+        cap_routes.resolve_approval(
+            rid, cap_routes.ResolveApprovalBody(approved=False), _mock_request()
+        )
         result = await asyncio.wait_for(task, timeout=1.0)
         assert result.ok is False
         assert result.blocked_pending_approval is True

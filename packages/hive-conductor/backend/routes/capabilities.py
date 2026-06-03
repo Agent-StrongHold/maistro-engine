@@ -16,7 +16,7 @@ import logging
 from typing import Any
 
 import stores
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from models.schemas import CapabilitySetting
 from pydantic import BaseModel, ConfigDict
 from services.engine import get_engine
@@ -26,6 +26,12 @@ from routes.audit import log_audit
 logger = logging.getLogger("hive.capabilities")
 
 router = APIRouter(tags=["capabilities"])
+
+
+def _actor(request: Request) -> str:
+    """Derive the authenticated principal from the session — never from the request body."""
+    user = getattr(request.state, "user", None) or {}
+    return str(user.get("id") or user.get("username") or "dev")
 
 
 def _registry() -> Any:
@@ -66,13 +72,15 @@ class DiscoverBody(BaseModel):
 
 
 @router.post("/discover")
-async def discover_capabilities(body: DiscoverBody | None = None) -> dict[str, Any]:
+async def discover_capabilities(
+    request: Request, body: DiscoverBody | None = None
+) -> dict[str, Any]:
     """Re-run the entry-point sweep; newly-installed providers register without a restart."""
     from maistro.capabilities.discovery import discover_into
 
     reg = _registry()
     count = discover_into(reg)
-    log_audit("capability_discover", "system", detail={"registered": count})
+    log_audit("capability_discover", _actor(request), detail={"registered": count})
     slots = [await _slot_view(reg, s) for s in sorted(reg.slots())]
     return {"registered": count, "slots": slots}
 
@@ -85,7 +93,9 @@ class PatchCapabilityBody(BaseModel):
 
 
 @router.patch("/{slot}")
-async def patch_capability(slot: str, body: PatchCapabilityBody) -> dict[str, Any]:
+async def patch_capability(
+    slot: str, body: PatchCapabilityBody, request: Request
+) -> dict[str, Any]:
     reg = _registry()
     if slot not in reg.slots():
         raise HTTPException(status_code=404, detail=f"unknown capability slot '{slot}'")
@@ -104,7 +114,7 @@ async def patch_capability(slot: str, body: PatchCapabilityBody) -> dict[str, An
     _persist_slot(reg, slot)
     log_audit(
         "capability_patch",
-        "system",
+        _actor(request),
         target=slot,
         detail=body.model_dump(exclude_none=True),
     )
@@ -192,13 +202,15 @@ def self_repair_proposals() -> dict[str, Any]:
 
 
 @router.post("/self-repair/run")
-async def self_repair_run() -> dict[str, Any]:
+async def self_repair_run(request: Request) -> dict[str, Any]:
     from services.capabilities_wiring import run_self_repair_once
 
     cycle = await run_self_repair_once(_registry())
     if cycle is None:
-        raise HTTPException(status_code=503, detail="self_repair unavailable (disabled or no provider)")
-    log_audit("self_repair_run", "system", detail={"proposals": len(cycle.results)})
+        raise HTTPException(
+            status_code=503, detail="self_repair unavailable (disabled or no provider)"
+        )
+    log_audit("self_repair_run", _actor(request), detail={"proposals": len(cycle.results)})
     provider = _self_repair_provider()
     if provider is not None:
         return _cycle_view(provider)
@@ -217,20 +229,22 @@ class ResolveApprovalBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     approved: bool
-    actor: str = ""
 
 
 @router.post("/approvals/{request_id}")
-def resolve_approval(request_id: str, body: ResolveApprovalBody) -> dict[str, Any]:
+def resolve_approval(
+    request_id: str, body: ResolveApprovalBody, request: Request
+) -> dict[str, Any]:
     inbox = _approval_inbox()
     if inbox is None:
         raise HTTPException(status_code=503, detail="no approval inbox available")
-    resolved = inbox.resolve(request_id, approved=body.approved, actor=body.actor)
+    actor = _actor(request)
+    resolved = inbox.resolve(request_id, approved=body.approved, actor=actor)
     if not resolved:
         raise HTTPException(status_code=404, detail=f"no pending approval '{request_id}'")
     log_audit(
         "approval_resolve",
-        body.actor or "system",
+        actor,
         target=request_id,
         detail={"approved": body.approved},
         severity="warning",
