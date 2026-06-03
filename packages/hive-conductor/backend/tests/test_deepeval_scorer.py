@@ -403,3 +403,113 @@ async def test_score_details_contain_threshold() -> None:
     finally:
         _remove_deepeval_stub()
         sys.modules.pop("eval.deepeval_scorer", None)
+
+
+# ---------------------------------------------------------------------------
+# Context formatting gap-fillers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_context_join_format_is_key_eq_value() -> None:
+    """context dict → 'k1=v1; k2=v2' — not empty string, not repr()."""
+    _make_deepeval_stub(score=0.7, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        await scorer.score("out", context={"audience": "plant_lovers", "locale": "en"})
+        metric = sys.modules["deepeval.metrics"].GEval.return_value
+        ctx = metric.a_measure.call_args.kwargs.get("_additional_context")
+        assert ctx is not None
+        assert "audience=plant_lovers" in ctx
+        assert "locale=en" in ctx
+        # separator is "; "
+        assert "; " in ctx
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_single_context_key_no_separator() -> None:
+    """Single-key context has no '; ' separator."""
+    _make_deepeval_stub(score=0.7, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        await scorer.score("out", context={"key": "val"})
+        metric = sys.modules["deepeval.metrics"].GEval.return_value
+        ctx = metric.a_measure.call_args.kwargs.get("_additional_context")
+        assert ctx == "key=val"
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_empty_context_dict_passes_none() -> None:
+    """Empty dict → no context string → None passed."""
+    _make_deepeval_stub(score=0.7, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        await scorer.score("out", context={})
+        metric = sys.modules["deepeval.metrics"].GEval.return_value
+        ctx = metric.a_measure.call_args.kwargs.get("_additional_context")
+        assert ctx is None
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_geval_async_mode_true() -> None:
+    """GEval must be constructed with async_mode=True."""
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        await scorer.score("out")
+        geval_cls = sys.modules["deepeval.metrics"].GEval
+        assert geval_cls.call_args.kwargs.get("async_mode") is True
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_geval_verbose_mode_false() -> None:
+    """GEval must be constructed with verbose_mode=False."""
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        await scorer.score("out")
+        geval_cls = sys.modules["deepeval.metrics"].GEval
+        assert geval_cls.call_args.kwargs.get("verbose_mode") is False
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_geval_evaluation_params_set() -> None:
+    """evaluation_params must be set (non-empty)."""
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        await scorer.score("out")
+        geval_cls = sys.modules["deepeval.metrics"].GEval
+        params = geval_cls.call_args.kwargs.get("evaluation_params")
+        assert params is not None
+        assert len(params) > 0
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)

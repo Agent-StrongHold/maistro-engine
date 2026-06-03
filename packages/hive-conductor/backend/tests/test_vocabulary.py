@@ -416,3 +416,156 @@ def test_eval_count_max_boundary():
     spec_max = {"op": "word_count", "max": 3}
     assert ev(spec_max, "one two three")  # exactly 3 = pass
     assert not ev(spec_max, "one two three four")  # 4 > 3 = fail
+
+
+# ---------------------------------------------------------------------------
+# Gap-fillers from 89% mutation scan — boundary / equivalence class pins
+# ---------------------------------------------------------------------------
+
+
+def test_active_voice_ratio_boundary_equal_counts():
+    """shall_be == will: will+1 > shall_be → True (passes at equality)."""
+    from eval.vocabulary import _active_voice_ratio
+
+    # 1 "shall be", 1 "will" → count("shall be")=1 < count("will")+1=2 → True
+    assert _active_voice_ratio("it shall be done, and we will do it") is True
+
+
+def test_active_voice_ratio_boundary_will_zero():
+    """0 'will', 1 'shall be' → 1 < 0+1=1 is False → fails check."""
+    from eval.vocabulary import _active_voice_ratio
+
+    assert _active_voice_ratio("it shall be finished") is False
+
+
+def test_active_voice_ratio_both_zero():
+    """No markers → 0 < 0+1=1 → True."""
+    from eval.vocabulary import _active_voice_ratio
+
+    assert _active_voice_ratio("the cat sat on the mat") is True
+
+
+def test_active_voice_ratio_multiple_shall_be():
+    """Multiple 'shall be' with 0 'will' → False."""
+    from eval.vocabulary import _active_voice_ratio
+
+    assert _active_voice_ratio("it shall be done and it shall be finished") is False
+
+
+def test_list_density_empty_input_returns_zero():
+    """Empty/whitespace-only → 0.0 (not 1.0 or other)."""
+    from eval.vocabulary import _list_density
+
+    assert _list_density("") == pytest.approx(0.0)
+    assert _list_density("   ") == pytest.approx(0.0)
+    assert _list_density("\n\n") == pytest.approx(0.0)
+
+
+def test_list_density_bullet_markers():
+    """All three bullet markers are counted: -, *, •"""
+    from eval.vocabulary import _list_density
+
+    dash = _list_density("- one\n- two")
+    star = _list_density("* one\n* two")
+    bullet = _list_density("• one\n• two")
+    assert dash == pytest.approx(1.0)
+    assert star == pytest.approx(1.0)
+    assert bullet == pytest.approx(1.0)
+
+
+def test_list_density_exact_fraction():
+    """3 list + 1 prose = exactly 0.75."""
+    from eval.vocabulary import _list_density
+
+    assert _list_density("- a\n- b\n- c\nprose") == pytest.approx(0.75)
+
+
+def test_parse_flags_unknown_returns_zero_flag():
+    """Unknown flag string returns re.RegexFlag(0), not an error."""
+    import re
+
+    from eval.vocabulary import _parse_flags
+
+    assert _parse_flags("z") == re.RegexFlag(0)
+    assert _parse_flags("xyz") == re.RegexFlag(0)
+
+
+def test_parse_flags_combined_si_and_is():
+    """Both 'si' and 'is' map to IGNORECASE|DOTALL."""
+    import re
+
+    from eval.vocabulary import _parse_flags
+
+    expected = re.IGNORECASE | re.DOTALL
+    assert _parse_flags("si") == expected
+    assert _parse_flags("is") == expected
+
+
+def test_parse_flags_multiline():
+    import re
+
+    from eval.vocabulary import _parse_flags
+
+    assert _parse_flags("m") == re.MULTILINE
+    assert _parse_flags("im") == re.IGNORECASE | re.MULTILINE
+    assert _parse_flags("mi") == re.IGNORECASE | re.MULTILINE
+
+
+def test_eval_metric_lt_boundary():
+    """lt: strictly less than — ratio 0.5 (a a) passes lt=1.0, fails lt=0.4."""
+    assert ev({"op": "metric", "name": "unique_word_ratio", "cmp": "lt", "value": 1.0}, "a a")
+    assert not ev({"op": "metric", "name": "unique_word_ratio", "cmp": "lt", "value": 0.4}, "a a")
+
+
+def test_eval_metric_lte_includes_equal():
+    """lte: equal value passes, above fails."""
+    # unique_word_ratio("a a") = 0.5 exactly
+    assert ev({"op": "metric", "name": "unique_word_ratio", "cmp": "lte", "value": 0.5}, "a a")
+    assert not ev({"op": "metric", "name": "unique_word_ratio", "cmp": "lte", "value": 0.4}, "a a")
+
+
+def test_eval_metric_gte_includes_equal():
+    assert ev({"op": "metric", "name": "unique_word_ratio", "cmp": "gte", "value": 0.5}, "a a")
+    assert not ev({"op": "metric", "name": "unique_word_ratio", "cmp": "gte", "value": 0.6}, "a a")
+
+
+def test_eval_metric_eq():
+    # unique_word_ratio("a a") = 0.5
+    assert ev({"op": "metric", "name": "unique_word_ratio", "cmp": "eq", "value": 0.5}, "a a")
+
+
+def test_eval_metric_invalid_comparator_raises():
+    with pytest.raises(ValueError, match="Unknown comparator"):
+        ev({"op": "metric", "name": "unique_word_ratio", "cmp": "neq", "value": 0.5}, "a b")
+
+
+def test_eval_simple_returns_none_for_unknown_op():
+    """_eval_simple must return None (not raise) for ops it doesn't handle."""
+    from eval.vocabulary import _eval_simple
+
+    assert _eval_simple("metric", {}, "") is None
+    assert _eval_simple("any", {}, "") is None
+    assert _eval_simple("registered", {}, "") is None
+    assert _eval_simple(None, {}, "") is None
+
+
+def test_eval_simple_all_handled_ops():
+    """Each op _eval_simple owns returns bool, not None."""
+    from eval.vocabulary import _eval_simple
+
+    assert isinstance(_eval_simple("keywords_any", {"words": ["x"]}, "x"), bool)
+    assert isinstance(_eval_simple("keywords_none", {"words": ["x"]}, "y"), bool)
+    assert isinstance(_eval_simple("regex", {"pattern": "x"}, "y"), bool)
+    assert isinstance(_eval_simple("regex_absent", {"pattern": "x"}, "y"), bool)
+    assert isinstance(_eval_simple("regex_count", {"pattern": "x", "min": 0}, "y"), bool)
+    assert isinstance(_eval_simple("word_count", {"max": 10}, "hello world"), bool)
+
+
+def test_long_word_ratio_boundary_exactly_10_chars():
+    """len(w) > 10: word of 10 chars does NOT count as long."""
+    from eval.vocabulary import _long_word_ratio
+
+    # "abcdefghij" = 10 chars → not long
+    assert _long_word_ratio("abcdefghij") == pytest.approx(0.0)
+    # "abcdefghijk" = 11 chars → long
+    assert _long_word_ratio("abcdefghijk") == pytest.approx(1.0)

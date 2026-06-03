@@ -218,3 +218,135 @@ async def test_rubric_scorer_from_yaml():
         "Disclaimer: not financial advice. Source: Q2 2026 financial statements."
     )
     assert score.value > 0
+
+
+# ---------------------------------------------------------------------------
+# Gap-fillers from mutation scan — loader boundary pins
+# ---------------------------------------------------------------------------
+
+
+def test_load_department_prefers_name_over_department_key():
+    """When both 'name' and 'department' keys exist, 'name' wins."""
+    import tempfile
+    from pathlib import Path
+
+    import yaml
+
+    from eval.loader import load_department
+
+    with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
+        yaml.dump(
+            {
+                "kind": "department",
+                "name": "the_name",
+                "department": "the_old_key",
+                "evals": [
+                    {
+                        "name": "test_eval",
+                        "criteria": [
+                            {"name": "c", "weight": 100, "check": {"op": "keywords_any", "words": ["x"]}}
+                        ],
+                    }
+                ],
+            },
+            f,
+        )
+        tmp = f.name
+
+    try:
+        evals = load_department(tmp)
+        assert evals[0].department == "the_name"  # name: takes priority
+    finally:
+        Path(tmp).unlink()
+
+
+def test_load_department_falls_back_to_department_key():
+    """Legacy YAML with only 'department' key loads correctly."""
+    import tempfile
+    from pathlib import Path
+
+    import yaml
+
+    from eval.loader import load_department
+
+    with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
+        yaml.dump(
+            {
+                "department": "legacy_dept",
+                "evals": [
+                    {
+                        "name": "e",
+                        "criteria": [
+                            {"name": "c", "weight": 50, "check": {"op": "keywords_any", "words": ["x"]}}
+                        ],
+                    }
+                ],
+            },
+            f,
+        )
+        tmp = f.name
+
+    try:
+        evals = load_department(tmp)
+        assert evals[0].department == "legacy_dept"
+    finally:
+        Path(tmp).unlink()
+
+
+def test_all_departments_skips_non_department_kind(tmp_path):
+    """Templates with kind != 'department' are excluded from all_departments()."""
+    import importlib
+
+    import yaml
+
+    from eval.loader import _TEMPLATES_DIR
+
+    # Write a 'creator' kind template alongside departments
+    creator_file = _TEMPLATES_DIR / "_test_creator.yaml"
+    creator_file.write_text(
+        yaml.dump(
+            {
+                "kind": "creator",
+                "name": "test_creator",
+                "evals": [
+                    {
+                        "name": "e",
+                        "criteria": [
+                            {"name": "c", "weight": 100, "check": {"op": "keywords_any", "words": ["x"]}}
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+    try:
+        import eval.loader as loader_mod
+
+        importlib.reload(loader_mod)
+        depts = loader_mod.all_departments()
+        assert "test_creator" not in depts
+        # Real departments still load
+        assert "marketing" in depts
+    finally:
+        creator_file.unlink()
+
+
+def test_build_rubric_eval_class_name_includes_dept_and_eval():
+    """DynamicEval class name is Yaml_{dept}_{eval} — catches string mutations."""
+    from eval.loader import load_department, _TEMPLATES_DIR
+
+    evals = load_department(_TEMPLATES_DIR / "marketing.yaml")
+    cls_name = type(evals[0]).__name__
+    assert cls_name.startswith("Yaml_marketing_")
+
+
+def test_make_check_calls_evaluate_with_check_spec():
+    """_make_check closure correctly captures and passes check_spec."""
+    from eval.loader import load_department, _TEMPLATES_DIR
+
+    evals = load_department(_TEMPLATES_DIR / "product_management.yaml")
+    # Each criterion's check function is callable and returns bool
+    for rubric_eval in evals:
+        for criterion in rubric_eval.criteria:
+            result = criterion["check"]("sample output text", {})
+            assert isinstance(result, bool)
