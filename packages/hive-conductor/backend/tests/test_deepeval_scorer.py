@@ -273,3 +273,133 @@ def test_fallback_pattern_to_rubric_scorer() -> None:
             scorer = RubricScorer(rubric_eval)
 
     assert scorer.provider == "rubric"
+
+
+# ---------------------------------------------------------------------------
+# Mutation killers — pin what's passed TO GEval (not just what comes back)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_geval_called_with_correct_eval_name() -> None:
+    """Mutating GEval(name=...) arg must be caught."""
+    mock_metric = _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("my_eval_name", "criteria text", model="m")
+        await scorer.score("output")
+        geval_cls = sys.modules["deepeval.metrics"].GEval
+        call_kwargs = geval_cls.call_args
+        assert call_kwargs.kwargs.get("name") == "my_eval_name"
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_geval_called_with_correct_criteria() -> None:
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        criteria = "Is the tone warm and first-person?"
+        scorer = DeepEvalScorer("x", criteria, model="m")
+        await scorer.score("output")
+        geval_cls = sys.modules["deepeval.metrics"].GEval
+        assert geval_cls.call_args.kwargs.get("criteria") == criteria
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_geval_called_with_correct_threshold() -> None:
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m", threshold=0.7)
+        await scorer.score("output")
+        geval_cls = sys.modules["deepeval.metrics"].GEval
+        assert geval_cls.call_args.kwargs.get("threshold") == pytest.approx(0.7)
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_geval_called_with_correct_model() -> None:
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="my-special-model")
+        await scorer.score("output")
+        geval_cls = sys.modules["deepeval.metrics"].GEval
+        assert geval_cls.call_args.kwargs.get("model") == "my-special-model"
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_context_becomes_additional_context_string() -> None:
+    """None context → None passed; dict context → key=value string, NOT empty string."""
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        # No context → additional_context should be None
+        await scorer.score("output", context=None)
+        metric = sys.modules["deepeval.metrics"].GEval.return_value
+        call_kwargs = metric.a_measure.call_args.kwargs
+        assert call_kwargs.get("_additional_context") is None
+
+        # With context → should be a non-empty string
+        metric.a_measure.reset_mock()
+        await scorer.score("output", context={"key": "value"})
+        call_kwargs2 = metric.a_measure.call_args.kwargs
+        ctx_str = call_kwargs2.get("_additional_context")
+        assert ctx_str is not None
+        assert "key" in ctx_str
+        assert "value" in ctx_str
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_ameasure_called_with_actual_output() -> None:
+    """Mutations that change what's passed to LLMTestCase are caught."""
+    _make_deepeval_stub(score=0.8, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m")
+        text = "The specific output text to score"
+        await scorer.score(text)
+        tc_cls = sys.modules["deepeval.test_case"].LLMTestCase
+        call_kwargs = tc_cls.call_args.kwargs if tc_cls.call_args else tc_cls.call_args
+        # LLMTestCase should have been called with actual_output=text
+        assert tc_cls.called
+        assert tc_cls.call_args is not None
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)
+
+
+@pytest.mark.asyncio
+async def test_score_details_contain_threshold() -> None:
+    """Mutation: threshold=None in details → caught by this test."""
+    _make_deepeval_stub(score=0.6, success=True, reason="ok")
+    try:
+        from eval.deepeval_scorer import DeepEvalScorer
+
+        scorer = DeepEvalScorer("x", "c", model="m", threshold=0.4)
+        result = await scorer.score("output")
+        assert result.details.get("threshold") == pytest.approx(0.4)
+    finally:
+        _remove_deepeval_stub()
+        sys.modules.pop("eval.deepeval_scorer", None)

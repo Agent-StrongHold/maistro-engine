@@ -134,20 +134,57 @@ def test_word_count_max():
 
 
 def test_metric_avg_sentence_words():
-    text = "Short. This is longer sentence. Medium here now."
+    # "One." → 1 word, "Two words." → 2 words, "Three word sentence." → 3 words → avg ≈ 2.0
+    text = "One. Two words. Three word sentence."
     assert ev({"op": "metric", "name": "avg_sentence_words", "cmp": "lt", "value": 10}, text)
     assert not ev({"op": "metric", "name": "avg_sentence_words", "cmp": "gt", "value": 10}, text)
 
 
+def test_metric_avg_sentence_words_pinned_value():
+    from eval.vocabulary import _avg_sentence_words
+
+    # "Hello world. This is fine." → 2 sentences: ["Hello world", "This is fine"] → avg = 2.5
+    result = _avg_sentence_words("Hello world. This is fine.")
+    assert result == pytest.approx(2.5, abs=0.1)
+    # Non-empty text must return a positive value
+    assert _avg_sentence_words("Any non-empty sentence.") > 0.0
+    # Empty returns 0
+    assert _avg_sentence_words("") == 0.0
+
+
 def test_metric_long_word_ratio():
-    text = "cat dog elephant" * 10  # 'elephant' > 10 chars? no, 8. use 'hippopotamus'
-    text = "cat dog hippopotamus " * 10
+    # "cat" (3), "dog" (3), "hippopotamus" (12 > 10) → 1/3 ≈ 0.33
+    text = "cat dog hippopotamus"
     assert ev({"op": "metric", "name": "long_word_ratio", "cmp": "lt", "value": 0.5}, text)
+    assert ev({"op": "metric", "name": "long_word_ratio", "cmp": "gt", "value": 0.2}, text)
+
+
+def test_metric_long_word_ratio_pinned_value():
+    from eval.vocabulary import _long_word_ratio
+
+    # "cat" (3), "dog" (3), "hippopotamus" (12) → 1/3
+    assert _long_word_ratio("cat dog hippopotamus") == pytest.approx(1 / 3, abs=0.01)
+    # All long: "catastrophizing imagination" → 2/2 = 1.0
+    assert _long_word_ratio("catastrophizing imagination") == pytest.approx(1.0)
+    # All short: no long words → 0.0
+    assert _long_word_ratio("cat dog fox") == pytest.approx(0.0)
+    # Empty → 0.0
+    assert _long_word_ratio("") == pytest.approx(0.0)
 
 
 def test_metric_unique_word_ratio():
     text = "the the the cat sat on the mat"
     assert ev({"op": "metric", "name": "unique_word_ratio", "cmp": "gt", "value": 0.3}, text)
+
+
+def test_metric_unique_word_ratio_pinned_value():
+    from eval.vocabulary import _unique_word_ratio
+
+    # "a b c" → 3 unique / 3 total = 1.0
+    assert _unique_word_ratio("a b c") == pytest.approx(1.0)
+    # "a a a" → 1/3
+    assert _unique_word_ratio("a a a") == pytest.approx(1 / 3, abs=0.01)
+    assert _unique_word_ratio("") == pytest.approx(0.0)
 
 
 def test_metric_sentence_length_variety():
@@ -165,10 +202,33 @@ def test_metric_list_density():
     assert ev({"op": "metric", "name": "list_density", "cmp": "gte", "value": 0.9}, all_list)
 
 
+def test_metric_list_density_pinned_value():
+    from eval.vocabulary import _list_density
+
+    # 3 list lines + 1 prose = 0.75
+    text = "- one\n- two\n- three\nprose"
+    assert _list_density(text) == pytest.approx(0.75)
+    # All list → 1.0
+    assert _list_density("- a\n- b\n- c") == pytest.approx(1.0)
+    # No list lines → 0.0
+    assert _list_density("prose only\nmore prose") == pytest.approx(0.0)
+
+
 def test_metric_max_line_length():
     text = "short line\n" + "x" * 130 + "\nanother short"
     assert ev({"op": "metric", "name": "max_line_length", "cmp": "gt", "value": 120}, text)
     assert not ev({"op": "metric", "name": "max_line_length", "cmp": "lte", "value": 120}, text)
+
+
+def test_metric_max_line_length_pinned_value():
+    from eval.vocabulary import _max_line_length
+
+    text = "short\n" + "x" * 50 + "\ntiny"
+    assert _max_line_length(text) == pytest.approx(50.0)
+    # Empty → 0
+    assert _max_line_length("") == pytest.approx(0.0)
+    # Single line
+    assert _max_line_length("hello world") == pytest.approx(11.0)
 
 
 def test_metric_unknown_raises():
@@ -257,3 +317,102 @@ def test_unknown_op_raises():
 def test_unknown_registered_raises():
     with pytest.raises(ValueError, match="Unknown registered predicate"):
         ev({"op": "registered", "name": "does_not_exist"}, "text")
+
+
+# ---------------------------------------------------------------------------
+# Mutation killers — pin exact values for registered predicates + flag logic
+# ---------------------------------------------------------------------------
+
+
+def test_latin_phrase_count_max_default_is_1():
+    """Default max=1: exactly 1 known phrase passes, 2 fails."""
+    from eval.vocabulary import _latin_phrase_count
+
+    # phrases from the list: "inter alia", "mutatis mutandis", "ipso facto", "prima facie"
+    assert _latin_phrase_count("inter alia this applies") is True  # 1 phrase ≤ 1
+    assert _latin_phrase_count("inter alia and mutatis mutandis") is False  # 2 phrases > 1
+
+
+def test_latin_phrase_count_zero_passes():
+    from eval.vocabulary import _latin_phrase_count
+
+    assert _latin_phrase_count("No latin phrases at all") is True
+
+
+def test_latin_phrase_count_custom_max():
+    from eval.vocabulary import _latin_phrase_count
+
+    # 2 phrases, max=2 → passes
+    assert _latin_phrase_count("inter alia and ipso facto", max=2) is True
+    # 3 phrases, max=2 → fails
+    assert _latin_phrase_count("inter alia, ipso facto, prima facie", max=2) is False
+
+
+def test_active_voice_ratio_returns_bool():
+    from eval.vocabulary import _active_voice_ratio
+
+    result = _active_voice_ratio("The cat sat on the mat.")
+    assert isinstance(result, bool)
+
+
+def test_active_voice_ratio_uses_lowercase():
+    """Mutation: lo = None → crashes because None has no .count() method."""
+    from eval.vocabulary import _active_voice_ratio
+
+    # Both cases should produce identical results (case-insensitive)
+    lower_result = _active_voice_ratio("this shall be done")
+    upper_result = _active_voice_ratio("THIS SHALL BE DONE")
+    assert lower_result == upper_result
+
+
+def test_active_voice_ratio_active_text_passes():
+    """Active text (will > shall be) should pass the check."""
+    from eval.vocabulary import _active_voice_ratio
+
+    assert _active_voice_ratio("I will do this and I will do that") is True
+
+
+def test_active_voice_ratio_passive_text_fails():
+    """Heavy passive text (shall be) should fail the check."""
+    from eval.vocabulary import _active_voice_ratio
+
+    assert _active_voice_ratio("it shall be done and it shall be finished") is False
+
+
+def test_parse_flags_none_returns_zero():
+    """Mutation: if flags vs if not flags → returns re.I instead of 0."""
+    from eval.vocabulary import _parse_flags
+
+    assert _parse_flags(None) == 0
+    assert _parse_flags("") == 0
+
+
+def test_parse_flags_i_returns_re_ignorecase():
+    import re
+
+    from eval.vocabulary import _parse_flags
+
+    assert _parse_flags("i") == re.IGNORECASE
+
+
+def test_eval_regex_count_uses_flags():
+    """Mutation: flags=None → case-sensitive when it should be insensitive."""
+    # regex_count with flags="i" should match case-insensitively
+    spec = {"op": "regex_count", "pattern": "WORD", "flags": "i", "min": 1}
+    assert ev(spec, "word appears here")  # "word" matches "WORD" with i flag
+    # Without flags, "WORD" would NOT match "word"
+    spec_no_flags = {"op": "regex_count", "pattern": "WORD", "min": 1}
+    assert not ev(spec_no_flags, "word appears here")  # case-sensitive, no match
+
+
+def test_eval_count_min_boundary():
+    """Mutation: word count min off-by-one."""
+    spec_min = {"op": "word_count", "min": 3}
+    assert ev(spec_min, "one two three")  # exactly 3 = pass
+    assert not ev(spec_min, "one two")  # 2 < 3 = fail
+
+
+def test_eval_count_max_boundary():
+    spec_max = {"op": "word_count", "max": 3}
+    assert ev(spec_max, "one two three")  # exactly 3 = pass
+    assert not ev(spec_max, "one two three four")  # 4 > 3 = fail
