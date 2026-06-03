@@ -20,6 +20,26 @@ class WorkerName(StrEnum):
     FRANK = "frank"
     MASON = "mason"
     AUDITOR = "auditor"
+    QUARTERMASTER = "quartermaster"
+    ARCHIE = "archie"
+    ARBITER = "arbiter"
+    SCOUT = "scout"
+    JANITOR = "janitor"
+
+
+class ExecutionContext(StrEnum):
+    """Declares where an agent stage handler is permitted to act (SPEC-200).
+
+    CONVERSATION — pure I/O, no filesystem, no network side effects.
+    NETWORK      — read-only external HTTP fetches; no auth tokens exposed.
+    SANDBOX      — ephemeral git worktree; read+write inside root only.
+    REPO         — live repo or GitHub; every destructive action needs a ConfirmationToken.
+    """
+
+    CONVERSATION = "conversation"
+    NETWORK = "network"
+    SANDBOX = "sandbox"
+    REPO = "repo"
 
 
 class RunStatus(StrEnum):

@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from maistro.builders.contracts import RunRequest, RunResult, RunStatus, WorkerName
+from maistro.builders.contracts import (
+    ExecutionContext,
+    RunRequest,
+    RunResult,
+    RunStatus,
+    WorkerName,
+)
 from maistro.builders.runtime import BuildersRuntime
 
 
@@ -33,7 +39,9 @@ async def test_execute_dispatches_to_registered_handler() -> None:
             summary="handled",
         )
 
-    runtime.register(WorkerName.FRANK, "issue_analyzed", handler)
+    runtime.register(
+        WorkerName.FRANK, "issue_analyzed", handler, context=ExecutionContext.CONVERSATION
+    )
     result = await runtime.execute(_request())
 
     assert result.status is RunStatus.PASSED
@@ -72,8 +80,15 @@ async def test_execute_routes_by_worker_and_stage() -> None:
             summary="mason",
         )
 
-    runtime.register(WorkerName.FRANK, "implementation_started", frank_handler)
-    runtime.register(WorkerName.MASON, "implementation_started", mason_handler)
+    runtime.register(
+        WorkerName.FRANK,
+        "implementation_started",
+        frank_handler,
+        context=ExecutionContext.CONVERSATION,
+    )
+    runtime.register(
+        WorkerName.MASON, "implementation_started", mason_handler, context=ExecutionContext.SANDBOX
+    )
 
     frank_result = await runtime.execute(_request(WorkerName.FRANK, "implementation_started"))
     mason_result = await runtime.execute(_request(WorkerName.MASON, "implementation_started"))
@@ -88,7 +103,7 @@ def test_supports_reflects_registration() -> None:
         raise AssertionError
 
     assert runtime.supports(WorkerName.AUDITOR, "tests_written") is False
-    runtime.register(WorkerName.AUDITOR, "tests_written", handler)
+    runtime.register(WorkerName.AUDITOR, "tests_written", handler, context=ExecutionContext.SANDBOX)
     assert runtime.supports(WorkerName.AUDITOR, "tests_written") is True
     # Distinct worker for the same stage is not registered.
     assert runtime.supports(WorkerName.FRANK, "tests_written") is False
