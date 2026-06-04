@@ -21,7 +21,7 @@ logger = logging.getLogger("hive.pm_fleet_v2")
 
 # Jira project key for MAISTRO
 JIRA_PROJECT_KEY = "MAISTRO"
-JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL", "https://jira.example.com")
+JIRA_BASE_URL = os.environ.get("JIRA_BASE_URL", os.environ.get("JIRA_SERVER_URL", ""))
 
 # topK configurations to test
 TOPK_CONFIGS = [4, 8, 12]

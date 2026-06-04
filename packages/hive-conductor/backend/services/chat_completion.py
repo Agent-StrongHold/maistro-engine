@@ -281,7 +281,7 @@ PM_TOOLS = [
 ]
 
 
-_JIRA_BASE = "https://jira.example.com"
+_JIRA_BASE = os.environ.get("JIRA_SERVER_URL", "")
 
 
 def _jira_headers(jira_pat: str) -> dict[str, str]:
@@ -293,6 +293,8 @@ async def _tool_poll_jira(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured. Go to Credentials and add your Jira PAT."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     max_results = min(args.get("max_results", 10), 15)
@@ -333,6 +335,8 @@ async def _tool_search_jira(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     jql = args.get("jql") or ""
@@ -378,6 +382,8 @@ async def _tool_get_issue(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     issue_key = args.get("issue_key") or args.get("key") or ""
@@ -435,6 +441,8 @@ async def _tool_check_blockers(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     jql = (
@@ -507,7 +515,9 @@ async def _tool_search_confluence(
         return {"error": "query is required"}
     import httpx
 
-    confluence_base = "https://wiki.example.com"
+    confluence_base = os.environ.get("CONFLUENCE_SERVER_URL", "")
+    if not confluence_base:
+        return {"error": "CONFLUENCE_SERVER_URL not configured"}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(

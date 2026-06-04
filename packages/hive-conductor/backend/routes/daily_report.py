@@ -56,7 +56,7 @@ def _use_secret(user_id: str, provider_id: str) -> str | None:
 
 
 async def _poll_jira(user_id: str) -> dict[str, Any]:
-    """Poll MAISTRO Jira project — same path as chat tools."""
+    """Poll Jira project — same path as chat tools."""
     pat = _use_secret(user_id, "atlassian_server_jira")
     if not pat:
         pat = _use_secret(user_id, "jira") or _use_secret(user_id, "atlassian_rovo_mcp")
@@ -68,11 +68,19 @@ async def _poll_jira(user_id: str) -> dict[str, Any]:
             "issues": [],
         }
 
+    jira_server_url = os.environ.get("JIRA_SERVER_URL", "")
+    if not jira_server_url:
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "issues": [],
+        }
+
     jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(
-                "https://jira.example.com/rest/api/2/search",
+                f"{jira_server_url}/rest/api/2/search",
                 params={
                     "jql": jql,
                     "maxResults": 15,
@@ -321,17 +329,22 @@ async def _jira_section_via_dag(user_id: str) -> dict[str, Any]:
             "status": "no_pat",
             "detail": "Add your Jira PAT to see updates",
             "credential_id": "atlassian_server_jira",
-            "help_url": (
-                "https://jira.example.com/secure/ViewProfile.jspa"
-                "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
-            ),
             "issues": [],
             "source": "dag:daily-status",
         }
 
     # Decide on flavor + base from which credential the store provided.
     flavor = "server"
-    base_url = "https://jira.example.com"
+    base_url = os.environ.get("JIRA_SERVER_URL", "")
+    if not base_url and not (
+        _has_credential(user_id, "jira") or _has_credential(user_id, "atlassian_rovo_mcp")
+    ):
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "issues": [],
+            "source": "dag:daily-status",
+        }
     if _has_credential(user_id, "jira") or _has_credential(user_id, "atlassian_rovo_mcp"):
         cloud_site = os.environ.get("ATLASSIAN_SITE_URL", "").strip().rstrip("/")
         if cloud_site:
@@ -379,7 +392,7 @@ async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
     """
     uid = _user_id(request)
     pat = _use_secret(uid, "atlassian_server_jira")
-    base_url = "https://jira.example.com"
+    base_url = os.environ.get("JIRA_SERVER_URL", "")
     flavor = "server"
     if not pat:
         pat = _use_secret(uid, "jira") or _use_secret(uid, "atlassian_rovo_mcp")
@@ -389,6 +402,12 @@ async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
             flavor = "cloud"
         else:
             return {"status": "no_pat", "projects": []}
+    if not base_url:
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "projects": [],
+        }
 
     api_path = "/rest/api/2/project" if flavor == "server" else "/rest/api/3/project/search"
     headers = {"Authorization": f"Bearer {pat}"} if flavor == "server" else {}

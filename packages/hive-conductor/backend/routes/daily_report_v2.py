@@ -34,11 +34,20 @@ async def _fetch_jira(user_id: str) -> dict[str, Any]:
     if not pat:
         return {"status": "no_pat", "count": 0, "issues": []}
 
+    jira_server_url = os.environ.get("JIRA_SERVER_URL", "")
+    if not jira_server_url:
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "count": 0,
+            "issues": [],
+        }
+
     jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(
-                "https://jira.example.com/rest/api/2/search",
+                f"{jira_server_url}/rest/api/2/search",
                 params={
                     "jql": jql,
                     "maxResults": 15,

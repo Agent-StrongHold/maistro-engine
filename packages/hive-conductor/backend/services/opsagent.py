@@ -18,7 +18,7 @@ import httpx
 
 logger = logging.getLogger("hive.opsagent")
 
-OPSAGENT_BASE = os.environ.get("OPSAGENT_URL", "https://opsagent.example.com/api/v1")
+OPSAGENT_BASE = os.environ.get("OPSAGENT_URL", "")
 
 
 def _headers() -> dict[str, str]:
