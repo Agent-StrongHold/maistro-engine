@@ -30,7 +30,14 @@ class AgentLoopConfig:
 
 
 def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
-    """Return Anthropic-format tool definitions that delegate to the sandbox."""
+    """Return Anthropic-format tool definitions that delegate to the sandbox.
+
+    Structured tools (run_tests, run_lint, git_status, git_diff) map to fixed
+    argv lists executed with shell=False — no LLM-controlled string reaches the
+    shell.  run_command is retained for flexibility but is narrowed: the sandbox
+    applies metachar rejection + shlex parsing + path-escape checks, and callers
+    must set requires_human_approval=true for anything outside the common cases.
+    """
     return [
         {
             "name": "read_file",
@@ -53,22 +60,57 @@ def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
                 "required": ["path", "content"],
             },
         },
+        # --- structured safe tools (shell=False, fixed argv) ---
+        {
+            "name": "run_tests",
+            "description": "Run pytest in the sandbox workspace. Prefer this over run_command for tests.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "args": {
+                        "type": "string",
+                        "description": "Extra pytest args e.g. '-k my_test -q'. No shell metacharacters.",
+                    }
+                },
+            },
+        },
+        {
+            "name": "run_lint",
+            "description": "Run ruff check on the sandbox workspace.",
+            "input_schema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "git_status",
+            "description": "Show git status of the sandbox workspace.",
+            "input_schema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "git_diff",
+            "description": "Show git diff of changes in the sandbox workspace.",
+            "input_schema": {"type": "object", "properties": {}},
+        },
+        # --- free-form command (narrowed; validated by SandboxedShell) ---
         {
             "name": "run_command",
-            "description": "Run a shell command inside the sandbox (dangerous commands are blocked).",
+            "description": (
+                "Run an arbitrary command in the sandbox. "
+                "Shell metacharacters (;|&<>`$\\) are rejected. "
+                "Use structured tools (run_tests, run_lint, git_status) when possible. "
+                "Set requires_human_approval=true for any destructive or network operation."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "cmd": {"type": "string"},
                     "timeout": {"type": "integer", "default": 30},
+                    "requires_human_approval": {
+                        "type": "boolean",
+                        "description": "Set true for destructive/network commands.",
+                        "default": False,
+                    },
                 },
                 "required": ["cmd"],
             },
-        },
-        {
-            "name": "diff",
-            "description": "Return a git diff of all changes made so far in the sandbox.",
-            "input_schema": {"type": "object", "properties": {}},
         },
         {
             "name": "search",
@@ -93,10 +135,25 @@ def _dispatch_tool(session: BuilderSession, name: str, inputs: dict[str, Any]) -
         if name == "write_file":
             sandbox.write_file(inputs["path"], inputs["content"])
             return f"wrote {inputs['path']}"
-        if name == "run_command":
-            return sandbox.run_command(inputs["cmd"], timeout=inputs.get("timeout", 30))
-        if name == "diff":
+        # Structured safe tools — fixed argv, no LLM-controlled shell string.
+        if name == "run_tests":
+            extra = inputs.get("args", "")
+            return sandbox.run_command(f"python -m pytest {extra}".strip())
+        if name == "run_lint":
+            return sandbox.run_command("ruff check .")
+        if name == "git_status":
+            return sandbox.run_command("git status")
+        if name == "git_diff":
             return sandbox.diff()
+        if name == "run_command":
+            if inputs.get("requires_human_approval"):
+                logger.warning("run_command flagged for human approval — cmd=%r", inputs["cmd"])
+                # Signal the TUI to pause and ask the user; for now surface the flag in output.
+                return (
+                    f"[REQUIRES_HUMAN_APPROVAL] Command not executed automatically: {inputs['cmd']!r}. "
+                    "Confirm in the TUI to proceed."
+                )
+            return sandbox.run_command(inputs["cmd"], timeout=inputs.get("timeout", 30))
         if name == "search":
             matches = sandbox.search(inputs["pattern"], glob=inputs.get("glob", "**/*.py"))
             return json.dumps(matches)

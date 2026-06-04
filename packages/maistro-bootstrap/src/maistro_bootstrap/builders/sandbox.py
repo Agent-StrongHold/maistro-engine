@@ -50,13 +50,15 @@ _BLOCKED_PATTERNS = (
     ":(){",  # fork bomb prefix
 )
 
-# Minimal environment passed to every subprocess — never inherit os.environ
-# into LLM-authored commands to avoid leaking API keys, tokens, etc.
+# Minimal environment for every agent-controlled subprocess.
+# No os.environ spread — never leak API keys, tokens, or cloud credentials.
+# No HOME — setting HOME to the sandbox root creates a $HOME/.. escape primitive.
 _SAFE_ENV = {
     "PATH": "/usr/local/bin:/usr/bin:/bin",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
     "TERM": "dumb",
+    "PYTHONDONTWRITEBYTECODE": "1",
 }
 
 
@@ -113,16 +115,16 @@ class SandboxedShell:
         self._check_paths(tokens)
 
         try:
-            result = subprocess.run(
-                cmd,
-                shell=True,  # nosec B602 — shell=True is intentional; injection
-                # is prevented above by metachar rejection + shlex parse
+            # shell=False + argv list: the safest possible subprocess invocation.
+            # Metachar rejection + shlex parse above ensure `tokens` is clean.
+            result = subprocess.run(  # nosec B603
+                tokens,
+                shell=False,
                 cwd=self._root,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                # Minimal env — never inherit os.environ into LLM-authored commands.
-                env={**_SAFE_ENV, "HOME": str(self._root)},
+                env=_SAFE_ENV,
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeoutError(f"Command timed out after {timeout}s: {cmd!r}") from exc
