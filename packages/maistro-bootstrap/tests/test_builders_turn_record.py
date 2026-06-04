@@ -143,3 +143,95 @@ def test_outcome_summary_approval_turns_counted() -> None:
     summary = TurnOutcomeSummary.from_records("s", records)
     assert summary.approval_turns == 2
     assert summary.successful_turns == 1
+
+
+# ---------------------------------------------------------------------------
+# quality_delta with non-numeric values
+# ---------------------------------------------------------------------------
+
+
+def test_quality_delta_silently_ignores_string_values() -> None:
+    # Non-numeric before/after values must not appear in the delta dict.
+    record = _record(
+        quality_before={"coverage_pct": "high", "mutation": 70.0},
+        quality_after={"coverage_pct": "low", "mutation": 85.0},
+    )
+    delta = record.quality_delta
+
+    assert "coverage_pct" not in delta
+    assert delta["mutation"] == pytest.approx(15.0)
+
+
+def test_quality_delta_ignores_bool_values() -> None:
+    # bool is a subclass of int in Python; booleans should be treated as numeric.
+    # Verify they do not break the method regardless.
+    record = _record(
+        quality_before={"tests_passed": True, "coverage_pct": 80.0},
+        quality_after={"tests_passed": True, "coverage_pct": 90.0},
+    )
+    delta = record.quality_delta
+
+    # coverage_pct must be present; tests_passed handling is implementation-defined.
+    assert delta["coverage_pct"] == pytest.approx(10.0)
+
+
+def test_quality_delta_empty_when_both_sides_are_strings() -> None:
+    record = _record(
+        quality_before={"grade": "B"},
+        quality_after={"grade": "A"},
+    )
+
+    assert record.quality_delta == {}
+
+
+# ---------------------------------------------------------------------------
+# from_records() with empty list
+# ---------------------------------------------------------------------------
+
+
+def test_from_records_with_empty_list_returns_zero_success_rate() -> None:
+    summary = TurnOutcomeSummary.from_records("empty-session", [])
+
+    assert summary.success_rate == 0.0
+    assert summary.total_turns == 0
+
+
+def test_from_records_with_empty_list_returns_zero_approval_count() -> None:
+    summary = TurnOutcomeSummary.from_records("empty-session", [])
+
+    assert summary.approval_turns == 0
+
+
+def test_from_records_with_empty_list_preserves_session_id() -> None:
+    summary = TurnOutcomeSummary.from_records("my-session", [])
+
+    assert summary.session_id == "my-session"
+    assert summary.stages_visited == []
+    assert summary.quality_deltas == {}
+
+
+# ---------------------------------------------------------------------------
+# TurnRecord with negative elapsed_seconds
+# ---------------------------------------------------------------------------
+
+
+def test_turn_record_accepts_negative_elapsed_seconds() -> None:
+    # Pydantic has no range validator on elapsed_seconds; negative values are
+    # stored as-is. This test pins the actual behavior so any future validation
+    # addition is a deliberate, visible change.
+    record = TurnRecord(
+        turn_id="t_neg",
+        session_id="s_neg",
+        role="architect",
+        model="test-model",
+        stage="spec",
+        elapsed_seconds=-1.5,
+    )
+
+    assert record.elapsed_seconds == -1.5
+
+
+def test_turn_record_zero_elapsed_seconds_is_valid() -> None:
+    record = _record(elapsed=0.0)
+
+    assert record.elapsed_seconds == 0.0

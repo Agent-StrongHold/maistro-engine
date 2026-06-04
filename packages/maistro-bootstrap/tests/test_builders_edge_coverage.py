@@ -165,3 +165,34 @@ def test_spec_session_normalizes_spec_and_todo_context() -> None:
         {"spec": "Builders TUI"},
         {"spec": "Builders TUI"},
     ]
+
+
+def test_sandbox_search_caps_results_at_fifty(tmp_path: Path) -> None:
+    sandbox = LocalWorktreeSandbox(tmp_path)
+    # Create 60 files each containing the search term
+    for i in range(60):
+        (tmp_path / f"file_{i:03d}.txt").write_text("needle", encoding="utf-8")
+
+    results = sandbox.search("needle")
+
+    assert len(results) == 50
+
+
+def test_sandbox_read_file_raises_for_nonexistent_path(tmp_path: Path) -> None:
+    sandbox = LocalWorktreeSandbox(tmp_path)
+
+    with pytest.raises(FileNotFoundError):
+        sandbox.read_file("does_not_exist.txt")
+
+
+def test_sandbox_search_skips_binary_files_without_crashing(tmp_path: Path) -> None:
+    sandbox = LocalWorktreeSandbox(tmp_path)
+    # Write a binary file that will trigger UnicodeDecodeError on UTF-8 read
+    (tmp_path / "binary.bin").write_bytes(bytes(range(256)))
+    # Write a normal text file that contains the query
+    (tmp_path / "match.txt").write_text("target", encoding="utf-8")
+
+    results = sandbox.search("target")
+
+    # Binary file did not crash; only the text match is returned
+    assert results == ["match.txt"]

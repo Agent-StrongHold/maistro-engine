@@ -111,7 +111,7 @@ class BuildersWorkspaceSandbox:
     """Adapter around maistro-core's SPEC-200 worktree safety layer."""
 
     def __init__(self, repo_root: Path, *, base_ref: str = "HEAD") -> None:
-        from maistro.builders.workspace import (  # type: ignore[import-untyped]
+        from maistro.builders.workspace import (
             GitWorktreeWorkspace,
             WorkspaceContext,
         )

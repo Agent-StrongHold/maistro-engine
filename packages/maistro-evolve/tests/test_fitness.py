@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from maistro_evolve.fitness import (
     _FITNESS_WEIGHTS,
     _HARD_GATE_THRESHOLDS,
@@ -165,3 +167,79 @@ class TestComputeFitness:
         f_no = compute_fitness(g_no_elo, [g_no_elo])
         f_yes = compute_fitness(g_with_elo, [g_with_elo])
         assert f_yes.total > f_no.total
+
+
+class TestEloBonus:
+    def test_zero_elo(self):
+        from maistro_evolve.fitness import _elo_bonus
+
+        g = _genome(harness_params={"avg_elo": 0.0})
+        assert _elo_bonus(g) == 0.0
+
+    def test_negative_elo(self):
+        from maistro_evolve.fitness import _elo_bonus
+
+        g = _genome(harness_params={"avg_elo": -100.0})
+        assert _elo_bonus(g) == 0.0
+
+    def test_1000_elo_is_zero(self):
+        from maistro_evolve.fitness import _elo_bonus
+
+        g = _genome(harness_params={"avg_elo": 1000.0})
+        assert _elo_bonus(g) == pytest.approx(0.0)
+
+    def test_1400_elo_is_one(self):
+        from maistro_evolve.fitness import _elo_bonus
+
+        g = _genome(harness_params={"avg_elo": 1400.0})
+        assert _elo_bonus(g) == pytest.approx(1.0)
+
+    def test_1800_elo_clamped_to_one(self):
+        from maistro_evolve.fitness import _elo_bonus
+
+        g = _genome(harness_params={"avg_elo": 1800.0})
+        assert _elo_bonus(g) == 1.0
+
+    def test_1200_elo_is_half(self):
+        from maistro_evolve.fitness import _elo_bonus
+
+        g = _genome(harness_params={"avg_elo": 1200.0})
+        assert _elo_bonus(g) == pytest.approx(0.5)
+
+    def test_no_elo_param(self):
+        from maistro_evolve.fitness import _elo_bonus
+
+        g = _genome(harness_params={})
+        assert _elo_bonus(g) == 0.0
+
+
+class TestDiversityBonus:
+    def test_single_genome_returns_zero(self):
+        from maistro_evolve.fitness import _diversity_bonus
+
+        g = _genome()
+        assert _diversity_bonus(g, [g]) == 0.0
+
+    def test_two_different_genomes_positive(self):
+        from maistro_evolve.fitness import _diversity_bonus
+
+        scores = dict.fromkeys(_HARD_GATE_THRESHOLDS, 0.5)
+        g1 = _genome(eval_scores=scores)
+        g2 = _genome(eval_scores=scores)
+        bonus = _diversity_bonus(g1, [g1, g2])
+        assert bonus >= 0.0
+
+
+class TestHardGateBoundary:
+    def test_score_exactly_at_threshold_passes(self):
+        scores = dict(_HARD_GATE_THRESHOLDS)
+        g = _genome(eval_scores=scores)
+        passed, failures = _check_hard_gate(g)
+        assert passed
+        assert failures == []
+
+    def test_score_just_below_threshold_fails(self):
+        scores = {k: v - 0.001 for k, v in _HARD_GATE_THRESHOLDS.items()}
+        g = _genome(eval_scores=scores)
+        passed, _failures = _check_hard_gate(g)
+        assert not passed

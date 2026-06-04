@@ -286,3 +286,96 @@ class TestVaultMutationPrefixRefresh:
         after = vault.credential_prefixes()
         assert len(after) > len(before)
         assert elapsed_ms < 100
+
+
+class TestParseSecrets:
+    def test_key_value_with_spaces(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        result = _parse_secrets("db_host = localhost")
+        assert result == {"db_host": "localhost"}
+
+    def test_key_value_without_spaces(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        result = _parse_secrets("db_host=localhost")
+        assert result == {"db_host": "localhost"}
+
+    def test_spaces_preferred_over_bare_equals(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        result = _parse_secrets("key = value=extra")
+        assert result == {"key": "value=extra"}
+
+    def test_bare_value(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        result = _parse_secrets("my_secret_token")
+        assert result == {"my_secret_token": "my_secret_token"}
+
+    def test_comment_lines_skipped(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        result = _parse_secrets("# this is a comment\ndb_host = localhost")
+        assert result == {"db_host": "localhost"}
+
+    def test_blank_lines_skipped(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        result = _parse_secrets("\n\ndb_host = localhost\n\n")
+        assert result == {"db_host": "localhost"}
+
+    def test_multiple_secrets(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        result = _parse_secrets("db_host = localhost\napi_key = secret123\nbare_token")
+        assert result == {
+            "db_host": "localhost",
+            "api_key": "secret123",
+            "bare_token": "bare_token",
+        }
+
+    def test_empty_input(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        assert _parse_secrets("") == {}
+
+    def test_only_comments_and_blanks(self) -> None:
+        from maistro.vault import _parse_secrets
+
+        assert _parse_secrets("# comment\n\n# another\n") == {}
+
+
+class TestSerializeSecrets:
+    def test_key_value_pair(self) -> None:
+        from maistro.vault import _serialize_secrets
+
+        result = _serialize_secrets({"db_host": "localhost"})
+        assert result == "db_host = localhost\n"
+
+    def test_bare_value(self) -> None:
+        from maistro.vault import _serialize_secrets
+
+        result = _serialize_secrets({"token": "token"})
+        assert result == "token\n"
+
+    def test_empty_dict(self) -> None:
+        from maistro.vault import _serialize_secrets
+
+        assert _serialize_secrets({}) == ""
+
+    def test_multiple_entries(self) -> None:
+        from maistro.vault import _serialize_secrets
+
+        result = _serialize_secrets({"key1": "val1", "token": "token"})
+        assert "key1 = val1" in result
+        assert "token" in result
+        assert "token = token" not in result
+
+    def test_round_trip(self) -> None:
+        from maistro.vault import _parse_secrets, _serialize_secrets
+
+        original = {"db_host": "localhost", "api_key": "secret123", "bare_val": "bare_val"}
+        serialized = _serialize_secrets(original)
+        parsed = _parse_secrets(serialized)
+        assert parsed == original

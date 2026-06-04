@@ -108,7 +108,6 @@ class ResponsesAPICallable:
         self._api_key = api_key or _detect_api_key()
         self._base_url = base_url or _detect_base_url()
         self._previous_response_id: str | None = None
-        self._tools = _builder_tools()
 
     @property
     def previous_response_id(self) -> str | None:

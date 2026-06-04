@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import typer
-import yaml  # type: ignore[import-untyped]
+import yaml
 from rich.console import Console
 
 from maistro_bootstrap.builders.cli import register_builders_app

@@ -53,6 +53,135 @@ class TestEstimateComplexityContract:
         )
 
 
+class TestAutomationMinTier:
+    def test_short_command_returns_base_tier(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        assert automation_min_tier("turn on lights", "small") == "small"
+
+    def test_short_with_filler_words(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        assert automation_min_tier("please turn on the lights", "small") == "small"
+
+    def test_long_command_upgrades_small_to_medium(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        result = automation_min_tier(
+            "turn on the kitchen lights and set the thermostat to seventy two degrees",
+            "small",
+        )
+        assert result == "medium"
+
+    def test_long_command_keeps_large(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        result = automation_min_tier(
+            "turn on the kitchen lights and set the thermostat to seventy two degrees",
+            "large",
+        )
+        assert result == "large"
+
+    def test_long_command_keeps_medium(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        result = automation_min_tier(
+            "turn on the kitchen lights and set the thermostat to seventy two degrees",
+            "medium",
+        )
+        assert result == "medium"
+
+    def test_exactly_three_meaningful_words(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        assert automation_min_tier("turn on lights", "small") == "small"
+
+    def test_four_meaningful_words_upgrades(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        result = automation_min_tier("turn on kitchen lights", "small")
+        assert result == "medium"
+
+    def test_filler_words_filtered(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        result = automation_min_tier("can you please just turn on the lights ok", "small")
+        assert result == "small"
+
+    def test_unknown_base_tier_treated_as_zero(self) -> None:
+        from maistro.classifier.complexity import automation_min_tier
+
+        result = automation_min_tier(
+            "turn on the kitchen lights and set thermostat high and lock the door",
+            "nonexistent",
+        )
+        assert result == "medium"
+
+
+class TestEstimateComplexityBoundary:
+    def test_14_words_is_simple(self) -> None:
+        text = " ".join(["word"] * 14)
+        assert estimate_complexity(text, "chat") == "simple"
+
+    def test_15_words_not_simple_without_signals(self) -> None:
+        text = " ".join(["word"] * 15)
+        result = estimate_complexity(text, "chat")
+        assert result == "simple"
+
+    def test_15_words_code_is_moderate(self) -> None:
+        text = " ".join(["word"] * 15)
+        result = estimate_complexity(text, "code")
+        assert result == "moderate"
+
+    def test_200_words_is_complex(self) -> None:
+        text = " ".join(["word"] * 201)
+        assert estimate_complexity(text, "chat") == "complex"
+
+    def test_80_words_moderate_without_signals(self) -> None:
+        text = " ".join(["word"] * 81)
+        assert estimate_complexity(text, "chat") == "moderate"
+
+    def test_code_task_type_bumps_to_moderate(self) -> None:
+        text = " ".join(["word"] * 20)
+        assert estimate_complexity(text, "code") == "moderate"
+
+    def test_reasoning_task_type_bumps_to_moderate(self) -> None:
+        text = " ".join(["word"] * 20)
+        assert estimate_complexity(text, "reasoning") == "moderate"
+
+
+class TestInferPriorityCoverage:
+    def test_critical_keyword(self) -> None:
+        assert infer_priority("this is a critical issue") == "P0"
+
+    def test_emergency_keyword(self) -> None:
+        assert infer_priority("emergency server down") == "P0"
+
+    def test_asap_keyword(self) -> None:
+        assert infer_priority("need this asap") == "P0"
+
+    def test_down_keyword(self) -> None:
+        assert infer_priority("system is down") == "P0"
+
+    def test_deadline_keyword(self) -> None:
+        assert infer_priority("deadline is tomorrow") == "P1"
+
+    def test_demo_keyword(self) -> None:
+        assert infer_priority("demo is today") == "P1"
+
+    def test_client_keyword(self) -> None:
+        assert infer_priority("client is waiting") == "P1"
+
+    def test_just_curious_keyword(self) -> None:
+        assert infer_priority("just curious about this") == "P4"
+
+    def test_when_you_get_a_chance(self) -> None:
+        assert infer_priority("fix this when you get a chance") == "P4"
+
+    def test_fyi_keyword(self) -> None:
+        assert infer_priority("fyi the report is done") == "P4"
+
+
 class TestInferPriorityContract:
     def test_urgent_is_p0(self) -> None:
         assert infer_priority("this is urgent and broken") == "P0"

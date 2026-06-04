@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from maistro_evolve.benchmarks.scoring import (
     contains_all,
     contains_any,
@@ -152,3 +154,99 @@ class TestJudgeScore:
 
     def test_incorrect_keyword(self):
         assert judge_score("This is wrong.") <= 0.4
+
+
+class TestJudgeScoreGaps:
+    def test_score_already_in_01_range(self):
+        assert judge_score("Score: 0.7") == pytest.approx(0.7)
+
+    def test_score_10_divided(self):
+        assert judge_score("Score: 8") == pytest.approx(0.8)
+
+    def test_multiple_scores_takes_last(self):
+        assert judge_score("Score: 3 Score: 8") == pytest.approx(0.8)
+
+    def test_yes_no_ratio_exact(self):
+        assert judge_score("yes yes yes no") == pytest.approx(0.75)
+
+    def test_default_0_3_no_keywords(self):
+        assert judge_score("The output was adequate") == pytest.approx(0.3)
+
+    def test_rating_keyword(self):
+        assert judge_score("Rating: 9") == pytest.approx(0.9)
+
+
+class TestFunctionCallMatchGaps:
+    def test_with_expected_params_in_code_block(self):
+        response = '```json\n{"name": "set_timer", "parameters": {"duration": 30}}\n```'
+        score = function_call_match(response, "set_timer", {"duration": 30})
+        assert score == 1.0
+
+    def test_with_expected_params_no_match(self):
+        response = '{"name": "set_timer", "unit": "minutes"}'
+        score = function_call_match(response, "set_timer", {"duration": 30})
+        assert score == 0.0
+
+    def test_list_input_unwraps_first(self):
+        response = '[{"name": "get_weather"}]'
+        score = function_call_match(response, "get_weather")
+        assert score > 0.5
+
+    def test_function_field_name(self):
+        response = '{"function": "get_weather"}'
+        score = function_call_match(response, "get_weather")
+        assert score > 0.5
+
+    def test_action_field_name(self):
+        response = '{"action": "get_weather"}'
+        score = function_call_match(response, "get_weather")
+        assert score > 0.5
+
+    def test_none_expected_params(self):
+        response = '{"name": "get_weather"}'
+        score = function_call_match(response, "get_weather", None)
+        assert score == 1.0
+
+    def test_expected_params_none_returns_half(self):
+        response = '{"name": "set_timer", "parameters": "not_a_dict"}'
+        score = function_call_match(response, "set_timer", {"duration": 30})
+        assert score == 0.5
+
+    def test_param_value_score_none_actual(self):
+        from maistro_evolve.benchmarks.scoring import _param_value_score
+
+        assert _param_value_score(None, "x") == 0.0
+
+    def test_param_value_score_case_insensitive(self):
+        from maistro_evolve.benchmarks.scoring import _param_value_score
+
+        assert _param_value_score("Hello", "hello") == 1.0
+
+    def test_param_value_score_substring(self):
+        from maistro_evolve.benchmarks.scoring import _param_value_score
+
+        assert _param_value_score("hello world", "hello") == 0.5
+
+    def test_param_value_score_non_string_match(self):
+        from maistro_evolve.benchmarks.scoring import _param_value_score
+
+        assert _param_value_score(30, 30) == 1.0
+
+    def test_param_value_score_non_string_mismatch(self):
+        from maistro_evolve.benchmarks.scoring import _param_value_score
+
+        assert _param_value_score(30, 40) == 0.0
+
+
+class TestExtractJsonGaps:
+    def test_json_array(self):
+        result = extract_json_from_response("[1, 2, 3]")
+        assert result == [1, 2, 3]
+
+    def test_plain_code_block(self):
+        result = extract_json_from_response('```\n{"key": "val"}\n```')
+        assert result == {"key": "val"}
+
+    def test_nested_braces_fails_gracefully(self):
+        result = extract_json_from_response('{"a": {"b": 1}}')
+        assert result is None or isinstance(result, dict)

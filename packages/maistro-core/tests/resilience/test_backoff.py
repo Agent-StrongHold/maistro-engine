@@ -69,3 +69,18 @@ class TestComputeBackoff:
         config = BackoffConfig()
         result = compute_backoff(1, config, retry_after=5.0)
         assert result == 5.0
+
+    def test_retry_after_exactly_equals_max_delay(self):
+        config = BackoffConfig(base_delay=1.0, max_delay=30.0)
+        result = compute_backoff(1, config, retry_after=30.0)
+        assert result == 30.0
+
+    def test_custom_base_delay(self):
+        result = jittered_backoff(1, base_delay=2.0, max_delay=60.0, jitter_factor=0.0)
+        assert result == 2.0
+        result2 = jittered_backoff(2, base_delay=2.0, max_delay=60.0, jitter_factor=0.0)
+        assert result2 == 4.0
+
+    def test_attempt_5_exponential(self):
+        result = jittered_backoff(5, base_delay=1.0, max_delay=60.0, jitter_factor=0.0)
+        assert result == 16.0

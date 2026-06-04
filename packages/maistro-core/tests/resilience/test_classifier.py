@@ -290,3 +290,25 @@ class TestProviderMetadata:
         err = _HttpError("Server error", 500)
         r = classify_error(err, context_usage_pct=0.75)
         assert r.context_usage_pct == 0.75
+
+
+class TestMissingStatusCodes:
+    def test_504_is_retryable(self):
+        err = _HttpError("Gateway Timeout", 504)
+        r = classify_error(err)
+        assert r.retryable is True
+
+    def test_403_model_not_found(self):
+        err = _HttpError("model not found or access denied", 403)
+        r = classify_error(err)
+        assert r.category == ErrorCategory.MODEL_NOT_FOUND
+
+    def test_401_model_not_found(self):
+        err = _HttpError("model does not have access", 401)
+        r = classify_error(err)
+        assert r.category == ErrorCategory.MODEL_NOT_FOUND
+
+    def test_403_no_model_keyword_is_auth(self):
+        err = _HttpError("Forbidden", 403)
+        r = classify_error(err)
+        assert r.category == ErrorCategory.AUTH

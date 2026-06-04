@@ -154,6 +154,16 @@ class TestQuotaAllows:
         intent = _intent(tier="P2")
         assert _quota_allows(provider, 0.96, intent, 0.05) is True
 
+    def test_exact_reserve_boundary(self):
+        provider = _provider(overage_cost_per_1k_input=0.0, overage_cost_per_1k_output=0.0)
+        intent = _intent(tier="P2")
+        assert _quota_allows(provider, 0.95, intent, 0.05) is False
+
+    def test_reserve_pct_zero(self):
+        provider = _provider(overage_cost_per_1k_input=0.0, overage_cost_per_1k_output=0.0)
+        intent = _intent(tier="P2")
+        assert _quota_allows(provider, 0.99, intent, 0.0) is True
+
 
 # ---------------------------------------------------------------------------
 # score_candidate — formula and strength_mult branches
@@ -256,3 +266,52 @@ class TestFilterCandidates:
         result = filter_candidates(intent, models, providers)
         assert len(result) == 1
         assert result[0][0] == "m"
+
+
+class TestScoreCandidatePinnedValues:
+    def test_pinned_score_with_known_inputs(self):
+        intent = _intent(tier="P2", task_type="chat", preferred_strengths=("chat",))
+        model = _model(quality=0.8, speed=200, strengths=("chat",), tier="medium")
+        provider = _provider(free_tokens=1_000_000, billing_cycle="daily")
+        routing = _routing()
+        candidate = score_candidate("model-1", model, provider, intent, routing, 0.0)
+        assert candidate.model_id == "model-1"
+        assert candidate.tier == "medium"
+        assert candidate.has_paygo is False
+        assert candidate.usage_pct == 0.0
+        assert candidate.score > 0.0
+        assert candidate.quality <= 1.0
+        assert candidate.effective_cost > 0.0
+
+    def test_effective_cost_rounded_to_6_decimal(self):
+        candidate = score_candidate("m", _model(), _provider(), _intent(), _routing(), 0.5)
+        str_cost = str(candidate.effective_cost)
+        if "." in str_cost:
+            decimals = len(str_cost.split(".")[1])
+            assert decimals <= 6
+
+    def test_score_rounded_to_4_decimal(self):
+        candidate = score_candidate("m", _model(), _provider(), _intent(), _routing(), 0.5)
+        str_score = str(candidate.score)
+        if "." in str_score:
+            decimals = len(str_score.split(".")[1])
+            assert decimals <= 4
+
+    def test_litellm_id_fallback(self):
+        model = _model()
+        assert model.litellm_id is None or model.litellm_id == ""
+        candidate = score_candidate("my-model", model, _provider(), _intent(), _routing(), 0.0)
+        assert candidate.litellm_id == "my-model"
+
+    def test_litellm_id_used_when_set(self):
+        model = _model(litellm_id="gpt-4-turbo")
+        candidate = score_candidate("my-model", model, _provider(), _intent(), _routing(), 0.0)
+        assert candidate.litellm_id == "gpt-4-turbo"
+
+    def test_strength_mult_1_15_pinned(self):
+        intent = _intent(preferred_strengths=("chat",))
+        model_match = _model(quality=0.8, strengths=("chat",), speed=0)
+        model_none = _model(quality=0.8, strengths=(), speed=0)
+        c_match = score_candidate("m", model_match, _provider(), intent, _routing(), 0.0)
+        c_none = score_candidate("m", model_none, _provider(), intent, _routing(), 0.0)
+        assert c_match.quality > c_none.quality

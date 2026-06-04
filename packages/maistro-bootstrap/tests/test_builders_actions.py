@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import pytest
+from pydantic import ValidationError
 
-from maistro_bootstrap.builders.actions import ActionRequest
+from maistro_bootstrap.builders.actions import ActionRequest, ActionResult
 from maistro_bootstrap.builders.session import (
     MAX_ACTION_OUTPUT_CHARS,
     BuilderSession,
@@ -49,9 +50,13 @@ def test_session_reads_files_and_runs_commands() -> None:
     sandbox = FakeSandbox()
     session = BuilderSession(sandbox=sandbox)
 
-    read = session.apply_action(ActionRequest.from_json('{"action":"read_file","args":{"path":"README.md"}}'))
+    read = session.apply_action(
+        ActionRequest.from_json('{"action":"read_file","args":{"path":"README.md"}}')
+    )
     run = session.apply_action(
-        ActionRequest.from_json('{"action":"run_command","args":{"argv":["pytest","-q"],"timeout":5}}')
+        ActionRequest.from_json(
+            '{"action":"run_command","args":{"argv":["pytest","-q"],"timeout":5}}'
+        )
     )
 
     assert read.output == "hello"
@@ -229,3 +234,65 @@ def test_compact_preserves_short_output_and_truncates_long_output() -> None:
     assert compacted.startswith("a" * (MAX_ACTION_OUTPUT_CHARS // 2))
     assert "\n[...output truncated...]\n" in compacted
     assert compacted.endswith("a" * (MAX_ACTION_OUTPUT_CHARS // 2))
+
+
+# ---------------------------------------------------------------------------
+# ActionResult field tests
+# ---------------------------------------------------------------------------
+
+
+def test_action_result_fields_are_accessible() -> None:
+    result = ActionResult(status="ok", output="all good", metadata={"lines": 42})
+
+    assert result.status == "ok"
+    assert result.output == "all good"
+    assert result.metadata == {"lines": 42}
+
+
+def test_action_result_metadata_defaults_to_empty_dict() -> None:
+    result = ActionResult(status="error", output="boom")
+
+    assert result.metadata == {}
+
+
+def test_action_result_needs_approval_status_is_valid() -> None:
+    result = ActionResult(status="needs_approval", output="waiting")
+
+    assert result.status == "needs_approval"
+
+
+# ---------------------------------------------------------------------------
+# ActionRequest.from_json edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_from_json_raises_on_non_dict_json() -> None:
+    # A JSON list is valid JSON but not a valid ActionRequest mapping.
+    with pytest.raises(ValueError):
+        ActionRequest.from_json("[1, 2, 3]")
+
+
+def test_from_json_raises_on_missing_action_key() -> None:
+    with pytest.raises(ValueError, match="action"):
+        ActionRequest.from_json('{"args": {}}')
+
+
+def test_from_json_raises_on_malformed_json_string() -> None:
+    with pytest.raises(ValueError, match="invalid builder action JSON"):
+        ActionRequest.from_json("{not valid json")
+
+
+# ---------------------------------------------------------------------------
+# ActionRequest args default
+# ---------------------------------------------------------------------------
+
+
+def test_action_request_args_defaults_to_empty_dict() -> None:
+    req = ActionRequest(action="search")
+
+    assert req.args == {}
+
+
+def test_action_request_with_none_args_raises_validation_error() -> None:
+    with pytest.raises((ValueError, ValidationError)):
+        ActionRequest(action="search", args=None)  # type: ignore[arg-type]
