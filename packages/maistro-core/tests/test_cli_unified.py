@@ -219,17 +219,12 @@ class TestCLI:
             or "no pending" in result.output.lower()
         )
 
-    def test_builders_list_empty(self) -> None:
+    def test_builders_launches_app(self) -> None:
         from maistro.cli import app
-        from maistro.cli._container.lifecycle import SessionLifecycle
 
-        fake = FakeRuntime()
-        with patch.object(
-            SessionLifecycle, "runtime", new_callable=lambda: property(lambda self: fake)
-        ):
-            result = runner.invoke(app, ["builders", "list"])
+        with patch("maistro.cli._builders._launch_app"):
+            result = runner.invoke(app, ["builders"])
             assert result.exit_code == 0
-            assert "no builder sessions" in result.output.lower()
 
     def test_launch_tui_placeholder(self) -> None:
         from maistro.cli import app
@@ -301,6 +296,7 @@ class TestRuntimeDetection:
             patch(
                 "maistro.cli._container.podman_runtime.PodmanRuntime.is_available",
                 return_value=False,
-            ),pytest.raises(RuntimeError, match="No container runtime")
+            ),
+            pytest.raises(RuntimeError, match="No container runtime"),
         ):
             detect_runtime()
