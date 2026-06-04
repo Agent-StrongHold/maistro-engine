@@ -116,7 +116,9 @@ def test_models_fallback_on_error(authed_client, monkeypatch: pytest.MonkeyPatch
 # --------------------------------------------------------------------------- #
 
 
-def test_providers_aggregates_spend_by_provider(authed_client, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_providers_aggregates_spend_by_provider(
+    authed_client, monkeypatch: pytest.MonkeyPatch
+) -> None:
     spend = [
         {
             "api_key": "abc",
@@ -124,8 +126,18 @@ def test_providers_aggregates_spend_by_provider(authed_client, monkeypatch: pyte
             "total_input_tokens": 100,
             "total_output_tokens": 200,
             "model_details": [
-                {"model": "gpt-4", "total_cost": 0.4, "total_input_tokens": 80, "total_output_tokens": 150},
-                {"model": "claude-3", "total_cost": 0.1, "total_input_tokens": 20, "total_output_tokens": 50},
+                {
+                    "model": "gpt-4",
+                    "total_cost": 0.4,
+                    "total_input_tokens": 80,
+                    "total_output_tokens": 150,
+                },
+                {
+                    "model": "claude-3",
+                    "total_cost": 0.1,
+                    "total_input_tokens": 20,
+                    "total_output_tokens": 50,
+                },
             ],
         }
     ]

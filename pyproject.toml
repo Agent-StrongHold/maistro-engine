@@ -45,6 +45,8 @@ dev = [
     "types-regex>=2024.5.15",
     "pillow>=11.0",
     "questionary>=2.0",
+    "aiosqlite>=0.20",
+    "hypothesis>=6.0",
 ]
 browser = ["playwright>=1.49"]
 scheduling = ["apscheduler>=3.11"]
@@ -72,6 +74,10 @@ bypass-selection = true
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+exclude = [
+    "packages/maistro-bootstrap/mutants",
+    "packages/maistro-evolve/mutants",
+]
 src = [
     "packages/maistro-core/src",
     "packages/maistro-server/src",

@@ -20,14 +20,16 @@ class FakeHttp:
 
 
 async def test_snapshot_maps_sections():
-    http = FakeHttp({
-        "timestamp": "2026-05-30T00:00:00Z",
-        "gpu": {"ok": True},
-        "storage": {"ok": True},
-        "docker": {"unhealthy": []},
-        "vms": [],
-        "services": {},
-    })
+    http = FakeHttp(
+        {
+            "timestamp": "2026-05-30T00:00:00Z",
+            "gpu": {"ok": True},
+            "storage": {"ok": True},
+            "docker": {"unhealthy": []},
+            "vms": [],
+            "services": {},
+        }
+    )
     mon = HostHealthMonitor(http=http)
     health = await mon.snapshot()
     assert set(health.resources) == {"gpu", "storage", "docker", "vms", "services"}
@@ -47,8 +49,11 @@ _REAL_FULL = {
     "gpu": {"status": "ok", "gpus": [{"name": "P40", "temp_c": 45}]},
     "storage": {"mounts": [], "zpool": "all pools are healthy", "snapraid_summary": ""},
     "docker": {
-        "total": 4, "running": 1,
-        "unhealthy": ["litellm"], "restarting": ["crashy"], "stopped": ["oldjob"],
+        "total": 4,
+        "running": 1,
+        "unhealthy": ["litellm"],
+        "restarting": ["crashy"],
+        "stopped": ["oldjob"],
         "containers": [
             {"name": "litellm", "status": "Up 2h (unhealthy)", "healthy": False},
             {"name": "crashy", "status": "Restarting (1) 5s ago", "healthy": False},
@@ -57,7 +62,10 @@ _REAL_FULL = {
         ],
     },
     "vms": {"vms": [{"vmid": "100", "name": "win", "status": "running"}], "lxcs": []},
-    "services": {"systemd": {"ollama": "active", "code-server@root": "failed"}, "conductor_stack": {}},
+    "services": {
+        "systemd": {"ollama": "active", "code-server@root": "failed"},
+        "conductor_stack": {},
+    },
 }
 
 
@@ -79,10 +87,15 @@ async def test_docker_section_degraded_when_unhealthy_or_restarting():
 
 
 async def test_docker_section_ok_when_only_stopped_or_healthy():
-    full = {"docker": {"stopped": ["oldjob"], "containers": [
-        {"name": "oldjob", "status": "Exited (0)", "healthy": False},
-        {"name": "good", "status": "Up 1d", "healthy": True},
-    ]}}
+    full = {
+        "docker": {
+            "stopped": ["oldjob"],
+            "containers": [
+                {"name": "oldjob", "status": "Exited (0)", "healthy": False},
+                {"name": "good", "status": "Up 1d", "healthy": True},
+            ],
+        }
+    }
     health = await HostHealthMonitor(http=FakeHttp(full)).snapshot()
     # stopped is intentional absence → not "degraded"
     assert health.resources["docker"].status == "ok"

@@ -8,15 +8,24 @@ Flow:
 
 from __future__ import annotations
 
+# mypy: disable-error-code="misc,untyped-decorator,unused-ignore"
 from pathlib import Path
 from typing import Any
 
-from textual import on, work
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, Input, Label, RichLog, Static
+from textual import on, work  # type: ignore[import-not-found]
+from textual.app import App, ComposeResult  # type: ignore[import-not-found]
+from textual.binding import Binding  # type: ignore[import-not-found]
+from textual.containers import Horizontal, Vertical  # type: ignore[import-not-found]
+from textual.screen import ModalScreen  # type: ignore[import-not-found]
+from textual.widgets import (  # type: ignore[import-not-found]
+    Button,
+    Footer,
+    Header,
+    Input,
+    Label,
+    RichLog,
+    Static,
+)
 
 
 class WelcomeScreen(Vertical):

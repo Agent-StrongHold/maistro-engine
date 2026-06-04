@@ -27,9 +27,7 @@ logger = logging.getLogger("maistro.nodes.jira")
 
 
 class JiraPollIn(BaseModel):
-    base_url: str = Field(
-        description="e.g. https://jira.example.com or https://acme.atlassian.net"
-    )
+    base_url: str = Field(description="e.g. https://jira.example.com or https://acme.atlassian.net")
     jql: str = Field(
         description="JQL query (e.g. assignee=currentUser() AND resolution=Unresolved)"
     )

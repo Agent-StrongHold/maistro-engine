@@ -121,12 +121,18 @@ class RuleBasedRepair:
         if not proposal.recognized:
             return RepairResult(proposal, RepairDecision.UNDIAGNOSED, "no known remediation"), False
         if proposal.action is None:
-            return RepairResult(proposal, RepairDecision.PROPOSE_ONLY, "escalated for human review"), False
+            return RepairResult(
+                proposal, RepairDecision.PROPOSE_ONLY, "escalated for human review"
+            ), False
         if self._autonomy == "detect_only" or self._action is None:
-            detail = "autonomy=detect_only" if self._autonomy == "detect_only" else "no infra_action"
+            detail = (
+                "autonomy=detect_only" if self._autonomy == "detect_only" else "no infra_action"
+            )
             return RepairResult(proposal, RepairDecision.SUPPRESSED, detail), False
         if dispatched >= self._max_actions:
-            return RepairResult(proposal, RepairDecision.SUPPRESSED, "per-cycle action cap reached"), False
+            return RepairResult(
+                proposal, RepairDecision.SUPPRESSED, "per-cycle action cap reached"
+            ), False
 
         decision = self._governor.allow(proposal.resource)
         if not decision.allowed:
@@ -136,7 +142,9 @@ class RuleBasedRepair:
         if self._will_gate_on_approval(proposal):
             # Don't block the cycle on a human — dispatch and track.
             self._dispatch_async(proposal)
-            return RepairResult(proposal, RepairDecision.PENDING_APPROVAL, "awaiting approval"), True
+            return RepairResult(
+                proposal, RepairDecision.PENDING_APPROVAL, "awaiting approval"
+            ), True
         return await self._auto_run(proposal), True
 
     def _will_gate_on_approval(self, proposal: RepairProposal) -> bool:

@@ -4,7 +4,9 @@ from maistro.capabilities.types import FallbackPolicy, ProviderHealth, SlotSpec,
 
 
 def test_slotspec_baseline_requires_provider_name():
-    spec = SlotSpec(name="web_search", fallback_policy=FallbackPolicy.BASELINE, baseline_provider="ddg")
+    spec = SlotSpec(
+        name="web_search", fallback_policy=FallbackPolicy.BASELINE, baseline_provider="ddg"
+    )
     assert spec.baseline_provider == "ddg"
 
 

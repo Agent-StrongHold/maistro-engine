@@ -71,9 +71,7 @@ async def maistro_llm_call(
     base_url = _resolve_base_url()
     api_key = _resolve_api_key()
     if not base_url or not api_key:
-        raise RuntimeError(
-            "LLM gateway not configured: LITELLM_URL + LITELLM_MASTER_KEY required."
-        )
+        raise RuntimeError("LLM gateway not configured: LITELLM_URL + LITELLM_MASTER_KEY required.")
 
     body: dict[str, Any] = {
         "model": _resolve_model(model),

@@ -120,7 +120,9 @@ class CapabilityRegistry:
 
         health = await chosen.healthcheck()
         if not health.healthy:
-            logger.warning("Provider %s unhealthy for slot %s: %s", chosen.name, slot, health.detail)
+            logger.warning(
+                "Provider %s unhealthy for slot %s: %s", chosen.name, slot, health.detail
+            )
             fb = _baseline()
             return fb if (fb is not None and fb.name != chosen.name) else None
         return chosen

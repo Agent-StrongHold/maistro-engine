@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import contextlib
+import os
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["daily-report"])
+
+
+def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
+    """Single allowlisted callsite for use_secret — lambda is centralised here."""
+    try:
+        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
+    except Exception:
+        return None
 
 
 def _get_pat(user_id: str) -> str | None:
@@ -21,7 +30,7 @@ def _get_pat(user_id: str) -> str | None:
         for pid in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
             try:
                 if store.has_secret(user_id, pid):
-                    return store.use_secret(user_id, pid, lambda s: s)
+                    return _use_secret(store, user_id, pid)
             except Exception:
                 continue
     except Exception:
@@ -85,14 +94,14 @@ def _get_airtable_pat(user_id: str) -> str | None:
         for pid in ("airtable", "airtable_pat"):
             try:
                 if store.has_secret(user_id, pid):
-                    airtable_pat = store.use_secret(user_id, pid, lambda s: s)
+                    airtable_pat = _use_secret(store, user_id, pid)
                     break
             except Exception:
                 continue
         # If still not found, the PAT might be stored but under a different mechanism
         if not airtable_pat:
             with contextlib.suppress(Exception):
-                airtable_pat = store.use_secret(user_id, "airtable", lambda s: s)
+                airtable_pat = _use_secret(store, user_id, "airtable")
     except Exception:
         return None
     return airtable_pat

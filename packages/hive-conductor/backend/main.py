@@ -16,10 +16,8 @@ from pydantic import BaseModel, ConfigDict
 from routes import (
     agents,
     audit,
-    capabilities,
-    program,
-    work_items,
     auth,
+    capabilities,
     chat,
     cli,
     containers,
