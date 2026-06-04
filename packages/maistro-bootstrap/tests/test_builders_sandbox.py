@@ -88,6 +88,29 @@ def test_timeout_raises(shell: SandboxedShell) -> None:
         shell.run("sleep 10", timeout=1)
 
 
+def test_command_substitution_blocked(shell: SandboxedShell) -> None:
+    with pytest.raises(BlockedCommandError, match="metacharacters"):
+        shell.run("echo $(whoami)")
+
+
+def test_pipe_blocked(shell: SandboxedShell) -> None:
+    with pytest.raises(BlockedCommandError, match="metacharacters"):
+        shell.run("cat /etc/passwd | grep root")
+
+
+def test_semicolon_injection_blocked(shell: SandboxedShell) -> None:
+    with pytest.raises(BlockedCommandError, match="metacharacters"):
+        shell.run("echo hello; sudo whoami")
+
+
+def test_env_does_not_contain_os_environ(
+    shell: SandboxedShell, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SECRET_API_KEY", "super-secret-value")
+    out = shell.run("echo nodump")
+    assert "super-secret-value" not in out
+
+
 # ---------------------------------------------------------------------------
 # LocalWorktreeSandbox — file operations
 # ---------------------------------------------------------------------------

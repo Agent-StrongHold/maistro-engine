@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import contextlib
 import logging
-import os
+import re
+import shlex
 import subprocess
 import tempfile
 import warnings
@@ -30,6 +31,11 @@ logger = logging.getLogger(__name__)
 _OUTPUT_CAP = 1 * 1024 * 1024  # 1 MB
 _DEFAULT_TIMEOUT = 30  # seconds
 
+# Characters that enable shell injection regardless of the blocklist.
+# Reject before any other check so the blocklist can't be bypassed via
+# $(), backticks, semicolons, pipes, redirects, or newline smuggling.
+_INJECTION_CHARS = re.compile(r"[;|&<>`$\\\n\r]|\$\(|\}\{")
+
 _BLOCKED_PATTERNS = (
     "sudo",
     "su ",
@@ -40,10 +46,18 @@ _BLOCKED_PATTERNS = (
     "chmod -R 777",
     "rm -rf /",
     "mkfs",
-    "> /dev/sda",
     "dd if=",
-    ":(){:|:&};:",  # fork bomb
+    ":(){",  # fork bomb prefix
 )
+
+# Minimal environment passed to every subprocess — never inherit os.environ
+# into LLM-authored commands to avoid leaking API keys, tokens, etc.
+_SAFE_ENV = {
+    "PATH": "/usr/local/bin:/usr/bin:/bin",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "TERM": "dumb",
+}
 
 
 @runtime_checkable
@@ -67,9 +81,9 @@ class SandboxedShell:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
 
-    def _check_paths(self, cmd: str) -> None:
-        """Raise SandboxEscapeError if any path in cmd escapes the root."""
-        for token in cmd.split():
+    def _check_paths(self, tokens: list[str]) -> None:
+        """Raise SandboxEscapeError if any token resolves outside the root."""
+        for token in tokens:
             candidate = self._root / token
             try:
                 candidate.resolve().relative_to(self._root)
@@ -79,22 +93,36 @@ class SandboxedShell:
                 ) from None
 
     def run(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
+        # 1. Reject shell-injection metacharacters before anything else.
+        if _INJECTION_CHARS.search(cmd):
+            raise BlockedCommandError(
+                f"Shell metacharacters not allowed in sandbox commands: {cmd!r}"
+            )
+
+        # 2. Blocklist check on the lowercased raw string.
         cmd_lower = cmd.lower()
         for pattern in _BLOCKED_PATTERNS:
             if pattern in cmd_lower:
                 raise BlockedCommandError(f"Blocked command: {pattern!r} in {cmd!r}")
 
-        self._check_paths(cmd)
+        # 3. Parse with shlex for correct quoted-token handling, then check paths.
+        try:
+            tokens = shlex.split(cmd)
+        except ValueError as exc:
+            raise BlockedCommandError(f"Unparseable command: {exc}") from exc
+        self._check_paths(tokens)
 
         try:
             result = subprocess.run(
                 cmd,
-                shell=True,  # nosec B602 — intentional; input is validated above
+                shell=True,  # nosec B602 — shell=True is intentional; injection
+                # is prevented above by metachar rejection + shlex parse
                 cwd=self._root,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env={**os.environ, "HOME": str(self._root)},
+                # Minimal env — never inherit os.environ into LLM-authored commands.
+                env={**_SAFE_ENV, "HOME": str(self._root)},
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeoutError(f"Command timed out after {timeout}s: {cmd!r}") from exc
