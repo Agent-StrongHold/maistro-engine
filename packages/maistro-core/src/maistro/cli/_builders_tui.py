@@ -177,7 +177,7 @@ class BuildersApp(App[None]):
     #session-picker { padding: 1 2; border: solid green; width: 60; height: auto; }
     #coding-layout { height: 1fr; }
     #chat-pane { width: 2fr; }
-    #diff-pane { width: 1fr; border-left: solid $surface-light; }
+    #diff-pane { width: 1fr; border-left: solid $surface; }
     #chat-log { height: 1fr; }
     #diff-viewer { height: 1fr; }
     #session-bar { padding: 0 1; background: $surface; }

@@ -24,6 +24,7 @@ dependencies = [
     "bcrypt>=4.0",
     "argon2-cffi>=23.1",
     "maistro-registry",
+    "maistro-core[tui]",
     "temporalio>=1.27.0",
 ]
 
@@ -127,5 +128,6 @@ ignore_missing_imports = true
 
 [tool.uv.sources]
 maistro-bootstrap = { path = "packages/maistro-bootstrap", editable = true }
+maistro-core = { path = "packages/maistro-core", editable = true }
 maistro-registry = { path = "packages/maistro-registry", editable = true }
 maistro-design = { path = "packages/maistro-design", editable = true }
