@@ -1,4 +1,4 @@
-"""Typer CLI for maistro-install (single command, no subcommands)."""
+"""Typer CLI for maistro-install and guided builder sessions."""
 
 from __future__ import annotations
 
@@ -7,15 +7,21 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import typer
-import yaml
+import yaml  # type: ignore[import-untyped]
 from rich.console import Console
 
+from maistro_bootstrap.builders.cli import register_builders_app
 from maistro_bootstrap.plan import build_install_plan, run_apply_spec
 from maistro_bootstrap.repo_root import find_maistro_engine_root
 from maistro_bootstrap.schema import InstallAnswersV1, parse_answers_dict
-from maistro_bootstrap.wizard import collect_answers_interactive
 
 console = Console()
+app = typer.Typer(
+    name="maistro-install",
+    help="Resolve install plans and launch interactive maistro builder sessions.",
+    invoke_without_command=True,
+)
+register_builders_app(app)
 
 
 def _load_raw_answers(path: Path) -> dict[str, Any]:
@@ -33,6 +39,8 @@ def _resolve_answers(answers_file: Path | None) -> InstallAnswersV1:
             "[red]No TTY and no --answers-file. Pass --answers-file or run interactively.[/red]"
         )
         raise typer.Exit(2)
+    from maistro_bootstrap.wizard import collect_answers_interactive
+
     return collect_answers_interactive()
 
 
@@ -81,7 +89,9 @@ def _maybe_apply(plan: dict[str, Any], yes: bool) -> None:
     console.print("[green]apply_spec completed.[/green]")
 
 
+@app.callback()
 def main(
+    ctx: typer.Context,
     answers_file: Annotated[
         Path | None,
         typer.Option(
@@ -130,6 +140,9 @@ def main(
     ] = "../my-product",
 ) -> None:
     """Resolve install answers into a plan; optionally run compose build (apply)."""
+    if ctx.invoked_subcommand is not None:
+        return
+
     answers = _resolve_answers(answers_file)
     rr = maistro_root if maistro_root is not None else find_maistro_engine_root()
     plan = build_install_plan(answers, repo_root=rr, copier_dest=copier_dest)
@@ -157,7 +170,7 @@ def main(
 
 
 def run() -> None:
-    typer.run(main)
+    app()
 
 
 if __name__ == "__main__":
