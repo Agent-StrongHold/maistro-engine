@@ -69,6 +69,7 @@ class BuilderSandbox(Protocol):
     def read_file(self, path: str) -> str: ...
     def write_file(self, path: str, content: str) -> None: ...
     def run_command(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str: ...
+    def run_argv(self, argv: list[str], *, timeout: int = _DEFAULT_TIMEOUT) -> str: ...
     def diff(self) -> str: ...
     def search(self, pattern: str, *, glob: str = "**/*.py") -> list[str]: ...
 
@@ -129,6 +130,35 @@ class SandboxedShell:
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeoutError(f"Command timed out after {timeout}s: {cmd!r}") from exc
 
+        out = (result.stdout or "") + (result.stderr or "")
+        if len(out) > _OUTPUT_CAP:
+            warnings.warn(
+                f"Output truncated to {_OUTPUT_CAP // 1024}KB",
+                OutputTruncatedWarning,
+                stacklevel=2,
+            )
+            out = out[:_OUTPUT_CAP]
+        return out
+
+    def run_argv(self, argv: list[str], *, timeout: int = _DEFAULT_TIMEOUT) -> str:
+        """Run a fixed argv list with shell=False — no parsing, no metachar check.
+
+        Use this for structured tools (run_tests, run_lint, git_status) where
+        the caller constructs the argv directly and no user-controlled string
+        ever reaches the shell.
+        """
+        try:
+            result = subprocess.run(  # nosec B603 — shell=False, argv from trusted caller
+                argv,
+                shell=False,
+                cwd=self._root,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=_SAFE_ENV,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise CommandTimeoutError(f"Command timed out after {timeout}s: {argv!r}") from exc
         out = (result.stdout or "") + (result.stderr or "")
         if len(out) > _OUTPUT_CAP:
             warnings.warn(
@@ -279,6 +309,9 @@ class LocalWorktreeSandbox:
 
     def run_command(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
         return self._require_shell().run(cmd, timeout=timeout)
+
+    def run_argv(self, argv: list[str], *, timeout: int = _DEFAULT_TIMEOUT) -> str:
+        return self._require_shell().run_argv(argv, timeout=timeout)
 
     def diff(self) -> str:
         if self._ws:

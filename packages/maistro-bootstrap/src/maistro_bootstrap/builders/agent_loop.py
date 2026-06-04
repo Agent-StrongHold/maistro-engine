@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -12,6 +13,51 @@ from maistro_bootstrap.builders.session import BuilderSession
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Model tier routing
+#
+# Each builder role maps to a capability tier.  LiteLLM resolves the alias
+# to whichever provider the gateway is configured for, so "fast" might be
+# claude-haiku-4-5 today and gemini-flash-2 tomorrow — the builders never
+# care about the underlying provider.
+# ---------------------------------------------------------------------------
+
+_DEFAULT_MODEL = (
+    os.environ.get("MAISTRO_BUILDERS_MODEL")
+    or os.environ.get("DEFAULT_MODEL")
+    or "claude-sonnet-4-6"
+)
+
+# Builders picks the best model for each role; override any tier via env.
+_MODEL_TIERS: dict[str, str] = {
+    # Heavy reasoning: code generation, test writing, review
+    "capable": os.environ.get("BUILDERS_MODEL_CAPABLE") or _DEFAULT_MODEL,
+    # Fast/cheap: clarification, search, bookkeeping, setup
+    "fast": (
+        os.environ.get("BUILDERS_MODEL_FAST")
+        or os.environ.get("BUILDERS_FAST_MODEL")
+        or "claude-haiku-4-5"
+    ),
+}
+
+# Worker → tier mapping.  Workers not listed default to "capable".
+_WORKER_TIER: dict[str, str] = {
+    "arbiter": "fast",  # clarification loop — quick back-and-forth
+    "scout": "fast",  # search/lookup — cheap retrieval
+    "quartermaster": "fast",  # env setup — deterministic, not creative
+    "janitor": "fast",  # PR/issue cleanup — structured, low-complexity
+    "frank": "capable",  # implementation — needs full reasoning
+    "mason": "capable",  # test writing — needs to understand code deeply
+    "auditor": "capable",  # review — needs full reasoning
+    "archie": "capable",  # architecture — complex planning
+}
+
+
+def model_for_worker(worker: str) -> str:
+    """Return the best model alias for a given worker name."""
+    tier = _WORKER_TIER.get(worker.lower(), "capable")
+    return _MODEL_TIERS[tier]
+
 
 @dataclass
 class AgentLoopConfig:
@@ -19,7 +65,9 @@ class AgentLoopConfig:
 
     max_turns: int = 10
     max_tokens: int = 8192
-    model: str = "claude-sonnet-4-6"
+    # None → resolved per-worker via model_for_worker(); set explicitly to override.
+    model: str | None = None
+    worker: str = "frank"
     system_prompt: str = (
         "You are a precise coding assistant working inside an isolated git worktree. "
         "Use the provided tools to read files, write changes, and run commands. "
@@ -27,6 +75,9 @@ class AgentLoopConfig:
         "Never access paths outside the workspace root."
     )
     tool_definitions: list[dict[str, Any]] = field(default_factory=list)
+
+    def resolved_model(self) -> str:
+        return self.model or model_for_worker(self.worker)
 
 
 def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
@@ -127,43 +178,56 @@ def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
     ]
 
 
+def _dispatch_safe_tool(sandbox: Any, name: str, inputs: dict[str, Any]) -> str | None:
+    """Handle structured tools that use fixed argv (shell=False). Returns None if unrecognised."""
+    if name == "read_file":
+        return sandbox.read_file(inputs["path"])
+    if name == "write_file":
+        sandbox.write_file(inputs["path"], inputs["content"])
+        return f"wrote {inputs['path']}"
+    if name == "run_tests":
+        argv = ["python", "-m", "pytest"]
+        extra = inputs.get("args", "").strip()
+        if extra:
+            argv += extra.split()
+        return sandbox.run_argv(argv)
+    if name == "run_lint":
+        return sandbox.run_argv(["ruff", "check", "."])
+    if name == "git_status":
+        return sandbox.run_argv(["git", "status"])
+    if name == "git_diff":
+        return sandbox.diff()
+    if name == "search":
+        return json.dumps(sandbox.search(inputs["pattern"], glob=inputs.get("glob", "**/*.py")))
+    return None
+
+
 def _dispatch_tool(session: BuilderSession, name: str, inputs: dict[str, Any]) -> str:
     sandbox = session.sandbox
     try:
-        if name == "read_file":
-            return sandbox.read_file(inputs["path"])
-        if name == "write_file":
-            sandbox.write_file(inputs["path"], inputs["content"])
-            return f"wrote {inputs['path']}"
-        # Structured safe tools — fixed argv, no LLM-controlled shell string.
-        if name == "run_tests":
-            extra = inputs.get("args", "")
-            return sandbox.run_command(f"python -m pytest {extra}".strip())
-        if name == "run_lint":
-            return sandbox.run_command("ruff check .")
-        if name == "git_status":
-            return sandbox.run_command("git status")
-        if name == "git_diff":
-            return sandbox.diff()
+        result = _dispatch_safe_tool(sandbox, name, inputs)
+        if result is not None:
+            return result
         if name == "run_command":
             if inputs.get("requires_human_approval"):
                 logger.warning("run_command flagged for human approval — cmd=%r", inputs["cmd"])
-                # Signal the TUI to pause and ask the user; for now surface the flag in output.
                 return (
                     f"[REQUIRES_HUMAN_APPROVAL] Command not executed automatically: {inputs['cmd']!r}. "
                     "Confirm in the TUI to proceed."
                 )
             return sandbox.run_command(inputs["cmd"], timeout=inputs.get("timeout", 30))
-        if name == "search":
-            matches = sandbox.search(inputs["pattern"], glob=inputs.get("glob", "**/*.py"))
-            return json.dumps(matches)
     except Exception as exc:
         return f"[tool error] {exc}"
     return f"[unknown tool] {name}"
 
 
 class TurnRunner:
-    """Executes one agent turn: sends messages to the LLM, handles tool calls."""
+    """Executes one agent turn: sends messages to the LLM, handles tool calls.
+
+    If no LLM is set explicitly via set_llm(), a LiteLLMCallable is
+    auto-constructed using config.resolved_model() — which picks the right
+    model tier for the current worker (fast vs capable).
+    """
 
     def __init__(self, session: BuilderSession, config: AgentLoopConfig) -> None:
         self._session = session
@@ -173,19 +237,35 @@ class TurnRunner:
     def set_llm(self, llm: Callable[..., dict[str, Any]]) -> None:
         self._llm = llm
 
-    async def execute_turn(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+    def _get_llm(self) -> Callable[..., dict[str, Any]]:
         if self._llm is None:
-            return {"content": "(no LLM configured)", "stop_reason": "end_turn"}
+            from maistro_bootstrap.builders.responses_callable import LiteLLMCallable
 
+            self._llm = LiteLLMCallable(model=self._config.resolved_model())
+            logger.info(
+                "auto-wired LiteLLM model=%s worker=%s",
+                self._config.resolved_model(),
+                self._config.worker,
+            )
+        return self._llm
+
+    async def execute_turn(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        import asyncio
+        import functools
+
+        llm = self._get_llm()
         tools = _make_sandbox_tools(self._session)
         full_messages = list(messages)
 
         for _ in range(self._config.max_turns):
-            result = self._llm(
+            # Run the sync HTTP call in a thread so it doesn't block the event loop.
+            call = functools.partial(
+                llm,
                 full_messages,
                 tools=tools,
                 max_tokens=self._config.max_tokens,
             )
+            result = await asyncio.to_thread(call)
 
             if result.get("stop_reason") != "tool_use":
                 self._session.add_assistant(result.get("content", ""))

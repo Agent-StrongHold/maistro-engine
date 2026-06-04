@@ -1,34 +1,64 @@
-"""Anthropic API adapter for the builders agent loop."""
+"""LiteLLM-gateway callable for the builders agent loop.
+
+Reads at call time (never baked in):
+  - LITELLM_URL / LITELLM_BASE_URL / LITELLM_PROXY_URL — gateway base URL
+  - LITELLM_MASTER_KEY / LITELLM_PROXY_KEY          — bearer key
+  - MAISTRO_BUILDERS_MODEL / DEFAULT_MODEL           — default model alias
+
+The gateway exposes an OpenAI-compatible /v1/chat/completions endpoint, so
+every LiteLLM-supported provider (Anthropic, OpenAI, Groq, Mistral, Ollama,
+Azure, Bedrock, …) is reachable by changing the model alias.
+
+Falls back to a stub response when the gateway is not configured so the TUI
+can still start in dev mode without a running proxy.
+"""
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
+import httpx
 
-class ResponsesAPICallable:
-    """Calls the Anthropic Messages API.
+logger = logging.getLogger(__name__)
 
-    Falls back to a stub if the ``anthropic`` package is not installed,
-    so the TUI can still start without it — the agent just won't have
-    a live LLM until the dep is present.
+
+def _base_url() -> str:
+    return (
+        os.environ.get("LITELLM_URL")
+        or os.environ.get("LITELLM_BASE_URL")
+        or os.environ.get("LITELLM_PROXY_URL")
+        or ""
+    ).rstrip("/")
+
+
+def _api_key() -> str:
+    return os.environ.get("LITELLM_MASTER_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
+
+
+def _default_model() -> str:
+    return (
+        os.environ.get("MAISTRO_BUILDERS_MODEL")
+        or os.environ.get("DEFAULT_MODEL")
+        or "claude-sonnet-4-6"
+    )
+
+
+class LiteLLMCallable:
+    """Synchronous OpenAI-compatible callable backed by the LiteLLM proxy.
+
+    Supports tool definitions in OpenAI function-calling format so the agent
+    loop can dispatch read_file / write_file / run_tests / etc. through the
+    gateway's tool-use flow without being tied to a single provider SDK.
     """
 
-    def __init__(self, model: str | None = None) -> None:
-        self.model = model or os.environ.get("MAISTRO_BUILDERS_MODEL", "claude-sonnet-4-6")
-        self._client: Any = None
+    def __init__(self, model: str | None = None, timeout: float = 120.0) -> None:
+        self.model = model or _default_model()
+        self.timeout = timeout
 
-    def _get_client(self) -> Any:
-        if self._client is None:
-            try:
-                import anthropic  # type: ignore[import-not-found]
-
-                self._client = anthropic.Anthropic()
-            except ImportError as exc:
-                raise ImportError(
-                    "anthropic package not installed. Run: uv sync --extra builders"
-                ) from exc
-        return self._client
+    def _is_configured(self) -> bool:
+        return bool(_base_url() and _api_key())
 
     def __call__(
         self,
@@ -37,33 +67,86 @@ class ResponsesAPICallable:
         tools: list[dict[str, Any]] | None = None,
         max_tokens: int = 8192,
     ) -> dict[str, Any]:
-        client = self._get_client()
-        system = None
-        user_messages = []
-        for m in messages:
-            if m["role"] == "system":
-                system = m["content"]
-            else:
-                user_messages.append(m)
+        if not self._is_configured():
+            logger.warning("LiteLLM gateway not configured — returning stub response")
+            return {
+                "content": (
+                    "(LiteLLM not configured — set LITELLM_URL + LITELLM_MASTER_KEY. "
+                    "54+ models available once connected.)"
+                ),
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            }
 
-        kwargs: dict[str, Any] = {
+        body: dict[str, Any] = {
             "model": self.model,
+            "messages": messages,
             "max_tokens": max_tokens,
-            "messages": user_messages,
         }
-        if system:
-            kwargs["system"] = system
         if tools:
-            kwargs["tools"] = tools
+            # LiteLLM forwards OpenAI-format tool definitions to every provider
+            # that supports function-calling (Anthropic, OpenAI, Mistral, …).
+            body["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t.get("description", ""),
+                        "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
+                    },
+                }
+                for t in tools
+            ]
+            body["tool_choice"] = "auto"
 
-        response = client.messages.create(**kwargs)
-        block = response.content[0] if response.content else None
-        content = block.text if block and hasattr(block, "text") else ""
+        resp = httpx.post(
+            f"{_base_url()}/v1/chat/completions",
+            json=body,
+            headers={"Authorization": f"Bearer {_api_key()}"},
+            timeout=self.timeout,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
+
+        data = resp.json()
+        choice = data["choices"][0]
+        msg = choice["message"]
+        content = msg.get("content") or ""
+        stop_reason = choice.get("finish_reason", "end_turn")
+
+        # Normalise tool_calls into the same block-list shape the agent loop expects.
+        tool_calls = msg.get("tool_calls") or []
+        if tool_calls:
+            blocks: list[dict[str, Any]] = []
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                import json
+
+                try:
+                    inp = json.loads(fn.get("arguments", "{}"))
+                except json.JSONDecodeError:
+                    inp = {}
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": tc.get("id", "tc_0"),
+                        "name": fn.get("name", ""),
+                        "input": inp,
+                    }
+                )
+            content = blocks  # type: ignore[assignment]
+            stop_reason = "tool_use"
+
+        usage = data.get("usage", {})
         return {
             "content": content,
-            "stop_reason": response.stop_reason,
+            "stop_reason": stop_reason,
             "usage": {
-                "input_tokens": response.usage.input_tokens,
-                "output_tokens": response.usage.output_tokens,
+                "input_tokens": usage.get("prompt_tokens", 0),
+                "output_tokens": usage.get("completion_tokens", 0),
             },
         }
+
+
+# Backwards-compat alias — the TUI imported this name.
+ResponsesAPICallable = LiteLLMCallable

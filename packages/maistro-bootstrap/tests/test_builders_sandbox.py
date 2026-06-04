@@ -210,7 +210,8 @@ async def test_turn_runner_no_llm(sandbox: LocalWorktreeSandbox) -> None:
     session = BuilderSession(sandbox=sandbox)
     runner = TurnRunner(session=session, config=AgentLoopConfig())
     result = await runner.execute_turn(messages=[{"role": "user", "content": "hi"}])
-    assert "no LLM" in result["content"]
+    # With no gateway configured, LiteLLMCallable returns a stub message.
+    assert "LiteLLM" in result["content"] or "no LLM" in result["content"]
 
 
 # ---------------------------------------------------------------------------
