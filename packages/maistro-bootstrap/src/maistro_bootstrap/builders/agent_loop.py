@@ -54,8 +54,21 @@ _WORKER_TIER: dict[str, str] = {
 
 
 def model_for_worker(worker: str) -> str:
-    """Return the best model alias for a given worker name."""
+    """Return the best model alias for a given worker name.
+
+    Checks the benchmark cache first; falls back to _MODEL_TIERS defaults
+    if the cache is missing or the gateway is unreachable.
+    """
     tier = _WORKER_TIER.get(worker.lower(), "capable")
+    # Try cached winner first (avoids network call on every session start)
+    try:
+        from maistro_bootstrap.builders.model_selector import load_cache
+
+        cache = load_cache()
+        if cache and cache.get(f"{tier}_model"):
+            return cache[f"{tier}_model"]
+    except Exception:
+        pass
     return _MODEL_TIERS[tier]
 
 
