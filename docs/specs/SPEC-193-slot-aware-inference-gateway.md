@@ -20,7 +20,7 @@ contracts:
   - behavioral
 tests:
   - apps/conductor-gateway/tests/
-layer: Infrastructure
+layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
 ---

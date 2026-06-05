@@ -20,7 +20,7 @@ contracts:
 tests:
   - packages/maistro-core/tests/training/test_collector.py
   - packages/maistro-core/tests/training/test_exemplar_library.py
-layer: Learning
+layer: Memory
 owners:
   - '@BlakeMatthews-dev'
 ---
