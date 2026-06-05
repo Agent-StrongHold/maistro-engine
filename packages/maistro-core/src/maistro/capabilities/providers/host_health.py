@@ -88,7 +88,9 @@ def _norm_docker(raw: dict[str, Any]) -> ResourceHealth:
     if str(raw.get("status", "")).lower() == "error":
         return ResourceHealth(status="down", detail={"error": str(raw.get("detail", ""))})
     unhealthy = {str(n) for n in raw.get("unhealthy", []) if isinstance(raw.get("unhealthy"), list)}
-    restarting = {str(n) for n in raw.get("restarting", []) if isinstance(raw.get("restarting"), list)}
+    restarting = {
+        str(n) for n in raw.get("restarting", []) if isinstance(raw.get("restarting"), list)
+    }
     stopped = {str(n) for n in raw.get("stopped", []) if isinstance(raw.get("stopped"), list)}
     names = [str(c.get("name", "")) for c in raw.get("containers", []) if isinstance(c, dict)]
     # If only buckets were provided, derive names from them.
@@ -109,7 +111,9 @@ def _norm_docker(raw: dict[str, Any]) -> ResourceHealth:
     # Degraded only when there is something actionable/abnormal (unhealthy or
     # crash-looping). `stopped` alone is intentional absence, not degradation.
     degraded = bool(unhealthy or restarting)
-    return ResourceHealth(status="degraded" if degraded else "ok", detail={"containers": containers})
+    return ResourceHealth(
+        status="degraded" if degraded else "ok", detail={"containers": containers}
+    )
 
 
 def _norm_services(raw: dict[str, Any]) -> ResourceHealth:
@@ -135,8 +139,11 @@ def _norm_storage(raw: dict[str, Any]) -> ResourceHealth:
 def _norm_vms(raw: dict[str, Any]) -> ResourceHealth:
     vms = raw.get("vms")
     norm = (
-        [{"vmid": str(v.get("vmid", "")), "status": str(v.get("status", ""))}
-         for v in vms if isinstance(v, dict)]
+        [
+            {"vmid": str(v.get("vmid", "")), "status": str(v.get("status", ""))}
+            for v in vms
+            if isinstance(v, dict)
+        ]
         if isinstance(vms, list)
         else []
     )
@@ -160,8 +167,15 @@ _NORMALIZERS = {
 
 
 _ALLOWED = (
-    "restart_container", "restart_stack", "restart_service", "vm_control",
-    "docker_logs", "docker_prune", "ollama_list", "ollama_pull", "snapraid_status",
+    "restart_container",
+    "restart_stack",
+    "restart_service",
+    "vm_control",
+    "docker_logs",
+    "docker_prune",
+    "ollama_list",
+    "ollama_pull",
+    "snapraid_status",
 )
 
 
@@ -219,15 +233,23 @@ class HostHealthAction:
         if needs_approval:
             if self._approval is None:
                 return ActionResult(
-                    ok=False, blocked_pending_approval=True,
+                    ok=False,
+                    blocked_pending_approval=True,
                     detail="approval required but no approval provider",
                 )
             decision = await self._approval.request(
-                ApprovalRequest(action=action, params=params, tier=tier.value,
-                                requester="infra_action", rationale="")
+                ApprovalRequest(
+                    action=action,
+                    params=params,
+                    tier=tier.value,
+                    requester="infra_action",
+                    rationale="",
+                )
             )
             if not decision.approved:
-                return ActionResult(ok=False, blocked_pending_approval=True, detail="approval denied")
+                return ActionResult(
+                    ok=False, blocked_pending_approval=True, detail="approval denied"
+                )
 
         return await self._execute(action, params)
 

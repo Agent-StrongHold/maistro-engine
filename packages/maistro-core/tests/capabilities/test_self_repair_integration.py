@@ -33,9 +33,11 @@ class _Monitor:
     async def snapshot(self) -> InfraHealth:
         return InfraHealth(
             ts="t",
-            resources={"docker": ResourceHealth(
-                "degraded", {"containers": [{"name": "litellm", "state": "unhealthy"}]}
-            )},
+            resources={
+                "docker": ResourceHealth(
+                    "degraded", {"containers": [{"name": "litellm", "state": "unhealthy"}]}
+                )
+            },
         )
 
 
@@ -66,7 +68,7 @@ async def test_remediation_blocks_until_approved_then_hits_host() -> None:
 
     # Approve through the inbox → the host action now fires.
     assert inbox.resolve(pending[0].request_id, approved=True, actor="tester") is True
-    await asyncio.gather(*list(repair._tasks))  # noqa: SLF001
+    await asyncio.gather(*list(repair._tasks))
     assert sent == ["/action/restart_container"]
 
 
@@ -74,7 +76,9 @@ async def test_denied_remediation_never_hits_host() -> None:
     sent: list[str] = []
     http = HttpxAsyncHttp(
         "http://h:8150",
-        transport=httpx.MockTransport(lambda r: (sent.append(r.url.path), httpx.Response(200, json={}))[1]),
+        transport=httpx.MockTransport(
+            lambda r: (sent.append(r.url.path), httpx.Response(200, json={}))[1]
+        ),
     )
     inbox = InboxApproval()
     action = HostHealthAction(http, autonomy="approve_all", approval=inbox)
@@ -84,5 +88,5 @@ async def test_denied_remediation_never_hits_host() -> None:
     await asyncio.sleep(0)
     pending = inbox.pending()
     inbox.resolve(pending[0].request_id, approved=False)
-    await asyncio.gather(*list(repair._tasks))  # noqa: SLF001
+    await asyncio.gather(*list(repair._tasks))
     assert sent == []

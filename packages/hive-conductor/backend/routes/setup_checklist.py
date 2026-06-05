@@ -13,6 +13,7 @@ at read time — no background job needed.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -24,10 +25,6 @@ logger = logging.getLogger(__name__)
 
 _STORE_NAME = "setup_checklist"
 _DISMISS_TTL_DAYS = 7
-
-# Bridge expiry for the on-prem Atlassian items — flips to read-only after
-# The Atlassian Cloud migration (~2026-06-13).
-_ATLASSIAN_CLOUD_MIGRATION = "2026-06-13"
 
 
 def _user_id(request: Request) -> str:
@@ -163,6 +160,48 @@ def _build_catalog() -> list[dict[str, Any]]:
     that returns True if the underlying action has been taken; the front end
     only sees the boolean result.
     """
+    jira_server_url = os.environ.get("JIRA_SERVER_URL", "")
+    confluence_server_url = os.environ.get("CONFLUENCE_SERVER_URL", "")
+
+    jira_pat_help = (
+        jira_server_url + "/secure/ViewProfile.jspa"
+        "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
+        if jira_server_url
+        else None
+    )
+    confluence_pat_help = (
+        confluence_server_url + "/plugins/personalaccesstokens/usertokens.action"
+        if confluence_server_url
+        else None
+    )
+
+    jira_item: dict[str, Any] = {
+        "id": "cred_atlassian_server_jira",
+        "title": "Add your Jira PAT",
+        "description": (
+            "Lets the Delivery + Reporting agents poll Jira on your behalf. "
+            "Your Jira instance is on-prem (Server); switch to the Cloud Rovo path "
+            "when you migrate."
+        ),
+        "link_label": "Open Credentials",
+        "link_href": "/credentials",
+        "category": "integrations",
+        "context": "On-prem path; switch to the Rovo token below after Cloud migration.",
+    }
+    if jira_pat_help:
+        jira_item["external_help"] = jira_pat_help
+
+    confluence_item: dict[str, Any] = {
+        "id": "cred_atlassian_server_confluence",
+        "title": "Add your Confluence PAT",
+        "description": "Lets agents read Confluence pages (RFCs, runbooks, status docs).",
+        "link_label": "Open Credentials",
+        "link_href": "/credentials",
+        "category": "integrations",
+    }
+    if confluence_pat_help:
+        confluence_item["external_help"] = confluence_pat_help
+
     return [
         {
             "id": "default_model",
@@ -187,40 +226,14 @@ def _build_catalog() -> list[dict[str, Any]]:
             "link_href": "/agents",
             "category": "fleet",
         },
-        {
-            "id": "cred_atlassian_server_jira",
-            "title": "Add your Jira PAT",
-            "description": (
-                "Lets the Delivery + Reporting agents poll Jira on your behalf. "
-                "Your Jira instance is on-prem (Server v9) until ~June 13, 2026; after that "
-                "the Cloud Rovo path below takes over."
-            ),
-            "link_label": "Open Credentials",
-            "link_href": "/credentials",
-            "external_help": (
-                "https://jira.example.com/secure/ViewProfile.jspa"
-                "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
-            ),
-            "category": "integrations",
-            "context": f"On-prem path; switches to Rovo after Cloud migration ({_ATLASSIAN_CLOUD_MIGRATION}).",
-        },
-        {
-            "id": "cred_atlassian_server_confluence",
-            "title": "Add your Confluence PAT",
-            "description": ("Lets agents read Confluence pages (RFCs, runbooks, status docs)."),
-            "link_label": "Open Credentials",
-            "link_href": "/credentials",
-            "external_help": (
-                "https://wiki.example.com/plugins/personalaccesstokens/usertokens.action"
-            ),
-            "category": "integrations",
-        },
+        jira_item,
+        confluence_item,
         {
             "id": "cred_atlassian_rovo_mcp",
             "title": "Add your Atlassian Rovo MCP token (post-Cloud)",
             "description": (
                 "Atlassian Cloud + Rovo MCP path. Optional today; recommended "
-                f"before {_ATLASSIAN_CLOUD_MIGRATION} so the fleet keeps reading "
+                "before your Cloud migration so the fleet keeps reading "
                 "Jira/Confluence after the on-prem path retires."
             ),
             "link_label": "Open Credentials",

@@ -9,21 +9,26 @@ from maistro.tasks.queue import TaskQueue
 
 
 def test_list_pm_agents_returns_canonical_fleet() -> None:
-    """PM fleet roster: intake, program_manager, research, delivery,
-    risk_dependency, reporting (6 agents). Test pinned to the canonical
-    set so adding a 7th is a deliberate decision."""
+    """PM fleet roster: program_manager, delivery, risk_dependency, reporting
+    (4 agents — intake and research are filtered out because their primary
+    capabilities are not in _WORKING_CAPABILITIES). Pinned so adding a 5th
+    is a deliberate decision.
+
+    The list also includes seeded store agents (agent-N); we check only the
+    PM subset here.
+    """
     agents = list_pm_agents([])
     ids = [a.id for a in agents]
-    assert ids == [
-        "intake",
+    pm_ids = [i for i in ids if not i.startswith("agent-")]
+    assert pm_ids == [
         "program_manager",
-        "research",
         "delivery",
         "risk_dependency",
         "reporting",
     ]
-    assert agents[0].tagline
-    assert agents[0].primary_capability
+    pm_agents = [a for a in agents if not a.id.startswith("agent-")]
+    assert pm_agents[0].tagline
+    assert pm_agents[0].primary_capability
 
 
 def test_invoke_pm_agent_builds_description() -> None:

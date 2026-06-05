@@ -39,8 +39,13 @@ tui = [
     "typer>=0.12",
     "rich>=13.0",
 ]
+builders = [
+    "textual>=0.61",
+    "anthropic>=0.28",
+    "maistro-bootstrap[builders]",
+]
 all = [
-    "maistro-core[llm,sandbox,observability,tui]",
+    "maistro-core[llm,sandbox,observability,tui,builders]",
 ]
 dev = [
     "pytest>=8.3",

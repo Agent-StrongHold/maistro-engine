@@ -19,12 +19,12 @@ from maistro.capabilities.slots.infra import InfraHealth
 class RepairDecision(StrEnum):
     """What the loop decided about a single proposal in one cycle."""
 
-    ACTED = "acted"                    # dispatched to infra_action and ran (safe tier)
+    ACTED = "acted"  # dispatched to infra_action and ran (safe tier)
     PENDING_APPROVAL = "pending_approval"  # dispatched; awaiting the approval slot
-    SUPPRESSED = "suppressed"          # governor blocked it (budget/cooldown/flap/in-flight)
-    PROPOSE_ONLY = "propose_only"      # diagnosable but never auto-acted (e.g. storage); escalated
-    UNDIAGNOSED = "undiagnosed"        # degraded but no known remediation; escalated
-    FAILED = "failed"                  # dispatched and infra_action reported failure
+    SUPPRESSED = "suppressed"  # governor blocked it (budget/cooldown/flap/in-flight)
+    PROPOSE_ONLY = "propose_only"  # diagnosable but never auto-acted (e.g. storage); escalated
+    UNDIAGNOSED = "undiagnosed"  # degraded but no known remediation; escalated
+    FAILED = "failed"  # dispatched and infra_action reported failure
 
 
 @dataclass(frozen=True)

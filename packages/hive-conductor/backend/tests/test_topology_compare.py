@@ -158,7 +158,7 @@ def test_composite_uses_locked_weights() -> None:
     from services.topology_compare import _composite
 
     out = _composite([1.0], [1.0], [1.0])
-    assert out == [1.0]  # 0.5 + 0.3 + 0.2 = 1.0
+    assert out == [0.85]  # W_SUCCESS(0.4) + W_LATENCY(0.25) + W_THUMB(0.2) + W_COST(0.15*0) = 0.85
 
 
 def test_bucket_observations_groups_by_field() -> None:

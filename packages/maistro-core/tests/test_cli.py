@@ -1,88 +1,166 @@
-"""`maistro` shell CLI — a thin client of the HTTP API (UI parity, SPEC-184).
+"""`maistro` Typer CLI — thin-client tests using typer.testing.CliRunner.
 
-Covers the `maistro approvals list/approve/deny` subcommands: arg parsing and
-request building against an httpx.MockTransport (no live server).
+Covers:
+  - `maistro --help` exits 0 and shows help text
+  - `maistro approvals list` — prints pending requests
+  - `maistro approvals approve <id>` — posts approved=True, prints confirmation
+  - `maistro approvals deny <id>` — posts approved=False, prints confirmation
+  - `maistro approvals list` when the server returns no pending items
 """
 
 from __future__ import annotations
 
-import json
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+from typer.testing import CliRunner
 
-from maistro import cli
+from maistro.cli import app
+
+runner = CliRunner()
 
 
-def _client(handler) -> httpx.Client:
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _mock_client(handler) -> httpx.Client:
+    """Return a real httpx.Client backed by a MockTransport."""
     return httpx.Client(base_url="http://api:8101", transport=httpx.MockTransport(handler))
 
 
-def test_parser_approvals_list() -> None:
-    args = cli.build_parser().parse_args(["approvals", "list"])
-    assert args.command == "approvals"
-    assert args.action == "list"
+# ---------------------------------------------------------------------------
+# Help
+# ---------------------------------------------------------------------------
 
 
-def test_parser_approvals_approve_requires_id() -> None:
-    with pytest.raises(SystemExit):
-        cli.build_parser().parse_args(["approvals", "approve"])
+def test_help_exits_zero() -> None:
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "approvals" in result.output.lower() or "maistro" in result.output.lower()
 
 
-def test_approvals_list_returns_pending() -> None:
+def test_approvals_help_exits_zero() -> None:
+    result = runner.invoke(app, ["approvals", "--help"])
+    assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# approvals list
+# ---------------------------------------------------------------------------
+
+
+def test_approvals_list_prints_pending() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.method == "GET"
         assert request.url.path == "/v1/capabilities/approvals"
-        return httpx.Response(200, json={"pending": [{"request_id": "r1", "action": "restart_stack"}]})
+        return httpx.Response(
+            200,
+            json={
+                "pending": [
+                    {
+                        "request_id": "r1",
+                        "action": "restart_stack",
+                        "tier": "destructive",
+                        "requester": "infra_action",
+                    }
+                ]
+            },
+        )
 
-    pending = cli.approvals_list(_client(handler))
-    assert pending == [{"request_id": "r1", "action": "restart_stack"}]
+    client = _mock_client(handler)
+    ctx_mgr = MagicMock()
+    ctx_mgr.__enter__ = MagicMock(return_value=client)
+    ctx_mgr.__exit__ = MagicMock(return_value=False)
+
+    with patch("maistro.cli._approvals._client", return_value=ctx_mgr):
+        result = runner.invoke(app, ["approvals", "list"])
+
+    assert result.exit_code == 0
+    assert "r1" in result.output
+    assert "restart_stack" in result.output
 
 
-def test_approvals_resolve_approve_posts_true() -> None:
+def test_approvals_list_empty() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"pending": []})
+
+    client = _mock_client(handler)
+    ctx_mgr = MagicMock()
+    ctx_mgr.__enter__ = MagicMock(return_value=client)
+    ctx_mgr.__exit__ = MagicMock(return_value=False)
+
+    with patch("maistro.cli._approvals._client", return_value=ctx_mgr):
+        result = runner.invoke(app, ["approvals", "list"])
+
+    assert result.exit_code == 0
+    assert "No pending" in result.output
+
+
+# ---------------------------------------------------------------------------
+# approvals approve
+# ---------------------------------------------------------------------------
+
+
+def test_approvals_approve_posts_true() -> None:
     seen: dict[str, object] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        import json
+
         seen["path"] = request.url.path
         seen["body"] = json.loads(request.content)
-        return httpx.Response(200, json={"resolved": True, "approved": True})
+        return httpx.Response(200, json={"resolved": True, "approved": True, "request_id": "r1"})
 
-    out = cli.approvals_resolve(_client(handler), "r1", approved=True)
-    assert out["resolved"] is True
+    client = _mock_client(handler)
+    ctx_mgr = MagicMock()
+    ctx_mgr.__enter__ = MagicMock(return_value=client)
+    ctx_mgr.__exit__ = MagicMock(return_value=False)
+
+    with patch("maistro.cli._approvals._client", return_value=ctx_mgr):
+        result = runner.invoke(app, ["approvals", "approve", "r1"])
+
+    assert result.exit_code == 0
+    assert "r1" in result.output
     assert seen["path"] == "/v1/capabilities/approvals/r1"
     assert seen["body"] == {"approved": True}
 
 
-def test_approvals_resolve_deny_posts_false() -> None:
+# ---------------------------------------------------------------------------
+# approvals deny
+# ---------------------------------------------------------------------------
+
+
+def test_approvals_deny_posts_false() -> None:
+    seen: dict[str, object] = {}
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert json.loads(request.content) == {"approved": False}
-        return httpx.Response(200, json={"resolved": True, "approved": False})
+        import json
 
-    out = cli.approvals_resolve(_client(handler), "r9", approved=False)
-    assert out["approved"] is False
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"resolved": True, "approved": False, "request_id": "r9"})
 
+    client = _mock_client(handler)
+    ctx_mgr = MagicMock()
+    ctx_mgr.__enter__ = MagicMock(return_value=client)
+    ctx_mgr.__exit__ = MagicMock(return_value=False)
 
-def test_main_approvals_list_prints(capsys) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"pending": [{"request_id": "r1", "action": "restart_stack",
-                                                      "tier": "destructive", "requester": "infra_action"}]})
+    with patch("maistro.cli._approvals._client", return_value=ctx_mgr):
+        result = runner.invoke(app, ["approvals", "deny", "r9"])
 
-    rc = cli.main(["approvals", "list"], client=_client(handler))
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "r1" in out
-    assert "restart_stack" in out
+    assert result.exit_code == 0
+    assert seen["body"] == {"approved": False}
 
 
-def test_main_approve_prints_confirmation(capsys) -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"resolved": True, "approved": True, "request_id": "r1"})
-
-    rc = cli.main(["approvals", "approve", "r1"], client=_client(handler))
-    assert rc == 0
-    assert "r1" in capsys.readouterr().out
+# ---------------------------------------------------------------------------
+# approve/deny require a request_id argument
+# ---------------------------------------------------------------------------
 
 
-def test_main_no_command_returns_nonzero(capsys) -> None:
-    rc = cli.main([])
-    assert rc != 0
+@pytest.mark.parametrize("subcmd", ["approve", "deny"])
+def test_approvals_subcommand_requires_id(subcmd: str) -> None:
+    result = runner.invoke(app, ["approvals", subcmd])
+    # Typer exits non-zero when a required argument is missing
+    assert result.exit_code != 0

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
-from maistro.capabilities.providers.self_repair import RuleBasedRepair
 from maistro.capabilities.protocols import CapabilityProvider
+from maistro.capabilities.providers.self_repair import RuleBasedRepair
 from maistro.capabilities.slots.infra import ActionResult, InfraHealth, ResourceHealth
 from maistro.capabilities.slots.self_repair import RepairDecision, SelfRepair
 from maistro.capabilities.types import ProviderHealth
@@ -62,11 +62,13 @@ def _health(**sections: ResourceHealth) -> InfraHealth:
 
 
 def _unhealthy_container(name: str = "litellm") -> InfraHealth:
-    return _health(docker=ResourceHealth("degraded", {"containers": [{"name": name, "state": "unhealthy"}]}))
+    return _health(
+        docker=ResourceHealth("degraded", {"containers": [{"name": name, "state": "unhealthy"}]})
+    )
 
 
 async def _drain(provider: RuleBasedRepair) -> None:
-    if provider._tasks:  # noqa: SLF001 - test drains background dispatch tasks
+    if provider._tasks:  # test drains background dispatch tasks
         await asyncio.gather(*list(provider._tasks))
 
 
@@ -85,7 +87,9 @@ async def test_no_monitor_returns_empty_cycle() -> None:
 
 async def test_healthy_snapshot_acts_on_nothing() -> None:
     action = _FakeAction()
-    mon = _FakeMonitor(_health(docker=ResourceHealth("ok", {"containers": [{"name": "x", "state": "healthy"}]})))
+    mon = _FakeMonitor(
+        _health(docker=ResourceHealth("ok", {"containers": [{"name": "x", "state": "healthy"}]}))
+    )
     result = await RuleBasedRepair(infra_monitor=mon, infra_action=action).run_once()
     assert result.results == []
     assert action.calls == []
@@ -93,7 +97,11 @@ async def test_healthy_snapshot_acts_on_nothing() -> None:
 
 async def test_auto_safe_reversible_is_acted_inline() -> None:
     action = _FakeAction()
-    p = RuleBasedRepair(infra_monitor=_FakeMonitor(_unhealthy_container()), infra_action=action, autonomy="auto_safe")
+    p = RuleBasedRepair(
+        infra_monitor=_FakeMonitor(_unhealthy_container()),
+        infra_action=action,
+        autonomy="auto_safe",
+    )
     result = await p.run_once()
     (r,) = result.results
     assert r.decision is RepairDecision.ACTED
@@ -105,7 +113,9 @@ async def test_reversible_needs_approval_under_approve_all_not_blocking() -> Non
     # must dispatch it as a tracked task and return without blocking.
     action = _FakeAction()
     p = RuleBasedRepair(
-        infra_monitor=_FakeMonitor(_unhealthy_container()), infra_action=action, autonomy="approve_all"
+        infra_monitor=_FakeMonitor(_unhealthy_container()),
+        infra_action=action,
+        autonomy="approve_all",
     )
     result = await p.run_once()
     (r,) = result.results
@@ -116,7 +126,11 @@ async def test_reversible_needs_approval_under_approve_all_not_blocking() -> Non
 
 async def test_detect_only_dispatches_nothing() -> None:
     action = _FakeAction()
-    p = RuleBasedRepair(infra_monitor=_FakeMonitor(_unhealthy_container()), infra_action=action, autonomy="detect_only")
+    p = RuleBasedRepair(
+        infra_monitor=_FakeMonitor(_unhealthy_container()),
+        infra_action=action,
+        autonomy="detect_only",
+    )
     result = await p.run_once()
     (r,) = result.results
     assert r.decision is RepairDecision.SUPPRESSED
@@ -126,8 +140,12 @@ async def test_detect_only_dispatches_nothing() -> None:
 
 async def test_storage_is_propose_only() -> None:
     action = _FakeAction()
-    health = _health(storage=ResourceHealth("degraded", {"pools": [{"name": "dbpool", "healthy": False}]}))
-    result = await RuleBasedRepair(infra_monitor=_FakeMonitor(health), infra_action=action).run_once()
+    health = _health(
+        storage=ResourceHealth("degraded", {"pools": [{"name": "dbpool", "healthy": False}]})
+    )
+    result = await RuleBasedRepair(
+        infra_monitor=_FakeMonitor(health), infra_action=action
+    ).run_once()
     (r,) = result.results
     assert r.decision is RepairDecision.PROPOSE_ONLY
     assert action.calls == []
@@ -136,7 +154,9 @@ async def test_storage_is_propose_only() -> None:
 async def test_undiagnosed_is_recorded_not_acted() -> None:
     action = _FakeAction()
     health = _health(docker=ResourceHealth("down", {"mystery": 1}))
-    result = await RuleBasedRepair(infra_monitor=_FakeMonitor(health), infra_action=action).run_once()
+    result = await RuleBasedRepair(
+        infra_monitor=_FakeMonitor(health), infra_action=action
+    ).run_once()
     (r,) = result.results
     assert r.decision is RepairDecision.UNDIAGNOSED
     assert action.calls == []
@@ -144,13 +164,24 @@ async def test_undiagnosed_is_recorded_not_acted() -> None:
 
 async def test_per_cycle_action_cap() -> None:
     action = _FakeAction()
-    health = _health(docker=ResourceHealth("degraded", {"containers": [
-        {"name": "a", "state": "unhealthy"},
-        {"name": "b", "state": "unhealthy"},
-        {"name": "c", "state": "unhealthy"},
-    ]}))
-    p = RuleBasedRepair(infra_monitor=_FakeMonitor(health), infra_action=action,
-                        autonomy="auto_safe", max_actions_per_cycle=2)
+    health = _health(
+        docker=ResourceHealth(
+            "degraded",
+            {
+                "containers": [
+                    {"name": "a", "state": "unhealthy"},
+                    {"name": "b", "state": "unhealthy"},
+                    {"name": "c", "state": "unhealthy"},
+                ]
+            },
+        )
+    )
+    p = RuleBasedRepair(
+        infra_monitor=_FakeMonitor(health),
+        infra_action=action,
+        autonomy="auto_safe",
+        max_actions_per_cycle=2,
+    )
     result = await p.run_once()
     await _drain(p)
     acted = [r for r in result.results if r.decision is RepairDecision.ACTED]
@@ -166,7 +197,9 @@ async def test_in_flight_guard_across_cycles() -> None:
     block = asyncio.Event()
     action = _FakeAction(block=block)  # restart parks until released (approval-gated)
     p = RuleBasedRepair(
-        infra_monitor=_FakeMonitor(_unhealthy_container()), infra_action=action, autonomy="approve_all"
+        infra_monitor=_FakeMonitor(_unhealthy_container()),
+        infra_action=action,
+        autonomy="approve_all",
     )
     await p.run_once()  # dispatches restart_container as a parked pending task (in_flight)
     await asyncio.sleep(0)  # let the task start (and block)
@@ -179,7 +212,9 @@ async def test_in_flight_guard_across_cycles() -> None:
 
 
 async def test_last_cycle_is_exposed_for_the_api() -> None:
-    p = RuleBasedRepair(infra_monitor=_FakeMonitor(_unhealthy_container()), infra_action=_FakeAction())
+    p = RuleBasedRepair(
+        infra_monitor=_FakeMonitor(_unhealthy_container()), infra_action=_FakeAction()
+    )
     assert p.last_cycle is None
     await p.run_once()
     assert p.last_cycle is not None

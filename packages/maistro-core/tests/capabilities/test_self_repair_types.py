@@ -30,7 +30,9 @@ def test_repair_proposal_fields() -> None:
 
 def test_proposal_with_no_action_is_allowed() -> None:
     # propose-only / undiagnosed proposals carry action=None.
-    p = RepairProposal(resource="storage:dbpool", symptom="zpool degraded", action=None, params={}, tier="")
+    p = RepairProposal(
+        resource="storage:dbpool", symptom="zpool degraded", action=None, params={}, tier=""
+    )
     assert p.action is None
 
 

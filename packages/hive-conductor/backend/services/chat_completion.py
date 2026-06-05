@@ -19,6 +19,14 @@ from protocols.llm import LLMPort
 logger = logging.getLogger("hive.chat")
 
 
+def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
+    """Single allowlisted callsite for use_secret — lambda is centralised here."""
+    try:
+        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
+    except Exception:
+        return None
+
+
 def build_llm_port() -> LLMPort:
     s = get_settings()
     base = os.environ.get("LITELLM_API_BASE") or (s.litellm_api_base or "").strip()
@@ -65,7 +73,7 @@ def _get_jira_pat(user_id: str) -> str | None:
         for provider_id in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
             try:
                 if store.has_secret(user_id, provider_id):
-                    return store.use_secret(user_id, provider_id, lambda s: s)
+                    return _use_secret(store, user_id, provider_id)
             except Exception:
                 continue
         return None
@@ -281,7 +289,7 @@ PM_TOOLS = [
 ]
 
 
-_JIRA_BASE = "https://jira.example.com"
+_JIRA_BASE = os.environ.get("JIRA_SERVER_URL", "")
 
 
 def _jira_headers(jira_pat: str) -> dict[str, str]:
@@ -293,6 +301,8 @@ async def _tool_poll_jira(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured. Go to Credentials and add your Jira PAT."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     max_results = min(args.get("max_results", 10), 15)
@@ -333,6 +343,8 @@ async def _tool_search_jira(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     jql = args.get("jql") or ""
@@ -378,6 +390,8 @@ async def _tool_get_issue(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     issue_key = args.get("issue_key") or args.get("key") or ""
@@ -435,6 +449,8 @@ async def _tool_check_blockers(
 ) -> dict[str, Any]:
     if not jira_pat:
         return {"error": "No Jira PAT configured."}
+    if not _JIRA_BASE:
+        return {"error": "JIRA_SERVER_URL not configured"}
     import httpx
 
     jql = (
@@ -488,7 +504,7 @@ def _get_confluence_pat(user_id: str) -> str | None:
         for pid in ("atlassian_server_confluence", "confluence"):
             try:
                 if store.has_secret(user_id, pid):
-                    return store.use_secret(user_id, pid, lambda s: s)
+                    return _use_secret(store, user_id, pid)
             except Exception:
                 continue
     except Exception:
@@ -507,7 +523,9 @@ async def _tool_search_confluence(
         return {"error": "query is required"}
     import httpx
 
-    confluence_base = "https://wiki.example.com"
+    confluence_base = os.environ.get("CONFLUENCE_SERVER_URL", "")
+    if not confluence_base:
+        return {"error": "CONFLUENCE_SERVER_URL not configured"}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(

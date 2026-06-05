@@ -17,7 +17,12 @@ def test_action_tier_values():
 
 
 def test_approval_request_and_decision():
-    req = ApprovalRequest(action="restart_stack", params={"name": "traefik"}, tier="destructive",
-                          requester="self_repair", rationale="traefik unhealthy")
+    req = ApprovalRequest(
+        action="restart_stack",
+        params={"name": "traefik"},
+        tier="destructive",
+        requester="self_repair",
+        rationale="traefik unhealthy",
+    )
     dec = ApprovalDecision(request_id=req.request_id, approved=True, actor="blake")
     assert dec.request_id == req.request_id and dec.approved is True

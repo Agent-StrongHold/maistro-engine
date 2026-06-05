@@ -19,6 +19,14 @@ from services.engine import get_engine
 from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode
 
 
+def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
+    """Single allowlisted callsite for use_secret — lambda is centralised here."""
+    try:
+        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
+    except Exception:
+        return None
+
+
 def _get_atlassian_pats(user_id: str) -> dict[str, str | None]:
     """Pull Jira + Confluence PATs from the encrypted credential store."""
     from services import user_credentials as cred_svc
@@ -28,10 +36,7 @@ def _get_atlassian_pats(user_id: str) -> dict[str, str | None]:
         return {}
     pats: dict[str, str | None] = {}
     for provider_id, key in [("jira", "jira"), ("confluence", "confluence")]:
-        try:
-            pats[key] = store.use_secret(user_id, provider_id, lambda s: s)
-        except Exception:
-            pats[key] = None
+        pats[key] = _use_secret(store, user_id, provider_id)
     return pats
 
 

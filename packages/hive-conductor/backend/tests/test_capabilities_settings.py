@@ -16,6 +16,7 @@ def _config_writer(task_id: str) -> TestClient:
     from datetime import UTC, datetime
 
     import stores
+
     from maistro.security.passwords import hash_password
 
     uid = f"capcfg-{task_id}"

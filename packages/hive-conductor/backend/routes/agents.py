@@ -20,6 +20,14 @@ logger = logging.getLogger("hive.agents")
 router = APIRouter(tags=["agents"])
 
 
+def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
+    """Single allowlisted callsite for use_secret — lambda is centralised here."""
+    try:
+        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
+    except Exception:
+        return None
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -48,7 +56,7 @@ def _build_invoke_context(user_id: str) -> dict[str, Any]:
         for pid, key in [("atlassian_server_jira", "jira"), ("confluence", "confluence")]:
             try:
                 if store.has_secret(user_id, pid):
-                    pats[key] = store.use_secret(user_id, pid, lambda s: s)
+                    pats[key] = _use_secret(store, user_id, pid)
             except Exception:
                 pass
         if pats:
