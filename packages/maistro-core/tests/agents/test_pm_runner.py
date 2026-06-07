@@ -13,7 +13,10 @@ from maistro.tasks.runner import TaskRunner
 
 
 @pytest.mark.asyncio
-async def test_run_pm_task_succeeds_without_llm() -> None:
+async def test_run_pm_task_succeeds_without_llm(monkeypatch: pytest.MonkeyPatch) -> None:
+    # MAISTRO_PM_USE_STUBS routes through the legacy stub dispatch (no LLM
+    # gateway call) — the documented rollback path in pm_runner.run_pm_task.
+    monkeypatch.setenv("MAISTRO_PM_USE_STUBS", "1")
     task = TaskCreate(
         description="[Intake Agent] create_initiative: Q3 rollout",
         task_type="intake",
