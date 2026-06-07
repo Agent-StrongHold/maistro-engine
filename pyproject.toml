@@ -71,6 +71,7 @@ src = [
     "packages/maistro-bootstrap/src",
     "packages/maistro-registry/src",
     "packages/maistro-evolve/src",
+    "packages/maistro-rsi/src",
 ]
 
 [tool.ruff.lint]
@@ -88,6 +89,7 @@ testpaths = [
     "packages/maistro-canvas/tests",
     "packages/maistro-bootstrap/tests",
     "packages/maistro-evolve/tests",
+    "packages/maistro-rsi/tests",
     "tests",
 ]
 asyncio_mode = "auto"
