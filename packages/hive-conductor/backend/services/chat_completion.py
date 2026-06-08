@@ -690,6 +690,11 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "list_agent_buttons": _tool_list_agent_buttons,
 }
 
+# Substrate tools — domain-agnostic DAG execution, eval, hill-climb
+from services.substrate_tools import SUBSTRATE_TOOL_HANDLERS, SUBSTRATE_TOOLS as _SUBSTRATE_TOOL_DEFS  # noqa: E402
+
+_TOOL_HANDLERS.update(SUBSTRATE_TOOL_HANDLERS)
+
 
 async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> dict[str, Any]:
     """Execute a PM tool for real. No stubs. Calls Jira REST API directly."""
