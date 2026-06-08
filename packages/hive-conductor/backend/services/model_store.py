@@ -20,13 +20,6 @@ T = TypeVar("T", bound=BaseModel)
 
 
 class ModelStore:
-    """Dict-like store for Pydantic models with optional persistence.
-
-    When ``persisted`` is provided, all writes are forwarded to the
-    PersistedStore. Reads always hit the in-memory dict (loaded from
-    SQLite on ``initialize()``).
-    """
-
     def __init__(
         self,
         store_name: str,
@@ -90,19 +83,11 @@ class ModelStore:
         raise KeyError(key)
 
     def persist(self, key: str) -> None:
-        """Re-serialize an in-memory item to SQLite after mutation."""
         if self._persisted is not None and key in self._data:
             self._persisted.put(self._store_name, key, self._data[key])
 
 
 class JsonStore:
-    """Store for untyped dict/list values with optional persistence.
-
-    Used for ``mission_steps`` (list of models) and ``cli_sessions``
-    (raw dicts) where the value is not a single Pydantic model.
-    Uses PersistedStore's raw JSON methods.
-    """
-
     def __init__(self, store_name: str, persisted: Any | None = None) -> None:
         self._store_name = store_name
         self._data: dict[str, Any] = {}

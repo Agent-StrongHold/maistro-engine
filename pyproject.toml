@@ -7,32 +7,29 @@ dependencies = [
     # API
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
-
     # Agent Framework
     "pydantic-ai>=0.1",
-
     # Tool Protocol
     "fastmcp>=2.0",
-
     # LLM Proxy
     "litellm>=1.60",
-
     # Observability
     "langfuse>=2.60",
-
     # Database
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
     "pgvector>=0.3",
     "alembic>=1.14",
-
     # Utilities
     "pydantic-settings>=2.7",
     "structlog>=24.4",
     "httpx>=0.28",
     "docker>=7.0",
     "pyyaml>=6.0",
+    "bcrypt>=4.0",
+    "argon2-cffi>=23.1",
     "maistro-registry",
+    "temporalio>=1.27.0",
 ]
 
 [project.optional-dependencies]
@@ -73,6 +70,8 @@ src = [
     "packages/maistro-canvas/src",
     "packages/maistro-bootstrap/src",
     "packages/maistro-registry/src",
+    "packages/maistro-evolve/src",
+    "packages/maistro-rsi/src",
 ]
 
 [tool.ruff.lint]
@@ -89,6 +88,8 @@ testpaths = [
     "packages/maistro-turing/tests",
     "packages/maistro-canvas/tests",
     "packages/maistro-bootstrap/tests",
+    "packages/maistro-evolve/tests",
+    "packages/maistro-rsi/tests",
     "tests",
 ]
 asyncio_mode = "auto"

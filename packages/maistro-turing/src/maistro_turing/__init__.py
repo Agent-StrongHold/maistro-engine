@@ -2,6 +2,26 @@
 
 from __future__ import annotations
 
+from maistro_turing.bridge import (
+    TuringClassifierBridge,
+    TuringMemoryBridge,
+    TuringProviderBridge,
+    TuringSecurityBridge,
+)
+from maistro_turing.cognition.reactor import (
+    FakeReactor,
+    IntervalTrigger,
+    Reactor,
+)
+from maistro_turing.protocols import (
+    ImmutableViolation,
+    MemoryRepo,
+    ProvenanceViolation,
+    RepoError,
+    WisdomDeferred,
+    WisdomInvariantViolation,
+    WorkingMemoryStore,
+)
 from maistro_turing.self_model import (
     ALL_FACETS,
     CANONICAL_FACETS,
@@ -12,9 +32,9 @@ from maistro_turing.self_model import (
     Mood,
     NodeKind,
     Passion,
+    PersonalityAnswer,
     PersonalityFacet,
     PersonalityItem,
-    PersonalityAnswer,
     PersonalityRevision,
     Preference,
     PreferenceKind,
@@ -28,39 +48,62 @@ from maistro_turing.self_model import (
     facet_node_id,
     guess_node_kind,
 )
-from maistro_turing.bridge import (
-    TuringMemoryBridge,
-    TuringSecurityBridge,
-    TuringProviderBridge,
-    TuringClassifierBridge,
+from maistro_turing.tiers import (
+    INHERITANCE_PRIORITY,
+    WEIGHT_BOUNDS,
+    clamp_weight,
+)
+from maistro_turing.types import (
+    DURABLE_TIERS,
+    EpisodicMemory,
+    MemoryTier,
+    SourceKind,
 )
 
 __all__ = [
     "ALL_FACETS",
     "CANONICAL_FACETS",
-    "ContributorOrigin",
+    "DURABLE_TIERS",
     "FACET_TO_TRAIT",
+    "IMMUTABLE_FIELDS",
+    "INHERITANCE_PRIORITY",
+    "WEIGHT_BOUNDS",
+    "ContributorOrigin",
+    "EpisodicMemory",
+    "FakeReactor",
     "Hobby",
+    "ImmutableViolation",
     "Interest",
+    "IntervalTrigger",
+    "MemoryRepo",
+    "MemoryTier",
     "Mood",
     "NodeKind",
     "Passion",
+    "PersonalityAnswer",
     "PersonalityFacet",
     "PersonalityItem",
-    "PersonalityAnswer",
     "PersonalityRevision",
     "Preference",
     "PreferenceKind",
+    "ProvenanceViolation",
+    "Reactor",
+    "RepoError",
     "SelfTodo",
     "SelfTodoRevision",
     "Skill",
     "SkillKind",
+    "SourceKind",
     "TodoStatus",
     "Trait",
     "TuringClassifierBridge",
     "TuringMemoryBridge",
     "TuringProviderBridge",
     "TuringSecurityBridge",
+    "WisdomDeferred",
+    "WisdomInvariantViolation",
+    "WorkingMemoryStore",
+    "clamp_weight",
     "current_level",
     "facet_node_id",
     "guess_node_kind",

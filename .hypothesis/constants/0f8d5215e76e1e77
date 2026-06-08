@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/types/config.py
+# hypothesis_version: 6.152.9
+
+[0.05, 0.4, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.5, 300, 3600, 86400, 1048576, 'Authorization', 'Content-Type', 'DELETE', 'GET', 'OPTIONS', 'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'POST', 'PUT', 'X-OpenWebUI-User-Id', 'auto', 'chat', 'http://litellm:4000', 'maistro_session', 'small']

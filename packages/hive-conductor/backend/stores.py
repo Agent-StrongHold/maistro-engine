@@ -20,6 +20,7 @@ from models.schemas import (
     ChatMessage,
     ChatSession,
     Container,
+    HiveUser,
     MCPServer,
     MCPTool,
     MemoryEntry,
@@ -76,9 +77,29 @@ memory_entries: ModelStore = ModelStore("memory_entries", MemoryEntry)
 memory_namespaces: dict[str, MemoryNamespace] = {
     "default": MemoryNamespace(name="default", entry_count=1, size_bytes=1024)
 }
-settings: SettingsModel = SettingsModel()
+def _initial_settings() -> SettingsModel:
+    from settings_defaults import default_settings
+
+    return default_settings()
+
+
+settings: SettingsModel = _initial_settings()
 chat_sessions: ModelStore = ModelStore("chat_sessions", ChatSession)
 cli_sessions: JsonStore = JsonStore("cli_sessions")
+users: ModelStore = ModelStore("users", HiveUser)
+sessions: JsonStore = JsonStore("sessions")
+program_contexts: JsonStore = JsonStore("program_contexts")
+work_item_drafts: JsonStore = JsonStore("work_item_drafts")
+dags: JsonStore = JsonStore("dags")
+messages: JsonStore = JsonStore("messages")
+audit_log: JsonStore = JsonStore("audit_log")
+# Phase 5 Signal #3 — eval-judge verdicts keyed by run_id.
+eval_verdicts: JsonStore = JsonStore("eval_verdicts")
+# Phase 6 — optimizer proposals keyed by proposal_id.
+optimizer_proposals: JsonStore = JsonStore("optimizer_proposals")
+# Task #27 — per-user, per-provider non-secret config (e.g. Airtable base_id).
+# Key shape: f"{user_id}:{provider_id}" → dict[str, str].
+user_provider_config: JsonStore = JsonStore("user_provider_config")
 
 _all_model_stores: list[ModelStore] = [
     missions,
@@ -90,8 +111,21 @@ _all_model_stores: list[ModelStore] = [
     containers,
     memory_entries,
     chat_sessions,
+    users,
 ]
-_all_json_stores: list[JsonStore] = [mission_steps, cli_sessions]
+_all_json_stores: list[JsonStore] = [
+    mission_steps,
+    cli_sessions,
+    sessions,
+    program_contexts,
+    work_item_drafts,
+    dags,
+    messages,
+    audit_log,
+    eval_verdicts,
+    optimizer_proposals,
+    user_provider_config,
+]
 
 
 def configure_persistence(persisted_store: Any) -> None:
@@ -116,7 +150,26 @@ def initialize_stores() -> None:
     )
 
 
+def _seed_platform_mcp() -> None:
+    """Register platform MCP catalog (multi-server) for all Hive modes."""
+    from services.mcp_defaults import merge_manifest_catalog, platform_mcp_catalog
+
+    servers, tools = merge_manifest_catalog(*platform_mcp_catalog())
+    for server in servers:
+        if server.id not in mcp_servers:
+            mcp_servers[server.id] = server
+    existing_tool_ids = {t.id for t in mcp_tools.values()}
+    for tool in tools:
+        if tool.id not in existing_tool_ids:
+            mcp_tools[tool.id] = tool
+
+
 def _seed_if_empty() -> None:
+    _seed_platform_mcp()
+    from settings_defaults import is_pm_poc_mode
+
+    if is_pm_poc_mode():
+        return
     if len(missions) == 0:
         missions["m-1"] = _mission("m-1", "Deploy canary", "running", 0.6)
         missions["m-2"] = _mission("m-2", "Backfill embeddings", "pending", 0.0)
@@ -181,21 +234,33 @@ def _seed_if_empty() -> None:
         )
     if len(agents) == 0:
         t = now()
-        agents["agent-1"] = Agent(
-            id="agent-1",
-            name="Orchestrator Alpha",
-            description="General mission runner",
-            model="gpt-4.1",
-            status="idle",
-            capabilities=["missions", "tools"],
-            skills=["sk-1"],
-            current_mission=None,
-            tasks_completed=128,
-            avg_response_time_ms=890.0,
-            last_active=t,
-            created_at=t,
-            config={"temperature": 0.2},
-        )
+        _real_agents = [
+            ("queen", "Conductor", "Orchestrates agents, routes intents, dispatches tools", "cerebras-qwen-3-235b-a22b-2507", ["missions", "tools", "routing", "chat"], ["sk-1"], 234, 42.0, {"strategy": "react", "role": "queen"}),
+            ("worker", "Coder", "Writes, reviews, and refactors code", "mistral-codestral", ["code", "reasoning", "tools"], ["sk-1"], 189, 1200.0, {"strategy": "plan_execute", "role": "worker"}),
+            ("worker", "Researcher", "Web search, document analysis, summarization", "gemini-3-flash", ["research", "tools", "summarize"], ["sk-1"], 156, 210.0, {"strategy": "react", "role": "worker"}),
+            ("worker", "Abra", "Home Assistant control, IoT device management", "gemini-flash-lite", ["ha_control", "tools"], ["sk-1"], 142, 180.0, {"strategy": "react", "role": "worker"}),
+            ("scout", "Phantom", "Exploratory research, competitive analysis, trend detection", "perplexity-sonar-deep-research", ["research", "exploration"], [], 37, 4500.0, {"strategy": "react", "role": "scout"}),
+            ("drone", "Heartbeat", "System health checks, uptime monitoring, maintenance", "cerebras-llama8b", ["monitoring", "maintenance"], [], 89, 35.0, {"strategy": "react", "role": "drone"}),
+            ("drone", "DreamLoop", "Background memory consolidation, pattern mining, embedding backfill", "gemma-27b", ["memory", "patterns"], [], 37, 3200.0, {"strategy": "react", "role": "drone"}),
+            ("guard", "Bouncer", "Security gate, intent validation, privilege enforcement", "mistral-small", ["security", "gate"], [], 312, 55.0, {"strategy": "react", "role": "guard"}),
+            ("guard", "RedTeam", "Adversarial testing, vulnerability scanning, penetration testing", "mistral-devstral", ["security", "testing"], [], 89, 2800.0, {"strategy": "plan_execute", "role": "guard"}),
+        ]
+        for i, (_role, name, desc, model, caps, _skills, _tasks, _latency, _config) in enumerate(_real_agents):
+            agents[f"agent-{i+1}"] = Agent(
+                id=f"agent-{i+1}",
+                name=name,
+                description=desc,
+                model=model,
+                status="idle",
+                capabilities=caps,
+                skills=_skills,
+                current_mission=None,
+                tasks_completed=_tasks,
+                avg_response_time_ms=_latency,
+                last_active=t,
+                created_at=t,
+                config=_config,
+            )
     if len(mcp_servers) == 0:
         t = now()
         mcp_servers["mcp-1"] = MCPServer(
@@ -235,6 +300,76 @@ def _seed_if_empty() -> None:
             started_at=t,
             labels={"app": "hive"},
         )
+    if len(memory_entries) == 0:
+        t = now()
+    if len(dags) == 0:
+        from routes.dags import DAGEdge, DAGFile, DAGNode
+
+        t = now()
+        n1 = str(uuid4())
+        n2 = str(uuid4())
+        n3 = str(uuid4())
+        e1 = str(uuid4())
+        e2 = str(uuid4())
+        dag_id = str(uuid4())
+        dags[dag_id] = DAGFile(
+            id=dag_id,
+            name="Security Audit Pipeline",
+            description="Automated security audit with Bouncer, Conductor, and RedTeam",
+            nodes=[
+                DAGNode(id=n1, role="guard", name="Bouncer"),
+                DAGNode(id=n2, role="queen", name="Conductor"),
+                DAGNode(id=n3, role="drone", name="RedTeam"),
+            ],
+            edges=[
+                DAGEdge(id=e1, from_node=n1, to_node=n2),
+                DAGEdge(id=e2, from_node=n2, to_node=n3),
+            ],
+            entry_node=n1,
+            max_cycles=10,
+            run_scout=False,
+            status="draft",
+            created_at=t,
+            updated_at=t,
+        ).model_dump(mode="json")
+    if len(messages) == 0:
+        from routes.messages import Message
+
+        t = now()
+        m1_id = str(uuid4())
+        m2_id = str(uuid4())
+        m3_id = str(uuid4())
+        messages[m1_id] = Message(
+            id=m1_id, from_agent="RedTeam", to="admin",
+            subject="Vulnerability found in auth flow", body="XSS in /v1/auth/callback",
+            priority="critical", read=False, category="security", created_at=t,
+        ).model_dump(mode="json")
+        messages[m2_id] = Message(
+            id=m2_id, from_agent="DreamLoop", to="all",
+            subject="DreamLoop cycle 47 complete", body="Generated 12 new patterns from overnight analysis",
+            priority="info", read=False, category="mission", created_at=t,
+        ).model_dump(mode="json")
+        messages[m3_id] = Message(
+            id=m3_id, from_agent="Conductor", to="admin",
+            subject="Anthropic quota at 25%", body="125K of 500K tokens used this billing cycle",
+            priority="warning", read=True, category="quota", created_at=t,
+        ).model_dump(mode="json")
+    if len(audit_log) == 0:
+        from routes.audit import AuditEntry
+
+        t = now()
+        for action, actor, target, severity in [
+            ("login", "admin", None, "info"),
+            ("gate_block", "Bouncer", "unauthenticated_request", "warning"),
+            ("dag_run", "Conductor", "Security Audit Pipeline", "info"),
+            ("elevate", "admin", "agent-1", "warning"),
+            ("config_change", "admin", "litellm_config", "info"),
+        ]:
+            eid = str(uuid4())
+            audit_log[eid] = AuditEntry(
+                id=eid, action=action, actor=actor, target=target,
+                detail={}, severity=severity, created_at=t,
+            ).model_dump(mode="json")
     if len(memory_entries) == 0:
         t = now()
         memory_entries["mem-1"] = MemoryEntry(

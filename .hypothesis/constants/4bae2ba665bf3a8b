@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/trust_boundary.py
+# hypothesis_version: 6.151.10
+
+['..', '/', '/tmp', '/workspace', '/workspace/**', 'Task ID is required', 'execute', 'read', 'write']

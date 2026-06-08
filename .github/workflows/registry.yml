@@ -17,6 +17,8 @@ on:
   push:
     branches:
       - main
+      - integration
+      - research/pm-fleet-poc
 
 permissions:
   contents: read
@@ -38,17 +40,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install minimal deps
-        # Only what the registry tool needs; keeps CI fast and the
-        # supply-chain surface small per engine#ADR-039.
         run: pip install -e ./packages/maistro-registry pytest
 
       - name: Run unit tests
-        # --confcutdir prevents pytest from discovering the root
-        # tests/conftest.py (which imports the engine and pulls in
-        # pydantic_settings + the rest of the engine dep tree). The
-        # registry tests are deliberately decoupled per ADR-039;
-        # this guard plus the local tests/tools/registry/conftest.py
-        # ensures the engine never gets imported here.
         run: |
           pytest tests/tools/registry/ \
             --confcutdir=tests/tools/registry \
@@ -56,7 +50,4 @@ jobs:
             -v
 
       - name: Validate ADR/spec front-matter (warn-only window)
-        # Until 2026-06-07: do NOT pass --strict; warnings (missing
-        # front-matter) are advisory. After 2026-06-07: add --strict
-        # to fail the job on warnings as well as errors.
         run: python -m maistro_registry.cli walk .

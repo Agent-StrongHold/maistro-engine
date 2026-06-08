@@ -7,7 +7,6 @@ HttpOpenAILLMClient — thin httpx wrapper implementing maistro.protocols.llm.LL
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -115,11 +114,12 @@ class MaistroCoreBridge:
         self._container: Any = None
 
     async def start(self, settings: Settings) -> None:
-        from maistro.container import create_container
-        from maistro.agents.factory import create_agents
-        from maistro.types.config import AgentConfig
-        from maistro.prompts.store import InMemoryPromptManager
         import os
+
+        from maistro.agents.factory import create_agents
+        from maistro.container import create_container
+        from maistro.prompts.store import InMemoryPromptManager
+        from maistro.types.config import AgentConfig
 
         llm_base = (settings.maistro_llm_base_url or "").strip()
         llm_key = (

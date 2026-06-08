@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, integration]
+    branches: [main, integration, merge/main-into-integration, research/pm-fleet-poc]
   pull_request:
-    branches: [main, integration]
+    branches: [main, integration, research/pm-fleet-poc]
 
 permissions:
   contents: read
@@ -30,6 +30,7 @@ jobs:
           packages/maistro-canvas/src
           packages/maistro-bootstrap/src
           packages/maistro-registry/src
+          packages/maistro-evolve/src
 
   test:
     runs-on: ubuntu-latest
@@ -40,13 +41,6 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
-      # Package tests are run in separate invocations because two
-      # `tests/` directories at the same depth confuse pytest's
-      # rootdir auto-detection (ImportPathMismatchError on conftest.py).
-      # The legacy tests/ directory at repo root is excluded pending
-      # the src/maistro/ -> packages/ migration; its modules are
-      # shadowed by packages/maistro-core/src/maistro/ on the
-      # pythonpath, so they fail collection.
       - run: pytest packages/maistro-bootstrap/tests -v --tb=short
       - run: pytest packages/maistro-core/tests -v --tb=short
         env:

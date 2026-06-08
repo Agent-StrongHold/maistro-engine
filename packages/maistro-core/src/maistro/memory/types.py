@@ -95,3 +95,17 @@ class Outcome:
     output_tokens: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     id: int | None = None
+    # Phase 2 additions — per-project memory + per-DAG telemetry. Defaults
+    # keep existing callers byte-identical; new code passes these so
+    # get_experience_context can return a project-scoped failure narrative
+    # without polluting another project's learning loop.
+    project_id: str = ""
+    dag_id: str = ""
+    dag_run_id: str = ""
+    node_id: str = ""
+    # For Phase 5/6 optimizer signals — extended outcomes the user-thumbs
+    # widget + eval-judge can land on this same record without needing a
+    # parallel store.
+    thumb: str = ""  # "" | "up" | "down"
+    thumb_comment: str = ""
+    eval_judge_score: float | None = None  # 0..100 if eval-judge ran

@@ -130,8 +130,11 @@ class TaskRunner:
             await self._queue.update_status(task_id, TaskStatus.FAILED)
             self._queue.set_result(task_id, TaskResult(error="Task cancelled during shutdown"))
             await self._emit_progress_webhook(task_id)
-        except Exception:
+        except Exception as exc:
             await logger.aexception("task_execution_failed", task_id=task_id)
+            await self._queue.update_status(task_id, TaskStatus.FAILED)
+            self._queue.set_result(task_id, TaskResult(error=str(exc)))
+            await self._emit_progress_webhook(task_id)
         finally:
             self._semaphore.release()
 
@@ -167,6 +170,11 @@ class TaskRunner:
                 description=task.description,
                 workspace=task.workspace,
                 tier=task.tier,
+                task_type=task.task_type,
+                agent_id=task.agent_id,
+                capability=task.capability,
+                program_context=task.program_context,
+                user_id=task.user_id or None,
             )
 
             # Run conductor (single-pass: plan + code in one LLM call)

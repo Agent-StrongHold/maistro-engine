@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/auth/_types.py
+# hypothesis_version: 6.151.10
+
+['*', '*:*', 'admin', 'admin:admin', 'admin:dashboard', 'admin:traces', 'builders', 'builders:assign', 'builders:queue', 'builders:review', 'builders:scan', 'canvas', 'canvas:read', 'canvas:write', 'events', 'events:emit', 'events:history', 'events:subscribe', 'ha', 'ha:read', 'ha:write', 'infra', 'infra:action', 'infra:read', 'llm', 'llm:chat_completions', 'llm:embeddings', 'llm:image_generate', 'llm:models_list', 'llm:responses_create', 'llm:responses_read', 'memory', 'memory:read', 'memory:write', 'skills', 'skills:marketplace', 'skills:read', 'skills:write', 'tasks', 'tasks:read', 'tasks:schedules', 'tasks:write', 'trading', 'trading:evolve', 'trading:patterns', 'trading:read', 'trading:system', 'trading:write', 'turing', 'turing:chat', 'turing:vault_read', 'turing:vault_write']

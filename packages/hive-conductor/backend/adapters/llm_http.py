@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import httpx
-
 from models.schemas import ChatCompletionRequest
 
 
@@ -66,7 +65,10 @@ class HttpOpenAIProtocolLLM:
         api_key: str,
         variant: Literal["auto", "responses", "chat_completions"],
     ) -> None:
-        self._base = base_url.rstrip("/")
+        base = base_url.rstrip("/")
+        if not base.endswith("/v1"):
+            base = base + "/v1"
+        self._base = base
         self._key = api_key
         self._variant = variant
 
@@ -75,7 +77,7 @@ class HttpOpenAIProtocolLLM:
         headers = {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            if self._variant in ("auto", "responses"):
+            if self._variant in ("auto", "responses") and not req.tools:
                 r = await client.post(
                     f"{self._base}/responses",
                     headers=headers,
@@ -94,6 +96,8 @@ class HttpOpenAIProtocolLLM:
             }
             if req.max_tokens is not None:
                 payload["max_tokens"] = req.max_tokens
+            if req.tools:
+                payload["tools"] = req.tools
             r2 = await client.post(f"{self._base}/chat/completions", headers=headers, json=payload)
             r2.raise_for_status()
             return r2.json()

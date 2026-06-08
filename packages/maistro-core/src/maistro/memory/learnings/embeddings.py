@@ -155,7 +155,11 @@ class HybridLearningStore:
                     embed_score = cosine_similarity(query_vec, vec)
                     if learning.id is not None:
                         self._embedding_cache[learning.id] = vec
-                except Exception:
+                except Exception as _exc:
+                    __import__('logging').getLogger('maistro.memory.learnings.embeddings').warning(
+                        'error_swallowed file=%s line=%d: %s',
+                        'packages/maistro-core/src/maistro/memory/learnings/embeddings.py', 158, _exc,
+                    )
                     pass
 
             combined = kw_score * KEYWORD_WEIGHT + embed_score * EMBEDDING_WEIGHT

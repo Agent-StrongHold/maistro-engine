@@ -39,13 +39,14 @@ class ChatSessionSummary(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
 
     messages: list[dict[str, Any]]
     model: str | None = None
     stream: bool = False
     temperature: float = 0.7
     max_tokens: int | None = None
+    tools: list[dict[str, Any]] | None = None
 
 
 class Mission(BaseModel):
@@ -126,6 +127,9 @@ class Agent(BaseModel):
     status: Literal["idle", "busy", "offline", "error"]
     capabilities: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
+    tagline: str = ""
+    primary_capability: str = ""
+    primary_action_label: str = ""
     current_mission: str | None = None
     tasks_completed: int = 0
     avg_response_time_ms: float = 0.0
@@ -203,16 +207,47 @@ class MemoryNamespace(BaseModel):
 class SettingsModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    api_base_url: str = "http://localhost:8101"
-    default_model: str = "gpt-4"
-    temperature: float = 0.7
-    max_tokens: int = 4096
+    api_base_url: str = "http://127.0.0.1:8101"
+    default_model: str = "cerebras-qwen-3-235b-a22b-2507"
+    temperature: float = 0.2
+    max_tokens: int = 8192
     stream_responses: bool = True
-    theme: Literal["dark", "light", "system"] = "dark"
-    notifications_enabled: bool = True
+    theme: Literal["dark", "light", "system"] = "system"
+    notifications_enabled: bool = False
     auto_save_sessions: bool = True
     telemetry_enabled: bool = False
-    log_level: Literal["debug", "info", "warn", "error"] = "info"
+    log_level: Literal["debug", "info", "warn", "error"] = "debug"
+
+
+class HiveUser(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    username: str
+    password_hash: str
+    role: Literal["admin", "user"]
+    is_active: bool = True
+    permissions: list[str] = Field(default_factory=list)
+    did: str | None = None
+    created_at: datetime
+
+    def verify_password(self, plain: str) -> bool:
+        from maistro.security.passwords import verify_password
+
+        return verify_password(plain, self.password_hash)
+
+    def has_permission(self, perm: str) -> bool:
+        if self.role == "admin":
+            return True
+        return perm in self.permissions
+
+
+class SessionInfo(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str
+    username: str
+    role: Literal["admin", "user"]
 
 
 class HealthResponse(BaseModel):

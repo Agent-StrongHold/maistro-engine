@@ -1,0 +1,30 @@
+From HEAD Mon Sep 17 00:00:00 2001
+From: Hypothesis 6.151.10 <no-reply@hypothesis.works>
+Date: Wed, 20 May 2026 01:47:27
+Subject: [PATCH] Hypothesis: add explicit examples
+
+---
+--- ./formal/models/test_cookie_auth.py
++++ ./formal/models/test_cookie_auth.py
+@@ -132,6 +132,9 @@
+ 
+ @given(token=st.text(min_size=1, max_size=40, alphabet=st.characters(whitelist_categories=("L", "N"))))
+ @settings(max_examples=30)
++@example(
++    token='ª',
++).via('discovered failure')
+ def test_various_tokens_work(token):
+     provider = _make_cookie_provider()
+     headers = {"cookie": f"maistro_session={token}"}
+--- ./formal/models/test_static_key_auth.py
++++ ./formal/models/test_static_key_auth.py
+@@ -137,6 +137,9 @@
+ 
+ @given(key=st.text(min_size=1, max_size=40))
+ @settings(max_examples=30)
++@example(
++    key='\x80',
++).via('discovered failure')
+ def test_only_correct_key_passes(key):
+     provider = StaticKeyAuthProvider(API_KEY)
+     if key == API_KEY:

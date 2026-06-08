@@ -5,11 +5,10 @@ from typing import Literal
 from uuid import uuid4
 
 import stores
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from models.schemas import ChatCompletionRequest, ChatMessage, ChatSession, ChatSessionSummary
 from pydantic import BaseModel, ConfigDict
 from services.chat_completion import run_chat_completion
-from services.engine import EngineService, get_engine
 
 router = APIRouter(tags=["chat"])
 
@@ -87,10 +86,30 @@ def append_message(session_id: str, body: AppendMessageBody) -> ChatMessage:
     return msg
 
 
-@router.post("/complete", response_model=dict)
-async def complete(req: ChatCompletionRequest) -> dict:
-    """Non-streaming completion — routes through maistro-core agents when configured."""
-    engine: EngineService = get_engine()
-    if engine.is_configured:
-        return await engine.route_request(req.messages)
-    return await run_chat_completion(req)
+@router.post("/complete")
+async def complete(req: ChatCompletionRequest, request: Request) -> dict:
+    """Non-streaming completion — PM agent with real tools."""
+    user = getattr(request.state, "user", None) or {}
+    user_id = str(user.get("id", ""))
+    return await run_chat_completion(req, user_id=user_id)
+
+
+@router.post("/stream")
+async def stream_complete(req: ChatCompletionRequest, request: Request):
+    """SSE streaming — sends real status updates as tools execute."""
+    import asyncio
+    import json
+    from fastapi.responses import StreamingResponse
+    from services.chat_completion import run_chat_completion_streaming
+
+    user = getattr(request.state, "user", None) or {}
+    user_id = str(user.get("id", ""))
+
+    async def event_gen():
+        try:
+            async for event in run_chat_completion_streaming(req, user_id=user_id):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'done', 'content': f'Error: {e}'})}\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

@@ -74,28 +74,58 @@ class InMemoryOutcomeStore:
         tool_name: str = "",
         limit: int = 5,
         org_id: str = "",
+        project_id: str = "",
     ) -> str:
-        """Get recent failure patterns as a prompt section."""
+        """Get recent failure + user-thumbs-down patterns as a prompt section.
+
+        New in Phase 2: `project_id` filter. When provided, only outcomes
+        recorded against that project are surfaced — a thumbs-down on a node
+        in Project A never pollutes Project B's prompt context. Default ""
+        keeps backward compatibility (returns the cross-project narrative).
+
+        New in Phase 2: thumbs-down outcomes are surfaced alongside hard
+        failures so user feedback flows into the next run's prompt.
+        """
         cutoff = datetime.now(UTC) - timedelta(days=7)
 
-        failures = [
-            o
-            for o in self._outcomes
-            if not o.success
-            and o.task_type == task_type
-            and o.created_at >= cutoff
-            and (not tool_name or any(tc.get("name") == tool_name for tc in o.tool_calls))
-            and self._org_matches(o.org_id, org_id)
+        def _matches(o: Outcome) -> bool:
+            if o.task_type != task_type:
+                return False
+            if o.created_at < cutoff:
+                return False
+            if tool_name and not any(tc.get("name") == tool_name for tc in o.tool_calls):
+                return False
+            if not self._org_matches(o.org_id, org_id):
+                return False
+            if project_id and o.project_id != project_id:
+                return False
+            return True
+
+        # Two signal types: hard failures (success=False) and user thumbs-down.
+        hard_failures = [o for o in self._outcomes if _matches(o) and not o.success]
+        thumb_downs = [
+            o for o in self._outcomes
+            if _matches(o) and o.success and o.thumb == "down"
         ]
 
-        if not failures:
+        if not hard_failures and not thumb_downs:
             return ""
 
-        failures = failures[-limit:]
-        lines = ["## Recent Failure Patterns"]
-        for o in failures:
-            error = o.error_type or "unknown"
-            lines.append(f"- {error} (model: {o.model_used})")
+        lines: list[str] = []
+        if hard_failures:
+            lines.append("## Recent Failure Patterns")
+            for o in hard_failures[-limit:]:
+                error = o.error_type or "unknown"
+                lines.append(f"- {error} (model: {o.model_used})")
+
+        if thumb_downs:
+            if lines:
+                lines.append("")
+            lines.append("## User Thumbs-Down Patterns")
+            for o in thumb_downs[-limit:]:
+                comment = (o.thumb_comment or "").strip()
+                tail = f" — {comment}" if comment else ""
+                lines.append(f"- node={o.node_id or '(unknown)'} task={o.task_type}{tail}")
 
         return "\n".join(lines)
 

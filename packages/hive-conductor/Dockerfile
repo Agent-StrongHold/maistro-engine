@@ -7,6 +7,12 @@ WORKDIR /build
 COPY packages/hive-conductor/frontend/package.json packages/hive-conductor/frontend/package-lock.json ./
 RUN npm ci
 COPY packages/hive-conductor/frontend/ ./
+ARG VITE_POC_MODE=
+ENV VITE_POC_MODE=${VITE_POC_MODE}
+# Lets the gateway serve Hive at a sub-path (e.g. VITE_BASE_PATH=/pm/) without
+# breaking asset URLs. Defaults to / so standalone builds are unaffected.
+ARG VITE_BASE_PATH=/
+ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
 FROM python:3.12-slim
@@ -25,8 +31,11 @@ RUN pip install --no-cache-dir /packages/maistro-core /packages/maistro-bootstra
 COPY packages/hive-conductor/backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 COPY packages/hive-conductor/backend/ /app/backend/
+COPY packages/hive-conductor/cage/ /app/cage/
+COPY packages/hive-conductor/eval/ /app/eval/
+COPY packages/hive-conductor/dags/ /app/dags/
 COPY --from=frontend /build/dist /app/frontend/dist
-ENV PYTHONPATH=/app/backend
+ENV PYTHONPATH=/app/backend:/app
 EXPOSE 8101
 WORKDIR /app/backend
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

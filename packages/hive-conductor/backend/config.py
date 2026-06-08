@@ -3,20 +3,37 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND_DIR = Path(__file__).resolve().parent
+# Repo root `.env` (PM POC flags) — uvicorn cwd is usually `backend/`.
+_ENV_FILES: tuple[str, ...] = tuple(
+    str(p)
+    for p in (
+        _BACKEND_DIR / ".env",
+        _BACKEND_DIR.parent.parent.parent / ".env",
+        Path.cwd() / ".env",
+    )
+    if p.is_file()
+)
+
 
 class Settings(BaseSettings):
-    """Load from process env and optional `.env` in cwd (e.g. `backend/`)."""
+    """Load from process env and `.env` (backend dir, then repo root)."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILES or ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     litellm_api_base: str | None = None
     litellm_api_key: SecretStr | None = None
-    chat_default_model: str = "mistral-large"
+    chat_default_model: str = "cerebras-qwen-3-235b-a22b-2507"
     llm_http_variant: Literal["auto", "responses", "chat_completions"] = "auto"
 
     maistro_router_api_key: str | None = None
@@ -33,6 +50,8 @@ class Settings(BaseSettings):
     conductor_user_public_key: str | None = None
 
     hardware_preset: Literal["potato", "laptop", "desktop", "beast"] = "laptop"
+    poc_mode: str = ""
+    maistro_base_url: str = "http://localhost:8000"
 
 
 @lru_cache

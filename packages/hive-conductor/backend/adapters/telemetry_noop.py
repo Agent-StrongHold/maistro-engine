@@ -5,15 +5,8 @@ from typing import Any
 
 
 class NoopTelemetry:
-    def generation(
-        self,
-        *,
-        name: str,
-        model: str,
-        input: Any,
-        metadata: dict[str, Any] | None = None,
-    ):
-        return nullcontext(None)
+    def trace(self, **kwargs: Any) -> Any:
+        return nullcontext()
 
-    def flush(self) -> None:
-        return None
+    def generation(self, **kwargs: Any) -> Any:
+        return nullcontext()

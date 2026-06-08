@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/task_policy.py
+# hypothesis_version: 6.151.10
+
+[5.0, 10.0, 20.0, 50.0, 100.0, 300, 600, 1800, 3600, 7200, 14400, 25000, 50000, 75000, 100000, 150000, 200000, 'P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'inf', 'max_cost', 'max_seconds']

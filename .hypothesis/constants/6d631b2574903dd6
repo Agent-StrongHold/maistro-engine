@@ -1,0 +1,4 @@
+# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/warden/heuristics.py
+# hypothesis_version: 6.151.10
+
+[0.0, 0.15, 200, 'ignore', 'utf-8']
