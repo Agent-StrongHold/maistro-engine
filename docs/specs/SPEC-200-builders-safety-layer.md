@@ -13,7 +13,7 @@ substrate:
 implements: []
 related:
   - maistro-engine#SPEC-201
-  - maistro-engine#ADR-060
+  - maistro-engine#ADR-095
   - maistro-engine#ADR-049
 contracts:
   - boundary

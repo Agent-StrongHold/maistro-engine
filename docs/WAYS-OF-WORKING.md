@@ -84,7 +84,7 @@ python -m maistro_registry.cli lint .     # walk + DAG cycle + link check
 ## 4. Branch & commit workflow
 
 Four tiers, work flows **upward**, every promotion is a PR (never a direct push) — full
-detail in [ADR-060](adr/ADR-060-four-tier-branch-model.md):
+detail in [ADR-095](adr/ADR-095-four-tier-branch-model.md):
 
 ```
 feat/* bug/* idea/* doc/* chore/* fix/*  →  develop  →  integration  →  main

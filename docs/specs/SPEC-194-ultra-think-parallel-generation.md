@@ -8,7 +8,7 @@ created: 2026-06-02
 accepted: null
 implemented: null
 substrate:
-  - maistro-engine#ADR-059
+  - maistro-engine#ADR-094
   - maistro-engine#ADR-038
   - maistro-engine#ADR-088
 implements: []

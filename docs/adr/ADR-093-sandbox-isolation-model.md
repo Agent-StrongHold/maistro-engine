@@ -1,5 +1,5 @@
 ---
-id: ADR-058
+id: ADR-093
 title: Sandbox isolation model — hardware-VM isolation for untrusted agent code
 repo: maistro-engine
 kind: adr
@@ -23,7 +23,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-058: Sandbox isolation model — hardware-VM isolation for untrusted agent code
+# ADR-093: Sandbox isolation model — hardware-VM isolation for untrusted agent code
 
 ## Context
 

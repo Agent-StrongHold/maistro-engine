@@ -8,7 +8,7 @@ created: 2026-06-02
 accepted: null
 implemented: null
 substrate:
-  - maistro-engine#ADR-059
+  - maistro-engine#ADR-094
   - maistro-engine#ADR-002
 implements: []
 related:
@@ -29,7 +29,7 @@ owners:
 
 ## Context
 
-ADR-059 cut pydantic-ai and established that the conductor calls an OpenAI-compatible
+ADR-094 cut pydantic-ai and established that the conductor calls an OpenAI-compatible
 gateway directly. For **local inference** (P40 hardware, llama.cpp / ik_llama.cpp),
 that gateway needs to be more than a pass-through proxy: it must manage the KV-cache
 slot lifecycle of the inference server to make prefix reuse practical and to enable

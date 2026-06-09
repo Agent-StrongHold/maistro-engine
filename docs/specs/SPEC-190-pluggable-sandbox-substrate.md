@@ -6,9 +6,9 @@ kind: spec
 status: Proposed
 created: 2026-05-31
 substrate:
-  - maistro-engine#ADR-058
+  - maistro-engine#ADR-093
 implements:
-  - maistro-engine#ADR-058
+  - maistro-engine#ADR-093
 related:
   - maistro-engine#SPEC-184
   - maistro-engine#SPEC-012
@@ -30,7 +30,7 @@ owners:
 
 ## Context
 
-Per ADR-058, untrusted agent/tool code must run behind a hardware-VM boundary, and the substrate must
+Per ADR-093, untrusted agent/tool code must run behind a hardware-VM boundary, and the substrate must
 sit behind a protocol rather than being hardwired to Docker. Today `maistro.tools.sandbox.docker`
 exposes a single concrete `SandboxContainer` that shells out to the `docker` CLI and assumes a
 reachable Docker socket — there is no interface, so the runtime cannot be swapped.
@@ -44,7 +44,7 @@ migration.
 
 - A `SandboxProtocol` that all sandbox callers depend on (no direct Docker references in business code).
 - Today's Docker behaviour preserved as one backend (no behavioural regression during migration).
-- A microVM backend (Kata first — drop-in OCI; Firecracker second — max isolation) satisfying ADR-058.
+- A microVM backend (Kata first — drop-in OCI; Firecracker second — max isolation) satisfying ADR-093.
 - A conformance suite (including escape/containment assertions) every backend must pass.
 - Backend selection via configuration, defaulting safe (fail-closed when KVM is required but absent).
 
@@ -80,7 +80,7 @@ class SandboxSpec:
 ```
 
 `SandboxCapabilities.isolation` is an enum: `SHARED_KERNEL` (container) < `VM` (Kata/Firecracker).
-ADR-058 requires `VM` for untrusted code; callers handling untrusted input assert the minimum.
+ADR-093 requires `VM` for untrusted code; callers handling untrusted input assert the minimum.
 
 ### Backends
 
@@ -130,7 +130,7 @@ environment; privilege boundaries follow SPEC-012.
 
 ## References
 
-- ADR-058 — sandbox isolation model (the decision this implements).
+- ADR-093 — sandbox isolation model (the decision this implements).
 - `packages/maistro-core/src/maistro/tools/sandbox/` — current implementation (`docker.py`,
   `env_sanitize.py`, `workspace.py`, `server.py`).
 - SPEC-011 (vault), SPEC-012 (privilege separation), SPEC-013 (reactor), SPEC-184 (capability platform).

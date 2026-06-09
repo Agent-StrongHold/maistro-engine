@@ -11,7 +11,7 @@ Turing / deferred-to-vN) and **`DECISION-BACKLOG.md`** (in-scope but not yet dec
 
 | ID | Ver | Status | Created | Accepted | Last Modified | Summary |
 |----|-----|--------|---------|----------|---------------|---------|
-| ADR-001 | v3 | Superseded | 2026-04-26 | 2026-04-26† | 2026-05-29 17:48 CDT | Original branching strategy (integration as PR base) — superseded by ADR-060. |
+| ADR-001 | v3 | Superseded | 2026-04-26 | 2026-04-26† | 2026-05-29 17:48 CDT | Original branching strategy (integration as PR base) — superseded by ADR-095. |
 | ADR-002 | v2 | Accepted | 2026-04-26 | 2026-04-26† | 2026-05-29 22:00 CDT | Per-port spec-first workflow: a written spec precedes code for each port. |
 | ADR-003 | v3 | Accepted | 2026-04-26 | 2026-04-26† | 2026-05-29 22:00 CDT | Agent-runtime gap analysis — roadmap mapping archived-branch work to future ADRs. |
 | ADR-004 | v2 | Accepted | 2026-04-26 | 2026-04-26† | 2026-05-29 22:00 CDT | AgentSpec + AgentOutput envelopes — the typed invoke/result contract. |
@@ -70,7 +70,7 @@ Turing / deferred-to-vN) and **`DECISION-BACKLOG.md`** (in-scope but not yet dec
 | ADR-057 | v1 | Proposed | 2026-05-13 | — | 2026-05-13 13:10 CDT | Memory exposure mode — system-managed vs agent-managed (configurable). |
 | ADR-058 | v1 | Proposed | 2026-05-29 | — | 2026-05-29 08:58 CDT | A2A delegation (in-process + federated; budgets, loop guard, SSRF-safe). |
 | ADR-059 | v2 | Proposed | 2026-05-29 | — | 2026-05-29 22:00 CDT | OAuth2 user authentication layered over service-key authz. |
-| ADR-060 | v1 | Accepted | 2026-05-29 | 2026-05-29† | 2026-05-29 17:48 CDT | Four-tier branch model (feat→develop→integration→main), CI-gated. |
+| ADR-095 | v1 | Accepted | 2026-05-29 | 2026-05-29† | 2026-05-29 17:48 CDT | Four-tier branch model (feat→develop→integration→main), CI-gated. |
 | ADR-062 | v2 | Accepted | 2026-05-19 | 2026-05-19† | 2026-05-29 22:00 CDT | Graph execution protocol — DAG node types, executor, phases. |
 | ADR-063 | v2 | Accepted | 2026-05-20 | 2026-05-20† | 2026-05-29 22:00 CDT | Credential pool + automatic key rotation (strategies, cooldowns). |
 | ADR-064 | v2 | Accepted | 2026-05-20 | 2026-05-20† | 2026-05-29 22:00 CDT | Comprehensive secret redaction (30+ patterns, single-pass). |
