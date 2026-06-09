@@ -1,29 +1,20 @@
 """Model scoring: quality^(qw*p) / normalized_cost^cw with speed and strength bonuses.
 
-Cost normalization (fix):
-  The raw effective_cost from scarcity lives in a narrow band (~0.06–1.44 for
-  in-budget models). Exponentiating a narrow band compresses it further, making
-  cost_weight effectively a tiebreaker regardless of its configured value.
+Cost normalization:
+  Raw effective_cost from scarcity lives in (0, ~1.44] for in-budget models.
+  Normalized to [0, 1] by dividing by the ceiling (1/ln(2) ≈ 1.44), so:
+    - Huge budgets barely used → near 0 (but never clamped to exactly 0)
+    - Budget nearly exhausted → near 1.0
+    - Over-quota with paygo → >1.0 (penalty)
 
-  Fix: normalize effective_cost to [0, 1] within the in-budget range before
-  exponentiating, so cost_weight controls selection meaningfully:
-    cost_weight=0.0 → cost ignored (pure quality)
-    cost_weight=0.5 → cost and quality contribute equally at mid-range
-    cost_weight=1.0 → cost dominates
+  cost_weight controls how much this matters:
+    0.0 → cost ignored (pure quality)
+    0.5 → cost and quality contribute equally at mid-range
+    1.0 → cost dominates
 
-Over-quota handling (fix):
-  Models over quota without paygo are FILTERED (not scored with a sentinel 999).
-  Models over quota with paygo get a cost penalty above the in-budget ceiling.
-
-Before/after (cost_weight=0.4, quality=0.8):
-  ┌──────────────┬───────────────┬───────────────┐
-  │ Usage        │ OLD score     │ NEW score     │
-  ├──────────────┼───────────────┼───────────────┤
-  │ 10% used     │ 2.66          │ 0.89 (cheap)  │
-  │ 50% used     │ 2.29          │ 0.73          │
-  │ 90% used     │ 1.61          │ 0.48 (dear)   │
-  └──────────────┴───────────────┴───────────────┘
-  Spread: OLD 1.66× | NEW 1.85× — cost_weight now moves selection meaningfully.
+Over-quota handling:
+  Models over quota without paygo are FILTERED (return None, not scored).
+  Models over quota with paygo get a cost penalty above 1.0.
 """
 
 from __future__ import annotations
@@ -39,25 +30,29 @@ if TYPE_CHECKING:
     from maistro.types.intent import Intent
     from maistro.types.model import ModelCandidate, ModelConfig, ProviderConfig
 
-# The in-budget cost range from scarcity: min ~0.06 (huge budget, barely used)
-# to max 1/ln(2) ≈ 1.44 (budget nearly exhausted, remaining floored at 2).
-_COST_FLOOR = 0.06  # 1/ln(10_000_000 * 0.99) ≈ 0.062
+# The in-budget cost ceiling from scarcity: 1/ln(2) ≈ 1.44 (budget nearly exhausted).
+# Floor is 0 (effectively free — huge budget barely used). No hardcoded floor constant;
+# any positive cost maps proportionally into [0, 1].
 _COST_CEIL = 1.0 / math.log(2.0)  # ≈ 1.4427
 
 
 def _normalize_cost(raw_cost: float) -> float:
     """Map raw effective_cost to [0, 1] within the in-budget range.
 
-    0.0 = cheapest possible (huge budget, barely used)
-    1.0 = most expensive in-budget (nearly exhausted)
+    0.0 = zero cost (provider.free_tokens=0 returns 1.0 from scarcity, mapped here)
+    ~0.0 = huge budget barely used
+    1.0 = most expensive in-budget (nearly exhausted, raw ≈ 1.44)
     >1.0 = over-quota with paygo (penalty territory)
+
+    No hardcoded floor — providers with 100M and 1B budgets still differentiate
+    because their raw costs (0.054 vs 0.048) map to different points on [0, 1].
     """
-    if raw_cost <= _COST_FLOOR:
+    if raw_cost <= 0:
         return 0.0
     if raw_cost >= _COST_CEIL:
         # Over-quota with paygo: scale linearly above 1.0
         return 1.0 + (raw_cost - _COST_CEIL)
-    return (raw_cost - _COST_FLOOR) / (_COST_CEIL - _COST_FLOOR)
+    return raw_cost / _COST_CEIL
 
 
 def score_candidate(

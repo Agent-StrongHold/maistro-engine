@@ -85,8 +85,7 @@ class RouterEngine:
         ]
 
         if not candidates:
-            msg = "No eligible models — all over quota without paygo"
-            raise ValueError(msg)
+            raise NoModelsError("No eligible models — all over quota without paygo")
 
         candidates.sort(key=lambda c: c.score, reverse=True)
         best = candidates[0]
