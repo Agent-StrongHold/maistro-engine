@@ -48,10 +48,6 @@ def _has_gvisor() -> bool:
     return shutil.which("runsc") is not None
 
 
-def _has_lxc() -> bool:
-    return shutil.which("lxc-execute") is not None or shutil.which("lxc") is not None
-
-
 def _has_hardened_container() -> bool:
     return shutil.which("docker") is not None or shutil.which("podman") is not None
 
@@ -86,8 +82,6 @@ class SandboxExecutor:
             self._backend = "bubblewrap"
         elif _has_gvisor():
             self._backend = "gvisor"
-        elif _has_lxc():
-            self._backend = "lxc"
         elif _has_hardened_container():
             self._backend = "hardened-container"
         else:
@@ -137,7 +131,6 @@ class SandboxExecutor:
             "firecracker": self._run_firecracker,
             "bubblewrap": self._run_bubblewrap,
             "gvisor": self._run_gvisor,
-            "lxc": self._run_lxc,
             "hardened-container": self._run_hardened_container,
         }
         runner = dispatch[self._backend]
@@ -198,15 +191,6 @@ with Sandbox(sc) as sb:
             "--read-only", "--network=none",
             f"--memory={256}m", f"--timeout={timeout_s}",
             "python:3.12-slim", "python", "-c", wrapper,
-        ]
-        return await self._subprocess_via_cmd(cmd, env, timeout_s)
-
-    async def _run_lxc(self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int) -> dict[str, Any]:
-        wrapper = f'import base64,json;cfg=json.loads(base64.b64decode("{config_b64}"));exec(base64.b64decode("{code_b64}").decode())'
-        lxc_bin = "lxc-execute" if shutil.which("lxc-execute") else "lxc"
-        cmd = [
-            lxc_bin, "exec", "--ephemeral",
-            "--", "python3", "-c", wrapper,
         ]
         return await self._subprocess_via_cmd(cmd, env, timeout_s)
 
