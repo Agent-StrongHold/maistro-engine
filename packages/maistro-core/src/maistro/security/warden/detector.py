@@ -76,13 +76,22 @@ class Warden:
     ) -> WardenVerdict:
         flags: list[str] = []
 
-        max_scan_size = 50 * 1024
-        if len(content) > max_scan_size:
-            scan_content = unicodedata.normalize("NFKD", content[:max_scan_size])
-        else:
-            scan_content = unicodedata.normalize("NFKD", content)
+        # Fix #4: scan in overlapping windows — no unscanned tail.
+        # Window: 50KB with 2KB overlap so patterns spanning a boundary are caught.
+        window_size = 50 * 1024
+        overlap = 2 * 1024
+        content_norm = unicodedata.normalize("NFKD", content)
 
-        flags.extend(_scan_reject_patterns(scan_content))
+        if len(content_norm) <= window_size:
+            flags.extend(_scan_reject_patterns(content_norm))
+        else:
+            offset = 0
+            while offset < len(content_norm):
+                chunk = content_norm[offset : offset + window_size]
+                flags.extend(_scan_reject_patterns(chunk))
+                if flags:
+                    break  # Found something — no need to continue
+                offset += window_size - overlap
 
         if flags:
             return WardenVerdict(
@@ -92,7 +101,7 @@ class Warden:
                 confidence=0.9,
             )
 
-        suspicious, heuristic_flags = heuristic_scan(scan_content)
+        suspicious, heuristic_flags = heuristic_scan(content_norm)
         if suspicious:
             flags.extend(heuristic_flags)
             return WardenVerdict(
