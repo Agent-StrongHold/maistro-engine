@@ -31,9 +31,9 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"(?:^|[\r\n])(?:Authorization|X-Api-Key|X-Auth-Token)\s*[:=]\s*\S+", re.IGNORECASE | re.MULTILINE),
         "[REDACTED_AUTH_HEADER]",
     ),
-    # Bearer/Basic ONLY when preceded by colon/equals (header assignment context)
+    # Bearer/Basic/Token ONLY when preceded by colon/equals (header assignment context)
     (
-        re.compile(r"(?<=[:=]\s)(?:Bearer|Basic)\s+[A-Za-z0-9._+/=-]{10,}", re.IGNORECASE),
+        re.compile(r"(?:[:=]\s?)(?:Bearer|Basic|Token)\s+[A-Za-z0-9._+/=_-]{10,}", re.IGNORECASE),
         "[REDACTED_AUTH_HEADER]",
     ),
     # Env-var assignments
