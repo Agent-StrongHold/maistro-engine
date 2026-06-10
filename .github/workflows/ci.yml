@@ -40,7 +40,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
-      - run: uv sync --extra dev
+      - run: uv sync --extra dev --extra bootstrap
       - run: uv run pytest packages/maistro-bootstrap/tests -v --tb=short
       - run: uv run pytest packages/maistro-core/tests -v --tb=short
         env:
