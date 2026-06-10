@@ -86,6 +86,7 @@ src = [
     "packages/maistro-bootstrap/src",
     "packages/maistro-registry/src",
     "packages/maistro-evolve/src",
+    "packages/maistro-rsi/src",
     "packages/maistro-design/src",
 ]
 
@@ -104,6 +105,7 @@ testpaths = [
     "packages/maistro-canvas/tests",
     "packages/maistro-bootstrap/tests",
     "packages/maistro-evolve/tests",
+    "packages/maistro-rsi/tests",
     "packages/maistro-design/tests",
     "tests",
 ]

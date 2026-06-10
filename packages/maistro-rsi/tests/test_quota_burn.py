@@ -1,0 +1,93 @@
+"""Tests tied to SPEC.md §3 (quota-burn scheduling) acceptance criteria quota-1..5."""
+
+from __future__ import annotations
+
+import pytest
+
+from maistro.quota.tracker import InMemoryQuotaTracker
+from maistro_rsi.quota_burn import QuotaBurnScheduler, rank_models_by_headroom
+
+CYCLE = "2026-06"
+FREE_TOKENS = {"openai": 1_000_000, "anthropic": 500_000}
+
+
+class TestRankModelsByHeadroom:
+    @pytest.mark.asyncio
+    async def test_orders_by_descending_remaining_headroom(self):
+        """quota-1: most-idle model (highest remaining headroom) ranks first."""
+        tracker = InMemoryQuotaTracker()
+        # openai/heavy: 90% used of 1,000,000 -> ~100k headroom
+        await tracker.record_usage("openai", CYCLE, 800_000, 100_000)
+        # anthropic/light: 10% used of 500,000 -> ~450k headroom
+        await tracker.record_usage("anthropic", CYCLE, 30_000, 20_000)
+
+        ranked = await rank_models_by_headroom(
+            ["openai/heavy", "anthropic/light"],
+            tracker,
+            billing_cycle=CYCLE,
+            free_tokens_per_provider=FREE_TOKENS,
+        )
+
+        assert [m.model for m in ranked] == ["anthropic/light", "openai/heavy"]
+        assert ranked[0].headroom_tokens > ranked[1].headroom_tokens
+
+    @pytest.mark.asyncio
+    async def test_overused_model_clamps_to_zero_headroom_and_ranks_last(self):
+        """quota-2: usage above the configured free-tier budget clamps headroom to zero, never negative."""
+        tracker = InMemoryQuotaTracker()
+        # openai/over: used 1.2M of a 1,000,000 budget
+        await tracker.record_usage("openai", CYCLE, 1_000_000, 200_000)
+        # anthropic/fresh: untouched
+        ranked = await rank_models_by_headroom(
+            ["openai/over", "anthropic/fresh"],
+            tracker,
+            billing_cycle=CYCLE,
+            free_tokens_per_provider=FREE_TOKENS,
+        )
+
+        over = next(m for m in ranked if m.model == "openai/over")
+        assert over.headroom_tokens == 0
+        assert ranked[-1].model == "openai/over"
+
+
+class TestQuotaBurnScheduler:
+    @pytest.mark.asyncio
+    async def test_next_model_returns_none_for_empty_list(self):
+        """quota-3: an empty model list yields None, not an error."""
+        scheduler = QuotaBurnScheduler(InMemoryQuotaTracker(), billing_cycle=CYCLE)
+        assert await scheduler.next_model([]) is None
+
+    @pytest.mark.asyncio
+    async def test_next_model_matches_top_of_headroom_ranking(self):
+        """quota-4: next_model returns the same model rank_models_by_headroom puts first."""
+        tracker = InMemoryQuotaTracker()
+        await tracker.record_usage("openai", CYCLE, 900_000, 50_000)
+
+        scheduler = QuotaBurnScheduler(
+            tracker, billing_cycle=CYCLE, free_tokens_per_provider=FREE_TOKENS,
+        )
+        models = ["openai/busy", "anthropic/idle"]
+
+        chosen = await scheduler.next_model(models)
+        ranked = await rank_models_by_headroom(
+            models, tracker, billing_cycle=CYCLE, free_tokens_per_provider=FREE_TOKENS,
+        )
+
+        assert chosen == ranked[0].model == "anthropic/idle"
+
+    @pytest.mark.asyncio
+    async def test_record_attempt_attributes_usage_to_models_provider(self):
+        """quota-5: record_attempt files usage under the model's provider prefix, affecting future ranking."""
+        tracker = InMemoryQuotaTracker()
+        scheduler = QuotaBurnScheduler(
+            tracker, billing_cycle=CYCLE, free_tokens_per_provider=FREE_TOKENS,
+        )
+
+        await scheduler.record_attempt("openai/gpt-5", input_tokens=400_000, output_tokens=400_000)
+
+        usage_pct = await tracker.get_usage_pct("openai", CYCLE, FREE_TOKENS["openai"])
+        assert usage_pct == pytest.approx(0.8)
+
+        # a model from a provider that was never recorded against stays untouched
+        other_pct = await tracker.get_usage_pct("anthropic", CYCLE, FREE_TOKENS["anthropic"])
+        assert other_pct == 0.0
