@@ -3,7 +3,7 @@ id: ADR-025
 title: "Electrum Server — Medley plugin for household-private Bitcoin backend"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Deferred
 created: 2026-05-07
 substrate:
   - maistro-engine#ADR-023
