@@ -24,7 +24,7 @@ class CanvasJobRunner:
         self,
         *,
         store: Any,
-        executor: "CanvasExecutor",
+        executor: CanvasExecutor,
         worker_id: str = "canvas-worker-1",
         lease_seconds: int = 300,
         poll_interval: float = 1.0,
@@ -68,7 +68,9 @@ class CanvasJobRunner:
         if job is None:
             return False
 
-        logger.info("canvas_job_claimed job=%s worker=%s attempt=%d", job.id, self._worker_id, job.attempts)
+        logger.info(
+            "canvas_job_claimed job=%s worker=%s attempt=%d", job.id, self._worker_id, job.attempts
+        )
 
         try:
             await self._executor._execute_claimed(job)

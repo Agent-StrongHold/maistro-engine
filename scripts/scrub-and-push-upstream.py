@@ -4,25 +4,40 @@
 Run from the maistro-engine root:
     python3 scripts/scrub-and-push-upstream.py
 """
-import pathlib
+
 import os
+import pathlib
 import subprocess
-import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 base = ROOT / "packages" / "hive-conductor" / "backend"
+
 
 def scrub():
     # --- chat_completion.py ---
     f = base / "services/chat_completion.py"
     t = f.read_text()
-    t = t.replace('_JIRA_BASE = "https://myjira.disney.com"', '_JIRA_BASE = os.environ.get("JIRA_BASE_URL", "").rstrip("/")')
+    t = t.replace(
+        '_JIRA_BASE = "https://myjira.disney.com"',
+        '_JIRA_BASE = os.environ.get("JIRA_BASE_URL", "").rstrip("/")',
+    )
     t = t.replace("your Disney Jira PAT", "your Jira PAT")
     t = t.replace("Add your Disney Jira PAT", "Add your Jira PAT")
-    t = t.replace('"project = JEDAI AND status = Blocked"', '"project = MY_PROJECT AND status = Blocked"')
-    t = t.replace('confluence_base = "https://mywiki.disney.com"', 'confluence_base = os.environ.get("CONFLUENCE_BASE_URL", "")')
-    t = t.replace("project = JEDAI AND updated", '" + os.environ.get("JIRA_PROJECT_KEY", "DEMO") + " AND updated')
-    t = t.replace("project = JEDAI AND resolution", '" + os.environ.get("JIRA_PROJECT_KEY", "DEMO") + " AND resolution')
+    t = t.replace(
+        '"project = JEDAI AND status = Blocked"', '"project = MY_PROJECT AND status = Blocked"'
+    )
+    t = t.replace(
+        'confluence_base = "https://mywiki.disney.com"',
+        'confluence_base = os.environ.get("CONFLUENCE_BASE_URL", "")',
+    )
+    t = t.replace(
+        "project = JEDAI AND updated",
+        '" + os.environ.get("JIRA_PROJECT_KEY", "DEMO") + " AND updated',
+    )
+    t = t.replace(
+        "project = JEDAI AND resolution",
+        '" + os.environ.get("JIRA_PROJECT_KEY", "DEMO") + " AND resolution',
+    )
     f.write_text(t)
     print("✓ chat_completion.py")
 
@@ -43,7 +58,9 @@ def scrub():
     # --- pm_fleet_v2.py ---
     f = base / "services/pm_fleet_v2.py"
     t = f.read_text()
-    t = t.replace('JIRA_PROJECT_KEY = "JEDAI"', 'JIRA_PROJECT_KEY = os.environ.get("JIRA_PROJECT_KEY", "")')
+    t = t.replace(
+        'JIRA_PROJECT_KEY = "JEDAI"', 'JIRA_PROJECT_KEY = os.environ.get("JIRA_PROJECT_KEY", "")'
+    )
     t = t.replace('"https://jira.disney.com"', '""')
     f.write_text(t)
     print("✓ pm_fleet_v2.py")
@@ -62,7 +79,10 @@ def scrub():
     t = t.replace("JEDAI Jira project", "configured Jira project")
     t = t.replace("Disney Jira PAT", "Jira PAT")
     t = t.replace("Disney on-prem base URL", "Jira base URL")
-    t = t.replace('"https://myjira.disney.com/rest/api/2/search"', 'f"{os.environ.get(\'JIRA_BASE_URL\', \'\')}/rest/api/2/search"')
+    t = t.replace(
+        '"https://myjira.disney.com/rest/api/2/search"',
+        "f\"{os.environ.get('JIRA_BASE_URL', '')}/rest/api/2/search\"",
+    )
     t = t.replace("project = JEDAI AND", 'project = {os.environ.get("JIRA_PROJECT_KEY", "")} AND')
     f.write_text(t)
     print("✓ daily_report.py")
@@ -70,9 +90,14 @@ def scrub():
     # --- daily_report_v2.py ---
     f = base / "routes/daily_report_v2.py"
     t = f.read_text()
-    t = t.replace('"https://myjira.disney.com/rest/api/2/search"', 'f"{os.environ.get(\'JIRA_BASE_URL\', \'\')}/rest/api/2/search"')
+    t = t.replace(
+        '"https://myjira.disney.com/rest/api/2/search"',
+        "f\"{os.environ.get('JIRA_BASE_URL', '')}/rest/api/2/search\"",
+    )
     t = t.replace("project = JEDAI AND", 'project = {os.environ.get("JIRA_PROJECT_KEY", "")} AND')
-    t = t.replace('base_id = "app0i9FWbZrctJuS6"', 'base_id = os.environ.get("AIRTABLE_BASE_ID", "")')
+    t = t.replace(
+        'base_id = "app0i9FWbZrctJuS6"', 'base_id = os.environ.get("AIRTABLE_BASE_ID", "")'
+    )
     t = t.replace("# JEDAI base", "# configured Airtable base")
     f.write_text(t)
     print("✓ daily_report_v2.py")
@@ -83,8 +108,14 @@ def scrub():
     t = t.replace("Disney's Atlassian Cloud migration", "Atlassian Cloud migration")
     t = t.replace("_DISNEY_CLOUD_MIGRATION", "_CLOUD_MIGRATION")
     t = t.replace("Disney Jira PAT", "Jira PAT")
-    t = t.replace("Disney is on-prem (Server v9) until ~June 13, 2026; after that ", "Your instance may be Server or Cloud. After migration ")
-    t = t.replace("https://myjira.disney.com/secure/ViewProfile.jspa", "${JIRA_BASE_URL}/secure/ViewProfile.jspa")
+    t = t.replace(
+        "Disney is on-prem (Server v9) until ~June 13, 2026; after that ",
+        "Your instance may be Server or Cloud. After migration ",
+    )
+    t = t.replace(
+        "https://myjira.disney.com/secure/ViewProfile.jspa",
+        "${JIRA_BASE_URL}/secure/ViewProfile.jspa",
+    )
     f.write_text(t)
     print("✓ setup_checklist.py")
 
@@ -138,15 +169,25 @@ def git_push():
 
     # Ensure upstream remote exists
     subprocess.run(
-        ["git", "remote", "add", "upstream", "https://github.com/BlakeMatthews-dev/maistro-engine.git"],
+        [
+            "git",
+            "remote",
+            "add",
+            "upstream",
+            "https://github.com/BlakeMatthews-dev/maistro-engine.git",
+        ],
         check=False,
     )
 
     # Push
-    result = subprocess.run(["git", "push", "-u", "upstream", branch], capture_output=True, text=True)
+    result = subprocess.run(
+        ["git", "push", "-u", "upstream", branch], capture_output=True, text=True
+    )
     if result.returncode == 0:
         print(f"\n🚀 Pushed to upstream/{branch}")
-        print("Open PR at: https://github.com/BlakeMatthews-dev/maistro-engine/compare/main...feat/dashboard-widgets-agnostic")
+        print(
+            "Open PR at: https://github.com/BlakeMatthews-dev/maistro-engine/compare/main...feat/dashboard-widgets-agnostic"
+        )
     else:
         print(f"\n⚠️  Push failed: {result.stderr}")
         print("You may need to authenticate. Run manually:")

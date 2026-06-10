@@ -52,13 +52,16 @@ class PgStrikeTracker:
     """Postgres-backed strike tracker with atomic operations."""
 
     def __init__(self, db_url: str | None = None):
-        self._db_url = db_url or os.environ.get("DATABASE_URL") or os.environ.get("STUDIOSHARE_DB_URL")
-        self._pool = None
+        self._db_url = (
+            db_url or os.environ.get("DATABASE_URL") or os.environ.get("STUDIOSHARE_DB_URL")
+        )
+        self._pool: Any = None
 
-    async def _get_pool(self):
+    async def _get_pool(self) -> Any:
         if self._pool is None:
             try:
-                import asyncpg
+                import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
+
                 self._pool = await asyncpg.create_pool(self._db_url, min_size=1, max_size=5)
                 await self._pool.execute(_SCHEMA)
             except Exception as e:
@@ -76,10 +79,10 @@ class PgStrikeTracker:
     ) -> dict[str, Any]:
         """Atomic: upsert strike record + escalate + insert violation in one transaction."""
         pool = await self._get_pool()
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                # Upsert and increment atomically
-                row = await conn.fetchrow("""
+        async with pool.acquire() as conn, conn.transaction():
+            # Upsert and increment atomically
+            row = await conn.fetchrow(
+                """
                     INSERT INTO security_strikes (user_id, strike_count, scrutiny_level, last_violation_at, updated_at)
                     VALUES ($1, 1, 'elevated', NOW(), NOW())
                     ON CONFLICT (user_id) DO UPDATE SET
@@ -87,34 +90,54 @@ class PgStrikeTracker:
                         last_violation_at = NOW(),
                         updated_at = NOW()
                     RETURNING user_id, strike_count, scrutiny_level, locked_until, disabled
-                """, user_id)
+                """,
+                user_id,
+            )
 
-                strike_count = row["strike_count"]
+            strike_count = row["strike_count"]
 
-                # Escalate
-                if strike_count >= 3:
-                    await conn.execute("""
+            # Escalate
+            if strike_count >= 3:
+                await conn.execute(
+                    """
                         UPDATE security_strikes SET scrutiny_level='disabled', disabled=TRUE WHERE user_id=$1
-                    """, user_id)
-                    logger.warning("ACCOUNT DISABLED: user=%s strikes=%d", user_id, strike_count)
-                elif strike_count == 2:
-                    locked_until = datetime.now(UTC) + LOCKOUT_DURATION
-                    await conn.execute("""
+                    """,
+                    user_id,
+                )
+                logger.warning("ACCOUNT DISABLED: user=%s strikes=%d", user_id, strike_count)
+            elif strike_count == 2:
+                locked_until = datetime.now(UTC) + LOCKOUT_DURATION
+                await conn.execute(
+                    """
                         UPDATE security_strikes SET scrutiny_level='locked', locked_until=$2 WHERE user_id=$1
-                    """, user_id, locked_until)
-                    logger.warning("ACCOUNT LOCKED: user=%s until=%s", user_id, locked_until.isoformat())
-                elif strike_count == 1:
-                    await conn.execute("""
+                    """,
+                    user_id,
+                    locked_until,
+                )
+                logger.warning(
+                    "ACCOUNT LOCKED: user=%s until=%s", user_id, locked_until.isoformat()
+                )
+            elif strike_count == 1:
+                await conn.execute(
+                    """
                         UPDATE security_strikes SET scrutiny_level='elevated' WHERE user_id=$1
-                    """, user_id)
+                    """,
+                    user_id,
+                )
 
-                # Record the violation
-                await conn.execute("""
+            # Record the violation
+            await conn.execute(
+                """
                     INSERT INTO security_violations (user_id, flags, boundary, detail)
                     VALUES ($1, $2, $3, $4)
-                """, user_id, list(flags), boundary, detail[:1000])
+                """,
+                user_id,
+                list(flags),
+                boundary,
+                detail[:1000],
+            )
 
-                return {"user_id": user_id, "strike_count": strike_count, "escalated": True}
+            return {"user_id": user_id, "strike_count": strike_count, "escalated": True}
 
     async def get(self, user_id: str) -> dict[str, Any] | None:
         pool = await self._get_pool()
@@ -136,14 +159,17 @@ class PgRateLimiter:
     """Postgres-backed sliding window rate limiter — atomic check-and-record (fixes TOCTOU)."""
 
     def __init__(self, db_url: str | None = None, window_seconds: int = 60, max_requests: int = 60):
-        self._db_url = db_url or os.environ.get("DATABASE_URL") or os.environ.get("STUDIOSHARE_DB_URL")
+        self._db_url = (
+            db_url or os.environ.get("DATABASE_URL") or os.environ.get("STUDIOSHARE_DB_URL")
+        )
         self._window_seconds = window_seconds
         self._max_requests = max_requests
-        self._pool = None
+        self._pool: Any = None
 
-    async def _get_pool(self):
+    async def _get_pool(self) -> Any:
         if self._pool is None:
             import asyncpg
+
             self._pool = await asyncpg.create_pool(self._db_url, min_size=1, max_size=5)
             await self._pool.execute(_SCHEMA)
         return self._pool
@@ -157,21 +183,24 @@ class PgRateLimiter:
         window_start = datetime.now(UTC).replace(second=0, microsecond=0)
         window_floor = window_start - timedelta(seconds=self._window_seconds)
 
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                # Clean expired windows
-                await conn.execute(
-                    "DELETE FROM security_rate_limits WHERE window_start < $1", window_floor
-                )
+        async with pool.acquire() as conn, conn.transaction():
+            # Clean expired windows
+            await conn.execute(
+                "DELETE FROM security_rate_limits WHERE window_start < $1", window_floor
+            )
 
-                # Atomic upsert + count check in one round-trip
-                row = await conn.fetchrow("""
+            # Atomic upsert + count check in one round-trip
+            row = await conn.fetchrow(
+                """
                     INSERT INTO security_rate_limits (key, window_start, count)
                     VALUES ($1, $2, 1)
                     ON CONFLICT (key, window_start) DO UPDATE SET count = security_rate_limits.count + 1
                     RETURNING count
-                """, key, window_start)
+                """,
+                key,
+                window_start,
+            )
 
-                current = row["count"]
-                allowed = current <= self._max_requests
-                return allowed, current
+            current = row["count"]
+            allowed = current <= self._max_requests
+            return allowed, current

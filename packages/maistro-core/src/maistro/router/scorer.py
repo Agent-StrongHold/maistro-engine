@@ -22,7 +22,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from maistro.router.scarcity import compute_effective_cost, _OVER_QUOTA_FLOOR
+from maistro.router.scarcity import compute_effective_cost
 from maistro.router.speed import compute_speed_bonus
 
 if TYPE_CHECKING:
@@ -57,12 +57,12 @@ def _normalize_cost(raw_cost: float) -> float:
 
 def score_candidate(
     model_id: str,
-    model_cfg: "ModelConfig",
-    provider_cfg: "ProviderConfig",
-    intent: "Intent",
-    routing_cfg: "RoutingConfig",
+    model_cfg: ModelConfig,
+    provider_cfg: ProviderConfig,
+    intent: Intent,
+    routing_cfg: RoutingConfig,
     usage_pct: float,
-) -> "ModelCandidate | None":
+) -> ModelCandidate | None:
     """Score a single model candidate. Returns None if ineligible (filtered).
 
     Formula: quality^(quality_weight * priority_mult) / (1 + normalized_cost)^cost_weight
@@ -110,7 +110,7 @@ def score_candidate(
     norm_cost = _normalize_cost(effective_cost)
 
     # --- Score ---
-    q_factor = adjusted_quality ** quality_exponent
+    q_factor = adjusted_quality**quality_exponent
     # Use (1 + norm_cost) so cost=0 doesn't divide by zero and the denominator
     # spans [1, 2+] — a clean, interpretable range.
     c_factor = (1.0 + norm_cost) ** cost_weight

@@ -76,6 +76,7 @@ class JWTAuthProvider:
 
         if not user_id:
             from maistro.security.auth_composite import AuthError
+
             raise AuthError("Token missing 'sub' claim")
 
         on_behalf_of = ""
@@ -122,6 +123,7 @@ class JWTAuthProvider:
             )
         except Exception as e:
             from maistro.security.auth_composite import AuthError
+
             raise AuthError(f"JWT validation failed: {e}") from e
 
         return decoded
@@ -156,7 +158,8 @@ class JWTAuthProvider:
                 if self._jwks_cache is not None and stale_age < max_stale:
                     logger.warning(
                         "JWKS refresh failed, serving stale (age=%.0fs, max=%.0fs)",
-                        stale_age, max_stale,
+                        stale_age,
+                        max_stale,
                     )
                     return self._jwks_cache
                 logger.error("JWKS refresh failed and stale cache expired — hard-failing auth")

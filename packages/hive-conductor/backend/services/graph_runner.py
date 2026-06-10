@@ -364,7 +364,10 @@ async def execute_dag(
         for nid in ready:
             tier = _classify_node_execution(node_map[nid], nid)
             if tier == "blocked":
-                results[nid] = {"error": "Execution blocked: untrusted node requires admin approval", "success": False}
+                results[nid] = {
+                    "error": "Execution blocked: untrusted node requires admin approval",
+                    "success": False,
+                }
                 completed.add(nid)
             elif tier == "sandbox":
                 sandbox_nodes.append(nid)
@@ -372,9 +375,7 @@ async def execute_dag(
                 async_nodes.append(nid)
 
         # Run sandboxed nodes (isolated execution)
-        await _run_subprocess_wave(
-            sandbox_nodes, node_map, inbound, results, task_desc, node_env
-        )
+        await _run_subprocess_wave(sandbox_nodes, node_map, inbound, results, task_desc, node_env)
 
         # Run async nodes concurrently (light, safe — in-process, no GIL issue for I/O)
         if async_nodes:

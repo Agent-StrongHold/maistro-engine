@@ -66,7 +66,7 @@ def model_for_worker(worker: str) -> str:
 
         cache = load_cache()
         if cache and cache.get(f"{tier}_model"):
-            return cache[f"{tier}_model"]
+            return str(cache[f"{tier}_model"])
     except Exception:
         pass
     return _MODEL_TIERS[tier]
@@ -194,7 +194,7 @@ def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
 def _dispatch_safe_tool(sandbox: Any, name: str, inputs: dict[str, Any]) -> str | None:
     """Handle structured tools that use fixed argv (shell=False). Returns None if unrecognised."""
     if name == "read_file":
-        return sandbox.read_file(inputs["path"])
+        return str(sandbox.read_file(inputs["path"]))
     if name == "write_file":
         sandbox.write_file(inputs["path"], inputs["content"])
         return f"wrote {inputs['path']}"
@@ -203,13 +203,13 @@ def _dispatch_safe_tool(sandbox: Any, name: str, inputs: dict[str, Any]) -> str 
         extra = inputs.get("args", "").strip()
         if extra:
             argv += extra.split()
-        return sandbox.run_argv(argv)
+        return str(sandbox.run_argv(argv))
     if name == "run_lint":
-        return sandbox.run_argv(["ruff", "check", "."])
+        return str(sandbox.run_argv(["ruff", "check", "."]))
     if name == "git_status":
-        return sandbox.run_argv(["git", "status"])
+        return str(sandbox.run_argv(["git", "status"]))
     if name == "git_diff":
-        return sandbox.diff()
+        return str(sandbox.diff())
     if name == "search":
         return json.dumps(sandbox.search(inputs["pattern"], glob=inputs.get("glob", "**/*.py")))
     return None

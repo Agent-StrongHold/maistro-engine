@@ -148,7 +148,7 @@ class BrowserClient:
         if ChatOpenAI is None:
             # Fallback: use the openai sdk directly via browser-use's
             # generic OpenAI-compatible wrapper.
-            from openai import AsyncOpenAI
+            from openai import AsyncOpenAI  # type: ignore[import-not-found]  # optional extra
 
             return AsyncOpenAI(base_url=base_url, api_key=api_key)
         return ChatOpenAI(

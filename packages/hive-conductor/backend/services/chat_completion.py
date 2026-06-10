@@ -691,7 +691,7 @@ _TOOL_HANDLERS: dict[str, Any] = {
 }
 
 # Substrate tools — domain-agnostic DAG execution, eval, hill-climb
-from services.substrate_tools import SUBSTRATE_TOOL_HANDLERS, SUBSTRATE_TOOLS as _SUBSTRATE_TOOL_DEFS  # noqa: E402
+from services.substrate_tools import SUBSTRATE_TOOL_HANDLERS  # noqa: E402
 
 _TOOL_HANDLERS.update(SUBSTRATE_TOOL_HANDLERS)
 

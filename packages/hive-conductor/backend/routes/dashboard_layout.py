@@ -9,9 +9,9 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from fastapi import APIRouter, Request
 from typing import ClassVar
 
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
@@ -101,6 +101,7 @@ async def save_layout(request: Request, body: DashboardLayout) -> dict:
 async def get_metrics() -> dict:
     """Get live chat completion metrics."""
     from services.chat_completion import get_chat_metrics_summary
+
     return get_chat_metrics_summary()
 
 
@@ -108,6 +109,7 @@ async def get_metrics() -> dict:
 async def get_widget_examples(category: str | None = None) -> list[dict]:
     """Return curated widget example templates."""
     from pathlib import Path
+
     path = Path(__file__).parent.parent / "data" / "widget_examples.json"
     try:
         examples = json.loads(path.read_text())
@@ -122,6 +124,7 @@ async def get_widget_examples(category: str | None = None) -> list[dict]:
 async def list_demo_dashboards() -> list[dict]:
     """List available demo dashboard templates."""
     from pathlib import Path
+
     demos_dir = Path(__file__).parent.parent / "data" / "demo_dashboards"
     if not demos_dir.exists():
         return []
@@ -129,7 +132,14 @@ async def list_demo_dashboards() -> list[dict]:
     for f in sorted(demos_dir.glob("*.json")):
         try:
             data = json.loads(f.read_text())
-            results.append({"id": f.stem, "name": data.get("name", f.stem), "description": data.get("description", ""), "widget_count": len(data.get("widgets", []))})
+            results.append(
+                {
+                    "id": f.stem,
+                    "name": data.get("name", f.stem),
+                    "description": data.get("description", ""),
+                    "widget_count": len(data.get("widgets", [])),
+                }
+            )
         except Exception:
             continue
     return results
@@ -139,6 +149,7 @@ async def list_demo_dashboards() -> list[dict]:
 async def get_demo_dashboard(demo_id: str) -> dict:
     """Load a demo dashboard template."""
     from pathlib import Path
+
     path = Path(__file__).parent.parent / "data" / "demo_dashboards" / f"{demo_id}.json"
     if not path.exists():
         return {"error": "not found"}

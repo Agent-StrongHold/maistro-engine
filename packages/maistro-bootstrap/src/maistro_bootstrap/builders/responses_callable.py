@@ -134,7 +134,7 @@ class LiteLLMCallable:
                         "input": inp,
                     }
                 )
-            content = blocks  # type: ignore[assignment]
+            content = blocks
             stop_reason = "tool_use"
 
         usage = data.get("usage", {})

@@ -111,7 +111,7 @@ class Warden:
                 confidence=0.6,
             )
 
-        poisoned, semantic_flags = semantic_tool_poisoning_scan(scan_content)
+        poisoned, semantic_flags = semantic_tool_poisoning_scan(content_norm)
         if poisoned:
             flags.extend(semantic_flags)
             return WardenVerdict(

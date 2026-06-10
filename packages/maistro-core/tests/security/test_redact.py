@@ -267,7 +267,9 @@ class TestRedactQueryParams:
 
 class TestRedactMultipleSecrets:
     def test_multiple_secrets_in_one_text(self):
-        text = f"db=postgres://fu:fp@host/db key={'sk-' + 'FAKE12345678'} auth=Bearer FAKE_TOKEN_VALUE"
+        text = (
+            f"db=postgres://fu:fp@host/db key={'sk-' + 'FAKE12345678'} auth=Bearer FAKE_TOKEN_VALUE"
+        )
         result = redact(text)
         assert "[REDACTED_DB_CONNECTION]" in result
         assert "[REDACTED_API_KEY]" in result

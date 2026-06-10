@@ -28,7 +28,10 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     # Auth headers — ANCHORED to header context (fix #9: no longer matches prose)
     (
-        re.compile(r"(?:^|[\r\n])(?:Authorization|X-Api-Key|X-Auth-Token)\s*[:=]\s*\S+", re.IGNORECASE | re.MULTILINE),
+        re.compile(
+            r"(?:^|[\r\n])(?:Authorization|X-Api-Key|X-Auth-Token)\s*[:=]\s*\S+",
+            re.IGNORECASE | re.MULTILINE,
+        ),
         "[REDACTED_AUTH_HEADER]",
     ),
     # Bearer/Basic/Token ONLY when preceded by colon/equals (header assignment context)
@@ -63,7 +66,9 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     ),
     # Known API key prefixes
     (
-        re.compile(r"(?:sk-ant-|sk_live_|sk_test_|sk-|ghp_|ghs_|github_pat_|AIza|xoxb-|xoxp-|pplx-|glpat-|ATATT)[A-Za-z0-9_-]{10,}"),
+        re.compile(
+            r"(?:sk-ant-|sk_live_|sk_test_|sk-|ghp_|ghs_|github_pat_|AIza|xoxb-|xoxp-|pplx-|glpat-|ATATT)[A-Za-z0-9_-]{10,}"
+        ),
         "[REDACTED_API_KEY]",
     ),
 ]
@@ -96,7 +101,8 @@ def _looks_like_secret(s: str) -> bool:
 
 # ─── Merge-spans redaction (fix #10: no order-dependent overlaps) ─────────────
 
-def redact(text: str) -> str:
+
+def redact(text: str) -> str:  # noqa: C901  pre-existing: sequence of independent pattern passes
     """Redact all secrets from text using span-merging (no partial fragments)."""
     if not text:
         return text
