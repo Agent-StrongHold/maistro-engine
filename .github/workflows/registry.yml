@@ -6,6 +6,7 @@ name: Registry CI
 
 on:
   pull_request:
+    branches: [integration, main]
     paths:
       - 'docs/adr/**'
       - 'docs/specs/**'

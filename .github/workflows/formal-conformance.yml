@@ -2,6 +2,7 @@ name: Formal Conformance
 
 on:
   pull_request:
+    branches: [integration, main]
   push:
     branches: [main]
 
