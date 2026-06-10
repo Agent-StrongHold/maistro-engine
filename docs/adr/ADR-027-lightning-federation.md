@@ -23,6 +23,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-07
+  - status: Deferred
+    date: 2026-05-07
 ---
 
 # ADR-027: Lightning-Native Federation — Payment-graph reputation and spam resistance

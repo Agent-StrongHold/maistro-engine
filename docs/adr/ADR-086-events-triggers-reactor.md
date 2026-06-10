@@ -20,6 +20,9 @@ contracts:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-30
 ---
 
 # ADR-086: Events, Triggers, and the Reactor

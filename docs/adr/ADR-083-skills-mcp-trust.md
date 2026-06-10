@@ -23,6 +23,9 @@ contracts:
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-30
 ---
 
 # ADR-083: Skills and MCP Gateway Trust

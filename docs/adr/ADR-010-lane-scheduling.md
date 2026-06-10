@@ -18,6 +18,11 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Accepted
+    date: 2026-04-26
 ---
 
 # ADR-010: Lane-based scheduling (LIVE vs BACKGROUND)

@@ -27,6 +27,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-01
 ---
 
 # SPEC-192: Persona authoring pipeline

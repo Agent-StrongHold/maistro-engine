@@ -19,6 +19,9 @@ tests: []
 layer: Tools
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-25
 ---
 
 # SPEC-017: Electrum Server Plugin

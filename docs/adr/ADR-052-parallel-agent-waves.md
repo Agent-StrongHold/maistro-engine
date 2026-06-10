@@ -23,6 +23,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
 ---
 
 # ADR-052: Parallel agent waves — per-wave branch isolation and fan-in merge

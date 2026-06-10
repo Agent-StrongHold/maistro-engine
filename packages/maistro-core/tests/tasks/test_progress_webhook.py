@@ -30,6 +30,7 @@ def test_conductor_progress_payload_rejects_unknown_keys() -> None:
         )
 
 
+@pytest.mark.ac("SPEC-175/AC-2")
 @pytest.mark.contract("boundary")
 @pytest.mark.scope("unit")
 def test_payload_from_task_maps_queue_snapshot() -> None:
@@ -47,6 +48,7 @@ def test_payload_from_task_maps_queue_snapshot() -> None:
     assert p.current_step == ""
 
 
+@pytest.mark.ac("SPEC-175/AC-2")
 @pytest.mark.contract("behavioral")
 @pytest.mark.scope("unit")
 @pytest.mark.asyncio
@@ -92,6 +94,7 @@ async def test_progress_webhook_notifier_posts_json() -> None:
 @pytest.mark.contract("behavioral")
 @pytest.mark.scope("unit")
 @pytest.mark.asyncio
+@pytest.mark.ac("SPEC-175/AC-3")
 async def test_progress_webhook_notifier_swallows_errors() -> None:
     def boom(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("refused", request=request)
@@ -110,6 +113,7 @@ async def test_progress_webhook_notifier_swallows_errors() -> None:
 @pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 @pytest.mark.asyncio
+@pytest.mark.ac("SPEC-175/AC-2")
 async def test_task_runner_emits_webhook_snapshots() -> None:
     payloads: list[ConductorProgressPayload] = []
 

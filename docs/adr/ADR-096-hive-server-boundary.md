@@ -6,6 +6,13 @@ kind: adr
 status: Accepted
 created: 2026-06-10
 supersedes: []
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-10
+  - status: Accepted
+    date: 2026-06-10
 ---
 
 # ADR-096: Hive Conductor / maistro-server boundary

@@ -25,6 +25,9 @@ tests: []
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-02
 ---
 
 # ADR-091: Memory model reconciliation

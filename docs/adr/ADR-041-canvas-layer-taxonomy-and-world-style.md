@@ -3,7 +3,8 @@ id: ADR-041
 title: Canvas Layer Taxonomy, Scene Graph, and World Style
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-08
 substrate:
   - maistro-engine#ADR-005
@@ -25,6 +26,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-08
 ---
 
 # ADR-041: Canvas Layer Taxonomy, Scene Graph, and World Style

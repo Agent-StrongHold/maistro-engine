@@ -10,6 +10,8 @@ implements: []
 related:
   - maistro-engine#ADR-095
 supersedes: []
+superseded-by:
+  - maistro-engine#ADR-095
 blocks: []
 blocked-by: []
 contracts: []
@@ -17,6 +19,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Superseded
+    date: 2026-04-26
 ---
 
 # ADR-001: Branching strategy — integration as default PR base

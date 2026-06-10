@@ -3,7 +3,8 @@ id: ADR-044
 title: LayerRecord → AssetInstance Migration Plan
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-09
 substrate:
   - maistro-engine#ADR-039
@@ -23,6 +24,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-09
 ---
 
 # ADR-044: LayerRecord → AssetInstance Migration Plan

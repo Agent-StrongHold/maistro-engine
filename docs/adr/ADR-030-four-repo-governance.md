@@ -15,6 +15,8 @@ related:
   - maistro-engine#ADR-034
   - maistro-engine#ADR-035
 supersedes: []
+superseded-by:
+  - maistro-engine#ADR-019
 blocks: []
 blocked-by: []
 contracts: []
@@ -22,6 +24,13 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-07
+  - status: Accepted
+    date: 2026-05-07
+  - status: Superseded
+    date: 2026-05-07
 ---
 
 # ADR-030: Four-Repo Governance — Substrate + Three Templated Products
