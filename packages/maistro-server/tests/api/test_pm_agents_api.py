@@ -21,23 +21,16 @@ def pm_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     app.dependency_overrides.clear()
 
 
-def test_list_pm_agents_returns_six(pm_client: TestClient) -> None:
+def test_list_pm_agents_returns_five(pm_client: TestClient) -> None:
     response = pm_client.get(
         "/v1/maistro/agents",
         headers={"Authorization": "Bearer secret-alice"},
     )
     assert response.status_code == 200
     agents = response.json()["agents"]
-    assert len(agents) == 6
+    assert len(agents) == 5
     ids = {a["id"] for a in agents}
-    assert ids == {
-        "intake",
-        "program_manager",
-        "delivery",
-        "risk_dependency",
-        "reporting",
-        "research",
-    }
+    assert ids == {"intake", "program_manager", "delivery", "risk_dependency", "reporting"}
 
 
 def test_invoke_creates_scoped_task(pm_client: TestClient) -> None:
