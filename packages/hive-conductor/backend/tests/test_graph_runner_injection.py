@@ -127,7 +127,7 @@ def test_hyperlight_wrapper_uses_base64_not_string_templating() -> None:
     into a triple-quoted literal (which broke on triple-quotes/backslashes)."""
     import asyncio
 
-    from services.hyperlight_executor import HyperlightExecutor
+    from services.hyperlight_executor import SandboxExecutor
 
     malicious_code = (
         "print('a')\n''' + __import__('os').system('echo " + _PAYLOAD_MARKER + "') + '''"
@@ -135,13 +135,13 @@ def test_hyperlight_wrapper_uses_base64_not_string_templating() -> None:
 
     captured: dict[str, str] = {}
 
-    def _fake_subprocess_run(self: Any, script: str, env: Any, timeout_s: int) -> dict[str, Any]:
+    async def _fake_subprocess(self: Any, script: str, env: Any, timeout_s: int) -> dict[str, Any]:
         captured["script"] = script
         return {"output": "ok", "error": "", "success": True}
 
-    ex = HyperlightExecutor()
-    ex._available = True  # force the hyperlight wrapper path
-    ex._subprocess_run = _fake_subprocess_run.__get__(ex, HyperlightExecutor)  # type: ignore[attr-defined]
+    ex = SandboxExecutor()
+    ex._backend = "hyperlight"  # force the hyperlight wrapper path
+    ex._subprocess = _fake_subprocess.__get__(ex, SandboxExecutor)  # type: ignore[attr-defined]
 
     asyncio.run(ex.execute_node(malicious_code, allow_network=False))
 
