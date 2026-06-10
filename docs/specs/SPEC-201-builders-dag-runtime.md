@@ -32,7 +32,7 @@ tests:
   - packages/maistro-bootstrap/tests/test_builders_dagflow.py
   - packages/maistro-bootstrap/tests/test_builders_spec_session.py
   - packages/maistro-bootstrap/tests/test_builders_edge_coverage.py
-layer: Orchestration
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
 history:

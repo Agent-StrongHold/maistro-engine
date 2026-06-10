@@ -63,7 +63,7 @@ ADR amending this one.
 | `Evolve` | Self-improvement loops: genome evolution, fitness/benchmark signal, reflective optimization, RSI. |
 | `Crypto` | Cryptocurrency and value transfer: seed/HD root of trust, hardware signing, spending policy, Electrum, Lightning federation. General cryptography (PKI, DID, redaction, vault) stays in `Governance`/`Foundation`. |
 | `Connectivity` | Transport, channels, and mesh: networking/identity substrate transport, channel integrations (email), outbound delivery, agent-to-agent networking. The A2A delegation *protocol* itself stays `Orchestration`. |
-| `Ability` | Packaged product abilities composed from the substrate: canvas, maistro-design, and future ability packages. |
+| `Ability` | Packaged product abilities composed from the substrate: canvas, maistro-design, builders, and future ability packages. |
 
 Existing records are relabeled accordingly:
 
@@ -72,7 +72,7 @@ Existing records are relabeled accordingly:
 | Evolve | ADR-088, SPEC-202, SPEC-206 |
 | Crypto | ADR-021, ADR-022, ADR-023, ADR-025, ADR-027, SPEC-017, SPEC-018 |
 | Connectivity | ADR-029, ADR-047, SPEC-002, SPEC-008, SPEC-016 |
-| Ability | ADR-040, ADR-041, ADR-042, ADR-043, ADR-044, ADR-045, ADR-061, ADR-067, SPEC-160, SPEC-203 |
+| Ability | ADR-040, ADR-041, ADR-042, ADR-043, ADR-044, ADR-045, ADR-061, ADR-067, ADR-090, SPEC-160, SPEC-200, SPEC-201, SPEC-203 |
 
 SPEC-204 (partial-feature hardening) remains `Reliability` — its provisional
 relabel was correct on the merits.
