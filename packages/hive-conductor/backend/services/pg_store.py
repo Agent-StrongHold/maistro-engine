@@ -20,8 +20,12 @@ async def pg_upsert(table: str, data: dict) -> dict | None:
         return None
     async with httpx.AsyncClient(timeout=5) as c:
         r = await c.post(
-            f"{POSTGREST_URL}/{table}", json=data,
-            headers={"Prefer": "resolution=merge-duplicates,return=representation", "Content-Type": "application/json"},
+            f"{POSTGREST_URL}/{table}",
+            json=data,
+            headers={
+                "Prefer": "resolution=merge-duplicates,return=representation",
+                "Content-Type": "application/json",
+            },
         )
         rows = r.json() if r.status_code in (200, 201) else []
         return rows[0] if rows else None

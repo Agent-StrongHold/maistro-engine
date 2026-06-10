@@ -11,6 +11,7 @@ import logging
 import os
 from typing import Any
 
+import httpx
 from adapters.llm_http import HttpOpenAIProtocolLLM, StubLLMPort
 from config import get_settings
 from models.schemas import ChatCompletionRequest
@@ -81,6 +82,23 @@ def _get_jira_pat(user_id: str) -> str | None:
         return None
 
 
+def _format_profile(profile: dict[str, Any] | None) -> str:
+    """Render the cached user profile as a system-prompt section."""
+    if not profile:
+        return ""
+    filled = {
+        k: v
+        for k, v in profile.items()
+        if v and k not in ("favorite_models", "hidden_models", "task_models", "prompts")
+    }
+    if not filled:
+        return ""
+    out = "\n\nUser profile:"
+    for k, v in filled.items():
+        out += f"\n- {k}: {v}"
+    return out
+
+
 def _build_system_prompt(user_id: str) -> str:
     """Build system prompt with program context and user profile."""
     ctx = _get_program_context(user_id)
@@ -93,14 +111,7 @@ def _build_system_prompt(user_id: str) -> str:
         "When you need context — use profile_get first. When they correct you — infer and update the profile. "
         "Be concise and actionable. Never say you can't do something if you have a tool for it."
     )
-    # Inject cached profile
-    profile = _PROFILE_CACHE.get(user_id)
-    if profile:
-        filled = {k: v for k, v in profile.items() if v and k not in ("favorite_models", "hidden_models", "task_models", "prompts")}
-        if filled:
-            base += "\n\nUser profile:"
-            for k, v in filled.items():
-                base += f"\n- {k}: {v}"
+    base += _format_profile(_PROFILE_CACHE.get(user_id))
     if ctx.get("program_name"):
         base += f"\n\nProgram: {ctx['program_name']}"
     if ctx.get("goals"):
@@ -296,25 +307,208 @@ PM_TOOLS = [
         },
     },
     # ── Memory tools ──
-    {"type": "function", "function": {"name": "memory_add", "description": "Store a memory/fact. Use when user shares info that doesn't fit a profile field.", "parameters": {"type": "object", "properties": {"content": {"type": "string", "description": "The fact to remember"}, "namespace": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["content"]}}},
-    {"type": "function", "function": {"name": "memory_search", "description": "Search stored memories.", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "namespace": {"type": "string"}}, "required": []}}},
-    {"type": "function", "function": {"name": "memory_delete", "description": "Delete a memory by ID.", "parameters": {"type": "object", "properties": {"entry_id": {"type": "string"}}, "required": ["entry_id"]}}},
-    {"type": "function", "function": {"name": "memory_edit", "description": "Edit a memory.", "parameters": {"type": "object", "properties": {"entry_id": {"type": "string"}, "value": {"type": "string"}, "tags": {"type": "array", "items": {"type": "string"}}}, "required": ["entry_id", "value"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_add",
+            "description": "Store a memory/fact. Use when user shares info that doesn't fit a profile field.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string", "description": "The fact to remember"},
+                    "namespace": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_search",
+            "description": "Search stored memories.",
+            "parameters": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "namespace": {"type": "string"}},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_delete",
+            "description": "Delete a memory by ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {"entry_id": {"type": "string"}},
+                "required": ["entry_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_edit",
+            "description": "Edit a memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "entry_id": {"type": "string"},
+                    "value": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["entry_id", "value"],
+            },
+        },
+    },
     # ── Profile tools ──
-    {"type": "function", "function": {"name": "profile_get", "description": "Get user profile. Check what's known before asking. Returns filled fields + schema.", "parameters": {"type": "object", "properties": {"section": {"type": "string", "enum": ["identity", "work_context", "preferences", "goals", "communication"]}}, "required": []}}},
-    {"type": "function", "function": {"name": "profile_set", "description": "Set a profile field. Use for structured facts about the user.", "parameters": {"type": "object", "properties": {"field": {"type": "string"}, "value": {"type": "string"}}, "required": ["field", "value"]}}},
-    {"type": "function", "function": {"name": "profile_delete", "description": "Remove a profile field.", "parameters": {"type": "object", "properties": {"field": {"type": "string"}}, "required": ["field"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "profile_get",
+            "description": "Get user profile. Check what's known before asking. Returns filled fields + schema.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "enum": [
+                            "identity",
+                            "work_context",
+                            "preferences",
+                            "goals",
+                            "communication",
+                        ],
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "profile_set",
+            "description": "Set a profile field. Use for structured facts about the user.",
+            "parameters": {
+                "type": "object",
+                "properties": {"field": {"type": "string"}, "value": {"type": "string"}},
+                "required": ["field", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "profile_delete",
+            "description": "Remove a profile field.",
+            "parameters": {
+                "type": "object",
+                "properties": {"field": {"type": "string"}},
+                "required": ["field"],
+            },
+        },
+    },
     # ── Metrics ──
-    {"type": "function", "function": {"name": "query_metrics", "description": "Query runtime metrics — latency, tokens, cost, success rate.", "parameters": {"type": "object", "properties": {"node_id": {"type": "string"}, "time_range": {"type": "string", "enum": ["1h", "24h", "7d", "30d"]}}, "required": []}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "query_metrics",
+            "description": "Query runtime metrics — latency, tokens, cost, success rate.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "node_id": {"type": "string"},
+                    "time_range": {"type": "string", "enum": ["1h", "24h", "7d", "30d"]},
+                },
+                "required": [],
+            },
+        },
+    },
     # ── Airtable ──
-    {"type": "function", "function": {"name": "airtable_query", "description": "Query an Airtable table.", "parameters": {"type": "object", "properties": {"base_id": {"type": "string"}, "table": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["table"]}}},
-    {"type": "function", "function": {"name": "airtable_describe", "description": "List tables and fields in an Airtable base.", "parameters": {"type": "object", "properties": {"base_id": {"type": "string"}}, "required": []}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "airtable_query",
+            "description": "Query an Airtable table.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "base_id": {"type": "string"},
+                    "table": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                "required": ["table"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "airtable_describe",
+            "description": "List tables and fields in an Airtable base.",
+            "parameters": {
+                "type": "object",
+                "properties": {"base_id": {"type": "string"}},
+                "required": [],
+            },
+        },
+    },
     # ── Dashboard widgets ──
-    {"type": "function", "function": {"name": "create_dashboard_widget", "description": "Create a dashboard widget.", "parameters": {"type": "object", "properties": {"type": {"type": "string", "enum": ["kpi", "chart", "list", "table"]}, "title": {"type": "string"}, "config": {"type": "object"}}, "required": ["title"]}}},
-    {"type": "function", "function": {"name": "suggest_widgets", "description": "Suggest dashboard widgets based on available data.", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "analyze_dashboard", "description": "Analyze current dashboard for gaps.", "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "create_dashboard_widget",
+            "description": "Create a dashboard widget.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": "string", "enum": ["kpi", "chart", "list", "table"]},
+                    "title": {"type": "string"},
+                    "config": {"type": "object"},
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "suggest_widgets",
+            "description": "Suggest dashboard widgets based on available data.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_dashboard",
+            "description": "Analyze current dashboard for gaps.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
     # ── Model curation ──
-    {"type": "function", "function": {"name": "favorite_model", "description": "Manage model preferences: favorite, hide, or set per-task defaults.", "parameters": {"type": "object", "properties": {"model": {"type": "string"}, "action": {"type": "string", "enum": ["add", "remove", "hide", "unhide", "set_task"]}, "task": {"type": "string", "enum": ["chat", "widget_wizard", "biographer"]}}, "required": ["model", "action"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "favorite_model",
+            "description": "Manage model preferences: favorite, hide, or set per-task defaults.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {"type": "string"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "remove", "hide", "unhide", "set_task"],
+                    },
+                    "task": {"type": "string", "enum": ["chat", "widget_wizard", "biographer"]},
+                },
+                "required": ["model", "action"],
+            },
+        },
+    },
 ]
 
 
@@ -721,34 +915,66 @@ _TOOL_HANDLERS: dict[str, Any] = {
 
 # ── Memory tools ──
 
-async def _tool_memory_add(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+
+async def _tool_memory_add(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     from datetime import UTC, datetime
     from uuid import uuid4
+
     from models.schemas import MemoryEntry
+
     content = args.get("content", "")
     if not content:
         return {"error": "content is required"}
     eid = str(uuid4())
     t = datetime.now(UTC)
-    entry = MemoryEntry(id=eid, user_id=user_id, key=content[:60], value=content,
-                        namespace=args.get("namespace", "general"), tags=args.get("tags", []),
-                        embedding=None, created_at=t, updated_at=t)
+    entry = MemoryEntry(
+        id=eid,
+        user_id=user_id,
+        key=content[:60],
+        value=content,
+        namespace=args.get("namespace", "general"),
+        tags=args.get("tags", []),
+        embedding=None,
+        created_at=t,
+        updated_at=t,
+    )
     import stores
+
     stores.memory_entries[eid] = entry
     return {"saved": True, "id": eid, "content": content}
 
 
-async def _tool_memory_search(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_memory_search(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     import stores
+
     query = args.get("query", "").lower()
     entries = [e for e in stores.memory_entries.values() if e.user_id == user_id]
     if query:
-        entries = [e for e in entries if query in e.value.lower() or query in e.key.lower() or query in " ".join(e.tags).lower()]
-    return {"results": [{"id": e.id, "key": e.key, "value": e.value, "namespace": e.namespace, "tags": e.tags} for e in entries[:10]], "count": len(entries)}
+        entries = [
+            e
+            for e in entries
+            if query in e.value.lower()
+            or query in e.key.lower()
+            or query in " ".join(e.tags).lower()
+        ]
+    return {
+        "results": [
+            {"id": e.id, "key": e.key, "value": e.value, "namespace": e.namespace, "tags": e.tags}
+            for e in entries[:10]
+        ],
+        "count": len(entries),
+    }
 
 
-async def _tool_memory_delete(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_memory_delete(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     import stores
+
     entry_id = args.get("entry_id", "")
     if not entry_id:
         return {"error": "entry_id required"}
@@ -758,9 +984,13 @@ async def _tool_memory_delete(args: dict[str, Any], user_id: str, jira_pat: str 
     return {"error": "not found"}
 
 
-async def _tool_memory_edit(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
-    import stores
+async def _tool_memory_edit(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     from datetime import UTC, datetime
+
+    import stores
+
     entry_id = args.get("entry_id", "")
     value = args.get("value", "")
     if not entry_id or not value:
@@ -780,8 +1010,21 @@ async def _tool_memory_edit(args: dict[str, Any], user_id: str, jira_pat: str | 
 
 PROFILE_SCHEMA = {
     "identity": ["name", "role", "team", "department", "location", "timezone"],
-    "work_context": ["projects", "tools", "languages", "platforms", "recurring_tasks", "stakeholders"],
-    "preferences": ["response_style", "interaction_style", "model_preferences", "topics_to_avoid", "assumptions_to_avoid"],
+    "work_context": [
+        "projects",
+        "tools",
+        "languages",
+        "platforms",
+        "recurring_tasks",
+        "stakeholders",
+    ],
+    "preferences": [
+        "response_style",
+        "interaction_style",
+        "model_preferences",
+        "topics_to_avoid",
+        "assumptions_to_avoid",
+    ],
     "goals": ["current_focus", "okrs", "blockers", "definition_of_done"],
     "communication": ["challenge_style", "presentation_format", "terminology"],
 }
@@ -795,22 +1038,30 @@ async def hydrate_profile_cache(user_id: str) -> None:
         return
     try:
         from services.pg_store import pg_get
+
         rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"})
         _PROFILE_CACHE[user_id] = (rows[0] if rows else {}).get("preferences", {})
     except Exception:
         _PROFILE_CACHE.setdefault(user_id, {})
 
 
-async def _tool_profile_get(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_profile_get(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     await hydrate_profile_cache(user_id)
     profile = _PROFILE_CACHE.get(user_id, {})
     section = args.get("section")
     if section and section in PROFILE_SCHEMA:
-        return {"section": section, "fields": {k: profile.get(k) for k in PROFILE_SCHEMA[section] if profile.get(k)}}
+        return {
+            "section": section,
+            "fields": {k: profile.get(k) for k in PROFILE_SCHEMA[section] if profile.get(k)},
+        }
     return {"profile": {k: v for k, v in profile.items() if v}, "schema": PROFILE_SCHEMA}
 
 
-async def _tool_profile_set(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_profile_set(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     await hydrate_profile_cache(user_id)
     profile = _PROFILE_CACHE.get(user_id, {})
     field = args.get("field", "")
@@ -821,13 +1072,16 @@ async def _tool_profile_set(args: dict[str, Any], user_id: str, jira_pat: str | 
     _PROFILE_CACHE[user_id] = profile
     try:
         from services.pg_store import pg_upsert
+
         await pg_upsert("user_profiles", {"id": user_id, "preferences": profile})
     except Exception:
         pass
     return {"updated": True, "field": field, "value": value}
 
 
-async def _tool_profile_delete(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_profile_delete(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     await hydrate_profile_cache(user_id)
     profile = _PROFILE_CACHE.get(user_id, {})
     field = args.get("field", "")
@@ -839,6 +1093,7 @@ async def _tool_profile_delete(args: dict[str, Any], user_id: str, jira_pat: str
     _PROFILE_CACHE[user_id] = profile
     try:
         from services.pg_store import pg_upsert
+
         await pg_upsert("user_profiles", {"id": user_id, "preferences": profile})
     except Exception:
         pass
@@ -847,9 +1102,13 @@ async def _tool_profile_delete(args: dict[str, Any], user_id: str, jira_pat: str
 
 # ── Metrics tools ──
 
-async def _tool_query_metrics(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+
+async def _tool_query_metrics(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Query runtime metrics — latency, tokens, cost, success rate."""
     from services.node_metrics_store import get_metrics_summary
+
     try:
         return get_metrics_summary(args.get("node_id"), args.get("time_range", "7d"))
     except Exception:
@@ -858,9 +1117,13 @@ async def _tool_query_metrics(args: dict[str, Any], user_id: str, jira_pat: str 
 
 # ── Airtable tools ──
 
-async def _tool_airtable_query(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+
+async def _tool_airtable_query(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Query an Airtable base/table."""
     import os
+
     base_id = args.get("base_id", os.environ.get("AIRTABLE_BASE_ID", ""))
     table = args.get("table", "")
     if not base_id or not table:
@@ -870,9 +1133,11 @@ async def _tool_airtable_query(args: dict[str, Any], user_id: str, jira_pat: str
         return {"error": "AIRTABLE_PAT not configured"}
     try:
         async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.get(f"https://api.airtable.com/v0/{base_id}/{table}",
-                            headers={"Authorization": f"Bearer {pat}"},
-                            params={"maxRecords": str(args.get("limit", 20))})
+            r = await c.get(
+                f"https://api.airtable.com/v0/{base_id}/{table}",
+                headers={"Authorization": f"Bearer {pat}"},
+                params={"maxRecords": str(args.get("limit", 20))},
+            )
             r.raise_for_status()
             records = r.json().get("records", [])
             return {"records": [rec.get("fields", {}) for rec in records], "count": len(records)}
@@ -880,59 +1145,94 @@ async def _tool_airtable_query(args: dict[str, Any], user_id: str, jira_pat: str
         return {"error": str(e)[:100]}
 
 
-async def _tool_airtable_describe(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_airtable_describe(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Describe tables in an Airtable base."""
     import os
+
     base_id = args.get("base_id", os.environ.get("AIRTABLE_BASE_ID", ""))
     pat = os.environ.get("AIRTABLE_PAT", "")
     if not base_id or not pat:
         return {"error": "base_id and AIRTABLE_PAT required"}
     try:
         async with httpx.AsyncClient(timeout=10) as c:
-            r = await c.get(f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
-                            headers={"Authorization": f"Bearer {pat}"})
+            r = await c.get(
+                f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
+                headers={"Authorization": f"Bearer {pat}"},
+            )
             r.raise_for_status()
             tables = r.json().get("tables", [])
-            return {"tables": [{"name": t["name"], "fields": [f["name"] for f in t.get("fields", [])]} for t in tables]}
+            return {
+                "tables": [
+                    {"name": t["name"], "fields": [f["name"] for f in t.get("fields", [])]}
+                    for t in tables
+                ]
+            }
     except Exception as e:
         return {"error": str(e)[:100]}
 
 
 # ── Dashboard widget tools ──
 
-async def _tool_create_dashboard_widget(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+
+async def _tool_create_dashboard_widget(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Create a dashboard widget."""
     from uuid import uuid4
-    widget = {"id": str(uuid4()), "type": args.get("type", "kpi"), "title": args.get("title", "Widget"),
-              "config": args.get("config", {}), "created_by": user_id}
+
+    widget = {
+        "id": str(uuid4()),
+        "type": args.get("type", "kpi"),
+        "title": args.get("title", "Widget"),
+        "config": args.get("config", {}),
+        "created_by": user_id,
+    }
     import stores
+
     if not hasattr(stores, "widgets"):
         stores.widgets = {}
     stores.widgets[widget["id"]] = widget
     return {"created": True, "widget_id": widget["id"], "title": widget["title"]}
 
 
-async def _tool_suggest_widgets(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_suggest_widgets(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Suggest widgets based on available data."""
-    return {"suggestions": [
-        {"type": "kpi", "title": "Open Issues", "data_source": "jira"},
-        {"type": "chart", "title": "Sprint Burndown", "data_source": "jira"},
-        {"type": "list", "title": "Recent Confluence Updates", "data_source": "confluence"},
-        {"type": "kpi", "title": "Blocked Items", "data_source": "jira"},
-    ]}
+    return {
+        "suggestions": [
+            {"type": "kpi", "title": "Open Issues", "data_source": "jira"},
+            {"type": "chart", "title": "Sprint Burndown", "data_source": "jira"},
+            {"type": "list", "title": "Recent Confluence Updates", "data_source": "confluence"},
+            {"type": "kpi", "title": "Blocked Items", "data_source": "jira"},
+        ]
+    }
 
 
-async def _tool_analyze_dashboard(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_analyze_dashboard(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Analyze current dashboard for gaps."""
     import stores
+
     widgets = list(getattr(stores, "widgets", {}).values())
-    return {"widget_count": len(widgets), "types": list({w.get("type") for w in widgets}),
-            "suggestion": "Consider adding a blocker tracker" if len(widgets) < 3 else "Dashboard looks solid"}
+    return {
+        "widget_count": len(widgets),
+        "types": list({w.get("type") for w in widgets}),
+        "suggestion": "Consider adding a blocker tracker"
+        if len(widgets) < 3
+        else "Dashboard looks solid",
+    }
 
 
 # ── Model curation ──
 
-async def _tool_favorite_model(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+
+async def _tool_favorite_model(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Manage model preferences: favorite, hide, or set per-task defaults."""
     await hydrate_profile_cache(user_id)
     profile = _PROFILE_CACHE.get(user_id, {})
@@ -960,6 +1260,7 @@ async def _tool_favorite_model(args: dict[str, Any], user_id: str, jira_pat: str
     _PROFILE_CACHE[user_id] = profile
     try:
         from services.pg_store import pg_upsert
+
         await pg_upsert("user_profiles", {"id": user_id, "preferences": profile})
     except Exception:
         pass
@@ -969,9 +1270,39 @@ async def _tool_favorite_model(args: dict[str, Any], user_id: str, jira_pat: str
 # ── Tool scoping ──
 
 TOOL_SCOPES: dict[str, list[str] | None] = {
-    "memory": ["memory_add", "memory_search", "memory_delete", "memory_edit", "profile_get", "profile_set", "profile_delete", "favorite_model"],
-    "dashboard_view": ["poll_jira", "search_jira", "check_blockers", "search_confluence", "airtable_query", "query_metrics", "memory_search", "profile_get"],
-    "dashboard_edit": ["poll_jira", "search_jira", "check_blockers", "search_confluence", "airtable_query", "query_metrics", "memory_search", "profile_get", "create_dashboard_widget", "suggest_widgets", "analyze_dashboard"],
+    "memory": [
+        "memory_add",
+        "memory_search",
+        "memory_delete",
+        "memory_edit",
+        "profile_get",
+        "profile_set",
+        "profile_delete",
+        "favorite_model",
+    ],
+    "dashboard_view": [
+        "poll_jira",
+        "search_jira",
+        "check_blockers",
+        "search_confluence",
+        "airtable_query",
+        "query_metrics",
+        "memory_search",
+        "profile_get",
+    ],
+    "dashboard_edit": [
+        "poll_jira",
+        "search_jira",
+        "check_blockers",
+        "search_confluence",
+        "airtable_query",
+        "query_metrics",
+        "memory_search",
+        "profile_get",
+        "create_dashboard_widget",
+        "suggest_widgets",
+        "analyze_dashboard",
+    ],
     "chat": None,
 }
 
@@ -986,22 +1317,24 @@ def get_scoped_tools(scope: str | None) -> list[dict]:
     return [t for t in PM_TOOLS if t.get("function", {}).get("name") in allowed]
 
 
-_TOOL_HANDLERS.update({
-    "memory_add": _tool_memory_add,
-    "memory_search": _tool_memory_search,
-    "memory_delete": _tool_memory_delete,
-    "memory_edit": _tool_memory_edit,
-    "profile_get": _tool_profile_get,
-    "profile_set": _tool_profile_set,
-    "profile_delete": _tool_profile_delete,
-    "query_metrics": _tool_query_metrics,
-    "airtable_query": _tool_airtable_query,
-    "airtable_describe": _tool_airtable_describe,
-    "create_dashboard_widget": _tool_create_dashboard_widget,
-    "suggest_widgets": _tool_suggest_widgets,
-    "analyze_dashboard": _tool_analyze_dashboard,
-    "favorite_model": _tool_favorite_model,
-})
+_TOOL_HANDLERS.update(
+    {
+        "memory_add": _tool_memory_add,
+        "memory_search": _tool_memory_search,
+        "memory_delete": _tool_memory_delete,
+        "memory_edit": _tool_memory_edit,
+        "profile_get": _tool_profile_get,
+        "profile_set": _tool_profile_set,
+        "profile_delete": _tool_profile_delete,
+        "query_metrics": _tool_query_metrics,
+        "airtable_query": _tool_airtable_query,
+        "airtable_describe": _tool_airtable_describe,
+        "create_dashboard_widget": _tool_create_dashboard_widget,
+        "suggest_widgets": _tool_suggest_widgets,
+        "analyze_dashboard": _tool_analyze_dashboard,
+        "favorite_model": _tool_favorite_model,
+    }
+)
 
 # Substrate tools — domain-agnostic DAG execution, eval, hill-climb
 from services.substrate_tools import SUBSTRATE_TOOL_HANDLERS  # noqa: E402
