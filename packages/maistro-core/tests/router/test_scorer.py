@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import math
+from typing import ClassVar
 
 import pytest
 
-from maistro.router.scorer import _normalize_cost, _COST_CEIL, score_candidate
-from maistro.types.errors import NoModelsError
-
+from maistro.router.scorer import _COST_CEIL, _normalize_cost, score_candidate
 
 # ─── _normalize_cost boundaries ──────────────────────────────────────────────
 
@@ -76,34 +75,46 @@ class FakeProviderCfg:
 
 class FakeIntent:
     tier = "standard"
-    preferred_strengths = ["coding"]
+    preferred_strengths: ClassVar[list[str]] = ["coding"]
     task_type = "code"
 
 
 class FakeRoutingCfg:
     quality_weight = 1.0
     cost_weight = 0.4
-    priority_multipliers = {"standard": 1.0}
+    priority_multipliers: ClassVar[dict[str, float]] = {"standard": 1.0}
 
 
 class TestScoreCandidate:
     def test_over_quota_no_paygo_returns_none(self):
         """Over quota without paygo → filtered (None), not scored."""
         result = score_candidate(
-            "m1", FakeModelCfg(), FakeProviderCfg(free_tokens=1000, paygo=False),
-            FakeIntent(), FakeRoutingCfg(), usage_pct=1.5,
+            "m1",
+            FakeModelCfg(),
+            FakeProviderCfg(free_tokens=1000, paygo=False),
+            FakeIntent(),
+            FakeRoutingCfg(),
+            usage_pct=1.5,
         )
         assert result is None
 
     def test_over_quota_with_paygo_returns_penalized_score(self):
         """Over quota with paygo → scored, but penalized (lower than in-budget)."""
         in_budget = score_candidate(
-            "m1", FakeModelCfg(), FakeProviderCfg(free_tokens=10000, paygo=True),
-            FakeIntent(), FakeRoutingCfg(), usage_pct=0.5,
+            "m1",
+            FakeModelCfg(),
+            FakeProviderCfg(free_tokens=10000, paygo=True),
+            FakeIntent(),
+            FakeRoutingCfg(),
+            usage_pct=0.5,
         )
         over_quota = score_candidate(
-            "m1", FakeModelCfg(), FakeProviderCfg(free_tokens=10000, paygo=True),
-            FakeIntent(), FakeRoutingCfg(), usage_pct=1.5,
+            "m1",
+            FakeModelCfg(),
+            FakeProviderCfg(free_tokens=10000, paygo=True),
+            FakeIntent(),
+            FakeRoutingCfg(),
+            usage_pct=1.5,
         )
         assert in_budget is not None
         assert over_quota is not None
@@ -112,12 +123,20 @@ class TestScoreCandidate:
     def test_lower_usage_scores_higher(self):
         """Less usage → cheaper → higher score."""
         low = score_candidate(
-            "m1", FakeModelCfg(), FakeProviderCfg(free_tokens=10000),
-            FakeIntent(), FakeRoutingCfg(), usage_pct=0.1,
+            "m1",
+            FakeModelCfg(),
+            FakeProviderCfg(free_tokens=10000),
+            FakeIntent(),
+            FakeRoutingCfg(),
+            usage_pct=0.1,
         )
         high = score_candidate(
-            "m1", FakeModelCfg(), FakeProviderCfg(free_tokens=10000),
-            FakeIntent(), FakeRoutingCfg(), usage_pct=0.9,
+            "m1",
+            FakeModelCfg(),
+            FakeProviderCfg(free_tokens=10000),
+            FakeIntent(),
+            FakeRoutingCfg(),
+            usage_pct=0.9,
         )
         assert low is not None and high is not None
         assert low.score > high.score
@@ -125,12 +144,20 @@ class TestScoreCandidate:
     def test_higher_quality_scores_higher(self):
         """Better quality → higher score at same cost."""
         good = score_candidate(
-            "m1", FakeModelCfg(quality=0.95), FakeProviderCfg(free_tokens=10000),
-            FakeIntent(), FakeRoutingCfg(), usage_pct=0.5,
+            "m1",
+            FakeModelCfg(quality=0.95),
+            FakeProviderCfg(free_tokens=10000),
+            FakeIntent(),
+            FakeRoutingCfg(),
+            usage_pct=0.5,
         )
         bad = score_candidate(
-            "m1", FakeModelCfg(quality=0.5), FakeProviderCfg(free_tokens=10000),
-            FakeIntent(), FakeRoutingCfg(), usage_pct=0.5,
+            "m1",
+            FakeModelCfg(quality=0.5),
+            FakeProviderCfg(free_tokens=10000),
+            FakeIntent(),
+            FakeRoutingCfg(),
+            usage_pct=0.5,
         )
         assert good is not None and bad is not None
         assert good.score > bad.score
@@ -141,15 +168,23 @@ class TestScoreCandidate:
         class NoCostRouting:
             quality_weight = 1.0
             cost_weight = 0.0
-            priority_multipliers = {"standard": 1.0}
+            priority_multipliers: ClassVar[dict[str, float]] = {"standard": 1.0}
 
         cheap = score_candidate(
-            "m1", FakeModelCfg(), FakeProviderCfg(free_tokens=10000),
-            FakeIntent(), NoCostRouting(), usage_pct=0.1,
+            "m1",
+            FakeModelCfg(),
+            FakeProviderCfg(free_tokens=10000),
+            FakeIntent(),
+            NoCostRouting(),
+            usage_pct=0.1,
         )
         dear = score_candidate(
-            "m1", FakeModelCfg(), FakeProviderCfg(free_tokens=10000),
-            FakeIntent(), NoCostRouting(), usage_pct=0.9,
+            "m1",
+            FakeModelCfg(),
+            FakeProviderCfg(free_tokens=10000),
+            FakeIntent(),
+            NoCostRouting(),
+            usage_pct=0.9,
         )
         assert cheap is not None and dear is not None
         assert cheap.score == pytest.approx(dear.score, abs=0.001)

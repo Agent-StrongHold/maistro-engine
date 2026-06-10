@@ -28,9 +28,12 @@ logger = logging.getLogger("hive.sandbox")
 
 # ─── Backend availability detection ──────────────────────────────────────────
 
+
 def _has_hyperlight() -> bool:
     try:
-        r = subprocess.run([sys.executable, "-c", "import hyperlight"], capture_output=True, timeout=5)
+        r = subprocess.run(
+            [sys.executable, "-c", "import hyperlight"], capture_output=True, timeout=5
+        )
         return r.returncode == 0
     except Exception:
         return False
@@ -54,16 +57,22 @@ def _has_hardened_container() -> bool:
 
 # ─── Config encoding (fix #2 — no f-string templating of config values) ──────
 
+
 def _encode_config(*, allow_network: bool, memory_mb: int, timeout_s: int) -> str:
     """Encode all config as base64 JSON. Never template values into source."""
-    return base64.b64encode(json.dumps({
-        "allow_network": bool(allow_network),
-        "memory_mb": int(memory_mb),
-        "timeout_s": int(timeout_s),
-    }).encode()).decode("ascii")
+    return base64.b64encode(
+        json.dumps(
+            {
+                "allow_network": bool(allow_network),
+                "memory_mb": int(memory_mb),
+                "timeout_s": int(timeout_s),
+            }
+        ).encode()
+    ).decode("ascii")
 
 
 # ─── Executor ─────────────────────────────────────────────────────────────────
+
 
 class SandboxExecutor:
     """Execute code with the strongest available isolation, or refuse."""
@@ -124,7 +133,9 @@ class SandboxExecutor:
 
         start = time.monotonic()
         encoded_code = base64.b64encode(code.encode("utf-8")).decode("ascii")
-        config_b64 = _encode_config(allow_network=allow_network, memory_mb=memory_mb, timeout_s=timeout_s)
+        config_b64 = _encode_config(
+            allow_network=allow_network, memory_mb=memory_mb, timeout_s=timeout_s
+        )
 
         dispatch = {
             "hyperlight": self._run_hyperlight,
@@ -141,7 +152,9 @@ class SandboxExecutor:
 
     # ─── Backend implementations ──────────────────────────────────────────
 
-    async def _run_hyperlight(self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int) -> dict[str, Any]:
+    async def _run_hyperlight(
+        self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int
+    ) -> dict[str, Any]:
         wrapper = f"""
 import base64, json, sys
 cfg = json.loads(base64.b64decode("{config_b64}"))
@@ -157,68 +170,110 @@ with Sandbox(sc) as sb:
 """
         return await self._subprocess(wrapper, env, timeout_s)
 
-    async def _run_firecracker(self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int) -> dict[str, Any]:
+    async def _run_firecracker(
+        self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int
+    ) -> dict[str, Any]:
         # Firecracker requires a rootfs + kernel — delegate to jailer
         # For now, use the firectl pattern
         return await self._subprocess_via_cmd(
             ["firecracker-containerd", "--code-b64", code_b64, "--config-b64", config_b64],
-            env, timeout_s,
+            env,
+            timeout_s,
         )
 
-    async def _run_bubblewrap(self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int) -> dict[str, Any]:
+    async def _run_bubblewrap(
+        self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int
+    ) -> dict[str, Any]:
         wrapper = f'import base64,json,sys;cfg=json.loads(base64.b64decode("{config_b64}"));exec(base64.b64decode("{code_b64}").decode())'
         cmd = [
             "bwrap",
-            "--ro-bind", "/usr", "/usr",
-            "--ro-bind", "/lib", "/lib",
-            "--ro-bind", "/lib64", "/lib64",
-            "--symlink", "usr/bin", "/bin",
-            "--proc", "/proc",
-            "--dev", "/dev",
-            "--tmpfs", "/tmp",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--ro-bind",
+            "/lib",
+            "/lib",
+            "--ro-bind",
+            "/lib64",
+            "/lib64",
+            "--symlink",
+            "usr/bin",
+            "/bin",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--tmpfs",
+            "/tmp",
             "--unshare-all",
             "--die-with-parent",
             "--new-session",
-            sys.executable, "-c", wrapper,
+            sys.executable,
+            "-c",
+            wrapper,
         ]
         return await self._subprocess_via_cmd(cmd, env, timeout_s)
 
-    async def _run_gvisor(self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int) -> dict[str, Any]:
+    async def _run_gvisor(
+        self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int
+    ) -> dict[str, Any]:
         wrapper = f'import base64,json;cfg=json.loads(base64.b64decode("{config_b64}"));exec(base64.b64decode("{code_b64}").decode())'
         runtime = "podman" if shutil.which("podman") else "docker"
         cmd = [
-            runtime, "run", "--rm", "--runtime=runsc",
-            "--read-only", "--network=none",
-            f"--memory={256}m", f"--timeout={timeout_s}",
-            "python:3.12-slim", "python", "-c", wrapper,
+            runtime,
+            "run",
+            "--rm",
+            "--runtime=runsc",
+            "--read-only",
+            "--network=none",
+            f"--memory={256}m",
+            f"--timeout={timeout_s}",
+            "python:3.12-slim",
+            "python",
+            "-c",
+            wrapper,
         ]
         return await self._subprocess_via_cmd(cmd, env, timeout_s)
 
-    async def _run_hardened_container(self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int) -> dict[str, Any]:
+    async def _run_hardened_container(
+        self, code_b64: str, config_b64: str, env: dict | None, timeout_s: int
+    ) -> dict[str, Any]:
         wrapper = f'import base64,json;cfg=json.loads(base64.b64decode("{config_b64}"));exec(base64.b64decode("{code_b64}").decode())'
         runtime = "podman" if shutil.which("podman") else "docker"
         cmd = [
-            runtime, "run", "--rm",
+            runtime,
+            "run",
+            "--rm",
             "--read-only",
             "--network=none",
             "--security-opt=no-new-privileges",
             "--cap-drop=ALL",
-            f"--memory=256m",
+            "--memory=256m",
             "--pids-limit=64",
-            "python:3.12-slim", "python", "-c", wrapper,
+            "python:3.12-slim",
+            "python",
+            "-c",
+            wrapper,
         ]
         return await self._subprocess_via_cmd(cmd, env, timeout_s)
 
     # ─── Helpers ──────────────────────────────────────────────────────────
 
     async def _subprocess(self, code: str, env: dict | None, timeout_s: int) -> dict[str, Any]:
-        run_env = {"PATH": os.environ.get("PATH", ""), "PYTHONPATH": os.environ.get("PYTHONPATH", "")}
+        run_env = {
+            "PATH": os.environ.get("PATH", ""),
+            "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
+        }
         if env:
             run_env.update(env)
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._sync_run, [sys.executable, "-c", code], run_env, timeout_s)
+        return await loop.run_in_executor(
+            None, self._sync_run, [sys.executable, "-c", code], run_env, timeout_s
+        )
 
-    async def _subprocess_via_cmd(self, cmd: list[str], env: dict | None, timeout_s: int) -> dict[str, Any]:
+    async def _subprocess_via_cmd(
+        self, cmd: list[str], env: dict | None, timeout_s: int
+    ) -> dict[str, Any]:
         run_env = dict(os.environ)
         if env:
             run_env.update(env)
@@ -228,7 +283,11 @@ with Sandbox(sc) as sb:
     def _sync_run(self, cmd: list[str], env: dict, timeout_s: int) -> dict[str, Any]:
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, env=env)
-            return {"output": r.stdout, "error": r.stderr[:500] if r.stderr else "", "success": r.returncode == 0}
+            return {
+                "output": r.stdout,
+                "error": r.stderr[:500] if r.stderr else "",
+                "success": r.returncode == 0,
+            }
         except subprocess.TimeoutExpired:
             return {"output": "", "error": "timeout", "success": False}
         except Exception as e:

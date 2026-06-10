@@ -70,7 +70,8 @@ class RouterEngine:
             return self._fallback(models, providers)
 
         candidates = [
-            c for c in (
+            c
+            for c in (
                 score_candidate(
                     model_id,
                     model_cfg,

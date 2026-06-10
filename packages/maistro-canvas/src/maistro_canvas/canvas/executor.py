@@ -247,6 +247,14 @@ class CanvasExecutor:
 
         return await self._store.update_job(job)
 
+    async def _execute_claimed(self, job: GenerationJobRecord) -> None:
+        """Execute an already-claimed job (CanvasJobRunner contract).
+
+        The runner owns status/lease transitions and persistence; this only
+        performs the action and records the result paths on the job.
+        """
+        job.result_paths = await self._execute_action(job)
+
     async def _execute_action(self, job: GenerationJobRecord) -> list[str]:
         """Dispatch to the correct image-gen action; return signed URL list."""
         canvas = await self._store.get_canvas(job.canvas_id)

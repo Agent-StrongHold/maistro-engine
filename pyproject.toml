@@ -120,6 +120,9 @@ pythonpath = [
     "packages/maistro-turing/src",
     "packages/maistro-canvas/src",
     "packages/maistro-design/src",
+    "packages/maistro-bootstrap/src",
+    "packages/maistro-rsi/src",
+    "packages/maistro-evolve/src",
     ".",
 ]
 

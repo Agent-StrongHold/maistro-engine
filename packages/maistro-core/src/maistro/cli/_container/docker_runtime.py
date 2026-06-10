@@ -28,7 +28,7 @@ class DockerRuntime:
     @property
     def client(self) -> Any:
         if self._client is None:
-            import docker
+            import docker  # type: ignore[import-untyped]  # docker SDK ships no py.typed marker
 
             self._client = docker.from_env()
         return self._client

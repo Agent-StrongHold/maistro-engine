@@ -358,6 +358,8 @@ def load_cache() -> dict[str, Any] | None:
         return None
     try:
         data = json.loads(CACHE_PATH.read_text())
+        if not isinstance(data, dict):
+            return None
         if time.time() - data.get("timestamp", 0) > CACHE_TTL_SECONDS:
             return None
         return data
@@ -369,7 +371,7 @@ def best_model(tier: str = "capable") -> str:
     """Return the best cached model for a tier; runs benchmark if stale."""
     cache = load_cache()
     if cache and cache.get(f"{tier}_model"):
-        return cache[f"{tier}_model"]
+        return str(cache[f"{tier}_model"])
 
     if not _base_url() or not _api_key():
         return (

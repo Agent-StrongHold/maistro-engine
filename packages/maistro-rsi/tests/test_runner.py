@@ -19,11 +19,21 @@ def _genome(genome_id: str) -> PipelineGenome:
         topology=DAGTopology(
             nodes=[
                 NodeGenome(
-                    id="q1", role="queen", strategy="react", model="gpt-4",
-                    temperature=0.3, max_tokens=4096, system_prompt="test", max_tool_rounds=5,
+                    id="q1",
+                    role="queen",
+                    strategy="react",
+                    model="gpt-4",
+                    temperature=0.3,
+                    max_tokens=4096,
+                    system_prompt="test",
+                    max_tool_rounds=5,
                 )
             ],
-            edges=[], entry_node="q1", max_cycles=3, beam_width=1, use_scout=False,
+            edges=[],
+            entry_node="q1",
+            max_cycles=3,
+            beam_width=1,
+            use_scout=False,
         ),
         eval_weights=EvalWeights(),
         created_at=datetime.now(UTC).isoformat(),
@@ -103,7 +113,10 @@ def patched_self_branch(monkeypatch):
         await apply_patch(sandbox, workspace)
         exit_code, output = await sandbox.exec(attempt.test_command)
         return SelfBranchResult(
-            attempt=attempt, test_exit_code=exit_code, test_output=output, diff="diff",
+            attempt=attempt,
+            test_exit_code=exit_code,
+            test_output=output,
+            diff="diff",
         )
 
     monkeypatch.setattr("maistro_rsi.runner.run_self_branch_attempt", fake_run_attempt)
@@ -112,7 +125,9 @@ def patched_self_branch(monkeypatch):
 class TestRsiCycleRun:
     @pytest.mark.asyncio
     async def test_evaluates_baseline_and_candidate_on_configured_benchmarks(
-        self, patched_sandbox, patched_self_branch,
+        self,
+        patched_sandbox,
+        patched_self_branch,
     ):
         """runner-1: both genomes are evaluated on exactly RsiCycleConfig.benchmarks."""
         scores = {
@@ -134,7 +149,9 @@ class TestRsiCycleRun:
 
     @pytest.mark.asyncio
     async def test_battles_only_recorded_for_benchmarks_present_in_both_result_sets(
-        self, patched_sandbox, patched_self_branch,
+        self,
+        patched_sandbox,
+        patched_self_branch,
     ):
         """runner-2: a benchmark missing from either side is skipped, not battled with a missing score."""
         scores = {
@@ -156,7 +173,9 @@ class TestRsiCycleRun:
 
     @pytest.mark.asyncio
     async def test_benchmarks_won_counts_only_outright_candidate_wins(
-        self, patched_sandbox, patched_self_branch,
+        self,
+        patched_sandbox,
+        patched_self_branch,
     ):
         """runner-3: draws and baseline wins do not count toward benchmarks_won."""
         scores = {
@@ -177,7 +196,10 @@ class TestRsiCycleRun:
 
     @pytest.mark.asyncio
     async def test_improved_requires_passing_tests_and_benchmark_majority(
-        self, patched_sandbox, patched_self_branch, monkeypatch,
+        self,
+        patched_sandbox,
+        patched_self_branch,
+        monkeypatch,
     ):
         """runner-4: improved is True only with BOTH a passing test suite and a benchmark majority."""
         winning_scores = {
@@ -202,22 +224,30 @@ class TestRsiCycleRun:
             return SelfBranchResult(attempt=attempt, test_exit_code=1, test_output="boom", diff="")
 
         monkeypatch.setattr("maistro_rsi.runner.run_self_branch_attempt", failing_attempt)
-        result_failed_tests = await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
+        result_failed_tests = await cycle.run(
+            _genome("baseline"), _genome("candidate"), ["openai/gpt-5"]
+        )
         assert result_failed_tests.improved is False
 
     @pytest.mark.asyncio
-    async def test_sandbox_destroyed_even_when_apply_patch_raises(self, patched_sandbox, monkeypatch):
+    async def test_sandbox_destroyed_even_when_apply_patch_raises(
+        self, patched_sandbox, monkeypatch
+    ):
         """runner-5: the sandbox is torn down even when the cycle fails mid-way."""
         scores = {"baseline": {"swebench": 0.5}, "candidate": {"swebench": 0.5}}
 
         async def boom_patch(sandbox, workspace):
             raise RuntimeError("agent crashed mid-patch")
 
-        async def attempt_that_runs_the_patch(sandbox, workspace, attempt, apply_patch, open_pr=False):
+        async def attempt_that_runs_the_patch(
+            sandbox, workspace, attempt, apply_patch, open_pr=False
+        ):
             await apply_patch(sandbox, workspace)
             raise AssertionError("apply_patch should have raised before this point")
 
-        monkeypatch.setattr("maistro_rsi.runner.run_self_branch_attempt", attempt_that_runs_the_patch)
+        monkeypatch.setattr(
+            "maistro_rsi.runner.run_self_branch_attempt", attempt_that_runs_the_patch
+        )
 
         cycle = RsiCycle(
             _config(benchmarks=["swebench"]),
