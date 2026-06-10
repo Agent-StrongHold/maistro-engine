@@ -3,7 +3,7 @@ id: ADR-085
 title: "Cost, Quota, and Rate Limiting"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-05-30
 substrate:
   - maistro-engine#ADR-054

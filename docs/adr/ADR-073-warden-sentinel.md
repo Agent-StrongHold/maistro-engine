@@ -3,7 +3,7 @@ id: ADR-073
 title: "Warden + Sentinel — threat detection and the policy decision/enforcement substrate"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-05-30
 substrate:
   - maistro-engine#ADR-068

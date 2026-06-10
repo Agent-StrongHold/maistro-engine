@@ -3,7 +3,7 @@ id: ADR-021
 title: 'Conductor Seed — BIP39/BIP32 HD root of trust'
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-05-07
 substrate: []
 implements: []

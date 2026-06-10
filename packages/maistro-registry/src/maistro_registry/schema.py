@@ -37,6 +37,7 @@ class Status(StrEnum):
     SUPERSEDED = "Superseded"
     BLOCKED = "Blocked"
     ABANDONED = "Abandoned"
+    DEFERRED = "Deferred"
 
 
 class Kind(StrEnum):
