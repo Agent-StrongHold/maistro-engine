@@ -20,6 +20,9 @@ tests: []
 layer: Reliability
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-09
 ---
 
 # SPEC-204: Partial-Feature Hardening

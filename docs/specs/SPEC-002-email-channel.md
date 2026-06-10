@@ -19,6 +19,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-03-23
 ---
 
 # SPEC-002: Email Channel

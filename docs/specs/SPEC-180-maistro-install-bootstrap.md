@@ -3,7 +3,7 @@ id: SPEC-180
 title: maistro-install bootstrap contract
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: AC Defined
 created: 2026-05-13
 accepted: 2026-05-13
 implemented: 2026-05-13
@@ -21,6 +21,13 @@ tests:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
+  - status: Accepted
+    date: 2026-05-13
+  - status: AC Defined
+    date: 2026-05-13
 ---
 
 # SPEC-180: maistro-install bootstrap contract
@@ -49,11 +56,12 @@ Operators need a **repeatable** path from feature intent → printed or applied 
 - **`curl | bash` remote fetch** of a pinned installer payload: `scripts/install-maestro.sh` documents clone + `uv` only for now.
 - **Automatic OS package installation** (brew, dnf, …): wizard prints hints; execution stays explicit.
 
-## Acceptance criteria
+## Acceptance Criteria
 
-1. `uv run maistro-install --answers-file docs/install/examples/answers-v1-minimal.yaml --json` prints valid JSON with `kind` and `shell_commands`.
-2. `pytest packages/maistro-bootstrap/tests` passes without Docker.
-3. `GET` / `POST /v1/install/session` and `POST /v1/install/plan` in monorepo CI return **200** with the expected `kind` values (or **503** only when layout is intentionally non-monorepo).
+- **AC-1**: `uv run maistro-install --answers-file docs/install/examples/answers-v1-minimal.yaml --json` prints valid JSON with `kind` and `shell_commands`.
+- **AC-2**: `pytest packages/maistro-bootstrap/tests` passes without Docker.
+- **AC-3**: `GET` / `POST /v1/install/session` and `POST /v1/install/plan` in monorepo CI return 200 with the expected `kind` values (or 503 only when layout is intentionally non-monorepo).
+
 
 ## References
 

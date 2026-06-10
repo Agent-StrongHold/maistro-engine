@@ -23,6 +23,9 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-29
 ---
 
 # ADR-061 — maistro-design: composable design skills + design systems

@@ -3,7 +3,8 @@ id: ADR-053
 title: Recipe overlay composition — engine simple + product overlay
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-006
@@ -24,6 +25,11 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-13
 ---
 
 # ADR-053: Recipe overlay composition — engine simple + product overlay

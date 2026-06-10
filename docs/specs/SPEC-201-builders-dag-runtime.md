@@ -35,6 +35,11 @@ tests:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-03
+  - status: Implemented
+    date: 2026-06-03
 ---
 
 # SPEC-201: Builders Interactive Session
@@ -136,15 +141,15 @@ packages/maistro-bootstrap/src/maistro_bootstrap/builders/
 
 ## Acceptance Criteria
 
-- [x] TurnRecord and TurnOutcomeSummary Pydantic models with full signal capture.
-- [x] TurnRunner with role-to-model mapping, stage-aware prompts, retry logic, 3 autonomy levels.
-- [x] BuildersTUI with two-pane layout, key bindings, slash commands, async worker.
-- [x] CLI integration with session/models/list/board/comment/move subcommands.
-- [x] ResponsesAPICallable routing through LiteLLM proxy with native function calling.
-- [x] 86 tests passing across all builders modules.
-- [x] Ruff and mypy clean on all new files.
-- [x] E2E verified: real LLM call through LiteLLM proxy to Mistral Small returns correct result.
-- [x] Tool calling verified: model correctly invokes builder_action with appropriate action and args.
+- **AC-1**: TurnRecord and TurnOutcomeSummary Pydantic models with full signal capture.
+- **AC-2**: TurnRunner with role-to-model mapping, stage-aware prompts, retry logic, 3 autonomy levels.
+- **AC-3**: BuildersTUI with two-pane layout, key bindings, slash commands, async worker.
+- **AC-4**: CLI integration with session/models/list/board/comment/move subcommands.
+- **AC-5**: ResponsesAPICallable routing through LiteLLM proxy with native function calling.
+- **AC-6**: 86+ tests passing across all builders modules.
+- **AC-7**: Ruff and mypy clean on all new files.
+- **AC-8**: E2E verified: real LLM call through LiteLLM proxy returns correct result.
+- **AC-9**: Tool calling verified: model correctly invokes builder_action with appropriate action and args.
 
 ## Open Questions
 

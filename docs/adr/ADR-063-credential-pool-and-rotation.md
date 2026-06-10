@@ -17,6 +17,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-20
+  - status: Accepted
+    date: 2026-05-20
 ---
 
 # ADR-063: Credential Pool and Automatic Key Rotation

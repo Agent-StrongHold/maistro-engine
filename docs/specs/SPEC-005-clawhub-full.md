@@ -19,6 +19,9 @@ tests: []
 layer: Tools
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-03-23
 ---
 
 # SPEC-005: Medley full

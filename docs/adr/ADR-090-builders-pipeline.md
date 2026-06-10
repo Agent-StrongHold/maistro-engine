@@ -3,7 +3,8 @@ id: ADR-090
 title: "Builders Pipeline — the spec to tests to code to audit stage machine"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-30
 substrate:
   - maistro-engine#ADR-032
@@ -23,6 +24,11 @@ contracts:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-30
 ---
 
 # ADR-090: Builders Pipeline

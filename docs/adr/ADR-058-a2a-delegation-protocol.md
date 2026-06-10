@@ -26,6 +26,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-29
 ---
 
 # ADR-058: Agent-to-agent (A2A) delegation protocol — in-process and federated

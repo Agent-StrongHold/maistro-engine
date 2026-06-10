@@ -21,6 +21,11 @@ tests: []
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-31
+  - status: Accepted
+    date: 2026-05-31
 ---
 
 # ADR-093: Sandbox isolation model — hardware-VM isolation for untrusted agent code

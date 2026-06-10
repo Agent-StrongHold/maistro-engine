@@ -3,7 +3,7 @@ id: SPEC-001
 title: "Bouncer — security screening (20+ regex + LLM)"
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: AC Defined
 created: 2026-02-25
 accepted: 2026-02-25
 implemented: 2026-03-23
@@ -21,6 +21,13 @@ tests: []
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-02-25
+  - status: Accepted
+    date: 2026-02-25
+  - status: AC Defined
+    date: 2026-03-23
 ---
 
 # SPEC-001: Bouncer
@@ -78,3 +85,13 @@ Scan the entire file for the ZIP local-file header magic bytes (`PK\x03\x04`) at
 ### Key files
 - `conductor/orchestrator/agents/warden_file_scan.py` (new)
 - `conductor/orchestrator/agents/bouncer.py` (wire `file_scan()` into attachment handling)
+
+## Acceptance Criteria
+
+- **AC-1**: 20+ regex patterns detect injection, exfiltration, and prompt-attack patterns and raise `TOOL_VIOLATION` or `SAFETY_VIOLATION`.
+- **AC-2**: Magic bytes mismatch between file header and declared extension raises `FILE_INTEGRITY_VIOLATION` hard block.
+- **AC-3**: ZIP bomb detection (ratio > 1000:1 or uncompressed > 1 GB) raises `ZIP_BOMB_DETECTED` hard block.
+- **AC-4**: Hidden ZIP at unexpected offset labels file as untrusted and routes to Warden scan.
+- **AC-5**: Non-text-carrier file strings are labeled untrusted and routed to Warden scan.
+- **AC-6**: Parser vs. strings diff on text-carrier files correctly identifies hidden content and labels it untrusted.
+- **AC-7**: Clean files passing all stages are routed to Warden with standard trust label.

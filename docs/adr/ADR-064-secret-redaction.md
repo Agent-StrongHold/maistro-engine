@@ -17,6 +17,11 @@ tests: []
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-20
+  - status: Accepted
+    date: 2026-05-20
 ---
 
 # ADR-064: Comprehensive Secret Redaction

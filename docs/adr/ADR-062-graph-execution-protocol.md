@@ -17,6 +17,11 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-19
+  - status: Accepted
+    date: 2026-05-19
 ---
 
 # ADR-062: Graph Execution Protocol

@@ -21,6 +21,9 @@ tests: []
 layer: Agents
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-25
 ---
 
 # SPEC-019: Human-as-Node Delegation

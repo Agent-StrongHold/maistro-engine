@@ -3,7 +3,7 @@ id: SPEC-177
 title: Hyperagent graph execution (legacy port)
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: AC Defined
 created: 2026-05-13
 accepted: 2026-06-02
 implemented: 2026-06-02
@@ -21,6 +21,13 @@ tests:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
+  - status: Accepted
+    date: 2026-06-02
+  - status: AC Defined
+    date: 2026-06-02
 ---
 
 # SPEC-177: Hyperagent graph execution
@@ -67,13 +74,13 @@ Reintroduce **GRAPH** execution as an **optional path** controlled explicitly by
 - **Idempotent persistence:** Repeated optimization with the same traces must not corrupt store schema; tests use in-memory protocol fake.
 - **Non-blocking:** Optimizer failures log at **warning** and return the input `GraphConfig` unchanged (same spirit as SPEC-175 webhook).
 
-## Acceptance criteria
+## Acceptance Criteria
 
-1. **Unit tests** — In-memory graph run completes for a minimal triangle topology (e.g. planner → coder → reviewer) with mocked or stubbed LLM responses (no network in default CI path).
-2. **Mode isolation** — Default `TaskCreate` without graph fields behaves exactly as today (existing tests unchanged).
-3. **GRAPH validation** — `execution_mode=GRAPH` without `graph_config` raises validation error at Pydantic boundary.
-4. **Conductor branch** — Single integration test: dispatch with `GRAPH` reaches graph module (can short-circuit LLM with stub).
-5. **Documentation** — This spec’s appendix stays in sync with target module paths in the implementation PR.
+- **AC-1**: In-memory graph run completes for a minimal triangle topology (planner → coder → reviewer) with mocked LLM responses.
+- **AC-2**: Default `TaskCreate` without graph fields behaves exactly as today (existing tests unchanged).
+- **AC-3**: `execution_mode=GRAPH` without `graph_config` raises validation error at Pydantic boundary.
+- **AC-4**: Dispatch with `GRAPH` mode reaches graph module (can short-circuit LLM with stub).
+- **AC-5**: Spec appendix stays in sync with target module paths in the implementation PR.
 
 ## Appendix A — Reference bundle → target paths
 

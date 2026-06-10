@@ -25,6 +25,11 @@ contracts:
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-30
+  - status: Accepted
+    date: 2026-05-30
 ---
 
 # ADR-073: Warden + Sentinel

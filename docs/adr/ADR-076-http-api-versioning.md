@@ -3,7 +3,8 @@ id: ADR-076
 title: "HTTP API Versioning via content negotiation"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-30
 substrate: []
 implements: []
@@ -18,6 +19,11 @@ contracts:
 layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-30
 ---
 
 # ADR-076: HTTP API Versioning via content negotiation

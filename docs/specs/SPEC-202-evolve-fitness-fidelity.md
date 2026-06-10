@@ -19,6 +19,9 @@ tests: []
 layer: Agents
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-09
 ---
 
 # SPEC-202: Evolve Fitness Fidelity

@@ -3,7 +3,7 @@ id: SPEC-200
 title: Builders Safety Layer — execution contexts + ephemeral workspace
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: AC Defined
 created: 2026-06-03
 accepted: 2026-06-03
 implemented: 2026-06-03
@@ -23,6 +23,13 @@ tests:
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-03
+  - status: Accepted
+    date: 2026-06-03
+  - status: AC Defined
+    date: 2026-06-03
 ---
 
 # SPEC-200 — Builders Safety Layer: Execution Contexts + Ephemeral Workspace
@@ -60,6 +67,16 @@ The builders DAG — a graph of agents, not a linear sequence. Nodes include:
 The DAG is not sequenced — the orchestrator decides which nodes fire based on context. A
 pure-conversation task may never enter SANDBOX. A repo hygiene task goes straight to Janitor.
 The safety layer must support all of these without conflating them.
+
+## Acceptance Criteria
+
+- **AC-1**: `GitWorktreeWorkspace` creates an ephemeral git worktree in `/tmp/maistro-ws-<id>` and destroys it on exit or failure.
+- **AC-2**: `SandboxedShell` refuses any command whose resolved path escapes the workspace root (`SandboxEscapeError`).
+- **AC-3**: `SandboxedShell` refuses any command that exceeds its timeout (`TimeoutError`).
+- **AC-4**: Every agent declares an `ExecutionContext`; orchestrator raises `ContextViolation` if a stage handler uses an undeclared context.
+- **AC-5**: `RepoContext` requires explicit human confirmation before each destructive action (`UnconfirmedRepoAction` if called without token).
+- **AC-6**: `GitWorktreeWorkspace.diff()` produces a valid unified diff with no ephemeral metadata leaks.
+- **AC-7**: `WorkspaceContext.apply_diff()` uses `git apply --check` before `git apply`; raises `DiffApplyError` on failure without touching real repo.
 
 ### Success criteria
 

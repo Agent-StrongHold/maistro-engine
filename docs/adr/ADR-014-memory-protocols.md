@@ -18,6 +18,11 @@ tests: []
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Accepted
+    date: 2026-04-26
 ---
 
 # ADR-014: Memory protocols

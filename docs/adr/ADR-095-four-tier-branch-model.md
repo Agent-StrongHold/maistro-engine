@@ -19,6 +19,11 @@ tests: []
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-29
+  - status: Accepted
+    date: 2026-05-29
 ---
 
 # ADR-095: Four-tier branch model with protected, CI-gated merges

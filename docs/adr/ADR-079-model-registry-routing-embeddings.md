@@ -21,6 +21,9 @@ contracts:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-30
 ---
 
 # ADR-079: LLM Provider / Model Registry, Routing, and Embeddings

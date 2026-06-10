@@ -3,7 +3,8 @@ id: ADR-089
 title: "Intent Classifier — thresholded escalation and multi-intent routing"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-30
 substrate: []
 implements: []
@@ -20,6 +21,11 @@ contracts:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-30
 ---
 
 # ADR-089: Intent Classifier
