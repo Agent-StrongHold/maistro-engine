@@ -16,7 +16,7 @@ contracts:
   - boundary
   - behavioral
 tests: []
-layer: Ability
+layer: Agents
 owners:
   - '@BlakeMatthews-dev'
 ---
