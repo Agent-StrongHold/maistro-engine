@@ -163,7 +163,6 @@ class FauxProvider:
         max_tokens: int | None = None,
         temperature: float | None = None,
         metadata: dict[str, Any] | None = None,
-        response_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         entry: dict[str, Any] = {
             "messages": messages,
@@ -174,7 +173,6 @@ class FauxProvider:
             "max_tokens": max_tokens,
             "temperature": temperature,
             "metadata": metadata,
-            "response_schema": response_schema,
             "timestamp": time.monotonic(),
         }
         self._call_log.append(entry)

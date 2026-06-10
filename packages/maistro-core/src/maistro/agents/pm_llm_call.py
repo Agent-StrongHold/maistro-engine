@@ -63,14 +63,13 @@ async def maistro_llm_call(
     model: str | None = None,
     temperature: float | None = None,
     json_mode: bool = True,
-    response_schema: dict[str, Any] | None = None,
     timeout: float = 120.0,
 ) -> str:
     """Call the LLM gateway with OpenAI-compatible chat-completions.
 
     Signature matches what `NodeRun.execute` invokes: positional
-    `messages` + kwargs `model` + `temperature` + `response_schema`.
-    JSON mode is on by default since PM nodes always parse PMRoleOutput.
+    `messages` + kwargs `model` + `temperature`. JSON mode is on by
+    default since PM nodes always parse PMRoleOutput.
     """
     base_url = _resolve_base_url()
     api_key = _resolve_api_key()
@@ -85,12 +84,7 @@ async def maistro_llm_call(
     }
     if temperature is not None:
         body["temperature"] = temperature
-    if response_schema:
-        body["response_format"] = {
-            "type": "json_schema",
-            "json_schema": {"name": "output", "schema": response_schema},
-        }
-    elif json_mode:
+    if json_mode:
         body["response_format"] = {"type": "json_object"}
 
     async with httpx.AsyncClient(timeout=timeout) as client:

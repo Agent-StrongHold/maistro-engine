@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
 
-from maistro_server.api.auth import resolve_token_principal, verify_api_key
+from maistro_server.api.auth import verify_api_key
 from maistro_server.api.health import router as health_router
 from maistro_server.api.tasks import router as tasks_router
 from maistro.config.settings import Settings, get_settings
@@ -78,8 +78,7 @@ class TestSecretComparison:
         settings = Settings(api_keys=["test-key-123"])
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test-key-123")
         result = verify_api_key(creds, settings)
-        assert result is not None
-        assert result.token == "test-key-123"
+        assert result == "test-key-123"
 
     def test_wrong_key_rejected(self) -> None:
         settings = Settings(api_keys=["correct-key"])
@@ -95,15 +94,11 @@ class TestSecretComparison:
         assert exc_info.value.status_code == 401
 
     def test_uses_constant_time_comparison(self) -> None:
-        """Evidence: The implementation must use constant-time comparison, not ==.
-
-        verify_api_key delegates secret matching to resolve_token_principal —
-        that's where the comparison against configured secrets happens.
-        """
-        source = inspect.getsource(resolve_token_principal)
+        """Evidence: The implementation must use constant-time comparison, not ==."""
+        source = inspect.getsource(verify_api_key)
         assert "secret_equal" in source or "compare_digest" in source, (
-            "resolve_token_principal must use secret_equal or hmac.compare_digest"
+            "verify_api_key must use secret_equal or hmac.compare_digest"
         )
-        assert "token == secret" not in source and "secret == token" not in source, (
-            "resolve_token_principal should not use == for token comparison"
+        assert "==" not in source or "status_code ==" in source or "== 401" in source, (
+            "verify_api_key should not use == for token comparison"
         )
