@@ -1,5 +1,5 @@
 ---
-id: SPEC-184
+id: SPEC-206
 title: Policy-conformance comparison engine — ADRs → Specs → prior policy
 repo: maistro-engine
 kind: spec
@@ -26,7 +26,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-184: Policy-conformance comparison engine
+# SPEC-206: Policy-conformance comparison engine
 
 **Implements:** ADR-074 (Policy ⇄ ADR Deconfliction). ADR-074 decides *what to do on conflict*; this
 spec defines *how a conflict is detected* — the comparison engine and its precedence walk.
