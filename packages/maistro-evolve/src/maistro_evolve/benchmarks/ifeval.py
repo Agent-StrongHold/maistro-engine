@@ -93,6 +93,18 @@ def _evaluate_rule(response: str, rule: dict[str, Any]) -> float:
     return handler(response, rule)
 
 
+_MAX_FAILURE_TRACES = 5
+
+
+def _failed_rule_descriptions(response: str, rules: list[dict[str, Any]]) -> list[str]:
+    failed: list[str] = []
+    for rule in rules:
+        if _evaluate_rule(response, rule) < 1.0:
+            detail = rule.get("value", rule.get("values", rule.get("field", "")))
+            failed.append(f"{rule['type']}={detail!r}" if detail != "" else rule["type"])
+    return failed
+
+
 def _score_response(response: str, rules: list[dict[str, Any]]) -> float:
     if not rules:
         return 1.0
@@ -109,6 +121,8 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     samples = len(IFEVAL_SAMPLES)
     evaluated = 0
     total_cost = 0.0
+    # Per-sample failure traces feed reflective prompt evolution (reflect.py).
+    failures: list[dict[str, Any]] = []
 
     for sample in IFEVAL_SAMPLES:
         messages = build_messages(system_prompt, sample["instruction"])
@@ -126,6 +140,15 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
                 total_score += sample_score
                 evaluated += 1
                 total_cost += 0.001
+                if sample_score < 1.0 and len(failures) < _MAX_FAILURE_TRACES:
+                    failures.append(
+                        {
+                            "instruction": sample["instruction"],
+                            "failed_rules": _failed_rule_descriptions(response, sample["rules"]),
+                            "response_excerpt": response[:200],
+                            "score": round(sample_score, 3),
+                        }
+                    )
             else:
                 sample_score = _heuristic_score(sample)
                 total_score += sample_score
@@ -133,6 +156,15 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         except (TimeoutError, Exception):
             total_score += 0.0
             evaluated += 1
+            if llm_call is not None and len(failures) < _MAX_FAILURE_TRACES:
+                failures.append(
+                    {
+                        "instruction": sample["instruction"],
+                        "failed_rules": ["error_or_timeout"],
+                        "response_excerpt": "",
+                        "score": 0.0,
+                    }
+                )
 
     avg_score = total_score / max(evaluated, 1)
     elapsed = time.monotonic() - start
@@ -143,7 +175,7 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real"},
+        metadata={"total_samples": samples, "runner": "real", "failures": failures},
     )
 
 
