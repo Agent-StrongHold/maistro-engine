@@ -789,13 +789,51 @@ def _synthesize_fallback_content(messages: list[dict[str, Any]]) -> str:
     return content
 
 
+class _ToolCallAccumulator:
+    """Assembles OpenAI streaming ``tool_calls`` fragments into complete tool calls.
+
+    Providers stream a tool call across chunks: the first delta carries ``index``,
+    ``id`` and ``function.name``; later deltas append ``function.arguments`` pieces
+    (and may omit id/name). We accumulate by ``index`` and concatenate arguments.
+    Pure/stateful — unit-tested in ``tests`` so the streaming generator stays simple.
+    """
+
+    def __init__(self) -> None:
+        self._by_index: dict[int, dict[str, Any]] = {}
+
+    def add_deltas(self, tool_call_deltas: list[dict[str, Any]]) -> None:
+        for d in tool_call_deltas or []:
+            idx = d.get("index", 0)
+            slot = self._by_index.setdefault(
+                idx, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+            )
+            if d.get("id"):
+                slot["id"] = d["id"]
+            if d.get("type"):
+                slot["type"] = d["type"]
+            fn = d.get("function") or {}
+            if fn.get("name"):
+                slot["function"]["name"] = fn["name"]
+            if fn.get("arguments"):
+                slot["function"]["arguments"] += fn["arguments"]
+
+    def finalize(self) -> list[dict[str, Any]]:
+        return [self._by_index[i] for i in sorted(self._by_index)]
+
+    def __bool__(self) -> bool:
+        return bool(self._by_index)
+
+
 async def run_chat_completion_streaming(
     req: ChatCompletionRequest,
     user_id: str = "",
 ):
-    """Streaming version — yields SSE events with real status updates."""
-    import os
+    """Token-by-token streaming — yields SSE events:
 
+    ``status`` (progress), ``delta`` (a content token, append on the client),
+    ``tool_call`` / ``tool_result`` (a tool executing), ``done`` (terminal; carries
+    the full accumulated content as a fallback for non-streaming clients).
+    """
     s = get_settings()
     model = req.model or os.environ.get("CHAT_DEFAULT_MODEL") or s.chat_default_model
     llm = build_llm_port()
@@ -811,33 +849,45 @@ async def run_chat_completion_streaming(
             "message": "Sending to LLM…" if iteration == 0 else "Processing tool results…",
         }
 
-        tool_req = ChatCompletionRequest(
+        turn_req = ChatCompletionRequest(
             messages=messages,
             model=model,
             temperature=req.temperature,
             max_tokens=req.max_tokens,
             tools=PM_TOOLS,
         )
-        out = await llm.complete(tool_req)
 
-        choice = (out.get("choices") or [{}])[0]
-        msg = choice.get("message", {})
-        tool_calls = msg.get("tool_calls")
+        content_acc = ""
+        tools_acc = _ToolCallAccumulator()
+        async for chunk in llm.stream(turn_req):
+            choices = chunk.get("choices") or []
+            if not choices:
+                continue
+            delta = choices[0].get("delta") or {}
+            piece = delta.get("content")
+            if piece:
+                content_acc += piece
+                yield {"type": "delta", "content": piece}
+            think = delta.get("reasoning_content")
+            if think:
+                yield {"type": "thinking", "content": think}
+            if delta.get("tool_calls"):
+                tools_acc.add_deltas(delta["tool_calls"])
+
+        tool_calls = tools_acc.finalize()
 
         if not tool_calls:
-            content = msg.get("content", "")
-            yield {"type": "done", "content": content, "model": model}
+            # Content already streamed via `delta`; `content` is the fallback total.
+            yield {"type": "done", "content": content_acc, "model": model}
             return
 
-        messages.append(
-            {"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls}
-        )
+        messages.append({"role": "assistant", "content": content_acc, "tool_calls": tool_calls})
 
         for tc in tool_calls:
             fn = tc.get("function", {})
             name = fn.get("name", "")
             try:
-                args = json.loads(fn.get("arguments", "{}"))
+                args = json.loads(fn.get("arguments") or "{}")
             except json.JSONDecodeError:
                 args = {}
 
@@ -853,12 +903,23 @@ async def run_chat_completion_streaming(
                 }
             )
 
-    # Final synthesis
+    # Final synthesis (tool loop exhausted) — stream the answer too (no tools this turn).
     yield {"type": "status", "message": "Finalizing…"}
     final_req = ChatCompletionRequest(messages=messages, model=model, temperature=req.temperature)
-    final_out = await llm.complete(final_req)
-    content = (final_out.get("choices") or [{}])[0].get("message", {}).get("content", "")
-    yield {"type": "done", "content": content, "model": model}
+    final_content = ""
+    async for chunk in llm.stream(final_req):
+        choices = chunk.get("choices") or []
+        if not choices:
+            continue
+        d = choices[0].get("delta") or {}
+        piece = d.get("content")
+        if piece:
+            final_content += piece
+            yield {"type": "delta", "content": piece}
+        think = d.get("reasoning_content")
+        if think:
+            yield {"type": "thinking", "content": think}
+    yield {"type": "done", "content": final_content, "model": model}
 
 
 def _summarize_result(result: dict[str, Any]) -> str:
