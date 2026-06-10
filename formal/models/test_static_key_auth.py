@@ -97,7 +97,10 @@ def test_non_bearer_raises():
         pass
 
 
-def test_owui_headers_extract_user_id():
+def test_owui_headers_are_ignored():
+    """Fix #11: X-OpenWebUI-* headers are attacker-controlled and MUST NOT
+    become the authenticated identity. Static key auth always returns the
+    system identity regardless of headers."""
     provider = StaticKeyAuthProvider(API_KEY)
     headers = {
         "x-openwebui-user-id": "owui-user-42",
@@ -105,26 +108,28 @@ def test_owui_headers_extract_user_id():
         "x-openwebui-user-name": "Alice",
     }
     ctx = asyncio.run(provider.authenticate(f"Bearer {API_KEY}", headers=headers))
-    assert ctx.user_id == "owui-user-42"
-    assert ctx.username == "Alice"
-    assert ctx.auth_method == "openwebui_header"
+    assert ctx.user_id == "system"
+    assert ctx.kind == IdentityKind.SYSTEM
+    assert "owui" not in ctx.user_id
+    assert ctx.username != "Alice"
 
 
-def test_owui_email_fallback_for_user_id():
+def test_owui_email_does_not_become_user_id():
     provider = StaticKeyAuthProvider(API_KEY)
     headers = {
         "x-openwebui-user-email": "bob@test.com",
         "x-openwebui-user-name": "Bob",
     }
     ctx = asyncio.run(provider.authenticate(f"Bearer {API_KEY}", headers=headers))
-    assert ctx.user_id == "bob@test.com"
+    assert ctx.user_id == "system"
 
 
-def test_owui_auth_method_is_openwebui_header():
+def test_owui_auth_method_not_header_derived():
     provider = StaticKeyAuthProvider(API_KEY)
     headers = {"x-openwebui-user-id": "uid1", "x-openwebui-user-email": "e@e.com"}
     ctx = asyncio.run(provider.authenticate(f"Bearer {API_KEY}", headers=headers))
-    assert ctx.auth_method == "openwebui_header"
+    assert ctx.auth_method != "openwebui_header"
+    assert ctx == SYSTEM_AUTH
 
 
 def test_empty_key_matches_empty_bearer():

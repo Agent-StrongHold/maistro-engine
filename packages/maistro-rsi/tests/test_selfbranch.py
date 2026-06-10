@@ -118,12 +118,18 @@ class TestRunSelfBranchAttempt:
         attempt = new_attempt("https://github.com/org/repo.git", "pytest -q")
 
         passing = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(0, "ok")), "/ws", attempt, _noop_patch,
+            FakeSandbox(exec_result=(0, "ok")),
+            "/ws",
+            attempt,
+            _noop_patch,
         )
         assert passing.tests_passed is True
 
         failing = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(1, "boom")), "/ws", attempt, _noop_patch,
+            FakeSandbox(exec_result=(1, "boom")),
+            "/ws",
+            attempt,
+            _noop_patch,
         )
         assert failing.tests_passed is False
 
@@ -145,7 +151,11 @@ class TestRunSelfBranchAttempt:
 
         # open_pr=False, tests pass -> no PR
         r1 = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(0, "ok")), "/ws", attempt, _noop_patch, open_pr=False,
+            FakeSandbox(exec_result=(0, "ok")),
+            "/ws",
+            attempt,
+            _noop_patch,
+            open_pr=False,
         )
         assert r1.pr_url is None
         assert "create_pr" not in fake.calls
@@ -153,7 +163,11 @@ class TestRunSelfBranchAttempt:
         # open_pr=True, tests fail -> no PR
         fake.calls.clear()
         r2 = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(1, "fail")), "/ws", attempt, _noop_patch, open_pr=True,
+            FakeSandbox(exec_result=(1, "fail")),
+            "/ws",
+            attempt,
+            _noop_patch,
+            open_pr=True,
         )
         assert r2.pr_url is None
         assert "create_pr" not in fake.calls
@@ -161,7 +175,11 @@ class TestRunSelfBranchAttempt:
         # open_pr=True, tests pass -> PR opened
         fake.calls.clear()
         r3 = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(0, "ok")), "/ws", attempt, _noop_patch, open_pr=True,
+            FakeSandbox(exec_result=(0, "ok")),
+            "/ws",
+            attempt,
+            _noop_patch,
+            open_pr=True,
         )
         assert r3.pr_url == "https://github.com/org/repo/pull/1"
         assert "create_pr" in fake.calls
@@ -181,11 +199,17 @@ class TestRunSelfBranchAttempt:
         attempt = new_attempt("https://github.com/org/repo.git", "pytest -q")
 
         async def uncleared_check(diff, touched_paths):
-            return QuarantineVerdict(cleared=False, requires_adversarial_review=True, flags=("flagged",))
+            return QuarantineVerdict(
+                cleared=False, requires_adversarial_review=True, flags=("flagged",)
+            )
 
         result = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(0, "ok")), "/ws", attempt, _noop_patch,
-            open_pr=True, quarantine_check=uncleared_check,
+            FakeSandbox(exec_result=(0, "ok")),
+            "/ws",
+            attempt,
+            _noop_patch,
+            open_pr=True,
+            quarantine_check=uncleared_check,
         )
 
         assert result.pr_url is None
@@ -201,8 +225,12 @@ class TestRunSelfBranchAttempt:
             return QuarantineVerdict(cleared=True, requires_adversarial_review=False, flags=())
 
         result = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(0, "ok")), "/ws", attempt, _noop_patch,
-            open_pr=True, quarantine_check=cleared_check,
+            FakeSandbox(exec_result=(0, "ok")),
+            "/ws",
+            attempt,
+            _noop_patch,
+            open_pr=True,
+            quarantine_check=cleared_check,
         )
 
         assert result.pr_url == "https://github.com/org/repo/pull/1"
@@ -214,14 +242,20 @@ class TestRunSelfBranchAttempt:
         returned, verbatim, so callers don't have to re-derive it."""
         attempt = new_attempt("https://github.com/org/repo.git", "pytest -q")
         verdict = QuarantineVerdict(
-            cleared=False, requires_adversarial_review=True, flags=("flagged",), reason="pending",
+            cleared=False,
+            requires_adversarial_review=True,
+            flags=("flagged",),
+            reason="pending",
         )
 
         async def returning_check(diff, touched_paths):
             return verdict
 
         result = await run_self_branch_attempt(
-            FakeSandbox(exec_result=(0, "ok")), "/ws", attempt, _noop_patch,
+            FakeSandbox(exec_result=(0, "ok")),
+            "/ws",
+            attempt,
+            _noop_patch,
             quarantine_check=returning_check,
         )
 

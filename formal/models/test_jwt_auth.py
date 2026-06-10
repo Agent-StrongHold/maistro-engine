@@ -8,6 +8,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from maistro.security._types import AuthContext, IdentityKind
+from maistro.security.auth_composite import AuthError, CredentialNotApplicable
 from maistro.security.auth_jwt import JWTAuthProvider
 
 
@@ -15,8 +16,10 @@ def _make_provider(claims=None, kind_claim="kind"):
     base = {"sub": "user123", "preferred_username": "alice", "realm_access": {"roles": ["admin", "user"]}}
     if claims:
         base.update(claims)
+    # The jwt_decode test seam is forbidden when a jwks_url is configured
+    # (production config); the model must use the seam-only configuration.
     return JWTAuthProvider(
-        jwks_url="http://test",
+        jwks_url="",
         issuer="test",
         audience="test",
         kind_claim=kind_claim,
@@ -24,12 +27,17 @@ def _make_provider(claims=None, kind_claim="kind"):
     )
 
 
+# Fix #13 exception taxonomy: malformed/inapplicable credentials raise
+# CredentialNotApplicable (composite chain tries the next provider);
+# recognized-but-invalid credentials raise AuthError (chain aborts).
+
+
 def test_missing_authorization_raises():
     provider = _make_provider()
     try:
         asyncio.run(provider.authenticate(None))
-        raise AssertionError("Expected ValueError")
-    except ValueError:
+        raise AssertionError("Expected CredentialNotApplicable")
+    except CredentialNotApplicable:
         pass
 
 
@@ -37,8 +45,8 @@ def test_non_bearer_raises():
     provider = _make_provider()
     try:
         asyncio.run(provider.authenticate("Basic abc123"))
-        raise AssertionError("Expected ValueError")
-    except ValueError:
+        raise AssertionError("Expected CredentialNotApplicable")
+    except CredentialNotApplicable:
         pass
 
 
@@ -46,8 +54,8 @@ def test_empty_token_raises():
     provider = _make_provider()
     try:
         asyncio.run(provider.authenticate("Bearer  "))
-        raise AssertionError("Expected ValueError")
-    except ValueError:
+        raise AssertionError("Expected CredentialNotApplicable")
+    except CredentialNotApplicable:
         pass
 
 
@@ -55,8 +63,8 @@ def test_missing_sub_raises():
     provider = _make_provider(claims={"sub": ""})
     try:
         asyncio.run(provider.authenticate("Bearer token"))
-        raise AssertionError("Expected ValueError")
-    except ValueError:
+        raise AssertionError("Expected AuthError")
+    except AuthError:
         pass
 
 
