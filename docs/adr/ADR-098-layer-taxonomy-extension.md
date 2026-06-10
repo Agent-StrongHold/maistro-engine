@@ -3,8 +3,9 @@ id: ADR-098
 title: "Layer taxonomy extension — Evolve, Crypto, Connectivity, Ability, Identity"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-06-10
+accepted: 2026-06-10
 substrate:
   - maistro-engine#ADR-031
 implements: []
