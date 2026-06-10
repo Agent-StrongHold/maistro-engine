@@ -1,6 +1,6 @@
 ---
 id: ADR-098
-title: "Layer taxonomy extension — Evolve, Crypto, Connectivity, Ability"
+title: "Layer taxonomy extension — Evolve, Crypto, Connectivity, Ability, Identity"
 repo: maistro-engine
 kind: adr
 status: Proposed
@@ -22,7 +22,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-098: Layer Taxonomy Extension — Evolve, Crypto, Connectivity, Ability
+# ADR-098: Layer Taxonomy Extension — Evolve, Crypto, Connectivity, Ability, Identity
 
 ## Context
 
@@ -55,7 +55,7 @@ describe the architecture as it actually is.
 ## Decision
 
 Extend the ADR-031 §1 `layer` enumeration (and `maistro_registry.schema.Layer`)
-with four members. The taxonomy remains closed; further additions require an
+with five members. The taxonomy remains closed; further additions require an
 ADR amending this one.
 
 | Layer | Scope |
@@ -64,6 +64,7 @@ ADR amending this one.
 | `Crypto` | Cryptocurrency and value transfer: seed/HD root of trust, hardware signing, spending policy, Electrum, Lightning federation. General cryptography (PKI, DID, redaction, vault) stays in `Governance`/`Foundation`. |
 | `Connectivity` | Transport, channels, and mesh: networking/identity substrate transport, channel integrations (email), outbound delivery, agent-to-agent networking. The A2A delegation *protocol* itself stays `Orchestration`. |
 | `Ability` | Packaged product abilities composed from the substrate: canvas, maistro-design, builders, and future ability packages. |
+| `Identity` | Who things are: agent identity, user identity, instance identity — DID/VC, trust roots, authentication, identity lifecycle. Authorization/elevation (what identities may do) stays `Governance`. |
 
 Existing records are relabeled accordingly:
 
@@ -73,6 +74,7 @@ Existing records are relabeled accordingly:
 | Crypto | ADR-021, ADR-022, ADR-023, ADR-025, ADR-027, SPEC-017, SPEC-018 |
 | Connectivity | ADR-029, ADR-047, SPEC-002, SPEC-008, SPEC-016 |
 | Ability | ADR-040, ADR-041, ADR-042, ADR-043, ADR-044, ADR-045, ADR-061, ADR-067, ADR-090, SPEC-160, SPEC-200, SPEC-201, SPEC-203 |
+| Identity | ADR-024, ADR-026, ADR-059, ADR-084, SPEC-183 |
 
 SPEC-204 (partial-feature hardening) remains `Reliability` — its provisional
 relabel was correct on the merits.

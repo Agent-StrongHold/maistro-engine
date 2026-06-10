@@ -33,7 +33,7 @@ blocks: []
 blocked-by: []       # note: hyphen in YAML key
 contracts: []        # any of: boundary, behavioral, cross-service
 tests: []
-layer: <Layer>       # one of: Foundation, Orchestration, Agents, Tools, Memory, Observability, Reliability, Governance, UserClient, Evolve, Crypto, Connectivity, Ability (last four per ADR-098)
+layer: <Layer>       # one of: Foundation, Orchestration, Agents, Tools, Memory, Observability, Reliability, Governance, UserClient, Evolve, Crypto, Connectivity, Ability, Identity (last five per ADR-098)
 owners:
   - '@BlakeMatthews-dev'
 ---

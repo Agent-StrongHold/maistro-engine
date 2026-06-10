@@ -150,7 +150,7 @@ def test_superseded_by_alias_and_ref_validation() -> None:
 
 def test_adr_098_extension_layers_accepted() -> None:
     """Evolve/Crypto/Connectivity/Ability are valid layers per ADR-098."""
-    for layer in ("Evolve", "Crypto", "Connectivity", "Ability"):
+    for layer in ("Evolve", "Crypto", "Connectivity", "Ability", "Identity"):
         fm = FrontMatter.model_validate(_valid_dict() | {"layer": layer})
         assert fm.layer == layer
 

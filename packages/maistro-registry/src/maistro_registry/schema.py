@@ -71,6 +71,7 @@ class Layer(StrEnum):
     CRYPTO = "Crypto"
     CONNECTIVITY = "Connectivity"
     ABILITY = "Ability"
+    IDENTITY = "Identity"
 
 
 class Repo(StrEnum):
