@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ─── maistro-engine remote installer ──────────────────────────────────────
-# Usage: curl -fsSL https://get.maistro.dev | bash
+# Usage: curl -fsSL https://get.hiveconductor.dev | bash
 #    or: curl -fsSL https://raw.githubusercontent.com/BlakeMatthews-dev/maistro-engine/develop/get.sh | bash
 #
 # What it does:
@@ -99,7 +99,7 @@ generate_env() {
 
     cat > .env <<EOF
 # maistro-engine — generated $(date -Iseconds)
-# Regenerate: rm .env && curl -fsSL https://get.maistro.dev | bash
+# Regenerate: rm .env && curl -fsSL https://get.hiveconductor.dev | bash
 
 MAISTRO_ACCESS_TOKEN=${token}
 MAISTRO_BIND_HOST=${BIND}
@@ -158,7 +158,7 @@ print_success() {
     echo ""
     echo -e "  Logs:   cd $INSTALL_DIR && $COMPOSE logs -f"
     echo -e "  Stop:   cd $INSTALL_DIR && $COMPOSE down"
-    echo -e "  Update: curl -fsSL https://get.maistro.dev | bash"
+    echo -e "  Update: curl -fsSL https://get.hiveconductor.dev | bash"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
