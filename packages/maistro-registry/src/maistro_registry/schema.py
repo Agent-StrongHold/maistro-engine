@@ -37,6 +37,7 @@ class Status(StrEnum):
     SUPERSEDED = "Superseded"
     BLOCKED = "Blocked"
     ABANDONED = "Abandoned"
+    DEFERRED = "Deferred"
 
 
 class Kind(StrEnum):
@@ -72,9 +73,11 @@ class Contract(StrEnum):
 # Local id pattern: e.g. ADR-024, SPEC-138
 _ID_PATTERN = re.compile(r"^(ADR|SPEC)-\d{3}$")
 
-# Cross-repo reference pattern: e.g. maistro-engine#ADR-024
+# Cross-repo reference pattern: e.g. maistro-engine#ADR-024.
+# Other repos may use their own ID scheme (Project_mAIstro uses S-NNN for specs),
+# so references accept ADR/SPEC/S; our own IDs stay strict via _ID_PATTERN.
 _REF_PATTERN = re.compile(
-    r"^(maistro-engine|Project_mAIstro|AgentTuring|stronghold)#(ADR|SPEC)-\d{3}$"
+    r"^(maistro-engine|Project_mAIstro|AgentTuring|stronghold)#(ADR|SPEC|S)-\d{3}$"
 )
 
 
@@ -115,6 +118,9 @@ class FrontMatter(BaseModel):
     contracts: list[Contract] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
 
+    # Provenance: repo paths (packages/…, apps/…) this record governs/derives from.
+    source: list[str] = Field(default_factory=list)
+
     # Classification
     layer: Layer
     owners: list[str] = Field(default_factory=list)
@@ -123,9 +129,7 @@ class FrontMatter(BaseModel):
     @classmethod
     def _validate_id(cls, v: str) -> str:
         if not _is_valid_id(v):
-            raise ValueError(
-                f"id must match ^(ADR|SPEC)-NNN$, got {v!r}"
-            )
+            raise ValueError(f"id must match ^(ADR|SPEC)-NNN$, got {v!r}")
         return v
 
     @field_validator(

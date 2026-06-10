@@ -1,3 +1,26 @@
+---
+id: ADR-017
+title: Outcome + InMemoryOutcomeStore
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-013
+  - maistro-engine#ADR-014
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Memory
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-017: Outcome + InMemoryOutcomeStore
 
 **Status:** Accepted  

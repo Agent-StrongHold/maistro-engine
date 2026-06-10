@@ -20,6 +20,7 @@ catches them and returns source='no_data' rather than fabricate.
 Import discipline: this module is the ONLY place that imports
 `browser_use` / `playwright`. Pinning + library-drift containment.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,11 +47,7 @@ def _resolve_llm_base_url() -> str:
 
 
 def _resolve_llm_api_key() -> str:
-    return (
-        os.environ.get("LITELLM_MASTER_KEY")
-        or os.environ.get("LITELLM_PROXY_KEY")
-        or ""
-    )
+    return os.environ.get("LITELLM_MASTER_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
 
 
 def _resolve_browser_model() -> str:
@@ -109,13 +106,9 @@ class BrowserClient:
             if headless is not None
             else _is_truthy(os.environ.get("BROWSER_USE_HEADLESS", "true"))
         )
-        self.timeout_s = float(
-            os.environ.get("BROWSER_USE_TIMEOUT_S", timeout_s)
-        )
+        self.timeout_s = float(os.environ.get("BROWSER_USE_TIMEOUT_S", timeout_s))
         self.max_steps = int(
-            max_steps
-            if max_steps is not None
-            else os.environ.get("BROWSER_USE_MAX_STEPS", "15")
+            max_steps if max_steps is not None else os.environ.get("BROWSER_USE_MAX_STEPS", "15")
         )
         # Lazy imports — keep `browser_use` / `playwright` scoped here so
         # importing maistro.tools.browser doesn't fail in environments
@@ -126,7 +119,7 @@ class BrowserClient:
         if self._browser_use is not None:
             return self._browser_use
         try:
-            import browser_use  # type: ignore  # noqa: F401
+            import browser_use  # type: ignore
         except ImportError as exc:
             raise BrowserToolError(
                 "browser-use not installed in this environment. "
@@ -155,7 +148,7 @@ class BrowserClient:
         if ChatOpenAI is None:
             # Fallback: use the openai sdk directly via browser-use's
             # generic OpenAI-compatible wrapper.
-            from openai import AsyncOpenAI  # type: ignore
+            from openai import AsyncOpenAI
 
             return AsyncOpenAI(base_url=base_url, api_key=api_key)
         return ChatOpenAI(
@@ -165,9 +158,7 @@ class BrowserClient:
             temperature=0.1,
         )
 
-    async def search_web(
-        self, query: str, *, max_results: int = 3
-    ) -> SearchResult:
+    async def search_web(self, query: str, *, max_results: int = 3) -> SearchResult:
         """Drive a real Chromium session through Google → synthesize results."""
         bu = self._import_browser_use()
         Agent = getattr(bu, "Agent", None)
@@ -182,7 +173,7 @@ class BrowserClient:
                 agent.run(),
                 timeout=self.timeout_s,
             )
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise BrowserToolError(
                 f"browser-use search_web timed out after {self.timeout_s}s"
             ) from exc
@@ -226,9 +217,7 @@ class BrowserClient:
         # placeholder for v1 connection-pool teardown.
         return None
 
-    def _parse_search_output(
-        self, query: str, run_result: Any, duration_ms: int
-    ) -> SearchResult:
+    def _parse_search_output(self, query: str, run_result: Any, duration_ms: int) -> SearchResult:
         """Coerce browser-use's RunHistory shape into SearchResult. Versions
         differ: history.final_result, result.output, .output_message all
         seen. Defensive across all of them."""

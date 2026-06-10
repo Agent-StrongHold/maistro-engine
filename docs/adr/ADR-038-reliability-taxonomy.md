@@ -68,7 +68,10 @@ Fallbacks are explicit at the call site. Implicit fallback is forbidden.
 
 ### 4. Error budgets and SLOs
 
-Every public service-key gets a service-level objective. Engine emits `maistro_slo_remaining_budget_seconds` per `(service_key, slo)`. When budget burn rate exceeds 2x sustained over 1h, the orchestrator throttles non-critical work (low-priority tasks defer; the router scoring formula — ADR-007 — already accepts a scarcity input).
+Every public service-key gets a service-level objective. Reliability **declares**
+`maistro_slo_remaining_budget_seconds` per `(service_key, slo)` to the ADR-037 observability
+substrate (ADR-037 owns the naming/registry contract; reliability owns the metric's meaning).
+When budget burn rate exceeds 2x sustained over 1h, the orchestrator throttles non-critical work (low-priority tasks defer; the router scoring formula — ADR-007 — already accepts a scarcity input).
 
 SLO numbers per product land in product ROADMAPs, not in this ADR.
 

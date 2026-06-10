@@ -1,3 +1,27 @@
+---
+id: ADR-025
+title: "Electrum Server — Medley plugin for household-private Bitcoin backend"
+repo: maistro-engine
+kind: adr
+status: Deferred
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-023
+  - maistro-engine#ADR-029
+implements: []
+related:
+  - maistro-engine#ADR-026
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-025: Electrum Server — Medley plugin for household-private Bitcoin backend
 
 **Status:** Proposed

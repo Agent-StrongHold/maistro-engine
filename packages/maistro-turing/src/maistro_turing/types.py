@@ -82,17 +82,13 @@ class EpisodicMemory:
         if not -1.0 <= self.affect <= 1.0:
             raise ValueError(f"affect out of range: {self.affect}")
         if not 0.0 <= self.confidence_at_creation <= 1.0:
-            raise ValueError(
-                f"confidence_at_creation out of range: {self.confidence_at_creation}"
-            )
+            raise ValueError(f"confidence_at_creation out of range: {self.confidence_at_creation}")
         if not 0.0 <= self.surprise_delta <= 1.0:
             raise ValueError(f"surprise_delta out of range: {self.surprise_delta}")
         if self.supersedes is not None and self.supersedes == self.memory_id:
             raise ValueError("memory cannot supersede itself")
         if self.tier in DURABLE_TIERS and self.source != SourceKind.I_DID:
-            raise ValueError(
-                f"{self.tier.value} requires source=i_did; got {self.source.value}"
-            )
+            raise ValueError(f"{self.tier.value} requires source=i_did; got {self.source.value}")
         if self.tier == MemoryTier.ACCOMPLISHMENT and not self.intent_at_time:
             raise ValueError("ACCOMPLISHMENT requires non-empty intent_at_time")
 

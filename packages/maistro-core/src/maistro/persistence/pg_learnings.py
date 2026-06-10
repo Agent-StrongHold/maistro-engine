@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from maistro.types.memory import Learning
 
 if TYPE_CHECKING:
-    import asyncpg
+    import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
 
 logger = logging.getLogger("maistro.persistence.learnings")
 

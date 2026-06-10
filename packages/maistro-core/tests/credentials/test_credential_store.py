@@ -2,16 +2,13 @@
 
 from __future__ import annotations
 
-import json
-
 import pytest
-from cryptography.fernet import Fernet
 
 from maistro.credentials.store import CredentialNotFound, UserCredentialStore
 
 
 @pytest.fixture()
-def store(tmp_path):  # noqa: ANN001
+def store(tmp_path):
     return UserCredentialStore.open(tmp_path)
 
 

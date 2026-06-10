@@ -50,6 +50,10 @@ class LearningStore(Protocol):
         """Get promoted learnings for system prompt injection."""
         ...
 
+    async def list_all(self, org_id: str = "", limit: int = 200) -> list[Learning]:
+        """List learnings for an org (candidate enumeration for promotion/admin)."""
+        ...
+
 
 @runtime_checkable
 class LearningExtractor(Protocol):

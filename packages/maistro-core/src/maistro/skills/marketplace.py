@@ -41,10 +41,48 @@ def _is_blocked_ip(addr: object) -> bool:
     )
 
 
-def _block_ssrf(url: str) -> None:
-    """Block server-side request forgery via private/metadata URLs."""
+def _block_literal_ip(hostname: str, url: str) -> bool:
+    """Block ``hostname`` if it is a literal blocked IP. Returns True if it was a
+    literal IP (blocked or allowed) so the caller can stop; False if not an IP."""
+    import ipaddress
+
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+
+    if _is_blocked_ip(addr):
+        msg = f"Blocked: URL targets private/metadata network ({addr}): {url}"
+        raise ValueError(msg)
+    return True
+
+
+def _block_resolved_ip(hostname: str, url: str) -> None:
+    """Resolve ``hostname`` via DNS and block if any address is private/internal."""
     import ipaddress
     import socket
+
+    try:
+        addrinfos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror:
+        return
+
+    for *_meta, sockaddr in addrinfos:
+        ip_str = sockaddr[0]
+        try:
+            resolved_addr = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        if _is_blocked_ip(resolved_addr):
+            msg = (
+                f"Blocked: hostname '{hostname}' resolves to private/internal "
+                f"address ({resolved_addr}): {url}"
+            )
+            raise ValueError(msg)
+
+
+def _block_ssrf(url: str) -> None:
+    """Block server-side request forgery via private/metadata URLs."""
     from urllib.parse import urlparse
 
     url_lower = url.lower()
@@ -62,34 +100,10 @@ def _block_ssrf(url: str) -> None:
             msg = f"Blocked: URL targets private/metadata network: {url}"
             raise ValueError(msg)
 
-    try:
-        addr = ipaddress.ip_address(hostname)
-    except ValueError:
-        addr = None
-
-    if addr is not None:
-        if _is_blocked_ip(addr):
-            msg = f"Blocked: URL targets private/metadata network ({addr}): {url}"
-            raise ValueError(msg)
+    if _block_literal_ip(hostname, url):
         return
 
-    try:
-        addrinfos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
-    except socket.gaierror:
-        return
-
-    for _family, _type, _proto, _canonname, sockaddr in addrinfos:
-        ip_str = sockaddr[0]
-        try:
-            resolved_addr = ipaddress.ip_address(ip_str)
-        except ValueError:
-            continue
-        if _is_blocked_ip(resolved_addr):
-            msg = (
-                f"Blocked: hostname '{hostname}' resolves to private/internal "
-                f"address ({resolved_addr}): {url}"
-            )
-            raise ValueError(msg)
+    _block_resolved_ip(hostname, url)
 
 
 @runtime_checkable

@@ -14,6 +14,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from maistro.types.model import ProviderConfig
 
+# Max in-budget scarcity cost is 1/ln(2.0) (remaining floored at 2.0). Over-quota
+# paid usage must sit strictly above this ceiling so free in-budget quota always
+# wins on the router's cost-in-denominator score.
+_OVER_QUOTA_FLOOR: float = 1.0 / math.log(2.0) + 1.0
+
 
 def _daily_budget(provider: ProviderConfig) -> float:
     """Normalize free_tokens to a daily budget regardless of billing cycle."""
@@ -31,14 +36,24 @@ def compute_effective_cost(usage_pct: float, provider: ProviderConfig) -> float:
     - Providers with large budgets are naturally cheap
     - Cost rises smoothly as tokens deplete
     - Over quota without paygo: 999.0
-    - Over quota with paygo: average overage rate
+    - Over quota with paygo: above the in-budget ceiling, scaled by overage rate
     - Zero free tokens: 1.0
     """
     has_paygo = provider.overage_cost_per_1k_input > 0 or provider.overage_cost_per_1k_output > 0
 
     if usage_pct >= 1.0:
         if has_paygo:
-            return (provider.overage_cost_per_1k_input + provider.overage_cost_per_1k_output) / 2000
+            # In-budget scarcity cost lives on the 1/ln(remaining) scale and
+            # tops out at 1/ln(2) (remaining floored at 2.0). Paid overage must
+            # always cost MORE than any in-budget free provider, otherwise the
+            # router (which divides by cost) would prefer paying over using
+            # free in-budget quota. Anchor the floor just above that ceiling,
+            # then add a term proportional to the average overage rate so that
+            # pricier providers rank below cheaper ones.
+            avg_rate = (
+                provider.overage_cost_per_1k_input + provider.overage_cost_per_1k_output
+            ) / 2.0
+            return _OVER_QUOTA_FLOOR + avg_rate
         return 999.0
 
     daily = _daily_budget(provider)

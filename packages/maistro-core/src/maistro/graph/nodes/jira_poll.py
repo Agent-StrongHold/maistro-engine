@@ -28,16 +28,14 @@ logger = logging.getLogger("maistro.nodes.jira")
 
 class JiraPollIn(BaseModel):
     base_url: str = Field(description="e.g. https://jira.example.com or https://acme.atlassian.net")
-    jql: str = Field(description="JQL query (e.g. assignee=currentUser() AND resolution=Unresolved)")
+    jql: str = Field(
+        description="JQL query (e.g. assignee=currentUser() AND resolution=Unresolved)"
+    )
     pat: str = Field(description="Personal access token — never logged")
     flavor: Literal["server", "cloud"] = "server"
-    email: str | None = Field(
-        default=None, description="Required only for cloud Basic auth"
-    )
+    email: str | None = Field(default=None, description="Required only for cloud Basic auth")
     max_results: int = Field(default=20, ge=1, le=100)
-    fields: list[str] = Field(
-        default_factory=lambda: ["summary", "status", "updated", "issuetype"]
-    )
+    fields: list[str] = Field(default_factory=lambda: ["summary", "status", "updated", "issuetype"])
     timeout_s: float = 8.0
 
 
@@ -88,7 +86,7 @@ class JiraPollNode(BaseNode[JiraPollIn, JiraPollOut]):
             else:
                 headers["Authorization"] = f"Bearer {inputs.pat}"
 
-        params = {
+        params: dict[str, str | int] = {
             "jql": inputs.jql,
             "maxResults": inputs.max_results,
             "fields": ",".join(inputs.fields),

@@ -2,24 +2,33 @@
 
 from __future__ import annotations
 
-from maistro.tasks.models import TaskCreate, TaskStatus
-from maistro.tasks.queue import TaskQueue
-
 from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode, list_pm_agents
+
+from maistro.tasks.models import TaskCreate
+from maistro.tasks.queue import TaskQueue
 
 
 def test_list_pm_agents_returns_canonical_fleet() -> None:
-    """PM fleet roster: intake, program_manager, research, delivery,
-    risk_dependency, reporting (6 agents). Test pinned to the canonical
-    set so adding a 7th is a deliberate decision."""
+    """PM fleet roster: program_manager, delivery, risk_dependency, reporting
+    (4 agents — intake and research are filtered out because their primary
+    capabilities are not in _WORKING_CAPABILITIES). Pinned so adding a 5th
+    is a deliberate decision.
+
+    The list also includes seeded store agents (agent-N); we check only the
+    PM subset here.
+    """
     agents = list_pm_agents([])
     ids = [a.id for a in agents]
-    assert ids == [
-        "intake", "program_manager", "research", "delivery",
-        "risk_dependency", "reporting",
+    pm_ids = [i for i in ids if not i.startswith("agent-")]
+    assert pm_ids == [
+        "program_manager",
+        "delivery",
+        "risk_dependency",
+        "reporting",
     ]
-    assert agents[0].tagline
-    assert agents[0].primary_capability
+    pm_agents = [a for a in agents if not a.id.startswith("agent-")]
+    assert pm_agents[0].tagline
+    assert pm_agents[0].primary_capability
 
 
 def test_invoke_pm_agent_builds_description() -> None:
@@ -55,7 +64,7 @@ def test_pm_tasks_scoped_per_user_in_queue() -> None:
     asyncio.run(_run())
 
 
-def test_is_pm_poc_mode_reads_env(monkeypatch) -> None:  # noqa: ANN001
+def test_is_pm_poc_mode_reads_env(monkeypatch) -> None:
     monkeypatch.delenv("MAISTRO_POC_MODE", raising=False)
     monkeypatch.delenv("HIVE_POC_MODE", raising=False)
     assert is_pm_poc_mode() is False

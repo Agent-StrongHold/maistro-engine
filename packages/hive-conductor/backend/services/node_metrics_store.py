@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import math
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any, Iterable
+from typing import Any
 
 DEFAULT_MAX_OBSERVATIONS = 10_000
 
@@ -98,8 +99,12 @@ class NodeMetricsStore:
     ) -> dict[str, Any]:
         """Return aggregate stats for the filtered observation set."""
         obs = self._filter(
-            node_kind=node_kind, project_id=project_id, node_id=node_id,
-            dag_id=dag_id, window_seconds=window_seconds, now=now,
+            node_kind=node_kind,
+            project_id=project_id,
+            node_id=node_id,
+            dag_id=dag_id,
+            window_seconds=window_seconds,
+            now=now,
         )
         return _aggregate(obs)
 
@@ -113,8 +118,10 @@ class NodeMetricsStore:
         now: datetime | None = None,
     ) -> list[dict[str, Any]]:
         obs = self._filter(
-            node_kind=node_kind, project_id=project_id,
-            window_seconds=window_seconds, now=now,
+            node_kind=node_kind,
+            project_id=project_id,
+            window_seconds=window_seconds,
+            now=now,
         )
         # newest first; cap to `limit`
         return [_to_dict(o) for o in reversed(obs[-limit:])]
@@ -140,11 +147,18 @@ def _aggregate(obs: Iterable[NodeObservation]) -> dict[str, Any]:
     n = len(items)
     if n == 0:
         return {
-            "count": 0, "succeeded": 0, "failed": 0, "success_rate": 0.0,
-            "latency_ms_p50": 0, "latency_ms_p95": 0, "latency_ms_p99": 0,
+            "count": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "success_rate": 0.0,
+            "latency_ms_p50": 0,
+            "latency_ms_p95": 0,
+            "latency_ms_p99": 0,
             "latency_ms_mean": 0.0,
-            "tokens_in_total": 0, "tokens_in_mean": 0.0,
-            "tokens_out_total": 0, "tokens_out_mean": 0.0,
+            "tokens_in_total": 0,
+            "tokens_in_mean": 0.0,
+            "tokens_out_total": 0,
+            "tokens_out_mean": 0.0,
             "cost_usd_total": 0.0,
         }
     latencies = sorted(o.latency_ms for o in items)

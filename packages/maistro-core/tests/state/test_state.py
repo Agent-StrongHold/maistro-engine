@@ -38,7 +38,7 @@ class TestSingletonWriter:
 
         state = State(db_path=str(db_path))
         state.open_writer()
-        with pytest.raises(RuntimeError, match="open_writer.*once"):
+        with pytest.raises(RuntimeError, match=r"open_writer.*once"):
             state.open_writer()
         state.close()
 
@@ -68,9 +68,7 @@ class TestSubmitQueue:
         w.execute("CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT)")
         w.commit()
 
-        state.submit(lambda conn: conn.execute(
-            "INSERT INTO kv VALUES (?, ?)", ("hello", "world")
-        ))
+        state.submit(lambda conn: conn.execute("INSERT INTO kv VALUES (?, ?)", ("hello", "world")))
         state.flush()
 
         row = w.execute("SELECT v FROM kv WHERE k = 'hello'").fetchone()
@@ -87,15 +85,10 @@ class TestSubmitQueue:
         w.execute("INSERT INTO counter VALUES (1, 0)")
         w.commit()
 
-        errors: list[Exception] = []
-
         def increment(conn: Any) -> None:
             conn.execute("UPDATE counter SET n = n + 1 WHERE id = 1")
 
-        threads = [
-            threading.Thread(target=lambda: state.submit(increment))
-            for _ in range(50)
-        ]
+        threads = [threading.Thread(target=lambda: state.submit(increment)) for _ in range(50)]
         for t in threads:
             t.start()
         for t in threads:
@@ -114,7 +107,6 @@ class TestSubmitQueue:
         state.open_writer()
 
         barrier = threading.Event()
-        results: list[str] = []
 
         def blocking_txn(conn: Any) -> None:
             barrier.wait()
@@ -122,7 +114,7 @@ class TestSubmitQueue:
         for _ in range(5):
             state.submit(blocking_txn)
 
-        with pytest.raises(Exception, match="backpressure|queue.*full"):
+        with pytest.raises(Exception, match=r"backpressure|queue.*full"):
             state.submit(blocking_txn)
 
         barrier.set()
@@ -151,9 +143,11 @@ class TestWALAndCheckpoint:
         w.commit()
 
         for i in range(1000):
-            state.submit(lambda conn, i=i: conn.execute(
-                "INSERT INTO big (data) VALUES (?)", (f"data-{i}" * 10,)
-            ))
+            state.submit(
+                lambda conn, i=i: conn.execute(
+                    "INSERT INTO big (data) VALUES (?)", (f"data-{i}" * 10,)
+                )
+            )
         state.flush()
 
         wal_path = db_path.with_suffix(".db-wal")
@@ -180,9 +174,7 @@ class TestEncryptedBackups:
         w.execute("INSERT INTO test VALUES (42)")
         w.commit()
 
-        result = subprocess.run(
-            ["age-keygen"], capture_output=True, text=True, check=True
-        )
+        result = subprocess.run(["age-keygen"], capture_output=True, text=True, check=True)
         secret_key = result.stdout.strip()
         public_key = secret_key.split("# public key: ")[1].split("\n")[0]
 
@@ -220,9 +212,7 @@ class TestEncryptedBackups:
         state = State(db_path=str(db_path))
         state.open_writer()
 
-        result = subprocess.run(
-            ["age-keygen"], capture_output=True, text=True, check=True
-        )
+        result = subprocess.run(["age-keygen"], capture_output=True, text=True, check=True)
         secret_key = result.stdout.strip()
         public_key = secret_key.split("# public key: ")[1].split("\n")[0]
 
@@ -248,15 +238,17 @@ class TestMigrations:
         state = State(db_path=str(db_path))
         state.open_writer()
 
-        tables = state.open_reader().execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = (
+            state.open_reader()
+            .execute("SELECT name FROM sqlite_master WHERE type='table'")
+            .fetchall()
+        )
         table_names = [t[0] for t in tables]
         assert "schema_migrations" in table_names
         state.close()
 
     def test_failed_migration_rolls_back(self, db_path: Path) -> None:
-        from maistro.state import State, MigrationFailedError
+        from maistro.state import MigrationFailedError, State
 
         state = State(db_path=str(db_path))
 
@@ -266,9 +258,11 @@ class TestMigrations:
                 up="CREATE TABLE good (id INTEGER); THIS IS BAD SQL;",
             )
 
-        tables = state.open_reader().execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
+        tables = (
+            state.open_reader()
+            .execute("SELECT name FROM sqlite_master WHERE type='table'")
+            .fetchall()
+        )
         table_names = [t[0] for t in tables]
         assert "good" not in table_names
         state.close()

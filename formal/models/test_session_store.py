@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
@@ -121,12 +120,17 @@ def test_max_messages_oldest_trimmed(n):
 
 def test_invalid_roles_filtered():
     store = InMemorySessionStore()
-    _run(store.append_messages("filter-test", [
-        {"role": "system", "content": "sys"},
-        {"role": "user", "content": "hello"},
-        {"role": "tool", "content": "tool-output"},
-        {"role": "assistant", "content": "hi"},
-    ]))
+    _run(
+        store.append_messages(
+            "filter-test",
+            [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": "hello"},
+                {"role": "tool", "content": "tool-output"},
+                {"role": "assistant", "content": "hi"},
+            ],
+        )
+    )
     history = _run(store.get_history("filter-test"))
     assert len(history) == 2
     assert history[0]["role"] == "user"
@@ -135,11 +139,16 @@ def test_invalid_roles_filtered():
 
 def test_non_string_content_filtered():
     store = InMemorySessionStore()
-    _run(store.append_messages("content-test", [
-        {"role": "user", "content": 12345},
-        {"role": "user", "content": "valid"},
-        {"role": "user", "content": None},
-    ]))
+    _run(
+        store.append_messages(
+            "content-test",
+            [
+                {"role": "user", "content": 12345},
+                {"role": "user", "content": "valid"},
+                {"role": "user", "content": None},
+            ],
+        )
+    )
     history = _run(store.get_history("content-test"))
     assert len(history) == 1
     assert history[0]["content"] == "valid"

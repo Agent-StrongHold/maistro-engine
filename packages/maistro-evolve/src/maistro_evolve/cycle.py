@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -45,15 +45,10 @@ class EvolutionCycle:
         llm_call: Any = None,
     ) -> None:
         all_genomes = population.list_all()
-        unevaluated = [
-            g for g in all_genomes
-            if g.fitness_score is None or not g.eval_scores
-        ]
+        unevaluated = [g for g in all_genomes if g.fitness_score is None or not g.eval_scores]
         batch = unevaluated[: config.eval_batch_size]
         for genome in batch:
-            results = await self.harness.evaluate_genome(
-                genome, config.target_benchmarks, llm_call
-            )
+            results = await self.harness.evaluate_genome(genome, config.target_benchmarks, llm_call)
             for r in results:
                 genome.eval_scores[r.benchmark] = r.score
                 genome.harness_params["total_cost_usd"] = (
@@ -62,7 +57,7 @@ class EvolutionCycle:
                 genome.harness_params["avg_latency_seconds"] = (
                     genome.harness_params.get("avg_latency_seconds", 0.0) + r.duration_seconds
                 ) / max(len(genome.eval_scores), 1)
-            genome.updated_at = datetime.now(timezone.utc).isoformat()
+            genome.updated_at = datetime.now(UTC).isoformat()
             population.add(genome)
 
     async def _run_tournament_battles(
@@ -100,14 +95,12 @@ class EvolutionCycle:
             if avg_elo > 0:
                 g.harness_params["avg_elo"] = avg_elo
 
-    def _compute_all_fitness(
-        self, population: PopulationStore
-    ) -> list[PipelineGenome]:
+    def _compute_all_fitness(self, population: PopulationStore) -> list[PipelineGenome]:
         all_genomes = population.list_all()
         for g in all_genomes:
             components = compute_fitness(g, all_genomes)
             g.fitness_score = components.total
-            g.updated_at = datetime.now(timezone.utc).isoformat()
+            g.updated_at = datetime.now(UTC).isoformat()
             population.add(g)
         return population.list_all()
 
@@ -152,16 +145,12 @@ class EvolutionCycle:
 
         for genome in top:
             from .types import EvalResult
-            eval_results = [
-                EvalResult(benchmark=k, score=v)
-                for k, v in genome.eval_scores.items()
-            ]
+
+            eval_results = [EvalResult(benchmark=k, score=v) for k, v in genome.eval_scores.items()]
             signal = extract_signal(genome, eval_results)
             weakest_node_id = signal.get("weakest_node_id")
             if weakest_node_id:
-                improved_prompt = await optimize_prompt(
-                    genome, weakest_node_id, signal, llm_call
-                )
+                improved_prompt = await optimize_prompt(genome, weakest_node_id, signal, llm_call)
                 for node in genome.topology.nodes:
                     if node.id == weakest_node_id:
                         node.system_prompt = improved_prompt
@@ -171,10 +160,10 @@ class EvolutionCycle:
             genome.harness_params["last_optimization"] = {
                 "signal": signal,
                 "topology_suggestion": topo_signal,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
 
-            genome.updated_at = datetime.now(timezone.utc).isoformat()
+            genome.updated_at = datetime.now(UTC).isoformat()
             population.add(genome)
 
     async def run_cycle(
@@ -209,13 +198,15 @@ class EvolutionCycle:
             current_count = len(population.list_all())
             needed = max(0, cfg.population_size - current_count)
             for _ in range(needed):
+                pa: PipelineGenome | None
+                pb: PipelineGenome | None
                 if len(breeding_pool) >= 2:
-                    a, b = random.sample(breeding_pool, 2)
+                    pa, pb = random.sample(breeding_pool, 2)
                 else:
-                    a = breeding_pool[0] if breeding_pool else None
-                    b = None
-                if a and b:
-                    child = crossover_and_mutate(a, b, cfg.mutation_rate)
+                    pa = breeding_pool[0] if breeding_pool else None
+                    pb = None
+                if pa and pb:
+                    child = crossover_and_mutate(pa, pb, cfg.mutation_rate)
                     population.add(child)
 
         await self._self_improve_top(population, cfg, llm_call)

@@ -1,71 +1,6 @@
-const LITELLM_URL =
-  import.meta.env.VITE_LITELLM_URL || "http://localhost:4000";
-const LITELLM_KEY =
-  import.meta.env.VITE_LITELLM_KEY || "sk-conductor-litellm-2026";
+import { chat, generateImage } from "./llmClient";
 
-const GEMINI_KEY =
-  import.meta.env.VITE_GEMINI_API_KEY || "";
-
-const AZURE_KEY =
-  import.meta.env.VITE_AZURE_KEY || "";
-const AZURE_ENDPOINT =
-  import.meta.env.VITE_AZURE_ENDPOINT || "";
-const AZURE_DEPLOYMENT = "gpt-image-2-1";
-
-async function geminiNativeImageGen(prompt) {
-  if (!GEMINI_KEY) throw new Error("No Gemini API key");
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `Generate an image: ${prompt}` }] }],
-        generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
-      }),
-    }
-  );
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || `Gemini ${res.status}`);
-  }
-  const data = await res.json();
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  const imgPart = parts.find((p) => p.inlineData);
-  if (!imgPart) throw new Error("No image in Gemini response");
-  return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
-}
-
-async function azureImageGen(prompt) {
-  if (!AZURE_KEY || !AZURE_ENDPOINT) throw new Error("No Azure config");
-  const url =       `${AZURE_ENDPOINT}/openai/deployments/${AZURE_DEPLOYMENT}/images/generations?api-version=2025-03-01-preview`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120000);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": AZURE_KEY,
-      },
-      body: JSON.stringify({ prompt, n: 1, size: "1024x1024" }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.error?.message || `Azure ${res.status}`);
-    }
-    const data = await res.json();
-    const imgs = data.data || [];
-    if (imgs.length === 0) throw new Error("No image from Azure");
-    const img = imgs[0];
-    if (img.b64_json) return `data:image/png;base64,${img.b64_json}`;
-    if (img.url) return img.url;
-    throw new Error("No image data from Azure");
-  } finally {
-    clearTimeout(timeout);
-  }
-}
+// Keys are server-side only (see server.js /api/llm/*). Nothing here holds them.
 
 function makePlaceholderImage(prompt) {
   const canvas = document.createElement("canvas");
@@ -111,22 +46,6 @@ const IMAGE_MODELS = {
     { id: "together-google/imagen-4.0-ultra", name: "Imagen 4 Ultra (Together)", provider: "together" },
   ],
 };
-
-async function litellmRequest(path, opts = {}) {
-  const url = `${LITELLM_URL}${path}`;
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${LITELLM_KEY}`,
-    ...opts.headers,
-  };
-  const res = await fetch(url, { ...opts, headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const msg = body.error?.message || body.error?.code || body.detail || `HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-  return res;
-}
 
 let _canvases = [];
 let _layers = {};
@@ -256,46 +175,17 @@ const api = {
     try {
       let dataUrl = null;
 
-      const useAzure = modelId === "azure-gpt-image-2";
-
-      if (useAzure && AZURE_KEY && AZURE_ENDPOINT) {
-        try {
-          dataUrl = await azureImageGen(body.prompt);
-        } catch (azureErr) {
-          console.warn("Azure image gen failed:", azureErr.message);
-        }
-      }
-
-      if (!dataUrl && !useAzure) {
-        try {
-        const res = await litellmRequest("/v1/images/generations", {
-          method: "POST",
-          body: JSON.stringify({
-            model: modelId,
-            prompt: body.prompt,
-            n: body.count || 1,
-            size: "1024x1024",
-            response_format: "b64_json",
-          }),
+      // Provider selection + credentials live server-side (see server.js
+      // /api/llm/image). The server tries Azure / LiteLLM / Gemini in turn.
+      try {
+        dataUrl = await generateImage({
+          prompt: body.prompt,
+          model_id: modelId,
+          n: body.count || 1,
+          size: "1024x1024",
         });
-        const data = await res.json();
-        const imgs = data.data || [];
-        if (imgs.length > 0 && imgs[0].b64_json) {
-          dataUrl = `data:image/png;base64,${imgs[0].b64_json}`;
-        } else if (imgs.length > 0 && imgs[0].url) {
-          dataUrl = imgs[0].url;
-        }
-      } catch (litellmErr) {
-        console.warn("LiteLLM image gen failed, trying Gemini native:", litellmErr.message);
-      }
-      } // end !useAzure
-
-      if (!dataUrl && GEMINI_KEY) {
-        try {
-          dataUrl = await geminiNativeImageGen(body.prompt);
-        } catch (geminiErr) {
-          console.warn("Gemini native failed:", geminiErr.message);
-        }
+      } catch (genErr) {
+        console.warn("Image gen failed:", genErr.message);
       }
 
       if (!dataUrl) {
@@ -416,20 +306,14 @@ Rules:
 - Think about depth: sky/environment -> midground -> foreground subjects -> overlay effects`;
 
 async function planScene(description) {
-  const res = await litellmRequest("/v1/chat/completions", {
-    method: "POST",
-    body: JSON.stringify({
-      model: PLANNER_MODEL,
-      messages: [
-        { role: "system", content: PLANNER_PROMPT },
-        { role: "user", content: description },
-      ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    }),
-  });
-  const data = await res.json();
-  const text = data.choices?.[0]?.message?.content || "";
+  const text = await chat(
+    [
+      { role: "system", content: PLANNER_PROMPT },
+      { role: "user", content: description },
+    ],
+    PLANNER_MODEL,
+    { temperature: 0.7, max_tokens: 2000 }
+  );
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("AI returned invalid plan");
   return JSON.parse(jsonMatch[0]);

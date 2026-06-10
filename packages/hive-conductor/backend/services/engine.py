@@ -90,10 +90,21 @@ class EngineService:
         self._queue: Any = None
         self._runner: Any = None
         self._configured = False
+        self._capabilities: Any = None
 
     @property
     def is_configured(self) -> bool:
         return self._configured
+
+    @property
+    def capabilities(self) -> Any:
+        """The CapabilityRegistry backing the API. Sourced from the core Container
+        when configured, else a standalone canonical registry (stub/dev mode)."""
+        if self._capabilities is None:
+            from maistro.capabilities.bootstrap import default_capability_registry
+
+            self._capabilities = default_capability_registry()
+        return self._capabilities
 
     async def start(self, settings: Settings) -> None:
         from adapters.maistro_core import MaistroCoreBridge, StubAgentPort
@@ -106,12 +117,15 @@ class EngineService:
                 self._configured = True
             except Exception as exc:
                 import logging
+
                 logging.getLogger("hive.engine").warning(
                     "maistro-core bridge failed (%s) — falling back to stub", exc
                 )
                 self._agent_port = StubAgentPort()
         else:
             self._agent_port = StubAgentPort()
+
+        self._wire_capabilities(settings)
 
         try:
             import os
@@ -120,7 +134,8 @@ class EngineService:
             from maistro.tasks.runner import TaskRunner
 
             pm_mode = (
-                os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower() == "pm"
+                os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower()
+                == "pm"
             )
             if pm_mode:
                 from maistro.agents.pm_runner import run_pm_task
@@ -152,9 +167,41 @@ class EngineService:
                 self._pm_catalog = catalog
         except Exception as exc:
             import logging
+
             logging.getLogger("hive.engine").warning(
                 "TaskRunner failed (%s) — mission dispatch disabled", exc
             )
+
+    def _wire_capabilities(self, settings: Settings) -> None:
+        """Source the registry (Container when configured, else canonical) and
+        register host-health providers + apply activation. Never crashes startup."""
+        container = getattr(self._agent_port, "container", None)
+        if container is not None and getattr(container, "capabilities", None) is not None:
+            self._capabilities = container.capabilities
+        else:
+            from maistro.capabilities.bootstrap import default_capability_registry
+
+            self._capabilities = default_capability_registry()
+
+        try:
+            import stores
+
+            from services.capabilities_wiring import wire_capabilities
+            from services.foundation import get_foundation
+
+            try:
+                vault = get_foundation().vault
+            except Exception:
+                vault = None
+
+            wire_capabilities(
+                self._capabilities,
+                settings_model=stores.settings,
+                config=settings,
+                vault=vault,
+            )
+        except Exception as exc:
+            logger.warning("capability wiring failed (%s) — slots use baselines/SAFE_NOOP", exc)
 
     async def stop(self) -> None:
         if self._runner is not None:

@@ -6,22 +6,24 @@ import fnmatch
 from pathlib import Path
 
 # Frozen paths: Turing cannot touch these under any circumstances.
-IMMUTABLE_PATHS: frozenset[str] = frozenset([
-    "cage/",
-    "eval/",
-    ".env",
-    ".env.*",
-    "*.pem",
-    "*.key",
-    "**/secrets/**",
-    "**/credentials/**",
-    "docker-compose*.yml",
-    "Dockerfile*",
-    "Makefile",
-    "CI/",
-    ".github/",
-    ".gitlab-ci.yml",
-])
+IMMUTABLE_PATHS: frozenset[str] = frozenset(
+    [
+        "cage/",
+        "eval/",
+        ".env",
+        ".env.*",
+        "*.pem",
+        "*.key",
+        "**/secrets/**",
+        "**/credentials/**",
+        "docker-compose*.yml",
+        "Dockerfile*",
+        "Makefile",
+        "CI/",
+        ".github/",
+        ".gitlab-ci.yml",
+    ]
+)
 
 
 def is_immutable(path: str | Path) -> bool:
@@ -31,8 +33,6 @@ def is_immutable(path: str | Path) -> bool:
         if pattern.endswith("/"):
             if p.startswith(pattern) or f"/{pattern}" in f"/{p}":
                 return True
-        elif fnmatch.fnmatch(p, pattern):
-            return True
-        elif fnmatch.fnmatch(Path(p).name, pattern):
+        elif fnmatch.fnmatch(p, pattern) or fnmatch.fnmatch(Path(p).name, pattern):
             return True
     return False

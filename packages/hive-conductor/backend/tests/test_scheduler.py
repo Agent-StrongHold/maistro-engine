@@ -13,11 +13,10 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import sys
 import pathlib
+import sys
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -29,6 +28,7 @@ if str(_BACKEND) not in sys.path:
 @pytest.fixture(autouse=True)
 def _reset_singleton():
     import services.scheduler as sched
+
     prev = sched._runner
     sched._runner = None
     yield
@@ -210,8 +210,8 @@ def test_tick_iterates_enabled_schedules_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A disabled schedule must NOT fire even if cron matches."""
-    from services.scheduler import _ScheduleRunner
     import services.scheduler as sched_mod
+    from services.scheduler import _ScheduleRunner
 
     fired = []
 
@@ -254,8 +254,8 @@ def test_tick_iterates_enabled_schedules_only(
 def test_fire_schedule_with_template_id_writes_audit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.scheduler import _ScheduleRunner
     import stores
+    from services.scheduler import _ScheduleRunner
 
     # Pre-test wipe
     for k in list(stores.audit_log.keys()):
@@ -281,16 +281,15 @@ def test_fire_schedule_with_template_id_writes_audit(
         asyncio.run(r._fire_schedule("s1", stores.schedules._data["s1"]))  # type: ignore[attr-defined]
         # Audit entry written
         entries = list(stores.audit_log.values())
-        assert any(e["action"] == "schedule_fire" and e["target"] == "s1"
-                   for e in entries)
+        assert any(e["action"] == "schedule_fire" and e["target"] == "s1" for e in entries)
     finally:
         stores.schedules._data.pop("s1", None)  # type: ignore[attr-defined]
 
 
 def test_fire_schedule_no_template_id_skips_audit() -> None:
     """schedule with no mission_template_id returns before audit."""
-    from services.scheduler import _ScheduleRunner
     import stores
+    from services.scheduler import _ScheduleRunner
 
     before = len(stores.audit_log)
 
@@ -313,10 +312,8 @@ def test_fire_schedule_no_template_id_skips_audit() -> None:
         r = _ScheduleRunner()
         asyncio.run(r._fire_schedule("s2", stores.schedules._data["s2"]))  # type: ignore[attr-defined]
         # No new audit entry (no template means schedule isn't actionable)
-        after = len(stores.audit_log)
         new_for_s2 = [
-            e for e in list(stores.audit_log.values())[before:]
-            if e.get("target") == "s2"
+            e for e in list(stores.audit_log.values())[before:] if e.get("target") == "s2"
         ]
         assert new_for_s2 == []
     finally:
@@ -328,8 +325,8 @@ def test_tick_swallows_fire_exception(
 ) -> None:
     """If _fire_schedule raises, _tick logs + continues without
     crashing the whole loop."""
-    from services.scheduler import _ScheduleRunner
     import services.scheduler as sched_mod
+    from services.scheduler import _ScheduleRunner
 
     class _Sched:
         id = "s"
@@ -345,7 +342,7 @@ def test_tick_swallows_fire_exception(
     monkeypatch.setattr(_ScheduleRunner, "_fire_schedule", _boom)
 
     class _FakeStores:
-        schedules = {"s": _Sched()}
+        schedules: ClassVar = {"s": _Sched()}
 
     monkeypatch.setitem(sys.modules, "stores", _FakeStores)
 
@@ -362,8 +359,8 @@ def test_run_loop_logs_and_continues_on_tick_exception(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """run() top-level except clause catches errors and continues."""
-    from services.scheduler import _ScheduleRunner
     import services.scheduler as sched_mod
+    from services.scheduler import _ScheduleRunner
 
     calls = [0]
 
@@ -374,6 +371,7 @@ def test_run_loop_logs_and_continues_on_tick_exception(
         self._running = False  # second pass — stop
 
     monkeypatch.setattr(_ScheduleRunner, "_tick", _flaky_tick)
+
     # Speed up the loop — provide a real (no-arg) async no-op
     async def _no_sleep(_: float) -> None:
         return None

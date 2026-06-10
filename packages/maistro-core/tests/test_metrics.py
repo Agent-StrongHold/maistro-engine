@@ -50,6 +50,45 @@ def test_histogram_observe():
     assert collected[0]["sum"] == 2.55
 
 
+def test_histogram_has_inf_bucket_for_large_observations():
+    """Observations larger than the largest finite bucket must still be counted.
+
+    Prometheus requires a +Inf bucket so that the terminal bucket count equals
+    the total observation count. Without it, large observations increment the
+    sum and total but no bucket, corrupting upper-tail quantiles.
+    """
+    reg = MetricsRegistry()
+    h = reg.histogram("latency", "test")  # uses default buckets (max finite = 10.0)
+    h.observe(42.0)  # larger than every finite bucket
+    collected = h.collect()
+    assert len(collected) == 1
+    entry = collected[0]
+    assert entry["count"] == 1
+    # There must be a +Inf bucket and it must count the large observation.
+    assert "+Inf" in entry["buckets"]
+    assert entry["buckets"]["+Inf"] == 1
+
+
+def test_histogram_terminal_bucket_equals_total_count():
+    """Prometheus invariant: the +Inf (terminal) bucket count == total count.
+
+    Buckets are cumulative (le semantics), so the largest bucket must include
+    every observation regardless of magnitude.
+    """
+    reg = MetricsRegistry()
+    h = reg.histogram("latency", "test")
+    for v in (0.001, 0.05, 0.5, 2.0, 9.9, 11.0, 100.0):
+        h.observe(v)
+    entry = h.collect()[0]
+    assert entry["count"] == 7
+    # Terminal (+Inf) bucket is cumulative and must equal the total count.
+    assert entry["buckets"]["+Inf"] == entry["count"]
+    # Cumulative buckets are monotonically non-decreasing and capped at count.
+    finite_counts = [entry["buckets"][b] for b in entry["buckets"] if b != "+Inf"]
+    assert finite_counts == sorted(finite_counts)
+    assert all(c <= entry["count"] for c in finite_counts)
+
+
 def test_collect_all():
     reg = MetricsRegistry()
     c = reg.counter("requests", "total requests")

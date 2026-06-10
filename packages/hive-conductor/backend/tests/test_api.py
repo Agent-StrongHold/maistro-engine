@@ -182,9 +182,7 @@ def test_chat_complete_stub() -> None:
 def test_chat_complete_with_mock_engine() -> None:
     c = _login()
     expected_messages = [{"role": "user", "content": "Hello from mock"}]
-    mock_response = {
-        "choices": [{"message": {"role": "assistant", "content": "mock response"}}]
-    }
+    mock_response = {"choices": [{"message": {"role": "assistant", "content": "mock response"}}]}
 
     mock_engine = MagicMock()
     mock_engine.is_configured = True
@@ -259,7 +257,10 @@ def test_websocket_streams_task_events() -> None:
     mock_engine = MagicMock()
     mock_engine.iter_task_events = _fake_iter
 
-    with patch("services.engine._singleton", mock_engine), c.websocket_connect("/v1/ws/tasks/test-task-1") as ws:
+    with (
+        patch("services.engine._singleton", mock_engine),
+        c.websocket_connect("/v1/ws/tasks/test-task-1") as ws,
+    ):
         msg1 = ws.receive_json()
         assert msg1["status"] == "running"
         msg2 = ws.receive_json()
@@ -268,7 +269,9 @@ def test_websocket_streams_task_events() -> None:
 
 def test_elevate_flow() -> None:
     c = _login()
-    r = c.post("/v1/auth/elevate", json={"password": "testpass", "permissions": [], "task_id": "t-1"})
+    r = c.post(
+        "/v1/auth/elevate", json={"password": "testpass", "permissions": [], "task_id": "t-1"}
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["task_id"] == "t-1"
@@ -313,12 +316,21 @@ def test_elevation_only_activates_granted_permissions() -> None:
         r = c.put("/v1/settings", json={"temperature": 0.5})
         assert r.status_code == 403, "should be blocked without elevation"
 
-        c.post("/v1/auth/elevate", json={"password": "frankpass", "permissions": ["config.write"], "task_id": "frank-task-1"})
+        c.post(
+            "/v1/auth/elevate",
+            json={
+                "password": "frankpass",
+                "permissions": ["config.write"],
+                "task_id": "frank-task-1",
+            },
+        )
         r2 = c.put("/v1/settings", json={"temperature": 0.5})
         assert r2.status_code == 200, "should work after elevation for granted perm"
 
         r3 = c.delete("/v1/settings")
-        assert r3.status_code == 403, "should still be blocked for ungranted perm even with elevation"
+        assert r3.status_code == 403, (
+            "should still be blocked for ungranted perm even with elevation"
+        )
     finally:
         stores.users.pop("frank", None)
 
@@ -343,7 +355,14 @@ def test_elevate_rejects_unassigned_permissions() -> None:
     )
     try:
         c = _login("frank", "frankpass")
-        r = c.post("/v1/auth/elevate", json={"password": "frankpass", "permissions": ["config.delete", "agents.delete"], "task_id": "t-bad"})
+        r = c.post(
+            "/v1/auth/elevate",
+            json={
+                "password": "frankpass",
+                "permissions": ["config.delete", "agents.delete"],
+                "task_id": "t-bad",
+            },
+        )
         assert r.status_code == 403, "should reject when none of the requested perms are assigned"
     finally:
         stores.users.pop("frank", None)
@@ -370,7 +389,10 @@ def test_elevation_revoked_on_task_completion() -> None:
     try:
         c = _login("frank", "frankpass")
 
-        c.post("/v1/auth/elevate", json={"password": "frankpass", "permissions": ["config.write"], "task_id": "m-1"})
+        c.post(
+            "/v1/auth/elevate",
+            json={"password": "frankpass", "permissions": ["config.write"], "task_id": "m-1"},
+        )
         r = c.put("/v1/settings", json={"temperature": 0.5})
         assert r.status_code == 200, "should work with elevated perm"
 

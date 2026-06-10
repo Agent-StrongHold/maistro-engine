@@ -33,8 +33,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -80,26 +81,32 @@ def _build_evidence_payload(
     node_records = getattr(run_record, "node_records", None) or []
     nodes_summary = []
     for nr in node_records:
-        nodes_summary.append({
-            "node_id": str(getattr(nr, "node_id", "") or ""),
-            "kind": str(getattr(nr, "kind", "") or ""),
-            "phase": str(getattr(nr, "phase", "") or "").split(".")[-1],
-            "latency_ms": int(getattr(nr, "latency_ms", 0) or 0),
-            "tokens_in": int(getattr(nr, "tokens_in", 0) or 0),
-            "tokens_out": int(getattr(nr, "tokens_out", 0) or 0),
-            "error_code": getattr(nr, "error_code", None),
-            "error_message": getattr(nr, "error_message", None),
-        })
+        nodes_summary.append(
+            {
+                "node_id": str(getattr(nr, "node_id", "") or ""),
+                "kind": str(getattr(nr, "kind", "") or ""),
+                "phase": str(getattr(nr, "phase", "") or "").split(".")[-1],
+                "latency_ms": int(getattr(nr, "latency_ms", 0) or 0),
+                "tokens_in": int(getattr(nr, "tokens_in", 0) or 0),
+                "tokens_out": int(getattr(nr, "tokens_out", 0) or 0),
+                "error_code": getattr(nr, "error_code", None),
+                "error_message": getattr(nr, "error_message", None),
+            }
+        )
 
     feedback_summary = []
     for fo in feedback_outcomes or []:
-        if not getattr(fo, "thumb", "") or getattr(fo, "dag_run_id", "") != getattr(run_record, "run_id", ""):
+        if not getattr(fo, "thumb", "") or getattr(fo, "dag_run_id", "") != getattr(
+            run_record, "run_id", ""
+        ):
             continue
-        feedback_summary.append({
-            "thumb": fo.thumb,
-            "comment": fo.thumb_comment,
-            "node_id": fo.node_id,
-        })
+        feedback_summary.append(
+            {
+                "thumb": fo.thumb,
+                "comment": fo.thumb_comment,
+                "node_id": fo.node_id,
+            }
+        )
 
     return {
         "run_id": str(getattr(run_record, "run_id", "") or ""),
@@ -164,8 +171,7 @@ def _validate_verdict(parsed: dict[str, Any]) -> dict[str, Any]:
         proposal = None
     if isinstance(proposal, dict):
         # Strip unknown keys; keep only the contracted ones.
-        allowed = {"kind", "target_node_id", "from_value", "to_value",
-                   "expected_improvement"}
+        allowed = {"kind", "target_node_id", "from_value", "to_value", "expected_improvement"}
         proposal = {k: proposal.get(k) for k in allowed if proposal.get(k) is not None}
 
     return {
@@ -208,7 +214,7 @@ async def score_run(
             from services.graph_runner import _build_llm_call
 
             llm_call = _build_llm_call()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.warning("eval_judge_llm_unavailable: %s", exc)
             verdict = {
                 "status": "error",
@@ -225,7 +231,7 @@ async def score_run(
     ]
     try:
         raw = await llm_call(messages=messages, temperature=0.2)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("eval_judge_llm_call_failed: %s", exc)
         verdict = {
             "status": "error",
@@ -242,8 +248,7 @@ async def score_run(
     return verdict
 
 
-def _persist(run_record: Any, verdict: dict[str, Any], *,
-             now: datetime | None = None) -> None:
+def _persist(run_record: Any, verdict: dict[str, Any], *, now: datetime | None = None) -> None:
     import stores
 
     run_id = str(getattr(run_record, "run_id", "") or "")

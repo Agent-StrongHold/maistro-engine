@@ -17,8 +17,7 @@ from maistro.security.sentinel.validator import validate_and_repair
 logger = logging.getLogger("maistro.sentinel")
 
 if TYPE_CHECKING:
-    from maistro.security._types import AuditLog
-    from maistro.security._types import AuthContext, PermissionTable
+    from maistro.security._types import AuditLog, AuthContext, PermissionTable
     from maistro.security.warden.detector import Warden
 
 
@@ -119,27 +118,19 @@ class Sentinel:
                 Violation(
                     boundary="post_call",
                     rule="warden_tool_result",
-                    severity="warning" if not warden_verdict.blocked else "error",
+                    severity="error",
                     detail=f"Warden flags: {', '.join(warden_verdict.flags)}",
                 )
             )
-            if warden_verdict.blocked:
-                processed = "[Tool result blocked by Warden -- contained injection attempt]"
-            else:
-                from maistro.security.warden.flag_response import build_flagged_response
-
-                processed = build_flagged_response(
-                    processed,
-                    flags=list(warden_verdict.flags),
-                    detection_layer=_detection_layer(warden_verdict),
-                    flag_id=f"{auth.user_id}:{tool_name}:{id(result)}",
-                )
-                logger.warning(
-                    "Tool result flagged: tool=%s, user=%s, flags=%s",
-                    tool_name,
-                    auth.user_id,
-                    warden_verdict.flags,
-                )
+            # Fix #3: tool results (egress) use the SAME threshold as user input (ingress).
+            # Any flag blocks — tool results are the higher-risk boundary (injected content arrives here).
+            processed = "[Tool result blocked by Warden -- contained injection attempt]"
+            logger.warning(
+                "Tool result BLOCKED: tool=%s, user=%s, flags=%s",
+                tool_name,
+                auth.user_id,
+                warden_verdict.flags,
+            )
 
         processed, pii_matches = scan_and_redact(processed)
         if pii_matches:

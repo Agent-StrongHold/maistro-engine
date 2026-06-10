@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, integration, merge/main-into-integration, research/pm-fleet-poc]
+    branches: [main, integration, develop, merge/main-into-integration]
   pull_request:
-    branches: [main, integration, research/pm-fleet-poc]
+    branches: [main, integration, develop]
 
 permissions:
   contents: read
@@ -41,16 +41,16 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
-      - run: pytest packages/maistro-bootstrap/tests -v --tb=short
-      - run: pytest packages/maistro-core/tests -v --tb=short
+      - run: uv run pytest packages/maistro-bootstrap/tests -v --tb=short
+      - run: uv run pytest packages/maistro-core/tests -v --tb=short
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      - run: pytest packages/maistro-server/tests -v --tb=short
+      - run: uv run pytest packages/maistro-server/tests -v --tb=short
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      - run: pytest packages/maistro-canvas/tests -v --tb=short
+      - run: uv run pytest packages/maistro-canvas/tests -v --tb=short
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"

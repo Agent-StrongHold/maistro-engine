@@ -43,7 +43,7 @@ class RegisterBody(BaseModel):
     def validate_username(cls, value: str) -> str:
         name = value.strip()
         if not _USERNAME_RE.match(name):
-            msg = "Username must be 3–32 characters (letters, numbers, underscore, hyphen)."
+            msg = "Username must be 3-32 characters (letters, numbers, underscore, hyphen)."
             raise ValueError(msg)
         return name
 
@@ -198,9 +198,9 @@ def register(body: RegisterBody, response: Response) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="Username is already taken.")
 
     import stores
+    from models.schemas import HiveUser
 
     from maistro.security.passwords import hash_password
-    from models.schemas import HiveUser
 
     user_id = str(uuid4())
     password_hash = hash_password(body.password)
@@ -285,7 +285,13 @@ def elevate(body: ElevateBody, hive_session: str | None = Cookie(None)) -> dict[
     grants: dict[str, list[str]] = sess.get("elevated_grants", {})
     grants[body.task_id] = granted
     stores.sessions[hive_session] = {**sess, "elevated_grants": grants}
-    log_audit("elevate", user.username, target=body.task_id, detail={"permissions": granted}, severity="warning")
+    log_audit(
+        "elevate",
+        user.username,
+        target=body.task_id,
+        detail={"permissions": granted},
+        severity="warning",
+    )
     return {
         "ok": True,
         "task_id": body.task_id,

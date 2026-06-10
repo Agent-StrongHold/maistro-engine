@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/auth_jwt.py
-# hypothesis_version: 6.152.9
-
-[0.0, 3600, '.', 'Bearer ', 'Empty token', 'RS256', 'RS384', 'RS512', 'interactive_agent', 'jwt', 'kind', 'maistro.auth.jwt', 'name', 'on_behalf_of', 'preferred_username', 'realm_access.roles', 'service_account', 'sub']

@@ -15,8 +15,8 @@ Tests cover:
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -47,16 +47,29 @@ def _bare_snapshot(**overrides: Any) -> dict[str, Any]:
         "name": "test",
         "description": "",
         "nodes": [
-            {"id": "n-A", "role": "queen", "name": "Conductor",
-             "agent_id": None, "model": None, "strategy": "react",
-             "prompt": None, "config": {}},
-            {"id": "n-B", "role": "worker", "name": "Worker",
-             "agent_id": None, "model": None, "strategy": "react",
-             "prompt": None, "config": {}},
+            {
+                "id": "n-A",
+                "role": "queen",
+                "name": "Conductor",
+                "agent_id": None,
+                "model": None,
+                "strategy": "react",
+                "prompt": None,
+                "config": {},
+            },
+            {
+                "id": "n-B",
+                "role": "worker",
+                "name": "Worker",
+                "agent_id": None,
+                "model": None,
+                "strategy": "react",
+                "prompt": None,
+                "config": {},
+            },
         ],
         "edges": [
-            {"id": "e-1", "from_node": "n-A", "to_node": "n-B",
-             "condition": None},
+            {"id": "e-1", "from_node": "n-A", "to_node": "n-B", "condition": None},
         ],
         "entry_node": "n-A",
         "max_cycles": 10,
@@ -100,9 +113,16 @@ def test_diff_added_and_removed_node() -> None:
     old = _bare_snapshot()
     new = _bare_snapshot()
     new["nodes"].append(
-        {"id": "n-C", "role": "scout", "name": "Scout",
-         "agent_id": None, "model": None, "strategy": "react",
-         "prompt": None, "config": {}}
+        {
+            "id": "n-C",
+            "role": "scout",
+            "name": "Scout",
+            "agent_id": None,
+            "model": None,
+            "strategy": "react",
+            "prompt": None,
+            "config": {},
+        }
     )
     new["nodes"] = [n for n in new["nodes"] if n["id"] != "n-B"]
     diff = diff_dag_snapshots(old, new)
@@ -125,8 +145,7 @@ def test_diff_added_and_removed_edge() -> None:
 
     old = _bare_snapshot()
     new = _bare_snapshot()
-    new["edges"].append({"id": "e-2", "from_node": "n-A", "to_node": "n-B",
-                         "condition": None})
+    new["edges"].append({"id": "e-2", "from_node": "n-A", "to_node": "n-B", "condition": None})
     new["edges"] = [e for e in new["edges"] if e["id"] != "e-1"]
     diff = diff_dag_snapshots(old, new)
     assert "edges[e-2]" in diff
@@ -170,11 +189,9 @@ def test_lock_expires_after_edit_lock_days() -> None:
     fixed_now = datetime(2026, 5, 22, tzinfo=UTC)
     mark_edited("dag-C", ["status"], now=fixed_now)
     # 29 days later → still locked
-    assert is_locked("dag-C", "status",
-                     now=fixed_now + timedelta(days=29)) is True
+    assert is_locked("dag-C", "status", now=fixed_now + timedelta(days=29)) is True
     # 31 days later → expired
-    assert is_locked("dag-C", "status",
-                     now=fixed_now + timedelta(days=EDIT_LOCK_DAYS + 1)) is False
+    assert is_locked("dag-C", "status", now=fixed_now + timedelta(days=EDIT_LOCK_DAYS + 1)) is False
 
 
 def test_mark_edited_refreshes_ttl_on_repeat_edits() -> None:
@@ -288,9 +305,7 @@ def test_put_dag_marks_edited_fields_as_locked(authed_client: Any) -> None:
     from services.edit_lock import is_locked
 
     dag_id = _seed_dag(authed_client)
-    authed_client.put(
-        f"/v1/dags/{dag_id}", json={"max_cycles": 99, "status": "active"}
-    )
+    authed_client.put(f"/v1/dags/{dag_id}", json={"max_cycles": 99, "status": "active"})
     assert is_locked(dag_id, "max_cycles") is True
     assert is_locked(dag_id, "status") is True
     assert is_locked(dag_id, "description") is False  # untouched

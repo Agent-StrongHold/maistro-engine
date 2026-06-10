@@ -70,16 +70,22 @@ class RouterEngine:
             return self._fallback(models, providers)
 
         candidates = [
-            score_candidate(
-                model_id,
-                model_cfg,
-                provider_cfg,
-                intent,
-                routing_config,
-                usage_pct,
+            c for c in (
+                score_candidate(
+                    model_id,
+                    model_cfg,
+                    provider_cfg,
+                    intent,
+                    routing_config,
+                    usage_pct,
+                )
+                for model_id, model_cfg, provider_cfg, usage_pct in filtered
             )
-            for model_id, model_cfg, provider_cfg, usage_pct in filtered
+            if c is not None
         ]
+
+        if not candidates:
+            raise NoModelsError("No eligible models — all over quota without paygo")
 
         candidates.sort(key=lambda c: c.score, reverse=True)
         best = candidates[0]

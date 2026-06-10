@@ -19,7 +19,6 @@ from typing import Any
 import httpx
 import stores
 from fastapi import APIRouter, HTTPException, Request
-
 from services import user_credentials as cred_svc
 
 router = APIRouter(tags=["daily-report"])
@@ -57,7 +56,7 @@ def _use_secret(user_id: str, provider_id: str) -> str | None:
 
 
 async def _poll_jira(user_id: str) -> dict[str, Any]:
-    """Poll MAISTRO Jira project — same path as chat tools."""
+    """Poll Jira project — same path as chat tools."""
     pat = _use_secret(user_id, "atlassian_server_jira")
     if not pat:
         pat = _use_secret(user_id, "jira") or _use_secret(user_id, "atlassian_rovo_mcp")
@@ -69,12 +68,24 @@ async def _poll_jira(user_id: str) -> dict[str, Any]:
             "issues": [],
         }
 
+    jira_server_url = os.environ.get("JIRA_SERVER_URL", "")
+    if not jira_server_url:
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "issues": [],
+        }
+
     jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(
-                "https://jira.example.com/rest/api/2/search",
-                params={"jql": jql, "maxResults": 15, "fields": "summary,status,assignee,issuetype,updated"},
+                f"{jira_server_url}/rest/api/2/search",
+                params={
+                    "jql": jql,
+                    "maxResults": 15,
+                    "fields": "summary,status,assignee,issuetype,updated",
+                },
                 headers={"Authorization": f"Bearer {pat}", "Accept": "application/json"},
             )
             r.raise_for_status()
@@ -82,13 +93,15 @@ async def _poll_jira(user_id: str) -> dict[str, Any]:
             issues = []
             for i in data.get("issues", []):
                 f = i.get("fields", {})
-                issues.append({
-                    "key": i.get("key"),
-                    "summary": f.get("summary"),
-                    "status": (f.get("status") or {}).get("name"),
-                    "assignee": ((f.get("assignee") or {}).get("displayName")),
-                    "updated": f.get("updated"),
-                })
+                issues.append(
+                    {
+                        "key": i.get("key"),
+                        "summary": f.get("summary"),
+                        "status": (f.get("status") or {}).get("name"),
+                        "assignee": ((f.get("assignee") or {}).get("displayName")),
+                        "updated": f.get("updated"),
+                    }
+                )
             return {"status": "ok", "count": data.get("total", 0), "issues": issues, "jql": jql}
     except Exception as e:
         return {"status": "error", "detail": str(e), "issues": []}
@@ -174,7 +187,11 @@ def _research_summary(user_id: str) -> dict[str, Any]:
         container = get_container()
         outcome_store = getattr(container, "outcome_store", None)
         if outcome_store is None:
-            return {"status": "no_data", "detail": "Run a fleet pulse to generate research", "items": []}
+            return {
+                "status": "no_data",
+                "detail": "Run a fleet pulse to generate research",
+                "items": [],
+            }
         # get_experience_context returns a string; for v0 we surface the raw
         # recent outcomes if the store exposes them.
         outcomes = getattr(outcome_store, "_outcomes", [])
@@ -188,9 +205,11 @@ def _research_summary(user_id: str) -> dict[str, Any]:
                 if isinstance(ts, str):
                     ts = datetime.fromisoformat(ts)
             except Exception as _exc:
-                __import__('logging').getLogger('hive.routes.daily_report').warning(
-                    'error_swallowed file=%s line=%d: %s',
-                    'packages/hive-conductor/backend/routes/daily_report.py', 228, _exc,
+                __import__("logging").getLogger("hive.routes.daily_report").warning(
+                    "error_swallowed file=%s line=%d: %s",
+                    "packages/hive-conductor/backend/routes/daily_report.py",
+                    228,
+                    _exc,
                 )
                 continue
             if ts.tzinfo is None:
@@ -310,24 +329,29 @@ async def _jira_section_via_dag(user_id: str) -> dict[str, Any]:
             "status": "no_pat",
             "detail": "Add your Jira PAT to see updates",
             "credential_id": "atlassian_server_jira",
-            "help_url": (
-                "https://jira.example.com/secure/ViewProfile.jspa"
-                "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
-            ),
             "issues": [],
             "source": "dag:daily-status",
         }
 
     # Decide on flavor + base from which credential the store provided.
     flavor = "server"
-    base_url = "https://jira.example.com"
+    base_url = os.environ.get("JIRA_SERVER_URL", "")
+    if not base_url and not (
+        _has_credential(user_id, "jira") or _has_credential(user_id, "atlassian_rovo_mcp")
+    ):
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "issues": [],
+            "source": "dag:daily-status",
+        }
     if _has_credential(user_id, "jira") or _has_credential(user_id, "atlassian_rovo_mcp"):
         cloud_site = os.environ.get("ATLASSIAN_SITE_URL", "").strip().rstrip("/")
         if cloud_site:
             base_url = cloud_site
             flavor = "cloud"
 
-    from services.daily_status_runner import run_daily_status_dag  # noqa: PLC0415  lazy
+    from services.daily_status_runner import run_daily_status_dag
 
     return await run_daily_status_dag(
         user_id=user_id,
@@ -368,7 +392,7 @@ async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
     """
     uid = _user_id(request)
     pat = _use_secret(uid, "atlassian_server_jira")
-    base_url = "https://jira.example.com"
+    base_url = os.environ.get("JIRA_SERVER_URL", "")
     flavor = "server"
     if not pat:
         pat = _use_secret(uid, "jira") or _use_secret(uid, "atlassian_rovo_mcp")
@@ -378,6 +402,12 @@ async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
             flavor = "cloud"
         else:
             return {"status": "no_pat", "projects": []}
+    if not base_url:
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "projects": [],
+        }
 
     api_path = "/rest/api/2/project" if flavor == "server" else "/rest/api/3/project/search"
     headers = {"Authorization": f"Bearer {pat}"} if flavor == "server" else {}
@@ -407,11 +437,13 @@ async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
             name = p.get("name", "")
             if q_lower and q_lower not in key.lower() and q_lower not in name.lower():
                 continue
-            projects.append({
-                "key": key,
-                "name": name,
-                "jql_suggestion": f"project = {key} AND updated >= -7d ORDER BY updated DESC",
-            })
+            projects.append(
+                {
+                    "key": key,
+                    "name": name,
+                    "jql_suggestion": f"project = {key} AND updated >= -7d ORDER BY updated DESC",
+                }
+            )
 
         # Sort by relevance: exact key match first, then alphabetical
         projects.sort(key=lambda p: (0 if p["key"].lower() == q_lower else 1, p["key"]))

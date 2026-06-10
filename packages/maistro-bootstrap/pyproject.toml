@@ -12,6 +12,12 @@ dependencies = [
     "pydantic>=2.7",
 ]
 
+[project.optional-dependencies]
+builders = [
+    "anthropic>=0.28",
+    "textual>=0.61",
+]
+
 [project.scripts]
 maistro-install = "maistro_bootstrap.cli:run"
 

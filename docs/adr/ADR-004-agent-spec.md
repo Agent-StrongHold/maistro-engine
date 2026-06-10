@@ -1,3 +1,25 @@
+---
+id: ADR-004
+title: AgentSpec + AgentOutput envelopes
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-002
+  - maistro-engine#ADR-005
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts: [boundary]
+tests: []
+layer: Agents
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-004: AgentSpec + AgentOutput envelopes
 
 **Status:** Accepted  

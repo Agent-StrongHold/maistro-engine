@@ -1,3 +1,31 @@
+---
+id: ADR-028
+title: "Admin / User Privilege Separation — Mandatory two-tier model"
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+  - maistro-engine#ADR-024
+implements: []
+related:
+  - maistro-engine#ADR-020
+  - maistro-engine#ADR-022
+  - maistro-engine#ADR-023
+  - maistro-engine#ADR-029
+  - maistro-engine#ADR-068
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-028: Admin / User Privilege Separation — Mandatory two-tier model
 
 **Status:** Proposed
@@ -36,6 +64,14 @@ When a user needs an admin-only operation:
 2. Dashboard/push shows admin structured prompt with risk assessment
 3. Admin signs via wallet app (ADR-022, ADR-023) — same UX for "send 1000 sats" and "delete directory"
 4. Signature recorded as VC (ADR-024), operation proceeds
+
+> **Amended by ADR-068:** this flow models a *human admin* signing. ADR-068 generalises it:
+> (a) **self-elevation (sudo)** — a user clears a *within-authority* gate with their **own**
+> password/passkey, not by asking admin; (b) the **agent principal** cannot self-elevate and
+> instead sends its owning human a **scoped 2FA** request; (c) `admin`/`user` become the base
+> of a **configurable role system + approver graph** in core (retiring "Full RBAC out of
+> scope" below). Authorization (this ADR) is the *authorize* step preceding the ADR-051
+> *approve* step; both are enforced by Sentinel (Warden supplies the trust-boundary risk).
 
 Three elevation modes:
 - **Inline ask** (default) — admin signs each operation individually
@@ -103,9 +139,10 @@ class PrivilegeService:
 
 ## Out of scope
 
-- Full RBAC (roles beyond admin/user)
+- ~~Full RBAC (roles beyond admin/user)~~ — **now in scope per ADR-068**: configurable roles +
+  a policy-matrix approver graph live in core. `admin`/`user` here are the base roles.
 - Custom AgentSpec role definitions (Medley plugin territory)
-- Multi-tenant isolation (Stronghold concern)
+- Multi-tenant `tenant` isolation (Stronghold concern; `org`/`team` scope axes are core per ADR-068)
 
 ## Source references
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import re
 import json
+import re
 from typing import Any
 
 
@@ -50,7 +50,9 @@ def json_field_match(response: str, field: str, expected: Any) -> float:
         return 0.0
 
 
-def extract_json_from_response(response: str) -> dict | list | None:
+def extract_json_from_response(
+    response: str,
+) -> dict[str, Any] | list[Any] | None:
     patterns = [
         r"```json\s*(.*?)\s*```",
         r"```\s*(.*?)\s*```",
@@ -61,16 +63,23 @@ def extract_json_from_response(response: str) -> dict | list | None:
         match = re.search(pat, response, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group(1))
+                parsed: Any = json.loads(match.group(1))
             except (json.JSONDecodeError, ValueError):
                 continue
+            if isinstance(parsed, (dict, list)):
+                return parsed
     try:
-        return json.loads(response.strip())
+        loaded: Any = json.loads(response.strip())
     except (json.JSONDecodeError, ValueError):
         return None
+    if isinstance(loaded, (dict, list)):
+        return loaded
+    return None
 
 
-def function_call_match(response: str, expected_name: str, expected_params: dict | None = None) -> float:
+def function_call_match(
+    response: str, expected_name: str, expected_params: dict[str, Any] | None = None
+) -> float:
     data = extract_json_from_response(response)
     if data is None:
         return 0.0
@@ -92,24 +101,29 @@ def function_call_match(response: str, expected_name: str, expected_params: dict
     if not isinstance(actual_params, dict):
         return 0.5
 
-    score = 0.0
     total = len(expected_params)
     if total == 0:
         return 1.0
 
-    for key, expected_val in expected_params.items():
-        actual_val = actual_params.get(key)
-        if actual_val is None:
-            continue
-        if isinstance(expected_val, str) and isinstance(actual_val, str):
-            if expected_val.lower() == actual_val.lower():
-                score += 1.0
-            elif expected_val.lower() in actual_val.lower():
-                score += 0.5
-        elif actual_val == expected_val:
-            score += 1.0
-
+    score = sum(
+        _param_value_score(actual_params.get(key), expected_val)
+        for key, expected_val in expected_params.items()
+    )
     return score / total
+
+
+def _param_value_score(actual_val: Any, expected_val: Any) -> float:
+    if actual_val is None:
+        return 0.0
+    if isinstance(expected_val, str) and isinstance(actual_val, str):
+        if expected_val.lower() == actual_val.lower():
+            return 1.0
+        if expected_val.lower() in actual_val.lower():
+            return 0.5
+        return 0.0
+    if actual_val == expected_val:
+        return 1.0
+    return 0.0
 
 
 def sentence_count(response: str) -> int:

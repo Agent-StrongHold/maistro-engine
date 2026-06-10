@@ -7,8 +7,8 @@ ModelStore, JSON round-trip for JsonStore.
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from typing import Any
 
 import pytest
@@ -25,8 +25,9 @@ class _Model(BaseModel):
 
 
 class _FakePersisted:
-    def __init__(self, models: list[_Model] | None = None,
-                 raw: list[tuple[str, str]] | None = None) -> None:
+    def __init__(
+        self, models: list[_Model] | None = None, raw: list[tuple[str, str]] | None = None
+    ) -> None:
         self._models = models or []
         self._raw = raw or []
         self.put_calls: list[tuple[str, str, Any]] = []
@@ -62,7 +63,7 @@ def test_model_store_set_and_get_no_persist() -> None:
     assert len(s) == 1
     assert list(iter(s)) == ["k"]
     assert s.get("missing", "default") == "default"
-    assert "k" in s.keys()
+    assert list(s.keys()) == ["k"]
     assert any(v.id == "k" for v in s.values())
     assert any(k == "k" for k, _ in s.items())
 

@@ -10,7 +10,7 @@ from maistro.config.settings import get_settings
 
 
 def resolve_model(tier_model: str) -> tuple[str, str | None, bool]:
-    """Resolve a tier model name to (pydantic_ai_model, base_url, use_json_mode).
+    """Resolve a tier model name to (model_name, base_url, use_json_mode).
 
     Returns use_json_mode=True for Ollama models that need JSON-prompt fallback
     instead of tool-based structured output.

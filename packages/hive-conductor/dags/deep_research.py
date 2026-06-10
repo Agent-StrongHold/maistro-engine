@@ -14,7 +14,7 @@ DAGS = [
         "nodes": [
             {
                 "id": "scope",
-                "prompt": "Define 5 specific search queries that would gather comprehensive market data for: {input}. Include queries for market size, key players, trends, challenges, and opportunities. Output JSON: {\"queries\": [str]}",
+                "prompt": 'Define 5 specific search queries that would gather comprehensive market data for: {input}. Include queries for market size, key players, trends, challenges, and opportunities. Output JSON: {"queries": [str]}',
                 "model": "claude-opus-4-6",
                 "role": "planner",
             },
@@ -52,7 +52,13 @@ DAGS = [
             {"from_node": "synthesize", "to_node": "format"},
             {"from_node": "recommend", "to_node": "format"},
         ],
-        "evals": ["SourceAttribution", "ClaimFactuality", "Completeness", "Synthesis", "Actionability"],
+        "evals": [
+            "SourceAttribution",
+            "ClaimFactuality",
+            "Completeness",
+            "Synthesis",
+            "Actionability",
+        ],
     },
     {
         "id": "dr_competitive_intel",
@@ -62,7 +68,7 @@ DAGS = [
         "nodes": [
             {
                 "id": "identify",
-                "prompt": "For the market: {input}, generate 5 search queries to find real competitor information — pricing pages, feature comparisons, recent news, funding rounds, customer reviews. Output JSON: {\"queries\": [str]}",
+                "prompt": 'For the market: {input}, generate 5 search queries to find real competitor information — pricing pages, feature comparisons, recent news, funding rounds, customer reviews. Output JSON: {"queries": [str]}',
                 "model": "claude-opus-4-6",
                 "role": "planner",
             },
@@ -102,7 +108,7 @@ DAGS = [
         "nodes": [
             {
                 "id": "queries",
-                "prompt": "For the technology area: {input}, generate 6 search queries to find: emerging tools, Gartner/Forrester reports, GitHub trending repos, recent conference talks, vendor comparisons, adoption case studies. Output JSON: {\"queries\": [str]}",
+                "prompt": 'For the technology area: {input}, generate 6 search queries to find: emerging tools, Gartner/Forrester reports, GitHub trending repos, recent conference talks, vendor comparisons, adoption case studies. Output JSON: {"queries": [str]}',
                 "model": "claude-opus-4-6",
                 "role": "planner",
             },
@@ -142,7 +148,7 @@ DAGS = [
         "nodes": [
             {
                 "id": "queries",
-                "prompt": "For the regulatory area: {input}, generate 5 search queries targeting: official government announcements, legal analysis articles, compliance guides, penalty/enforcement actions, industry response. Output JSON: {\"queries\": [str]}",
+                "prompt": 'For the regulatory area: {input}, generate 5 search queries targeting: official government announcements, legal analysis articles, compliance guides, penalty/enforcement actions, industry response. Output JSON: {"queries": [str]}',
                 "model": "claude-opus-4-6",
                 "role": "planner",
             },
@@ -182,7 +188,7 @@ DAGS = [
         "nodes": [
             {
                 "id": "queries",
-                "prompt": "For the product/market: {input}, generate 5 search queries to find REAL customer feedback: product reviews, Reddit discussions, G2/Capterra reviews, Twitter complaints, support forum posts. Output JSON: {\"queries\": [str]}",
+                "prompt": 'For the product/market: {input}, generate 5 search queries to find REAL customer feedback: product reviews, Reddit discussions, G2/Capterra reviews, Twitter complaints, support forum posts. Output JSON: {"queries": [str]}',
                 "model": "claude-opus-4-6",
                 "role": "planner",
             },

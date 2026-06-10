@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -169,16 +168,20 @@ def test_blocked_warden_escalates_strikes(content):
 
 def test_locked_user_blocked_regardless():
     tracker = InMemoryStrikeTracker()
-    _run(tracker.record_violation(
-        user_id="locked-user",
-        flags=("a",),
-        boundary="user_input",
-    ))
-    _run(tracker.record_violation(
-        user_id="locked-user",
-        flags=("b",),
-        boundary="user_input",
-    ))
+    _run(
+        tracker.record_violation(
+            user_id="locked-user",
+            flags=("a",),
+            boundary="user_input",
+        )
+    )
+    _run(
+        tracker.record_violation(
+            user_id="locked-user",
+            flags=("b",),
+            boundary="user_input",
+        )
+    )
 
     gate = Gate(warden=_CleanWarden(), strike_tracker=tracker)
     auth = AuthContext(user_id="locked-user", roles=frozenset({"user"}))
@@ -189,11 +192,13 @@ def test_locked_user_blocked_regardless():
 def test_disabled_user_blocked():
     tracker = InMemoryStrikeTracker()
     for i in range(3):
-        _run(tracker.record_violation(
-            user_id="disabled-user",
-            flags=(f"f{i}",),
-            boundary="user_input",
-        ))
+        _run(
+            tracker.record_violation(
+                user_id="disabled-user",
+                flags=(f"f{i}",),
+                boundary="user_input",
+            )
+        )
 
     gate = Gate(warden=_CleanWarden(), strike_tracker=tracker)
     auth = AuthContext(user_id="disabled-user", roles=frozenset({"user"}))

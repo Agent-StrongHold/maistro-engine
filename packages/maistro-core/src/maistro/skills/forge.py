@@ -185,34 +185,9 @@ class SkillForge:
         if not learning_text:
             return {"status": "skipped", "reason": "Empty learning text"}
 
-        scan_wrapper = (
-            "---\nname: _scan\ndescription: _scan\n"
-            "parameters:\n  type: object\n  properties: {}\n"
-            f"---\n{learning_text}"
-        )
-        safe, findings = security_scan(scan_wrapper)
-        if not safe:
-            return {
-                "status": "error",
-                "error": f"Learning text rejected by security scan: {', '.join(findings)}",
-            }
-
-        from maistro.security.warden.heuristics import (  # noqa: PLC0415
-            score_instruction_density,
-        )
-
-        density = score_instruction_density(learning_text)
-        if density > 0.08:
-            logger.warning(
-                "Skill mutation blocked: high instruction density (%.2f) in learning for '%s'",
-                density,
-                skill_name,
-            )
-            return {
-                "status": "error",
-                "error": f"Learning text has suspicious instruction density ({density:.2f}). "
-                "Legitimate corrections should be factual, not instruction-heavy.",
-            }
+        learning_error = self._validate_learning_text(learning_text, skill_name)
+        if learning_error is not None:
+            return learning_error
 
         prompt = _MUTATE_PROMPT.format(
             current_content=current_content,
@@ -225,15 +200,9 @@ class SkillForge:
         new_content = re.sub(r"^```\w*\n", "", new_content)
         new_content = re.sub(r"\n```\s*$", "", new_content)
 
-        safe, findings = security_scan(new_content)
-        if not safe:
-            return {"status": "error", "error": f"Mutation rejected: {', '.join(findings)}"}
-
-        new_skill = parse_skill_file(new_content)
-        if new_skill is None:
-            return {"status": "error", "error": "Mutated content failed to parse"}
-        if new_skill.name != skill_name:
-            return {"status": "error", "error": f"Mutation changed name: {new_skill.name}"}
+        output_error = self._validate_mutation_output(new_content, skill_name)
+        if output_error is not None:
+            return output_error
 
         new_hash = hashlib.sha256(new_content.encode()).hexdigest()[:16]
 
@@ -251,6 +220,55 @@ class SkillForge:
             "old_hash": old_hash,
             "new_hash": new_hash,
         }
+
+    def _validate_learning_text(self, learning_text: str, skill_name: str) -> dict[str, Any] | None:
+        """Security-scan + instruction-density gate. Returns an error dict to
+        short-circuit ``mutate``, or ``None`` if the learning text is acceptable."""
+        scan_wrapper = (
+            "---\nname: _scan\ndescription: _scan\n"
+            "parameters:\n  type: object\n  properties: {}\n"
+            f"---\n{learning_text}"
+        )
+        safe, findings = security_scan(scan_wrapper)
+        if not safe:
+            return {
+                "status": "error",
+                "error": f"Learning text rejected by security scan: {', '.join(findings)}",
+            }
+
+        from maistro.security.warden.heuristics import (
+            score_instruction_density,
+        )
+
+        density = score_instruction_density(learning_text)
+        if density > 0.08:
+            logger.warning(
+                "Skill mutation blocked: high instruction density (%.2f) in learning for '%s'",
+                density,
+                skill_name,
+            )
+            return {
+                "status": "error",
+                "error": f"Learning text has suspicious instruction density ({density:.2f}). "
+                "Legitimate corrections should be factual, not instruction-heavy.",
+            }
+
+        return None
+
+    def _validate_mutation_output(self, new_content: str, skill_name: str) -> dict[str, Any] | None:
+        """Security-scan + parse-check the LLM mutation. Returns an error dict to
+        short-circuit ``mutate``, or ``None`` if the new content is acceptable."""
+        safe, findings = security_scan(new_content)
+        if not safe:
+            return {"status": "error", "error": f"Mutation rejected: {', '.join(findings)}"}
+
+        new_skill = parse_skill_file(new_content)
+        if new_skill is None:
+            return {"status": "error", "error": "Mutated content failed to parse"}
+        if new_skill.name != skill_name:
+            return {"status": "error", "error": f"Mutation changed name: {new_skill.name}"}
+
+        return None
 
     async def _call_llm(self, prompt: str) -> str | None:
         """Call LLM and extract text content from response."""

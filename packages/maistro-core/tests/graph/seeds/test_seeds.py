@@ -23,6 +23,42 @@ from maistro.graph.seeds import (
 )
 
 
+def _make_fake_async_client(fake_issues: dict[str, Any]) -> type:
+    """Build a drop-in ``httpx.AsyncClient`` replacement returning ``fake_issues``."""
+
+    class _Resp:
+        status_code = 200
+
+        def json(self) -> Any:
+            return fake_issues
+
+    class _Client:
+        def __init__(self, *a: Any, **kw: Any) -> None: ...
+        async def __aenter__(self) -> _Client:
+            return self
+
+        async def __aexit__(self, *a: Any) -> None: ...
+        async def get(self, *a: Any, **kw: Any) -> _Resp:
+            return _Resp()
+
+    return _Client
+
+
+def _inject_jira_credentials(dag: dict[str, Any]) -> None:
+    """Populate the jira_poll node's runtime credentials in-place."""
+    for n in dag["nodes"]:
+        if n["id"] == "jira_poll":
+            n["inputs"]["base_url"] = "https://jira.example.com"
+            n["inputs"]["pat"] = "test-pat"
+
+
+def _seed_node_resolver(node_id: str, dag_snap: dict[str, Any]) -> Any:
+    for n in dag_snap.get("nodes", []):
+        if n["id"] == node_id:
+            return get_node(n["kind"])()
+    raise KeyError(node_id)
+
+
 # --- Seed shape + identity ------------------------------------------------
 
 
@@ -80,13 +116,12 @@ def test_daily_status_seed_passes_substrate_validator() -> None:
     # fallthrough. Structural errors (no_entry, missing_node,
     # unknown_kind, edge_missing_endpoint, cycle) MUST be empty.
     structural = [
-        f for f in report.findings
-        if f.code in {"no_entry", "missing_node", "unknown_kind",
-                      "edge_missing_endpoint", "cycle"}
+        f
+        for f in report.findings
+        if f.code in {"no_entry", "missing_node", "unknown_kind", "edge_missing_endpoint", "cycle"}
     ]
     assert structural == [], (
-        f"daily-status seed has structural errors: "
-        f"{[f.message for f in structural]}"
+        f"daily-status seed has structural errors: {[f.message for f in structural]}"
     )
 
 
@@ -110,13 +145,13 @@ def test_pm_fleet_seeds_all_pass_validator() -> None:
         dag = factory()
         report = validate_dag(dag)
         structural = [
-            f for f in report.findings
-            if f.code in {"no_entry", "missing_node", "unknown_kind",
-                          "edge_missing_endpoint", "cycle"}
+            f
+            for f in report.findings
+            if f.code
+            in {"no_entry", "missing_node", "unknown_kind", "edge_missing_endpoint", "cycle"}
         ]
         assert structural == [], (
-            f"seed {factory.__name__!r} structural failures: "
-            f"{[f.message for f in structural]}"
+            f"seed {factory.__name__!r} structural failures: {[f.message for f in structural]}"
         )
 
 
@@ -166,37 +201,17 @@ async def test_daily_status_seed_walks_through_executor_with_mocked_jira(
         ]
     }
 
-    class _Resp:
-        status_code = 200
-        def json(self) -> Any: return fake_issues
-
-    class _Client:
-        def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
-        async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
-
-    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(httpx, "AsyncClient", _make_fake_async_client(fake_issues))
 
     dag = daily_status_seed()
-    # Inject runtime credentials into the jira_poll spec.
-    for n in dag["nodes"]:
-        if n["id"] == "jira_poll":
-            n["inputs"]["base_url"] = "https://jira.example.com"
-            n["inputs"]["pat"] = "test-pat"
+    _inject_jira_credentials(dag)
 
     store = InMemoryDurableRunStore()
-
-    def _resolver(node_id: str, dag_snap: dict[str, Any]):
-        for n in dag_snap.get("nodes", []):
-            if n["id"] == node_id:
-                return get_node(n["kind"])()
-        raise KeyError(node_id)
 
     result = await run_durable_dag(
         dag,
         store=store,
-        node_resolver=_resolver,
+        node_resolver=_seed_node_resolver,
         project_id="pm-proj-1",
     )
     assert result.status == RunStatus.COMPLETED, (
@@ -245,34 +260,15 @@ async def test_daily_status_seed_short_circuits_when_no_epics_match(
         ]
     }
 
-    class _Resp:
-        status_code = 200
-        def json(self) -> Any: return fake_issues
-
-    class _Client:
-        def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> "_Client": return self
-        async def __aexit__(self, *a: Any) -> None: ...
-        async def get(self, *a: Any, **kw: Any) -> _Resp: return _Resp()
-
-    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(httpx, "AsyncClient", _make_fake_async_client(fake_issues))
 
     dag = daily_status_seed()
-    for n in dag["nodes"]:
-        if n["id"] == "jira_poll":
-            n["inputs"]["base_url"] = "https://jira.example.com"
-            n["inputs"]["pat"] = "test-pat"
+    _inject_jira_credentials(dag)
 
     store = InMemoryDurableRunStore()
 
-    def _resolver(node_id: str, dag_snap: dict[str, Any]):
-        for n in dag_snap.get("nodes", []):
-            if n["id"] == node_id:
-                return get_node(n["kind"])()
-        raise KeyError(node_id)
-
     result = await run_durable_dag(
-        dag, store=store, node_resolver=_resolver, project_id="pm-proj-2"
+        dag, store=store, node_resolver=_seed_node_resolver, project_id="pm-proj-2"
     )
     assert result.status == RunStatus.COMPLETED
     by_id = {nr.node_id: nr for nr in result.node_records}

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-import time
-
 import pytest
 
+from maistro.resilience.classifier import ErrorCategory
 from maistro.resilience.fallback import (
+    FailoverReason,
     FallbackChain,
     FallbackChainConfig,
     FallbackState,
-    FailoverReason,
     ProviderEndpoint,
     _classify_to_reason,
 )
-from maistro.resilience.classifier import ErrorCategory
 
 
 def _ep(name: str, priority: int = 0) -> ProviderEndpoint:
@@ -197,7 +195,10 @@ class TestClassifyToReason:
         assert _classify_to_reason_type(ErrorCategory.PROVIDER) == FailoverReason.OVERLOAD
         assert _classify_to_reason_type(ErrorCategory.NETWORK) == FailoverReason.CONNECTION
         assert _classify_to_reason_type(ErrorCategory.TIMEOUT) == FailoverReason.TIMEOUT
-        assert _classify_to_reason_type(ErrorCategory.CONTEXT_OVERFLOW) == FailoverReason.CONTEXT_OVERFLOW
+        assert (
+            _classify_to_reason_type(ErrorCategory.CONTEXT_OVERFLOW)
+            == FailoverReason.CONTEXT_OVERFLOW
+        )
 
     def test_unknown_for_unmapped(self):
         assert _classify_to_reason_type(ErrorCategory.AUTH) == FailoverReason.UNKNOWN
@@ -205,6 +206,7 @@ class TestClassifyToReason:
 
 def _classify_to_reason_type(category: ErrorCategory) -> FailoverReason:
     from maistro.resilience.classifier import ClassifiedError
+
     ce = ClassifiedError(
         category=category,
         original=RuntimeError("test"),

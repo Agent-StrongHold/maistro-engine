@@ -10,7 +10,7 @@ import re
 import unicodedata
 
 
-def fix_content(content: str) -> tuple[str, list[str], list[str]]:
+def fix_content(content: str) -> tuple[str, list[str], list[str]]:  # noqa: C901  pre-existing: long sequence of independent repair passes
     """Attempt to repair security issues in skill/agent content.
 
     Returns:
@@ -145,23 +145,38 @@ def fix_content(content: str) -> tuple[str, list[str], list[str]]:
                 f"Content is {density:.0%} instruction-heavy — likely entirely prompt injection"
             )
 
-    body_start = False
-    meaningful_body_lines = 0
-    for line in fixed.split("\n"):
-        if line.strip() == "---" and body_start:
-            body_start = True
-            continue
-        if body_start and line.strip() and "[REMOVED:" not in line:
-            meaningful_body_lines += 1
-        if not body_start and line.strip() == "---":
-            body_start = True
-
-    if meaningful_body_lines < 2 and fixes:
+    if _count_meaningful_body_lines(fixed) < 2 and fixes:
         unfixable.append(
             "No meaningful content remaining after security fixes — skill is entirely malicious"
         )
 
     return fixed, fixes, unfixable
+
+
+def _count_meaningful_body_lines(content: str) -> int:
+    """Count meaningful body lines, i.e. lines AFTER the closing frontmatter fence.
+
+    YAML frontmatter is delimited by a pair of "---" fences; lines inside it (and
+    the fences themselves) must NOT count toward meaningful body, otherwise a
+    fully-stripped malicious skill with valid frontmatter is wrongly judged to
+    still have content. Blank lines and [REMOVED:...] markers never count.
+    """
+    seen_open_fence = False
+    in_body = False
+    count = 0
+    for line in content.split("\n"):
+        if line.strip() == "---":
+            if not seen_open_fence:
+                seen_open_fence = True
+            elif not in_body:
+                in_body = True
+            else:
+                # A "---" within the body is just content, not a fence.
+                count += 1
+            continue
+        if in_body and line.strip() and "[REMOVED:" not in line:
+            count += 1
+    return count
 
 
 def is_deeply_flawed(fixes: list[str], unfixable: list[str]) -> bool:

@@ -1,4 +1,5 @@
 """Frozen dataclasses for the browser tool's return shapes."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

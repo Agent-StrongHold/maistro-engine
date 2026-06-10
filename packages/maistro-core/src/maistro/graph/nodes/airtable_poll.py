@@ -66,9 +66,7 @@ class AirtablePollNode(BaseNode[AirtablePollIn, AirtablePollOut]):
             "sort[0][direction]": inputs.sort_direction,
         }
         if inputs.since_iso:
-            params["filterByFormula"] = (
-                f"IS_AFTER(LAST_MODIFIED_TIME(), '{inputs.since_iso}')"
-            )
+            params["filterByFormula"] = f"IS_AFTER(LAST_MODIFIED_TIME(), '{inputs.since_iso}')"
 
         async with httpx.AsyncClient(timeout=inputs.timeout_s) as client:
             resp = await client.get(

@@ -19,6 +19,33 @@ logger = logging.getLogger("maistro.events.handlers")
 _global_client: ServiceKeyClient | None = None
 
 
+class _DefaultingDict(dict):  # type: ignore[type-arg]
+    """Mapping that returns a placeholder for missing keys instead of raising.
+
+    Used with ``str.format_map`` so a message template referencing a payload
+    key that is absent does not raise ``KeyError`` (which the event bus would
+    swallow, silently dropping the action — including security escalations).
+    """
+
+    def __missing__(self, key: str) -> str:
+        logger.warning("Template references missing payload key %r; substituting placeholder", key)
+        return f"<{key}>"
+
+
+def _render_template(template: str, payload: dict[str, Any]) -> str:
+    """Render a ``str.format`` template against a payload, tolerating gaps.
+
+    Missing keys become ``<key>`` placeholders; malformed templates (bad
+    format spec / index) fall back to the raw template plus the payload so the
+    action still fires rather than being silently dropped.
+    """
+    try:
+        return template.format_map(_DefaultingDict(payload))
+    except (ValueError, IndexError, KeyError):
+        logger.warning("Malformed message template %r; falling back to raw template", template)
+        return f"{template} (payload: {payload})"
+
+
 def set_service_client(client: ServiceKeyClient | None) -> None:
     """Set the global ServiceKeyClient for all handlers to use."""
     global _global_client
@@ -69,7 +96,7 @@ async def conductor_chat_action(trigger: Trigger, event: Event) -> None:
     message_template = trigger.action_config.get("message", "")
 
     message = (
-        message_template.format(**event.payload)
+        _render_template(message_template, event.payload)
         if message_template
         else (
             f"[Trigger: {trigger.name}] Event {event.event_type} from {event.source}: "
@@ -108,7 +135,8 @@ async def coinswarm_action(trigger: Trigger, event: Event) -> None:
     params = trigger.action_config.get("params", {})
 
     resolved_params = {
-        k: (v.format(**event.payload) if isinstance(v, str) else v) for k, v in params.items()
+        k: (_render_template(v, event.payload) if isinstance(v, str) else v)
+        for k, v in params.items()
     }
 
     url = f"{base_url}{endpoint}"
@@ -158,11 +186,11 @@ async def ntfy_action(trigger: Trigger, event: Event) -> None:
     message_template = trigger.action_config.get("message", "")
     title_template = trigger.action_config.get("title", "")
     message = (
-        message_template.format(**event.payload)
+        _render_template(message_template, event.payload)
         if message_template
         else f"[{trigger.name}] {event.event_type} from {event.source}: {event.payload}"
     )
-    title = title_template.format(**event.payload) if title_template else trigger.name
+    title = _render_template(title_template, event.payload) if title_template else trigger.name
 
     headers: dict[str, str] = {"Title": title}
     priority = trigger.action_config.get("priority")

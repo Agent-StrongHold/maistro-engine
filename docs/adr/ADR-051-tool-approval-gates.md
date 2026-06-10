@@ -13,6 +13,7 @@ related:
   - maistro-engine#ADR-028
   - maistro-engine#ADR-054
   - maistro-engine#ADR-056
+  - maistro-engine#ADR-068
 supersedes: []
 blocks: []
 blocked-by: []
@@ -45,7 +46,27 @@ Three layers, all active by default:
 
 **2. Per-call escalation.** An irreversible call whose `impact_estimator` (ADR-050) output exceeds a recipe-declared threshold raises an inline gate regardless of plan-level approval. Thresholds are per-resource (dollars, recipient count, audience, tokens, etc.) — collapsed into one prompt if multiple thresholds trip in the same window.
 
+> **Scheduled / unattended irreversible actions (amended 2026-05-30).** An irreversible action
+> requires human approval **at least on its first run**. A *scheduled* (recurring/unattended)
+> irreversible action may only auto-run after its **verification has succeeded at least once** —
+> i.e. it must be proven good (first-run approved + verified) before the scheduler (ADR-046) is
+> permitted to run it without a human in the loop. First-run-approve → verify → then scheduled
+> auto-run is allowed.
+>
+> **Rollback of a multi-step (saga) flow (amended 2026-05-30).** When a multi-step flow fails
+> partway, the **default** is to run each completed step's compensator (ADR-050) in **reverse
+> order**; a compensator that itself fails bubbles back to this gate ("compensator failed; what
+> now?"), and the ADR-071 reconciler drives the rollback. A **recipe may declare per-flow
+> exceptions** — forward-recovery (retry/repair forward, for steps that genuinely cannot be
+> undone) or a custom strategy — overriding the reverse-compensation default for that flow.
+
 **3. Learned trust.** Substrate maintains a per-`(tenant, agent, tool, context-hash)` trust store. After N approvals over M days without a single denial, a pattern auto-promotes to `no further prompt`. Tenant opt-in; revocable; per-tool always-deny override always wins.
+
+> **Superseded by ADR-068 (RLPHD).** The counter-based promotion here is replaced by a
+> confidence-calibrated predictor of the human's approval policy: auto-act only when predicted
+> `p ≥ θ`, where each human decision updates both the predictor *and* the adaptive threshold θ
+> (a surprising denial raises θ; a borderline approval lowers it). Same hard limits — never
+> auto-clears `admin-elevation`/`blocked`, never bypasses the budget veto.
 
 While waiting for any approval, the agent continues on non-dependent steps from its plan DAG. Blocks only on steps that consume the pending call's output.
 
@@ -103,7 +124,8 @@ approval:
 
 - `maistro-engine:src/maistro/security/sentinel/`
 - ADR-050 reversibility taxonomy (provides `impact_estimator`).
-- ADR-028 privilege separation (orthogonal; process-level, not task-level).
+- ADR-028 privilege separation — **unified by ADR-068**: it is the *authorize* step that
+  precedes this *approve* step in one ordered evaluation (not orthogonal, as originally framed).
 
 ## Out of scope
 

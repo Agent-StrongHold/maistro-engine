@@ -8,9 +8,9 @@ Tests working memory and context retention:
 
 from __future__ import annotations
 
-import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 FACT_SETS = [
     {

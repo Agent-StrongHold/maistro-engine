@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from maistro.classifier.complexity import (
     automation_min_tier,
+    coerce_priority,
     estimate_complexity,
     infer_priority,
 )
@@ -22,7 +23,7 @@ def is_ambiguous(scores: dict[str, float]) -> bool:
     Ambiguous = 2+ intents scored > 0 AND none scored >= 3.0 (strong indicator).
     """
     above_zero = {k: v for k, v in scores.items() if v > 0}
-    if len(above_zero) < 2:  # noqa: PLR2004
+    if len(above_zero) < 2:
         return False
     max_score = max(above_zero.values())
     return max_score < LLM_FALLBACK_THRESHOLD
@@ -94,7 +95,7 @@ class ClassifierEngine:
         min_tier = task_cfg.min_tier if task_cfg else "small"
         preferred = tuple(task_cfg.preferred_strengths) if task_cfg else ("chat",)
         complexity = estimate_complexity(user_text, task_type)
-        priority = explicit_priority or infer_priority(user_text)
+        priority = coerce_priority(explicit_priority) or infer_priority(user_text)
 
         # Bump tier for complex tasks
         if complexity == "complex" and TIER_ORDER.get(min_tier, 0) < TIER_ORDER["large"]:
@@ -106,8 +107,8 @@ class ClassifierEngine:
 
         return Intent(
             task_type=task_type,
-            complexity=complexity,  # type: ignore[arg-type]
-            tier=priority,  # type: ignore[arg-type]
+            complexity=complexity,
+            tier=priority,
             min_tier=min_tier,
             preferred_strengths=preferred,
             classified_by=classified_by,
