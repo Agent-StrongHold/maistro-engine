@@ -21,7 +21,7 @@ contracts:
 tests:
   - packages/maistro-evolve/tests/test_reflect.py
   - packages/maistro-evolve/tests/test_cycle.py
-layer: Agents
+layer: Evolve
 owners:
   - '@BlakeMatthews-dev'
 ---

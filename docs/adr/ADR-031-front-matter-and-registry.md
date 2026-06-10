@@ -66,7 +66,8 @@ tests:
   - path/to/test_file.py::test_func
 
 # Classification
-layer: Foundation | Orchestration | Agents | Tools | Memory | Observability | Reliability | Governance | UserClient
+# (Evolve/Crypto/Connectivity/Ability added by ADR-098.)
+layer: Foundation | Orchestration | Agents | Tools | Memory | Observability | Reliability | Governance | UserClient | Evolve | Crypto | Connectivity | Ability
 owners:
   - '@github-handle'
 ---

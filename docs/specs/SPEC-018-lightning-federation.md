@@ -19,7 +19,7 @@ contracts:
   - behavioral
   - cross-service
 tests: []
-layer: Orchestration
+layer: Crypto
 owners:
   - '@BlakeMatthews-dev'
 history:
