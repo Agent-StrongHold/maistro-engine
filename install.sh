@@ -1,225 +1,206 @@
 #!/usr/bin/env bash
-# maistro installer — https://get.maistro.ai
-#
-# Usage:
-#   curl -fsSL https://get.maistro.ai | sh
-#   curl -fsSL https://get.maistro.ai | sh -s -- --yes
-#
-# What it does:
-#   1. Checks for Python 3.12+, git, Docker/Podman
-#   2. Installs uv if not present
-#   3. Clones maistro-engine (or uses existing checkout)
-#   4. Syncs dependencies
-#   5. Adds `maistro` to PATH
-#   6. Builds the builders dev container image
-#   7. Runs `maistro` to verify
-#
 set -euo pipefail
 
-REPO="${MAISTRO_REPO_URL:-https://github.com/BlakeMatthews-dev/maistro-engine.git}"
-INSTALL_DIR="${MAISTRO_HOME:-$HOME/.maistro}"
-BRANCH="${MAISTRO_BRANCH:-main}"
-YES=false
-SKIP_DOCKER=false
+# ─── maistro-engine installer ──────────────────────────────────────────────
+# One command: ./install.sh
+# Installs Podman (rootless) if needed, generates secure defaults, starts the engine.
+# Binds to localhost only. Generates a unique access token per deploy.
+# ───────────────────────────────────────────────────────────────────────────
 
-# ── Colors ──────────────────────────────────────────────────────────────────
+COMPOSE_FILE="docker-compose.yml"
+ENV_FILE=".env"
+BIND_HOST="127.0.0.1"
+PORT="${MAISTRO_PORT:-8000}"
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-BOLD='\033[1m'
-DIM='\033[2m'
-RESET='\033[0m'
+# ─── Colors ───────────────────────────────────────────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-info()  { printf "${CYAN}maistro:${RESET} %s\n" "$*"; }
-ok()    { printf "${GREEN}✓${RESET} %s\n" "$*"; }
-warn()  { printf "${YELLOW}!${RESET} %s\n" "$*"; }
-err()   { printf "${RED}✗${RESET} %s\n" "$*" >&2; }
+info()  { echo -e "${BLUE}[maistro]${NC} $*"; }
+ok()    { echo -e "${GREEN}[✓]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
+fail()  { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 
-# ── Args ────────────────────────────────────────────────────────────────────
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    -y|--yes) YES=true; shift ;;
-    --skip-docker) SKIP_DOCKER=true; shift ;;
-    --dir) INSTALL_DIR="$2"; shift 2 ;;
-    --branch) BRANCH="$2"; shift 2 ;;
-    -h|--help)
-      echo "Usage: curl -fsSL https://get.maistro.ai | sh -s -- [opts]"
-      echo ""
-      echo "Options:"
-      echo "  -y, --yes          Accept all defaults"
-      echo "  --dir DIR          Install directory (default: ~/.maistro)"
-      echo "  --branch BRANCH    Git branch (default: main)"
-      echo "  --skip-docker      Skip Docker checks and image build"
-      exit 0 ;;
-    *) err "Unknown option: $1"; exit 1 ;;
-  esac
-done
-
-# ── Step 1: Check prerequisites ─────────────────────────────────────────────
-
-info "Checking prerequisites..."
-
-check_cmd() {
-  if command -v "$1" &>/dev/null; then
-    ok "$1 found"
-    return 0
-  else
-    return 1
-  fi
+# ─── Detect OS ────────────────────────────────────────────────────────────
+detect_os() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v apt-get &>/dev/null; then echo "debian"
+        elif command -v dnf &>/dev/null; then echo "fedora"
+        elif command -v pacman &>/dev/null; then echo "arch"
+        else echo "linux-unknown"; fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then echo "macos"
+    else echo "unknown"; fi
 }
 
-# Python 3.12+
-if check_cmd python3; then
-  PY_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-  PY_MAJOR=$(echo "$PY_VERSION" | cut -d. -f1)
-  PY_MINOR=$(echo "$PY_VERSION" | cut -d. -f2)
-  if [[ "$PY_MAJOR" -lt 3 ]] || [[ "$PY_MAJOR" -eq 3 && "$PY_MINOR" -lt 12 ]]; then
-    err "Python 3.12+ required, found $PY_VERSION"
-    exit 1
-  fi
-  ok "Python $PY_VERSION"
-else
-  err "Python 3.12+ not found. Install it: https://python.org/downloads"
-  exit 1
-fi
+# ─── Install Podman ───────────────────────────────────────────────────────
+install_podman() {
+    local os="$1"
+    info "Installing Podman (rootless container runtime)..."
+    case "$os" in
+        debian)
+            sudo apt-get update -qq && sudo apt-get install -y -qq podman >/dev/null 2>&1
+            ;;
+        fedora)
+            sudo dnf install -y -q podman >/dev/null 2>&1
+            ;;
+        arch)
+            sudo pacman -Sy --noconfirm podman >/dev/null 2>&1
+            ;;
+        macos)
+            if command -v brew &>/dev/null; then
+                brew install podman >/dev/null 2>&1
+                podman machine init --now 2>/dev/null || true
+            else
+                fail "Homebrew not found. Install Podman manually: https://podman.io/docs/installation"
+            fi
+            ;;
+        *)
+            fail "Cannot auto-install Podman on this OS. Install manually: https://podman.io/docs/installation"
+            ;;
+    esac
+    ok "Podman installed"
+}
 
-# git
-if ! check_cmd git; then
-  err "git not found. Install it first."
-  exit 1
-fi
-
-# Docker or Podman
-if [[ "$SKIP_DOCKER" == "false" ]]; then
-  if check_cmd docker; then
-    if docker info &>/dev/null; then
-      ok "D daemon running"
+# ─── Check / install container runtime ────────────────────────────────────
+ensure_runtime() {
+    if command -v podman &>/dev/null; then
+        ok "Podman found: $(podman --version)"
+        RUNTIME="podman"
+    elif command -v docker &>/dev/null; then
+        ok "Docker found (Podman preferred but Docker works)"
+        RUNTIME="docker"
     else
-      warn "Docker installed but daemon not running. Start it first."
+        local os
+        os=$(detect_os)
+        install_podman "$os"
+        RUNTIME="podman"
     fi
-  elif check_cmd podman; then
-    ok "podman found (will use Podman)"
-  else
-    warn "Neither Docker nor Podman found."
-    warn "Install Docker: https://docs.docker.com/get-docker/"
-    warn "maistro builders requires a container runtime for isolated sessions."
-    if [[ "$YES" == "false" ]]; then
-      read -rp "Continue without container runtime? [y/N] " REPLY
-      [[ "$REPLY" != "y" && "$REPLY" != "Y" ]] && exit 1
+
+    # Verify compose support
+    if ! $RUNTIME compose version &>/dev/null 2>&1; then
+        if command -v podman-compose &>/dev/null; then
+            COMPOSE_CMD="podman-compose"
+        elif command -v docker-compose &>/dev/null; then
+            COMPOSE_CMD="docker-compose"
+        else
+            info "Installing podman-compose..."
+            pip3 install --quiet podman-compose 2>/dev/null || pip install --quiet podman-compose 2>/dev/null
+            COMPOSE_CMD="podman-compose"
+        fi
+    else
+        COMPOSE_CMD="$RUNTIME compose"
     fi
-  fi
-fi
+    ok "Compose: $COMPOSE_CMD"
+}
 
-# ── Step 2: Install uv ──────────────────────────────────────────────────────
+# ─── Generate secure defaults ─────────────────────────────────────────────
+generate_env() {
+    if [[ -f "$ENV_FILE" ]]; then
+        warn ".env exists — preserving. Delete it to regenerate."
+        return
+    fi
 
-if check_cmd uv; then
-  ok "uv $(uv --version 2>/dev/null | head -1)"
-else
-  info "Installing uv (Python package manager)..."
-  curl -fsSL https://astral.sh/uv/install.sh | sh
-  export PATH="$HOME/.local/bin:$PATH"
-  ok "uv installed"
-fi
+    local token
+    token=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))" 2>/dev/null \
+         || openssl rand -base64 32 | tr -d '/+=' | head -c 43)
 
-# ── Step 3: Clone or use local checkout ──────────────────────────────────────
+    local db_pass
+    db_pass=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))" 2>/dev/null \
+           || openssl rand -base64 16 | tr -d '/+=' | head -c 22)
 
-# If running from inside the repo (detected via pyproject.toml with maistro-workspace),
-# use this directory directly.
-if [[ -z "${MAISTRO_HOME:-}" ]]; then
-  SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
-  if [[ -f "$SELF_DIR/pyproject.toml" ]] && grep -q "maistro-workspace" "$SELF_DIR/pyproject.toml" 2>/dev/null; then
-    INSTALL_DIR="$SELF_DIR"
-    info "Using local checkout at $INSTALL_DIR"
-  elif [[ -d "$HOME/.maistro" && -d "$HOME/.maistro/.git" ]]; then
-    INSTALL_DIR="$HOME/.maistro"
-  else
-    INSTALL_DIR="$HOME/.maistro"
-  fi
-fi
+    cat > "$ENV_FILE" <<EOF
+# Generated by install.sh — do NOT commit this file.
+# Regenerate: rm .env && ./install.sh
 
-if [[ -d "$INSTALL_DIR" && -d "$INSTALL_DIR/.git" ]]; then
-  info "Updating existing installation at $INSTALL_DIR..."
-  git -C "$INSTALL_DIR" pull --ff-only 2>/dev/null || {
-    warn "Could not fast-forward. Trying rebase..."
-    git -C "$INSTALL_DIR" pull --rebase --autostash 2>/dev/null || {
-      warn "Could not update. Using existing checkout."
-    }
-  }
-else
-  info "Cloning maistro-engine to $INSTALL_DIR..."
-  git clone --depth 1 --branch "$BRANCH" "$REPO" "$INSTALL_DIR"
-  ok "Cloned"
-fi
+# ─── Security ───────────────────────────────────────────
+# Access token required for all API/UI access.
+MAISTRO_ACCESS_TOKEN=${token}
 
-# ── Step 4: Install dependencies ────────────────────────────────────────────
+# Bind to localhost only. Set to 0.0.0.0 ONLY if you understand the risk.
+MAISTRO_BIND_HOST=${BIND_HOST}
+MAISTRO_PORT=${PORT}
 
-info "Installing dependencies..."
-cd "$INSTALL_DIR"
-uv sync --all-extras
-ok "Dependencies installed"
+# ─── Database ───────────────────────────────────────────
+POSTGRES_PASSWORD=${db_pass}
+DATABASE_URL=postgresql://maistro:${db_pass}@db:5432/maistro
 
-# ── Step 5: Add to PATH ─────────────────────────────────────────────────────
+# ─── LLM (configure at least one) ──────────────────────
+# LITELLM_API_BASE=https://your-litellm-or-openai-compatible/v1
+# LITELLM_API_KEY=sk-...
+# CHAT_DEFAULT_MODEL=gpt-4o
 
-SHELL_RC=""
-if [[ -n "${ZSH_VERSION:-}" ]]; then
-  SHELL_RC="$HOME/.zshrc"
-elif [[ -n "${BASH_VERSION:-}" ]]; then
-  SHELL_RC="$HOME/.bashrc"
-fi
+# ─── Evolve (optional) ─────────────────────────────────
+BENCHMARK_FIDELITY=proxy
+EOF
 
-MAISTRO_BIN="$INSTALL_DIR/.venv/bin"
+    chmod 600 "$ENV_FILE"
+    ok "Generated .env with unique access token"
+}
 
-if [[ -n "$SHELL_RC" ]]; then
-  if ! grep -q "maistro" "$SHELL_RC" 2>/dev/null; then
-    echo "" >> "$SHELL_RC"
-    echo "# maistro CLI" >> "$SHELL_RC"
-    echo "export PATH=\"$MAISTRO_BIN:\$PATH\"" >> "$SHELL_RC"
-    ok "Added to $SHELL_RC"
-  else
-    ok "Already in $SHELL_RC"
-  fi
-fi
+# ─── Start ────────────────────────────────────────────────────────────────
+start_engine() {
+    info "Starting maistro-engine..."
+    $COMPOSE_CMD -f "$COMPOSE_FILE" up -d --build 2>&1 | tail -5
 
-export PATH="$MAISTRO_BIN:$PATH"
+    # Wait for health
+    info "Waiting for engine to be healthy..."
+    local attempts=0
+    while ! curl -sf "http://${BIND_HOST}:${PORT}/health" >/dev/null 2>&1; do
+        attempts=$((attempts + 1))
+        if [[ $attempts -gt 30 ]]; then
+            fail "Engine failed to start. Check: $COMPOSE_CMD logs maistro-engine"
+        fi
+        sleep 2
+    done
+    ok "Engine healthy"
+}
 
-# ── Step 6: Build dev container image ───────────────────────────────────────
+# ─── Smoke test ───────────────────────────────────────────────────────────
+smoke_test() {
+    local token
+    token=$(grep MAISTRO_ACCESS_TOKEN "$ENV_FILE" | cut -d= -f2)
 
-if [[ "$SKIP_DOCKER" == "false" ]]; then
-  if command -v docker &>/dev/null && docker info &>/dev/null; then
-    info "Building builders dev container image..."
-    docker build -f "$INSTALL_DIR/Dockerfile.builders" -t maistro-builders:latest "$INSTALL_DIR" 2>/dev/null && {
-      ok "Dev container image built"
-    } || {
-      warn "Image build failed. Run manually: docker build -f Dockerfile.builders -t maistro-builders:latest ."
-    }
-  fi
-fi
+    local status
+    status=$(curl -sf -H "Authorization: Bearer $token" "http://${BIND_HOST}:${PORT}/v1/status" 2>/dev/null | python3 -c "import sys,json;print(json.load(sys.stdin).get('status',''))" 2>/dev/null || echo "")
 
-# ── Step 7: Verify ──────────────────────────────────────────────────────────
+    if [[ "$status" == "ok" ]]; then
+        ok "Smoke test passed"
+    else
+        warn "Smoke test inconclusive (engine may still be initializing)"
+    fi
+}
 
-info "Verifying..."
-if command -v maistro &>/dev/null; then
-  MAISTRO_VER=$(maistro --help 2>&1 | head -1 || echo "ok")
-  ok "maistro CLI ready"
-else
-  "$MAISTRO_BIN/maistro" --help &>/dev/null && ok "maistro CLI ready"
-fi
+# ─── Main ─────────────────────────────────────────────────────────────────
+main() {
+    echo ""
+    echo -e "${BLUE}┌────────────────────────────────────────────┐${NC}"
+    echo -e "${BLUE}│  maistro-engine installer                  │${NC}"
+    echo -e "${BLUE}│  Security-first agent runtime              │${NC}"
+    echo -e "${BLUE}└────────────────────────────────────────────┘${NC}"
+    echo ""
 
-# ── Done ────────────────────────────────────────────────────────────────────
+    ensure_runtime
+    generate_env
+    start_engine
+    smoke_test
 
-echo ""
-printf "${BOLD}${CYAN}  maistro is ready.${RESET}\n"
-echo ""
-echo "  Next steps:"
-echo ""
-echo "    source $SHELL_RC    # reload your shell"
-echo "    maistro builders    # start coding"
-echo ""
-if [[ "$SKIP_DOCKER" == "false" ]]; then
-  echo "  For LLM access, you'll also need a LiteLLM proxy running."
-  echo "  See: https://docs.litellm.ai/docs/proxy/quick_start"
-  echo ""
-fi
+    local token
+    token=$(grep MAISTRO_ACCESS_TOKEN "$ENV_FILE" | cut -d= -f2)
+
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  maistro-engine is running${NC}"
+    echo ""
+    echo -e "  URL:   ${BLUE}http://${BIND_HOST}:${PORT}${NC}"
+    echo -e "  Token: ${YELLOW}${token}${NC}"
+    echo ""
+    echo -e "  ${YELLOW}⚠  Bound to localhost only.${NC}"
+    echo -e "  To expose: set MAISTRO_BIND_HOST=0.0.0.0 in .env"
+    echo -e "  (only after reading docs/SECURITY.md)"
+    echo ""
+    echo -e "  Logs:  $COMPOSE_CMD logs -f maistro-engine"
+    echo -e "  Stop:  $COMPOSE_CMD down"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+main "$@"
