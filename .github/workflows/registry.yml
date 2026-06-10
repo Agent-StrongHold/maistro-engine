@@ -1,8 +1,8 @@
 name: Registry CI
 
 # Validate ADR/spec front-matter per engine#ADR-031.
-# Warn-only during the rollout window (until 2026-06-07);
-# flip to --strict (hard fail on warnings) after day 30.
+# Strict (hard fail on warnings) since 2026-06-10 — the warn-only
+# rollout window (ADR-031 §6, day 30) ended 2026-06-07.
 
 on:
   pull_request:
@@ -48,5 +48,5 @@ jobs:
             -p no:cacheprovider \
             -v
 
-      - name: Validate ADR/spec front-matter (warn-only window)
-        run: python -m maistro_registry.cli walk .
+      - name: Validate ADR/spec front-matter (strict)
+        run: python -m maistro_registry.cli walk . --strict

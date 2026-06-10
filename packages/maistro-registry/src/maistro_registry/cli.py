@@ -48,6 +48,11 @@ def _walk(root: Path) -> Iterable[Path]:
             # ADR-033-templates-and-copier-workflow.md.
             if p.name.endswith("-template.md"):
                 continue
+            # Skip index/readme docs: they are navigation aids, not registry
+            # records (the inventory is derived per ADR-031 §5), so they carry
+            # no front-matter by design.
+            if p.name in ("README.md", "ADR-INDEX.md"):
+                continue
             if p.suffix == ".md" and p.is_file() and p not in seen:
                 seen.add(p)
                 yield p
@@ -224,6 +229,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_lint.add_argument("root", nargs="?", default=".", help="repo root (default: cwd)")
     p_lint.set_defaults(func=cmd_lint)
+
+    # Accept --strict/--quiet after the subcommand too (as the module docstring
+    # documents). default=SUPPRESS keeps a value parsed before the subcommand
+    # from being clobbered back to the subparser default.
+    for p_sub in (p_val, p_walk, p_lint):
+        p_sub.add_argument(
+            "--strict",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="treat warnings as errors (post-rollout)",
+        )
+        p_sub.add_argument(
+            "--quiet",
+            action="store_true",
+            default=argparse.SUPPRESS,
+            help="only print failures",
+        )
 
     p_gen = sub.add_parser(
         "generate",
