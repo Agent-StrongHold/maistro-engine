@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from maistro.sandbox.policy import IsolationTier, WorkloadPolicy, _TIER_ORDER, tier_satisfies
+from maistro.sandbox.policy import _TIER_ORDER, IsolationTier, WorkloadPolicy, tier_satisfies
 from maistro.sandbox.protocol import SandboxConfig, SandboxProtocol
 
 logger = logging.getLogger("maistro.sandbox.selector")
@@ -51,7 +51,7 @@ class SandboxSelector:
             if tier_satisfies(tier, policy.min_tier):
                 return tier, self._backends[tier]
 
-        available = self.available_tiers or ["none"]
+        available = ", ".join(self.available_tiers) or "none"
         raise NoSuitableBackendError(
             f"Workload requires min_tier={policy.min_tier!r} ({policy.reason}). "
             f"Available: {available}. No backend qualifies — execution refused."
