@@ -179,16 +179,15 @@ def test_chat_complete_stub() -> None:
     assert body["choices"][0]["message"]["role"] == "assistant"
 
 
-def test_chat_complete_with_mock_engine() -> None:
+def test_chat_complete_with_mock_llm_port() -> None:
     c = _login()
     expected_messages = [{"role": "user", "content": "Hello from mock"}]
     mock_response = {"choices": [{"message": {"role": "assistant", "content": "mock response"}}]}
 
-    mock_engine = MagicMock()
-    mock_engine.is_configured = True
-    mock_engine.route_request = AsyncMock(return_value=mock_response)
+    mock_llm = MagicMock()
+    mock_llm.complete = AsyncMock(return_value=mock_response)
 
-    with patch("services.engine._singleton", mock_engine):
+    with patch("services.chat_completion.build_llm_port", return_value=mock_llm):
         r = c.post(
             "/v1/chat/complete",
             json={"messages": expected_messages},
@@ -196,7 +195,11 @@ def test_chat_complete_with_mock_engine() -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["choices"][0]["message"]["content"] == "mock response"
-    mock_engine.route_request.assert_called_once_with(expected_messages)
+    mock_llm.complete.assert_called_once()
+    sent = mock_llm.complete.call_args.args[0]
+    # The user message is forwarded intact (a PM system prompt is prepended).
+    assert expected_messages[0] in sent.messages
+    assert sent.messages[0]["role"] == "system"
 
 
 def test_mission_create_dispatches_task() -> None:

@@ -14,7 +14,7 @@ console = Console()
 
 @app.command("server")
 def launch_server(
-    host: str = "0.0.0.0",
+    host: str = "0.0.0.0",  # nosec B104 — intentional default for the self-hosted server CLI; user-overridable flag
     port: int = 8000,
     reload: bool = False,
 ) -> None:
