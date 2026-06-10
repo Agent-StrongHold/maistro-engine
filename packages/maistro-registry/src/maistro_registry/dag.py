@@ -17,12 +17,43 @@ cycles of length 1.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from maistro_registry.schema import FrontMatter
+from maistro_registry.validator import ValidationResult
 
 Relationship = Literal["supersedes", "blocks"]
 _VALID_RELATIONSHIPS: frozenset[Relationship] = frozenset({"supersedes", "blocks"})
+
+
+@dataclass(frozen=True)
+class DuplicateId:
+    id: str
+    paths: tuple[Path, ...]
+
+    def render(self) -> str:
+        paths = ", ".join(str(p) for p in self.paths)
+        return f"duplicate id {self.id}: {paths}"
+
+
+def find_duplicate_ids(results: list[ValidationResult]) -> list[DuplicateId]:
+    """Return ids claimed by more than one file's front-matter.
+
+    Each `id:` (e.g. `SPEC-184`) must be globally unique across the walked
+    tree — collisions make `<repo>#<id>` cross-references ambiguous.
+    """
+    by_id: dict[str, list[Path]] = {}
+    for r in results:
+        if r.front_matter is None:
+            continue
+        by_id.setdefault(r.front_matter.id, []).append(r.path)
+
+    return [
+        DuplicateId(id=item_id, paths=tuple(paths))
+        for item_id, paths in sorted(by_id.items())
+        if len(paths) > 1
+    ]
 
 
 @dataclass(frozen=True)

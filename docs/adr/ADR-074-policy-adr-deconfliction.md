@@ -77,7 +77,7 @@ A candidate policy decision is compared against authorities in **strict order** 
    contradicting precedent triggers precedent reconciliation; the newest may supersede old precedent
    **with recorded rationale** — this is how the learned policy legitimately evolves.
 
-The comparison engine that performs this walk is specified in **SPEC-184** (it requires ADRs + Specs
+The comparison engine that performs this walk is specified in **SPEC-206** (it requires ADRs + Specs
 to carry machine-checkable invariants per ADR-031/032, and the prior-policy store to be queryable).
 
 ### Three outcomes (admin adjudicates direction-of-correction)
@@ -112,7 +112,7 @@ declared intent; an exception is a tracked, expiring waiver.
       a signed VC.
 - [ ] A drift against a **safety-critical** ADR routes to security review with default-revert; it
       cannot be amended away by a single admin without the security path.
-- [ ] The conformance walk follows SPEC-184 precedence (ADRs → Specs → prior policy), stopping at the
+- [ ] The conformance walk follows SPEC-206 precedence (ADRs → Specs → prior policy), stopping at the
       first conflict.
 - [ ] An "amend + reconcile" outcome opens a PR to the authority **and** lists the N artifacts to
       update (no half-reconciled state).
@@ -122,11 +122,11 @@ declared intent; an exception is a tracked, expiring waiver.
 - Closes the silent-drift hole in ADR-073/068/070.
 - Makes the ADRs and the learning engine a self-correcting pair — the system builds toward the team's
   *actual* intent.
-- Requires SPEC-184 (the comparison engine) and machine-checkable invariants on ADRs/Specs
+- Requires SPEC-206 (the comparison engine) and machine-checkable invariants on ADRs/Specs
   (ADR-031/032 evolve to carry them).
 
 ## Out of scope
 
 - The model that *generates* learned changes (RLPHD predictor — ADR-068 follow-up SPEC).
 - The exact "safety-critical" designation mechanism (a front-matter flag on ADRs — small follow-up).
-- The comparison-engine internals — **SPEC-184**.
+- The comparison-engine internals — **SPEC-206**.
