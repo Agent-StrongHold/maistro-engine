@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
-import sys
 import time
 from uuid import uuid4
 
@@ -28,7 +27,9 @@ class FakeSandboxBackend:
         self._instances[sid] = config
         return SandboxInstance(id=sid, backend="fake", isolation_tier="fake")
 
-    async def exec(self, instance: SandboxInstance, command: list[str], *, timeout_s: int = 120) -> ExecResult:
+    async def exec(
+        self, instance: SandboxInstance, command: list[str], *, timeout_s: int = 120
+    ) -> ExecResult:
         start = time.monotonic()
         try:
             r = await asyncio.to_thread(
@@ -41,14 +42,22 @@ class FakeSandboxBackend:
                 duration_ms=int((time.monotonic() - start) * 1000),
             )
         except subprocess.TimeoutExpired:
-            return ExecResult(exit_code=124, stdout="", stderr="timeout", duration_ms=timeout_s * 1000, timed_out=True)
+            return ExecResult(
+                exit_code=124,
+                stdout="",
+                stderr="timeout",
+                duration_ms=timeout_s * 1000,
+                timed_out=True,
+            )
 
     async def write_file(self, instance: SandboxInstance, path: str, content: bytes) -> None:
         import pathlib
+
         pathlib.Path(path).write_bytes(content)
 
     async def read_file(self, instance: SandboxInstance, path: str) -> bytes:
         import pathlib
+
         return pathlib.Path(path).read_bytes()
 
     async def destroy(self, instance: SandboxInstance) -> None:
