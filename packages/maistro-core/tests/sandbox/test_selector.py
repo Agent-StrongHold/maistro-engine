@@ -2,16 +2,15 @@
 
 import pytest
 
+from maistro.sandbox.backends.fake import FakeSandboxBackend
 from maistro.sandbox.policy import (
     BENCHMARK_EVAL,
     DEV_ONLY,
     TRUSTED_TOOL,
     UNTRUSTED_CODE,
-    WorkloadPolicy,
     tier_satisfies,
 )
 from maistro.sandbox.selector import NoSuitableBackendError, SandboxSelector
-from maistro.sandbox.backends.fake import FakeSandboxBackend
 
 
 class TestTierSatisfies:
@@ -61,7 +60,7 @@ class TestSelectorSelection:
     def test_fake_backend_accepts_dev_only(self):
         sel = SandboxSelector()
         sel.register("fake", FakeSandboxBackend())
-        tier, backend = sel.select(DEV_ONLY)
+        tier, _ = sel.select(DEV_ONLY)
         assert tier == "fake"
 
     def test_vm_backend_accepts_untrusted_code(self):
