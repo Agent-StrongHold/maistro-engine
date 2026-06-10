@@ -77,17 +77,6 @@ class HttpOpenAIProtocolLLM:
         headers = {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            if self._variant in ("auto", "responses") and not req.tools:
-                r = await client.post(
-                    f"{self._base}/responses",
-                    headers=headers,
-                    json={"model": model, "input": req.messages},
-                )
-                if r.is_success:
-                    return _normalize_to_chat_completions(r.json())
-                if self._variant == "responses":
-                    r.raise_for_status()
-
             payload: dict[str, Any] = {
                 "model": model,
                 "messages": req.messages,
@@ -101,3 +90,55 @@ class HttpOpenAIProtocolLLM:
             r2 = await client.post(f"{self._base}/chat/completions", headers=headers, json=payload)
             r2.raise_for_status()
             return r2.json()
+
+    async def stream_complete(self, req: "ChatCompletionRequest"):
+        """Stream tokens from the LLM. Yields dicts: {type:'token',content} or {type:'tool_calls',calls:[...]}."""
+        import json as _json
+        model = req.model or self._model
+        headers = {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
+        payload: dict[str, Any] = {
+            "model": model, "messages": req.messages, "temperature": req.temperature, "stream": True,
+        }
+        if req.max_tokens is not None:
+            payload["max_tokens"] = req.max_tokens
+        if req.tools:
+            payload["tools"] = req.tools
+
+        tool_calls: dict[int, dict[str, Any]] = {}  # index → {id, name, arguments}
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("POST", f"{self._base}/chat/completions", headers=headers, json=payload) as resp:
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = _json.loads(data)
+                        delta = chunk.get("choices", [{}])[0].get("delta", {})
+
+                        # Content tokens
+                        if delta.get("content"):
+                            yield {"type": "token", "content": delta["content"]}
+
+                        # Tool call accumulation
+                        if delta.get("tool_calls"):
+                            for tc_delta in delta["tool_calls"]:
+                                idx = tc_delta.get("index", 0)
+                                if idx not in tool_calls:
+                                    tool_calls[idx] = {"id": tc_delta.get("id", ""), "name": "", "arguments": ""}
+                                if tc_delta.get("id"):
+                                    tool_calls[idx]["id"] = tc_delta["id"]
+                                fn = tc_delta.get("function", {})
+                                if fn.get("name"):
+                                    tool_calls[idx]["name"] = fn["name"]
+                                if fn.get("arguments"):
+                                    tool_calls[idx]["arguments"] += fn["arguments"]
+                    except _json.JSONDecodeError:
+                        continue
+
+        # After stream ends, yield accumulated tool calls if any
+        if tool_calls:
+            calls = [{"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": tc["arguments"]}} for tc in sorted(tool_calls.values(), key=lambda x: x.get("id", ""))]
+            yield {"type": "tool_calls", "calls": calls}

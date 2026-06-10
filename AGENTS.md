@@ -4,6 +4,38 @@
 
 Shared Python runtime and monorepo substrate for AI agent platforms: orchestrator, agents, memory, security, skills, tools, and related packages. Not an end-user product — downstream products (Conductor, Stronghold, Canvas) consume this repo. See [README.md](README.md) and [docs/adr/](docs/adr/) for governance and ADRs.
 
+## Downstream Flow (MANDATORY)
+
+This is the **source of truth** for domain-agnostic features. Changes flow downstream:
+
+```
+maistro-engine (this repo)       ← ALL domain-agnostic code lives here
+       ↓ merge
+fantasia-engine (Disney fork)    ← adds Disney-specific values only
+       ↓ sync
+JFC deploy repo                  ← Launch platform wrapper only
+```
+
+### What belongs HERE (not in forks/deploy repos):
+- Profile tools, memory tools, tool scoping
+- UI pages (Inner Temple, DeckBuilder, ToolsLab, Chat, Dashboard)
+- pg_store.py and any persistence helper
+- Chat greeting, model curation, system prompt logic
+- Streaming, tool execution, completion endpoints
+- All schemas, models, shared services
+- Test infrastructure
+
+### What does NOT belong here:
+- Disney-specific URLs/credentials/project keys
+- Platform-specific env var checks (STUDIOSHARE_*, etc.)
+- Deployment infrastructure (Dockerfiles, CI pipelines)
+- Static portal HTML
+
+### Before committing: always run
+```bash
+uv run pytest
+```
+
 ## Stack
 
 - Python **3.12+** (strict typing with mypy)

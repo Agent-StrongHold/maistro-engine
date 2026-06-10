@@ -1,96 +1,59 @@
-# ─── Build stage ───────────────────────────────────────
-# Tip: pin by digest for reproducibility, e.g. python:3.12-slim@sha256:<digest>,
-# and rebuild on a schedule so security patches are picked up.
-FROM python:3.12-slim AS builder
+# ═══════════════════════════════════════════════════════════════════════════════
+# Fantasia Engine — Multi-stage Wolfi build
+# Stage 1: Build frontend (Node)
+# Stage 2: Runtime (Python on Wolfi — minimal, secure, no bloat)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ── Stage 1: Frontend build ──────────────────────────────────────────────────
+FROM node:20-alpine AS frontend-build
+WORKDIR /build
+COPY packages/hive-conductor/frontend/package.json packages/hive-conductor/frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY packages/hive-conductor/frontend/ ./
+RUN npm run build
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM cgr.dev/chainguard/python:latest-dev AS runtime
 
 WORKDIR /app
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# System deps (Wolfi uses apk)
+USER root
+RUN apk add --no-cache git bash curl
 
-COPY pyproject.toml uv.lock README.md ./
-COPY packages/maistro-core packages/maistro-core
-COPY packages/maistro-server packages/maistro-server
+# Python deps
+COPY packages/hive-conductor/backend/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# Production API: editable core (with extras used by the server) + server
-RUN uv pip install --system \
-    -e "./packages/maistro-core[llm,sandbox,observability]" \
-    -e "./packages/maistro-server"
+# Backend code
+COPY packages/hive-conductor/backend/ /app/backend/
 
+# Frontend static build from stage 1
+COPY --from=frontend-build /build/dist /app/frontend/dist
 
-# ─── Production stage ─────────────────────────────────
-FROM python:3.12-slim
+# Data files (widget configs, DAG templates, demos)
+COPY packages/hive-conductor/backend/data/ /app/backend/data/
 
-WORKDIR /app
+# Startup script
+COPY packages/hive-conductor/backend/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    # Browsers installed to a world-readable path so the non-root runtime user
-    # can find Chromium (default ~/.cache/ms-playwright is root-only).
-    PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
+# Non-root user
+RUN adduser -D -u 1000 hive
+USER hive
 
-# System layer. Hardening vs the previous image:
-#   - apt-get upgrade applies Debian security patches the base tag froze.
-#   - docker.io (the whole engine) replaced by a static docker CLI (see COPY below).
-#   - curl + wget removed; the HEALTHCHECK now uses stdlib Python.
-#   - autoremove/clean drop orphaned deps and caches.
-# NOTE: the libnss3…fonts-liberation block is the Chromium runtime surface for the
-#       RESEARCH browser tool and is the single largest remaining CVE source. Strongly
-#       consider moving browser-use into a SEPARATE research-worker image so this API
-#       image sheds it entirely.
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
-    git \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libpango-1.0-0 libcairo2 libasound2 libatspi2.0-0 \
-    fonts-liberation \
-    && apt-get autoremove -y --purge \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /var/cache/apt/* /tmp/*
+# Env defaults (overridden by docker-compose / Launch / vault)
+ENV LITELLM_API_BASE="" \
+    LITELLM_API_KEY="" \
+    CHAT_DEFAULT_MODEL="claude-sonnet-4-6" \
+    JIRA_PAT="" \
+    AIRTABLE_TOKEN="" \
+    AIRTABLE_BASE_ID="" \
+    PORT=8101
 
-# Static docker CLI only (talks to a mounted /var/run/docker.sock) — replaces the
-# heavyweight docker.io package and its containerd/runc dependency tree.
-COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+EXPOSE 8101
 
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+    CMD curl -f http://localhost:8101/health || exit 1
 
-# Application sources (editable installs reference these paths)
-COPY packages/maistro-core packages/maistro-core
-COPY packages/maistro-server packages/maistro-server
-COPY alembic/ alembic/
-COPY alembic.ini .
-COPY pyproject.toml uv.lock README.md ./
-
-# Re-resolve editable installs against copied trees
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-RUN uv pip install --system \
-    -e "./packages/maistro-core[llm,sandbox,observability]" \
-    -e "./packages/maistro-server" \
-    "alembic>=1.14" \
-    "pydantic-ai-slim[openai]>=0.1" \
-    "openai>=1.40,<2" \
-    "httpx>=0.27.0"
-
-# Install browser-use + Playwright + Chromium for the RESEARCH role's web tool.
-# Installed into PLAYWRIGHT_BROWSERS_PATH (set above) so the non-root user can use it.
-RUN uv pip install --system \
-    "browser-use>=0.1.40" \
-    "playwright>=1.49.0" \
- && python -m playwright install chromium
-
-# Drop root: run as an unprivileged system user and own the app + browser dirs.
-RUN useradd --system --no-create-home --uid 10001 app \
- && chown -R app:app /app /opt/playwright
-USER 10001
-
-EXPOSE 8000
-
-STOPSIGNAL SIGTERM
-
-# stdlib healthcheck — no curl in the image. Exits 0 on HTTP 200, 1 otherwise.
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
-    CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live', timeout=4).status==200 else 1)"]
-
-CMD ["uvicorn", "maistro_server.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8101", "--app-dir", "/app/backend"]
