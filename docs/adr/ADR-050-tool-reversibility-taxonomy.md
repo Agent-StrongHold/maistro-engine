@@ -23,6 +23,9 @@ tests: []
 layer: Tools
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
 ---
 
 # ADR-050: Tool reversibility taxonomy and compensator contract

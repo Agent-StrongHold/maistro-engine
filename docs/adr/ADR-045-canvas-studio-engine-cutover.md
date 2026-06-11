@@ -25,6 +25,9 @@ tests: []
 layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-09
 ---
 
 # ADR-045: Canvas Studio ↔ Engine Cutover

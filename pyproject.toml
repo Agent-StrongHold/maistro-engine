@@ -111,6 +111,7 @@ testpaths = [
 ]
 asyncio_mode = "auto"
 markers = [
+    "ac: Acceptance Criteria traceability (SPEC-NNN/AC-N)",
     "contract: ADR-032 contract axis (boundary | behavioral | cross_service)",
     "scope: test scope axis (unit | integration | e2e | property)",
 ]

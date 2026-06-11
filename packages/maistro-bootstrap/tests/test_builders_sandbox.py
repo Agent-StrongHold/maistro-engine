@@ -65,11 +65,13 @@ def test_rm_root_blocked(shell: SandboxedShell) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.ac("SPEC-200/AC-2")
 def test_absolute_path_escape_blocked(shell: SandboxedShell) -> None:
     with pytest.raises(SandboxEscapeError):
         shell.run("cat /etc/passwd")
 
 
+@pytest.mark.ac("SPEC-200/AC-2")
 def test_dotdot_escape_blocked(tmp_root: Path) -> None:
     sub = tmp_root / "sub"
     sub.mkdir()
@@ -78,6 +80,7 @@ def test_dotdot_escape_blocked(tmp_root: Path) -> None:
         locked.run("cat ../secret.txt")
 
 
+@pytest.mark.ac("SPEC-201/AC-3")
 def test_safe_command_executes(shell: SandboxedShell) -> None:
     out = shell.run("echo maistro")
     assert "maistro" in out
@@ -116,6 +119,8 @@ def test_env_does_not_contain_os_environ(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.ac("SPEC-201/AC-7")
+@pytest.mark.ac("SPEC-201/AC-8")
 def test_write_and_read_file(sandbox: LocalWorktreeSandbox) -> None:
     sandbox.write_file("hello.txt", "world")
     assert sandbox.read_file("hello.txt") == "world"
@@ -182,6 +187,7 @@ def test_diff_returns_string(sandbox: LocalWorktreeSandbox) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.ac("SPEC-201/AC-6")
 def test_local_worktree_sandbox_implements_protocol(sandbox: LocalWorktreeSandbox) -> None:
     assert isinstance(sandbox, BuilderSandbox)
 
@@ -191,6 +197,7 @@ def test_local_worktree_sandbox_implements_protocol(sandbox: LocalWorktreeSandbo
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.ac("SPEC-201/AC-4")
 def test_session_add_and_clear(sandbox: LocalWorktreeSandbox) -> None:
     session = BuilderSession(sandbox=sandbox)
     session.add_user("hello")
@@ -206,6 +213,8 @@ def test_session_add_and_clear(sandbox: LocalWorktreeSandbox) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.ac("SPEC-201/AC-1")
+@pytest.mark.ac("SPEC-201/AC-2")
 async def test_turn_runner_no_llm(sandbox: LocalWorktreeSandbox) -> None:
     session = BuilderSession(sandbox=sandbox)
     runner = TurnRunner(session=session, config=AgentLoopConfig())
@@ -220,6 +229,8 @@ async def test_turn_runner_no_llm(sandbox: LocalWorktreeSandbox) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.ac("SPEC-201/AC-5")
+@pytest.mark.ac("SPEC-201/AC-9")
 async def test_turn_runner_with_stub_llm(sandbox: LocalWorktreeSandbox) -> None:
     session = BuilderSession(sandbox=sandbox)
     runner = TurnRunner(session=session, config=AgentLoopConfig())

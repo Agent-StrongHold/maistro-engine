@@ -25,6 +25,9 @@ tests:
 layer: Agents
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-02
 ---
 
 # SPEC-194: Ultra Think tiered parallel diverse generation

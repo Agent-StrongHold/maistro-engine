@@ -19,6 +19,11 @@ tests: []
 layer: Agents
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-01
+  - status: Accepted
+    date: 2026-06-01
 ---
 
 # ADR-094: Cut pydantic-ai from the conductor

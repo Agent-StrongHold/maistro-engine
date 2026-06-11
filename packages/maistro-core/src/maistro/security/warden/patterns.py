@@ -143,6 +143,21 @@ REJECT_PATTERNS: list[tuple[regex.Pattern[str], str]] = [
         ),
         "Context window stuffing attempt",
     ),
+    (
+        regex.compile(
+            r"(?:curl|wget|fetch)\s+.*(?:\|\s*(?:bash|sh|base64|eval))",
+            regex.IGNORECASE,
+        ),
+        "Data exfiltration (pipe to execution)",
+    ),
+    (
+        regex.compile(
+            r"(?:send|post|upload|exfil(?:trate)?)\s+(?:\w+\s+){0,3}"
+            r"(?:to|towards?)\s+(?:https?://|ftp://|my\s+server)",
+            regex.IGNORECASE,
+        ),
+        "Data exfiltration (outbound transfer)",
+    ),
 ]
 
 THREAT_PATTERNS = REJECT_PATTERNS

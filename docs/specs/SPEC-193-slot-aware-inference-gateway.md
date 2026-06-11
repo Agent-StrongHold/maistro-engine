@@ -23,6 +23,9 @@ tests:
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-02
 ---
 
 # SPEC-193: Slot-aware local inference gateway

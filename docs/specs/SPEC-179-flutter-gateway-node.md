@@ -21,6 +21,9 @@ tests:
 layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
 ---
 
 # SPEC-179: Flutter gateway node companion (monorepo)

@@ -3,7 +3,7 @@ id: ADR-092
 title: Capability-vs-control posture
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-06-02
 accepted: null
 implemented: null
@@ -17,6 +17,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-06-02
 ---
 
 # ADR-092: Capability-vs-control posture

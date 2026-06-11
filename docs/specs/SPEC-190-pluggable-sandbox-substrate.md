@@ -24,6 +24,9 @@ tests: []
 layer: Tools
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-31
 ---
 
 # SPEC-190: Pluggable Sandbox Substrate

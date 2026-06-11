@@ -21,6 +21,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-29
 ---
 
 # SPEC-182: A2A delegation broker — implementation

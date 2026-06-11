@@ -18,6 +18,11 @@ tests: []
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Accepted
+    date: 2026-04-26
 ---
 
 # ADR-013: Memory types — Learning, EpisodicMemory, Outcome, scopes, tiers

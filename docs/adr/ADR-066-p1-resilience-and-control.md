@@ -19,6 +19,9 @@ tests: []
 layer: Reliability
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-20
 ---
 
 # ADR-066: P1 Resilience and Control

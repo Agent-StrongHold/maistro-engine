@@ -25,6 +25,9 @@ contracts:
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-29
 ---
 
 # ADR-068: Unified Authorization & Elevation

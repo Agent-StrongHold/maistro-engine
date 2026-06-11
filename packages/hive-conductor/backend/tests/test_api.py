@@ -14,6 +14,7 @@ def _login(username: str = "testuser", password: str = "testpass") -> TestClient
     return c
 
 
+@pytest.mark.ac("SPEC-176/AC-1")
 def test_health() -> None:
     r = client.get("/health")
     assert r.status_code == 200
@@ -22,6 +23,7 @@ def test_health() -> None:
     assert "uptime_seconds" in data
 
 
+@pytest.mark.ac("SPEC-176/AC-1")
 def test_health_ready() -> None:
     r = client.get("/health/ready")
     assert r.status_code == 200
