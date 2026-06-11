@@ -118,7 +118,7 @@ async def test_format_markdown_empty_uses_fallback() -> None:
 
 @pytest.fixture
 def fake_jira_server(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """Patch httpx.AsyncClient so jira.poll thinks Disney on-prem returned
+    """Patch httpx.AsyncClient so jira.poll thinks on-prem Jira Server returned
     an Epic + a Story. Records the auth header so the test can assert it."""
     state: dict[str, Any] = {"headers_seen": None, "auth_seen": None}
 
@@ -183,7 +183,7 @@ async def test_jira_poll_server_flavor_uses_bearer_pat(fake_jira_server: dict[st
     Node = get_node("jira.poll")
     out = await Node().run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "jql": "updated >= -24h AND assignee = currentUser()",
             "pat": "secret-pat-value",
             "flavor": "server",
@@ -195,7 +195,7 @@ async def test_jira_poll_server_flavor_uses_bearer_pat(fake_jira_server: dict[st
     assert out.output.flavor == "server"
     assert out.output.issues[0].key == "P-100"
     assert out.output.issues[0].issuetype == "Epic"
-    assert out.output.issues[0].url == "https://myjira.disney.com/browse/P-100"
+    assert out.output.issues[0].url == "https://jira.example.com/browse/P-100"
     # Server flavor must use Authorization: Bearer; no basic-auth tuple
     assert fake_jira_server["headers_seen"]["Authorization"] == "Bearer secret-pat-value"
     assert fake_jira_server["auth_seen"] is None
@@ -245,12 +245,12 @@ async def test_jira_poll_cloud_with_email_uses_basic_auth(
             "jql": "assignee=currentUser()",
             "pat": "cloud-token",
             "flavor": "cloud",
-            "email": "alice@disney.com",
+            "email": "alice@example.com",
         },
         _ctx(),
     )
     assert out.success
-    assert seen["auth"] == ("alice@disney.com", "cloud-token")
+    assert seen["auth"] == ("alice@example.com", "cloud-token")
     # No Authorization header when using Basic auth
     assert "Authorization" not in seen["headers"]
     assert "/rest/api/3/search" in seen["url"]
@@ -280,7 +280,7 @@ async def test_jira_poll_401_surfaces_permission_error(monkeypatch: pytest.Monke
     Node = get_node("jira.poll")
     out = await Node().run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "jql": "x",
             "pat": "bad-pat",
             "flavor": "server",
@@ -357,7 +357,7 @@ async def test_airtable_poll_uses_filter_formula_for_since_iso(
     assert "IS_AFTER(LAST_MODIFIED_TIME()" in seen["params"]["filterByFormula"]
 
 
-# --- llm.summarize (httpx mocked against JedAI gateway shape) -------------
+# --- llm.summarize (httpx mocked against LLM gateway shape) -------------
 
 
 async def test_llm_summarize_against_litellm_response_shape(
@@ -405,7 +405,7 @@ async def test_llm_summarize_against_litellm_response_shape(
     assert out.output.tokens_in == 1500
     assert out.output.tokens_out == 80
     assert out.output.model_used == "gemini-3.1-flash-lite"
-    # Verify the request shape (JedAI / LiteLLM-compatible)
+    # Verify the request shape (MAISTRO / LiteLLM-compatible)
     assert seen["url"].endswith("/v1/chat/completions")
     assert seen["body"]["model"] == "gemini-3.1-flash-lite"
     assert seen["body"]["temperature"] == 0.2
@@ -556,7 +556,7 @@ async def test_daily_report_flow_e2e_no_llm(monkeypatch: pytest.MonkeyPatch) -> 
     # 1. jira.poll
     jp = await get_node("jira.poll")().run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "jql": "updated >= -24h AND assignee = currentUser()",
             "pat": "test-pat",
             "flavor": "server",

@@ -29,7 +29,11 @@ def reg() -> CapabilityRegistry:
     r = CapabilityRegistry()
     r.define(SlotSpec(name="infra_monitor", fallback_policy=FallbackPolicy.SAFE_NOOP))
     r.define(SlotSpec(name="infra_action", fallback_policy=FallbackPolicy.SAFE_NOOP))
-    r.define(SlotSpec(name="approval", fallback_policy=FallbackPolicy.BASELINE, baseline_provider="inbox"))
+    r.define(
+        SlotSpec(
+            name="approval", fallback_policy=FallbackPolicy.BASELINE, baseline_provider="inbox"
+        )
+    )
     return r
 
 

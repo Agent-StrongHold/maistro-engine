@@ -14,7 +14,9 @@ def _mock(handler) -> httpx.MockTransport:
 
 
 def test_satisfies_async_http_protocol() -> None:
-    client = HttpxAsyncHttp("http://host:8150", transport=_mock(lambda r: httpx.Response(200, json={})))
+    client = HttpxAsyncHttp(
+        "http://host:8150", transport=_mock(lambda r: httpx.Response(200, json={}))
+    )
     assert isinstance(client, AsyncHttp)
 
 

@@ -261,6 +261,11 @@ class GenerationJobRecord:
     started_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # SPEC-203: lease/retry fields
+    attempts: int = 0
+    max_attempts: int = 3
+    leased_by: str | None = None
+    lease_expires_at: datetime | None = None
 
     def is_terminal(self) -> bool:
         return self.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)

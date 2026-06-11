@@ -1,8 +1,8 @@
 """Browser tool — Playwright + browser-use, driven by gemini-3.1-flash-lite
-via the JedAI gateway. Replaces the v0 `web_search_background` stub.
+via the LLM gateway. Replaces the v0 `web_search_background` stub.
 
 PAT/key isolation: browser-use's LLM client is configured against the
-same JedAI gateway as PM agents; the user's virtual key (LITELLM_*)
+same LLM gateway as PM agents; the user's virtual key (LITELLM_*)
 travels in headers, not env-baked. The Chromium binary is baked into
 the maistro-engine image (Dockerfile additions, Day 4) so this tool is
 in-process — no sidecar.

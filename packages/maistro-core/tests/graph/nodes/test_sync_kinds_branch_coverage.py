@@ -341,7 +341,7 @@ async def test_wait_for_subtasks_resume_within_deadline_pauses_again(
     ).isoformat()
     out = await node.run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "P-1",
             "pat": "p",
             "target_statuses": ["Done"],
@@ -368,7 +368,7 @@ async def test_wait_for_subtasks_resume_with_bad_first_seen_falls_back_to_now(
     ctx.metadata[f"wait_first_seen:{ctx.node_id}"] = "not-an-iso-date"
     out = await node.run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "P-1",
             "pat": "p",
             "target_statuses": ["Done"],
@@ -420,12 +420,12 @@ async def test_wait_for_subtasks_cloud_flavor_with_email_uses_basic_auth(
             "parent_key": "P-1",
             "pat": "cloud-token",
             "flavor": "cloud",
-            "email": "alice@disney.com",
+            "email": "alice@example.com",
         },
         _ctx(),
     )
     assert out.success
-    assert seen["auth"] == ("alice@disney.com", "cloud-token")
+    assert seen["auth"] == ("alice@example.com", "cloud-token")
     assert "/rest/api/3/issue/P-1" in seen["url"]
 
 
@@ -482,7 +482,7 @@ async def test_wait_for_subtasks_500_raises_runtime(monkeypatch: pytest.MonkeyPa
     node = get_node("jira.wait_for_subtasks")()
     out = await node.run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "P-1",
             "pat": "p",
             "target_statuses": ["Done"],
@@ -500,7 +500,7 @@ async def test_wait_for_subtasks_401_raises_permission(monkeypatch: pytest.Monke
     node = get_node("jira.wait_for_subtasks")()
     out = await node.run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "P-1",
             "pat": "bad",
             "target_statuses": ["Done"],
@@ -530,7 +530,7 @@ async def test_wait_for_subtasks_subtask_without_key_is_dropped(
     node = get_node("jira.wait_for_subtasks")()
     out = await node.run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "P-1",
             "pat": "p",
             "target_statuses": ["Done"],

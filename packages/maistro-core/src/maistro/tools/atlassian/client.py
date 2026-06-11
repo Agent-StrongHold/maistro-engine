@@ -1,4 +1,4 @@
-"""HTTP client for mcp-jedai-atlassian (the JEDAI on-prem Atlassian MCP).
+"""HTTP client for mcp-atlassian (the MAISTRO on-prem Atlassian MCP).
 
 Speaks streamable-HTTP MCP at `/mcp` (FastMCP convention). For v0 we
 use a single-shot tools/call JSON-RPC POST — the streaming notification
@@ -21,7 +21,7 @@ import httpx
 
 
 class AtlassianMCPError(RuntimeError):
-    """Raised when mcp-jedai-atlassian returns an error or is unreachable."""
+    """Raised when mcp-atlassian returns an error or is unreachable."""
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ def _resolve_mcp_url() -> str:
 
 
 class AtlassianMCPClient:
-    """v0 client for the on-prem JEDAI Atlassian MCP.
+    """v0 client for the on-prem MAISTRO Atlassian MCP.
 
     Methods take PATs as explicit arguments — callers fetch them from
     the per-user encrypted credential store (Hive Credentials nav). This
@@ -94,7 +94,7 @@ class AtlassianMCPClient:
 
     def _headers(self, jira_pat: str | None, confluence_pat: str | None) -> dict[str, str]:
         h: dict[str, str] = {"Content-Type": "application/json", "Accept": "application/json"}
-        # Split-header mode — per mcp-jedai-atlassian's UserTokenMiddleware. Both
+        # Split-header mode — per mcp-atlassian's UserTokenMiddleware. Both
         # products can be authed simultaneously in a single request.
         if jira_pat:
             h["X-Atlassian-Jira-Personal-Token"] = jira_pat
@@ -166,9 +166,9 @@ class AtlassianMCPClient:
         return result if isinstance(result, dict) else {"raw": result}
 
     # ------------------------------------------------------------------
-    # Convenience wrappers around the tools mcp-jedai-atlassian exposes.
-    # Tool inputs/outputs match the JEDAI repo's tool definitions in
-    # src/mcp_jedai_atlassian/tools/{jira,confluence,health}.py.
+    # Convenience wrappers around the tools mcp-atlassian exposes.
+    # Tool inputs/outputs match the MAISTRO repo's tool definitions in
+    # src/mcp_atlassian/tools/{jira,confluence,health}.py.
     # ------------------------------------------------------------------
 
     async def jira_search_issues(
@@ -207,7 +207,7 @@ class AtlassianMCPClient:
 
     async def jira_get_issue(self, issue_key: str, *, jira_pat: str) -> JiraIssue:
         result = await self.call_tool("jira_get_issue", {"issue_key": issue_key}, jira_pat=jira_pat)
-        # mcp-jedai-atlassian shape: result is either an issue dict or wraps one in "content"
+        # mcp-atlassian shape: result is either an issue dict or wraps one in "content"
         issue = result.get("issue") or result.get("content") or result
         if isinstance(issue, list) and issue:
             issue = issue[0]

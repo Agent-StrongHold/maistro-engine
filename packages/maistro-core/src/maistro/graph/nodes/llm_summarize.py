@@ -1,4 +1,4 @@
-"""`llm.summarize` — single-shot LLM summarization against the JedAI gateway.
+"""`llm.summarize` — single-shot LLM summarization against the LLM gateway.
 
 The model is configurable per-node (the optimizer swaps when latency/cost
 budgets demand). The base URL + API key come from the runtime context
@@ -26,7 +26,7 @@ class LlmSummarizeIn(BaseModel):
     )
     model: str = Field(
         default="gemini-3.1-flash-lite",
-        description="Model alias on the JedAI gateway",
+        description="Model alias on the LLM gateway",
     )
     max_tokens: int = Field(default=512, ge=1, le=8192)
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
@@ -67,11 +67,11 @@ class LlmSummarizeNode(BaseNode[LlmSummarizeIn, LlmSummarizeOut]):
     display_name: ClassVar[str] = "LLM: summarize"
     description: ClassVar[str] = (
         "One-shot LLM summarization (bullet / paragraph / exec / tldr). "
-        "Runs against the configured JedAI gateway."
+        "Runs against the configured LLM gateway."
     )
 
     async def _execute(self, inputs: LlmSummarizeIn, ctx: NodeContext) -> LlmSummarizeOut:
-        # JedAI gateway endpoint + key — pulled from env (maistro config layer
+        # LLM gateway endpoint + key — pulled from env (maistro config layer
         # already loads these). The node never hardcodes credentials.
         base_url = (
             os.environ.get("MAISTRO_LLM_BASE_URL")

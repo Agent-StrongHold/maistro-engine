@@ -141,7 +141,7 @@ async def test_project_supports_arbitrary_use_cases() -> None:
     store = InMemoryProjectStore()
     pm_proj = await store.create(
         owner_user_id="alice",
-        name="Disney+ payments",
+        name="ACME Streaming payments",
         profile_markdown="Q3 payments-engine launch",
     )
     # Default is generic; users can flip it.
@@ -159,8 +159,8 @@ async def test_project_supports_arbitrary_use_cases() -> None:
 
     eng_proj = await store.create(
         owner_user_id="alice",
-        name="JFC architecture review",
-        profile_markdown="JFC v0.2 → v0.3 architecture RFCs, focus on optimizer + projects",
+        name="MAISTROarchitecture review",
+        profile_markdown="MAISTRO v0.2 → v0.3 architecture RFCs, focus on optimizer + projects",
     )
     eng_proj = await store.update(eng_proj.model_copy(update={"use_case": "engineering_rfc"}))
     assert eng_proj.use_case == "engineering_rfc"

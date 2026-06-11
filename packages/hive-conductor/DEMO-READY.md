@@ -22,7 +22,7 @@ Open: **http://localhost:8101**
 
 ### 2. Chat — "Who's blocked?" (30 seconds)
 - Type: **"Who's blocked right now?"**
-- Watch: Status shows "Working…" → real response with actual JEDAI Jira issues
+- Watch: Status shows "Working…" → real response with actual MAISTRO Jira issues
 - **What they see:** Real blocked issues with real names (Cesar, Bashir, Ranjitha, etc.)
 - **Key point:** "This is live data from our Jira instance. Not a mock."
 
@@ -39,14 +39,14 @@ Open: **http://localhost:8101**
 - **Key point:** "Every button executes real queries. Nothing is stubbed."
 
 ### 5. Chat — Create a new agent (30 seconds)
-- Type: **"Add a button that shows all JEDAI epics in progress"**
+- Type: **"Add a button that shows all MAISTRO epics in progress"**
 - Watch: Creates a new agent button
 - Go back to Program page — it's there
 - **Key point:** "The PM defines what they need in plain English. The system builds the automation."
 
 ### 6. Chat — Confluence (20 seconds)
 - Type: **"Search Confluence for Jedai onboarding"**
-- Watch: Searches mywiki.disney.com, returns real pages
+- Watch: Searches wiki.example.com, returns real pages
 - **Key point:** "Same interface for Jira, Confluence, and anything else we connect."
 
 ---
@@ -54,10 +54,10 @@ Open: **http://localhost:8101**
 ## If they ask...
 
 **"Is this using real AI?"**
-→ Yes, Gemini 3.5 Flash through our JedAI gateway. 54 models available, swappable per-agent.
+→ Yes, Gemini 3.5 Flash through our LLM gateway. 54 models available, swappable per-agent.
 
 **"Is this hitting real Jira?"**
-→ Yes, myjira.disney.com with a PAT stored in an encrypted credential vault. Read-only.
+→ Yes, jira.example.com with a PAT stored in an encrypted credential vault. Read-only.
 
 **"Can it write to Jira?"**
 → Not yet in this demo. The architecture supports it (gated flow: draft → review → confirm → post). Coming next sprint.

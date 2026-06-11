@@ -325,7 +325,7 @@ async def test_jira_rest_uses_email_when_set(
 
     monkeypatch.setenv("ATLASSIAN_API_TOKEN", "tk")
     monkeypatch.setenv("ATLASSIAN_SITE_URL", "https://x.atlassian.net")
-    monkeypatch.setenv("ATLASSIAN_EMAIL", "me@disney.com")
+    monkeypatch.setenv("ATLASSIAN_EMAIL", "me@example.com")
 
     captured: dict[str, Any] = {}
 
@@ -347,7 +347,7 @@ async def test_jira_rest_uses_email_when_set(
 
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     await test_jira_rest(user_id=None)
-    assert captured["auth"] == ("me@disney.com", "tk")
+    assert captured["auth"] == ("me@example.com", "tk")
 
 
 # --- test_mcp_server ----------------------------------------------------

@@ -194,12 +194,12 @@ async def _run_tool_node(
 
 
 def _classify_node_execution(node: dict[str, Any], nid: str) -> str:
-    """Classify a node as 'async' (in-process) or 'subprocess' (isolated).
+    """Classify a node's execution tier — default-deny for unconfigured nodes.
 
-    Security classification determines execution tier:
-    - trust_boundary: what data/systems can this node access?
-    - dangerous_tools: does it use shell, file write, network?
-    - task_policy: does it exceed budget/rate limits?
+    Returns:
+    - 'async': trusted, in-process (only for explicitly safe nodes)
+    - 'sandbox': must run in isolated sandbox
+    - 'blocked': refuse to execute (untrusted + no admin approval)
     """
     config = node.get("config", {})
     tier = config.get("execution_tier", "")
@@ -212,19 +212,26 @@ def _classify_node_execution(node: dict[str, Any], nid: str) -> str:
     )
     is_untrusted = config.get("untrusted", False)
 
+    # Explicitly safe — only if declared
     if tier in ("light", "safe"):
         return "async"
-    if is_untrusted or needs_filesystem:
+
+    # Untrusted code MUST be approved by admin or it's blocked
+    if is_untrusted:
         if config.get("tier_approved_by") != "admin":
-            logger.warning(
-                "node_tier_not_approved node=%s tier=container — running as subprocess. "
-                "Admin must approve via optimizer.",
-                nid,
-            )
-        return "subprocess"
-    if is_dangerous or needs_secrets or tier in ("container", "heavy"):
-        return "subprocess"
-    return "async"
+            logger.warning("node_blocked node=%s reason=untrusted_no_approval", nid)
+            return "blocked"
+        return "sandbox"
+
+    if is_dangerous or needs_secrets or needs_filesystem or tier in ("container", "heavy"):
+        return "sandbox"
+
+    # DEFAULT-DENY: unconfigured nodes get sandboxed, not trusted
+    if not tier and not capabilities:
+        logger.info("node_default_sandbox node=%s reason=no_tier_no_capabilities", nid)
+        return "sandbox"
+
+    return "sandbox"
 
 
 def _build_dependency_graph(
@@ -353,17 +360,22 @@ async def execute_dag(
 
         # Group by execution tier — uses security infrastructure
         async_nodes = []
-        subprocess_nodes = []
+        sandbox_nodes = []
         for nid in ready:
-            if _classify_node_execution(node_map[nid], nid) == "subprocess":
-                subprocess_nodes.append(nid)
+            tier = _classify_node_execution(node_map[nid], nid)
+            if tier == "blocked":
+                results[nid] = {
+                    "error": "Execution blocked: untrusted node requires admin approval",
+                    "success": False,
+                }
+                completed.add(nid)
+            elif tier == "sandbox":
+                sandbox_nodes.append(nid)
             else:
                 async_nodes.append(nid)
 
-        # Run subprocess nodes (heavy, risky — own process, own GIL)
-        await _run_subprocess_wave(
-            subprocess_nodes, node_map, inbound, results, task_desc, node_env
-        )
+        # Run sandboxed nodes (isolated execution)
+        await _run_subprocess_wave(sandbox_nodes, node_map, inbound, results, task_desc, node_env)
 
         # Run async nodes concurrently (light, safe — in-process, no GIL issue for I/O)
         if async_nodes:

@@ -130,7 +130,7 @@ Each DAG: 3-6 nodes, real prompts, configured models, scored by its department's
 ### 7. PM Fleet
 - OpsAgent model hill-climb (results from today's run)
 - Knowledge distillation: Opus answers → focused FAQ → Flash Lite serves
-- Jira project key: set to JEDAI
+- Jira project key: set to MAISTRO
 - Enable GitHub/GitLab tools
 - Test topK values (4 vs 8 vs 12)
 
@@ -180,8 +180,8 @@ uvicorn main:app --host 0.0.0.0 --port 8101
 
 ## Credentials
 - LiteLLM: preview gateway, key in .env
-- Jira: Disney on-prem PAT in credential store (atlassian_server_jira)
-- Confluence: Disney on-prem PAT (atlassian_server_confluence)
+- Jira: on-prem Jira Server PAT in credential store (atlassian_server_jira)
+- Confluence: on-prem Jira Server PAT (atlassian_server_confluence)
 - Airtable: PAT in credential store
 - OpsAgent: browser-use via Chrome debug port (SSO session)
 - Hive login: test/user1234

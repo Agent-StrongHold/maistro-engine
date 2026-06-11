@@ -21,7 +21,7 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-from maistro_registry.dag import Cycle, find_cycles
+from maistro_registry.dag import Cycle, DuplicateId, find_cycles, find_duplicate_ids
 from maistro_registry.generator import build_registry, write_registry
 from maistro_registry.linker import (
     FilesystemResolver,
@@ -109,7 +109,13 @@ def cmd_walk(args: argparse.Namespace) -> int:
         return 0
 
     results = [validate_file(f) for f in files]
-    return _exit_status(results, strict=args.strict, quiet_ok=args.quiet)
+    duplicates: list[DuplicateId] = find_duplicate_ids(results)
+    for d in duplicates:
+        print(f"  DUPLICATE: {d.render()}")
+
+    return _exit_status(
+        results, strict=args.strict, quiet_ok=args.quiet, extra_errors=len(duplicates)
+    )
 
 
 def cmd_lint(args: argparse.Namespace) -> int:
@@ -137,7 +143,11 @@ def cmd_lint(args: argparse.Namespace) -> int:
     for lr in dangling:
         print(f"  DANGLING: {lr.render()}")
 
-    extra = len(cycles) + len(dangling)
+    duplicates: list[DuplicateId] = find_duplicate_ids(results)
+    for d in duplicates:
+        print(f"  DUPLICATE: {d.render()}")
+
+    extra = len(cycles) + len(dangling) + len(duplicates)
     return _exit_status(results, strict=args.strict, quiet_ok=args.quiet, extra_errors=extra)
 
 

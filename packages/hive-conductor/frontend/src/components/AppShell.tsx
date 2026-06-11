@@ -37,7 +37,7 @@ async function logout() {
     // best effort — even if it fails, redirecting lets the user log in fresh.
   }
   // Stay inside the Hive app (which auto-shows Login when no session); going
-  // to "/" dumps the user at the JFC catalog with no obvious way back.
+  // to "/" dumps the user at the MAISTROcatalog with no obvious way back.
   window.location.href = import.meta.env.BASE_URL || "/";
 }
 
@@ -72,7 +72,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
           </div>
         ) : (
           <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--pencil)", padding: "0 12px 8px" }}>
-            Multi-agent · multi-MCP · Force Convergence sandbox
+            Multi-agent · multi-MCP · container sandbox
           </div>
         )}
         {user && (

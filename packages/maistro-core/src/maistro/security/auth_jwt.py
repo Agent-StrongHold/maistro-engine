@@ -49,18 +49,17 @@ class JWTAuthProvider:
         authorization: str | None,
         headers: dict[str, str] | None = None,
     ) -> AuthContext:
+        from maistro.security.auth_composite import AuthError, CredentialNotApplicable
+
         if not authorization:
-            msg = "Missing Authorization header"
-            raise ValueError(msg)
+            raise CredentialNotApplicable("Missing Authorization header")
 
         if not authorization.startswith("Bearer "):
-            msg = "Invalid authorization format"
-            raise ValueError(msg)
+            raise CredentialNotApplicable("Not a Bearer token")
 
         token = authorization.removeprefix("Bearer ").strip()
         if not token:
-            msg = "Empty token"
-            raise ValueError(msg)
+            raise CredentialNotApplicable("Empty token")
 
         claims = await self._decode_token(token)
 
@@ -76,8 +75,9 @@ class JWTAuthProvider:
             kind = IdentityKind.INTERACTIVE_AGENT
 
         if not user_id:
-            msg = "Token missing 'sub' claim"
-            raise ValueError(msg)
+            from maistro.security.auth_composite import AuthError
+
+            raise AuthError("Token missing 'sub' claim")
 
         on_behalf_of = ""
         if kind == IdentityKind.INTERACTIVE_AGENT:
@@ -95,6 +95,12 @@ class JWTAuthProvider:
 
     async def _decode_token(self, token: str) -> dict[str, Any]:
         if self._jwt_decode is not None:
+            # Test seam — MUST NOT be usable in production
+            if self._jwks_url:
+                raise RuntimeError(
+                    "SECURITY: jwt_decode override is forbidden when jwks_url is configured. "
+                    "This seam is test-only."
+                )
             return dict(self._jwt_decode(token))
 
         try:
@@ -102,7 +108,7 @@ class JWTAuthProvider:
             from jwt import PyJWKClient
         except ImportError as err:
             msg = "PyJWT with cryptography is required: pip install PyJWT[crypto]"
-            raise ValueError(msg) from err
+            raise ImportError(msg) from err
 
         jwks_client = await self._get_jwks_client(pyjwt, PyJWKClient)
 
@@ -116,8 +122,9 @@ class JWTAuthProvider:
                 audience=self._audience,
             )
         except Exception as e:
-            msg = f"JWT validation failed: {e}"
-            raise ValueError(msg) from e
+            from maistro.security.auth_composite import AuthError
+
+            raise AuthError(f"JWT validation failed: {e}") from e
 
         return decoded
 
@@ -145,9 +152,17 @@ class JWTAuthProvider:
                 logger.info("JWKS refreshed from %s", self._jwks_url)
                 return client
             except Exception:
-                if self._jwks_cache is not None:
-                    logger.warning("JWKS refresh failed, using stale cache")
+                # Fix #14: bound stale window — refuse to serve stale beyond 5x TTL
+                stale_age = now - self._jwks_cache_at
+                max_stale = self._jwks_cache_ttl * 5  # e.g. 5 hours if TTL is 1h
+                if self._jwks_cache is not None and stale_age < max_stale:
+                    logger.warning(
+                        "JWKS refresh failed, serving stale (age=%.0fs, max=%.0fs)",
+                        stale_age,
+                        max_stale,
+                    )
                     return self._jwks_cache
+                logger.error("JWKS refresh failed and stale cache expired — hard-failing auth")
                 raise
 
     def _extract_roles(self, claims: dict[str, Any]) -> list[str]:
@@ -163,8 +178,10 @@ class JWTAuthProvider:
         if not path:
             return None
 
-        if path in claims:
-            return claims[path]
+        # Fix #12: if path contains a dot, traverse ONLY — never flat-lookup
+        # a literal dotted key, which would let attackers smuggle claims.
+        if "." not in path:
+            return claims.get(path)
 
         current: Any = claims
         for part in path.split("."):

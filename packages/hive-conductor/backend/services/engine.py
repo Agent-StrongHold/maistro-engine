@@ -141,12 +141,12 @@ class EngineService:
                 from maistro.agents.pm_runner import run_pm_task
 
                 executor = run_pm_task
-                # pm_runner makes real Claude calls through the JedAI gateway
+                # pm_runner makes real Claude calls through the LLM gateway
                 # for LLM-reasoning capabilities and short-circuits to
                 # source='no_data' for data tools that need PATs (jira) or
                 # Chromium (browser-use) when those aren't wired yet.
                 logger.info(
-                    "TaskRunner using PM runner — real LLM via JedAI gateway "
+                    "TaskRunner using PM runner — real LLM via LLM gateway "
                     "(source='no_data' for Jira/Airtable/web until PATs set)"
                 )
             else:

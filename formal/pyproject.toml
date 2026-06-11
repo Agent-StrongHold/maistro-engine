@@ -15,6 +15,17 @@ dev = [
     "ruff>=0.8",
 ]
 
+# Installed only for its dependencies; the code is imported as a namespace
+# package from the repo root (python -m formal..., pytest formal/models).
+# Without an explicit empty package list, setuptools auto-discovery fails on
+# the multiple top-level directories (models/, extractors/, generated/).
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = []
+
 [tool.pytest.ini_options]
 testpaths = ["models"]
 addopts = "-v --tb=short"

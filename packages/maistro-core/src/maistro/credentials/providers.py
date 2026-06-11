@@ -42,15 +42,15 @@ _ATLASSIAN_MCP_TOKEN_URL = (
     "?autofillToken&expiryDays=max&appId=mcp&selectedScopes=all"
 )
 
-# Disney on-prem Atlassian (Jira/Confluence Data Center, ~Server v9).
+# on-prem Jira Server Atlassian (Jira/Confluence Data Center, ~Server v9).
 # Per-product PAT pages, NOT the Atlassian Cloud token URL above. Bridge
-# until ~2026-06-13 when Disney migrates to Atlassian Cloud + Rovo MCP.
-_DISNEY_JIRA_PAT_URL = (
-    "https://myjira.disney.com/secure/ViewProfile.jspa"
+# until ~2026-06-13 when migrates to Atlassian Cloud + Rovo MCP.
+_SERVER_JIRA_PAT_URL = (
+    "https://jira.example.com/secure/ViewProfile.jspa"
     "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
 )
-_DISNEY_CONFLUENCE_PAT_URL = (
-    "https://mywiki.disney.com/plugins/personalaccesstokens/usertokens.action"
+_SERVER_CONFLUENCE_PAT_URL = (
+    "https://wiki.example.com/plugins/personalaccesstokens/usertokens.action"
 )
 
 PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
@@ -58,7 +58,7 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         id="jira",
         label="Jira API token",
         description=(
-            "Primary path for containerized Hive (Force Convergence): Atlassian Cloud API token "
+            "Primary path for containerized Hive: Atlassian Cloud API token "
             "for Jira REST. Pair with ATLASSIAN_SITE_URL in deployment env (e.g. https://your-org.atlassian.net)."
         ),
         help_url=_ATLASSIAN_MCP_TOKEN_URL,
@@ -104,18 +104,18 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
         help_url=_ATLASSIAN_MCP_TOKEN_URL,
         placeholder="Atlassian API token",
     ),
-    # Disney on-prem Atlassian (Data Center) — 23-day bridge before Cloud migration.
+    # on-prem Jira Server Atlassian (Data Center) — 23-day bridge before Cloud migration.
     # PATs are separate per product, scoped per user; never put in .env.
     CredentialProvider(
         id="atlassian_server_jira",
-        label="Disney Jira PAT (on-prem)",
+        label="Jira PAT (on-prem)",
         description=(
-            "Personal Access Token for myjira.disney.com (Jira Data Center). "
-            "Routed through mcp-jedai-atlassian for all Jira tools. If you "
+            "Personal Access Token for jira.example.com (Jira Data Center). "
+            "Routed through mcp-atlassian for all Jira tools. If you "
             "see auth errors after 2FA, regenerate the token at the link below."
         ),
-        help_url=_DISNEY_JIRA_PAT_URL,
-        placeholder="Disney Jira PAT",
+        help_url=_SERVER_JIRA_PAT_URL,
+        placeholder="Jira PAT",
         config_fields=(
             ConfigField(
                 name="jql",
@@ -127,13 +127,13 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
     ),
     CredentialProvider(
         id="atlassian_server_confluence",
-        label="Disney Confluence PAT (on-prem)",
+        label="Confluence PAT (on-prem)",
         description=(
-            "Personal Access Token for mywiki.disney.com (Confluence Data Center). "
-            "Used by mcp-jedai-atlassian for all Confluence tools."
+            "Personal Access Token for wiki.example.com (Confluence Data Center). "
+            "Used by mcp-atlassian for all Confluence tools."
         ),
-        help_url=_DISNEY_CONFLUENCE_PAT_URL,
-        placeholder="Disney Confluence PAT",
+        help_url=_SERVER_CONFLUENCE_PAT_URL,
+        placeholder="Confluence PAT",
     ),
     CredentialProvider(
         id="airtable",
@@ -159,32 +159,32 @@ PM_CREDENTIAL_PROVIDERS: tuple[CredentialProvider, ...] = (
             ),
         ),
     ),
-    # Disney on-prem Git hosts. github.disney.com is GitHub Enterprise Server;
-    # gitlab.disney.com is the Disney GitLab self-hosted instance. Per the
+    # on-prem Jira Server Git hosts. github.example.com is GitHub Enterprise Server;
+    # gitlab.example.com is the GitLab self-hosted instance. Per the
     # durable feedback rule ("we only WRITE to gitlab"), the GitHub token is
     # typically READ-only scope (repo:read + workflow:read); the GitLab token
-    # gets api / write_repository scopes for the JFC repo flow.
+    # gets api / write_repository scopes for the MAISTROrepo flow.
     CredentialProvider(
-        id="github_disney",
-        label="Disney GitHub Enterprise PAT (read-only)",
+        id="github_enterprise",
+        label="GitHub Enterprise PAT (read-only)",
         description=(
-            "Personal access token for github.disney.com (GitHub Enterprise "
-            "Server). Read-only by policy — JFC consumes JedAI-Agents + "
-            "wdpr-ra-genai reference repos for context; writes land on GitLab. "
+            "Personal access token for github.example.com (GitHub Enterprise "
+            "Server). Read-only by policy — MAISTROconsumes MAISTRO-Agents + "
+            "reference-repos reference repos for context; writes land on GitLab. "
             "Scopes: read:repo + read:workflow."
         ),
-        help_url="https://github.disney.com/settings/tokens",
+        help_url="https://github.example.com/settings/tokens",
         placeholder="ghp_…",
     ),
     CredentialProvider(
-        id="gitlab_disney",
-        label="Disney GitLab PAT (read/write)",
+        id="gitlab_enterprise",
+        label="GitLab PAT (read/write)",
         description=(
-            "Personal access token for gitlab.disney.com. Used by JFC for "
+            "Personal access token for gitlab.example.com. Used by MAISTROfor "
             "branch + MR operations on the team's launch-repo. Scopes: api + "
             "write_repository + read_repository."
         ),
-        help_url="https://gitlab.disney.com/-/profile/personal_access_tokens",
+        help_url="https://gitlab.example.com/-/profile/personal_access_tokens",
         placeholder="glpat-…",
     ),
 )

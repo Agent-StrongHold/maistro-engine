@@ -1,7 +1,7 @@
 """Well-known domains (Project.use_case values) shipped with maistro.
 
 This is intentionally NOT an enum — `use_case` stays a free string on the
-Project record so users + ops can mint their own (a Disney brand team
+Project record so users + ops can mint their own (a brand team
 could create `use_case='brand_compliance'` without a code change). The
 list below is the curated set the standard frontends recognize and ship
 a default page set + nav config for. Anything else falls back to the
@@ -27,7 +27,7 @@ class DomainConfig(TypedDict, total=False):
     default_dag_seeds: list[str]  # default DAG ids seeded on first project create
 
 
-# Curated set the standard JFC frontends know how to render.
+# Curated set the standard MAISTROfrontends know how to render.
 #
 # Order = priority for the v0.2/v0.3 shipping plan:
 #   1. pm_fleet         — current POC; heaviest investment
@@ -48,7 +48,7 @@ KNOWN_DOMAINS: tuple[DomainConfig, ...] = (
         "icon": "🐝",
         "description": (
             "Program-management hyperagent. Intake, Program Manager, "
-            "Research, Risk, Delivery, Reporting. Real Claude via JedAI "
+            "Research, Risk, Delivery, Reporting. Real Claude via MAISTRO "
             "gateway; real Jira + Confluence + Airtable + browser-use."
         ),
         "default_dag_seeds": ["daily-status", "fleet-pulse"],

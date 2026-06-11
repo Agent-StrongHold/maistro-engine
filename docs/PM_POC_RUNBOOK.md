@@ -2,7 +2,7 @@
 
 Branch: `research/pm-fleet-poc`
 
-**Platform context:** This repo is the `maistro-engine` sandbox template inside **Jedai Force Convergence** (`container_registry/user_containers/sandbox_templates/maistro-engine`). It is **not** the Vibe Hosting Launch app. See JFC [`docs/MAISTRO-ENGINE-IN-JFC.md`](../../../../docs/MAISTRO-ENGINE-IN-JFC.md).
+**Platform context:** This repo is the `maistro-engine` sandbox template It is **not** the Vibe Hosting Launch app. [`docs/MAISTRO-ENGINE-SANDBOX.md`](../../../../docs/MAISTRO-ENGINE-SANDBOX.md).
 
 `HIVE_POC_MODE=pm` is a **demo overlay** (program hyperagent, Jira drafts, trimmed nav). Default Hive mode is full multi-agent / multi-MCP engineering conductor.
 
@@ -54,9 +54,9 @@ PM nav: **Program** · **Activity** · **Jira drafts** · **Integrations** (Rovo
 
 ## Atlassian / MCP (container runtime)
 
-Canonical MCP manifests: JFC [`container_registry/MCP_servers/`](../../../../container_registry/MCP_servers/README.md).
+Canonical MCP manifests: MAISTRO[`container_registry/MCP_servers/`](../../../../container_registry/MCP_servers/README.md).
 
-### Production (Force Convergence sandbox)
+### Production (container sandbox)
 
 1. Save **Jira**, **Confluence**, and/or **Atlassian Rovo MCP** tokens under Hive **Credentials**.
 2. Set container env when deploying: `ATLASSIAN_API_TOKEN`, `ATLASSIAN_SITE_URL` (e.g. `https://your-site.atlassian.net`).

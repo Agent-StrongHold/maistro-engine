@@ -1,4 +1,4 @@
-"""Default MCP catalog — aligned with JFC container_registry/MCP_servers manifests."""
+"""Default MCP catalog — aligned with MAISTROcontainer_registry/MCP_servers manifests."""
 
 from __future__ import annotations
 
@@ -142,7 +142,7 @@ def filesystem_local_tools() -> list[MCPTool]:
 
 
 def platform_mcp_catalog() -> tuple[list[MCPServer], list[MCPTool]]:
-    """Built-in servers for Force Convergence (always seeded).
+    """Built-in servers (always seeded).
 
     NOTE: filesystem-local is NOT seeded by default — the sidecar isn't
     deployed in any current environment, and surfacing it in the MCP
@@ -159,7 +159,7 @@ def merge_manifest_catalog(
     servers: list[MCPServer],
     tools: list[MCPTool],
 ) -> tuple[list[MCPServer], list[MCPTool]]:
-    """Overlay JFC JSON manifests when the repo layout is present."""
+    """Overlay MAISTROJSON manifests when the repo layout is present."""
     try:
         from services.mcp_manifest_loader import load_manifest_files
     except ImportError:

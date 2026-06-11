@@ -106,9 +106,9 @@ export default function MCP() {
           FORCE CONVERGENCE · MULTI-MCP
         </div>
         <p style={{ fontFamily: "var(--hand)", fontSize: 13, margin: "0 0 10px", lineHeight: 1.45 }}>
-          Hive runs inside your <strong>leased sandbox container</strong> (Jedai Force Convergence). Agents call MCP tools
+          Hive runs inside your <strong>leased sandbox container</strong> (parent-project). Agents call MCP tools
           from this catalog using secrets in <a href="/credentials" style={{ color: "var(--accent)" }}>Credentials</a> or
-          Launch env vars — <strong>not</strong> via Cursor. Canonical manifests live in JFC{" "}
+          Launch env vars — <strong>not</strong> via Cursor. Canonical manifests live in MAISTRO{" "}
           <code style={{ fontFamily: "var(--mono)", fontSize: 10 }}>container_registry/MCP_servers/</code>.
         </p>
         {pmPoc && (

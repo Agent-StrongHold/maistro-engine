@@ -11,3 +11,6 @@ bcrypt>=4.0.0
 cryptography>=43.0.0
 structlog>=24.1.0
 pytest>=8.0.0
+pytest-asyncio>=0.25
+pytest-bdd>=8.0.0
+hypothesis>=6.0.0

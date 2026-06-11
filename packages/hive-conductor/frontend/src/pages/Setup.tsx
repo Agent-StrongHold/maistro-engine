@@ -44,15 +44,15 @@ export default function Setup() {
     if (pmPoc && !preset) setPreset("laptop");
   }, [pmPoc, preset]);
 
-  // Load available models from the JedAI gateway via Hive's
+  // Load available models from the LLM gateway via Hive's
   // /v1/settings/models proxy. The user's LITELLM key stays server-side.
   // Setup runs BEFORE any login, so the auth-gated /v1/settings/models will
   // 401; that's expected — we fall back to a curated list of known
-  // JedAI-gateway models so the dropdown is always populated. After the
+  // LLM-gateway models so the dropdown is always populated. After the
   // admin user finishes setup, settings can refresh the list from the
   // live gateway.
   useEffect(() => {
-    // Curated JedAI gateway model aliases — sorted by "good router default"
+    // Curated LLM gateway model aliases — sorted by "good router default"
     // first (small, fast, cheap), then by family. Trim / extend as the
     // gateway's catalog evolves.
     const FALLBACK_MODELS = [
@@ -169,8 +169,8 @@ export default function Setup() {
       body: JSON.stringify({ username: userUsername, password: userPassword }),
     });
     if (!r.ok) throw new Error("auto-login failed");
-    // When Hive is served behind the JFC gateway at /pm/, redirecting to "/"
-    // dumps the user at the JFC catalog with no obvious way back. Use the
+    // When Hive is served behind the MAISTROgateway at /pm/, redirecting to "/"
+    // dumps the user at the MAISTROcatalog with no obvious way back. Use the
     // Vite base path so they land on the Fleet page (Hive's PM-mode index
     // auto-redirects /pm/ → /pm/agents).
     window.location.href = import.meta.env.BASE_URL || "/";
@@ -282,12 +282,12 @@ export default function Setup() {
                 <div style={{ fontFamily: "var(--hand)", fontSize: 11, color: "var(--pencil)", marginTop: 4 }}>
                   The queen bee's brain — classifies intent, complexity, and cost to route each request to the best worker model. Needs to be fast and cheap, not the strongest. <code>gemini-3.1-flash-lite</code> is a good default.{" "}
                   <a
-                    href="https://latest.jedai-gateway-admin.wdprapps.disney.com/ui/?page=model-hub"
+                    href="https://latest.llm-gateway-admin.example.com/ui/?page=model-hub"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: "var(--accent)", textDecoration: "underline" }}
                   >
-                    Browse the JedAI Model Hub →
+                    Browse the MAISTRO Model Hub →
                   </a>{" "}
                   for details on each model (context window, pricing, capabilities).
                 </div>

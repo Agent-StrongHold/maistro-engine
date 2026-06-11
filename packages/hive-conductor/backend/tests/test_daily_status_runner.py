@@ -137,21 +137,21 @@ def test_result_to_jira_section_completed_returns_ok_with_issues() -> None:
                     "summary": "Ship X",
                     "status": "Done",
                     "updated": "t1",
-                    "url": "https://myjira.disney.com/browse/P-1",
+                    "url": "https://jira.example.com/browse/P-1",
                 },
                 {
                     "key": "P-2",
                     "summary": "Hire Y",
                     "status": "Open",
                     "updated": "t2",
-                    "url": "https://myjira.disney.com/browse/P-2",
+                    "url": "https://jira.example.com/browse/P-2",
                 },
             ],
         },
     )
     filt_record = _FakeNodeRec("jira_epic_filter", output={"kept": 1, "dropped": 1})
     rec = _FakeRecord(RunStatus.COMPLETED, [jp_record, filt_record])
-    section = _result_to_jira_section(rec, base_url="https://myjira.disney.com", flavor="server")
+    section = _result_to_jira_section(rec, base_url="https://jira.example.com", flavor="server")
     assert section["status"] == "ok"
     assert section["count"] == 2
     assert section["epics_kept"] == 1
@@ -167,7 +167,7 @@ def test_result_to_jira_section_failed_permission_returns_auth_failed() -> None:
     jp_record = _FakeNodeRec(
         "jira_poll",
         error_code="PermissionError",
-        error_message="jira_auth_failed status=401 base=https://myjira.disney.com",
+        error_message="jira_auth_failed status=401 base=https://jira.example.com",
     )
     rec = _FakeRecord(
         RunStatus.FAILED,
@@ -175,7 +175,7 @@ def test_result_to_jira_section_failed_permission_returns_auth_failed() -> None:
         error_code="PermissionError",
         error_message="propagated",
     )
-    section = _result_to_jira_section(rec, base_url="https://myjira.disney.com", flavor="server")
+    section = _result_to_jira_section(rec, base_url="https://jira.example.com", flavor="server")
     assert section["status"] == "auth_failed"
     assert "jira_auth_failed" in section["detail"]
     assert section["issues"] == []
@@ -213,8 +213,8 @@ def test_result_to_jira_section_missing_url_uses_constructed_browse_url() -> Non
         },
     )
     rec = _FakeRecord(RunStatus.COMPLETED, [jp_record])
-    section = _result_to_jira_section(rec, base_url="https://myjira.disney.com/", flavor="server")
-    assert section["issues"][0]["url"] == "https://myjira.disney.com/browse/P-9"
+    section = _result_to_jira_section(rec, base_url="https://jira.example.com/", flavor="server")
+    assert section["issues"][0]["url"] == "https://jira.example.com/browse/P-9"
 
 
 # --- end-to-end run_daily_status_dag with httpx mocked --------------------
@@ -257,7 +257,7 @@ async def test_run_daily_status_dag_completes_with_mocked_jira(
         user_id="u1",
         project_id="p1",
         pat="tk",
-        base_url="https://myjira.disney.com",
+        base_url="https://jira.example.com",
         flavor="server",
     )
     assert section["status"] == "ok"
@@ -291,7 +291,7 @@ async def test_run_daily_status_dag_401_returns_auth_failed(
         user_id="u1",
         project_id="p1",
         pat="bad",
-        base_url="https://myjira.disney.com",
+        base_url="https://jira.example.com",
         flavor="server",
     )
     assert section["status"] == "auth_failed"
@@ -314,7 +314,7 @@ async def test_run_daily_status_dag_catches_unexpected_exception(
         user_id="u1",
         project_id="p1",
         pat="tk",
-        base_url="https://myjira.disney.com",
+        base_url="https://jira.example.com",
         flavor="server",
     )
     assert section["status"] == "error"

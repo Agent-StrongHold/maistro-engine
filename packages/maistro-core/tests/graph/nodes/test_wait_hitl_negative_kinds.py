@@ -136,7 +136,7 @@ async def test_wait_for_subtasks_short_circuits_when_no_subtasks(
     Node = get_node("jira.wait_for_subtasks")
     result = await Node().run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "PROJ-100",
             "pat": "pat",
             "flavor": "server",
@@ -167,7 +167,7 @@ async def test_wait_for_subtasks_all_done_returns_completed(
     Node = get_node("jira.wait_for_subtasks")
     result = await Node().run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "PROJ-100",
             "pat": "pat",
             "flavor": "server",
@@ -197,7 +197,7 @@ async def test_wait_for_subtasks_some_open_pauses_for_poll_interval(
     Node = get_node("jira.wait_for_subtasks")
     result = await Node().run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "PROJ-100",
             "pat": "pat",
             "target_statuses": ["Done"],
@@ -227,7 +227,7 @@ async def test_wait_for_subtasks_timeout_returns_timed_out(
     ctx.metadata[f"wait_first_seen:{ctx.node_id}"] = one_hour_ago
     result = await Node().run(
         {
-            "base_url": "https://myjira.disney.com",
+            "base_url": "https://jira.example.com",
             "parent_key": "PROJ-100",
             "pat": "pat",
             "target_statuses": ["Done"],
@@ -254,7 +254,7 @@ async def test_compliance_block_writes_penalty_to_blackboard() -> None:
             "rule_id": "pii.email_in_summary",
             "severity": 3.0,
             "reason": "Draft summary contains a customer email address",
-            "evidence": {"matched": "alice@disney.com"},
+            "evidence": {"matched": "alice@example.com"},
         },
         ctx,
     )
@@ -267,7 +267,7 @@ async def test_compliance_block_writes_penalty_to_blackboard() -> None:
     p = penalties[0]
     assert p["rule_id"] == "pii.email_in_summary"
     assert p["severity"] == 3.0
-    assert p["evidence"] == {"matched": "alice@disney.com"}
+    assert p["evidence"] == {"matched": "alice@example.com"}
     # No halt requested
     assert "halt_requested" not in bb.metadata
 

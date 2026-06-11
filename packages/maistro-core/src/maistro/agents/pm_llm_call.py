@@ -1,4 +1,4 @@
-"""PM-fleet LLM-call adapter for the JedAI gateway (LiteLLM-compatible).
+"""PM-fleet LLM-call adapter for the LLM gateway (LiteLLM-compatible).
 
 This is the `llm_call: Callable[..., Awaitable[str]]` you pass into
 `run_graph()` when running the PM persona DAG. It mirrors the same
@@ -8,8 +8,8 @@ DAG owns its own schema validation via PMRoleOutput, not pydantic-ai's
 Agent[Out] machinery).
 
 Reads at request time (process env, not bake-time):
-  - `LITELLM_URL` (or `LITELLM_BASE_URL` as fallback) — JedAI gateway URL
-  - `LITELLM_MASTER_KEY` — per-developer JedAI virtual key
+  - `LITELLM_URL` (or `LITELLM_BASE_URL` as fallback) — LLM gateway URL
+  - `LITELLM_MASTER_KEY` — per-developer MAISTRO virtual key
   - `DEFAULT_MODEL` (or call-time `model=`) — model alias (e.g. `claude-sonnet-4-6`)
 
 JSON-mode is requested via `response_format={"type": "json_object"}`
@@ -30,7 +30,7 @@ import httpx
 
 def _resolve_base_url() -> str:
     # Support both the maistro-core naming convention (LITELLM_URL /
-    # LITELLM_BASE_URL — what config/loader.py reads) and the JedAI
+    # LITELLM_BASE_URL — what config/loader.py reads) and the MAISTRO
     # gateway's external naming (LITELLM_PROXY_URL — what .env ships
     # with). Either set works; the compose wires both.
     return (
@@ -49,12 +49,12 @@ def _resolve_model(model: str | None) -> str:
     # Truthy-check, not key-presence: .env files often have `DEFAULT_MODEL=`
     # (key present, value empty), which `os.environ.get(k, default)` won't
     # fall back on. Sonnet 4.6 is the v0 default (confirmed available on
-    # the JedAI gateway).
+    # the LLM gateway).
     actual = model or os.environ.get("DEFAULT_MODEL") or "claude-sonnet-4-6"
     return actual.removeprefix("openai:")
 
 
-async def jedai_llm_call(
+async def maistro_llm_call(
     messages: list[dict[str, Any]],
     *,
     model: str | None = None,
@@ -62,7 +62,7 @@ async def jedai_llm_call(
     json_mode: bool = True,
     timeout: float = 120.0,
 ) -> str:
-    """Call the JedAI gateway with OpenAI-compatible chat-completions.
+    """Call the LLM gateway with OpenAI-compatible chat-completions.
 
     Signature matches what `NodeRun.execute` invokes: positional
     `messages` + kwargs `model` + `temperature`. JSON mode is on by
@@ -71,9 +71,7 @@ async def jedai_llm_call(
     base_url = _resolve_base_url()
     api_key = _resolve_api_key()
     if not base_url or not api_key:
-        raise RuntimeError(
-            "JedAI gateway not configured: LITELLM_URL + LITELLM_MASTER_KEY required."
-        )
+        raise RuntimeError("LLM gateway not configured: LITELLM_URL + LITELLM_MASTER_KEY required.")
 
     body: dict[str, Any] = {
         "model": _resolve_model(model),
@@ -98,10 +96,10 @@ async def jedai_llm_call(
             # (unsupported response_format, bad model alias, etc.) are
             # debuggable from the logs rather than hidden behind httpx's
             # default short message.
-            raise RuntimeError(f"JedAI gateway {resp.status_code}: {resp.text[:1000]}")
+            raise RuntimeError(f"LLM gateway {resp.status_code}: {resp.text[:1000]}")
         data = resp.json()
         content: str = data["choices"][0]["message"]["content"]
         return content
 
 
-__all__ = ["jedai_llm_call"]
+__all__ = ["maistro_llm_call"]

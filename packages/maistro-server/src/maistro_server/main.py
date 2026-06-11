@@ -121,13 +121,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await engine.dispose()
     reset_engine_cache()
 
-    # Flush observability
-    from maistro.observability.tracing import get_langfuse
-
-    langfuse = get_langfuse()
-    if langfuse:
-        langfuse.flush()
-
     await logger.ainfo("maistro_engine_stopped")
 
 

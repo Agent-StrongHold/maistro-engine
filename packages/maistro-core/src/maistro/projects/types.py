@@ -42,7 +42,7 @@ class JiraResourceBinding(BaseModel):
 
     project_key: str  # e.g. "PROJ"
     flavor: str = "server"  # "server" | "cloud"
-    site_url: str = ""  # https://myjira.disney.com or https://acme.atlassian.net
+    site_url: str = ""  # https://jira.example.com or https://acme.atlassian.net
 
 
 class AirtableResourceBinding(BaseModel):
@@ -64,7 +64,7 @@ class AirtableResourceBinding(BaseModel):
 class RepoResourceBinding(BaseModel):
     """One GitHub or GitLab repo bound to this Maistro project."""
 
-    host: str = "github_disney"  # github_disney | gitlab_disney | github | gitlab
+    host: str = "github_enterprise"  # github_enterprise | gitlab_enterprise | github | gitlab
     owner: str = ""
     name: str = ""
     description: str = ""  # what this repo is in this project's context

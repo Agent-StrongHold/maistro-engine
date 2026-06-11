@@ -40,7 +40,7 @@ Hive Conductor is a **mission-control style UI** with a **FastAPI stub** for loc
 
 ## Out of scope (explicit)
 
-- **JedAI**, **dev-ai-environment**, and **force-convergence** prototypes are **not** imported or required by this package. If they must integrate later, add paths and reuse notes per `docs/install/resolver-matrix.md` and extend acceptance criteria in a follow-on spec.
+- **MAISTRO**, **dev-ai-environment**, and **force-convergence** prototypes are **not** imported or required by this package. If they must integrate later, add paths and reuse notes per `docs/install/resolver-matrix.md` and extend acceptance criteria in a follow-on spec.
 
 ## Acceptance criteria
 

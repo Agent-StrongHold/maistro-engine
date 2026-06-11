@@ -15,7 +15,7 @@ from maistro.tasks.runner import TaskRunner
 @pytest.fixture(autouse=True)
 def _use_pm_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     # This module tests the PM fleet STUB executor; force the stub path so the
-    # tests don't require a live JedAI/LITELLM gateway.
+    # tests don't require a live MAISTRO/LITELLM gateway.
     monkeypatch.setenv("MAISTRO_PM_USE_STUBS", "1")
 
 

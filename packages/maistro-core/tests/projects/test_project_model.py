@@ -65,10 +65,10 @@ def test_resource_bindings_carry_descriptions() -> None:
         id="p1",
         owner_user_id="alice",
         name="Ship payments",
-        profile_markdown="Build the next-gen payments engine for Disney+",
+        profile_markdown="Build the next-gen payments engine for ACME Streaming",
         jira_bindings=[
             JiraResourceBinding(
-                project_key="PAY", flavor="server", site_url="https://myjira.disney.com"
+                project_key="PAY", flavor="server", site_url="https://jira.example.com"
             )
         ],
         airtable_bindings=[
@@ -83,7 +83,7 @@ def test_resource_bindings_carry_descriptions() -> None:
         ],
         repo_bindings=[
             RepoResourceBinding(
-                host="gitlab_disney",
+                host="gitlab_enterprise",
                 owner="payments",
                 name="ledger-service",
                 description="Core ledger; primary write path",
@@ -92,10 +92,10 @@ def test_resource_bindings_carry_descriptions() -> None:
     )
     assert p.profile_markdown.startswith("Build the next-gen")
     assert p.jira_bindings[0].project_key == "PAY"
-    assert p.jira_bindings[0].site_url.endswith("disney.com")
+    assert p.jira_bindings[0].site_url.endswith("example.com")
     assert p.airtable_bindings[0].base_name == "Payments Tracker"
     assert p.airtable_bindings[0].table_descriptions["Risks"].startswith("Blockers")
-    assert p.repo_bindings[0].host == "gitlab_disney"
+    assert p.repo_bindings[0].host == "gitlab_enterprise"
     assert "ledger-service" in p.repo_bindings[0].name
 
 

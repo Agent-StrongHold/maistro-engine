@@ -16,16 +16,15 @@ from pydantic import BaseModel, ConfigDict
 from routes import (
     agents,
     audit,
-    capabilities,
-    program,
-    work_items,
     auth,
+    capabilities,
     chat,
     cli,
     containers,
     credentials,
     dag_runs,
     dags,
+    dashboard_layout,
     eval_judge,
     feedback,
     health,
@@ -179,6 +178,7 @@ def create_app() -> FastAPI:
 
     app.include_router(daily_report_v2.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
+    app.include_router(dashboard_layout.router)
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
     # Phase 5 Signal #4: thumbs feedback piggybacks on /v1/dag-runs path
     # space so the SSE stream + feedback live together for the client.

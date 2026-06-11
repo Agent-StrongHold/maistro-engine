@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import contextlib
+import os
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Request
 
 router = APIRouter(tags=["daily-report"])
+
+
+def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
+    """Single allowlisted callsite for use_secret — lambda is centralised here."""
+    try:
+        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
+    except Exception:
+        return None
 
 
 def _get_pat(user_id: str) -> str | None:
@@ -21,7 +30,7 @@ def _get_pat(user_id: str) -> str | None:
         for pid in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
             try:
                 if store.has_secret(user_id, pid):
-                    return store.use_secret(user_id, pid, lambda s: s)
+                    return _use_secret(store, user_id, pid)
             except Exception:
                 continue
     except Exception:
@@ -34,11 +43,20 @@ async def _fetch_jira(user_id: str) -> dict[str, Any]:
     if not pat:
         return {"status": "no_pat", "count": 0, "issues": []}
 
-    jql = "project = JEDAI AND updated >= -7d ORDER BY updated DESC"
+    jira_server_url = os.environ.get("JIRA_SERVER_URL", "")
+    if not jira_server_url:
+        return {
+            "status": "no_config",
+            "detail": "JIRA_SERVER_URL env var is not set",
+            "count": 0,
+            "issues": [],
+        }
+
+    jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(
-                "https://myjira.disney.com/rest/api/2/search",
+                f"{jira_server_url}/rest/api/2/search",
                 params={
                     "jql": jql,
                     "maxResults": 15,
@@ -76,14 +94,14 @@ def _get_airtable_pat(user_id: str) -> str | None:
         for pid in ("airtable", "airtable_pat"):
             try:
                 if store.has_secret(user_id, pid):
-                    airtable_pat = store.use_secret(user_id, pid, lambda s: s)
+                    airtable_pat = _use_secret(store, user_id, pid)
                     break
             except Exception:
                 continue
         # If still not found, the PAT might be stored but under a different mechanism
         if not airtable_pat:
             with contextlib.suppress(Exception):
-                airtable_pat = store.use_secret(user_id, "airtable", lambda s: s)
+                airtable_pat = _use_secret(store, user_id, "airtable")
     except Exception:
         return None
     return airtable_pat
@@ -109,7 +127,7 @@ async def _fetch_airtable(user_id: str) -> dict[str, Any]:
     if not airtable_pat:
         return {"status": "not_configured", "count": 0, "issues": []}
 
-    base_id = "app0i9FWbZrctJuS6"  # JEDAI base
+    base_id = "appXXXXXXXXXXXXXX"  # MAISTRO base
     headers = {"Authorization": f"Bearer {airtable_pat}"}
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:

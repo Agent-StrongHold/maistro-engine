@@ -69,7 +69,7 @@ async def test_user_with_projects_in_three_domains_filters_correctly() -> None:
     art1 = await store.update(art1.model_copy(update={"use_case": "canvas_creative"}))
 
     # Eng: 1 project.
-    eng1 = await store.create(owner_user_id="alice", name="JFC v0.3 RFCs")
+    eng1 = await store.create(owner_user_id="alice", name="MAISTRO v0.3 RFCs")
     eng1 = await store.update(eng1.model_copy(update={"use_case": "engineering_rfc"}))
 
     # Without filter: all 4 visible.

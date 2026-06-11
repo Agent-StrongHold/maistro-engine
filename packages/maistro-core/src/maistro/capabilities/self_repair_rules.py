@@ -60,21 +60,29 @@ def _diagnose_docker(detail: dict[str, Any]) -> list[RepairProposal]:
         name = str(c.get("name", ""))
         state = str(c.get("state", "")).lower()
         if state == "unhealthy":
-            out.append(RepairProposal(
-                resource=f"docker:{name}", symptom="container unhealthy",
-                action="restart_container", params={"name": name},
-                tier=ActionTier.REVERSIBLE.value,
-                rationale=f"container {name} Up but failing its healthcheck",
-            ))
+            out.append(
+                RepairProposal(
+                    resource=f"docker:{name}",
+                    symptom="container unhealthy",
+                    action="restart_container",
+                    params={"name": name},
+                    tier=ActionTier.REVERSIBLE.value,
+                    rationale=f"container {name} Up but failing its healthcheck",
+                )
+            )
         elif state == "restarting":
             # Crash-loop: the host API flags these for human attention. Restarting
             # again would just feed the loop — propose-only, escalate.
-            out.append(RepairProposal(
-                resource=f"docker:{name}", symptom="container crash-looping",
-                action=None, tier="",
-                rationale=f"container {name} restarting (crash-loop) — needs a human, not another kick",
-                recognized=True,
-            ))
+            out.append(
+                RepairProposal(
+                    resource=f"docker:{name}",
+                    symptom="container crash-looping",
+                    action=None,
+                    tier="",
+                    rationale=f"container {name} restarting (crash-loop) — needs a human, not another kick",
+                    recognized=True,
+                )
+            )
         # stopped / healthy → no proposal (stopped is intentional absence).
     return out
 
@@ -84,11 +92,16 @@ def _diagnose_services(detail: dict[str, Any]) -> list[RepairProposal]:
     for u in _items(detail, "units"):
         if str(u.get("status", "")).lower() == "failed":
             name = str(u.get("name", ""))
-            out.append(RepairProposal(
-                resource=f"service:{name}", symptom="unit failed",
-                action="restart_service", params={"name": name},
-                tier=ActionTier.REVERSIBLE.value, rationale=f"systemd unit {name} failed",
-            ))
+            out.append(
+                RepairProposal(
+                    resource=f"service:{name}",
+                    symptom="unit failed",
+                    action="restart_service",
+                    params={"name": name},
+                    tier=ActionTier.REVERSIBLE.value,
+                    rationale=f"systemd unit {name} failed",
+                )
+            )
     return out
 
 
@@ -98,12 +111,16 @@ def _diagnose_storage(detail: dict[str, Any]) -> list[RepairProposal]:
     for pool in _items(detail, "pools"):
         if pool.get("healthy") is False:
             name = str(pool.get("name", ""))
-            out.append(RepairProposal(
-                resource=f"storage:{name}", symptom="zpool not healthy",
-                action=None, tier="",
-                rationale=f"pool {name} not healthy — human review (data risk)",
-                recognized=True,
-            ))
+            out.append(
+                RepairProposal(
+                    resource=f"storage:{name}",
+                    symptom="zpool not healthy",
+                    action=None,
+                    tier="",
+                    rationale=f"pool {name} not healthy — human review (data risk)",
+                    recognized=True,
+                )
+            )
     return out
 
 

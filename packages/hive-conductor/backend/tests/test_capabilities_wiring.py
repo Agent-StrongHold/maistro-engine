@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from pydantic import SecretStr
-
 from config import Settings
+from models.schemas import CapabilitySetting, SettingsModel
+from pydantic import SecretStr
+from services.capabilities_wiring import wire_capabilities
+
 from maistro.capabilities.bootstrap import default_capability_registry
 from maistro.capabilities.slots.infra import InfraAction
-from models.schemas import CapabilitySetting, SettingsModel
-from services.capabilities_wiring import wire_capabilities
 
 
 class _FakeVault:
@@ -39,7 +39,9 @@ def test_registers_host_health_providers_when_url_present() -> None:
 
 def test_no_url_leaves_infra_slots_empty() -> None:
     reg = default_capability_registry()
-    wire_capabilities(reg, settings_model=SettingsModel(), config=_cfg(host_health_url=None), vault=None)
+    wire_capabilities(
+        reg, settings_model=SettingsModel(), config=_cfg(host_health_url=None), vault=None
+    )
     assert reg.installed("infra_monitor") == []
     assert reg.installed("infra_action") == []
 
@@ -56,7 +58,7 @@ def test_action_shares_the_registry_inbox_instance() -> None:
     assert isinstance(action, InfraAction)
     # The action's approval provider must be the same inbox the routes resolve.
     inbox = reg.provider("approval", "inbox")
-    assert action._approval is inbox  # noqa: SLF001 - asserting shared wiring
+    assert action._approval is inbox  # asserting shared wiring
 
 
 def test_token_prefers_vault_over_env_fallback() -> None:
@@ -70,7 +72,7 @@ def test_token_prefers_vault_over_env_fallback() -> None:
     )
     action = reg.provider("infra_action", "host_health")
     # token lives behind the http seam; assert via the seam's auth header.
-    assert action._http._headers.get("Authorization") == "Bearer from-vault"  # noqa: SLF001
+    assert action._http._headers.get("Authorization") == "Bearer from-vault"
 
 
 def test_token_env_fallback_when_vault_missing_secret() -> None:
@@ -83,7 +85,7 @@ def test_token_env_fallback_when_vault_missing_secret() -> None:
         vault=vault,
     )
     action = reg.provider("infra_action", "host_health")
-    assert action._http._headers.get("Authorization") == "Bearer from-env"  # noqa: SLF001
+    assert action._http._headers.get("Authorization") == "Bearer from-env"
 
 
 def test_applies_activation_from_settings() -> None:
@@ -124,7 +126,9 @@ def test_registers_self_repair_when_infra_present() -> None:
 
 def test_no_self_repair_without_infra() -> None:
     reg = default_capability_registry()
-    wire_capabilities(reg, settings_model=SettingsModel(), config=_cfg(host_health_url=None), vault=None)
+    wire_capabilities(
+        reg, settings_model=SettingsModel(), config=_cfg(host_health_url=None), vault=None
+    )
     assert reg.installed("self_repair") == []
 
 

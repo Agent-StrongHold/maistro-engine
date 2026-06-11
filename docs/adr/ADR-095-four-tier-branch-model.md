@@ -1,5 +1,5 @@
 ---
-id: ADR-060
+id: ADR-095
 title: Four-tier branch model with protected, CI-gated merges
 repo: maistro-engine
 kind: adr
@@ -21,7 +21,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-060: Four-tier branch model with protected, CI-gated merges
+# ADR-095: Four-tier branch model with protected, CI-gated merges
 
 ## Context
 

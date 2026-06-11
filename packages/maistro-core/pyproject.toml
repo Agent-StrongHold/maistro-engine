@@ -5,16 +5,16 @@ description = "Core library for the Maistro multi-agent AI platform — memory, 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pydantic>=2.0",
-    "pydantic-settings>=2.7",
-    "structlog>=24.4",
-    "httpx>=0.28",
-    "sqlalchemy[asyncio]>=2.0",
-    "asyncpg>=0.30",
-    "pgvector>=0.3",
-    "pyyaml>=6.0",
-    "cryptography>=43.0",
-    "argon2-cffi>=23.1",
+    "pydantic>=2.0,<3",
+    "pydantic-settings>=2.7,<3",
+    "structlog>=24.4,<26",
+    "httpx>=0.28,<1",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "asyncpg>=0.30,<1",
+    "pgvector>=0.3,<1",
+    "pyyaml>=6.0,<7",
+    "cryptography>=46.0.6,<47",
+    "argon2-cffi>=23.1,<25",
 ]
 
 [project.scripts]
@@ -39,8 +39,13 @@ tui = [
     "typer>=0.12",
     "rich>=13.0",
 ]
+builders = [
+    "textual>=0.61",
+    "anthropic>=0.28",
+    "maistro-bootstrap[builders]",
+]
 all = [
-    "maistro-core[llm,sandbox,observability,tui]",
+    "maistro-core[llm,sandbox,observability,tui,builders]",
 ]
 dev = [
     "pytest>=8.3",

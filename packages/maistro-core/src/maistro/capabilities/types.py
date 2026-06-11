@@ -9,8 +9,8 @@ from enum import StrEnum
 class FallbackPolicy(StrEnum):
     """What a slot does when no enabled+healthy provider resolves."""
 
-    BASELINE = "baseline"          # a core-only baseline provider fills the slot
-    SAFE_NOOP = "safe_noop"        # return a typed Unavailable; never raise
+    BASELINE = "baseline"  # a core-only baseline provider fills the slot
+    SAFE_NOOP = "safe_noop"  # return a typed Unavailable; never raise
     HARD_REQUIRED = "hard_required"  # boot fails if unfilled
 
 

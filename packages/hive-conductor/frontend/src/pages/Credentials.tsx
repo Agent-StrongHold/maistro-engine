@@ -110,7 +110,7 @@ export default function Credentials() {
     <div style={{ padding: "20px 24px", maxWidth: 720 }}>
       <PageHeader
         title="Integration credentials"
-        subtitle="Encrypted at rest in this container — used by Hive agents and MCP at runtime (Force Convergence). Never sent back to the browser."
+        subtitle="Encrypted at rest in this container — used by Hive agents and MCP at runtime. Never sent back to the browser."
       />
 
       <div className="card" style={{ marginBottom: 14, padding: 12, borderLeft: "3px solid var(--accent)" }}>

@@ -21,7 +21,16 @@ from services.chat_completion import _ToolCallAccumulator, run_chat_completion_s
 def test_accumulator_single_call_assembled_from_fragments() -> None:
     acc = _ToolCallAccumulator()
     # id + name arrive first; arguments stream in pieces across later deltas.
-    acc.add_deltas([{"index": 0, "id": "call_1", "type": "function", "function": {"name": "poll_jira", "arguments": ""}}])
+    acc.add_deltas(
+        [
+            {
+                "index": 0,
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "poll_jira", "arguments": ""},
+            }
+        ]
+    )
     acc.add_deltas([{"index": 0, "function": {"arguments": '{"sprint"'}}])
     acc.add_deltas([{"index": 0, "function": {"arguments": ": 1}"}}])
 
@@ -97,7 +106,9 @@ def _reasoning(text: str) -> dict[str, Any]:
     return {"choices": [{"delta": {"reasoning_content": text}, "finish_reason": None}]}
 
 
-def _tool_frag(index: int, *, id: str | None = None, name: str | None = None, args: str = "") -> dict[str, Any]:
+def _tool_frag(
+    index: int, *, id: str | None = None, name: str | None = None, args: str = ""
+) -> dict[str, Any]:
     fn: dict[str, Any] = {}
     if name:
         fn["name"] = name
@@ -157,7 +168,9 @@ async def test_streaming_tool_call_then_streamed_answer(monkeypatch) -> None:
     ]
     monkeypatch.setattr("services.chat_completion.build_llm_port", lambda: _FakeLLM(turns))
 
-    req = ChatCompletionRequest(messages=[{"role": "user", "content": "blockers?"}], model="test-model")
+    req = ChatCompletionRequest(
+        messages=[{"role": "user", "content": "blockers?"}], model="test-model"
+    )
     events = await _collect(run_chat_completion_streaming(req, user_id=""))
 
     types = [e["type"] for e in events]
@@ -203,7 +216,9 @@ def test_responses_event_normalization() -> None:
     text = _responses_event_to_chunk({"type": "response.output_text.delta", "delta": "Hi"})
     assert text["choices"][0]["delta"]["content"] == "Hi"
 
-    reasoning = _responses_event_to_chunk({"type": "response.reasoning_summary_text.delta", "delta": "hmm"})
+    reasoning = _responses_event_to_chunk(
+        {"type": "response.reasoning_summary_text.delta", "delta": "hmm"}
+    )
     assert reasoning["choices"][0]["delta"]["reasoning_content"] == "hmm"
 
     done = _responses_event_to_chunk({"type": "response.completed"})

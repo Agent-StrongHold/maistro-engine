@@ -1,7 +1,7 @@
-"""PM fleet task executor — real LLM calls via the JedAI gateway (v0).
+"""PM fleet task executor — real LLM calls via the LLM gateway (v0).
 
 Replaces the stub-only POC dispatch. Each PM capability invocation maps
-to a single Claude call through the JedAI gateway. The agent's persona
+to a single Claude call through the LLM gateway. The agent's persona
 prompt + per-capability prompt template produce a PMRoleOutput JSON,
 which is wrapped in ConductorOutput so the Hive backend contract stays
 intact.
@@ -28,7 +28,7 @@ import structlog
 
 from maistro.agents.pm_capabilities import is_gated, normalize_capability
 from maistro.agents.pm_fleet import get_pm_def
-from maistro.agents.pm_llm_call import jedai_llm_call
+from maistro.agents.pm_llm_call import maistro_llm_call
 from maistro.agents.types import ConductorOutput, PlanOutput, SubTask
 from maistro.graph.pm_domain import (
     PM_PRIMARY_CAPABILITY,
@@ -293,7 +293,7 @@ async def _run_browser_driven(
     enriched_payload = {**payload, "web_search": search.to_dict()}
     messages = _build_messages(role, capability, enriched_payload)
     try:
-        raw = await jedai_llm_call(messages, temperature=0.2, json_mode=True)
+        raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
     except Exception as exc:
         # Fall back to returning the search result directly — better than
         # losing the live data because synthesis failed.
@@ -322,7 +322,7 @@ async def _run_jira_driven(
     Flow:
       1. Pull user's Jira PAT from program_context (never env).
       2. If absent — return source='no_data' with a clear hint to set credentials.
-      3. Call mcp-jedai-atlassian → get real issues / state.
+      3. Call mcp-atlassian → get real issues / state.
       4. Inject the real data into the LLM prompt context.
       5. Let Claude synthesize the PMRoleOutput.
     """
@@ -331,10 +331,10 @@ async def _run_jira_driven(
         return PMRoleOutput(
             capability=capability,
             summary=(
-                "No Disney Jira PAT in credentials. "
-                "Open Hive → Credentials → 'Disney Jira PAT (on-prem)' and "
+                "No Jira PAT in credentials. "
+                "Open Hive → Credentials → 'Jira PAT (on-prem)' and "
                 "paste a token from "
-                "https://myjira.disney.com/secure/ViewProfile.jspa"
+                "https://jira.example.com/secure/ViewProfile.jspa"
                 "?selectedTab=com.atlassian.pats.pats-plugin:jira-user-personal-access-tokens"
             ),
             result={"reason": "no_jira_pat"},
@@ -383,7 +383,7 @@ async def _run_jira_driven(
     enriched_payload = {**payload, "jira_data": tool_result}
     messages = _build_messages(role, capability, enriched_payload)
     try:
-        raw = await jedai_llm_call(messages, temperature=0.2, json_mode=True)
+        raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
     except Exception as exc:
         return PMRoleOutput(
             capability=capability,
@@ -487,7 +487,7 @@ def _resolve_role(agent_id: str, capability: str) -> Any:
 
 
 async def run_pm_task(task: TaskCreate) -> ConductorOutput:
-    """Execute a PM fleet capability via real Claude via the JedAI gateway."""
+    """Execute a PM fleet capability via real Claude via the LLM gateway."""
     if os.environ.get("MAISTRO_PM_USE_STUBS", "").lower() in {"1", "true", "yes"}:
         return _run_pm_stub_rollback(task)
 
@@ -552,7 +552,7 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     else:
         messages = _build_messages(role, capability, payload, experience_context=experience_context)
         try:
-            raw = await jedai_llm_call(messages, temperature=0.2, json_mode=True)
+            raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
         except Exception as exc:
             logger.warning(
                 "pm_llm_call_failed",

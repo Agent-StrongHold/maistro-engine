@@ -1,5 +1,5 @@
 ---
-id: ADR-059
+id: ADR-094
 title: Cut pydantic-ai from the conductor — call the OpenAI-compatible gateway directly
 repo: maistro-engine
 kind: adr
@@ -21,7 +21,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-059: Cut pydantic-ai from the conductor
+# ADR-094: Cut pydantic-ai from the conductor
 
 ## Context
 

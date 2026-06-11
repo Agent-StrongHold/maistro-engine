@@ -8,7 +8,7 @@ Concrete v0 surface:
     objective; return text + duration.
   - `aclose()` — tear down Playwright context cleanly.
 
-LLM client: browser-use's vision-driven Agent runs against the JedAI
+LLM client: browser-use's vision-driven Agent runs against the MAISTRO
 gateway in OpenAI-compatible mode (LiteLLM is OpenAI-compatible). The
 model is gemini-3.1-flash-lite — vision-capable, cheap, fast. PM agents
 running on claude-sonnet-4-6 delegate WEB work to this lighter LLM;
@@ -37,7 +37,7 @@ class BrowserToolError(RuntimeError):
 
 
 def _resolve_llm_base_url() -> str:
-    # Same env-var fallback chain as pm_llm_call (see jedai-gateway notes).
+    # Same env-var fallback chain as pm_llm_call (see llm-gateway notes).
     return (
         os.environ.get("LITELLM_URL")
         or os.environ.get("LITELLM_BASE_URL")
@@ -131,12 +131,12 @@ class BrowserClient:
         return browser_use
 
     def _build_llm(self) -> Any:
-        """Construct the browser-use LLM client pointed at the JedAI gateway."""
+        """Construct the browser-use LLM client pointed at the LLM gateway."""
         base_url = _resolve_llm_base_url()
         api_key = _resolve_llm_api_key()
         if not base_url or not api_key:
             raise BrowserToolError(
-                "JedAI gateway not configured for browser-use: LITELLM_URL "
+                "LLM gateway not configured for browser-use: LITELLM_URL "
                 "(or LITELLM_PROXY_URL) + LITELLM_MASTER_KEY required."
             )
         bu = self._import_browser_use()
@@ -148,7 +148,7 @@ class BrowserClient:
         if ChatOpenAI is None:
             # Fallback: use the openai sdk directly via browser-use's
             # generic OpenAI-compatible wrapper.
-            from openai import AsyncOpenAI
+            from openai import AsyncOpenAI  # type: ignore[import-not-found]  # optional extra
 
             return AsyncOpenAI(base_url=base_url, api_key=api_key)
         return ChatOpenAI(

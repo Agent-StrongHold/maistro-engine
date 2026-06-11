@@ -1,7 +1,7 @@
 """`jira.poll` — query Jira via JQL and return the issue list.
 
 Supports two Atlassian backends:
-- **Disney on-prem** (Jira Data Center / Server v9 at myjira.disney.com).
+- **on-prem Jira Server** (Jira Data Center / Server v9 at jira.example.com).
   Uses the on-prem REST v2 API + per-request `Authorization: Bearer <PAT>`.
 - **Atlassian Cloud** (any *.atlassian.net). Uses REST v3 + Basic Auth
   (email + API token) if ATLASSIAN_EMAIL is set; otherwise Bearer PAT.
@@ -27,9 +27,7 @@ logger = logging.getLogger("maistro.nodes.jira")
 
 
 class JiraPollIn(BaseModel):
-    base_url: str = Field(
-        description="e.g. https://myjira.disney.com or https://acme.atlassian.net"
-    )
+    base_url: str = Field(description="e.g. https://jira.example.com or https://acme.atlassian.net")
     jql: str = Field(
         description="JQL query (e.g. assignee=currentUser() AND resolution=Unresolved)"
     )
@@ -69,7 +67,7 @@ class JiraPollNode(BaseNode[JiraPollIn, JiraPollOut]):
     external_io: ClassVar[bool] = True
     display_name: ClassVar[str] = "Jira: query (JQL)"
     description: ClassVar[str] = (
-        "Run a JQL search against Disney on-prem Jira or Atlassian Cloud. "
+        "Run a JQL search against on-prem Jira Server Jira or Atlassian Cloud. "
         "PAT is supplied at runtime from the Hive credential store; never "
         "stored in the DAG definition."
     )

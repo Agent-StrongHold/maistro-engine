@@ -6,7 +6,9 @@ from services.hill_climber import HillClimber
 
 
 def _hc() -> HillClimber:
-    return HillClimber(dag_id="d1", all_evals=["a", "b", "c", "d"], target_count=2, held_out_count=2)
+    return HillClimber(
+        dag_id="d1", all_evals=["a", "b", "c", "d"], target_count=2, held_out_count=2
+    )
 
 
 def test_within_noise_improvement_rejected() -> None:

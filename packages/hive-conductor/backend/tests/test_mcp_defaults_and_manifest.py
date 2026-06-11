@@ -101,7 +101,7 @@ def test_merge_manifest_catalog_adds_new_server(
         ],
     }
     (tmp_path / "extra.json").write_text(json.dumps(manifest))
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(tmp_path))
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(tmp_path))
 
     servers, tools = platform_mcp_catalog()
     merged_servers, merged_tools = merge_manifest_catalog(servers, tools)
@@ -131,7 +131,7 @@ def test_merge_manifest_overrides_existing_server_fields(
         "tools": [],
     }
     (tmp_path / "rovo.json").write_text(json.dumps(manifest))
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(tmp_path))
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(tmp_path))
 
     servers, tools = platform_mcp_catalog()
     merged_servers, _ = merge_manifest_catalog(servers, tools)
@@ -151,7 +151,7 @@ def test_merge_manifest_skips_entries_without_id(
     )
 
     (tmp_path / "no-id.json").write_text(json.dumps({"name": "no id"}))
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(tmp_path))
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(tmp_path))
 
     servers, tools = platform_mcp_catalog()
     out_servers, _ = merge_manifest_catalog(servers, tools)
@@ -178,7 +178,7 @@ def test_merge_manifest_skips_non_dict_tool_specs(
         ],
     }
     (tmp_path / "m.json").write_text(json.dumps(manifest))
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(tmp_path))
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(tmp_path))
 
     servers, tools = platform_mcp_catalog()
     _, merged_tools = merge_manifest_catalog(servers, tools)
@@ -205,7 +205,7 @@ def test_merge_manifest_dedups_tool_ids(
         "tools": [{"name": "t1", "description": "first", "category": "test"}],
     }
     (tmp_path / "m.json").write_text(json.dumps(manifest))
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(tmp_path))
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(tmp_path))
 
     servers, tools = platform_mcp_catalog()
     # Run twice in a row; the second pass must NOT add the same tool again
@@ -223,11 +223,11 @@ def test_load_manifest_files_returns_empty_with_no_dirs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No override dir + repo MCP dir absent → returns []."""
-    monkeypatch.delenv("JFC_MCP_OVERRIDE_DIR", raising=False)
-    # Patch _JFC_MCP_DIR + _FALLBACK_MCP_DIR to nonexistent paths
+    monkeypatch.delenv("MAISTRO_MCP_OVERRIDE_DIR", raising=False)
+    # Patch _PARENT_MCP_DIR + _FALLBACK_MCP_DIR to nonexistent paths
     import services.mcp_manifest_loader as ml
 
-    monkeypatch.setattr(ml, "_JFC_MCP_DIR", tmp_path / "nope1")
+    monkeypatch.setattr(ml, "_PARENT_MCP_DIR", tmp_path / "nope1")
     monkeypatch.setattr(ml, "_FALLBACK_MCP_DIR", tmp_path / "nope2")
     assert ml.load_manifest_files() == []
 
@@ -240,7 +240,7 @@ def test_load_manifest_files_reads_override_dir(
 
     (tmp_path / "good.json").write_text(json.dumps({"id": "a", "name": "A"}))
     (tmp_path / "no_id.json").write_text(json.dumps({"name": "skip"}))
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(tmp_path))
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(tmp_path))
     out = ml.load_manifest_files()
     ids = {item["id"] for item in out}
     assert "a" in ids
@@ -255,7 +255,7 @@ def test_load_manifest_files_skips_broken_json(
 
     (tmp_path / "bad.json").write_text("{this is not json")
     (tmp_path / "good.json").write_text(json.dumps({"id": "ok"}))
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(tmp_path))
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(tmp_path))
     out = ml.load_manifest_files()
     ids = {item["id"] for item in out}
     assert "ok" in ids
@@ -281,7 +281,7 @@ def test_mcp_manifest_dirs_includes_all_available(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When override + JFC + fallback are all valid dirs, all three appear."""
+    """When override + MAISTRO+ fallback are all valid dirs, all three appear."""
     from services import mcp_manifest_loader as ml
 
     o = tmp_path / "override"
@@ -290,8 +290,8 @@ def test_mcp_manifest_dirs_includes_all_available(
     j.mkdir()
     f = tmp_path / "fallback"
     f.mkdir()
-    monkeypatch.setenv("JFC_MCP_OVERRIDE_DIR", str(o))
-    monkeypatch.setattr(ml, "_JFC_MCP_DIR", j)
+    monkeypatch.setenv("MAISTRO_MCP_OVERRIDE_DIR", str(o))
+    monkeypatch.setattr(ml, "_PARENT_MCP_DIR", j)
     monkeypatch.setattr(ml, "_FALLBACK_MCP_DIR", f)
     dirs = ml.mcp_manifest_dirs()
     assert o in dirs and j in dirs and f in dirs

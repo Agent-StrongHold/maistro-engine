@@ -60,7 +60,9 @@ def _responses_event_to_chunk(ev: dict[str, Any]) -> dict[str, Any] | None:
     t = ev.get("type", "")
     if t == "response.output_text.delta" and ev.get("delta"):
         return {"choices": [{"delta": {"content": ev["delta"]}, "finish_reason": None}]}
-    if t in ("response.reasoning_summary_text.delta", "response.reasoning_text.delta") and ev.get("delta"):
+    if t in ("response.reasoning_summary_text.delta", "response.reasoning_text.delta") and ev.get(
+        "delta"
+    ):
         return {"choices": [{"delta": {"reasoning_content": ev["delta"]}, "finish_reason": None}]}
     if t in ("response.completed", "response.output_text.done"):
         return {"choices": [{"delta": {}, "finish_reason": "stop"}]}
@@ -138,22 +140,24 @@ class HttpOpenAIProtocolLLM:
         headers = {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
 
         if self._variant in ("auto", "responses") and not req.tools:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                async with client.stream(
+            async with (
+                httpx.AsyncClient(timeout=120.0) as client,
+                client.stream(
                     "POST",
                     f"{self._base}/responses",
                     headers=headers,
                     json={"model": req.model, "input": req.messages, "stream": True},
-                ) as r:
-                    if r.is_success:
-                        async for ev in self._aiter_sse_json(r):
-                            chunk = _responses_event_to_chunk(ev)
-                            if chunk is not None:
-                                yield chunk
-                        return
-                    if self._variant == "responses":
-                        await r.aread()
-                        r.raise_for_status()
+                ) as r,
+            ):
+                if r.is_success:
+                    async for ev in self._aiter_sse_json(r):
+                        chunk = _responses_event_to_chunk(ev)
+                        if chunk is not None:
+                            yield chunk
+                    return
+                if self._variant == "responses":
+                    await r.aread()
+                    r.raise_for_status()
                     # variant == "auto": fall through to chat.completions below
 
         payload: dict[str, Any] = {
@@ -167,13 +171,15 @@ class HttpOpenAIProtocolLLM:
         if req.tools:
             payload["tools"] = req.tools
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            async with client.stream(
+        async with (
+            httpx.AsyncClient(timeout=120.0) as client,
+            client.stream(
                 "POST", f"{self._base}/chat/completions", headers=headers, json=payload
-            ) as r:
-                r.raise_for_status()
-                async for chunk in self._aiter_sse_json(r):
-                    yield chunk
+            ) as r,
+        ):
+            r.raise_for_status()
+            async for chunk in self._aiter_sse_json(r):
+                yield chunk
 
     @staticmethod
     async def _aiter_sse_json(r: httpx.Response) -> AsyncIterator[dict[str, Any]]:

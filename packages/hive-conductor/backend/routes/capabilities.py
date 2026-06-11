@@ -197,7 +197,9 @@ async def self_repair_run() -> dict[str, Any]:
 
     cycle = await run_self_repair_once(_registry())
     if cycle is None:
-        raise HTTPException(status_code=503, detail="self_repair unavailable (disabled or no provider)")
+        raise HTTPException(
+            status_code=503, detail="self_repair unavailable (disabled or no provider)"
+        )
     log_audit("self_repair_run", "system", detail={"proposals": len(cycle.results)})
     provider = _self_repair_provider()
     if provider is not None:

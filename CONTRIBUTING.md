@@ -2,6 +2,9 @@
 
 Author-facing summary of the conventions you need to know to land changes here. Each rule has an ADR or spec — this page links to the source of truth, doesn't duplicate it.
 
+> Looking for the practical "where things go / how to commit / what *not* to do" field guide,
+> including the common CI-failure gotchas? See [`docs/WAYS-OF-WORKING.md`](docs/WAYS-OF-WORKING.md).
+
 ## Branch model
 
 Four tiers; work flows **upward**, every promotion is a pull request (never a direct push):

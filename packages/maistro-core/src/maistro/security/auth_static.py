@@ -1,7 +1,7 @@
 """Static API key authentication provider.
 
-Also extracts OpenWebUI user context from X-OpenWebUI-User-* headers
-when present, building a richer AuthContext than the default SYSTEM_AUTH.
+Authenticates service-to-service calls via a shared static key.
+Returns SYSTEM_AUTH identity — no user impersonation from headers.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from maistro.security._types import SYSTEM_AUTH, AuthContext, IdentityKind
 
 
 class StaticKeyAuthProvider:
-    """Authenticates via static API key. Extracts OpenWebUI user headers."""
+    """Authenticates via static API key. Returns system identity only."""
 
     def __init__(self, api_key: str, read_only: bool = False) -> None:
         self._api_key = api_key
@@ -36,11 +36,6 @@ class StaticKeyAuthProvider:
             msg = "Invalid API key"
             raise ValueError(msg)
 
-        if headers:
-            owui_ctx = _extract_openwebui_context(headers)
-            if owui_ctx:
-                return owui_ctx
-
         if self._read_only:
             return AuthContext(
                 user_id="system",
@@ -51,22 +46,3 @@ class StaticKeyAuthProvider:
             )
 
         return SYSTEM_AUTH
-
-
-def _extract_openwebui_context(headers: dict[str, str]) -> AuthContext | None:
-    email = headers.get("x-openwebui-user-email", "")
-    name = headers.get("x-openwebui-user-name", "")
-    user_id = headers.get("x-openwebui-user-id", "")
-
-    if not (email or user_id):
-        return None
-
-    roles = frozenset({"user"})
-
-    return AuthContext(
-        user_id=user_id or email,
-        username=name or email,
-        roles=roles,
-        kind=IdentityKind.USER,
-        auth_method="openwebui_header",
-    )

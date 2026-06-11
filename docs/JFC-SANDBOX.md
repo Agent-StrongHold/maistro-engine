@@ -1,8 +1,8 @@
-# maistro-engine — JFC sandbox template
+# maistro-engine — maistro sandbox template
 
 ## Purpose
 
-Run **Hive Conductor** (UI + API on **8101**) and **maistro-core** (agents, tasks, MCP clients) inside a **Force Convergence** user sandbox — independent of the Vibe Hosting Launch shell.
+Run **Hive Conductor** (UI + API on **8101**) and **maistro-core** (agents, tasks, MCP clients) inside a **container platform** user sandbox — independent of the Vibe Hosting Launch shell.
 
 ## Image
 
@@ -14,17 +14,17 @@ Run **Hive Conductor** (UI + API on **8101**) and **maistro-core** (agents, task
 | Health | `GET /health` → `pm_poc_mode` optional |
 
 ```bash
-docker build -f packages/hive-conductor/Dockerfile -t jfc-maistro-engine .
+docker build -f packages/hive-conductor/Dockerfile -t maistro-engine .
 docker run --rm -p 8101:8101 \
   -e ATLASSIAN_SITE_URL=https://your-org.atlassian.net \
   -e ATLASSIAN_API_TOKEN=*** \
-  jfc-maistro-engine
+  maistro-engine
 ```
 
 ## Broker integration (target)
 
 1. Extend sandbox broker `type` enum with `maistro_engine` (see [`container_registry/user_containers/sandboxes/maistro-engine/README.md`](../../sandboxes/maistro-engine/README.md)).
-2. Runner starts container from `jfc-maistro-engine` image.
+2. Runner starts container from `maistro-engine` image.
 3. Vibe Hosting catalog links to `web_ui.url` from lease response (same pattern as Claude Code `web_terminal.url`).
 
 ## Environment (container)
@@ -47,5 +47,5 @@ docker run --rm -p 8101:8101 \
 
 ## Related
 
-- JFC placement: [`../../../../docs/MAISTRO-ENGINE-IN-JFC.md`](../../../../docs/MAISTRO-ENGINE-IN-JFC.md)
+- Deployment: [`../../../../docs/MAISTRO-ENGINE-SANDBOX.md`](../../../../docs/MAISTRO-ENGINE-SANDBOX.md)
 - PM demo runbook: [`PM_POC_RUNBOOK.md`](PM_POC_RUNBOOK.md)

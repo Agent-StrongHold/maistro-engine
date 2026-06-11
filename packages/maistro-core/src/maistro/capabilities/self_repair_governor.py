@@ -37,12 +37,14 @@ class GovernorDecision:
 
 @dataclass
 class _ResourceState:
-    attempts: list[float] = field(default_factory=list)  # dispatch timestamps (for the window budget)
+    attempts: list[float] = field(
+        default_factory=list
+    )  # dispatch timestamps (for the window budget)
     last_dispatch: float | None = None
     in_flight: bool = False
     consecutive_failures: int = 0
     recovered_flag: bool = False  # recovered since its last dispatch
-    flap_count: int = 0           # times re-dispatched after a recovery (oscillation)
+    flap_count: int = 0  # times re-dispatched after a recovery (oscillation)
 
 
 class SafetyGovernor:

@@ -48,7 +48,7 @@ def _inject_jira_credentials(dag: dict[str, Any]) -> None:
     """Populate the jira_poll node's runtime credentials in-place."""
     for n in dag["nodes"]:
         if n["id"] == "jira_poll":
-            n["inputs"]["base_url"] = "https://myjira.disney.com"
+            n["inputs"]["base_url"] = "https://jira.example.com"
             n["inputs"]["pat"] = "test-pat"
 
 

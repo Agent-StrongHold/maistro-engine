@@ -3,7 +3,7 @@ id: ADR-027
 title: "Lightning-Native Federation — Payment-graph reputation and spam resistance"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Deferred
 created: 2026-05-07
 substrate:
   - maistro-engine#ADR-021

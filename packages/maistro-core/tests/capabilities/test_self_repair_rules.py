@@ -24,7 +24,9 @@ def test_healthy_snapshot_yields_no_proposals() -> None:
 
 def test_unhealthy_container_proposes_restart_container_reversible() -> None:
     health = _health(
-        docker=ResourceHealth("degraded", {"containers": [{"name": "litellm", "state": "unhealthy"}]})
+        docker=ResourceHealth(
+            "degraded", {"containers": [{"name": "litellm", "state": "unhealthy"}]}
+        )
     )
     (p,) = diagnose(health)
     assert p.resource == "docker:litellm"
@@ -37,7 +39,9 @@ def test_unhealthy_container_proposes_restart_container_reversible() -> None:
 def test_restarting_container_is_propose_only_not_kicked() -> None:
     # Crash-loop: recognized, but never auto-restarted (would feed the loop).
     health = _health(
-        docker=ResourceHealth("degraded", {"containers": [{"name": "crashy", "state": "restarting"}]})
+        docker=ResourceHealth(
+            "degraded", {"containers": [{"name": "crashy", "state": "restarting"}]}
+        )
     )
     (p,) = diagnose(health)
     assert p.resource == "docker:crashy"
@@ -56,7 +60,9 @@ def test_stopped_container_is_ignored() -> None:
 
 def test_failed_service_proposes_restart_service() -> None:
     health = _health(
-        services=ResourceHealth("degraded", {"units": [{"name": "code-server@root", "status": "failed"}]})
+        services=ResourceHealth(
+            "degraded", {"units": [{"name": "code-server@root", "status": "failed"}]}
+        )
     )
     (p,) = diagnose(health)
     assert p.resource == "service:code-server@root"
@@ -66,7 +72,9 @@ def test_failed_service_proposes_restart_service() -> None:
 
 
 def test_active_service_is_ignored() -> None:
-    health = _health(services=ResourceHealth("ok", {"units": [{"name": "ollama", "status": "active"}]}))
+    health = _health(
+        services=ResourceHealth("ok", {"units": [{"name": "ollama", "status": "active"}]})
+    )
     assert diagnose(health) == []
 
 
@@ -76,7 +84,7 @@ def test_degraded_storage_is_propose_only() -> None:
     )
     (p,) = diagnose(health)
     assert p.resource == "storage:vmpool"
-    assert p.action is None          # never auto-acted — data risk
+    assert p.action is None  # never auto-acted — data risk
     assert p.recognized is True
     assert "vmpool" in p.rationale
 
@@ -99,11 +107,16 @@ def test_vms_and_gpu_are_observed_not_diagnosed() -> None:
 
 def test_multiple_problems_yield_multiple_proposals() -> None:
     health = _health(
-        docker=ResourceHealth("degraded", {"containers": [
-            {"name": "a", "state": "unhealthy"},
-            {"name": "b", "state": "healthy"},
-            {"name": "c", "state": "stopped"},
-        ]}),
+        docker=ResourceHealth(
+            "degraded",
+            {
+                "containers": [
+                    {"name": "a", "state": "unhealthy"},
+                    {"name": "b", "state": "healthy"},
+                    {"name": "c", "state": "stopped"},
+                ]
+            },
+        ),
         services=ResourceHealth("degraded", {"units": [{"name": "svc", "status": "failed"}]}),
     )
     resources = sorted(p.resource for p in diagnose(health))

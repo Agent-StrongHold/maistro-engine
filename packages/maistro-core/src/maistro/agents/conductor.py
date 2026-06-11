@@ -123,9 +123,7 @@ def _is_retryable(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code in _RETRYABLE_STATUS_CODES
     # A malformed/invalid JSON response is often transient — re-prompt may fix it.
-    if isinstance(exc, (json.JSONDecodeError, ValidationError, KeyError)):
-        return True
-    return False
+    return isinstance(exc, (json.JSONDecodeError, ValidationError, KeyError))
 
 
 def _parse_json_output(raw: str) -> ConductorOutput:
