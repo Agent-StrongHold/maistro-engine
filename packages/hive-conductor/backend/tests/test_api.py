@@ -139,16 +139,17 @@ def test_list_missions() -> None:
     assert missions[0]["id"]
 
 
-def test_install_plan_endpoint_retired_returns_405() -> None:
+def test_install_plan_endpoint_retired() -> None:
     """POST /v1/install/plan was retired in favor of POST /v1/install/session
     (the canonical 'kind=maistro_install_session' shape). Regression-pin
-    so nothing reintroduces it without an explicit decision."""
+    so nothing reintroduces it without an explicit decision. The path is
+    gone entirely (no methods remain), so FastAPI answers 404, not 405."""
     c = _login()
     r = c.post(
         "/v1/install/plan",
         json={"schema_version": "1", "features": ["core_lib"]},
     )
-    assert r.status_code == 405
+    assert r.status_code == 404
 
 
 def test_install_session_get_and_post() -> None:
