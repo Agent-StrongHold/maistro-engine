@@ -16,9 +16,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-LITELLM_URL = "http://localhost:4000"
-LITELLM_KEY = "sk-conductor-litellm-2026"
-
 IMAGE_MODEL = "google-gemini-2.5-flash-image"
 
 PICTURE_BOOK_DPI = 300
