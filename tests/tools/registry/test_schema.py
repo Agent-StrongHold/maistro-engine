@@ -100,3 +100,49 @@ def test_optional_dates_default_to_none() -> None:
     fm = FrontMatter.model_validate(minimal)
     assert fm.accepted is None
     assert fm.implemented is None
+
+
+def test_adr_097_lifecycle_statuses_accepted() -> None:
+    for status in (
+        "Denied",
+        "Fully Specced",
+        "Deprecated",
+        "Will Not Implement",
+        "AC Defined",
+        "In Progress",
+        "Tests Passing",
+    ):
+        fm = FrontMatter.model_validate(_valid_dict() | {"status": status})
+        assert fm.status == status
+
+
+def test_history_entries_parse_and_validate() -> None:
+    fm = FrontMatter.model_validate(
+        _valid_dict()
+        | {
+            "history": [
+                {"status": "Proposed", "date": "2026-06-09"},
+                {"status": "Accepted", "date": "2026-06-10"},
+            ]
+        }
+    )
+    assert [entry.status for entry in fm.history] == [Status.PROPOSED, Status.ACCEPTED]
+
+
+def test_history_rejects_unknown_status_and_extra_keys() -> None:
+    with pytest.raises(ValidationError):
+        FrontMatter.model_validate(
+            _valid_dict() | {"history": [{"status": "Wishful", "date": "2026-06-09"}]}
+        )
+    with pytest.raises(ValidationError):
+        FrontMatter.model_validate(
+            _valid_dict()
+            | {"history": [{"status": "Proposed", "date": "2026-06-09", "note": "hi"}]}
+        )
+
+
+def test_superseded_by_alias_and_ref_validation() -> None:
+    fm = FrontMatter.model_validate(_valid_dict() | {"superseded-by": ["maistro-engine#ADR-095"]})
+    assert fm.superseded_by == ["maistro-engine#ADR-095"]
+    with pytest.raises(ValidationError):
+        FrontMatter.model_validate(_valid_dict() | {"superseded-by": ["ADR-095"]})

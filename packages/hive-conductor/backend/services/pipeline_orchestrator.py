@@ -1,8 +1,10 @@
 """Pipeline orchestrator: scan → build+test (Tork) → deploy (Launch API)."""
-import os
-import httpx
-from services import tork_client
 
+import os
+
+import httpx
+
+from services import tork_client
 
 LAUNCH_API = os.environ.get("DEPLOY_API_URL") or os.environ.get("STUDIOSHARE_API_URL") or ""
 FANTASIA_BASE = os.environ.get("FANTASIA_BASE_URL", "http://127.0.0.1:8101")
