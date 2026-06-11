@@ -16,7 +16,7 @@ contracts:
   - boundary
   - behavioral
 tests: []
-layer: Tools
+layer: Crypto
 owners:
   - '@BlakeMatthews-dev'
 history:

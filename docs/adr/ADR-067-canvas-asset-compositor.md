@@ -21,7 +21,7 @@ contracts:
   - behavioral
 tests:
   - packages/maistro-canvas/tests/test_asset_compositor.py
-layer: Foundation
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
 history:

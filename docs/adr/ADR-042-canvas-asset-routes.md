@@ -23,7 +23,7 @@ contracts:
   - behavioral
 tests:
   - packages/maistro-canvas/tests/test_asset_routes.py
-layer: UserClient
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
 history:

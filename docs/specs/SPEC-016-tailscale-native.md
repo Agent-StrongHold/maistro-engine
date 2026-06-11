@@ -17,7 +17,7 @@ contracts:
   - boundary
   - behavioral
 tests: []
-layer: Foundation
+layer: Connectivity
 owners:
   - '@BlakeMatthews-dev'
 history:

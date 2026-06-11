@@ -20,7 +20,7 @@ contracts:
   - behavioral
 tests:
   - packages/maistro-bootstrap/tests/
-layer: Foundation
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
 history:

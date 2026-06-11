@@ -12,7 +12,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
 ```
 
 **Gotcha:** maistro-evolve is NOT in the root pytest testpaths — you must give the explicit path (or run the
-`/verify-evolve` skill, which is the canonical 83-test command). It needs maistro-core on PYTHONPATH.
+`/verify-evolve` skill, which runs the canonical command). It needs maistro-core on PYTHONPATH.
 
 ## Key pieces (import-and-use; no top-level CLI)
 
@@ -21,7 +21,10 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
 - `fitness.compute_fitness()` — weighted score: eval 65% / cost 15% / latency 10% / diversity 5% / elo 5%.
 - `EloTournament` — win/loss/elo per (genome, benchmark) pair.
 - `EvalHarness` — registers/runs benchmarks (ifeval, bfcl, swebench, tau_bench, gaia, ragas, terminalbench, osworld).
-- `EvolutionCycle` — orchestrates evaluation → battles → culling → breeding → diversity, driven by `EvolutionConfig`.
+- `EvolutionCycle` — orchestrates evaluation → battles → culling → breeding → self-improve → diversity, driven by `EvolutionConfig`.
+- `reflective_improve()` (reflect.py) — GEPA/MIPROv2-inspired self-improve step: re-runs the weakest benchmark
+  for failure traces, proposes K prompt candidates via grounded meta-prompts with randomized tips, re-evaluates
+  each, and only an improving candidate enters the population — as a child genome, never overwriting the parent.
 
 ## Gotchas
 
@@ -31,3 +34,5 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
   cannot breed.
 - **Long-running:** cycles batch eval jobs (`eval_batch_size`, default 5). The `benchmarks` module is optional —
   it falls back to stubs if import fails.
+- **Reflection refuses stub signal:** `reflective_improve()` returns `reason="stub_signal"` without proposing
+  candidates when the baseline eval carries `metadata.stub=True` (SPEC-202 honesty — never verify against noise).

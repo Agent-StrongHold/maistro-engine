@@ -20,7 +20,7 @@ blocks: []
 blocked-by: []
 contracts:
   - behavioral
-layer: Governance
+layer: Identity
 owners:
   - '@BlakeMatthews-dev'
 history:

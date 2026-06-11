@@ -20,7 +20,7 @@ blocked-by: []
 contracts:
   - boundary
 tests: []
-layer: Foundation
+layer: Connectivity
 owners:
   - '@BlakeMatthews-dev'
 history:

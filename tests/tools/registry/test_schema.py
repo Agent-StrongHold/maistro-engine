@@ -146,3 +146,15 @@ def test_superseded_by_alias_and_ref_validation() -> None:
     assert fm.superseded_by == ["maistro-engine#ADR-095"]
     with pytest.raises(ValidationError):
         FrontMatter.model_validate(_valid_dict() | {"superseded-by": ["ADR-095"]})
+
+
+def test_adr_098_extension_layers_accepted() -> None:
+    """Evolve/Crypto/Connectivity/Ability are valid layers per ADR-098."""
+    for layer in ("Evolve", "Crypto", "Connectivity", "Ability", "Identity"):
+        fm = FrontMatter.model_validate(_valid_dict() | {"layer": layer})
+        assert fm.layer == layer
+
+
+def test_invalid_layer_rejected() -> None:
+    with pytest.raises(ValidationError):
+        FrontMatter.model_validate(_valid_dict() | {"layer": "Optimization"})

@@ -66,6 +66,12 @@ class Layer(StrEnum):
     RELIABILITY = "Reliability"
     GOVERNANCE = "Governance"
     USER_CLIENT = "UserClient"
+    # ADR-098 extension — see that ADR for scope definitions.
+    EVOLVE = "Evolve"
+    CRYPTO = "Crypto"
+    CONNECTIVITY = "Connectivity"
+    ABILITY = "Ability"
+    IDENTITY = "Identity"
 
 
 class Repo(StrEnum):

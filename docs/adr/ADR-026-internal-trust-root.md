@@ -19,7 +19,7 @@ blocked-by: []
 contracts:
   - boundary
 tests: []
-layer: Governance
+layer: Identity
 owners:
   - '@BlakeMatthews-dev'
 history:
