@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react";
+import { TemplatePicker } from "../components/TemplatePicker";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -210,10 +211,32 @@ BEHAVIOR:
       const allMsgs = [{ role: "system", content: SYSTEM_PROMPT }, ...next];
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 120000);
-      const r = await fetch("/v1/chat/complete", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ messages: allMsgs }), signal: controller.signal });
+      const r = await fetch("/v1/chat/stream", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ tools_scope: editing ? "dashboard_edit" : "dashboard_view", messages: allMsgs }), signal: controller.signal });
       clearTimeout(timeout);
-      const d = await r.json();
-      const content = d?.choices?.[0]?.message?.content || "No response";
+      if (!r.ok) { const t = await r.text(); throw new Error(`${r.status}: ${t.slice(0,200)}`); }
+      const reader = r.body?.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+              if (event.type === "token" || event.type === "content") {
+                accumulated += event.content || event.token || "";
+                setMsgs([...next, { role: "assistant", content: accumulated }]);
+              } else if (event.type === "done") {
+                if (event.content && !accumulated) accumulated = event.content;
+              }
+            } catch {}
+          }
+        }
+      }
+      const content = accumulated || "No response";
       setMsgs([...next, { role: "assistant", content }]);
       // Parse widget_update commands from response
       const updates = content.match(/```widget_update\n([\s\S]*?)```/g);
@@ -547,32 +570,6 @@ function UnknownWidget({ widget }: { widget: Widget }) {
           </table>
         </div>
         <div style={{ fontSize: "0.55rem", color: "#6b6b7b", marginTop: 4 }}>{data.count} rows × {cols.length} columns</div>
-      </div>
-    );
-  }
-
-  // Count display — show total as a big number (KPI-style)
-  if (cfg.display === "count") {
-    const total = data.total ?? data.count ?? (data.records && data.records.length) ?? (data.breakdown ? Object.values(data.breakdown as Record<string, number>).reduce((a: number, b: number) => a + b, 0) : 0);
-    return (
-      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
-        <div style={{ fontSize: "2.2rem", fontWeight: 800, color: "#e8e8f0", fontVariantNumeric: "tabular-nums" }}>{total.toLocaleString()}</div>
-        {cfg.sub && <div style={{ fontSize: "0.6rem", color: "#7c7c8c", marginTop: 4 }}>{cfg.sub}</div>}
-      </div>
-    );
-  }
-
-  // List display — show record names
-  if (cfg.display === "list" && data.records) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", maxHeight: 240 }}>
-        {data.records.length === 0 && <div style={{ fontSize: "0.65rem", color: "#7c7c8c" }}>No records</div>}
-        {data.records.map((r: { name?: string; id?: string }, i: number) => (
-          <div key={i} style={{ fontSize: "0.68rem", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", color: "#d0d0e0" }}>
-            {r.name || r.id || "(untitled)"}
-          </div>
-        ))}
-        <div style={{ fontSize: "0.55rem", color: "#6b6b7b", marginTop: 4 }}>{data.records.length} records</div>
       </div>
     );
   }
@@ -1125,6 +1122,7 @@ export default function Dashboard() {
   const [tabs, setTabs] = useState<Tab[]>(DEFAULT_TABS);
   const [activeIdx, setActiveIdx] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [history, setHistory] = useState<Tab[][]>([]);
   const [future, setFuture] = useState<Tab[][]>([]);
   const agents = useAgents();
@@ -1209,14 +1207,17 @@ export default function Dashboard() {
             background: editing ? "rgba(196,166,97,0.1)" : "transparent",
             color: editing ? C.gold : C.muted, fontSize: "0.63rem", fontWeight: 600, cursor: "pointer",
           }}>{editing ? "✓ Done" : "✎ Edit"}</button>
-          {editing && <button onClick={() => {
-            fetch("/v1/dashboard/demos/carlos_pm", { credentials: "same-origin" })
-              .then(r => r.json()).then(d => { if (d.widgets) update(d.widgets); });
-          }} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.accent, fontSize: "0.63rem", cursor: "pointer" }}>Load Demo</button>}
-          {editing && <button onClick={() => {
-            const input = document.querySelector("input[placeholder*='Build']") as HTMLInputElement;
-            if (input) { input.value = "Use analyze_dashboard to take a screenshot of my current dashboard and visually review it. Then tell me: what looks bad, what's redundant, what's missing, what chart types are wrong, and what layout changes would make it better. Be brutally honest."; input.dispatchEvent(new Event("input", {bubbles:true})); input.dispatchEvent(new KeyboardEvent("keydown", {key:"Enter",bubbles:true})); }
-          }} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid rgba(99,102,241,0.3)`, background: "rgba(99,102,241,0.08)", color: "#a78bfa", fontSize: "0.63rem", cursor: "pointer" }}>✨ Suggest Layout</button>}
+          <button onClick={() => setShowTemplates(true)} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.accent, fontSize: "0.63rem", cursor: "pointer" }}>📂 Templates</button>
+          <button onClick={() => update(DEFAULT_WIDGETS)} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.ok, fontSize: "0.63rem", cursor: "pointer" }}>Reset Default</button>
+          <button onClick={() => {
+            const input = document.querySelector("input[placeholder*='Build'],input[placeholder*='Ask']") as HTMLInputElement;
+            if (input) {
+              const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+              nativeSet.call(input, "Use analyze_dashboard to screenshot my dashboard and visually review it. Then suggest specific widget changes — what to add, remove, resize, or retype. Be specific with widget configs I can apply.");
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              setTimeout(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 50);
+            }
+          }} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid rgba(99,102,241,0.3)`, background: "rgba(99,102,241,0.08)", color: "#a78bfa", fontSize: "0.63rem", cursor: "pointer" }}>✨ Suggest Layout</button>
         </div>
       </div>
 
@@ -1245,6 +1246,11 @@ export default function Dashboard() {
         ))}
         {editing && <AddWidget onAdd={addWidget} />}
       </div>
+      {showTemplates && <TemplatePicker onClose={() => setShowTemplates(false)} onSelect={(id) => {
+        fetch(`/v1/dashboard/demos/${id}`, { credentials: "same-origin" })
+          .then(r => r.json()).then(d => { if (d.widgets) update(d.widgets); });
+        setShowTemplates(false);
+      }} />}
     </div>
   );
 }

@@ -15,19 +15,31 @@ import {
 const fullNav = [
   { to: "/chat", icon: "💬", label: "Chat" },
   { to: "/dashboard", icon: "📊", label: "Dashboard" },
+  { to: "/dags", icon: "🔀", label: "DAG Builder" },
+  { to: "/dag-runs", icon: "▶️", label: "DAG Runs" },
   { to: "/agents", icon: "🤖", label: "Agents" },
+  { to: "/topology", icon: "🗺️", label: "Topology" },
+  { to: "/optimizer", icon: "⚡", label: "Optimizer" },
+  { to: "/knowledge", icon: "📚", label: "Inner Temple" },
+  { to: "/decks", icon: "🎴", label: "Decks" },
+  { to: "/tools-lab", icon: "🧪", label: "Tools Lab" },
+  { to: "/mcp", icon: "🔌", label: "Integrations" },
+  { to: "/credentials", icon: "🔑", label: "Credentials" },
   { to: "/settings", icon: "⚙", label: "Settings" },
 ];
 
+import { MessageCircle, LayoutDashboard, Brain, Hexagon, Target, Plug, KeyRound, Settings, Presentation } from "lucide-react";
+
 const pocNav = [
-  { to: "/chat", icon: "\uD83D\uDCAC", label: "Chat" },
-  { to: "/dashboard", icon: "\uD83D\uDCCA", label: "Dashboard" },
-  { to: "/knowledge", icon: "\uD83E\uDDE0", label: "Knowledge" },
-  { to: "/agents", icon: "\uD83D\uDC1D", label: PM_NAV_PROGRAM },
-  { to: "/missions", icon: "\uD83C\uDFAF", label: PM_NAV_MISSIONS },
-  { to: "/mcp", icon: "\u229E", label: PM_NAV_INTEGRATIONS },
-  { to: "/credentials", icon: "\uD83D\uDD11", label: PM_NAV_CREDENTIALS },
-  { to: "/settings", icon: "\u2699", label: "Settings" },
+  { to: "/chat", icon: MessageCircle, label: "Chat" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/knowledge", icon: Brain, label: "Inner Temple" },
+  { to: "/decks", icon: Presentation, label: "Decks" },
+  { to: "/agents", icon: Hexagon, label: PM_NAV_PROGRAM },
+  { to: "/missions", icon: Target, label: PM_NAV_MISSIONS },
+  { to: "/mcp", icon: Plug, label: PM_NAV_INTEGRATIONS },
+  { to: "/credentials", icon: KeyRound, label: PM_NAV_CREDENTIALS },
+  { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
 async function logout() {
@@ -37,7 +49,7 @@ async function logout() {
     // best effort — even if it fails, redirecting lets the user log in fresh.
   }
   // Stay inside the Hive app (which auto-shows Login when no session); going
-  // to "/" dumps the user at the MAISTROcatalog with no obvious way back.
+  // to "/" dumps the user at the JFC catalog with no obvious way back.
   window.location.href = import.meta.env.BASE_URL || "/";
 }
 
@@ -45,8 +57,8 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const user = useUser();
   const pmPoc = usePmPoc();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const nav = pmPoc ? pocNav : fullNav;
-  const shellTitle = pmPoc ? PM_PRODUCT_NAME : "Hive Conductor";
+  const nav = pocNav;
+  const shellTitle = PM_PRODUCT_NAME;
 
   return (
     <div className="app-shell">
@@ -72,13 +84,13 @@ export function AppShell({ children }: { children?: ReactNode }) {
           </div>
         ) : (
           <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--pencil)", padding: "0 12px 8px" }}>
-            Multi-agent · multi-MCP · container sandbox
+            Multi-agent · multi-MCP · Force Convergence sandbox
           </div>
         )}
         {user && (
           <div className="drawer-user">
             <span className="hex-badge" style={{ background: user.role === "admin" ? "var(--danger)" : "var(--accent)", color: "var(--paper)" }}>{user.role}</span>
-            <span style={{ fontFamily: "var(--mono)", fontSize: 10 }}>{user.username}</span>
+            <NavLink to="/profile" style={{ fontFamily: "var(--mono)", fontSize: 10, color: "inherit", textDecoration: "none" }}>{user.username}</NavLink>
             {user.did && <span style={{ fontSize: 8, opacity: 0.6 }} title={user.did}>DID</span>}
           </div>
         )}
@@ -91,7 +103,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
               end={item.to === "/cli"}
               onClick={() => setDrawerOpen(false)}
             >
-              <span className="drawer-link-icon">{item.icon}</span>
+              <span className="drawer-link-icon"><item.icon size={16} strokeWidth={1.5} /></span>
               <span>{item.label}</span>
             </NavLink>
           ))}
@@ -112,7 +124,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
             end={item.to === "/cli"}
             title={item.label}
           >
-            <span aria-hidden>{item.icon}</span>
+            <span aria-hidden><item.icon size={16} strokeWidth={1.5} /></span>
             <span className="nav-icon-label">{item.label}</span>
           </NavLink>
         ))}
