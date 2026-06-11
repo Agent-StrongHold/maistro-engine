@@ -6,6 +6,7 @@ kind: adr
 status: Accepted
 created: 2026-06-10
 supersedes: []
+layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
 history:
