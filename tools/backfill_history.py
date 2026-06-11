@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Backfill `history` fields into ADR/Spec frontmatter from existing date fields + git log."""
+
 import re
 import subprocess
 import sys
@@ -37,7 +38,9 @@ def git_first_date(path: Path) -> str | None:
     try:
         result = subprocess.run(
             ["git", "log", "--diff-filter=A", "--format=%as", "--", str(path)],
-            capture_output=True, text=True, cwd=path.parent,
+            capture_output=True,
+            text=True,
+            cwd=path.parent,
         )
         dates = result.stdout.strip().split("\n")
         return dates[-1] if dates and dates[-1] else None
@@ -68,7 +71,9 @@ def build_history(fm: dict, kind: str) -> list[dict]:
 
     # Sort by date, then by lifecycle order for same-date entries
     order = list(date_map.values())
-    entries.sort(key=lambda e: (str(e["date"]), order.index(e["status"]) if e["status"] in order else 99))
+    entries.sort(
+        key=lambda e: (str(e["date"]), order.index(e["status"]) if e["status"] in order else 99)
+    )
 
     # Deduplicate
     seen = set()
@@ -98,6 +103,7 @@ def inject_history(path: Path) -> bool:
         return False
 
     import yaml
+
     fm = yaml.safe_load(m.group(2))
     if not fm or "kind" not in fm:
         return False
@@ -116,7 +122,7 @@ def inject_history(path: Path) -> bool:
     fm_text = m.group(2)
     history_yaml = format_history(history)
     new_fm = fm_text.rstrip() + "\n" + history_yaml
-    new_text = f"---\n{new_fm}\n---" + text[m.end():]
+    new_text = f"---\n{new_fm}\n---" + text[m.end() :]
     path.write_text(new_text, encoding="utf-8")
     return True
 
