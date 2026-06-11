@@ -286,6 +286,39 @@ PM_TOOLS = [
             "parameters": {"type": "object", "properties": {}},
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_dashboard_widget",
+            "description": "Add a new widget to the user's dashboard. Types: kpi, jira, custom. For airtable data use type='custom' with config={source:'airtable', table:'<tableId>', group_by:'<field>', filter_formula:'...', display:'bar'|'donut'|'count'|'list'|'stacked'|'ranked', max_records:'500', sub:'subtitle for count'}. For jira: type='jira', config={project, jql_extra, jira_display:'count'|'list'|'status-breakdown'}. For kpi: type='kpi', config={field, sub}.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Widget display title"},
+                    "type": {"type": "string", "description": "Widget type: kpi, jira, custom"},
+                    "size": {"type": "string", "description": "Column span: 1-6"},
+                    "config": {"type": "object", "description": "Widget config object"},
+                    "tab": {"type": "string", "description": "Tab name to add to (created if missing). Omit for active tab."},
+                },
+                "required": ["title", "type", "config"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "suggest_widgets",
+            "description": "Search the verified widget template database. Call BEFORE creating widgets to get correct config format. Returns configs you can pass directly to create_dashboard_widget.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source": {"type": "string", "description": "Filter by source: airtable, jira, metrics"},
+                    "display": {"type": "string", "description": "Filter by display: bar, donut, count, list, stacked, ranked"},
+                    "query": {"type": "string", "description": "Free text search"},
+                },
+            },
+        },
+    },
 ]
 
 
@@ -671,6 +704,71 @@ async def _tool_list_agent_buttons(
     return {"agents": agents}
 
 
+# ── Widget dashboard tools ──
+
+async def _tool_create_dashboard_widget(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    """Add a widget to the user's dashboard."""
+    from uuid import uuid4
+    widget_id = f"w-{str(uuid4())[:8]}"
+    title = args.get("title", "New Widget")
+    widget_type = args.get("type", "kpi")
+    size = args.get("size", "2")
+    config = args.get("config", {})
+    tab_name = args.get("tab", "")
+    try:
+        from routes.dashboard_layout import _LAYOUTS, _save_to_disk
+        uid = user_id or "dev"
+        layout = _LAYOUTS.get(uid, {})
+        widget = {"id": widget_id, "type": widget_type, "title": title, "size": size, "config": config}
+        if "tabs" in layout and layout["tabs"]:
+            tabs = layout["tabs"]
+            active = layout.get("activeTab", 0)
+            target_idx = active
+            if tab_name:
+                for i, t in enumerate(tabs):
+                    if t.get("name", "").lower() == tab_name.lower():
+                        target_idx = i
+                        break
+                else:
+                    tabs.append({"name": tab_name, "widgets": []})
+                    target_idx = len(tabs) - 1
+            tabs[target_idx].setdefault("widgets", []).append(widget)
+        else:
+            existing = layout.get("widgets", [])
+            layout["tabs"] = [{"name": "Overview", "widgets": existing + [widget]}]
+            layout["activeTab"] = 0
+            layout.pop("widgets", None)
+        _LAYOUTS[uid] = layout
+        _save_to_disk()
+    except Exception:
+        pass
+    return {"created": True, "widget_id": widget_id, "title": title, "type": widget_type, "size": size, "tab": tab_name or "(active tab)"}
+
+
+async def _tool_suggest_widgets(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+    """Search verified widget configs matching user needs."""
+    import json as _json
+    from pathlib import Path
+    configs_path = Path(__file__).parent.parent / "data" / "verified_widget_configs.json"
+    try:
+        all_configs = _json.loads(configs_path.read_text())
+    except Exception:
+        return {"widgets": [], "note": "Widget config database not available."}
+    source = args.get("source", "")
+    display = args.get("display", "")
+    query = args.get("query", "").lower()
+    filtered = all_configs
+    if source:
+        filtered = [c for c in filtered if source.lower() in str(c.get("config", {}).get("source", "")).lower() or source.lower() in c.get("type", "")]
+    if display:
+        filtered = [c for c in filtered if display.lower() in str(c.get("config", {}).get("display", "")).lower() or display.lower() in str(c.get("config", {}).get("jira_display", "")).lower()]
+    if query:
+        filtered = [c for c in filtered if query in str(c).lower()]
+    return {"widgets": filtered[:20], "total": len(filtered), "note": "VERIFIED configs. Use create_dashboard_widget with any config exactly as shown."}
+
+
 # Tool name (and aliases) → handler. Unknown tools fall back to poll_jira.
 _TOOL_HANDLERS: dict[str, Any] = {
     "poll_jira": _tool_poll_jira,
@@ -688,6 +786,8 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "modify_agent_button": _tool_modify_agent_button,
     "remove_agent_button": _tool_remove_agent_button,
     "list_agent_buttons": _tool_list_agent_buttons,
+    "create_dashboard_widget": _tool_create_dashboard_widget,
+    "suggest_widgets": _tool_suggest_widgets,
 }
 
 # Substrate tools — domain-agnostic DAG execution, eval, hill-climb
