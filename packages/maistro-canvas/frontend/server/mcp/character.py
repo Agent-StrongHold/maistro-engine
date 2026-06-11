@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 CONDUCTOR_URL = "http://localhost:8100"
 LITELLM_URL = "http://localhost:4000"
-LITELLM_KEY = "sk-conductor-litellm-2026"
-ROUTER_KEY = "sk-conductor-router-2026"
+LITELLM_KEY = os.environ.get("LITELLM_API_KEY", "")
 
 VISION_MODEL = "google-gemini-2.5-flash"
 IMAGE_MODEL = "google-gemini-2.5-flash-image"
