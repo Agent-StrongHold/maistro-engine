@@ -25,6 +25,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-30
 ---
 
 # SPEC-188: Self-Repair Loop

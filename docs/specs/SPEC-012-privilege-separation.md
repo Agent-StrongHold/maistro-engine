@@ -20,6 +20,9 @@ tests: []
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-25
 ---
 
 # SPEC-012: Admin / user1 Privilege Separation

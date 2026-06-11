@@ -3,7 +3,7 @@ id: ADR-093
 title: Sandbox isolation model — hardware-VM isolation for untrusted agent code
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-05-31
 substrate:
   - maistro-engine#ADR-019
@@ -21,6 +21,11 @@ tests: []
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-31
+  - status: Accepted
+    date: 2026-05-31
 ---
 
 # ADR-093: Sandbox isolation model — hardware-VM isolation for untrusted agent code

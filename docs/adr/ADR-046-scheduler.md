@@ -3,7 +3,8 @@ id: ADR-046
 title: Scheduler — Recurring agent tasks
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-018
@@ -21,6 +22,11 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-13
 ---
 
 # ADR-046: Scheduler — Recurring agent tasks

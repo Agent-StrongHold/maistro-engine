@@ -17,6 +17,9 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-31
 ---
 
 # SPEC-191: Code-Health Remediation Backlog

@@ -18,6 +18,9 @@ tests: []         # path/to/test_file.py::test_func
 layer: Foundation # Foundation | Orchestration | Agents | Tools | Memory | Observability | Reliability | Governance | UserClient
 owners:
   - '@github-handle'
+history:
+  - status: Proposed
+    date: YYYY-MM-DD
 ---
 
 # ADR-XXX: <Title>

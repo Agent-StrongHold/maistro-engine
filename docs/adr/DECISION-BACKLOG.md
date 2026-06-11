@@ -63,7 +63,7 @@ in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR expli
   deployed contracts before commit. All outcomes audited as VCs (ADR-024/068). *Closes a real hole in
   decision #7 / ADR-068 / ADR-070: online-mutable + adaptive policy could silently drift from the ADRs
   with no reconciliation path.* Requires ADRs to carry machine-checkable invariants (ADR-032 tie-in).
-- ✅ **Policy-conformance SPEC** *(drafted SPEC-184, PR #83)* — the comparison engine. A
+- ✅ **Policy-conformance SPEC** *(drafted SPEC-206, PR #83)* — the comparison engine. A
   candidate policy decision is checked against authorities in **strict precedence order, stopping at
   the first conflict**: **(1) ADRs** → **(2) Specs** → **(3) prior policy decisions**. The hierarchy is
   legal: ADRs = constitution (near-inviolable; safety ADRs do not bend), Specs = statutes (derived from

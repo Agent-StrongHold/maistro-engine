@@ -3,7 +3,8 @@ id: ADR-082
 title: "Alerting, SLO, and Trace Context Propagation"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-30
 substrate:
   - maistro-engine#ADR-037
@@ -22,6 +23,11 @@ contracts:
 layer: Observability
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-30
 ---
 
 # ADR-082: Alerting, SLO, and Trace Context Propagation

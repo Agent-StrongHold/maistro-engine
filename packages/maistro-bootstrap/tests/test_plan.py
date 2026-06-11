@@ -1,3 +1,4 @@
+import pytest
 """Golden-style tests for install plan builder (no Docker required)."""
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ def test_plan_includes_compose_profile_hints() -> None:
     assert any("observability" in h for h in hints)
 
 
+@pytest.mark.ac("SPEC-180/AC-1")
 def test_golden_plan_shape() -> None:
     raw = {
         "schema_version": "1",

@@ -16,9 +16,12 @@ contracts:
   - boundary
   - behavioral
 tests: []
-layer: Ability
+layer: Agents
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-09
 ---
 
 # SPEC-203: Canvas Job Lifecycle

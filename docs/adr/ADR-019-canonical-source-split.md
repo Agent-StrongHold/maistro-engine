@@ -18,6 +18,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-06
+  - status: Accepted
+    date: 2026-05-06
 ---
 
 # ADR-019: Canonical Source Split — maistro-engine vs Stronghold

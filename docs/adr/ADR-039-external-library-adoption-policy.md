@@ -22,6 +22,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-07
+  - status: Accepted
+    date: 2026-05-07
 ---
 
 # ADR-039: External Library Adoption Policy

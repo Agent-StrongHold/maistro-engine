@@ -27,6 +27,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-29
 ---
 
 # SPEC-186: Knowledge Aggregator + Three-Layer Cache
