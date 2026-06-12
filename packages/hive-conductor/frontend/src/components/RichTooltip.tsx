@@ -12,7 +12,7 @@ const ALIGN: Record<string, string> = { left: "left: 0;", center: "left: 50%; tr
 
 export function RichTooltip({ children, content, side = "top", align = "center" }: Props) {
   const [show, setShow] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const enter = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setShow(true), 120); };
   const leave = () => { clearTimeout(timer.current); setShow(false); };
