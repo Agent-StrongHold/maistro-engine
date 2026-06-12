@@ -19,7 +19,7 @@ contracts:
   - boundary
   - cross-service
 tests: []
-layer: Tools
+layer: Connectivity
 owners:
   - '@BlakeMatthews-dev'
 history:

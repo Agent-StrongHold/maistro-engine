@@ -21,7 +21,7 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-layer: Orchestration
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
 history:

@@ -109,38 +109,14 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
     setLoading(true);
     try {
       const deckContext = slides.map((s, i) => `Slide ${i + 1}: ${s.html.replace(/<[^>]+>/g, " ").slice(0, 100)}`).join("\n");
+      const contextPrefix = `[DECK CONTEXT: ${slides.length} slides, active=#${activeIdx + 1}. I want stunning presentation slides with gradients, big numbers, SVG charts. Wrap each slide in <slide> tags. Use dark backgrounds, color:#a78bfa accents. Data context: 152 active use cases, Automations 58%, Human Enhancement 28%, Data Analysis 14%, v2 migration 24 in pipeline.]\n\n`;
       const r = await fetch("/v1/chat/complete", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [
-            { role: "system", content: `You are a world-class presentation designer. Create STUNNING, data-rich slides.
-Current deck has ${slides.length} slides, active slide is #${activeIdx + 1}.
-${deckContext}
-
-DESIGN RULES:
-- Use full-bleed dark backgrounds with gradients: linear-gradient(135deg,#0f0c29,#302b63,#24243e)
-- Big bold numbers for KPIs: font-size 4-6rem, font-weight 900, gradient text with -webkit-background-clip:text
-- Color palette: #a78bfa (purple accent), #c4a661 (gold), #6366f1 (indigo), #ec4899 (pink), #22c55e (green), #f59e0b (amber)
-- Typography: Georgia/serif for headings, system-ui for data, Inter for body
-- Use subtle borders: 1px solid rgba(99,102,241,0.15) on cards
-- Bar charts: use div widths with percentage, border-radius:8px, gradient fills
-- Donut charts: use SVG circle with stroke-dasharray
-- Status indicators: 8px colored dots
-- Spacing: generous padding (3rem+), gap:12px between items
-- Never plain text — always styled containers with backgrounds and borders
-
-DATA CONTEXT (from live Airtable — Jedai Use Case Portfolio):
-- 152 active use cases, ~109 in Development, ~17 in Commercialization Request, ~9 Commercialized
-- Categories: Automations & Agents (58%), Human Enhancement (28%), Data Analysis (14%)
-- v2 Migration: 24 in pipeline, 20 in active migration, 3 migrated
-- PMs: Prashant Chopde (39), Anthony Mitchell (22), Ivan Castro (6)
-
-When generating slides, wrap each in <slide> tags. Each <slide>...</slide> becomes one slide.
-For editing: <slide index="N">...</slide> replaces slide N (1-based).
-Make every slide presentation-ready — as if it's going on screen in front of an executive.` },
             ...msgs.slice(-6),
-            { role: "user", content: userMsg },
+            { role: "user", content: contextPrefix + userMsg },
           ],
         }),
       });
@@ -279,7 +255,7 @@ ${slides.map(s => `<div class="slide">${s.html}</div>`).join("\n")}</div></body>
           <div ref={previewRef} contentEditable suppressContentEditableWarning
             onBlur={e => updateSlide(active, e.currentTarget.innerHTML)}
             dangerouslySetInnerHTML={{ __html: slides[active]?.html || "" }}
-            style={{ minHeight: 400, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "3rem", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", fontSize: "1.1rem", lineHeight: 1.6, outline: "none" }} />
+            style={{ aspectRatio: "16/9", background: "#0a0914", border: `1px solid ${C.border}`, borderRadius: 12, padding: 0, overflow: "hidden", outline: "none", fontSize: "0.7rem" }} />
           {/* Speaker notes */}
           <textarea value={slides[active]?.notes || ""} onChange={e => setSlides(s => s.map((sl, i) => i === active ? { ...sl, notes: e.target.value } : sl))}
             placeholder="Speaker notes..."

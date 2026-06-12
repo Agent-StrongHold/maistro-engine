@@ -1,11 +1,23 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 
 type Role = "user" | "assistant";
+type StepStatus = "running" | "done" | "error";
+
+interface ToolStep {
+  id: string;
+  tool: string;
+  args?: Record<string, unknown>;
+  status: StepStatus;
+  summary?: string;
+}
 
 interface Message {
   id: string;
   role: Role;
   content: string;
+  reasoning?: string; // assistant only — streamed thinking / reasoning tokens
+  steps?: ToolStep[]; // assistant only — the live tool/status timeline
+  status?: string; // assistant only — transient status line while streaming
   timestamp: Date;
 }
 
@@ -23,6 +35,9 @@ const SUGGESTED_PROMPTS = [
   "Draft a PRD for real-time collaboration",
 ];
 
+// Keep the request payload bounded — mirrors the shipped client (messages.slice(-20)).
+const HISTORY_LIMIT = 20;
+
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -35,79 +50,158 @@ function createSession(title = "New Chat"): Session {
   return { id: generateId(), title, messages: [], createdAt: new Date() };
 }
 
-function getFollowUps(lastResponse: string): string[] {
-  const lower = lastResponse.toLowerCase();
-  if (lower.includes("jira") || lower.includes("ticket") || lower.includes("issue"))
-    return ["Show me the details", "What's blocking these?", "Create a summary report"];
-  if (lower.includes("agent") || lower.includes("created") || lower.includes("widget"))
-    return ["Run it now", "Show me the config", "What else can you do?"];
-  if (lower.includes("metric") || lower.includes("latency") || lower.includes("cost"))
-    return ["Compare to last week", "Break down by agent", "Set up an alert"];
-  if (lower.includes("error") || lower.includes("failed"))
-    return ["Show the logs", "Try a different approach", "What caused this?"];
-  return ["Tell me more", "What should I do next?", "Summarize this"];
+function compactArgs(args?: Record<string, unknown>): string {
+  if (!args) return "";
+  try {
+    const s = Object.entries(args)
+      .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`)
+      .join(", ");
+    return s.length > 80 ? `${s.slice(0, 77)}…` : s;
+  } catch {
+    return "";
+  }
+}
+
+// --- Dependency-free markdown for the subset the backend emits ---
+// (**bold**, `inline code`, ``` fenced code ```, • / - bullets, --- rules).
+// Intentionally renders to React nodes (no dangerouslySetInnerHTML / no XSS surface).
+function renderInline(text: string, keyBase: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const re = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    const tok = m[0];
+    if (tok.startsWith("`")) nodes.push(<code key={`${keyBase}-c${i}`}>{tok.slice(1, -1)}</code>);
+    else nodes.push(<strong key={`${keyBase}-b${i}`}>{tok.slice(2, -2)}</strong>);
+    last = m.index + tok.length;
+    i++;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+function Markdown({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const blocks: ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (trimmed.startsWith("```")) {
+      const buf: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith("```")) {
+        buf.push(lines[i]);
+        i++;
+      }
+      i++; // consume closing fence
+      blocks.push(
+        <pre key={key++} className="md-code">
+          <code>{buf.join("\n")}</code>
+        </pre>,
+      );
+      continue;
+    }
+    if (trimmed === "---") {
+      blocks.push(<hr key={key++} className="md-hr" />);
+      i++;
+      continue;
+    }
+    if (/^\s*[•\-*]\s+/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && /^\s*[•\-*]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\s*[•\-*]\s+/, ""));
+        i++;
+      }
+      blocks.push(
+        <ul key={key++} className="md-ul">
+          {items.map((it, j) => (
+            <li key={j}>{renderInline(it, `li${key}-${j}`)}</li>
+          ))}
+        </ul>,
+      );
+      continue;
+    }
+    if (trimmed === "") {
+      i++;
+      continue;
+    }
+    const para: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i].trim() !== "" &&
+      !lines[i].trim().startsWith("```") &&
+      lines[i].trim() !== "---" &&
+      !/^\s*[•\-*]\s+/.test(lines[i])
+    ) {
+      para.push(lines[i]);
+      i++;
+    }
+    blocks.push(
+      <p key={key++} className="md-p">
+        {para.map((p, j) => (
+          <span key={j}>
+            {renderInline(p, `p${key}-${j}`)}
+            {j < para.length - 1 ? <br /> : null}
+          </span>
+        ))}
+      </p>,
+    );
+  }
+  return <>{blocks}</>;
+}
+
+function ToolSteps({ steps }: { steps: ToolStep[] }) {
+  return (
+    <div className="tool-steps">
+      {steps.map((step) => (
+        <div key={step.id} className={`tool-step tool-step--${step.status}`}>
+          <span className="tool-step-icon" aria-hidden="true">
+            {step.status === "done" ? "✓" : step.status === "error" ? "✕" : "⟳"}
+          </span>
+          <span className="tool-step-name">{step.tool}</span>
+          {step.args && Object.keys(step.args).length > 0 && (
+            <span className="tool-step-args">{compactArgs(step.args)}</span>
+          )}
+          {step.summary && <span className="tool-step-summary">{step.summary}</span>}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function ChatPage() {
   const [models, setModels] = useState<string[]>([]);
   const MODELS = models;
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [activeId, setActiveId] = useState("");
+  const [sessions, setSessions] = useState<Session[]>([createSession()]);
+  const [activeId, setActiveId] = useState(sessions[0].id);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(200);
-  const sidebarDrag = useRef<{ startX: number; startW: number } | null>(null);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [model, setModel] = useState("");
 
-  // Load sessions from server
   useEffect(() => {
-    fetch("/v1/chat/sessions", { credentials: "same-origin" })
-      .then((r) => r.json())
-      .then((data) => {
-        const list: Session[] = (Array.isArray(data) ? data : []).map((s: any) => ({
-          id: s.id, title: s.title || "Chat", messages: [], createdAt: new Date(s.updated_at || s.created_at || Date.now()),
-        }));
-        setSessions(list);
-        if (list.length > 0 && !activeId) setActiveId(list[0].id);
-      })
-      .catch(() => {});
-  }, []);
-
-  // Load messages when switching session
-  useEffect(() => {
-    if (!activeId) return;
-    fetch(`/v1/chat/sessions/${activeId}`, { credentials: "same-origin" })
-      .then((r) => r.json())
-      .then((data) => {
-        const msgs: Message[] = (data.messages || []).map((m: any) => ({
-          id: m.id || generateId(), role: m.role as Role, content: m.content, timestamp: new Date(m.timestamp || m.created_at || Date.now()),
-        }));
-        setSessions((prev) => prev.map((s) => s.id === activeId ? { ...s, messages: msgs, title: data.title || s.title } : s));
-      })
-      .catch(() => {});
-  }, [activeId]);
-
-  useEffect(() => {
-    fetch("/v1/settings/models", { credentials: "same-origin" })
+    fetch("/v1/settings/models")
       .then((res) => res.json())
       .then((data) => {
-        const arr = Array.isArray(data) ? data : (data.models || data.data || []);
-        const list = arr.map((m: any) => typeof m === "string" ? m : (m.id || m.name || "")).filter(Boolean);
-        if (list.length > 0) { setModels(list); }
+        const arr = Array.isArray(data) ? data : data.models || data.data || [];
+        const list = arr.map((m: any) => (typeof m === "string" ? m : m.id || m.name || "")).filter(Boolean);
+        if (list.length > 0) {
+          setModels(list);
+          setModel(list[0]);
+        }
       })
-      .catch(() => {});
-    fetch("/v1/settings", { credentials: "same-origin" })
-      .then(r => r.json())
-      .then(s => { if (s.default_model) setModel(s.default_model); })
       .catch(() => {});
   }, []);
   const [modelOpen, setModelOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
 
-  const activeSession = sessions.find((s) => s.id === activeId) || { id: "", title: "", messages: [] as Message[], createdAt: new Date() };
+  const activeSession = sessions.find((s) => s.id === activeId)!;
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -126,286 +220,317 @@ export default function ChatPage() {
     setSessions((prev) => prev.map((s) => (s.id === id ? updater(s) : s)));
   }, []);
 
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || streaming) return;
-    const userMsg: Message = { id: generateId(), role: "user", content: text.trim(), timestamp: new Date() };
-    const sessionId = activeId;
-    const assistantId = generateId();
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim() || streaming) return;
+      const sessionId = activeId;
+      const userMsg: Message = { id: generateId(), role: "user", content: text.trim(), timestamp: new Date() };
+      const assistantId = generateId();
+      const assistantMsg: Message = {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        steps: [],
+        status: "Sending…",
+        timestamp: new Date(),
+      };
 
-    updateSession(sessionId, (s) => ({
-      ...s,
-      title: s.messages.length === 0 ? text.trim().slice(0, 30) : s.title,
-      messages: [...s.messages, userMsg],
-    }));
+      // Build bounded history (prior turns + this one) — the backend is otherwise stateless per request.
+      const prior = (sessions.find((s) => s.id === sessionId)?.messages ?? [])
+        .filter((m) => m.content)
+        .map((m) => ({ role: m.role, content: m.content }));
+      const outbound = [...prior, { role: "user", content: text.trim() }].slice(-HISTORY_LIMIT);
 
-    // Persist user message to server
-    fetch(`/v1/chat/sessions/${sessionId}/messages`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: "user", content: text.trim() }) }).catch(() => {});
-
-    setInput("");
-    setStreaming(true);
-
-    // Add empty assistant message that we'll stream into
-    updateSession(sessionId, (s) => ({
-      ...s,
-      messages: [...s.messages, { id: assistantId, role: "assistant" as Role, content: "", timestamp: new Date() }],
-    }));
-
-    try {
-      const res = await fetch("/v1/chat/stream", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ model, messages: [...activeSession.messages.slice(-20).map(m => ({ role: m.role, content: m.content.slice(0, 2000) })), { role: "user", content: text.trim() }] }),
-      });
-
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-          for (const line of lines) {
-            if (!line.startsWith("data: ")) continue;
-            try {
-              const event = JSON.parse(line.slice(6));
-              if (event.type === "token" || event.type === "content") {
-                accumulated += event.content || event.token || "";
-                updateSession(sessionId, (s) => ({
-                  ...s,
-                  messages: s.messages.map((m) => m.id === assistantId ? { ...m, content: accumulated } : m),
-                }));
-              } else if (event.type === "done") {
-                if (event.content && !accumulated) {
-                  accumulated = event.content;
-                  updateSession(sessionId, (s) => ({
-                    ...s,
-                    messages: s.messages.map((m) => m.id === assistantId ? { ...m, content: accumulated } : m),
-                  }));
-                }
-              } else if (event.type === "tool_call") {
-                accumulated += `\n🔧 ${event.tool || "tool"}…\n`;
-                updateSession(sessionId, (s) => ({
-                  ...s,
-                  messages: s.messages.map((m) => m.id === assistantId ? { ...m, content: accumulated } : m),
-                }));
-              } else if (event.type === "tool_result") {
-                accumulated += `✓ ${event.summary || ""}\n`;
-                updateSession(sessionId, (s) => ({
-                  ...s,
-                  messages: s.messages.map((m) => m.id === assistantId ? { ...m, content: accumulated } : m),
-                }));
-              } else if (event.type === "status") {
-                // Optional: show status in UI
-              }
-            } catch { /* skip malformed */ }
-          }
-        }
-      }
-
-      // Fallback if stream returned nothing
-      if (!accumulated) {
-        const fallback = await res.text();
-        try {
-          const data = JSON.parse(fallback);
-          accumulated = data?.choices?.[0]?.message?.content || "No response";
-        } catch {
-          accumulated = fallback || "No response";
-        }
-        updateSession(sessionId, (s) => ({
-          ...s,
-          messages: s.messages.map((m) => m.id === assistantId ? { ...m, content: accumulated } : m),
-        }));
-      }
-    } catch (e: any) {
       updateSession(sessionId, (s) => ({
         ...s,
-        messages: s.messages.map((m) => m.id === assistantId ? { ...m, content: `Error: ${e.message}` } : m),
+        title: s.messages.length === 0 ? text.trim().slice(0, 30) : s.title,
+        messages: [...s.messages, userMsg, assistantMsg],
       }));
-    }
 
-    setStreaming(false);
-    setTimeout(() => textareaRef.current?.focus(), 0);
-  }, [activeId, streaming, model, updateSession]);
+      setInput("");
+      setStreaming(true);
+      setTimeout(() => textareaRef.current?.focus(), 0);
+
+      const patchAssistant = (fn: (m: Message) => Message) =>
+        updateSession(sessionId, (s) => ({
+          ...s,
+          messages: s.messages.map((m) => (m.id === assistantId ? fn(m) : m)),
+        }));
+
+      try {
+        const res = await fetch("/v1/chat/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ model, messages: outbound }),
+        });
+        if (!res.ok || !res.body) throw new Error(`stream failed: ${res.status}`);
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let gotContent = false;
+        let streamed = false; // any content tokens arrived via `delta`
+
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() ?? ""; // keep any partial frame for the next chunk
+          for (const frame of frames) {
+            const trimmed = frame.trim();
+            if (!trimmed.startsWith("data:")) continue;
+            const payload = trimmed.slice(5).trim();
+            if (!payload) continue;
+            let evt: any;
+            try {
+              evt = JSON.parse(payload);
+            } catch {
+              continue;
+            }
+            if (evt.type === "status") {
+              patchAssistant((m) => ({ ...m, status: evt.message }));
+            } else if (evt.type === "delta") {
+              if (evt.content) {
+                streamed = true;
+                patchAssistant((m) => ({ ...m, status: undefined, content: m.content + evt.content }));
+              }
+            } else if (evt.type === "thinking") {
+              if (evt.content) {
+                patchAssistant((m) => ({ ...m, status: undefined, reasoning: (m.reasoning ?? "") + evt.content }));
+              }
+            } else if (evt.type === "tool_call") {
+              patchAssistant((m) => ({
+                ...m,
+                status: undefined,
+                steps: [...(m.steps ?? []), { id: generateId(), tool: evt.tool, args: evt.args, status: "running" }],
+              }));
+            } else if (evt.type === "tool_result") {
+              patchAssistant((m) => {
+                const steps = (m.steps ?? []).slice();
+                for (let k = steps.length - 1; k >= 0; k--) {
+                  if (steps[k].tool === evt.tool && steps[k].status === "running") {
+                    steps[k] = { ...steps[k], status: "done", summary: evt.summary };
+                    break;
+                  }
+                }
+                return { ...m, steps };
+              });
+            } else if (evt.type === "done") {
+              gotContent = true;
+              // Tokens already appended via `delta`; done.content is a fallback only
+              // (non-streaming backend, or no deltas received).
+              patchAssistant((m) => ({
+                ...m,
+                status: undefined,
+                content: streamed ? m.content : evt.content || m.content || "",
+              }));
+            }
+          }
+        }
+
+        if (!gotContent) {
+          patchAssistant((m) => ({ ...m, content: m.content || "(no response)", status: undefined }));
+        }
+      } catch (e: any) {
+        patchAssistant((m) => ({
+          ...m,
+          status: undefined,
+          steps: (m.steps ?? []).map((st) => (st.status === "running" ? { ...st, status: "error" } : st)),
+          content: `Error: ${e.message}`,
+        }));
+      } finally {
+        setStreaming(false);
+        setTimeout(() => textareaRef.current?.focus(), 0);
+      }
+    },
+    [activeId, streaming, model, sessions, updateSession],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage(input);
+    }
   };
 
   const newSession = () => {
-    fetch("/v1/chat/sessions", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "New Chat" }) })
-      .then((r) => r.json())
-      .then((s) => {
-        const session: Session = { id: s.id, title: s.title, messages: [], createdAt: new Date() };
-        setSessions((prev) => [session, ...prev]);
-        setActiveId(s.id);
-        setDrawerOpen(false);
-        // Fetch personalized greeting
-        fetch("/v1/chat/greeting", { credentials: "same-origin" }).then(r => r.json()).then(g => {
-          if (g?.greeting) {
-            const msg: Message = { role: "assistant", content: g.greeting, timestamp: new Date().toISOString() };
-            setSessions((prev) => prev.map(sess => sess.id === s.id ? { ...sess, messages: [msg] } : sess));
-          }
-        }).catch(() => {});
-      })
-      .catch(() => {});
+    const s = createSession();
+    setSessions((prev) => [s, ...prev]);
+    setActiveId(s.id);
+    setDrawerOpen(false);
+    setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
-  const switchSession = (id: string) => { setActiveId(id); setDrawerOpen(false); setTimeout(() => textareaRef.current?.focus(), 0); };
-
-  const renameSession = (id: string) => {
-    const name = prompt("Rename session:");
-    if (!name) return;
-    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, title: name } : s));
+  const switchSession = (id: string) => {
+    setActiveId(id);
+    setDrawerOpen(false);
+    setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
-  const autoRenameSession = async (id: string) => {
-    const session = sessions.find((s) => s.id === id);
-    if (!session || session.messages.length === 0) return;
-    const firstMsgs = session.messages.slice(0, 4).map(m => m.content.slice(0, 200)).join("\n");
-    try {
-      const res = await fetch("/v1/chat/complete", {
-        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, messages: [{ role: "user", content: `Give this conversation a short title (max 5 words, no quotes):\n\n${firstMsgs}` }] }),
-      });
-      const data = await res.json();
-      const title = (data?.choices?.[0]?.message?.content || "").trim().slice(0, 40);
-      if (title) setSessions((prev) => prev.map((s) => s.id === id ? { ...s, title } : s));
-    } catch { /* ignore */ }
-  };
-
-  const deleteSession = (id: string) => {
-    if (!confirm("Delete this session?")) return;
-    fetch(`/v1/chat/sessions/${id}`, { method: "DELETE", credentials: "same-origin" }).catch(() => {});
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    if (activeId === id) {
-      const remaining = sessions.filter((s) => s.id !== id);
-      setActiveId(remaining.length > 0 ? remaining[0].id : "");
-    }
-  };
+  const isEmpty = activeSession.messages.length === 0;
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "#0a0914", color: "#f3f0fb", fontFamily: "'Inter', -apple-system, system-ui, sans-serif" }}>
-      {/* Session drawer — collapsible */}
-      {!sidebarCollapsed && (
-      <aside style={{ width: sidebarWidth, borderRight: "1px solid rgba(196,166,97,0.14)", background: "rgba(13,12,26,0.6)", display: "flex", flexDirection: "column", height: "100vh", flexShrink: 0, position: "relative" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 12px 8px", flexShrink: 0 }}>
-          <span style={{ fontSize: "0.6rem", fontWeight: 700, color: "#c4a661", textTransform: "uppercase", letterSpacing: "0.1em" }}>Sessions</span>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button onClick={newSession} style={{ background: "none", border: "none", color: "#a78bfa", cursor: "pointer", fontSize: "0.9rem" }}>+</button>
-            <button onClick={() => setSidebarCollapsed(true)} style={{ background: "none", border: "none", color: "#5a5478", cursor: "pointer", fontSize: "0.7rem" }}>◁</button>
-          </div>
+    <div className="chat-layout">
+      <style>{`
+        .chat-layout { height: 100%; }
+        @media (min-width: 768px) { .chat-layout .drawer { transform: none !important; } }
+        .tool-steps { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 6px; }
+        .tool-step { display: flex; align-items: center; gap: 8px; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--rule, #e4e4e4); background: var(--paper, #fff); }
+        .tool-step--running { border-left: 3px solid #ff9800; }
+        .tool-step--done { border-left: 3px solid var(--ok, #4caf50); }
+        .tool-step--error { border-left: 3px solid var(--danger, #f44336); }
+        .tool-step-icon { width: 14px; text-align: center; flex: none; }
+        .tool-step--running .tool-step-icon { display: inline-block; animation: jfc-spin 1s linear infinite; }
+        .tool-step-name { font-weight: 600; flex: none; }
+        .tool-step-args { color: var(--pencil, #888); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tool-step-summary { margin-left: auto; flex: none; color: var(--ok, #4caf50); }
+        .tool-step--error .tool-step-summary { color: var(--danger, #f44336); }
+        .chat-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--pencil, #888); margin: 2px 0 6px; }
+        .md-p { margin: 0 0 8px; } .md-p:last-child { margin-bottom: 0; }
+        .md-ul { margin: 4px 0 8px; padding-left: 20px; } .md-ul li { margin: 2px 0; }
+        .md-code { background: var(--ink, #1e1e1e); color: var(--paper, #f5f5f5); padding: 10px 12px; border-radius: 6px; overflow-x: auto; font-family: var(--mono, ui-monospace, monospace); font-size: 12px; margin: 6px 0; }
+        .md-hr { border: none; border-top: 1px solid var(--rule, #e4e4e4); margin: 8px 0; }
+        .message-bubble code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; font-family: var(--mono, ui-monospace, monospace); font-size: 0.9em; }
+        .chat-reasoning { margin: 2px 0 6px; font-size: 12px; color: var(--pencil, #888); }
+        .chat-reasoning > summary { cursor: pointer; user-select: none; opacity: 0.85; }
+        .chat-reasoning-body { margin-top: 4px; padding: 8px 10px; border-left: 2px solid var(--rule, #e4e4e4); white-space: pre-wrap; font-family: var(--mono, ui-monospace, monospace); opacity: 0.85; }
+        @keyframes jfc-spin { to { transform: rotate(360deg); } }
+      `}</style>
+      {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />}
+      <aside className={`drawer${drawerOpen ? " drawer--open" : ""}`} aria-label="Chat sessions">
+        <div className="drawer-header">
+          <span className="drawer-title">Sessions</span>
+          <button className="btn-icon" onClick={newSession} aria-label="New chat">
+            ＋
+          </button>
         </div>
-        <nav style={{ flex: 1, overflowY: "auto", padding: "0 8px 12px" }}>
-        {sessions.map((s) => (
-          <div key={s.id} className="sess-item" onClick={() => switchSession(s.id)} style={{
-            display: "flex", alignItems: "center", padding: "5px 8px", borderRadius: 6, cursor: "pointer", marginBottom: 1,
-            background: s.id === activeId ? "rgba(167,139,250,0.1)" : "transparent",
-            borderLeft: s.id === activeId ? "2px solid #c4a661" : "2px solid transparent",
-            position: "relative",
-          }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: "0.7rem", fontWeight: 500, color: s.id === activeId ? "#f3f0fb" : "#8b83a8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</div>
-              <div style={{ fontSize: "0.52rem", color: "#5a5478" }}>{formatTime(s.createdAt)}</div>
-            </div>
-            {s.id === activeId && (
-              <div className="sess-actions" onClick={e => e.stopPropagation()} style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50)", display: "flex", gap: 0, background: "rgba(13,12,26,0.9)", borderRadius: 4, padding: "1px 2px", opacity: 0, pointerEvents: "none" }}>
-                <button onClick={() => autoRenameSession(s.id)} title="Auto-name" style={{ background: "none", border: "none", color: "#a78bfa", cursor: "pointer", fontSize: "9px", padding: "1px 2px", lineHeight: 1 }}>✦</button>
-                <button onClick={() => renameSession(s.id)} title="Rename" style={{ background: "none", border: "none", color: "#8b83a8", cursor: "pointer", fontSize: "9px", padding: "1px 2px", lineHeight: 1 }}>✎</button>
-                <button onClick={() => deleteSession(s.id)} title="Delete" style={{ background: "none", border: "none", color: "#e87c7c", cursor: "pointer", fontSize: "9px", padding: "1px 2px", lineHeight: 1 }}>✕</button>
-              </div>
-            )}
-          </div>
-        ))}
+        <nav>
+          {sessions.map((s) => (
+            <button
+              key={s.id}
+              className={`drawer-link${s.id === activeId ? " drawer-link--active" : ""}`}
+              onClick={() => switchSession(s.id)}
+              aria-current={s.id === activeId ? "page" : undefined}
+            >
+              <span className="drawer-link-title">{s.title}</span>
+              <span className="drawer-link-time">{formatTime(s.createdAt)}</span>
+            </button>
+          ))}
         </nav>
-        {/* Resize handle */}
-        <div onMouseDown={(e) => { e.preventDefault(); sidebarDrag.current = { startX: e.clientX, startW: sidebarWidth }; const onMove = (ev: MouseEvent) => { if (!sidebarDrag.current) return; setSidebarWidth(Math.max(120, Math.min(400, sidebarDrag.current.startW + (ev.clientX - sidebarDrag.current.startX)))); }; const onUp = () => { sidebarDrag.current = null; document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); }; document.addEventListener("mousemove", onMove); document.addEventListener("mouseup", onUp); }}
-          style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 4, cursor: "col-resize", background: "transparent" }}
-          onMouseOver={e => (e.currentTarget.style.background = "rgba(167,139,250,0.3)")}
-          onMouseOut={e => (e.currentTarget.style.background = "transparent")} />
       </aside>
-      )}
-      {sidebarCollapsed && (
-        <div style={{ width: 32, borderRight: "1px solid rgba(196,166,97,0.14)", background: "rgba(13,12,26,0.6)", display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 12, flexShrink: 0 }}>
-          <button onClick={() => setSidebarCollapsed(false)} style={{ background: "none", border: "none", color: "#5a5478", cursor: "pointer", fontSize: "0.7rem" }}>▷</button>
-        </div>
-      )}
-
-      {/* Main chat area — fills remaining space, scrolls messages only */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", borderBottom: "1px solid rgba(196,166,97,0.14)" }}>
-          <span style={{ fontFamily: "Georgia, serif", fontSize: "1rem", fontWeight: 600 }}>Fantasia</span>
-          <div style={{ position: "relative" }}>
-            <button onClick={() => setModelOpen((o) => !o)} style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(196,166,97,0.14)", background: "transparent", color: "#8b83a8", fontSize: "0.7rem", cursor: "pointer" }}>
-              {model || "select model"} ▾
+      <div className="chat-layout">
+        <header className="chat-header">
+          <button
+            className="btn-icon hamburger"
+            onClick={() => setDrawerOpen((o) => !o)}
+            aria-label="Toggle session drawer"
+            aria-expanded={drawerOpen}
+          >
+            ☰
+          </button>
+          <span className="chat-header-title">AI Assistant</span>
+          <div className="model-selector">
+            <button
+              className="btn-model"
+              onClick={() => setModelOpen((o) => !o)}
+              aria-haspopup="listbox"
+              aria-expanded={modelOpen}
+              aria-label={`Current model: ${model}`}
+            >
+              {model} <span aria-hidden="true">▾</span>
             </button>
             {modelOpen && (
-              <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 4, background: "#16142a", border: "1px solid rgba(196,166,97,0.14)", borderRadius: 8, padding: 4, zIndex: 20, minWidth: 160, maxHeight: 300, overflowY: "auto" }}>
+              <ul className="model-dropdown" role="listbox" aria-label="Select model">
                 {MODELS.map((m) => (
-                  <button key={m} onClick={() => { setModel(m); setModelOpen(false); }} style={{ display: "block", width: "100%", textAlign: "left", padding: "5px 8px", border: "none", background: m === model ? "rgba(167,139,250,0.1)" : "transparent", color: m === model ? "#f3f0fb" : "#8b83a8", fontSize: "0.7rem", cursor: "pointer", borderRadius: 4 }}>{m}</button>
+                  <li
+                    key={m}
+                    role="option"
+                    aria-selected={m === model}
+                    className={`model-option${m === model ? " model-option--active" : ""}`}
+                    onClick={() => {
+                      setModel(m);
+                      setModelOpen(false);
+                    }}
+                  >
+                    {m}
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
-        </div>
-
-        {/* Messages — this scrolls */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-          {activeSession.messages.length === 0 && !streaming && (
-            <div style={{ textAlign: "center", paddingTop: 80 }}>
-              <div style={{ fontFamily: "Georgia, serif", fontSize: "1.2rem", marginBottom: 16 }}>What can I help you conduct?</div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                {SUGGESTED_PROMPTS.map((p) => (
-                  <button key={p} onClick={() => sendMessage(p)} style={{ padding: "8px 14px", borderRadius: 11, border: "1px solid rgba(196,166,97,0.14)", background: "rgba(22,20,38,0.72)", color: "#8b83a8", fontSize: "0.75rem", cursor: "pointer" }}>{p}</button>
-                ))}
-              </div>
-            </div>
-          )}
-          {activeSession.messages.map((msg, idx) => (
-            <div key={msg.id}>
-              <div style={{ marginBottom: 8, display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start" }}>
-                <div style={{
-                  maxWidth: "70%", padding: "10px 14px", borderRadius: 12, fontSize: "0.82rem", lineHeight: 1.5, whiteSpace: "pre-wrap",
-                  background: msg.role === "user" ? "rgba(167,139,250,0.12)" : "rgba(22,20,38,0.72)",
-                  border: `1px solid ${msg.role === "user" ? "rgba(167,139,250,0.2)" : "rgba(196,166,97,0.1)"}`,
-                  color: "#f3f0fb",
-                }}>{msg.content}</div>
-                <span style={{ fontSize: "0.55rem", color: "#5a5478", marginTop: 3 }}>{formatTime(msg.timestamp)}</span>
-              </div>
-              {/* Follow-up prompts after last assistant message */}
-              {msg.role === "assistant" && idx === activeSession.messages.length - 1 && !streaming && (
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12, paddingLeft: 4 }}>
-                  {getFollowUps(msg.content).map((p) => (
-                    <button key={p} onClick={() => sendMessage(p)} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid rgba(196,166,97,0.14)", background: "transparent", color: "#8b83a8", fontSize: "0.68rem", cursor: "pointer" }}>{p}</button>
+        </header>
+        <main className="chat-main">
+          <div role="log" aria-live="polite" aria-label="Chat messages" className="message-list">
+            {isEmpty && (
+              <div className="empty-state">
+                <p className="empty-title">What can I help you with?</p>
+                <p className="empty-subtitle">{SUGGESTED_PROMPTS_HEADING}</p>
+                <div className="suggested-prompts">
+                  {SUGGESTED_PROMPTS.map((p) => (
+                    <button
+                      key={p}
+                      className="card prompt-btn"
+                      onClick={() => sendMessage(p)}
+                      aria-label={`Suggested prompt: ${p}`}
+                    >
+                      {p}
+                    </button>
                   ))}
                 </div>
-              )}
-            </div>
-          ))}
-          {streaming && (
-            <div style={{ display: "flex", gap: 4, padding: "10px 14px", borderRadius: 12, background: "rgba(22,20,38,0.72)", border: "1px solid rgba(196,166,97,0.1)", width: "fit-content" }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#a78bfa", animation: "orb 1s infinite" }} />
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#a78bfa", animation: "orb 1s 0.2s infinite" }} />
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#a78bfa", animation: "orb 1s 0.4s infinite" }} />
-            </div>
-          )}
-          <div ref={listEndRef} />
-        </div>
-
-        {/* Input — pinned to bottom */}
-        <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(196,166,97,0.14)", display: "flex", gap: 8, alignItems: "flex-end", flexShrink: 0 }}>
-          <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-            placeholder="Message… (Enter to send)" disabled={streaming} rows={1}
-            style={{ flex: 1, resize: "none", padding: "10px 14px", borderRadius: 11, border: "1px solid rgba(196,166,97,0.14)", background: "rgba(0,0,0,0.3)", color: "#f3f0fb", fontSize: "0.82rem", fontFamily: "'Inter', sans-serif", outline: "none" }} />
-          <button onClick={() => sendMessage(input)} disabled={!input.trim() || streaming}
-            style={{ padding: "10px 18px", borderRadius: 11, border: "none", background: "linear-gradient(135deg, #a78bfa, #8b5cf6)", color: "#fff", fontSize: "0.78rem", fontWeight: 600, cursor: !input.trim() || streaming ? "default" : "pointer", opacity: !input.trim() || streaming ? 0.4 : 1 }}>Send</button>
-        </div>
+              </div>
+            )}
+            {activeSession.messages.map((msg) => (
+              <div key={msg.id} className={`message message--${msg.role}`}>
+                {msg.role === "assistant" && msg.reasoning && (
+                  <details className="chat-reasoning">
+                    <summary>💭 Reasoning</summary>
+                    <div className="chat-reasoning-body">{msg.reasoning}</div>
+                  </details>
+                )}
+                {msg.role === "assistant" && msg.steps && msg.steps.length > 0 && <ToolSteps steps={msg.steps} />}
+                {msg.status && (
+                  <div className="chat-status" aria-label="Status">
+                    <span className="dot" />
+                    <span className="dot" />
+                    <span className="dot" />
+                    {msg.status}
+                  </div>
+                )}
+                {msg.content && (
+                  <div className="message-bubble card">
+                    {msg.role === "assistant" ? <Markdown text={msg.content} /> : msg.content}
+                  </div>
+                )}
+                <span className="message-time">{formatTime(msg.timestamp)}</span>
+              </div>
+            ))}
+            <div ref={listEndRef} />
+          </div>
+          <div className="chat-input-bar">
+            <textarea
+              ref={textareaRef}
+              className="chat-textarea"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Message… (Enter to send, Shift+Enter for newline)"
+              aria-label="Message input"
+              rows={2}
+              disabled={streaming}
+            />
+            <button
+              className="btn-primary send-btn"
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || streaming}
+              aria-label="Send message"
+            >
+              Send
+            </button>
+          </div>
+        </main>
       </div>
-      <style>{`@keyframes orb{0%,100%{transform:scale(1);opacity:.4}50%{transform:scale(1.3);opacity:1}} .sess-item:hover .sess-actions{opacity:1 !important;pointer-events:auto !important}`}</style>
     </div>
   );
 }

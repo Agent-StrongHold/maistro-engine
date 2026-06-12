@@ -19,7 +19,7 @@ blocked-by: []
 contracts:
   - boundary
 tests: []
-layer: Governance
+layer: Crypto
 owners:
   - '@BlakeMatthews-dev'
 history:

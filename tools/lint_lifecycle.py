@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Lifecycle status linter for ADRs and Specs (ADR-097)."""
-import sys
+
 import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -9,13 +10,26 @@ import yaml
 # ── Valid statuses ──────────────────────────────────────────────────────────
 
 ADR_STATUSES = [
-    "Proposed", "Deferred", "Denied", "Accepted",
-    "Fully Specced", "Implemented", "Deprecated", "Superseded",
+    "Proposed",
+    "Deferred",
+    "Denied",
+    "Accepted",
+    "Fully Specced",
+    "Implemented",
+    "Deprecated",
+    "Superseded",
 ]
 
 SPEC_STATUSES = [
-    "Proposed", "Deferred", "Will Not Implement", "Accepted",
-    "AC Defined", "In Progress", "Tests Passing", "Implemented", "Superseded",
+    "Proposed",
+    "Deferred",
+    "Will Not Implement",
+    "Accepted",
+    "AC Defined",
+    "In Progress",
+    "Tests Passing",
+    "Implemented",
+    "Superseded",
 ]
 
 # ── Valid transitions (forward-only) ───────────────────────────────────────
@@ -86,7 +100,7 @@ def has_acceptance_criteria(path: Path) -> bool:
     idx = text.find("## Acceptance Criteria")
     if idx == -1:
         return False
-    after = text[idx + len("## Acceptance Criteria"):].strip()
+    after = text[idx + len("## Acceptance Criteria") :].strip()
     # Non-empty if there's content before the next heading or EOF
     next_heading = after.find("\n## ")
     section = after[:next_heading] if next_heading != -1 else after
@@ -94,6 +108,7 @@ def has_acceptance_criteria(path: Path) -> bool:
 
 
 # ── Validation ─────────────────────────────────────────────────────────────
+
 
 def lint_file(path: Path) -> list[str]:
     errors = []
@@ -125,35 +140,63 @@ def lint_file(path: Path) -> list[str]:
             errors.append(f"{path}: status '{status}' requires field '{field}'")
 
     # 3. AC section required for specs at AC Defined+
-    if kind == "spec" and status in ("AC Defined", "Tests Passing", "Implemented"):
-        if not has_acceptance_criteria(path):
-            errors.append(f"{path}: status '{status}' requires non-empty '## Acceptance Criteria' section")
+    if (
+        kind == "spec"
+        and status in ("AC Defined", "Tests Passing", "Implemented")
+        and not has_acceptance_criteria(path)
+    ):
+        errors.append(
+            f"{path}: status '{status}' requires non-empty '## Acceptance Criteria' section"
+        )
 
     # 4. History validation
+    errors.extend(lint_history(path, fm, status, valid_statuses, transitions))
+
+    return errors
+
+
+def reachable_from(start: str, transitions: dict[str, set[str]]) -> set[str]:
+    """Transitive closure of forward transitions from `start`."""
+    reachable: set[str] = set()
+    frontier = [start]
+    while frontier:
+        node = frontier.pop()
+        for nxt in transitions.get(node, set()):
+            if nxt not in reachable:
+                reachable.add(nxt)
+                frontier.append(nxt)
+    return reachable
+
+
+def lint_history(
+    path: Path,
+    fm: dict,
+    status: str,
+    valid_statuses: list[str],
+    transitions: dict[str, set[str]],
+) -> list[str]:
+    errors: list[str] = []
     history = fm.get("history")
-    if history and isinstance(history, list):
-        prev = None
-        for entry in history:
-            cur = entry.get("status", "")
-            if cur not in valid_statuses:
-                errors.append(f"{path}: history contains invalid status '{cur}'")
-                break
-            if prev:
-                # Check forward-only: cur must be reachable from prev via transitive closure
-                reachable = set()
-                frontier = [prev]
-                while frontier:
-                    node = frontier.pop()
-                    for nxt in transitions.get(node, set()):
-                        if nxt not in reachable:
-                            reachable.add(nxt)
-                            frontier.append(nxt)
-                if cur not in reachable:
-                    errors.append(f"{path}: invalid transition '{prev}' → '{cur}' in history")
-            prev = cur
-        # Last history entry should match current status
-        if history and history[-1].get("status") != status:
-            errors.append(f"{path}: status '{status}' doesn't match last history entry '{history[-1].get('status')}'")
+    if not history or not isinstance(history, list):
+        return errors
+
+    prev = None
+    for entry in history:
+        cur = entry.get("status", "")
+        if cur not in valid_statuses:
+            errors.append(f"{path}: history contains invalid status '{cur}'")
+            break
+        # Forward-only: cur must be reachable from prev via transitive closure
+        if prev and cur not in reachable_from(prev, transitions):
+            errors.append(f"{path}: invalid transition '{prev}' → '{cur}' in history")
+        prev = cur
+
+    # Last history entry should match current status
+    if history[-1].get("status") != status:
+        errors.append(
+            f"{path}: status '{status}' doesn't match last history entry "
+            f"'{history[-1].get('status')}'"
+        )
 
     return errors
 
@@ -220,11 +263,12 @@ def check_ac_traceability(spec_roots: list[str], test_roots: list[str]) -> list[
             ac_ids = extract_ac_ids(path)
             for ac_id in ac_ids:
                 if ac_id not in covered:
-                    errors.append(f"{path}: {ac_id} has no test with @pytest.mark.ac(\"{ac_id}\")")
+                    errors.append(f'{path}: {ac_id} has no test with @pytest.mark.ac("{ac_id}")')
     return errors
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
+
 
 def main() -> int:
     roots = sys.argv[1:] or ["docs/adr", "docs/specs"]

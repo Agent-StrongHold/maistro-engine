@@ -34,7 +34,7 @@ blocks: []
 blocked-by: []       # note: hyphen in YAML key
 contracts: []        # any of: boundary, behavioral, cross-service
 tests: []
-layer: <Layer>       # one of: Foundation, Orchestration, Agents, Tools, Memory, Observability, Reliability, Governance, UserClient
+layer: <Layer>       # see valid values below (Evolve/Crypto/Connectivity/Ability per ADR-098)
 owners:
   - '@BlakeMatthews-dev'
 ---
@@ -76,7 +76,7 @@ owners:
 
 Field rules (enforced by the schema):
 - `status` ∈ {Proposed, Accepted, Implemented, Superseded, Blocked, Abandoned} — new specs start `Proposed`.
-- `layer` ∈ {Foundation, Orchestration, Agents, Tools, Memory, Observability, Reliability, Governance, UserClient}. Pick the best fit; ask the user if unclear.
+- `layer` ∈ {Foundation, Orchestration, Agents, Tools, Memory, Observability, Reliability, Governance, UserClient, Evolve, Crypto, Connectivity, Ability, Identity}. Scope definitions for the last five are in ADR-098. Pick the best fit; ask the user if unclear.
 - `contracts` entries ∈ {boundary, behavioral, cross-service}.
 - Cross-references use the form `maistro-engine#ADR-NNN` or `maistro-engine#SPEC-NNN`.
 - Empty lists are valid; omit no keys (every field is required).

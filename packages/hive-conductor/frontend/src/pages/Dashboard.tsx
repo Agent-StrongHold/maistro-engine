@@ -574,6 +574,32 @@ function UnknownWidget({ widget }: { widget: Widget }) {
     );
   }
 
+  // Count display — show total as a big number (KPI-style)
+  if (cfg.display === "count") {
+    const total = data.total ?? data.count ?? (data.records && data.records.length) ?? (data.breakdown ? Object.values(data.breakdown as Record<string, number>).reduce((a: number, b: number) => a + b, 0) : 0);
+    return (
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
+        <div style={{ fontSize: "2.2rem", fontWeight: 800, color: "#e8e8f0", fontVariantNumeric: "tabular-nums" }}>{total.toLocaleString()}</div>
+        {cfg.sub && <div style={{ fontSize: "0.6rem", color: "#7c7c8c", marginTop: 4 }}>{cfg.sub}</div>}
+      </div>
+    );
+  }
+
+  // List display — show record names
+  if (cfg.display === "list" && data.records) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", maxHeight: 240 }}>
+        {data.records.length === 0 && <div style={{ fontSize: "0.65rem", color: "#7c7c8c" }}>No records</div>}
+        {data.records.map((r: { name?: string; id?: string }, i: number) => (
+          <div key={i} style={{ fontSize: "0.68rem", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", color: "#d0d0e0" }}>
+            {r.name || r.id || "(untitled)"}
+          </div>
+        ))}
+        <div style={{ fontSize: "0.55rem", color: "#6b6b7b", marginTop: 4 }}>{data.records.length} records</div>
+      </div>
+    );
+  }
+
   // Breakdown response from airtable group_by → bar chart or donut
   if (data.breakdown && typeof data.breakdown === "object") {
     const entries = Object.entries(data.breakdown as Record<string, number>).filter(([k, v]) => v > 0 && k !== "(unset)").sort((a, b) => b[1] - a[1]);

@@ -204,7 +204,7 @@ with Sandbox(sc) as sb:
             "--dev",
             "/dev",
             "--tmpfs",
-            "/tmp",
+            "/tmp",  # nosec B108 — bwrap flag: mounts a fresh tmpfs INSIDE the sandbox, not host /tmp
             "--unshare-all",
             "--die-with-parent",
             "--new-session",

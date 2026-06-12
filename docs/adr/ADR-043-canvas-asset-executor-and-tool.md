@@ -24,7 +24,7 @@ contracts:
   - behavioral
 tests:
   - packages/maistro-canvas/tests/test_asset_executor_and_tool.py
-layer: Agents
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
 history:

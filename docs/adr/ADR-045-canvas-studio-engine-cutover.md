@@ -22,7 +22,7 @@ contracts:
   - boundary
   - cross-service
 tests: []
-layer: UserClient
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
 history:

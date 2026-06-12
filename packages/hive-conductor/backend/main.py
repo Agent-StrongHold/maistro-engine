@@ -175,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")
     app.include_router(setup_checklist.router, prefix="/v1/setup-checklist")
+    app.include_router(widgets.router, prefix="/v1/widgets")
     from routes import daily_report_v2
 
     app.include_router(daily_report_v2.router, prefix="/v1/daily-report")

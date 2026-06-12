@@ -29,6 +29,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+_Date = date
+
 
 class Status(StrEnum):
     PROPOSED = "Proposed"
@@ -38,6 +40,15 @@ class Status(StrEnum):
     BLOCKED = "Blocked"
     ABANDONED = "Abandoned"
     DEFERRED = "Deferred"
+    # ADR-097 lifecycle machine. Which states apply to which kind (and the
+    # forward-only transitions) is enforced by tools/lint_lifecycle.py.
+    DENIED = "Denied"
+    FULLY_SPECCED = "Fully Specced"
+    DEPRECATED = "Deprecated"
+    WILL_NOT_IMPLEMENT = "Will Not Implement"
+    AC_DEFINED = "AC Defined"
+    IN_PROGRESS = "In Progress"
+    TESTS_PASSING = "Tests Passing"
 
 
 class Kind(StrEnum):
@@ -55,6 +66,12 @@ class Layer(StrEnum):
     RELIABILITY = "Reliability"
     GOVERNANCE = "Governance"
     USER_CLIENT = "UserClient"
+    # ADR-098 extension — see that ADR for scope definitions.
+    EVOLVE = "Evolve"
+    CRYPTO = "Crypto"
+    CONNECTIVITY = "Connectivity"
+    ABILITY = "Ability"
+    IDENTITY = "Identity"
 
 
 class Repo(StrEnum):
@@ -89,6 +106,21 @@ def _is_valid_ref(value: str) -> bool:
     return bool(_REF_PATTERN.match(value))
 
 
+class HistoryEntry(BaseModel):
+    """One ADR-097 lifecycle transition: the status entered and when.
+
+    `date` is optional because backfilled entries (tools/backfill_history.py)
+    omit it when the original transition date is unknown.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Status
+    # `_Date` alias: the field name `date` would shadow the type during
+    # pydantic's annotation evaluation.
+    date: _Date | None = None
+
+
 class FrontMatter(BaseModel):
     """Canonical front-matter schema for ADRs and specs across the four-repo system."""
 
@@ -105,12 +137,15 @@ class FrontMatter(BaseModel):
     created: date
     accepted: date | None = None
     implemented: date | None = None
+    # ADR-097: append-only status history, oldest first.
+    history: list[HistoryEntry] = Field(default_factory=list)
 
     # Relationships (each entry is `<repo>#<id>`)
     substrate: list[str] = Field(default_factory=list)
     implements: list[str] = Field(default_factory=list)
     related: list[str] = Field(default_factory=list)
     supersedes: list[str] = Field(default_factory=list)
+    superseded_by: list[str] = Field(default_factory=list, alias="superseded-by")
     blocks: list[str] = Field(default_factory=list)
     blocked_by: list[str] = Field(default_factory=list, alias="blocked-by")
 
@@ -137,6 +172,7 @@ class FrontMatter(BaseModel):
         "implements",
         "related",
         "supersedes",
+        "superseded_by",
         "blocks",
         "blocked_by",
     )

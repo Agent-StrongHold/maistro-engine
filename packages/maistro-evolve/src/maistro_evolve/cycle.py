@@ -10,8 +10,9 @@ from .crossover import crossover_and_mutate
 from .diversity import emergency_spawn, population_diversity
 from .fitness import compute_fitness
 from .harness import EvalHarness
-from .optimizer import extract_signal, optimize_prompt, optimize_topology
+from .optimizer import extract_signal, optimize_topology
 from .population import PopulationStore
+from .reflect import reflective_improve
 from .tournament import EloTournament
 from .types import PipelineGenome
 
@@ -27,6 +28,8 @@ class EvolutionConfig(BaseModel):
     tournament_size: int = 3
     self_improve: bool = True
     self_improve_top_n: int = 3
+    self_improve_candidates: int = 2
+    self_improve_accept_margin: float = 0.0
 
 
 class EvolutionCycle:
@@ -148,17 +151,24 @@ class EvolutionCycle:
 
             eval_results = [EvalResult(benchmark=k, score=v) for k, v in genome.eval_scores.items()]
             signal = extract_signal(genome, eval_results)
-            weakest_node_id = signal.get("weakest_node_id")
-            if weakest_node_id:
-                improved_prompt = await optimize_prompt(genome, weakest_node_id, signal, llm_call)
-                for node in genome.topology.nodes:
-                    if node.id == weakest_node_id:
-                        node.system_prompt = improved_prompt
-                        break
+
+            # Propose-then-verify (GEPA-style): the parent is never mutated in
+            # place; an accepted challenger joins the pool as its child.
+            outcome = await reflective_improve(
+                genome,
+                self.harness,
+                llm_call,
+                benchmarks=config.target_benchmarks,
+                num_candidates=config.self_improve_candidates,
+                accept_margin=config.self_improve_accept_margin,
+            )
+            if outcome is not None and outcome.accepted and outcome.challenger is not None:
+                population.add(outcome.challenger)
 
             topo_signal = await optimize_topology(genome, signal, llm_call)
             genome.harness_params["last_optimization"] = {
                 "signal": signal,
+                "reflection": outcome.summary() if outcome is not None else None,
                 "topology_suggestion": topo_signal,
                 "timestamp": datetime.now(UTC).isoformat(),
             }

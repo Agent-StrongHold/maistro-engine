@@ -14,7 +14,7 @@ supersedes: []
 blocks: []
 blocked-by: []
 contracts:
-  - governance
+  - boundary
 tests:
   - tools/lint_lifecycle.py
 layer: Governance

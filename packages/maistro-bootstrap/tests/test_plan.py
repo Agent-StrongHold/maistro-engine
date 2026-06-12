@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from maistro_bootstrap.plan import build_install_plan
 from maistro_bootstrap.schema import parse_answers_dict
 

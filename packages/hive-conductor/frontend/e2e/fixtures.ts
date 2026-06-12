@@ -1,8 +1,8 @@
 import { test as base, expect } from "@playwright/test";
 
 const test = base.extend<{ setupDone: boolean }>({
-  setupDone: [async ({ page }, use) => {
-    const res = await page.goto("/");
+  setupDone: [async ({ page, baseURL }, use) => {
+    const res = await page.goto("/chat");
     const body = await page.textContent("body");
     if (body?.includes("Setup") || body?.includes("First boot")) {
       await page.locator('input[placeholder="Hive Conductor"]').fill("Test Hive");

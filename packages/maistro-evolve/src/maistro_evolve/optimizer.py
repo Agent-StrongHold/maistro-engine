@@ -15,11 +15,11 @@ def extract_signal(
     worst = min(eval_results, key=lambda r: r.score)
     weakest_node_id: str | None = None
     if genome.topology.nodes:
-        worst_node = min(
-            genome.topology.nodes,
-            key=lambda n: genome.eval_scores.get("ifeval", 0.5) if n.role == "queen" else 0.5,
-        )
-        weakest_node_id = worst_node.id
+        # Benchmarks execute the entry node's prompt (benchmarks.prompt_builder),
+        # so a weak score points at the entry node, not at any other node.
+        weakest_node_id = genome.topology.entry_node
+        if not any(n.id == weakest_node_id for n in genome.topology.nodes):
+            weakest_node_id = genome.topology.nodes[0].id
 
     return {
         "weakest_benchmark": worst.benchmark,
@@ -27,38 +27,6 @@ def extract_signal(
         "suggestion": f"Improve {worst.benchmark} performance (current: {worst.score:.3f})",
         "weakest_node_id": weakest_node_id,
     }
-
-
-async def optimize_prompt(
-    genome: PipelineGenome,
-    weakest_node_id: str,
-    signal: dict[str, Any],
-    llm_call: Any = None,
-) -> str:
-    target_node = None
-    for n in genome.topology.nodes:
-        if n.id == weakest_node_id:
-            target_node = n
-            break
-    if target_node is None:
-        return genome.topology.nodes[0].system_prompt if genome.topology.nodes else ""
-
-    meta_prompt = (
-        f"You are an expert at optimizing AI agent system prompts.\n"
-        f"The agent scored {signal.get('score', 0):.3f} on {signal.get('weakest_benchmark', 'unknown')}.\n"
-        f"Suggestion: {signal.get('suggestion', '')}\n"
-        f"Current prompt:\n{target_node.system_prompt}\n\n"
-        f"Return an improved system prompt that addresses the weakness."
-    )
-
-    if llm_call is not None:
-        try:
-            result: str = await llm_call(meta_prompt)
-            return result
-        except Exception:
-            pass
-
-    return target_node.system_prompt.rstrip() + " Focus on accuracy and completeness."
 
 
 async def optimize_topology(

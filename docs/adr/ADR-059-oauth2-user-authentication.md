@@ -20,7 +20,7 @@ contracts:
   - boundary
   - behavioral
 tests: []
-layer: Governance
+layer: Identity
 owners:
   - '@BlakeMatthews-dev'
 history:
