@@ -109,7 +109,7 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
     setLoading(true);
     try {
       const deckContext = slides.map((s, i) => `Slide ${i + 1}: ${s.html.replace(/<[^>]+>/g, " ").slice(0, 100)}`).join("\n");
-      const contextPrefix = `[DECK CONTEXT: ${slides.length} slides, active=#${activeIdx + 1}. I want stunning presentation slides with gradients, big numbers, SVG charts. Wrap each slide in <slide> tags. Use dark backgrounds, color:#a78bfa accents. Data context: 152 active use cases, Automations 58%, Human Enhancement 28%, Data Analysis 14%, v2 migration 24 in pipeline.]\n\n`;
+      const contextPrefix = `[DECK BUILDER: ${slides.length} slides exist. Wrap each new slide in <slide>...</slide> tags. Design rules: dark gradient backgrounds (#020617 to #1e1b4b), white/light text, large bold headings (48-58px), clean grid layouts, rounded cards. Do NOT include data charts or statistics unless the user specifically asks about data. Focus on the user's topic.]\n\n`;
       const r = await fetch("/v1/chat/stream", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -142,7 +142,7 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
           } catch {}
         }
       }
-      const slideMatches = [...fullReply.matchAll(/<slide(?:\s+index="(\d+)")?>[\s\S]*?<\/slide>/gi)];
+      const slideMatches = [...fullReply.matchAll(/<slide(?:\s+index="(\d+)")?>([\s\S]*?)<\/slide>/gi)];
       if (slideMatches.length > 0) {
         let newSlides = [...slides];
         for (const match of slideMatches) {
@@ -273,10 +273,12 @@ ${slides.map(s => `<div class="slide">${s.html}</div>`).join("\n")}</div></body>
             <button onClick={() => removeSlide(active)} disabled={slides.length <= 1} style={{ background: "none", border: "none", color: slides.length <= 1 ? C.dim : C.danger ?? "#e87c7c", cursor: "pointer", fontSize: "0.7rem", marginLeft: "auto" }}>Delete</button>
           </div>
           {/* Editable slide preview */}
-          <div ref={previewRef} contentEditable suppressContentEditableWarning
-            onBlur={e => updateSlide(active, e.currentTarget.innerHTML)}
-            dangerouslySetInnerHTML={{ __html: slides[active]?.html || "" }}
-            style={{ aspectRatio: "16/9", background: "#0a0914", border: `1px solid ${C.border}`, borderRadius: 12, padding: 0, overflow: "hidden", outline: "none", fontSize: "0.7rem" }} />
+          <div style={{ aspectRatio: "16/9", background: "#0a0914", border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden", position: "relative" }}>
+            <div ref={previewRef} contentEditable suppressContentEditableWarning
+              onBlur={e => updateSlide(active, e.currentTarget.innerHTML)}
+              dangerouslySetInnerHTML={{ __html: slides[active]?.html || "" }}
+              style={{ width: 1280, height: 720, transform: "scale(var(--slide-scale, 0.5))", transformOrigin: "top left", outline: "none", overflow: "hidden" }} />
+          </div>
           {/* Speaker notes */}
           <textarea value={slides[active]?.notes || ""} onChange={e => setSlides(s => s.map((sl, i) => i === active ? { ...sl, notes: e.target.value } : sl))}
             placeholder="Speaker notes..."
