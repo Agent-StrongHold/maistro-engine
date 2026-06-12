@@ -82,6 +82,7 @@ Turing / deferred-to-vN) and **`DECISION-BACKLOG.md`** (in-scope but not yet dec
 | ADR-070 | v1 | Proposed | 2026-05-30 | — | 2026-05-30 08:10 CDT | The Repertoire pattern — reuse-first cascade (perform/improvise/rehearse/compose). |
 | ADR-071 | v1 | Proposed | 2026-05-30 | — | 2026-05-30 08:10 CDT | General task planner & orchestration — SuperPlanner waves as a Repertoire ensemble. |
 | ADR-091 | v1 | Proposed | 2026-06-02 | — | 2026-06-02 | Memory model reconciliation — storage types vs context assembly layers (7-tier filter, Layer 0-4 taxonomy, ContextAssemblyPolicy). |
+| ADR-099 | v1 | Proposed | 2026-06-12 | — | 2026-06-12 | Builders pipeline as a DAG (Epic-15 recreation) with gated verify-and-revise loops and iteration budgets. |
 
 *Turing-specific ADRs (autonoetic self-model) are tracked as a separate set — see `OUT-OF-SCOPE.md`
 §Turing and `DECISION-BACKLOG.md` §Turing. ADR-061 (maistro-design-package) lands via a separate
