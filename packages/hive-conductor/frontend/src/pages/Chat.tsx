@@ -191,8 +191,11 @@ export default function ChatPage() {
         const arr = Array.isArray(data) ? data : data.models || data.data || [];
         const list = arr.map((m: any) => (typeof m === "string" ? m : m.id || m.name || "")).filter(Boolean);
         if (list.length > 0) {
+          // Skip meta-entries like all-proxy-models
+          const real = list.filter((m: string) => !m.includes("all-proxy") && !m.includes("all_proxy"));
+          const pick = real.length > 0 ? real[0] : list[0];
           setModels(list);
-          setModel(list[0]);
+          setModel(pick);
         }
       })
       .catch(() => {});

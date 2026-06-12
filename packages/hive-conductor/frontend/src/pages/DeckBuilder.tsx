@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
-const C = { bg: "#0a0914", card: "#11101e", border: "rgba(196,166,97,0.14)", gold: "#c4a661", ink: "#f3f0fb", muted: "#8b83a8", dim: "#5a5478", acc: "#a78bfa", danger: "#e87c7c" };
+const C = { bg: "var(--paper)", card: "var(--panel-bg, #fff)", border: "var(--rule)", gold: "var(--gold, #D6A84F)", ink: "var(--ink)", muted: "var(--pencil)", dim: "var(--muted)", acc: "var(--accent)", danger: "var(--danger)" };
 
 interface Slide { id: string; html: string; notes: string; }
 
@@ -110,35 +110,50 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
     try {
       const deckContext = slides.map((s, i) => `Slide ${i + 1}: ${s.html.replace(/<[^>]+>/g, " ").slice(0, 100)}`).join("\n");
       const contextPrefix = `[DECK CONTEXT: ${slides.length} slides, active=#${activeIdx + 1}. I want stunning presentation slides with gradients, big numbers, SVG charts. Wrap each slide in <slide> tags. Use dark backgrounds, color:#a78bfa accents. Data context: 152 active use cases, Automations 58%, Human Enhancement 28%, Data Analysis 14%, v2 migration 24 in pipeline.]\n\n`;
-      const r = await fetch("/v1/chat/complete", {
+      const r = await fetch("/v1/chat/stream", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [
-            ...msgs.slice(-6),
+            ...msgs.slice(-4).map(m => ({
+              ...m,
+              content: m.role === "assistant" ? m.content.replace(/<slide[^>]*>[\s\S]*?<\/slide>/gi, "[slide]").slice(0, 300) : m.content
+            })),
             { role: "user", content: contextPrefix + userMsg },
           ],
         }),
       });
-      const data = await r.json();
-      const reply = data?.choices?.[0]?.message?.content || data?.content || "No response";
-      setMsgs(m => [...m, { role: "assistant", content: reply }]);
-
-      // Parse <slide> tags from response and apply them
-      const slideMatches = [...reply.matchAll(/<slide(?:\s+index="(\d+)")?>([\s\S]*?)<\/slide>/gi)];
+      if (!r.ok || !r.body) throw new Error("stream failed");
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "", fullReply = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const frames = buf.split("\n\n");
+        buf = frames.pop() ?? "";
+        for (const frame of frames) {
+          if (!frame.trim().startsWith("data:")) continue;
+          try {
+            const evt = JSON.parse(frame.trim().slice(5).trim());
+            if (evt.type === "delta" && evt.content) fullReply += evt.content;
+            else if (evt.type === "done" && evt.content) fullReply = fullReply || evt.content;
+          } catch {}
+        }
+      }
+      const slideMatches = [...fullReply.matchAll(/<slide(?:\s+index="(\d+)")?>[\s\S]*?<\/slide>/gi)];
       if (slideMatches.length > 0) {
         let newSlides = [...slides];
         for (const match of slideMatches) {
           const idx = match[1] ? parseInt(match[1]) - 1 : -1;
-          const html = match[2].trim();
-          if (idx >= 0 && idx < newSlides.length) {
-            newSlides[idx] = { ...newSlides[idx], html };
-          } else {
-            newSlides.push({ id: uid(), html, notes: "" });
-          }
+          const html = (match[2] || "").trim();
+          if (idx >= 0 && idx < newSlides.length) newSlides[idx] = { ...newSlides[idx], html };
+          else if (html) newSlides.push({ id: uid(), html, notes: "" });
         }
         onUpdateSlides(newSlides);
       }
+      setMsgs(m => [...m, { role: "assistant", content: slideMatches.length ? `Generated ${slideMatches.length} slide(s)` : fullReply.slice(0, 200) || "Done" }]);
     } catch {
       setMsgs(m => [...m, { role: "assistant", content: "Connection error — check that the backend is running." }]);
     }
@@ -155,6 +170,12 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
               {m.content.replace(/<slide[^>]*>[\s\S]*?<\/slide>/gi, "[slide generated]").slice(0, 200)}
             </div>
           ))}
+          {loading && (
+            <div style={{ fontSize: "0.65rem", color: C.acc, lineHeight: 1.4, display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ display: "inline-block", animation: "spin 1s linear infinite", fontSize: "0.8rem" }}>✦</span>
+              <span>Generating slides...</span>
+            </div>
+          )}
         </div>
       )}
       <div style={{ display: "flex", gap: 6 }}>

@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "./index.css";
+import "./fantasia-theme.css";
 import App from "./App";
 
 // When Vite is built with VITE_BASE_PATH=/pm/, the browser is at /pm/ but

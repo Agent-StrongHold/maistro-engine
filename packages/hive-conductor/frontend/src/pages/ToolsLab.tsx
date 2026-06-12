@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-const C = { bg: "#0a0914", card: "#11101e", border: "rgba(196,166,97,0.14)", gold: "#c4a661", ink: "#f3f0fb", muted: "#8b83a8", dim: "#5a5478", acc: "#a78bfa", ok: "#7cd4a0", danger: "#e87c7c" };
+const C = { bg: "var(--paper)", card: "var(--panel-bg)", border: "var(--rule)", gold: "var(--gold)", ink: "var(--ink)", muted: "var(--pencil)", dim: "var(--muted)", acc: "var(--accent)", ok: "#7cd4a0", danger: "#e87c7c" };
 
 interface Tool { id: string; name: string; desc: string; icon: string; status: "stopped" | "starting" | "running"; url?: string; }
 

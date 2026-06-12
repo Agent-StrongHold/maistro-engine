@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 interface MemoryEntry { id: string; key: string; value: string; namespace: string; tags: string[]; }
 interface Namespace { name: string; count: number; }
 
-const C = { bg: "#0a0914", card: "#11101e", border: "rgba(196,166,97,0.14)", gold: "#c4a661", ink: "#f3f0fb", muted: "#8b83a8", dim: "#5a5478", acc: "#a78bfa", ok: "#7cd4a0", danger: "#e87c7c" };
+const C = { bg: "var(--paper)", card: "var(--panel-bg)", border: "var(--rule)", gold: "var(--gold)", ink: "var(--ink)", muted: "var(--pencil)", dim: "var(--muted)", acc: "var(--accent)", ok: "#7cd4a0", danger: "#e87c7c" };
 
 const PROFILE_SECTIONS = {
   identity: { label: "Identity", fields: ["name", "role", "team", "department", "location", "timezone"] },
@@ -134,7 +134,7 @@ Current memories:\n${entries.slice(0, 15).map(e => `- [${e.namespace}] ${e.value
         {chatHistory.length > 0 && (
           <div style={{ marginTop: 8, maxHeight: 160, overflowY: "auto", display: "flex", flexDirection: "column-reverse", gap: 5 }}>
             {[...chatHistory].reverse().map((m, i) => (
-              <div key={i} style={{ padding: "5px 10px", borderRadius: 8, background: m.role === "user" ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.3)", fontSize: "0.76rem", color: C.ink, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
+              <div key={i} style={{ padding: "5px 10px", borderRadius: 8, background: m.role === "user" ? "var(--rule)" : "rgba(0,0,0,0.3)", fontSize: "0.76rem", color: C.ink, lineHeight: 1.4, whiteSpace: "pre-wrap" }}>
                 <span style={{ fontSize: "0.58rem", color: C.muted, marginRight: 5 }}>{m.role === "user" ? "You" : "✦"}</span>{m.content}
               </div>
             ))}

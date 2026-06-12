@@ -13,6 +13,7 @@ import {
 } from "../lib/pmBranding";
 
 const fullNav = [
+  { to: "/overview", icon: "🏠", label: "Overview" },
   { to: "/chat", icon: "💬", label: "Chat" },
   { to: "/dashboard", icon: "📊", label: "Dashboard" },
   { to: "/dags", icon: "🔀", label: "DAG Builder" },
@@ -28,9 +29,10 @@ const fullNav = [
   { to: "/settings", icon: "⚙", label: "Settings" },
 ];
 
-import { MessageCircle, LayoutDashboard, Brain, Hexagon, Target, Plug, KeyRound, Settings, Presentation } from "lucide-react";
+import { Home, MessageCircle, LayoutDashboard, Brain, Hexagon, Target, Plug, KeyRound, Settings, Presentation } from "lucide-react";
 
 const pocNav = [
+  { to: "/overview", icon: Home, label: "Overview" },
   { to: "/chat", icon: MessageCircle, label: "Chat" },
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/knowledge", icon: Brain, label: "Inner Temple" },

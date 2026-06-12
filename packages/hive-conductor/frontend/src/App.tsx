@@ -10,6 +10,7 @@ import Agents from "./pages/Agents";
 import Fleet from "./pages/Fleet";
 import AuditLog from "./pages/AuditLog";
 import Chat from "./pages/Chat";
+import Overview from "./pages/Overview";
 import CLI from "./pages/CLI";
 import Containers from "./pages/Containers";
 import DagBuilder from "./pages/DagBuilder";
@@ -121,8 +122,9 @@ function AppRoutes() {
           <AuthGuard>
             <Routes>
               <Route path="/" element={<AppShell />}>
-                <Route index element={<Navigate to={pmPoc ? "chat" : "dashboard"} replace />} />
+                <Route index element={<Navigate to="overview" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
+                <Route path="overview" element={<Overview />} />
                 <Route path="chat" element={<Chat />} />
                 <Route path="missions" element={<Missions />} />
                 <Route path="dags" element={<DagBuilder />} />
