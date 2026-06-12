@@ -52,7 +52,11 @@ class InMemoryDesignSkillRegistry:
 
     def delete(self, slug: str) -> bool:
         with self._lock:
-            if slug not in self._skills:
+            existing = self._skills.get(slug)
+            if existing is None:
+                return False
+            if existing.trust_tier == TrustTier.T0:
+                logger.warning("Blocked: cannot delete built-in skill '%s'", slug)
                 return False
             del self._skills[slug]
         logger.debug("Deleted design skill: %s", slug)
