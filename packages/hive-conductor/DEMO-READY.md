@@ -28,7 +28,7 @@ Open: **http://localhost:8101**
 
 ### 3. Chat — Save as action (15 seconds)
 - Type: **"yeah save that"**
-- Watch: Creates "Jedai Blocker Alert" button
+- Watch: Creates "Blocker Alert" button
 - **Key point:** "Now anyone on the team can run this with one click."
 
 ### 4. Program page — Agent fleet (30 seconds)
@@ -45,7 +45,7 @@ Open: **http://localhost:8101**
 - **Key point:** "The PM defines what they need in plain English. The system builds the automation."
 
 ### 6. Chat — Confluence (20 seconds)
-- Type: **"Search Confluence for Jedai onboarding"**
+- Type: **"Search Confluence for project onboarding"**
 - Watch: Searches wiki.example.com, returns real pages
 - **Key point:** "Same interface for Jira, Confluence, and anything else we connect."
 

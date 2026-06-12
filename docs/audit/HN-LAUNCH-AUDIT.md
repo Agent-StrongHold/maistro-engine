@@ -11,7 +11,7 @@
 
 No live secrets require rotation. The security posture has improved dramatically since the February audit (13 of 16 Majors and 2 of 4 Criticals genuinely fixed in code). The launch blockers are:
 
-1. Employer-internal (Disney) references and personal-infrastructure details committed in the tree and in recent git history.
+1. Employer-internal references and personal-infrastructure details committed in the tree and in recent git history.
 2. CI is red on `develop` — all four jobs fail, and the fix already exists on `integration` (#113) but never landed here.
 3. No LICENSE file exists anywhere in the repo, while README/CLAUDE.md claim Apache 2.0.
 4. The README quick start (`uv run pytest`) crashes on collection.
@@ -27,13 +27,13 @@ What does ship is employer and home-network information:
 
 | # | Finding | Location | Action |
 |---|---------|----------|--------|
-| 1.1 | **Scrub script documents everything it scrubbed**: Disney hostnames (`myjira.disney.com`, `mywiki.disney.com`, `jira.disney.com`, `latest.opsagent.wdprapps.disney.com`), Jira project key `JEDAI`, a real Airtable base ID (`app0i9FWbZrctJuS6`), internal codename `jedai-force-convergence`, `me@disney.com`, and Disney's Atlassian Cloud migration timeline | `scripts/scrub-and-push-upstream.py` (tracked since `f6a06e2`, in ~10+ commits) | Delete the file **and** rewrite history (`git filter-repo --path scripts/scrub-and-push-upstream.py --invert-paths`). Treat the Airtable base ID as exposed. |
-| 1.2 | **Disney work email as git author** on the 12 most recent `develop` commits (`648dc69`…`c0aa10d`) plus 19 `Co-authored-by` trailers | git history | Re-author (history rewrite) before announcing; switch git config to the GitHub noreply address already used on 103 commits. |
-| 1.3 | Work-machine path leaking full name + employer OneDrive + internal project (`/Users/blake.matthews/Library/CloudStorage/OneDrive-Work/Documents/dev/Automate Airtable to Jira/`), plus `mywiki` reference | `packages/hive-conductor/OVERNIGHT-PLAN.md:261-264` | Remove lines; covered by the same history-rewrite pass. |
-| 1.4 | Disney-internal project data in demo fixtures: `JEDAI` Jira project, "JedAI Use Case Submission" Airtable table/fields; `carlos_pm.json` appears to be a real colleague's dashboard | `packages/hive-conductor/backend/data/demo_dashboards/*.json`, `DEMO-READY.md:31,48`, `docs/WAYS-OF-WORKING.md`, `packages/hive-conductor/frontend/src/fantasia-theme.css` | Rename to generic demo project/persona names. |
-| 1.5 | Home-LAN topology in code defaults: `http://10.10.42.100:8101` (`ha_tools.py:13`, `playwright.config.ts:9`), `10.10.21.104:8888`, `http://10.10.21.1:8150` (SPEC-185, SPEC-187) | hive-conductor + docs/specs | Replace with `localhost`/env placeholders. |
-| 1.6 | Personal/family domain + home reverse-proxy hostname: `conductor@emeraldfam.org`, `conductor.library.emeraldfam.org` | `docs/specs/SPEC-002-email-channel.md:3,31-32`, `cutover/MASTER-PLAN.md:266` | Replace with `example.com` placeholders. |
-| 1.7 | Hardcoded Postgres credential `coinswarm` / `coinswarm_dev_2024` (localhost dev default, no env override) | `packages/maistro-canvas/frontend/server.js:10` | Read from env; rotate if that password is reused anywhere real. |
+| 1.1 | **Scrub script documents everything it scrubbed**: four internal employer hostnames, an internal Jira project key, a real Airtable base ID, an internal codename, an internal email alias, and an internal migration timeline | `scripts/scrub-and-push-upstream.py` (tracked since `f6a06e2`, in ~10+ commits) | Delete the file **and** rewrite history (`git filter-repo --path scripts/scrub-and-push-upstream.py --invert-paths`). Treat the Airtable base ID as exposed. |
+| 1.2 | **Employer work email as git author** on the 12 most recent `develop` commits (`648dc69`…`c0aa10d`) plus 19 `Co-authored-by` trailers | git history | Re-author (history rewrite) before announcing; switch git config to the GitHub noreply address already used on 103 commits. |
+| 1.3 | Work-machine path leaking full name + employer OneDrive + internal project (macOS OneDrive path with full name and project), plus an internal-wiki reference | `packages/hive-conductor/OVERNIGHT-PLAN.md:261-264` | Remove lines; covered by the same history-rewrite pass. |
+| 1.4 | Employer-internal project data in demo fixtures: internal Jira project key and Airtable table/field names; `carlos_pm.json` appears to be a real colleague's dashboard | `packages/hive-conductor/backend/data/demo_dashboards/*.json`, `DEMO-READY.md:31,48`, `docs/WAYS-OF-WORKING.md`, `packages/hive-conductor/frontend/src/fantasia-theme.css` | Rename to generic demo project/persona names. |
+| 1.5 | Home-LAN topology in code defaults: private RFC-1918 addresses in `ha_tools.py:13`, `playwright.config.ts:9`, SPEC-185, SPEC-187 | hive-conductor + docs/specs | Replace with `localhost`/env placeholders. |
+| 1.6 | Personal/family domain + home reverse-proxy hostname: a personal email address and reverse-proxy hostname | `docs/specs/SPEC-002-email-channel.md:3,31-32`, `cutover/MASTER-PLAN.md:266` | Replace with `example.com` placeholders. |
+| 1.7 | Hardcoded Postgres credential (localhost dev default, no env override) | `packages/maistro-canvas/frontend/server.js:10` | Read from env; rotate if that password is reused anywhere real. |
 
 Minor: commit message `433b362` discloses personal financial planning (cloud-credit amounts); `docker-compose.pm-poc.yml` ships `alice:changeme-alice` POC keys (documented, acceptable); `orders@maincharacter.press` ships as a library default in the Lulu client — confirm intentional; ADR-024/026 use `brigid` as an instance name — genericize if it's a real device.
 
@@ -104,8 +104,8 @@ Comment hygiene is genuinely good: 30 TODOs / 3 FIXMEs repo-wide, zero profanity
 ## 5. Launch checklist (ordered)
 
 **P0 — do not announce without:**
-1. Delete `scripts/scrub-and-push-upstream.py` + history rewrite for it; re-author the 12 `@disney.com` commits (§1.1–1.3).
-2. Genericize Disney/JEDAI demo fixtures, LAN IPs, `emeraldfam.org`, OVERNIGHT-PLAN paths (§1.4–1.6).
+1. Delete `scripts/scrub-and-push-upstream.py` + history rewrite for it; re-author the 12 work-email commits (§1.1–1.3).
+2. Genericize employer demo fixtures, LAN IPs, personal domain, OVERNIGHT-PLAN paths (§1.4–1.6).
 3. Land #113 (`a953a03` on `integration`) into `develop`; run `ruff check --fix` + fix the 8 remaining lint errors → green CI (§2).
 4. Add the Apache-2.0 LICENSE file (§4.1).
 5. Remove the docker.sock mount from the default compose path, or make the Podman path the only documented one (§3.1).

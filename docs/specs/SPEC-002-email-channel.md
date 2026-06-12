@@ -1,6 +1,6 @@
 ---
 id: SPEC-002
-title: "Email channel — conductor@emeraldfam.org"
+title: "Email channel — conductor@example.com"
 repo: maistro-engine
 kind: spec
 status: Proposed
@@ -31,8 +31,8 @@ See `blakematthews-dev/project_maistro` specs/channels/S-103-email-channel.md fo
 ## Acceptance Criteria
 
 **Inbound identity & anti-spoofing**
-- [ ] Emails to the bare `conductor@emeraldfam.org` address are silently dropped
-- [ ] Each approved sender has a unique `{code}.conductor@emeraldfam.org` address stored in the allowlist table
+- [ ] Emails to the bare `conductor@example.com` address are silently dropped
+- [ ] Each approved sender has a unique `{code}.conductor@example.com` address stored in the allowlist table
 - [ ] Emails failing SPF, DKIM, or DMARC alignment are rejected before allowlist check
 - [ ] Allowlist check validates the `{code}` prefix, not the `From:` header alone
 - [ ] Rotating a sender's code does not affect any other sender

@@ -36,4 +36,4 @@ npm run test     # vitest
 - **Pillow ≥11** required (compositor RGBA assembly).
 - **PostgreSQL store** (`canvas/store.py`) is async; tests assume mocked/in-memory stores.
 - **Production needs a P40 image-gen server** alongside the app for real image generation.
-- The frontend `server.js` hardcodes a **local-dev Postgres connection** — point it at your own DB before running.
+- The frontend `server.js` reads its Postgres connection from **`CANVAS_DB_*` env vars** (`HOST`, `PORT`, `USER`, `PASSWORD`, `NAME`), defaulting to a local-dev setup — set these before running.
