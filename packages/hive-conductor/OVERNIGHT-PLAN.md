@@ -258,10 +258,10 @@ uvicorn main:app --host 0.0.0.0 --port 8101 --reload
 
 - [ ] **Responses API pattern** — Replace SSE streaming with stateless request/response model: POST creates a request ID, client polls or subscribes. Survives refresh, reconnect, and enables multi-device. Swaps stateful SSE for stateless architecture.
 - [ ] **Jira project picker** — "Choose Jira projects" opens a fuzzy search against real Jira projects, user selects, auto-generates JQL
-- [ ] **Confluence space scoping** — Default search to team's space, only search all of mywiki when explicitly asked
-- [ ] **recharts dashboard** — Carlos-style donut charts, funnel stages, PM load visualization
+- [ ] **Confluence space scoping** — Default search to team's space, only search all of Confluence when explicitly asked
+- [ ] **recharts dashboard** — PM-style donut charts, funnel stages, PM load visualization
 - [ ] **Edit mode on agent buttons** — Click gear icon → inline edit prompt, JQL, schedule, name
-- [ ] **Jira drafts refinement flow** — Chat creates pre-filled draft → guided interview to refine → template with actual Jira fields (required enforced, optional guided) → confirm posts to Jira. **Source material already exists at:** `/Users/blake.matthews/Library/CloudStorage/OneDrive-Work/Documents/dev/Automate Airtable to Jira/` — includes `epic_template.md`, `jira_crafting.md`, `pm-knowledge-base-personas.md`, `base_context.md`, and the full `mcp-atlassian` client.
+- [ ] **Jira drafts refinement flow** — Chat creates pre-filled draft → guided interview to refine → template with actual Jira fields (required enforced, optional guided) → confirm posts to Jira. Source material already exists in a private working folder — includes `epic_template.md`, `jira_crafting.md`, `pm-knowledge-base-personas.md`, `base_context.md`, and the full `mcp-atlassian` client.
 - [ ] **Research agent (smart)** — Reads blockers + program context + goals → proposes relevant web searches → user approves/modifies → deep research via browser-use → produces a daily report tailored to what you actually need (AI ecosystem changes, competitor moves, solutions to your specific blockers). Different every day based on current state.
 - [ ] **CVE/Security agent** — Scans team's repos/deployments for CVEs, reports new vulnerabilities, suggests patches. Could pull from GitHub security advisories, NVD, or internal scanning tools. Shows "0 critical CVEs" prominently on dashboard when clean.
 

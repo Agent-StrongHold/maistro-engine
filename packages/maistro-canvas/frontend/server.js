@@ -4,11 +4,11 @@ import pg from "pg";
 
 const { Pool } = pg;
 const pool = new Pool({
-  host: "127.0.0.1",
-  port: 5440,
-  user: "coinswarm",
-  password: "coinswarm_dev_2024",
-  database: "canvas_studio",
+  host: process.env.CANVAS_DB_HOST || "127.0.0.1",
+  port: Number(process.env.CANVAS_DB_PORT || 5440),
+  user: process.env.CANVAS_DB_USER || "canvas",
+  password: process.env.CANVAS_DB_PASSWORD || "",
+  database: process.env.CANVAS_DB_NAME || "canvas_studio",
 });
 
 const app = express();

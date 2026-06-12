@@ -33,7 +33,7 @@ history:
 
 The original migration goal is for mAIstro to **control the server** and **monitor infra + smart
 home**, replacing the conductor. The reusable backend already exists and is **verified running**: the
-standalone host-health API at `http://10.10.21.1:8150` (systemd `conductor-host-health`), which the
+standalone host-health API at `http://<host-health-host>:8150` (systemd `conductor-host-health`), which the
 old conductor calls via its `infra_health` / `infra_action` tools. mAIstro does not reimplement host
 access — it adds the SPEC-184 slots and a thin provider that calls this API. The dangerous parts
 (action allowlist, VMID allowlist, path-traversal guards) stay **server-side** in the host API as
