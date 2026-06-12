@@ -1,12 +1,20 @@
 """Sandboxed code executor — defense-in-depth isolation with fail-closed semantics.
 
-Fallback chain (highest isolation → lowest):
-1. Hyperlight  — hardware-enforced microVM (1-2ms cold start, hypervisor cage)
-2. Firecracker — lightweight VM (kernel-level isolation, ~125ms cold start)
-3. bubblewrap  — user-namespace sandbox (no root, no host FS, seccomp)
-4. gVisor      — sandboxed container runtime (intercepted syscalls)
-5. Hardened container — OCI container with no-new-privs, read-only rootfs, seccomp
+Fallback chain (highest isolation → lowest), per ADR-093 Decision 5:
+1. Hyperlight  — hardware-enforced microVM (1-2ms cold start, hypervisor cage)   [tier 1: VM]
+2. Firecracker — lightweight VM (kernel-level isolation, ~125ms cold start)      [tier 1: VM]
+3. gVisor      — user-space kernel; syscalls terminate in the Sentry, not the
+                 host kernel (no io_uring exposure)                              [tier 2: userspace kernel]
+4. bubblewrap  — user-namespace sandbox (no root, no host FS, seccomp); still
+                 exposes the full host syscall surface                           [tier 3: shared kernel]
+5. Hardened container — OCI container, no-new-privs, read-only rootfs, seccomp   [tier 3: shared kernel]
 6. FAIL CLOSED — refuse to execute if no sandbox is available
+
+Execution-mode floors (ADR-093 Decision 6): the strongest available backend is
+always used, but `autonomous` (unattended / "overnight" / full-auto) execution
+requires tier 2 or better — on a host whose best backend is shared-kernel,
+full-auto refuses to run while `interactive` (human-supervised) execution
+proceeds with a warning.
 
 The bare subprocess fallback is REMOVED. Untrusted code never runs without isolation.
 """
@@ -25,6 +33,27 @@ import time
 from typing import Any
 
 logger = logging.getLogger("hive.sandbox")
+
+# ─── Isolation tiers and execution-mode floors (ADR-093) ─────────────────────
+
+TIER_VM = 1  # hardware virtualization boundary
+TIER_USERSPACE_KERNEL = 2  # gVisor Sentry between guest and host kernel
+TIER_SHARED_KERNEL = 3  # namespaces + seccomp only — guardrail, not a boundary
+
+BACKEND_TIERS: dict[str, int] = {
+    "hyperlight": TIER_VM,
+    "firecracker": TIER_VM,
+    "gvisor": TIER_USERSPACE_KERNEL,
+    "bubblewrap": TIER_SHARED_KERNEL,
+    "hardened-container": TIER_SHARED_KERNEL,
+}
+
+# Weakest tier each mode may execute under. Unknown modes get the autonomous
+# (stricter) floor — default deny.
+MODE_FLOORS: dict[str, int] = {
+    "interactive": TIER_SHARED_KERNEL,
+    "autonomous": TIER_USERSPACE_KERNEL,
+}
 
 # ─── Backend availability detection ──────────────────────────────────────────
 
@@ -82,21 +111,32 @@ class SandboxExecutor:
         self._detect()
 
     def _detect(self):
-        """Probe once at startup. Order = strongest isolation first."""
+        """Probe once at startup. Order = strongest isolation first (ADR-093)."""
         if _has_hyperlight():
             self._backend = "hyperlight"
         elif _has_firecracker():
             self._backend = "firecracker"
-        elif _has_bubblewrap():
-            self._backend = "bubblewrap"
         elif _has_gvisor():
             self._backend = "gvisor"
+        elif _has_bubblewrap():
+            self._backend = "bubblewrap"
         elif _has_hardened_container():
             self._backend = "hardened-container"
         else:
             self._backend = None
         if self._backend:
-            logger.info("sandbox_backend=%s — code execution enabled", self._backend)
+            logger.info(
+                "sandbox_backend=%s (isolation tier %d) — code execution enabled",
+                self._backend,
+                BACKEND_TIERS[self._backend],
+            )
+            if not self.allows_mode("autonomous"):
+                logger.warning(
+                    "sandbox_backend=%s is shared-kernel — autonomous/overnight "
+                    "execution is BLOCKED (interactive only). Install gVisor (runsc) "
+                    "or a microVM backend to enable full-auto.",
+                    self._backend,
+                )
         else:
             logger.critical(
                 "╔══════════════════════════════════════════════════════════════╗\n"
@@ -114,6 +154,22 @@ class SandboxExecutor:
     def backend(self) -> str | None:
         return self._backend
 
+    @property
+    def tier(self) -> int | None:
+        """Isolation tier of the selected backend (1=VM … 3=shared kernel)."""
+        return BACKEND_TIERS[self._backend] if self._backend else None
+
+    def allows_mode(self, mode: str) -> bool:
+        """Whether the selected backend satisfies the isolation floor for `mode`.
+
+        Lets schedulers/UI pre-check (and surface) that full-auto is blocked
+        instead of discovering it node-by-node at run time.
+        """
+        if self._backend is None:
+            return False
+        floor = MODE_FLOORS.get(mode, MODE_FLOORS["autonomous"])
+        return BACKEND_TIERS[self._backend] <= floor
+
     async def execute_node(
         self,
         code: str,
@@ -121,11 +177,25 @@ class SandboxExecutor:
         timeout_s: int = 120,
         allow_network: bool = False,
         memory_mb: int = 256,
+        mode: str = "autonomous",
     ) -> dict[str, Any]:
         if self._backend is None:
             return {
                 "output": "",
                 "error": "REFUSED: no sandbox backend available. Install bubblewrap, gVisor, or Firecracker.",
+                "success": False,
+                "isolation": "fail-closed",
+                "duration_ms": 0,
+            }
+        if not self.allows_mode(mode):
+            return {
+                "output": "",
+                "error": (
+                    f"REFUSED: {mode!r} execution requires gVisor or microVM isolation; "
+                    f"strongest available backend is '{self._backend}' (shared kernel). "
+                    "Run interactively, or install gVisor (runsc) / Firecracker / Kata "
+                    "to enable full-auto."
+                ),
                 "success": False,
                 "isolation": "fail-closed",
                 "duration_ms": 0,
@@ -304,10 +374,17 @@ def get_executor() -> SandboxExecutor:
 
 
 async def execute_in_sandbox(
-    code: str, env: dict[str, str] | None = None, allow_network: bool = False
+    code: str,
+    env: dict[str, str] | None = None,
+    allow_network: bool = False,
+    mode: str = "autonomous",
 ) -> dict[str, Any]:
-    """Execute code in the strongest available sandbox, or refuse."""
-    return await _executor.execute_node(code, env=env, allow_network=allow_network)
+    """Execute code in the strongest available sandbox, or refuse.
+
+    `mode` is "interactive" (human-supervised) or "autonomous" (unattended);
+    autonomous requires gVisor-or-better isolation (ADR-093 Decision 6).
+    """
+    return await _executor.execute_node(code, env=env, allow_network=allow_network, mode=mode)
 
 
 # Backward compat alias

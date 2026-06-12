@@ -56,6 +56,7 @@ def _run_node_subprocess(
     task_desc: str,
     context: str,
     base_env: dict[str, str],
+    execution_mode: str = "autonomous",
 ) -> dict[str, Any]:
     """Run a single DAG node in an isolated executor.
 
@@ -82,6 +83,7 @@ def _run_node_subprocess(
                 env=node_env,
                 timeout_s=120,
                 allow_network=True,  # nodes need to call LiteLLM
+                mode=execution_mode,
             )
         )
         if result["success"]:
@@ -291,6 +293,7 @@ async def _run_subprocess_wave(
     results: dict[str, dict[str, Any]],
     task_desc: str,
     node_env: dict[str, str],
+    execution_mode: str = "autonomous",
 ) -> None:
     """Run heavy/risky nodes each in their own process; write results in place."""
     if not subprocess_nodes:
@@ -309,7 +312,13 @@ async def _run_subprocess_wave(
             )
             futures.append(
                 loop.run_in_executor(
-                    pool, _run_node_subprocess, node_map[nid], task_desc, ctx, node_env
+                    pool,
+                    _run_node_subprocess,
+                    node_map[nid],
+                    task_desc,
+                    ctx,
+                    node_env,
+                    execution_mode,
                 )
             )
         subprocess_results = await asyncio.gather(*futures)
@@ -318,9 +327,19 @@ async def _run_subprocess_wave(
 
 
 async def execute_dag(
-    dag_data: dict, *, user_id: str = "", user_credentials: dict[str, str] | None = None
+    dag_data: dict,
+    *,
+    user_id: str = "",
+    user_credentials: dict[str, str] | None = None,
+    execution_mode: str = "autonomous",
 ) -> dict[str, Any]:
-    """Execute a DAG — each node is its own process, scoped to user context. No cross-user data leakage."""
+    """Execute a DAG — each node is its own process, scoped to user context. No cross-user data leakage.
+
+    `execution_mode` is "interactive" (human watching the run) or "autonomous"
+    (unattended — scheduler, optimizer, evolve harness). Autonomous is the
+    default and requires gVisor-or-better sandbox isolation (ADR-093); on a
+    shared-kernel-only host, sandboxed nodes refuse rather than run full-auto.
+    """
     import asyncio
 
     nodes = dag_data.get("nodes", [])
@@ -375,7 +394,9 @@ async def execute_dag(
                 async_nodes.append(nid)
 
         # Run sandboxed nodes (isolated execution)
-        await _run_subprocess_wave(sandbox_nodes, node_map, inbound, results, task_desc, node_env)
+        await _run_subprocess_wave(
+            sandbox_nodes, node_map, inbound, results, task_desc, node_env, execution_mode
+        )
 
         # Run async nodes concurrently (light, safe — in-process, no GIL issue for I/O)
         if async_nodes:

@@ -267,7 +267,8 @@ async def run_dag(dag_id: str) -> dict:
         _start = _time.monotonic()
         store = get_dag_run_store()
         run = await store.start_run(run_id=exec_id)
-        result = await execute_dag(dag_data)
+        # Human-initiated run from the UI — interactive isolation floor (ADR-093)
+        result = await execute_dag(dag_data, execution_mode="interactive")
         _elapsed_ms = int((_time.monotonic() - _start) * 1000)
         run.status = "completed"
         run.result = result

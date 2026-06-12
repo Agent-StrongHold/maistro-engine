@@ -179,7 +179,7 @@ def test_run_dag_success_path(authed_client: Any, monkeypatch: pytest.MonkeyPatc
     payload; verify the wrapper returns status='completed' + execution_id."""
     import services.graph_runner as gr
 
-    async def _ok(dag_data: Any) -> Any:
+    async def _ok(dag_data: Any, **kwargs: Any) -> Any:
         return {"final": "ok", "ran": True}
 
     monkeypatch.setattr(gr, "execute_dag", _ok)
@@ -195,7 +195,7 @@ def test_run_dag_success_path(authed_client: Any, monkeypatch: pytest.MonkeyPatc
 def test_run_dag_failure_path(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.graph_runner as gr
 
-    async def _boom(dag_data: Any) -> Any:
+    async def _boom(dag_data: Any, **kwargs: Any) -> Any:
         raise RuntimeError("graph blew up")
 
     monkeypatch.setattr(gr, "execute_dag", _boom)
