@@ -1,260 +1,258 @@
-/* Fantasia Engine Theme
+/* Fantasia Engine Theme — Light Magical Command Center
  *
- * Fantasia-inspired: deep indigo, purple, gold accents, starfield feel.
+ * Inspired by: Linear + Notion + Disney orchestration magic.
+ * Light lavender canvas, white cards, purple accents, gold for status/selection.
  * Applied via [data-theme="fantasia"] on <html>.
- * Overrides CSS custom properties from index.css without touching any component code.
  */
 
 [data-theme="fantasia"] {
-  /* Surfaces */
-  --paper:   #0c0a1a;
-  --paper-2: #130f2a;
-  --bg-elevated: #1a1535;
+  /* Canvas & Surfaces */
+  --paper:       #F8F7FF;
+  --paper-2:     #FBFAFF;
+  --panel-bg:    #FFFFFF;
+  --panel-alt:   #F1EEFF;
+  --bg-elevated: #FFFFFF;
+  --card-bg:     rgba(255, 255, 255, 0.92);
 
   /* Text */
-  --ink:     #e8e4f5;
-  --pencil:  #a89ec8;
-  --muted:   #7b6fa0;
-  --text:    #e8e4f5;
+  --ink:     #17132B;
+  --pencil:  #6E6885;
+  --muted:   #9890AD;
+  --text:    #17132B;
 
-  /* Borders */
-  --rule:    rgba(139, 92, 246, 0.15);
-  --border:  rgba(139, 92, 246, 0.2);
-  --wax:     #2d2555;
+  /* Borders & Shadows */
+  --rule:    #E6E0F6;
+  --border:  #E6E0F6;
+  --wax:     #E6E0F6;
+  --shadow-sm: 0 2px 8px rgba(42, 31, 92, 0.05);
+  --shadow-md: 0 10px 30px rgba(42, 31, 92, 0.08);
+  --shadow-lg: 0 14px 36px rgba(42, 31, 92, 0.12);
 
-  /* Primary accent — sorcerer purple */
-  --accent:       #a78bfa;
-  --accent-light: rgba(167, 139, 250, 0.1);
-  --accent-hover: #c4b5fd;
-  --accent-bg:    rgba(167, 139, 250, 0.08);
+  /* Primary accent — sorcerer violet */
+  --accent:       #6D4AFF;
+  --accent-light: rgba(109, 74, 255, 0.08);
+  --accent-hover: #5A3AE6;
+  --accent-bg:    #E9E3FF;
+  --violet:       #6D4AFF;
+  --violet-soft:  #E9E3FF;
 
-  /* Secondary accent — enchanted gold */
-  --honey:       #fbbf24;
-  --honey-light: rgba(251, 191, 36, 0.08);
-  --honey-dark:  #f59e0b;
+  /* Secondary accent — enchanted gold (sparse: status, selected, publish) */
+  --honey:       #D6A84F;
+  --honey-light: rgba(214, 168, 79, 0.1);
+  --honey-dark:  #B8893A;
+  --gold:        #D6A84F;
+  --gold-soft:   #FFF2C7;
 
   /* Status */
-  --danger: #f87171;
-  --ok:     #4ade80;
-  --warn:   #fbbf24;
-  --purple: #a78bfa;
+  --danger: #dc2626;
+  --ok:     #35B979;
+  --warn:   #D6A84F;
+  --purple: #6D4AFF;
 
   /* Backgrounds */
-  --comb-bg: rgba(167, 139, 250, 0.04);
+  --comb-bg: transparent;
 
   /* Fonts */
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
+  --hand: var(--sans);
 
-  /* Apply */
+  /* Apply to root */
   font-family: var(--sans);
-  background: var(--paper);
+  background:
+    radial-gradient(ellipse at top right, rgba(233, 227, 255, 0.6) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom left, rgba(255, 242, 199, 0.4) 0%, transparent 30%),
+    #F8F7FF;
   color: var(--ink);
 }
 
-/* Sidebar in Fantasia theme */
+/* ─── App Shell ─── */
+[data-theme="fantasia"] .app-shell {
+  background:
+    radial-gradient(ellipse at top right, rgba(233, 227, 255, 0.5) 0%, transparent 40%),
+    radial-gradient(ellipse at bottom left, rgba(255, 242, 199, 0.3) 0%, transparent 30%),
+    #F8F7FF;
+}
+
+/* ─── Sidebar ─── */
 [data-theme="fantasia"] .icon-sidebar,
 [data-theme="fantasia"] .sidebar {
-  background: #0a0818;
-  border-color: rgba(139, 92, 246, 0.12);
+  background: #FFFFFF;
+  border-color: #E6E0F6;
 }
 
-[data-theme="fantasia"] .nav-icon.active,
-[data-theme="fantasia"] .nav-link.active {
-  background: rgba(167, 139, 250, 0.15);
-  color: #c4b5fd;
+[data-theme="fantasia"] .nav-icon {
+  color: #6E6885;
 }
 
-/* Brand mark */
-[data-theme="fantasia"] .brand {
-  color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.2);
+[data-theme="fantasia"] .nav-icon:hover {
+  color: #6D4AFF;
+  background: rgba(109, 74, 255, 0.06);
+  border-color: transparent;
 }
 
-/* Cards */
-[data-theme="fantasia"] .card,
-[data-theme="fantasia"] [class*="card"] {
-  background: #130f2a;
-  border-color: rgba(139, 92, 246, 0.15);
+[data-theme="fantasia"] .nav-icon.active {
+  color: #6D4AFF;
+  background: #E9E3FF;
+  border-color: #6D4AFF;
 }
 
-/* Buttons */
-[data-theme="fantasia"] button[class*="primary"],
-[data-theme="fantasia"] .btn-primary {
-  background: linear-gradient(135deg, #7c3aed, #a78bfa);
-  color: #fff;
+/* ─── Widget Cards ─── */
+[data-theme="fantasia"] .widget-card,
+[data-theme="fantasia"] .card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #E6E0F6;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(42, 31, 92, 0.08);
+}
+
+[data-theme="fantasia"] .widget-card:hover {
+  box-shadow: 0 14px 36px rgba(42, 31, 92, 0.12);
+}
+
+/* Selected widget — gold border */
+[data-theme="fantasia"] .widget-card.selected,
+[data-theme="fantasia"] .widget-card[style*="gold"] {
+  border: 1.5px solid #D6A84F;
+  box-shadow:
+    0 0 0 3px rgba(214, 168, 79, 0.18),
+    0 14px 36px rgba(42, 31, 92, 0.12);
+}
+
+/* ─── Buttons ─── */
+[data-theme="fantasia"] .btn-primary,
+[data-theme="fantasia"] .btn-accent {
+  background: #6D4AFF;
+  color: #FFFFFF;
   border: none;
+  border-radius: 10px;
+  box-shadow: 0 4px 12px rgba(109, 74, 255, 0.2);
 }
 
-[data-theme="fantasia"] button[class*="primary"]:hover,
-[data-theme="fantasia"] .btn-primary:hover {
-  background: linear-gradient(135deg, #6d28d9, #8b5cf6);
+[data-theme="fantasia"] .btn-primary:hover,
+[data-theme="fantasia"] .btn-accent:hover {
+  background: #5A3AE6;
 }
 
-/* Inputs */
+/* ─── Inputs ─── */
 [data-theme="fantasia"] input,
 [data-theme="fantasia"] textarea,
 [data-theme="fantasia"] select {
-  background: #0c0a1a;
-  border-color: rgba(139, 92, 246, 0.2);
-  color: #e8e4f5;
+  background: #FFFFFF;
+  border: 1px solid #E6E0F6;
+  border-radius: 10px;
+  color: #17132B;
+  caret-color: #6D4AFF;
+}
+
+[data-theme="fantasia"] input::placeholder,
+[data-theme="fantasia"] textarea::placeholder {
+  color: #9890AD;
 }
 
 [data-theme="fantasia"] input:focus,
 [data-theme="fantasia"] textarea:focus {
-  border-color: #a78bfa;
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.15);
+  border-color: #6D4AFF;
+  box-shadow: 0 0 0 3px rgba(109, 74, 255, 0.1);
+  outline: none;
 }
 
-/* Scrollbar */
+/* ─── Tables ─── */
+[data-theme="fantasia"] table {
+  background: #FFFFFF;
+  border-radius: 12px;
+}
+
+[data-theme="fantasia"] th {
+  background: #F8F7FF;
+  color: #6E6885;
+  border-bottom: 1px solid #E6E0F6;
+}
+
+[data-theme="fantasia"] td {
+  border-bottom: 1px solid #F1EEFF;
+  color: #17132B;
+}
+
+/* ─── Status Badges ─── */
+[data-theme="fantasia"] .hex-badge,
+[data-theme="fantasia"] .badge {
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+[data-theme="fantasia"] .hex-badge-ok,
+[data-theme="fantasia"] .badge-ok {
+  background: rgba(53, 185, 121, 0.1);
+  color: #35B979;
+}
+
+/* ─── Charts (override dark gradients) ─── */
+[data-theme="fantasia"] [style*="linear-gradient"] {
+  border-radius: 8px;
+}
+
+/* ─── Operational Status ─── */
+[data-theme="fantasia"] .status-ok {
+  color: #35B979;
+}
+
+/* ─── Model Dropdown ─── */
+[data-theme="fantasia"] .model-dropdown {
+  max-height: 300px;
+  overflow-y: auto;
+  background: #FFFFFF;
+  border: 1px solid #E6E0F6;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(42, 31, 92, 0.12);
+}
+
+[data-theme="fantasia"] .model-option {
+  color: #17132B;
+}
+
+[data-theme="fantasia"] .model-option:hover {
+  background: #F1EEFF;
+}
+
+[data-theme="fantasia"] .model-option--active {
+  background: #E9E3FF;
+  color: #6D4AFF;
+}
+
+/* ─── Scrollbar ─── */
 [data-theme="fantasia"] ::-webkit-scrollbar {
   width: 6px;
 }
+
 [data-theme="fantasia"] ::-webkit-scrollbar-track {
-  background: #0c0a1a;
+  background: transparent;
 }
+
 [data-theme="fantasia"] ::-webkit-scrollbar-thumb {
-  background: #2d2555;
+  background: #E6E0F6;
   border-radius: 3px;
 }
 
-/* Subtle starfield effect on main content */
-[data-theme="fantasia"] .main-content {
-  background-image: radial-gradient(1px 1px at 20% 30%, rgba(167, 139, 250, 0.3) 0%, transparent 100%),
-                    radial-gradient(1px 1px at 80% 10%, rgba(251, 191, 36, 0.2) 0%, transparent 100%),
-                    radial-gradient(1px 1px at 50% 80%, rgba(139, 92, 246, 0.2) 0%, transparent 100%);
+[data-theme="fantasia"] ::-webkit-scrollbar-thumb:hover {
+  background: #D1C9E8;
 }
 
-/* ─── Dashboard Chat Bar ─────────────────────────────── */
-
-.dashboard-chat-bar {
-  margin-bottom: 1.25rem;
-  position: relative;
+/* ─── Dark mode preserved as alternate ─── */
+[data-theme="fantasia-dark"] {
+  --paper:   #0c0a1a;
+  --paper-2: #130f2a;
+  --ink:     #e8e4f5;
+  --pencil:  #a89ec8;
+  --rule:    rgba(139, 92, 246, 0.15);
+  --accent:  #a78bfa;
+  --accent-light: rgba(167, 139, 250, 0.1);
+  --honey:   #fbbf24;
+  --honey-light: rgba(251, 191, 36, 0.08);
+  --danger:  #f87171;
+  --ok:      #4ade80;
+  --warn:    #fbbf24;
+  font-family: var(--sans);
+  background: #0c0a1a;
+  color: #e8e4f5;
 }
-
-.chat-bar-inner {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: var(--paper-2, #130f2a);
-  border: 1px solid var(--rule);
-  border-radius: 12px;
-  transition: border-color 0.15s;
-}
-
-.chat-bar-inner:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.1);
-}
-
-.chat-bar-icon {
-  font-size: 1.1rem;
-  flex-shrink: 0;
-}
-
-.chat-bar-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--ink);
-  font-size: 0.88rem;
-  outline: none;
-  padding: 0.25rem 0;
-}
-
-.chat-bar-input::placeholder {
-  color: var(--pencil);
-}
-
-.chat-bar-send {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.9rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.chat-bar-send:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.chat-bar-suggestions {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 0.4rem;
-  padding: 0.5rem;
-  background: var(--paper-2, #130f2a);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  z-index: 10;
-}
-
-.suggestion-chip {
-  padding: 0.3rem 0.7rem;
-  border-radius: 16px;
-  border: 1px solid var(--rule);
-  background: transparent;
-  color: var(--pencil);
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: all 0.12s;
-}
-
-.suggestion-chip:hover {
-  background: var(--accent-light);
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-/* ─── Widget Grid ────────────────────────────────────── */
-
-.widget-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1rem;
-}
-
-.widget-grid .widget-sm { grid-column: span 1; }
-.widget-grid .widget-md { grid-column: span 2; }
-.widget-grid .widget-lg { grid-column: span 3; }
-.widget-grid .widget-full { grid-column: 1 / -1; }
-
-.widget-card {
-  background: var(--paper-2, #130f2a);
-  border: 1px solid var(--rule);
-  border-radius: 10px;
-  padding: 1rem;
-  position: relative;
-}
-
-.widget-card:hover .widget-remove {
-  opacity: 1;
-}
-
-.widget-remove {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  opacity: 0;
-  background: none;
-  border: none;
-  color: var(--danger);
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: opacity 0.15s;
-}
-
