@@ -6,13 +6,11 @@ Env vars:
 
 If neither is set, tracing is a no-op.
 """
-
 from __future__ import annotations
 
 import os
-from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Generator
 
 _tracer = None
 
@@ -45,22 +43,6 @@ def _init_tracer():
     return _tracer
 
 
-def _record_result(span: Any, ctx: dict[str, Any]) -> None:
-    # Only reached when _init_tracer() succeeded, so opentelemetry is importable.
-    from opentelemetry import trace
-
-    if ctx.get("input"):
-        span.set_attribute("gen_ai.prompt", str(ctx["input"])[:4000])
-    if ctx.get("output"):
-        span.set_attribute("gen_ai.completion", str(ctx["output"])[:4000])
-    if ctx.get("tool_calls"):
-        span.set_attribute("fantasia.tool_calls", str(ctx["tool_calls"]))
-    if ctx.get("tokens"):
-        span.set_attribute("gen_ai.usage.total_tokens", ctx["tokens"])
-    if ctx.get("error"):
-        span.set_status(trace.StatusCode.ERROR, ctx["error"])
-
-
 @contextmanager
 def trace_llm(
     name: str,
@@ -89,4 +71,13 @@ def trace_llm(
 
         yield ctx
 
-        _record_result(span, ctx)
+        if ctx.get("input"):
+            span.set_attribute("gen_ai.prompt", str(ctx["input"])[:4000])
+        if ctx.get("output"):
+            span.set_attribute("gen_ai.completion", str(ctx["output"])[:4000])
+        if ctx.get("tool_calls"):
+            span.set_attribute("fantasia.tool_calls", str(ctx["tool_calls"]))
+        if ctx.get("tokens"):
+            span.set_attribute("gen_ai.usage.total_tokens", ctx["tokens"])
+        if ctx.get("error"):
+            span.set_status(trace.StatusCode.ERROR, ctx["error"])

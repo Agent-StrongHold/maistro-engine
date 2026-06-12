@@ -1,3 +1,4 @@
+import pytest
 """Golden-style tests for install plan builder (no Docker required)."""
 
 from __future__ import annotations

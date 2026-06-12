@@ -201,7 +201,7 @@ export default function ChatPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const listEndRef = useRef<HTMLDivElement>(null);
 
-  const activeSession = sessions.find((s) => s.id === activeId)!;
+  const activeSession = sessions.find((s) => s.id === activeId) ?? sessions[0] ?? createSession();
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: "smooth" });

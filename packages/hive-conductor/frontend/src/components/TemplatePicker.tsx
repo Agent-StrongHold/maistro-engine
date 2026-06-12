@@ -9,7 +9,7 @@ export function TemplatePicker({ onSelect, onClose }: { onSelect: (id: string) =
   useEffect(() => {
     fetch("/v1/dashboard/demos", { credentials: "same-origin" })
       .then(r => r.json())
-      .then(setTemplates)
+      .then(d => setTemplates(Array.isArray(d) ? d : []))
       .catch(() => setTemplates([]))
       .finally(() => setLoading(false));
   }, []);

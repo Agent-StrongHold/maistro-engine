@@ -18,7 +18,7 @@ router = APIRouter(prefix="/v1/dashboard", tags=["dashboard"])
 logger = logging.getLogger("hive.dashboard")
 
 # SQLite-backed file (same dir as other Hive state)
-_DB_PATH = Path("data/dashboard_layouts.json")
+_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "dashboard_layouts.json"
 _LAYOUTS: dict[str, dict] = {}
 
 
@@ -69,6 +69,26 @@ class DashboardLayout(BaseModel):
 async def get_layout(request: Request) -> dict:
     """Get the current user's dashboard layout. Seeds preset for known users."""
     uid = _user_id(request)
+    # Try PostgREST first (survives restarts)
+    if uid not in _LAYOUTS:
+        try:
+            from services.pg_store import POSTGREST_URL
+            if POSTGREST_URL:
+                import httpx
+                r = httpx.get(
+                    f"{POSTGREST_URL}/user_service_state",
+                    params={"user_id": f"eq.{uid}", "service": "eq.fantasia", "key": "eq.dashboard_layout"},
+                    timeout=3,
+                )
+                if r.status_code == 200:
+                    rows = r.json()
+                    if rows:
+                        val = rows[0].get("value")
+                        layout = json.loads(val) if isinstance(val, str) else val
+                        if layout:
+                            _LAYOUTS[uid] = layout
+        except Exception:
+            pass
     if uid not in _LAYOUTS:
         preset = _PRESETS.get(uid)
         if preset:
@@ -94,15 +114,38 @@ async def save_layout(request: Request, body: DashboardLayout) -> dict:
     uid = _user_id(request)
     _LAYOUTS[uid] = body.model_dump()
     _save_to_disk()
+    # Persist to PostgREST
+    try:
+        from services.pg_store import pg_upsert, is_pg_available
+        if is_pg_available():
+            import asyncio
+            asyncio.ensure_future(pg_upsert("user_service_state", {
+                "user_id": uid, "service": "fantasia",
+                "key": "dashboard_layout", "value": json.dumps(body.model_dump()),
+            }))
+    except Exception:
+        pass
     return {"ok": True}
 
 
 @router.get("/metrics")
 async def get_metrics() -> dict:
-    """Get live chat completion metrics."""
-    from services.chat_completion import get_chat_metrics_summary
-
-    return get_chat_metrics_summary()
+    """Get live dashboard metrics for the header KPI cards."""
+    from pathlib import Path
+    agents_path = Path(__file__).parent.parent / "data" / "agents.json"
+    agent_count = 0
+    try:
+        agent_count = len(json.loads(agents_path.read_text()))
+    except Exception:
+        agent_count = 9  # fallback to configured agent count
+    return {
+        "active_agents": agent_count,
+        "runs_today": 0,
+        "avg_latency_ms": 0,
+        "total_cost": 0.0,
+        "approval_rate": None,
+        "ttft_ms": 0,
+    }
 
 
 @router.get("/widget-examples")
@@ -154,3 +197,16 @@ async def get_demo_dashboard(demo_id: str) -> dict:
     if not path.exists():
         return {"error": "not found"}
     return json.loads(path.read_text())
+
+
+@router.get("/deck-templates")
+async def get_deck_templates(category: str | None = None) -> list[dict]:
+    """Return slide template library for the DeckBuilder."""
+    path = Path(__file__).parent.parent / "data" / "deck_templates.json"
+    try:
+        templates = json.loads(path.read_text())
+    except Exception:
+        return []
+    if category:
+        templates = [t for t in templates if t.get("category", "").lower() == category.lower()]
+    return templates

@@ -6,7 +6,6 @@ Widgets call these directly — no LLM in the loop at render time.
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import httpx
@@ -15,7 +14,7 @@ from fastapi import APIRouter, Query, Request
 router = APIRouter(tags=["widgets"])
 logger = logging.getLogger("hive.widgets")
 
-_JIRA_BASE = os.environ.get("JIRA_BASE_URL", "https://jira.example.com")
+_JIRA_BASE = "https://myjira.disney.com"
 
 
 def _jira_headers(pat: str) -> dict[str, str]:
@@ -27,26 +26,17 @@ def _user_id(request: Request) -> str:
     return str(user.get("id") or user.get("username") or "dev")
 
 
-def _use_secret(store: Any, user_id: str, provider_id: str) -> str | None:
-    """Single allowlisted callsite for use_secret — lambda is centralised here."""
-    try:
-        return store.use_secret(user_id, provider_id, lambda s: s)
-    except Exception:
-        return None
-
-
 def _jira_pat(request: Request) -> str | None:
     uid = _user_id(request)
     try:
         from services import user_credentials as cred_svc
-
         store = cred_svc.get_credential_store()
         if store is None:
             return None
         for provider_id in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
             try:
                 if store.has_secret(uid, provider_id):
-                    return _use_secret(store, uid, provider_id)
+                    return store.use_secret(uid, provider_id, lambda s: s)
             except Exception:
                 continue
         return None
@@ -54,45 +44,21 @@ def _jira_pat(request: Request) -> str | None:
         return None
 
 
-def _airtable_token(request: Request) -> str | None:
-    """The user's Airtable token — their own id first, then the shared 'user' id."""
-    try:
-        from services import user_credentials as cred_svc
+@router.get("/jira")
+async def widget_jira(
+    request: Request,
+    project: str = Query(...),
+    status: str | None = None,
+    assignee: str | None = None,
+    days: int | None = None,
+    jql_extra: str | None = None,
+    max_results: int = 50,
+) -> dict[str, Any]:
+    """Execute JQL and return structured data for a Jira widget."""
+    pat = _jira_pat(request)
+    if not pat:
+        return {"error": "No Jira credentials configured.", "total": 0, "issues": []}
 
-        store = cred_svc.get_credential_store()
-        if not store:
-            return None
-        for try_uid in (_user_id(request), "user"):
-            try:
-                if store.has_secret(try_uid, "airtable"):
-                    return _use_secret(store, try_uid, "airtable")
-            except Exception:
-                continue
-        return None
-    except Exception:
-        return None
-
-
-def _airtable_base_id() -> str:
-    """First configured Airtable base_id from the per-user provider config."""
-    import stores
-
-    for key in stores.user_provider_config:
-        if key.endswith(":airtable"):
-            val = stores.user_provider_config.get(key)
-            if isinstance(val, dict) and val.get("base_id"):
-                return str(val["base_id"]).split("/")[0]
-    return ""
-
-
-def _build_jql(
-    project: str,
-    status: str | None,
-    assignee: str | None,
-    days: int | None,
-    jql_extra: str | None,
-) -> str:
-    """Assemble and sanitize the JQL (jql_extra may be LLM-built and sloppy)."""
     parts: list[str] = [f"project = {project}"]
     if status:
         parts.append(f'status = "{status}"')
@@ -111,93 +77,17 @@ def _build_jql(
     jql = " AND ".join(parts)
     if "ORDER BY" not in jql.upper():
         jql += " ORDER BY updated DESC"
-    return _sanitize_jql(jql)
-
-
-def _sanitize_jql(jql: str) -> str:
-    """Repair LLM-built JQL: doubled operators, stray AND/OR before ORDER BY."""
+    # Final cleanup: remove any double AND/OR from LLM mistakes
     while " AND AND " in jql or " OR OR " in jql or "  " in jql:
         jql = jql.replace(" AND AND ", " AND ").replace(" OR OR ", " OR ").replace("  ", " ")
     jql = jql.strip()
+    # Strip trailing AND/OR before ORDER BY
     if " ORDER BY" in jql:
         pre, order = jql.split(" ORDER BY", 1)
         pre = pre.rstrip()
-        if pre.endswith(" AND"):
-            pre = pre[:-4]
-        if pre.endswith(" OR"):
-            pre = pre[:-3]
+        if pre.endswith(" AND"): pre = pre[:-4]
+        if pre.endswith(" OR"): pre = pre[:-3]
         jql = pre + " ORDER BY" + order
-    return jql
-
-
-def _flatten_record(rec: dict[str, Any]) -> dict[str, Any]:
-    """Flatten Airtable field values for display (linked records, collaborators)."""
-    flat: dict[str, Any] = {"id": rec["id"]}
-    for k, v in rec.get("fields", {}).items():
-        # Flatten single-element arrays (linked record lookups)
-        if isinstance(v, list) and len(v) == 1:
-            flat[k] = v[0]
-        elif isinstance(v, list):
-            flat[k] = ", ".join(str(x) for x in v[:3])
-        elif isinstance(v, dict) and "name" in v:
-            flat[k] = v["name"]
-        elif isinstance(v, dict) and "email" in v:
-            flat[k] = v.get("name", v["email"])
-        else:
-            flat[k] = v
-    return flat
-
-
-def _breakdown(records: list[dict[str, Any]], group_by: str) -> dict[str, int]:
-    """Counts per group_by value across flattened records."""
-    counts: dict[str, int] = {}
-    for rec in records:
-        val = rec.get(group_by, "(unset)")
-        if isinstance(val, list):
-            val = ", ".join(str(v) for v in val) if val else "(unset)"
-        elif not val:
-            val = "(unset)"
-        counts[str(val)] = counts.get(str(val), 0) + 1
-    return counts
-
-
-def _table_view(records: list[dict[str, Any]], table: str) -> dict[str, Any]:
-    """Full records as rows + sorted columns (for table/pivot view)."""
-    skip = {"id", "Auto_Id_DO_NOT_TOUCH", "Created"}
-    table_records = []
-    all_columns: set[str] = set()
-    for rec in records:
-        row = {}
-        for k, v in rec.items():
-            if k in skip:
-                continue
-            all_columns.add(k)
-            row[k] = str(v) if v else ""
-        table_records.append(row)
-    return {
-        "table_data": table_records,
-        "columns": sorted(all_columns),
-        "count": len(table_records),
-        "table": table,
-    }
-
-
-@router.get("/jira")
-async def widget_jira(
-    request: Request,
-    project: str = Query(...),
-    status: str | None = None,
-    assignee: str | None = None,
-    days: int | None = None,
-    jql_extra: str | None = None,
-    max_results: int = 50,
-) -> dict[str, Any]:
-    """Execute JQL and return structured data for a Jira widget."""
-    pat = _jira_pat(request)
-    if not pat:
-        return {"error": "No Jira credentials configured.", "total": 0, "issues": []}
-
-    jql = _build_jql(project, status, assignee, days, jql_extra)
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -205,12 +95,7 @@ async def widget_jira(
             page_size = min(max_results, 100)
             r = await client.get(
                 f"{_JIRA_BASE}/rest/api/2/search",
-                params={
-                    "jql": jql,
-                    "maxResults": page_size,
-                    "startAt": 0,
-                    "fields": "summary,status,assignee,issuetype,priority,updated,created",
-                },
+                params={"jql": jql, "maxResults": page_size, "startAt": 0, "fields": "summary,status,assignee,issuetype,priority,updated,created"},
                 headers=_jira_headers(pat),
             )
             r.raise_for_status()
@@ -222,12 +107,7 @@ async def widget_jira(
             while len(all_issues_raw) < min(total, 1000):
                 r = await client.get(
                     f"{_JIRA_BASE}/rest/api/2/search",
-                    params={
-                        "jql": jql,
-                        "maxResults": 100,
-                        "startAt": len(all_issues_raw),
-                        "fields": "status,priority",
-                    },
+                    params={"jql": jql, "maxResults": 100, "startAt": len(all_issues_raw), "fields": "status,priority"},
                     headers=_jira_headers(pat),
                 )
                 if r.status_code != 200:
@@ -256,13 +136,7 @@ async def widget_jira(
                 s = ((i.get("fields") or {}).get("status") or {}).get("name") or "Unknown"
                 status_counts[s] = status_counts.get(s, 0) + 1
 
-            return {
-                "total": total,
-                "issues": display_issues,
-                "statuses": status_counts,
-                "shown": len(display_issues),
-                "jql": jql,
-            }
+            return {"total": total, "issues": display_issues, "statuses": status_counts, "shown": len(display_issues), "jql": jql}
     except Exception as e:
         logger.warning("Jira widget query failed: %s", e)
         return {"error": str(e)[:200], "total": 0, "issues": [], "statuses": {}}
@@ -278,10 +152,36 @@ async def widget_airtable(
     display_field: str | None = None,
 ) -> dict[str, Any]:
     """Query Airtable deterministically. Use group_by for breakdowns, display_field for lists."""
-    token = _airtable_token(request)
-    if not token:
-        return {"error": "Airtable not configured.", "records": []}
-    base_id = _airtable_base_id()
+    uid = _user_id(request)
+    try:
+        from services import user_credentials as cred_svc
+        import stores
+
+        store = cred_svc.get_credential_store()
+        if not store:
+            return {"error": "Credential store not available.", "records": []}
+        # Find token — try user_id then fallback to "user"
+        token = None
+        for try_uid in (uid, "user"):
+            try:
+                if store.has_secret(try_uid, "airtable"):
+                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    break
+            except Exception:
+                continue
+        if not token:
+            return {"error": "Airtable not configured.", "records": []}
+        # Find base_id from config store
+        base_id = ""
+        for key in stores.user_provider_config.keys():
+            if key.endswith(":airtable"):
+                val = stores.user_provider_config.get(key)
+                if isinstance(val, dict) and val.get("base_id"):
+                    base_id = val["base_id"].split("/")[0]
+                    break
+    except Exception:
+        return {"error": "Could not load Airtable credentials.", "records": []}
+
     if not base_id:
         return {"error": "No base_id configured.", "records": []}
 
@@ -298,30 +198,60 @@ async def widget_airtable(
             )
             r.raise_for_status()
             data = r.json()
-            records = [_flatten_record(rec) for rec in data.get("records", [])]
+            records_raw = data.get("records", [])
+            records = []
+            for rec in records_raw:
+                flat = {"id": rec["id"]}
+                for k, v in rec.get("fields", {}).items():
+                    # Flatten single-element arrays (linked record lookups)
+                    if isinstance(v, list) and len(v) == 1:
+                        flat[k] = v[0]
+                    elif isinstance(v, list):
+                        flat[k] = ", ".join(str(x) for x in v[:3])
+                    elif isinstance(v, dict) and "name" in v:
+                        flat[k] = v["name"]
+                    elif isinstance(v, dict) and "email" in v:
+                        flat[k] = v.get("name", v["email"])
+                    else:
+                        flat[k] = v
+                records.append(flat)
 
-            # group_by → breakdown (counts per value)
+            # If group_by is specified, return a breakdown (counts per value)
             if group_by:
-                return {
-                    "breakdown": _breakdown(records, group_by),
-                    "total": len(records),
-                    "field": group_by,
-                    "table": table,
-                }
+                counts: dict[str, int] = {}
+                for rec in records:
+                    val = rec.get(group_by, "(unset)")
+                    if isinstance(val, list):
+                        val = ", ".join(str(v) for v in val) if val else "(unset)"
+                    elif not val:
+                        val = "(unset)"
+                    counts[str(val)] = counts.get(str(val), 0) + 1
+                return {"breakdown": counts, "total": len(records), "field": group_by, "table": table}
 
-            # display_field → simplified records
+            # If display_field is specified, return simplified records
             if display_field:
-                simple = [
-                    {
-                        "name": str(rec.get(display_field, rec.get("Name", rec.get("id", "")))),
-                        "id": rec.get("id", ""),
-                    }
-                    for rec in records
-                ]
+                simple = []
+                for rec in records:
+                    name = rec.get(display_field, rec.get("Name", rec.get("id", "")))
+                    simple.append({"name": str(name), "id": rec.get("id", "")})
                 return {"records": simple, "count": len(simple), "table": table}
 
-            # Table mode: all fields as columns for rich table display
-            return _table_view(records, table)
+            # Table mode: return all fields as columns for rich table display
+            if not group_by and not display_field:
+                # Return full records with all fields (for table/pivot view)
+                # Skip internal fields
+                skip = {"id", "Auto_Id_DO_NOT_TOUCH", "Created"}
+                table_records = []
+                all_columns: set[str] = set()
+                for rec in records:
+                    row = {}
+                    for k, v in rec.items():
+                        if k in skip:
+                            continue
+                        all_columns.add(k)
+                        row[k] = str(v) if v else ""
+                    table_records.append(row)
+                return {"table_data": table_records, "columns": sorted(all_columns), "count": len(table_records), "table": table}
     except Exception as e:
         return {"error": str(e)[:200], "records": []}
 
@@ -334,7 +264,6 @@ async def widget_metrics(
 ) -> dict[str, Any]:
     """Return a specific metric value."""
     from services.chat_completion import get_chat_metrics_summary
-
     summary = get_chat_metrics_summary()
     # Map metric names to values
     mapping: dict[str, Any] = {
@@ -357,11 +286,34 @@ async def widget_airtable_fields(
     table: str = Query(...),
 ) -> dict[str, Any]:
     """Return field names for a given Airtable table (by sampling records)."""
-    token = _airtable_token(request)
-    if not token:
-        return {"fields": []}
-    base_id = _airtable_base_id()
-    if not base_id:
+    uid = _user_id(request)
+    try:
+        from services import user_credentials as cred_svc
+        import stores
+
+        store = cred_svc.get_credential_store()
+        if not store:
+            return {"fields": []}
+        token = None
+        for try_uid in (uid, "user"):
+            try:
+                if store.has_secret(try_uid, "airtable"):
+                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    break
+            except Exception:
+                continue
+        if not token:
+            return {"fields": []}
+        base_id = ""
+        for key in stores.user_provider_config.keys():
+            if key.endswith(":airtable"):
+                val = stores.user_provider_config.get(key)
+                if isinstance(val, dict) and val.get("base_id"):
+                    base_id = val["base_id"].split("/")[0]
+                    break
+        if not base_id:
+            return {"fields": []}
+    except Exception:
         return {"fields": []}
 
     try:
@@ -385,32 +337,48 @@ async def widget_airtable_fields(
 @router.get("/airtable/bases")
 async def widget_airtable_bases(request: Request) -> dict[str, Any]:
     """Return configured Airtable bases for the current user."""
+    uid = _user_id(request)
     try:
+        from services import user_credentials as cred_svc
         import stores
 
-        # All airtable configs with base_ids
+        store = cred_svc.get_credential_store()
+        if not store:
+            return {"bases": []}
+        # Find all airtable configs with base_ids
         bases = []
-        for key in stores.user_provider_config:
+        for key in stores.user_provider_config.keys():
             if "airtable" in key:
                 val = stores.user_provider_config.get(key)
                 if isinstance(val, dict) and val.get("base_id"):
-                    bid = str(val["base_id"]).split("/")[0]
+                    bid = val["base_id"].split("/")[0]
                     bases.append({"id": bid, "name": val.get("name", bid)})
+        # Also check token
+        token = None
+        for try_uid in (uid, "user"):
+            try:
+                if store.has_secret(try_uid, "airtable"):
+                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    break
+            except Exception:
+                continue
+        if not bases and token:
+            # Try to get bases from metadata API
+            try:
+                async with httpx.AsyncClient(timeout=10) as client:
+                    r = await client.get("https://api.airtable.com/v0/meta/bases", headers={"Authorization": f"Bearer {token}"})
+                    if r.status_code == 200:
+                        for b in r.json().get("bases", []):
+                            bases.append({"id": b["id"], "name": b.get("name", b["id"])})
+            except Exception:
+                pass
+        # Fallback: return the known base from config
         if not bases:
-            # Fall back to the Airtable metadata API
-            token = _airtable_token(request)
-            if token:
-                try:
-                    async with httpx.AsyncClient(timeout=10) as client:
-                        r = await client.get(
-                            "https://api.airtable.com/v0/meta/bases",
-                            headers={"Authorization": f"Bearer {token}"},
-                        )
-                        if r.status_code == 200:
-                            for b in r.json().get("bases", []):
-                                bases.append({"id": b["id"], "name": b.get("name", b["id"])})
-                except Exception:
-                    pass
+            for key in stores.user_provider_config.keys():
+                if "airtable" in key:
+                    val = stores.user_provider_config.get(key)
+                    if isinstance(val, dict) and val.get("base_id"):
+                        bases.append({"id": val["base_id"].split("/")[0], "name": "Default Base"})
         return {"bases": bases}
     except Exception:
         return {"bases": []}
@@ -419,16 +387,25 @@ async def widget_airtable_bases(request: Request) -> dict[str, Any]:
 @router.get("/airtable/tables")
 async def widget_airtable_tables(request: Request, base_id: str = Query(...)) -> dict[str, Any]:
     """Return tables for a specific Airtable base."""
+    uid = _user_id(request)
     try:
-        token = _airtable_token(request)
+        from services import user_credentials as cred_svc
+        store = cred_svc.get_credential_store()
+        if not store:
+            return {"tables": []}
+        token = None
+        for try_uid in (uid, "user"):
+            try:
+                if store.has_secret(try_uid, "airtable"):
+                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    break
+            except Exception:
+                continue
         if not token:
             return {"tables": []}
 
         async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(
-                f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
-                headers={"Authorization": f"Bearer {token}"},
-            )
+            r = await client.get(f"https://api.airtable.com/v0/meta/bases/{base_id}/tables", headers={"Authorization": f"Bearer {token}"})
             if r.status_code == 200:
                 tables = [{"id": t["id"], "name": t["name"]} for t in r.json().get("tables", [])]
                 return {"tables": tables, "base_id": base_id}
@@ -441,6 +418,7 @@ async def widget_airtable_tables(request: Request, base_id: str = Query(...)) ->
 @router.post("/screenshot")
 async def capture_screenshot(request: Request) -> dict[str, Any]:
     """Capture a screenshot of the current dashboard and return as base64."""
+    import asyncio
     import base64
 
     try:
@@ -452,13 +430,9 @@ async def capture_screenshot(request: Request) -> dict[str, Any]:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             ctx = await browser.new_context(viewport={"width": 1440, "height": 900})
-            await ctx.add_cookies(
-                [{"name": "hive_session", "value": session_id, "domain": "localhost", "path": "/"}]
-            )
+            await ctx.add_cookies([{"name": "hive_session", "value": session_id, "domain": "localhost", "path": "/"}])
             page = await ctx.new_page()
-            await page.goto(
-                "http://localhost:5173/dashboard", wait_until="networkidle", timeout=15000
-            )
+            await page.goto("http://localhost:5173/dashboard", wait_until="networkidle", timeout=15000)
             await page.wait_for_timeout(3000)
             # Dismiss onboarding if present
             skip = page.locator("button:has-text('Skip')")

@@ -3,9 +3,13 @@ from pathlib import Path
 
 import pytest
 
+# The backend dir must come FIRST: the monorepo root also has a `services/`
+# package (sandbox_broker) that shadows ours when the root pytest.ini's
+# `pythonpath = .` wins the sys.path race.
 _BACKEND = Path(__file__).resolve().parents[1]
-if str(_BACKEND) not in sys.path:
-    sys.path.insert(0, str(_BACKEND))
+if str(_BACKEND) in sys.path:
+    sys.path.remove(str(_BACKEND))
+sys.path.insert(0, str(_BACKEND))
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -35,6 +39,20 @@ def _init_engine() -> None:
     from services import user_credentials as cred_svc
 
     cred_svc.init_credential_store(tempfile.mkdtemp(prefix="hive-cred-test-"))
+
+
+@pytest.fixture(autouse=True)
+def _isolate_dashboard_layouts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Redirect layout persistence to tmp_path so tests never mutate the
+    checked-in data/dashboard_layouts.json."""
+    import copy
+    from routes import dashboard_layout
+
+    monkeypatch.setattr(dashboard_layout, "_DB_PATH", tmp_path / "dashboard_layouts.json")
+    snapshot = copy.deepcopy(dashboard_layout._LAYOUTS)
+    yield
+    dashboard_layout._LAYOUTS.clear()
+    dashboard_layout._LAYOUTS.update(snapshot)
 
 
 def _seed_test_user() -> None:
