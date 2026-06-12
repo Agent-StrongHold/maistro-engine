@@ -266,7 +266,7 @@ stay `marketplace_vertical` keyed/opt-in, or fall back to the opt-in keyed gener
   opt-in provider **for those who want it**, tagged **`license: AGPL-3.0` / self-host-only /
   do-not-bundle**: mAIstro calls it over HTTP (arm's-length — no AGPL obligation on mAIstro) but never
   ships or modifies it. Reliability is best-effort (it scrapes upstream engines). The operator already
-  runs one at `10.10.21.104:8888` (85 engines) that can fill this slot directly.
+  runs one on the homelab (85 engines) that can fill this slot directly.
 - **Tavily / Exa** — keyed metered APIs with clean, LLM-ready results.
 - **`llm_native_search` models** — Perplexity Sonar, Gemini Google-Search grounding, OpenRouter
   `:online`, xAI Grok live search: search **and** synthesis in one call (a "smart search" — reasoned,

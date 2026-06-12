@@ -27,7 +27,7 @@ owners:
 
 Hive Conductor's chat path (`/v1/chat/stream` → `run_chat_completion_streaming` → `LLMPort`) talks to a single **LiteLLM gateway** (`build_llm_port()`), but LiteLLM is **multi-ingress**: it exposes `chat/completions`, the OpenAI **Responses API** (`/responses`), and the Anthropic **Messages API** (`/v1/messages`). `chat.completions` is the lowest-common-denominator dialect; each provider's native surface unlocks features it flattens (persisted reasoning, prompt caching, citations, realtime multimodal).
 
-The `LLMPort` is the convergence seam — the place to hide *which* dialect we speak from everything above it (the streaming generator, the chat UI, downstream Disney teams). This spec defines that seam as a set of **lanes**.
+The `LLMPort` is the convergence seam — the place to hide *which* dialect we speak from everything above it (the streaming generator, the chat UI, downstream enterprise teams). This spec defines that seam as a set of **lanes**.
 
 ## Decision
 

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 HA_URL = os.environ.get("HA_URL", "").rstrip("/")
 HA_TOKEN = os.environ.get("HA_TOKEN", "")
-HC_EXTERNAL_URL = os.environ.get("HC_EXTERNAL_URL", "http://10.10.42.100:8101").rstrip("/")
+HC_EXTERNAL_URL = os.environ.get("HC_EXTERNAL_URL", "http://localhost:8101").rstrip("/")
 
 CONTROLLABLE = {
     "light",

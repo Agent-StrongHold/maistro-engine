@@ -104,7 +104,7 @@ async def get_layout(request: Request) -> dict:
 
 # Users with pre-configured dashboard templates (loaded on first access)
 _PRESETS: dict[str, str] = {
-    "carlos": "portfolio-overview",
+    "demo": "portfolio-overview",
 }
 
 

@@ -49,7 +49,9 @@ migration.
 - Today's Docker behaviour preserved as one backend (no behavioural regression during migration).
 - A microVM backend (Kata first — drop-in OCI; Firecracker second — max isolation) satisfying ADR-093.
 - A conformance suite (including escape/containment assertions) every backend must pass.
-- Backend selection via configuration, defaulting safe (fail-closed when KVM is required but absent).
+- Backend selection via configuration, defaulting safe (fail-closed when KVM is required but absent;
+  autonomous/"overnight" execution refuses on hosts whose best backend is shared-kernel — ADR-093
+  Decision 6).
 
 ## Non-goals
 
@@ -82,7 +84,8 @@ class SandboxSpec:
     env: Mapping[str, str]         # already passed through env_sanitize
 ```
 
-`SandboxCapabilities.isolation` is an enum: `SHARED_KERNEL` (container) < `VM` (Kata/Firecracker).
+`SandboxCapabilities.isolation` is an enum, ordered weakest → strongest:
+`SHARED_KERNEL` (container/bubblewrap) < `USERSPACE_KERNEL` (gVisor) < `VM` (Kata/Firecracker).
 ADR-093 requires `VM` for untrusted code; callers handling untrusted input assert the minimum.
 
 ### Backends
@@ -90,9 +93,27 @@ ADR-093 requires `VM` for untrusted code; callers handling untrusted input asser
 | Backend | isolation | runs OCI image? | kvm_required | phase |
 |---------|-----------|-----------------|--------------|-------|
 | `container` (rootless, **no docker socket**) | SHARED_KERNEL | yes | no | 1 (refactor of today) |
+| `gvisor` (`runsc` runtime under docker/podman) | USERSPACE_KERNEL | yes, unchanged | no | 1 (fallback tier) |
 | `kata` (kata-runtime under containerd) | VM | yes, unchanged | yes | 2 |
 | `firecracker` (kernel + ext4 rootfs, jailer) | VM | no (rootfs build) | yes | 3 |
 | `hyperlight` (wasm/guest binary) | VM, no guest kernel | no | yes | future |
+
+### Execution modes and isolation floors (ADR-093 Decision 5-6)
+
+Backend selection always prefers the strongest isolation available on the host
+(`VM > USERSPACE_KERNEL > SHARED_KERNEL`; gVisor outranks bubblewrap/hardened containers). The
+caller's *execution mode* then sets a floor that decides whether execution is permitted at all:
+
+| Mode | Minimum isolation | Behaviour below the floor |
+|------|-------------------|---------------------------|
+| `interactive` (human-supervised CLI/TUI; SPEC-200 gates live) | SHARED_KERNEL | fail closed only when *no* backend exists |
+| `autonomous` (unattended / "overnight" / full-auto: builders pipeline, scheduled DAGs, evolve harnesses) | USERSPACE_KERNEL | **refuse to start** — full-auto is blocked on a shared-kernel-only host |
+
+Unknown or unspecified modes get the `autonomous` (stricter) floor. There is no bare-subprocess
+tier in any mode. `SandboxProtocol.spawn` callers pass the mode (or assert
+`capabilities().isolation >= floor`) so the policy is enforced in the substrate, not re-implemented
+per caller. Reference implementation:
+`packages/hive-conductor/backend/services/hyperlight_executor.py`.
 
 ### Wiring
 

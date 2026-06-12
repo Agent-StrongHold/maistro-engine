@@ -18,7 +18,7 @@ alone. The [Anti-patterns](#anti-patterns--what-not-to-do) section is the part t
 
 `maistro-engine` is a **consolidation monorepo** that is both a **library** (`maistro-core`,
 imported by downstream products) and an **app host** (it contains `hive-conductor` and the
-canvas ability). Downstream products — **Stronghold** (planned) and **Fantasia** (Disney
+canvas ability). Downstream products — **Stronghold** (planned) and **Fantasia** (enterprise
 distribution) — *import or track* the engine; they do not live here.
 
 The single most important consequence: **product-specific work does not belong in the
@@ -132,7 +132,7 @@ file + update `id:` + the `# SPEC-NNN:` heading + any references), don't merge a
 
 ## 6. Downstream products (Stronghold, Fantasia) and re-syncing
 
-Downstream peers track the engine. **Fantasia** (Disney) re-baselines onto a known engine
+Downstream peers track the engine. **Fantasia** (enterprise distribution) re-baselines onto a known engine
 commit and re-applies a thin product layer on top. Two rules make this sustainable:
 
 1. **Keep the product layer thin and identifiable** — branding, product ADRs under a
@@ -152,7 +152,7 @@ commit and re-applies a thin product layer on top. Two rules make this sustainab
 
 | Don't | Why / what to do instead |
 |-------|--------------------------|
-| **Author product-specific work in the engine** | Homelab/Conductor-gateway, Disney-specific, or Stronghold-only features belong in the product, not here ([ADR-019](adr/ADR-019-canonical-source-split.md)). A whole gateway spec set was authored in the wrong repo and had to be relocated. |
+| **Author product-specific work in the engine** | Homelab/Conductor-gateway, downstream-product-specific, or Stronghold-only features belong in the product, not here ([ADR-019](adr/ADR-019-canonical-source-split.md)). A whole gateway spec set was authored in the wrong repo and had to be relocated. |
 | **Use a `layer:`/`repo:` value that isn't in the enum** | Instant registry CI failure. See §3 for the exact allowed values. |
 | **Pick a number without checking open branches/PRs** | Causes id collisions. See §5. |
 | **Re-add a `potential-dead-code/` / `code-worth-implementing-from-*` snapshot** | Removed per [SPEC-178](specs/SPEC-178-legacy-snapshot-retention.md); root `.gitignore` guards the old names. Capture intent in a spec + ship under `packages/`; git history retains old blobs. No multi-MB `cp -R` snapshots without an ADR. |
