@@ -46,6 +46,7 @@ def _isolate_dashboard_layouts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Redirect layout persistence to tmp_path so tests never mutate the
     checked-in data/dashboard_layouts.json."""
     import copy
+
     from routes import dashboard_layout
 
     monkeypatch.setattr(dashboard_layout, "_DB_PATH", tmp_path / "dashboard_layouts.json")

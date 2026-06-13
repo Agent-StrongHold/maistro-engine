@@ -27,7 +27,8 @@ class TestCreateDashboardWidgetTool:
 
         result = await _tool_create_dashboard_widget(
             {"type": "kpi", "title": "My KPI", "size": "2", "config": {"field": "active_agents"}},
-            user_id="u1", jira_pat=None,
+            user_id="u1",
+            jira_pat=None,
         )
         assert result["created"] is True
         assert result["widget_id"].startswith("w-")

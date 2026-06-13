@@ -66,18 +66,24 @@ class DashboardLayout(BaseModel):
 
 
 @router.get("/layout")
-async def get_layout(request: Request) -> dict:
+async def get_layout(request: Request) -> dict:  # noqa: C901  layered preset/PG/disk fallbacks
     """Get the current user's dashboard layout. Seeds preset for known users."""
     uid = _user_id(request)
     # Try PostgREST first (survives restarts)
     if uid not in _LAYOUTS:
         try:
             from services.pg_store import POSTGREST_URL
+
             if POSTGREST_URL:
                 import httpx
+
                 r = httpx.get(
                     f"{POSTGREST_URL}/user_service_state",
-                    params={"user_id": f"eq.{uid}", "service": "eq.fantasia", "key": "eq.dashboard_layout"},
+                    params={
+                        "user_id": f"eq.{uid}",
+                        "service": "eq.fantasia",
+                        "key": "eq.dashboard_layout",
+                    },
                     timeout=3,
                 )
                 if r.status_code == 200:
@@ -116,13 +122,22 @@ async def save_layout(request: Request, body: DashboardLayout) -> dict:
     _save_to_disk()
     # Persist to PostgREST
     try:
-        from services.pg_store import pg_upsert, is_pg_available
+        from services.pg_store import is_pg_available, pg_upsert
+
         if is_pg_available():
             import asyncio
-            asyncio.ensure_future(pg_upsert("user_service_state", {
-                "user_id": uid, "service": "fantasia",
-                "key": "dashboard_layout", "value": json.dumps(body.model_dump()),
-            }))
+
+            _task = asyncio.ensure_future(  # noqa: RUF006  fire-and-forget mirror write
+                pg_upsert(
+                    "user_service_state",
+                    {
+                        "user_id": uid,
+                        "service": "fantasia",
+                        "key": "dashboard_layout",
+                        "value": json.dumps(body.model_dump()),
+                    },
+                )
+            )
     except Exception:
         pass
     return {"ok": True}
@@ -132,6 +147,7 @@ async def save_layout(request: Request, body: DashboardLayout) -> dict:
 async def get_metrics() -> dict:
     """Get live dashboard metrics for the header KPI cards."""
     from pathlib import Path
+
     agents_path = Path(__file__).parent.parent / "data" / "agents.json"
     agent_count = 0
     try:

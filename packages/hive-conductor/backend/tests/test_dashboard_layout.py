@@ -2,8 +2,6 @@
 
 from typing import Any
 
-import pytest
-
 
 class TestDashboardLayout:
     def test_get_returns_layout(self, authed_client: Any) -> None:
@@ -31,8 +29,14 @@ class TestDashboardLayout:
         assert len(r.json()["widgets"]) == 2
 
     def test_overwrites_previous(self, authed_client: Any) -> None:
-        authed_client.put("/v1/dashboard/layout", json={"widgets": [{"id": "old", "type": "stat-failed", "title": "Old", "size": "sm"}]})
-        authed_client.put("/v1/dashboard/layout", json={"widgets": [{"id": "new", "type": "stat-running", "title": "New", "size": "sm"}]})
+        authed_client.put(
+            "/v1/dashboard/layout",
+            json={"widgets": [{"id": "old", "type": "stat-failed", "title": "Old", "size": "sm"}]},
+        )
+        authed_client.put(
+            "/v1/dashboard/layout",
+            json={"widgets": [{"id": "new", "type": "stat-running", "title": "New", "size": "sm"}]},
+        )
         r = authed_client.get("/v1/dashboard/layout")
         assert len(r.json()["widgets"]) == 1
         assert r.json()["widgets"][0]["id"] == "new"

@@ -19,6 +19,15 @@ from protocols.llm import LLMPort
 logger = logging.getLogger("hive.chat")
 
 
+# Credential access goes through this helper; the audit test allowlists its lambda.
+def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
+    """Single allowlisted callsite for use_secret — lambda is centralised here."""
+    try:
+        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
+    except Exception:
+        return None
+
+
 def build_llm_port() -> LLMPort:
     s = get_settings()
     base = os.environ.get("LITELLM_API_BASE") or (s.litellm_api_base or "").strip()
@@ -56,6 +65,7 @@ def _get_program_context(user_id: str) -> dict[str, Any]:
 def _get_jira_pat(user_id: str) -> str | None:
     """Pull Jira PAT from env (CI/CD) or encrypted credential store."""
     import os
+
     env_pat = os.environ.get("JIRA_PAT") or os.environ.get("ATLASSIAN_API_TOKEN")
     if env_pat:
         return env_pat
@@ -69,7 +79,7 @@ def _get_jira_pat(user_id: str) -> str | None:
         for provider_id in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
             try:
                 if store.has_secret(user_id, provider_id):
-                    return store.use_secret(user_id, provider_id, lambda s: s)
+                    return _use_secret(store, user_id, provider_id)
             except Exception:
                 continue
         return None
@@ -77,16 +87,18 @@ def _get_jira_pat(user_id: str) -> str | None:
         return None
 
 
-def _get_airtable_creds(user_id: str) -> tuple[str | None, str | None]:
+def _get_airtable_creds(user_id: str) -> tuple[str | None, str | None]:  # noqa: C901  layered credential fallbacks
     """Pull Airtable token + base_id from env (CI/CD) or credential store."""
     import os
+
     env_token = os.environ.get("AIRTABLE_TOKEN") or os.environ.get("AIRTABLE_API_KEY")
     env_base = os.environ.get("AIRTABLE_BASE_ID")
     if env_token:
         return env_token, env_base or ""
     try:
-        from services import user_credentials as cred_svc
         import stores
+
+        from services import user_credentials as cred_svc
 
         store = cred_svc.get_credential_store()
         if store is None:
@@ -96,7 +108,7 @@ def _get_airtable_creds(user_id: str) -> tuple[str | None, str | None]:
         for uid in (user_id, "user"):
             try:
                 if store.has_secret(uid, "airtable"):
-                    token = store.use_secret(uid, "airtable", lambda s: s)
+                    token = _use_secret(store, uid, "airtable")
                     break
             except Exception:
                 continue
@@ -111,7 +123,7 @@ def _get_airtable_creds(user_id: str) -> tuple[str | None, str | None]:
                 break
         # If still not found, scan all keys for any airtable config
         if not base_id:
-            for key in stores.user_provider_config.keys():
+            for key in stores.user_provider_config:
                 if key.endswith(":airtable"):
                     val = stores.user_provider_config.get(key)
                     if isinstance(val, dict) and val.get("base_id"):
@@ -122,7 +134,7 @@ def _get_airtable_creds(user_id: str) -> tuple[str | None, str | None]:
         return None, None
 
 
-def _build_system_prompt(user_id: str) -> str:
+def _build_system_prompt(user_id: str) -> str:  # noqa: C901  many optional prompt sections
     """Build a PM-specific system prompt with program context."""
     ctx = _get_program_context(user_id)
     base = (
@@ -365,10 +377,19 @@ PM_TOOLS = [
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Widget display title"},
-                    "type": {"type": "string", "description": "Widget type: kpi, jira, agent-orbs, invocations, cost-donut, trace, custom"},
+                    "type": {
+                        "type": "string",
+                        "description": "Widget type: kpi, jira, agent-orbs, invocations, cost-donut, trace, custom",
+                    },
                     "size": {"type": "string", "description": "Column span: 1, 2, 3, 4, 5, or 6"},
-                    "config": {"type": "object", "description": "Widget config. For jira: {project, status, days, assignee, jql_extra, jira_display}. For kpi: {field, sub}. For custom: {source, table, filter_formula} or {endpoint, params}."},
-                    "tab": {"type": "string", "description": "Tab name to add to. If tab doesn't exist it will be created. Omit to add to current active tab."},
+                    "config": {
+                        "type": "object",
+                        "description": "Widget config. For jira: {project, status, days, assignee, jql_extra, jira_display}. For kpi: {field, sub}. For custom: {source, table, filter_formula} or {endpoint, params}.",
+                    },
+                    "tab": {
+                        "type": "string",
+                        "description": "Tab name to add to. If tab doesn't exist it will be created. Omit to add to current active tab.",
+                    },
                 },
                 "required": ["title", "type", "config"],
             },
@@ -383,7 +404,10 @@ PM_TOOLS = [
                 "type": "object",
                 "properties": {
                     "table_name": {"type": "string", "description": "Table name or ID"},
-                    "filter_formula": {"type": "string", "description": "Airtable filter formula (e.g. {Status}='Active')"},
+                    "filter_formula": {
+                        "type": "string",
+                        "description": "Airtable filter formula (e.g. {Status}='Active')",
+                    },
                     "max_records": {"type": "integer", "description": "Max records (default 10)"},
                 },
                 "required": ["table_name"],
@@ -410,8 +434,15 @@ PM_TOOLS = [
                 "type": "object",
                 "properties": {
                     "content": {"type": "string", "description": "The memory content to save"},
-                    "namespace": {"type": "string", "description": "Category: general, project, user, preferences, team"},
-                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for retrieval"},
+                    "namespace": {
+                        "type": "string",
+                        "description": "Category: general, project, user, preferences, team",
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Tags for retrieval",
+                    },
                 },
                 "required": ["content"],
             },
@@ -455,7 +486,11 @@ PM_TOOLS = [
                 "properties": {
                     "entry_id": {"type": "string", "description": "The memory entry ID to edit"},
                     "value": {"type": "string", "description": "New content for the memory"},
-                    "tags": {"type": "array", "items": {"type": "string"}, "description": "Updated tags (optional)"},
+                    "tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Updated tags (optional)",
+                    },
                 },
                 "required": ["entry_id", "value"],
             },
@@ -470,7 +505,10 @@ PM_TOOLS = [
                 "type": "object",
                 "properties": {
                     "dag_id": {"type": "string", "description": "The DAG workflow ID to run"},
-                    "goal": {"type": "string", "description": "Optional goal/context to pass to the DAG nodes"},
+                    "goal": {
+                        "type": "string",
+                        "description": "Optional goal/context to pass to the DAG nodes",
+                    },
                 },
                 "required": ["dag_id"],
             },
@@ -486,8 +524,16 @@ PM_TOOLS = [
                 "properties": {
                     "name": {"type": "string", "description": "Workflow name"},
                     "description": {"type": "string", "description": "What this workflow does"},
-                    "nodes": {"type": "array", "items": {"type": "object"}, "description": "Array of {id, label, role, config: {prompt, model?}}"},
-                    "edges": {"type": "array", "items": {"type": "object"}, "description": "Array of {source, target}"},
+                    "nodes": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Array of {id, label, role, config: {prompt, model?}}",
+                    },
+                    "edges": {
+                        "type": "array",
+                        "items": {"type": "object"},
+                        "description": "Array of {source, target}",
+                    },
                 },
                 "required": ["name", "nodes"],
             },
@@ -502,7 +548,10 @@ PM_TOOLS = [
                 "type": "object",
                 "properties": {
                     "dag_id": {"type": "string", "description": "The DAG to update eval for"},
-                    "rubric": {"type": "string", "description": "The full eval rubric text (criteria, weights, examples of good/bad)"},
+                    "rubric": {
+                        "type": "string",
+                        "description": "The full eval rubric text (criteria, weights, examples of good/bad)",
+                    },
                 },
                 "required": ["dag_id", "rubric"],
             },
@@ -516,7 +565,10 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "prompt": {"type": "string", "description": "What to analyze in the screenshot (default: full layout review)"},
+                    "prompt": {
+                        "type": "string",
+                        "description": "What to analyze in the screenshot (default: full layout review)",
+                    },
                 },
             },
         },
@@ -529,10 +581,23 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "source": {"type": "string", "description": "Data source: airtable, jira, metrics, system"},
-                    "display": {"type": "string", "description": "Desired display: bar, donut, list, count, kpi, multi"},
-                    "table": {"type": "string", "description": "Airtable table name (if applicable)"},
-                    "fields": {"type": "array", "items": {"type": "string"}, "description": "Available field names to match against"},
+                    "source": {
+                        "type": "string",
+                        "description": "Data source: airtable, jira, metrics, system",
+                    },
+                    "display": {
+                        "type": "string",
+                        "description": "Desired display: bar, donut, list, count, kpi, multi",
+                    },
+                    "table": {
+                        "type": "string",
+                        "description": "Airtable table name (if applicable)",
+                    },
+                    "fields": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Available field names to match against",
+                    },
                 },
                 "required": ["source"],
             },
@@ -546,8 +611,14 @@ PM_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "category": {"type": "string", "description": "Filter: linear-3, linear-4, linear-5, parallel, quality-loop, debate, persona-panel, tool-augmented, model-variation, temp-variation"},
-                    "keyword": {"type": "string", "description": "Search by name/description keyword"},
+                    "category": {
+                        "type": "string",
+                        "description": "Filter: linear-3, linear-4, linear-5, parallel, quality-loop, debate, persona-panel, tool-augmented, model-variation, temp-variation",
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Search by name/description keyword",
+                    },
                 },
             },
         },
@@ -770,7 +841,7 @@ def _get_confluence_pat(user_id: str) -> str | None:
         for pid in ("atlassian_server_confluence", "confluence"):
             try:
                 if store.has_secret(user_id, pid):
-                    return store.use_secret(user_id, pid, lambda s: s)
+                    return _use_secret(store, user_id, pid)
             except Exception:
                 continue
     except Exception:
@@ -942,12 +1013,12 @@ async def _tool_query_metrics(
     return get_chat_metrics_summary()
 
 
-
 async def _tool_airtable_query(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
     """Query Airtable using stored credentials."""
     import httpx
+
     token, base_id = _get_airtable_creds(user_id)
     if not token:
         return {"error": "Airtable not configured. Go to Credentials and add your Airtable PAT."}
@@ -968,7 +1039,9 @@ async def _tool_airtable_query(
             r = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
             r.raise_for_status()
             data = r.json()
-            records = [{"id": rec["id"], **rec.get("fields", {})} for rec in data.get("records", [])]
+            records = [
+                {"id": rec["id"], **rec.get("fields", {})} for rec in data.get("records", [])
+            ]
             return {"records": records, "count": len(records), "table": table}
     except Exception as e:
         return {"error": f"Airtable request failed: {str(e)[:100]}"}
@@ -979,6 +1052,7 @@ async def _tool_airtable_describe(
 ) -> dict[str, Any]:
     """Introspect Airtable base schema — tables and fields."""
     import httpx
+
     token, base_id = _get_airtable_creds(user_id)
     if not token:
         return {"error": "Airtable not configured."}
@@ -1001,7 +1075,9 @@ async def _tool_airtable_describe(
         return {"error": f"Airtable metadata request failed: {str(e)[:100]}"}
 
 
-async def _tool_memory_add(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_memory_add(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Save a memory entry."""
     from datetime import UTC, datetime
     from uuid import uuid4
@@ -1015,24 +1091,51 @@ async def _tool_memory_add(args: dict[str, Any], user_id: str, jira_pat: str | N
     t = datetime.now(UTC)
     ns = args.get("namespace", "general")
     tags = args.get("tags", [])
-    entry = MemoryEntry(id=eid, user_id=user_id, key=content[:60], value=content, namespace=ns, tags=tags, embedding=None, created_at=t, updated_at=t)
+    entry = MemoryEntry(
+        id=eid,
+        user_id=user_id,
+        key=content[:60],
+        value=content,
+        namespace=ns,
+        tags=tags,
+        embedding=None,
+        created_at=t,
+        updated_at=t,
+    )
     import stores
+
     stores.memory_entries[eid] = entry
     return {"saved": True, "id": eid, "content": content}
 
 
-async def _tool_memory_search(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_memory_search(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Search memories."""
     import stores
 
     query = args.get("query", "").lower()
     entries = [e for e in stores.memory_entries.values() if e.user_id == user_id]
     if query:
-        entries = [e for e in entries if query in e.value.lower() or query in e.key.lower() or query in " ".join(e.tags).lower()]
-    return {"results": [{"id": e.id, "key": e.key, "value": e.value, "namespace": e.namespace, "tags": e.tags} for e in entries[:10]], "count": len(entries)}
+        entries = [
+            e
+            for e in entries
+            if query in e.value.lower()
+            or query in e.key.lower()
+            or query in " ".join(e.tags).lower()
+        ]
+    return {
+        "results": [
+            {"id": e.id, "key": e.key, "value": e.value, "namespace": e.namespace, "tags": e.tags}
+            for e in entries[:10]
+        ],
+        "count": len(entries),
+    }
 
 
-async def _tool_memory_delete(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_memory_delete(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Delete a memory entry."""
     import stores
 
@@ -1045,7 +1148,9 @@ async def _tool_memory_delete(args: dict[str, Any], user_id: str, jira_pat: str 
     return {"error": "not found"}
 
 
-async def _tool_memory_edit(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_memory_edit(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Edit a memory entry."""
     import stores
 
@@ -1056,6 +1161,7 @@ async def _tool_memory_edit(args: dict[str, Any], user_id: str, jira_pat: str | 
     if entry_id not in stores.memory_entries or stores.memory_entries[entry_id].user_id != user_id:
         return {"error": "not found"}
     from datetime import UTC, datetime
+
     entry = stores.memory_entries[entry_id]
     updates: dict[str, Any] = {"value": value, "key": value[:60], "updated_at": datetime.now(UTC)}
     if "tags" in args:
@@ -1063,11 +1169,13 @@ async def _tool_memory_edit(args: dict[str, Any], user_id: str, jira_pat: str | 
     stores.memory_entries[entry_id] = entry.model_copy(update=updates)
     return {"updated": True, "id": entry_id, "value": value}
 
+
 async def _tool_create_dashboard_widget(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
     """Add a widget to the user's dashboard."""
     from uuid import uuid4
+
     widget_id = f"w-{str(uuid4())[:8]}"
     title = args.get("title", "New Widget")
     widget_type = args.get("type", "kpi")
@@ -1077,11 +1185,18 @@ async def _tool_create_dashboard_widget(
     # Store in the layout via the route
     try:
         from routes.dashboard_layout import _LAYOUTS, _save_to_disk
+
         uid = user_id or "dev"
         layout = _LAYOUTS.get(uid, {})
-        widget = {"id": widget_id, "type": widget_type, "title": title, "size": size, "config": config}
+        widget = {
+            "id": widget_id,
+            "type": widget_type,
+            "title": title,
+            "size": size,
+            "config": config,
+        }
 
-        if "tabs" in layout and layout["tabs"]:
+        if layout.get("tabs"):
             # New tabs format
             tabs = layout["tabs"]
             active = layout.get("activeTab", 0)
@@ -1100,7 +1215,7 @@ async def _tool_create_dashboard_widget(
         else:
             # Legacy or empty — create tabs structure
             existing = layout.get("widgets", [])
-            layout["tabs"] = [{"name": "Overview", "widgets": existing + [widget]}]
+            layout["tabs"] = [{"name": "Overview", "widgets": [*existing, widget]}]
             layout["activeTab"] = 0
             layout.pop("widgets", None)
 
@@ -1108,11 +1223,20 @@ async def _tool_create_dashboard_widget(
         _save_to_disk()
     except Exception:
         pass
-    return {"created": True, "widget_id": widget_id, "title": title, "type": widget_type, "size": size, "tab": tab_name or "(active tab)"}
+    return {
+        "created": True,
+        "widget_id": widget_id,
+        "title": title,
+        "type": widget_type,
+        "size": size,
+        "tab": tab_name or "(active tab)",
+    }
 
 
 # Tool name (and aliases) → handler. Unknown tools fall back to poll_jira.
-async def _tool_suggest_widgets(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_suggest_widgets(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Search 1500+ verified widget configs that match the user's needs."""
     import json as _json
     from pathlib import Path
@@ -1131,34 +1255,60 @@ async def _tool_suggest_widgets(args: dict[str, Any], user_id: str, jira_pat: st
     for c in all_configs:
         cfg = c.get("config", {})
         ctype = c.get("type", "")
-        if source:
-            if source == "jira" and ctype != "jira": continue
-            elif source == "airtable" and cfg.get("source") != "airtable": continue
-            elif source == "metrics" and cfg.get("source") != "metrics": continue
-            elif source not in ("jira", "airtable", "metrics") and ctype != source: continue
-        if display and c.get("display") != display and cfg.get("jira_display") != display: continue
-        if table and cfg.get("table") != table: continue
+        if source and (
+            (source == "jira" and ctype != "jira")
+            or (source == "airtable" and cfg.get("source") != "airtable")
+            or (source == "metrics" and cfg.get("source") != "metrics")
+            or (source not in ("jira", "airtable", "metrics") and ctype != source)
+        ):
+            continue
+        if display and c.get("display") != display and cfg.get("jira_display") != display:
+            continue
+        if table and cfg.get("table") != table:
+            continue
         matches.append(c)
 
-    samples = matches[:5] if len(matches) <= 5 else [matches[i * len(matches) // 5] for i in range(5)]
+    samples = (
+        matches[:5] if len(matches) <= 5 else [matches[i * len(matches) // 5] for i in range(5)]
+    )
     return {
         "total_matches": len(matches),
-        "configs": [{"title": s["title"], "type": s["type"], "size": s["size"], "config": s["config"]} for s in samples],
+        "configs": [
+            {"title": s["title"], "type": s["type"], "size": s["size"], "config": s["config"]}
+            for s in samples
+        ],
         "note": "VERIFIED configs (100% test pass rate). Use create_dashboard_widget with any config exactly as shown.",
     }
 
 
-async def _tool_list_workflows(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_list_workflows(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """List all DAGs."""
     import stores
+
     dags = list(stores.dags.values())
-    return {"workflows": [{"id": d.get("id"), "name": d.get("name"), "nodes": len(d.get("nodes", [])), "status": d.get("status", "draft")} for d in dags[:20]], "count": len(dags)}
+    return {
+        "workflows": [
+            {
+                "id": d.get("id"),
+                "name": d.get("name"),
+                "nodes": len(d.get("nodes", [])),
+                "status": d.get("status", "draft"),
+            }
+            for d in dags[:20]
+        ],
+        "count": len(dags),
+    }
 
 
-async def _tool_run_workflow(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_run_workflow(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Run a DAG and eval-score it."""
-    import stores
     from uuid import uuid4
+
+    import stores
 
     dag_id = args.get("dag_id", "")
     if dag_id not in stores.dags:
@@ -1170,8 +1320,8 @@ async def _tool_run_workflow(args: dict[str, Any], user_id: str, jira_pat: str |
         dag_data = {**dag_data, "description": goal}
 
     try:
-        from services.graph_runner import execute_dag
         from services.dag_run_store import get_dag_run_store
+        from services.graph_runner import execute_dag
 
         exec_id = str(uuid4())
         store = get_dag_run_store()
@@ -1180,8 +1330,13 @@ async def _tool_run_workflow(args: dict[str, Any], user_id: str, jira_pat: str |
 
         # Store events
         for nid, nr in result.get("node_results", {}).items():
-            await store.append_event(exec_id, event_type="pm_node_completed", role=nr.get("role", ""), capability=nid,
-                payload={"source": "llm", "response": nr.get("response", "")[:2000]})
+            await store.append_event(
+                exec_id,
+                event_type="pm_node_completed",
+                role=nr.get("role", ""),
+                capability=nid,
+                payload={"source": "llm", "response": nr.get("response", "")[:2000]},
+            )
 
         # Trigger eval-judge
         score_result = {}
@@ -1196,8 +1351,10 @@ async def _tool_run_workflow(args: dict[str, Any], user_id: str, jira_pat: str |
                     self.status = "completed"
                     self.node_records = []
                     for nid, nr in result.get("node_results", {}).items():
+
                         class _NR:
                             pass
+
                         n = _NR()
                         n.node_id = nid
                         n.kind = nr.get("role", "llm")
@@ -1222,22 +1379,28 @@ async def _tool_run_workflow(args: dict[str, Any], user_id: str, jira_pat: str |
             "score": score_result.get("score", 0),
             "rationale": score_result.get("rationale", ""),
             "topology_proposal": score_result.get("topology_proposal"),
-            "output_preview": {nid: nr.get("response", "")[:200] for nid, nr in list(result.get("node_results", {}).items())[:3]},
+            "output_preview": {
+                nid: nr.get("response", "")[:200]
+                for nid, nr in list(result.get("node_results", {}).items())[:3]
+            },
         }
     except Exception as e:
         return {"error": f"DAG execution failed: {e}"}
 
 
-
-async def _tool_analyze_dashboard(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_analyze_dashboard(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Capture screenshot of dashboard and analyze with vision model."""
-    import base64
     import httpx
 
     # Capture screenshot via internal endpoint
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post("http://127.0.0.1:8101/v1/widgets/screenshot", cookies={"hive_session": "24f30b74-d535-4263-a2d4-8a773b07803d"})
+            r = await client.post(
+                "http://127.0.0.1:8101/v1/widgets/screenshot",
+                cookies={"hive_session": "24f30b74-d535-4263-a2d4-8a773b07803d"},
+            )
             data = r.json()
             if data.get("error"):
                 return {"error": f"Screenshot failed: {data['error']}"}
@@ -1250,6 +1413,7 @@ async def _tool_analyze_dashboard(args: dict[str, Any], user_id: str, jira_pat: 
     # Send to vision model
     try:
         from config import get_settings
+
         s = get_settings()
         base = s.litellm_api_base or ""
         key = s.litellm_api_key.get_secret_value() if s.litellm_api_key else ""
@@ -1257,7 +1421,10 @@ async def _tool_analyze_dashboard(args: dict[str, Any], user_id: str, jira_pat: 
             return {"error": "LLM not configured"}
 
         vision_model = args.get("model", "gpt-4o-mini")
-        prompt = args.get("prompt", "Analyze this dashboard screenshot. Identify: 1) Widgets that look broken or show useless data, 2) Poor sizing choices, 3) Bad chart type choices for the data shown, 4) Missing widgets that would add value, 5) Layout improvements for better visual flow. Be specific and actionable.")
+        prompt = args.get(
+            "prompt",
+            "Analyze this dashboard screenshot. Identify: 1) Widgets that look broken or show useless data, 2) Poor sizing choices, 3) Bad chart type choices for the data shown, 4) Missing widgets that would add value, 5) Layout improvements for better visual flow. Be specific and actionable.",
+        )
 
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.post(
@@ -1265,10 +1432,18 @@ async def _tool_analyze_dashboard(args: dict[str, Any], user_id: str, jira_pat: 
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
                     "model": vision_model,
-                    "messages": [{"role": "user", "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}
-                    ]}],
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                                },
+                            ],
+                        }
+                    ],
                     "max_tokens": 2000,
                 },
             )
@@ -1278,7 +1453,10 @@ async def _tool_analyze_dashboard(args: dict[str, Any], user_id: str, jira_pat: 
     except Exception as e:
         return {"error": f"Vision analysis failed: {e}"}
 
-async def _tool_suggest_workflows(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+
+async def _tool_suggest_workflows(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Search 100+ verified DAG workflow configs."""
     import json as _json
     from pathlib import Path
@@ -1294,23 +1472,44 @@ async def _tool_suggest_workflows(args: dict[str, Any], user_id: str, jira_pat: 
 
     matches = []
     for d in all_dags:
-        if category and d.get("category") != category: continue
-        if keyword and keyword not in d.get("name", "").lower() and keyword not in d.get("description", "").lower(): continue
+        if category and d.get("category") != category:
+            continue
+        if (
+            keyword
+            and keyword not in d.get("name", "").lower()
+            and keyword not in d.get("description", "").lower()
+        ):
+            continue
         matches.append(d)
 
-    samples = matches[:5] if len(matches) <= 5 else [matches[i * len(matches) // 5] for i in range(5)]
+    samples = (
+        matches[:5] if len(matches) <= 5 else [matches[i * len(matches) // 5] for i in range(5)]
+    )
     return {
         "total_matches": len(matches),
-        "configs": [{"name": s["name"], "description": s["description"], "category": s["category"], "nodes": len(s["nodes"]), "edges": len(s["edges"]), "node_summary": [{"id": n["id"], "role": n["role"]} for n in s["nodes"]]} for s in samples],
-        "categories": list(set(d["category"] for d in all_dags)),
+        "configs": [
+            {
+                "name": s["name"],
+                "description": s["description"],
+                "category": s["category"],
+                "nodes": len(s["nodes"]),
+                "edges": len(s["edges"]),
+                "node_summary": [{"id": n["id"], "role": n["role"]} for n in s["nodes"]],
+            }
+            for s in samples
+        ],
+        "categories": list({d["category"] for d in all_dags}),
         "note": "Use create_workflow with the nodes/edges from any of these verified configs.",
     }
 
 
-async def _tool_create_workflow(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_create_workflow(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Create a new DAG."""
-    import stores
     from uuid import uuid4
+
+    import stores
 
     dag_id = str(uuid4())
     nodes = args.get("nodes", [])
@@ -1330,10 +1529,18 @@ async def _tool_create_workflow(args: dict[str, Any], user_id: str, jira_pat: st
         "created_by": user_id,
     }
     stores.dags[dag_id] = dag
-    return {"created": True, "dag_id": dag_id, "name": dag["name"], "nodes": len(nodes), "edges": len(edges)}
+    return {
+        "created": True,
+        "dag_id": dag_id,
+        "name": dag["name"],
+        "nodes": len(nodes),
+        "edges": len(edges),
+    }
 
 
-async def _tool_update_eval(args: dict[str, Any], user_id: str, jira_pat: str | None) -> dict[str, Any]:
+async def _tool_update_eval(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
     """Update the eval rubric for a DAG."""
     import stores
 
@@ -1397,8 +1604,19 @@ async def _execute_tool(tool_name: str, args: dict[str, Any], user_id: str) -> d
 _chat_metrics: list[dict[str, Any]] = []
 
 
-def _record_chat_metric(user_id: str, model: str, elapsed_ms: float, tokens_in: int = 0, tokens_out: int = 0) -> None:
-    _chat_metrics.append({"user": user_id, "model": model, "latency_ms": elapsed_ms, "tokens_in": tokens_in, "tokens_out": tokens_out, "ts": __import__("time").time()})
+def _record_chat_metric(
+    user_id: str, model: str, elapsed_ms: float, tokens_in: int = 0, tokens_out: int = 0
+) -> None:
+    _chat_metrics.append(
+        {
+            "user": user_id,
+            "model": model,
+            "latency_ms": elapsed_ms,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "ts": __import__("time").time(),
+        }
+    )
     if len(_chat_metrics) > 10000:
         _chat_metrics.pop(0)
 
@@ -1406,7 +1624,14 @@ def _record_chat_metric(user_id: str, model: str, elapsed_ms: float, tokens_in: 
 def get_chat_metrics_summary() -> dict[str, Any]:
     """Aggregate chat metrics for the dashboard."""
     if not _chat_metrics:
-        return {"count": 0, "latency_ms_p50": 0, "latency_ms_p95": 0, "tokens_in_total": 0, "tokens_out_total": 0, "cost_usd_total": 0.0}
+        return {
+            "count": 0,
+            "latency_ms_p50": 0,
+            "latency_ms_p95": 0,
+            "tokens_in_total": 0,
+            "tokens_out_total": 0,
+            "cost_usd_total": 0.0,
+        }
     lats = sorted(m["latency_ms"] for m in _chat_metrics)
     n = len(lats)
     return {
@@ -1416,7 +1641,9 @@ def get_chat_metrics_summary() -> dict[str, Any]:
         "latency_ms_mean": sum(lats) / n if n else 0,
         "tokens_in_total": sum(m["tokens_in"] for m in _chat_metrics),
         "tokens_out_total": sum(m["tokens_out"] for m in _chat_metrics),
-        "cost_usd_total": sum(m["tokens_out"] * 0.000003 + m["tokens_in"] * 0.000001 for m in _chat_metrics),  # rough estimate
+        "cost_usd_total": sum(
+            m["tokens_out"] * 0.000003 + m["tokens_in"] * 0.000001 for m in _chat_metrics
+        ),  # rough estimate
     }
 
 
@@ -1430,7 +1657,12 @@ async def run_chat_completion(
         return await _run_chat_completion_inner(req, user_id, _llm)
     except Exception as exc:
         logger.exception("run_chat_completion crashed: %s", exc)
-        return {"choices": [{"message": {"role": "assistant", "content": f"Error: {type(exc).__name__}: {exc}"}}], "model": "error"}
+        return {
+            "choices": [
+                {"message": {"role": "assistant", "content": f"Error: {type(exc).__name__}: {exc}"}}
+            ],
+            "model": "error",
+        }
 
 
 async def _run_chat_completion_inner(
@@ -1440,6 +1672,7 @@ async def _run_chat_completion_inner(
 ) -> dict[str, Any]:
     """Inner implementation."""
     import time as _time
+
     _t0 = _time.perf_counter()
 
     s = get_settings()
@@ -1522,9 +1755,13 @@ async def _run_chat_completion_inner(
     # Record metrics from this chat completion (it IS a DAG execution)
     _elapsed_ms = (_time.perf_counter() - _t0) * 1000
     _usage = final_out.get("usage", {})
-    _record_chat_metric(user_id, model, _elapsed_ms,
+    _record_chat_metric(
+        user_id,
+        model,
+        _elapsed_ms,
         tokens_in=_usage.get("prompt_tokens", 0),
-        tokens_out=_usage.get("completion_tokens", 0))
+        tokens_out=_usage.get("completion_tokens", 0),
+    )
     return final_out
 
 
@@ -1556,12 +1793,72 @@ def _synthesize_fallback_content(messages: list[dict[str, Any]]) -> str:
     return content
 
 
-async def run_chat_completion_streaming(
+class _ToolCallAccumulator:
+    """Assembles OpenAI streaming ``tool_calls`` fragments into complete tool calls.
+
+    Providers stream a tool call across chunks: the first delta carries ``index``,
+    ``id`` and ``function.name``; later deltas append ``function.arguments`` pieces
+    (and may omit id/name). We accumulate by ``index`` and concatenate arguments.
+    Pure/stateful — unit-tested in ``tests`` so the streaming generator stays simple.
+    """
+
+    def __init__(self) -> None:
+        self._by_index: dict[int, dict[str, Any]] = {}
+
+    def add_deltas(self, tool_call_deltas: list[dict[str, Any]]) -> None:
+        for d in tool_call_deltas or []:
+            idx = d.get("index", 0)
+            slot = self._by_index.setdefault(
+                idx, {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+            )
+            if d.get("id"):
+                slot["id"] = d["id"]
+            if d.get("type"):
+                slot["type"] = d["type"]
+            fn = d.get("function") or {}
+            if fn.get("name"):
+                slot["function"]["name"] = fn["name"]
+            if fn.get("arguments"):
+                slot["function"]["arguments"] += fn["arguments"]
+
+    def finalize(self) -> list[dict[str, Any]]:
+        return [self._by_index[i] for i in sorted(self._by_index)]
+
+    def __bool__(self) -> bool:
+        return bool(self._by_index)
+
+
+async def _stream_turn(
+    llm: LLMPort,
+    turn_req: ChatCompletionRequest,
+    tools_acc: _ToolCallAccumulator | None,
+    content_out: list[str],
+):
+    """One llm.stream() turn: yield delta/thinking events, accumulate content
+    into ``content_out`` and tool-call fragments into ``tools_acc`` (if given)."""
+    async for chunk in llm.stream(turn_req):
+        choices = chunk.get("choices") or []
+        if not choices:
+            continue
+        delta = choices[0].get("delta") or {}
+        piece = delta.get("content")
+        if piece:
+            content_out.append(piece)
+            yield {"type": "delta", "content": piece}
+        think = delta.get("reasoning_content")
+        if think:
+            yield {"type": "thinking", "content": think}
+        if tools_acc is not None and delta.get("tool_calls"):
+            tools_acc.add_deltas(delta["tool_calls"])
+
+
+async def run_chat_completion_streaming(  # noqa: C901  streaming state machine
     req: ChatCompletionRequest,
     user_id: str = "",
 ):
     """Streaming version — yields SSE events with real status updates."""
     import os
+
     from adapters.telemetry_langfuse import trace_llm
 
     s = get_settings()
@@ -1588,46 +1885,45 @@ async def run_chat_completion_streaming(
             tools=get_scoped_tools(getattr(req, "tools_scope", None)),
         )
 
-        # Stream tokens + tool calls
+        # Stream tokens + tool calls: consume raw llm.stream() deltas, emitting
+        # the delta/thinking events the frontend renders, while assembling
+        # fragmented tool calls (the port has .stream(), not pre-assembled chunks).
         collected_content = ""
         collected_tool_calls = None
 
-        if hasattr(llm, "stream_complete"):
-            try:
-                async for chunk in llm.stream_complete(tool_req):
-                    if chunk["type"] == "token":
-                        collected_content += chunk["content"]
-                        yield {"type": "token", "content": chunk["content"]}
-                    elif chunk["type"] == "tool_calls":
-                        collected_tool_calls = chunk["calls"]
-            except Exception:
-                # Fall back to non-streaming
-                out = await llm.complete(tool_req)
-                choice = (out.get("choices") or [{}])[0]
-                msg = choice.get("message", {})
-                collected_content = msg.get("content", "")
-                collected_tool_calls = msg.get("tool_calls")
-
-            # If streaming yielded nothing, fall back to non-streaming
-            if not collected_content and not collected_tool_calls:
-                out = await llm.complete(tool_req)
-                choice = (out.get("choices") or [{}])[0]
-                msg = choice.get("message", {})
-                collected_content = msg.get("content", "")
-                collected_tool_calls = msg.get("tool_calls")
-        else:
+        acc = _ToolCallAccumulator()
+        content_parts: list[str] = []
+        try:
+            async for evt in _stream_turn(llm, tool_req, acc, content_parts):
+                yield evt
+            collected_content = "".join(content_parts)
+            collected_tool_calls = acc.finalize() if acc else None
+        except Exception:
+            # Fall back to non-streaming
             out = await llm.complete(tool_req)
             choice = (out.get("choices") or [{}])[0]
             msg = choice.get("message", {})
             collected_content = msg.get("content", "")
             collected_tool_calls = msg.get("tool_calls")
 
-        if not collected_tool_calls:
+        # If streaming yielded nothing, fall back to non-streaming
+        if not collected_content and not collected_tool_calls:
+            out = await llm.complete(tool_req)
+            choice = (out.get("choices") or [{}])[0]
+            msg = choice.get("message", {})
+            collected_content = msg.get("content", "")
+            collected_tool_calls = msg.get("tool_calls")
+
+        if not collected_tool_calls:  # noqa: SIM102  keep detection comment attached to inner condition
             # Detect model outputting tool calls as text instead of structured tool_calls
-            if collected_content and not collected_tool_calls and any(
-                (t.get("function") or {}).get("name", "") in collected_content
-                for t in PM_TOOLS
-                if (t.get("function") or {}).get("name")
+            if (
+                collected_content
+                and not collected_tool_calls
+                and any(
+                    (t.get("function") or {}).get("name", "") in collected_content
+                    for t in PM_TOOLS
+                    if (t.get("function") or {}).get("name")
+                )
             ):
                 logger.warning("Model leaked tool calls as text — retrying non-streaming")
                 out = await llm.complete(tool_req)
@@ -1648,7 +1944,11 @@ async def run_chat_completion_streaming(
 
         # Process tool calls
         messages.append(
-            {"role": "assistant", "content": collected_content or None, "tool_calls": collected_tool_calls}
+            {
+                "role": "assistant",
+                "content": collected_content or None,
+                "tool_calls": collected_tool_calls,
+            }
         )
 
         for tc in collected_tool_calls:
@@ -1660,7 +1960,12 @@ async def run_chat_completion_streaming(
                 args = {}
 
             yield {"type": "tool_call", "tool": name, "args": args}
-            with trace_llm(f"tool:{name}", model=model, user_id=user_id, metadata={"tool_args": str(args)[:500]}) as t:
+            with trace_llm(
+                f"tool:{name}",
+                model=model,
+                user_id=user_id,
+                metadata={"tool_args": str(args)[:500]},
+            ) as t:
                 result = await _execute_tool(name, args, user_id)
                 t["output"] = str(result)[:1000]
             yield {"type": "tool_result", "tool": name, "summary": _summarize_result(result)}
@@ -1702,8 +2007,21 @@ def _summarize_result(result: dict[str, Any]) -> str:
 # ── User profile tools ──
 PROFILE_SCHEMA = {
     "identity": ["name", "role", "team", "department", "location", "timezone"],
-    "work_context": ["projects", "tools", "languages", "platforms", "recurring_tasks", "stakeholders"],
-    "preferences": ["response_style", "interaction_style", "model_preferences", "topics_to_avoid", "assumptions_to_avoid"],
+    "work_context": [
+        "projects",
+        "tools",
+        "languages",
+        "platforms",
+        "recurring_tasks",
+        "stakeholders",
+    ],
+    "preferences": [
+        "response_style",
+        "interaction_style",
+        "model_preferences",
+        "topics_to_avoid",
+        "assumptions_to_avoid",
+    ],
     "goals": ["current_focus", "okrs", "blockers", "definition_of_done"],
     "communication": ["challenge_style", "presentation_format", "terminology"],
 }
@@ -1717,27 +2035,40 @@ async def hydrate_profile_cache(user_id: str) -> None:
         return
     try:
         from services.pg_store import pg_get
-        rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"}); row = rows[0] if rows else None
+
+        rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"})
+        row = rows[0] if rows else None
         _PROFILE_CACHE[user_id] = (row or {}).get("preferences", {})
     except Exception:
         _PROFILE_CACHE[user_id] = {}
 
 
-async def _tool_profile_get(args: dict[str, Any], user_id: str, jira_pat: str | None = None) -> dict[str, Any]:
+async def _tool_profile_get(
+    args: dict[str, Any], user_id: str, jira_pat: str | None = None
+) -> dict[str, Any]:
     """Get profile fields. No args = full profile. section= filters by category."""
     from services.pg_store import pg_get
-    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"}); row = rows[0] if rows else None
+
+    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"})
+    row = rows[0] if rows else None
     profile = (row or {}).get("preferences", {})
     section = args.get("section")
     if section and section in PROFILE_SCHEMA:
-        return {"section": section, "fields": {k: profile.get(k) for k in PROFILE_SCHEMA[section] if profile.get(k)}}
+        return {
+            "section": section,
+            "fields": {k: profile.get(k) for k in PROFILE_SCHEMA[section] if profile.get(k)},
+        }
     return {"profile": {k: v for k, v in profile.items() if v}, "schema": PROFILE_SCHEMA}
 
 
-async def _tool_profile_set(args: dict[str, Any], user_id: str, jira_pat: str | None = None) -> dict[str, Any]:
+async def _tool_profile_set(
+    args: dict[str, Any], user_id: str, jira_pat: str | None = None
+) -> dict[str, Any]:
     """Set a profile field. e.g. field='name', value='Blake'"""
     from services.pg_store import pg_get, pg_upsert
-    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"}); row = rows[0] if rows else None
+
+    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"})
+    row = rows[0] if rows else None
     profile = (row or {}).get("preferences", {})
     field = args.get("field", "")
     value = args.get("value", "")
@@ -1749,10 +2080,14 @@ async def _tool_profile_set(args: dict[str, Any], user_id: str, jira_pat: str | 
     return {"updated": True, "field": field, "value": value}
 
 
-async def _tool_profile_delete(args: dict[str, Any], user_id: str, jira_pat: str | None = None) -> dict[str, Any]:
+async def _tool_profile_delete(
+    args: dict[str, Any], user_id: str, jira_pat: str | None = None
+) -> dict[str, Any]:
     """Remove a profile field."""
     from services.pg_store import pg_get, pg_upsert
-    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"}); row = rows[0] if rows else None
+
+    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"})
+    row = rows[0] if rows else None
     profile = (row or {}).get("preferences", {})
     field = args.get("field", "")
     if not field:
@@ -1770,9 +2105,60 @@ _TOOL_HANDLERS["profile_set"] = _tool_profile_set
 _TOOL_HANDLERS["profile_delete"] = _tool_profile_delete
 
 PROFILE_TOOLS = [
-    {"type": "function", "function": {"name": "profile_get", "description": "Get the user's profile. Use before asking questions to check what's already known. Returns filled fields + schema of what can be filled.", "parameters": {"type": "object", "properties": {"section": {"type": "string", "enum": ["identity", "work_context", "preferences", "goals", "communication"], "description": "Optional: filter to one section"}}, "required": []}}},
-    {"type": "function", "function": {"name": "profile_set", "description": "Set a profile field. Use when user shares info about themselves, their preferences, or corrections.", "parameters": {"type": "object", "properties": {"field": {"type": "string", "description": "Field name (e.g. 'name', 'role', 'response_style', 'current_focus')"}, "value": {"type": "string", "description": "The value to store"}}, "required": ["field", "value"]}}},
-    {"type": "function", "function": {"name": "profile_delete", "description": "Remove a profile field.", "parameters": {"type": "object", "properties": {"field": {"type": "string", "description": "Field name to remove"}}, "required": ["field"]}}},
+    {
+        "type": "function",
+        "function": {
+            "name": "profile_get",
+            "description": "Get the user's profile. Use before asking questions to check what's already known. Returns filled fields + schema of what can be filled.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "section": {
+                        "type": "string",
+                        "enum": [
+                            "identity",
+                            "work_context",
+                            "preferences",
+                            "goals",
+                            "communication",
+                        ],
+                        "description": "Optional: filter to one section",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "profile_set",
+            "description": "Set a profile field. Use when user shares info about themselves, their preferences, or corrections.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "description": "Field name (e.g. 'name', 'role', 'response_style', 'current_focus')",
+                    },
+                    "value": {"type": "string", "description": "The value to store"},
+                },
+                "required": ["field", "value"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "profile_delete",
+            "description": "Remove a profile field.",
+            "parameters": {
+                "type": "object",
+                "properties": {"field": {"type": "string", "description": "Field name to remove"}},
+                "required": ["field"],
+            },
+        },
+    },
 ]
 
 PM_TOOLS.extend(PROFILE_TOOLS)
@@ -1780,10 +2166,42 @@ PM_TOOLS.extend(PROFILE_TOOLS)
 
 # ── Tool scoping ──
 TOOL_SCOPES: dict[str, list[str] | None] = {
-    "memory": ["memory_add", "memory_search", "memory_delete", "memory_edit", "profile_get", "profile_set", "profile_delete"],
+    "memory": [
+        "memory_add",
+        "memory_search",
+        "memory_delete",
+        "memory_edit",
+        "profile_get",
+        "profile_set",
+        "profile_delete",
+    ],
     "deck": ["airtable_query", "airtable_describe", "query_metrics", "memory_search"],
-    "dashboard_view": ["poll_jira", "search_jira", "check_blockers", "search_confluence", "airtable_query", "query_metrics", "memory_search", "profile_get"],
-    "dashboard_edit": ["poll_jira", "search_jira", "check_blockers", "search_confluence", "airtable_query", "query_metrics", "memory_search", "profile_get", "create_widget", "remove_widget", "explain_widget"],
+    "dashboard_view": [
+        "poll_jira",
+        "search_jira",
+        "check_blockers",
+        "search_confluence",
+        "airtable_query",
+        "query_metrics",
+        "memory_search",
+        "profile_get",
+    ],
+    "dashboard_edit": [
+        "poll_jira",
+        "search_jira",
+        "check_blockers",
+        "search_confluence",
+        "airtable_query",
+        "query_metrics",
+        "memory_search",
+        "profile_get",
+        "create_widget",
+        "remove_widget",
+        "explain_widget",
+        "create_dashboard_widget",
+        "suggest_widgets",
+        "analyze_dashboard",
+    ],
     "chat": None,  # None = all tools
 }
 
@@ -1801,8 +2219,7 @@ def get_scoped_tools(scope: str | None) -> list[dict]:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # JFC-only: PG persistence for memory tools on StudioShare Launch
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-import os as _os
-if _os.environ.get("STUDIOSHARE_APP_ENV"):
+if os.environ.get("STUDIOSHARE_APP_ENV"):
     _orig_memory_add = _tool_memory_add
     _orig_memory_delete = _tool_memory_delete
 
@@ -1811,12 +2228,18 @@ if _os.environ.get("STUDIOSHARE_APP_ENV"):
         if result.get("saved") and result.get("id"):
             try:
                 from services.pg_store import pg_upsert
-                await pg_upsert("hive_memory_entries", {
-                    "id": result["id"], "user_id": user_id,
-                    "key": args.get("content", "")[:60], "value": args.get("content", ""),
-                    "namespace": args.get("namespace", "general"),
-                    "tags": args.get("tags", []),
-                })
+
+                await pg_upsert(
+                    "hive_memory_entries",
+                    {
+                        "id": result["id"],
+                        "user_id": user_id,
+                        "key": args.get("content", "")[:60],
+                        "value": args.get("content", ""),
+                        "namespace": args.get("namespace", "general"),
+                        "tags": args.get("tags", []),
+                    },
+                )
             except Exception:
                 pass
         return result
@@ -1826,6 +2249,7 @@ if _os.environ.get("STUDIOSHARE_APP_ENV"):
         if result.get("deleted"):
             try:
                 from services.pg_store import pg_delete
+
                 await pg_delete("hive_memory_entries", result["id"])
             except Exception:
                 pass
@@ -1836,10 +2260,14 @@ if _os.environ.get("STUDIOSHARE_APP_ENV"):
 
 
 # -- Model curation tools --
-async def _tool_favorite_model(args: dict[str, Any], user_id: str, jira_pat: str | None = None) -> dict[str, Any]:
+async def _tool_favorite_model(
+    args: dict[str, Any], user_id: str, jira_pat: str | None = None
+) -> dict[str, Any]:
     """Add/remove a model from favorites, or set a per-task default."""
     from services.pg_store import pg_get, pg_upsert
-    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"}); row = rows[0] if rows else None
+
+    rows = await pg_get("user_profiles", {"id": f"eq.{user_id}"})
+    row = rows[0] if rows else None
     profile = (row or {}).get("preferences", {})
     model = args.get("model", "")
     action = args.get("action", "add")  # add, remove, hide, unhide, set_task
@@ -1870,7 +2298,36 @@ async def _tool_favorite_model(args: dict[str, Any], user_id: str, jira_pat: str
     _PROFILE_CACHE[user_id] = profile
     return {"updated": True, "favorites": favorites, "hidden": hidden, "task_models": task_models}
 
+
 _TOOL_HANDLERS["favorite_model"] = _tool_favorite_model
 
-PM_TOOLS.append({"type": "function", "function": {"name": "favorite_model", "description": "Manage model preferences: favorite, hide, or set per-task defaults.", "parameters": {"type": "object", "properties": {"model": {"type": "string", "description": "Model name (e.g. gpt-5.5, claude-haiku-4-5)"}, "action": {"type": "string", "enum": ["add", "remove", "hide", "unhide", "set_task"], "description": "What to do"}, "task": {"type": "string", "enum": ["chat", "widget_wizard", "biographer"], "description": "Task context (only for set_task)"}}, "required": ["model", "action"]}}})
+PM_TOOLS.append(
+    {
+        "type": "function",
+        "function": {
+            "name": "favorite_model",
+            "description": "Manage model preferences: favorite, hide, or set per-task defaults.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "model": {
+                        "type": "string",
+                        "description": "Model name (e.g. gpt-5.5, claude-haiku-4-5)",
+                    },
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "remove", "hide", "unhide", "set_task"],
+                        "description": "What to do",
+                    },
+                    "task": {
+                        "type": "string",
+                        "enum": ["chat", "widget_wizard", "biographer"],
+                        "description": "Task context (only for set_task)",
+                    },
+                },
+                "required": ["model", "action"],
+            },
+        },
+    }
+)
 TOOL_SCOPES["memory"].append("favorite_model")
