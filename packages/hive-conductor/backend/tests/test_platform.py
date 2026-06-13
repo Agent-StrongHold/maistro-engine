@@ -6,8 +6,6 @@ Run: TESTING=1 python -m pytest tests/test_platform.py -v
 import json
 import sys
 from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
@@ -25,12 +23,14 @@ def _mock_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def app():
     from main import app
+
     return app
 
 
 @pytest.fixture
 def client(app):
     from fastapi.testclient import TestClient
+
     return TestClient(app)
 
 
@@ -40,6 +40,7 @@ def client(app):
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Health & Core
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestHealth:
     def test_health_endpoint(self, client):
@@ -56,6 +57,7 @@ class TestHealth:
 # Dashboard Layout
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestDashboardLayout:
     def test_get_layout(self, authed_client):
         r = authed_client.get("/v1/dashboard/layout")
@@ -65,14 +67,37 @@ class TestDashboardLayout:
 
     def test_put_layout_with_tabs(self, authed_client):
         layout = {
-            "tabs": [{"name": "Overview", "widgets": [{"id": "w1", "type": "kpi", "title": "Test", "size": "1", "config": {"field": "active_agents"}}]}],
+            "tabs": [
+                {
+                    "name": "Overview",
+                    "widgets": [
+                        {
+                            "id": "w1",
+                            "type": "kpi",
+                            "title": "Test",
+                            "size": "1",
+                            "config": {"field": "active_agents"},
+                        }
+                    ],
+                }
+            ],
             "activeTab": 0,
         }
         r = authed_client.put("/v1/dashboard/layout", json=layout)
         assert r.status_code == 200
 
     def test_layout_persists(self, authed_client):
-        layout = {"tabs": [{"name": "T1", "widgets": [{"id": "x", "type": "kpi", "title": "X", "size": "1", "config": {}}]}], "activeTab": 0}
+        layout = {
+            "tabs": [
+                {
+                    "name": "T1",
+                    "widgets": [
+                        {"id": "x", "type": "kpi", "title": "X", "size": "1", "config": {}}
+                    ],
+                }
+            ],
+            "activeTab": 0,
+        }
         authed_client.put("/v1/dashboard/layout", json=layout)
         r = authed_client.get("/v1/dashboard/layout")
         assert r.json()["tabs"][0]["name"] == "T1"
@@ -110,6 +135,7 @@ class TestDashboardLayout:
 # Widgets (Airtable / Jira)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestWidgets:
     def test_airtable_widget_no_creds(self, authed_client):
         r = authed_client.get("/v1/widgets/airtable?table=test&group_by=Status&max_records=10")
@@ -129,6 +155,7 @@ class TestWidgets:
 # Credentials
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestCredentials:
     def test_list_credentials(self, authed_client):
         r = authed_client.get("/v1/credentials")
@@ -145,12 +172,16 @@ class TestCredentials:
         assert "config" in r.json()
 
     def test_save_credential_config(self, authed_client):
-        r = authed_client.put("/v1/credentials/airtable/config", json={"config": {"base_id": "appTEST123"}})
+        r = authed_client.put(
+            "/v1/credentials/airtable/config", json={"config": {"base_id": "appTEST123"}}
+        )
         assert r.status_code == 200
         assert r.json()["config"]["base_id"] == "appTEST123"
 
     def test_reject_unknown_config_fields(self, authed_client):
-        r = authed_client.put("/v1/credentials/airtable/config", json={"config": {"evil_field": "hack"}})
+        r = authed_client.put(
+            "/v1/credentials/airtable/config", json={"config": {"evil_field": "hack"}}
+        )
         assert r.status_code == 400
 
 
@@ -158,10 +189,12 @@ class TestCredentials:
 # Chat Completion
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestChatCompletion:
     def test_tool_definitions_valid(self):
         """All PM_TOOLS must have valid OpenAI function-calling schema."""
         from services.chat_completion import PM_TOOLS
+
         assert len(PM_TOOLS) > 10
         for tool in PM_TOOLS:
             assert tool["type"] == "function"
@@ -174,13 +207,15 @@ class TestChatCompletion:
 
     def test_tool_handlers_registered(self):
         """Every tool in PM_TOOLS must have a handler."""
-        from services.chat_completion import PM_TOOLS, _TOOL_HANDLERS
+        from services.chat_completion import _TOOL_HANDLERS, PM_TOOLS
+
         for tool in PM_TOOLS:
             name = tool["function"]["name"]
             assert name in _TOOL_HANDLERS, f"Tool '{name}' has no handler"
 
     def test_scoped_tools_deck(self):
         from services.chat_completion import get_scoped_tools
+
         tools = get_scoped_tools("deck")
         names = [t["function"]["name"] for t in tools]
         assert "airtable_query" in names
@@ -188,22 +223,26 @@ class TestChatCompletion:
 
     def test_scoped_tools_dashboard_edit(self):
         from services.chat_completion import get_scoped_tools
+
         tools = get_scoped_tools("dashboard_edit")
         names = [t["function"]["name"] for t in tools]
         assert "create_widget" in names or "create_dashboard_widget" in names
         assert "airtable_query" in names
 
     def test_scoped_tools_none_returns_all(self):
-        from services.chat_completion import get_scoped_tools, PM_TOOLS
+        from services.chat_completion import PM_TOOLS, get_scoped_tools
+
         tools = get_scoped_tools(None)
         assert len(tools) == len(PM_TOOLS)
 
     @pytest.mark.asyncio
     async def test_create_dashboard_widget_tool(self):
         from services.chat_completion import _tool_create_dashboard_widget
+
         result = await _tool_create_dashboard_widget(
             {"title": "Test", "type": "kpi", "size": "1", "config": {"field": "active_agents"}},
-            user_id="test-user", jira_pat=None,
+            user_id="test-user",
+            jira_pat=None,
         )
         assert result["created"] is True
         assert result["widget_id"].startswith("w-")
@@ -212,8 +251,11 @@ class TestChatCompletion:
     @pytest.mark.asyncio
     async def test_suggest_widgets_tool(self):
         from services.chat_completion import _tool_suggest_widgets
+
         result = await _tool_suggest_widgets(
-            {"source": "airtable"}, user_id="test-user", jira_pat=None,
+            {"source": "airtable"},
+            user_id="test-user",
+            jira_pat=None,
         )
         assert result["total_matches"] > 0
         assert all("config" in c for c in result["configs"])
@@ -222,6 +264,7 @@ class TestChatCompletion:
     async def test_tool_execution_error_handled(self):
         """Tool failures should return error dict, not raise."""
         from services.chat_completion import _execute_tool
+
         # Call a tool that will fail (no Jira PAT)
         result = await _execute_tool("poll_jira", {}, "test-user")
         assert "error" in result
@@ -230,8 +273,15 @@ class TestChatCompletion:
         """When assistant has tool_calls, content must be None not empty string."""
         # This is the gateway 400 fix
         # Simulate what happens in the tool loop
-        msg = {"content": None, "tool_calls": [{"id": "tc1", "function": {"name": "test", "arguments": "{}"}}]}
-        assistant_msg = {"role": "assistant", "content": msg.get("content") or None, "tool_calls": msg["tool_calls"]}
+        msg = {
+            "content": None,
+            "tool_calls": [{"id": "tc1", "function": {"name": "test", "arguments": "{}"}}],
+        }
+        assistant_msg = {
+            "role": "assistant",
+            "content": msg.get("content") or None,
+            "tool_calls": msg["tool_calls"],
+        }
         # Must be None, not ""
         assert assistant_msg["content"] is None
 
@@ -239,6 +289,7 @@ class TestChatCompletion:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Agents
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestAgents:
     def test_list_agents(self, authed_client):
@@ -250,6 +301,7 @@ class TestAgents:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Settings
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestSettings:
     def test_get_settings(self, authed_client):
@@ -266,6 +318,7 @@ class TestSettings:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # DAGs
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestDAGs:
     def test_list_dags(self, authed_client):
@@ -286,6 +339,7 @@ class TestDAGs:
 # Memory
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestMemory:
     def test_list_entries(self, authed_client):
         r = authed_client.get("/v1/memory/entries")
@@ -301,15 +355,18 @@ class TestMemory:
 # Persistence (PostgREST)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestPersistence:
     def test_pg_persisted_store_interface(self):
         from services.pg_persisted import PgPersistedStore
+
         store = PgPersistedStore()
         # Should not crash without POSTGREST_URL
         assert store.list_all_raw("test") == []
 
     def test_pg_store_helpers(self):
         from services.pg_store import is_pg_available
+
         # Without env var, should return False
         assert is_pg_available() is False
 
@@ -317,6 +374,7 @@ class TestPersistence:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # MCP
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestMCP:
     def test_list_servers(self, authed_client):
@@ -331,6 +389,7 @@ class TestMCP:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Schedules & Quotas
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestSchedules:
     def test_list_schedules(self, authed_client):
@@ -352,13 +411,14 @@ class TestQuotas:
 # Data Files Integrity
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 class TestDataFiles:
     def test_dashboard_layouts_json_valid(self):
         path = Path(__file__).parent.parent / "data" / "dashboard_layouts.json"
         data = json.loads(path.read_text())
         assert isinstance(data, dict)
         # Should have at least one user key with tabs
-        for uid, layout in data.items():
+        for _uid, layout in data.items():
             assert "tabs" in layout
             assert len(layout["tabs"]) > 0
 
@@ -373,7 +433,7 @@ class TestDataFiles:
         data = json.loads(path.read_text())
         assert isinstance(data, list)
         assert len(data) >= 50
-        categories = set(t["category"] for t in data)
+        categories = {t["category"] for t in data}
         assert "KPI" in categories
         assert "Charts" in categories
         assert "Layout" in categories
@@ -394,6 +454,7 @@ class TestDataFiles:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Import Smoke Tests (ensures no module-level crashes)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 
 class TestImports:
     def test_main_imports(self):

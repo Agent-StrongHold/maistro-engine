@@ -15,6 +15,7 @@ TABLE = "hive_credentials_v2"
 
 class CredentialV2:
     """A single credential instance."""
+
     def __init__(self, data: dict):
         self.id = data["id"]
         self.user_id = data["user_id"]
@@ -44,9 +45,16 @@ class AgnosticCredentialStore:
     def _decrypt(self, encrypted: str) -> str:
         return self._fernet.decrypt(encrypted.encode()).decode()
 
-    def create(self, user_id: str, name: str, type: str, secret: str,
-               api_base: str = "", credential_type: str = "api_key",
-               metadata: dict | None = None) -> CredentialV2:
+    def create(
+        self,
+        user_id: str,
+        name: str,
+        type: str,
+        secret: str,
+        api_base: str = "",
+        credential_type: str = "api_key",
+        metadata: dict | None = None,
+    ) -> CredentialV2:
         """Create a new credential instance."""
         cred_id = str(uuid4())
         row = {
@@ -59,8 +67,12 @@ class AgnosticCredentialStore:
             "secret_enc": self._encrypt(secret),
             "metadata": json.dumps(metadata or {}),
         }
-        r = httpx.post(f"{POSTGREST_URL}/{TABLE}", json=row,
-                       headers={"Prefer": "return=representation", "Content-Type": "application/json"}, timeout=10)
+        r = httpx.post(
+            f"{POSTGREST_URL}/{TABLE}",
+            json=row,
+            headers={"Prefer": "return=representation", "Content-Type": "application/json"},
+            timeout=10,
+        )
         rows = r.json() if r.status_code in (200, 201) else [row]
         return CredentialV2(rows[0] if rows else row)
 
@@ -82,7 +94,11 @@ class AgnosticCredentialStore:
 
     def get_secret(self, cred_id: str) -> str | None:
         """Get the decrypted secret for a credential."""
-        r = httpx.get(f"{POSTGREST_URL}/{TABLE}", params={"id": f"eq.{cred_id}", "select": "secret_enc"}, timeout=5)
+        r = httpx.get(
+            f"{POSTGREST_URL}/{TABLE}",
+            params={"id": f"eq.{cred_id}", "select": "secret_enc"},
+            timeout=5,
+        )
         rows = r.json() if r.status_code == 200 else []
         if not rows:
             return None
@@ -101,8 +117,13 @@ class AgnosticCredentialStore:
             data["secret_enc"] = self._encrypt(kwargs["secret"])
         if data:
             data["updated_at"] = "now()"
-            httpx.patch(f"{POSTGREST_URL}/{TABLE}", params={"id": f"eq.{cred_id}"},
-                        json=data, headers={"Content-Type": "application/json"}, timeout=10)
+            httpx.patch(
+                f"{POSTGREST_URL}/{TABLE}",
+                params={"id": f"eq.{cred_id}"},
+                json=data,
+                headers={"Content-Type": "application/json"},
+                timeout=10,
+            )
 
     def delete(self, cred_id: str) -> bool:
         """Delete a credential by ID."""

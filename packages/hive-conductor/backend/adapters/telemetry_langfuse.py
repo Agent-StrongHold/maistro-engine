@@ -6,11 +6,13 @@ Env vars:
 
 If neither is set, tracing is a no-op.
 """
+
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 _tracer = None
 
@@ -44,7 +46,7 @@ def _init_tracer():
 
 
 @contextmanager
-def trace_llm(
+def trace_llm(  # noqa: C901  many independent optional attributes
     name: str,
     *,
     model: str = "",
@@ -58,6 +60,8 @@ def trace_llm(
     if tracer is None:
         yield ctx
         return
+
+    from opentelemetry import trace
 
     with tracer.start_as_current_span(name) as span:
         span.set_attribute("gen_ai.system", "litellm")
