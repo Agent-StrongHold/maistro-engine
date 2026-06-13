@@ -45,7 +45,7 @@ const TEMPLATES = [
 </div></div>` },
 
   { name: "📈 Migration Progress", html: `<div style="padding:3rem;height:100%;background:linear-gradient(135deg,#0c1222,#0f172a);display:flex;flex-direction:column;justify-content:center">
-<h2 style="font-family:Georgia,serif;font-size:1.8rem;color:#f3f0fb;margin-bottom:0.3rem">Jedai v2 Migration</h2>
+<h2 style="font-family:Georgia,serif;font-size:1.8rem;color:#f3f0fb;margin-bottom:0.3rem">Platform v2 Migration</h2>
 <p style="font-size:0.8rem;color:#64748b;margin-bottom:2rem">Pipeline progress toward full platform migration</p>
 <div style="display:flex;gap:1.5rem;margin-bottom:2rem">
 <div style="flex:1;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:12px;padding:1.2rem;text-align:center"><p style="font-size:2.4rem;font-weight:800;color:#818cf8">24</p><p style="font-size:0.7rem;color:#94a3b8;margin-top:4px">In Pipeline</p></div>
@@ -74,12 +74,12 @@ const TEMPLATES = [
 <div style="display:flex;flex-direction:column;gap:8px">
 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">AI-Powered Survey QA Evaluator</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(139,92,246,0.15);padding:2px 8px;border-radius:4px">Testing</span></div>
 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">RAG Chatbot for Incentive Queries</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(139,92,246,0.15);padding:2px 8px;border-radius:4px">Testing</span></div>
-<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">Disney MOCA Agent</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:4px">Onboarding</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">MOCA Agent</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:4px">Onboarding</span></div>
 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">DCL Revenue Management AI Email</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:4px">Onboarding</span></div>
 </div></div>` },
 
   { name: "✨ Title Slide", html: `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;background:linear-gradient(135deg,#0f0c29 0%,#302b63 50%,#24243e 100%);text-align:center;padding:4rem">
-<p style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.3em;color:#a78bfa;margin-bottom:1.5rem;font-weight:600">Jedai Platform · OKR Review</p>
+<p style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.3em;color:#a78bfa;margin-bottom:1.5rem;font-weight:600">Platform · OKR Review</p>
 <h1 style="font-size:3.2rem;font-family:Georgia,serif;font-weight:700;color:#f3f0fb;line-height:1.2;max-width:18ch">Use Case Portfolio Health</h1>
 <p style="font-size:1.1rem;color:#8b83a8;margin-top:1.5rem;max-width:40ch;line-height:1.6">Live data from Airtable · Refreshed every 60 seconds</p>
 <div style="margin-top:3rem;display:flex;gap:8px"><span style="width:40px;height:4px;border-radius:2px;background:#a78bfa"></span><span style="width:40px;height:4px;border-radius:2px;background:rgba(167,139,250,0.3)"></span><span style="width:40px;height:4px;border-radius:2px;background:rgba(167,139,250,0.3)"></span></div>
@@ -89,7 +89,7 @@ const TEMPLATES = [
 <p style="font-size:4rem;margin-bottom:1rem">🐝</p>
 <h1 style="font-size:2.5rem;font-family:Georgia,serif;color:#f3f0fb">Thank You</h1>
 <p style="font-size:1rem;color:#8b83a8;margin-top:1rem;max-width:35ch;line-height:1.6">Questions, feedback, or ideas — reach out anytime</p>
-<div style="margin-top:2.5rem;padding:12px 24px;border:1px solid rgba(167,139,250,0.3);border-radius:8px;font-size:0.8rem;color:#a78bfa">blake.matthews@disney.com</div>
+<div style="margin-top:2.5rem;padding:12px 24px;border:1px solid rgba(167,139,250,0.3);border-radius:8px;font-size:0.8rem;color:#a78bfa">pm@example.com</div>
 </div>` },
 ];
 

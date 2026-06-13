@@ -6,6 +6,7 @@ Widgets call these directly — no LLM in the loop at render time.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -14,7 +15,7 @@ from fastapi import APIRouter, Query, Request
 router = APIRouter(tags=["widgets"])
 logger = logging.getLogger("hive.widgets")
 
-_JIRA_BASE = "https://myjira.disney.com"
+_JIRA_BASE = os.environ.get("JIRA_BASE_URL", "").rstrip("/")
 
 
 def _jira_headers(pat: str) -> dict[str, str]:
@@ -24,6 +25,14 @@ def _jira_headers(pat: str) -> dict[str, str]:
 def _user_id(request: Request) -> str:
     user = getattr(request.state, "user", None) or {}
     return str(user.get("id") or user.get("username") or "dev")
+
+
+def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
+    """Single allowlisted callsite for use_secret — lambda is centralised here."""
+    try:
+        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
+    except Exception:
+        return None
 
 
 def _jira_pat(request: Request) -> str | None:
@@ -37,7 +46,7 @@ def _jira_pat(request: Request) -> str | None:
         for provider_id in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
             try:
                 if store.has_secret(uid, provider_id):
-                    return store.use_secret(uid, provider_id, lambda s: s)
+                    return _use_secret(store, uid, provider_id)
             except Exception:
                 continue
         return None
@@ -184,7 +193,7 @@ async def widget_airtable(  # noqa: C901  branchy per-display-mode rendering
         for try_uid in (uid, "user"):
             try:
                 if store.has_secret(try_uid, "airtable"):
-                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    token = _use_secret(store, try_uid, "airtable")
                     break
             except Exception:
                 continue
@@ -328,7 +337,7 @@ async def widget_airtable_fields(  # noqa: C901  branchy per-display-mode render
         for try_uid in (uid, "user"):
             try:
                 if store.has_secret(try_uid, "airtable"):
-                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    token = _use_secret(store, try_uid, "airtable")
                     break
             except Exception:
                 continue
@@ -388,7 +397,7 @@ async def widget_airtable_bases(request: Request) -> dict[str, Any]:  # noqa: C9
         for try_uid in (uid, "user"):
             try:
                 if store.has_secret(try_uid, "airtable"):
-                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    token = _use_secret(store, try_uid, "airtable")
                     break
             except Exception:
                 continue
@@ -431,7 +440,7 @@ async def widget_airtable_tables(request: Request, base_id: str = Query(...)) ->
         for try_uid in (uid, "user"):
             try:
                 if store.has_secret(try_uid, "airtable"):
-                    token = store.use_secret(try_uid, "airtable", lambda s: s)
+                    token = _use_secret(store, try_uid, "airtable")
                     break
             except Exception:
                 continue

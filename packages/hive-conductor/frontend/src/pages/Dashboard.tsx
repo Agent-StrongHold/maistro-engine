@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react";
 import { TemplatePicker } from "../components/TemplatePicker";
 
+const JIRA_BASE = (import.meta as any).env?.VITE_JIRA_BASE_URL || "";
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface Widget {
@@ -109,13 +111,13 @@ CURRENT TAB: "${tabs[activeIdx]?.name}" — WIDGETS:\n${widgetSummary}
 WIDGET CONFIGS — STRICT SCHEMA (do NOT invent fields):
 
 TYPE "jira":
-  config = {project: "JEDAI", status?: "Open", days?: 7, assignee?: "currentUser()", jql_extra?: "type = Bug", jira_display: "count"|"list"|"status-breakdown", refresh_minutes?: 15}
-  Example: create_dashboard_widget(title="Open Bugs", type="jira", size="2", config={project:"JEDAI", jql_extra:"type = Bug AND resolution = Unresolved", jira_display:"count"}, tab="Overview")
+  config = {project: "DEMO", status?: "Open", days?: 7, assignee?: "currentUser()", jql_extra?: "type = Bug", jira_display: "count"|"list"|"status-breakdown", refresh_minutes?: 15}
+  Example: create_dashboard_widget(title="Open Bugs", type="jira", size="2", config={project:"DEMO", jql_extra:"type = Bug AND resolution = Unresolved", jira_display:"count"}, tab="Overview")
 
 TYPE "custom" with AIRTABLE BREAKDOWN (bar chart):
   config = {source: "airtable", table: "<exact table name>", field: "<column to group by>", group_by: "<same column>", max_records: "100", refresh_minutes?: 30}
   The widget will call /v1/widgets/airtable?table=X&group_by=Y and render a bar chart of counts.
-  Example: create_dashboard_widget(title="Status Pipeline", type="custom", size="3", config={source:"airtable", table:"JedAI Use Case Submission", field:"Status", group_by:"Status", max_records:"100"})
+  Example: create_dashboard_widget(title="Status Pipeline", type="custom", size="3", config={source:"airtable", table:"Use Case Submission", field:"Status", group_by:"Status", max_records:"100"})
 
 TYPE "custom" with AIRTABLE DONUT:
   Same as breakdown but add display: "donut"
@@ -124,7 +126,7 @@ TYPE "custom" with AIRTABLE DONUT:
 TYPE "custom" with AIRTABLE LIST (scrollable names):
   config = {source: "airtable", table: "<table>", filter_formula?: "{Field}='Value'", display_field?: "Use Case Name/ Project", max_records: "50", refresh_minutes?: 30}
   The widget will call /v1/widgets/airtable?table=X&filter_formula=Y&display_field=Z and render a scrollable list.
-  Example: create_dashboard_widget(title="Next Candidates", type="custom", size="2", config={source:"airtable", table:"JedAI Use Case Submission", filter_formula:"{V2 Migration Status}='Next Candidates'", display_field:"Use Case Name/ Project", max_records:"50"})
+  Example: create_dashboard_widget(title="Next Candidates", type="custom", size="2", config={source:"airtable", table:"Use Case Submission", filter_formula:"{V2 Migration Status}='Next Candidates'", display_field:"Use Case Name/ Project", max_records:"50"})
 
 TYPE "custom" with METRICS:
   config = {source: "metrics", metric: "latency"|"ttft"|"cost"|"tokens"|"invocations"|"errors"}
@@ -422,7 +424,7 @@ function JiraWidget({ widget }: { widget: Widget }) {
         <div style={{ color: C.muted, marginBottom: 4 }}>{data.total} issues</div>
         {(data.issues || []).slice(0, 8).map((iss: any, i: number) => (
           <div key={i} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>
-            <a href={`https://myjira.disney.com/browse/${iss.key}`} target="_blank" rel="noopener noreferrer" style={{ color: C.gold, fontWeight: 600, flexShrink: 0, textDecoration: "none" }}>{iss.key}</a>
+            <a href={`${JIRA_BASE}/browse/${iss.key}`} target="_blank" rel="noopener noreferrer" style={{ color: C.gold, fontWeight: 600, flexShrink: 0, textDecoration: "none" }}>{iss.key}</a>
             <span style={{ color: C.ink, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{iss.summary}</span>
             <span style={{ color: C.muted, flexShrink: 0, fontSize: "0.58rem" }}>{iss.status}</span>
           </div>
@@ -998,7 +1000,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
           </>)}
           {cfgType === "jira" && !widget.config?.variables && (<>
             <label style={{ fontSize: "0.62rem", color: "#a0a0b8", fontWeight: 500, marginTop: 4 }}>Project Key</label>
-            <input value={cfgProject} onChange={e => setCfgProject(e.target.value)} placeholder="e.g. JEDAI" style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "#6366f1" }} />
+            <input value={cfgProject} onChange={e => setCfgProject(e.target.value)} placeholder="e.g. DEMO" style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "#6366f1" }} />
             <label style={{ fontSize: "0.62rem", color: "#a0a0b8", fontWeight: 500, marginTop: 4 }}>Status</label>
             <input value={cfgStatus} onChange={e => setCfgStatus(e.target.value)} placeholder="Open, In Progress, Done..." style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "#6366f1" }} />
             <label style={{ fontSize: "0.62rem", color: "#a0a0b8", fontWeight: 500, marginTop: 4 }}>Assignee</label>
