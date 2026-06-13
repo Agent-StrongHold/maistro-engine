@@ -42,7 +42,7 @@ def credential_prefix(value: str) -> bytes:
 def _extract_public_key(identity_path: str | Path) -> str:
     for line in Path(identity_path).read_text().splitlines():
         if line.startswith(_PUBLIC_KEY_PREFIX):
-            return line[len(_PUBLIC_KEY_PREFIX):].strip()
+            return line[len(_PUBLIC_KEY_PREFIX) :].strip()
     raise VaultUnavailableError("VAULT_UNAVAILABLE: no public key found in identity file")
 
 
@@ -107,9 +107,7 @@ class Vault:
                 check=True,
             )
         except FileNotFoundError:
-            raise VaultUnavailableError(
-                "VAULT_UNAVAILABLE: age command not found"
-            ) from None
+            raise VaultUnavailableError("VAULT_UNAVAILABLE: age command not found") from None
         except subprocess.CalledProcessError as e:
             raise VaultUnavailableError(
                 f"VAULT_UNAVAILABLE: decryption failed: {e.stderr.decode(errors='replace')}"
@@ -128,17 +126,13 @@ class Vault:
     def add(self, key: str, value: str) -> None:
         secrets = self._ensure_loaded()
         secrets[key] = value
-        self._audit.append(
-            {"action": "add", "key": key, "timestamp": time.time()}
-        )
+        self._audit.append({"action": "add", "key": key, "timestamp": time.time()})
         self._write()
 
     def remove(self, key: str) -> None:
         secrets = self._ensure_loaded()
         secrets.pop(key, None)
-        self._audit.append(
-            {"action": "remove", "key": key, "timestamp": time.time()}
-        )
+        self._audit.append({"action": "remove", "key": key, "timestamp": time.time()})
         self._write()
 
     def audit_log(self) -> list[dict[str, Any]]:

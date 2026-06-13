@@ -14,9 +14,12 @@ blocked-by: []
 contracts:
   - boundary
 tests: []
-layer: Orchestration
+layer: Connectivity
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-03-23
 ---
 
 # SPEC-008: Agent-to-agent networking

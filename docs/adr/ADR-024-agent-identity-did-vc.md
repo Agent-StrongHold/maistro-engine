@@ -1,3 +1,35 @@
+---
+id: ADR-024
+title: 'Agent Identity & Verifiable Credentials (DID + VC)'
+repo: maistro-engine
+kind: adr
+status: Accepted
+accepted: 2026-06-10
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+  - maistro-engine#ADR-029
+implements: []
+related:
+  - maistro-engine#ADR-023
+  - maistro-engine#ADR-027
+  - maistro-engine#ADR-028
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Identity
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-07
+---
+
 # ADR-024: Agent Identity & Verifiable Credentials (DID + VC)
 
 **Status:** Proposed

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from typing import Any
 
 from models.schemas import MCPServer, MCPTool
 
@@ -19,18 +18,46 @@ FILESYSTEM_SERVER_ID = "mcp-filesystem-local"
 FILESYSTEM_MCP_URL = os.getenv("FILESYSTEM_MCP_URL", "http://127.0.0.1:9999/mcp").strip()
 
 ATLASSIAN_ROVO_TOOLS: tuple[dict[str, str], ...] = (
-    {"name": "jira_search", "description": "Search Jira issues and projects (Rovo MCP)", "category": "jira"},
-    {"name": "jira_get_issue", "description": "Fetch a Jira issue by key (Rovo MCP)", "category": "jira"},
+    {
+        "name": "jira_search",
+        "description": "Search Jira issues and projects (Rovo MCP)",
+        "category": "jira",
+    },
+    {
+        "name": "jira_get_issue",
+        "description": "Fetch a Jira issue by key (Rovo MCP)",
+        "category": "jira",
+    },
     {
         "name": "jira_create_issue",
         "description": "Create a Jira story, bug, or task (gated in Hive UI)",
         "category": "jira",
     },
-    {"name": "jira_update_issue", "description": "Update Jira fields and status (Rovo MCP)", "category": "jira"},
-    {"name": "confluence_search", "description": "Search Confluence pages and spaces (Rovo MCP)", "category": "confluence"},
-    {"name": "confluence_get_page", "description": "Read a Confluence page by id or title (Rovo MCP)", "category": "confluence"},
-    {"name": "confluence_create_page", "description": "Create a Confluence page (Rovo MCP)", "category": "confluence"},
-    {"name": "confluence_update_page", "description": "Update Confluence page content (Rovo MCP)", "category": "confluence"},
+    {
+        "name": "jira_update_issue",
+        "description": "Update Jira fields and status (Rovo MCP)",
+        "category": "jira",
+    },
+    {
+        "name": "confluence_search",
+        "description": "Search Confluence pages and spaces (Rovo MCP)",
+        "category": "confluence",
+    },
+    {
+        "name": "confluence_get_page",
+        "description": "Read a Confluence page by id or title (Rovo MCP)",
+        "category": "confluence",
+    },
+    {
+        "name": "confluence_create_page",
+        "description": "Create a Confluence page (Rovo MCP)",
+        "category": "confluence",
+    },
+    {
+        "name": "confluence_update_page",
+        "description": "Update Confluence page content (Rovo MCP)",
+        "category": "confluence",
+    },
 )
 
 FILESYSTEM_TOOLS: tuple[dict[str, str], ...] = (
@@ -38,8 +65,16 @@ FILESYSTEM_TOOLS: tuple[dict[str, str], ...] = (
     {"name": "list_dir", "description": "List directory entries", "category": "filesystem"},
     {"name": "search_files", "description": "Search files by glob", "category": "filesystem"},
     {"name": "write_file", "description": "Write a UTF-8 file", "category": "filesystem"},
-    {"name": "run_command", "description": "Run an approved shell command", "category": "filesystem"},
-    {"name": "get_env", "description": "Read allowlisted environment variables", "category": "filesystem"},
+    {
+        "name": "run_command",
+        "description": "Run an approved shell command",
+        "category": "filesystem",
+    },
+    {
+        "name": "get_env",
+        "description": "Read allowlisted environment variables",
+        "category": "filesystem",
+    },
 )
 
 
@@ -80,7 +115,9 @@ def filesystem_local_server(*, now: datetime | None = None) -> MCPServer:
     )
 
 
-def _tools_for_server(server_id: str, specs: tuple[dict[str, str], ...], prefix: str) -> list[MCPTool]:
+def _tools_for_server(
+    server_id: str, specs: tuple[dict[str, str], ...], prefix: str
+) -> list[MCPTool]:
     tools: list[MCPTool] = []
     for idx, spec in enumerate(specs, start=1):
         tools.append(

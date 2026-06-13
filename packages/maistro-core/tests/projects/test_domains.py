@@ -12,15 +12,12 @@ generic UI shell.
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.projects import (
     KNOWN_DOMAINS,
     InMemoryProjectStore,
     domain_for,
     domain_use_cases,
 )
-
 
 # --- Curated domain catalog ----------------------------------------------
 

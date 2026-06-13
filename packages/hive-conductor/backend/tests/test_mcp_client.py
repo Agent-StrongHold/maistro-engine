@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from services.mcp_client import atlassian_site_url, test_jira_rest
 from services.mcp_defaults import platform_mcp_catalog
 

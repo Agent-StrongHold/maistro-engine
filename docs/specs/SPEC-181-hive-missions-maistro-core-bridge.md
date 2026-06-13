@@ -13,15 +13,15 @@ implements: []
 related:
   - maistro-engine#SPEC-176
   - maistro-engine#SPEC-180
-source:
-  - packages/hive-conductor/
-  - packages/maistro-core/
 contracts:
   - boundary
 tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
 ---
 
 # SPEC-181: Hive missions → maistro-core bridge (phase 2)

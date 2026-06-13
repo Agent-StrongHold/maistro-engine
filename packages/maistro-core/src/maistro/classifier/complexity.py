@@ -3,8 +3,29 @@
 from __future__ import annotations
 
 import re
+from typing import Literal, cast
 
 from maistro.types.intent import TIER_ORDER
+
+Complexity = Literal["simple", "moderate", "complex"]
+Priority = Literal["P0", "P1", "P2", "P3", "P4", "P5"]
+
+_PRIORITY_VALUES: frozenset[str] = frozenset(
+    ("P0", "P1", "P2", "P3", "P4", "P5"),
+)
+
+
+def coerce_priority(value: str | None) -> Priority | None:
+    """Narrow an arbitrary string to a valid ``Priority`` Literal.
+
+    Returns the value typed as ``Priority`` if it is one of the recognised
+    six tiers, otherwise ``None``. Callers can use this to honour an explicit
+    priority override only when it is well-formed, falling back to inference.
+    """
+    if value in _PRIORITY_VALUES:
+        return cast(Priority, value)
+    return None
+
 
 _FILLER_WORDS = frozenset(
     {
@@ -36,7 +57,7 @@ _COMPLEX_SIGNALS = [
 ]
 
 
-def estimate_complexity(text: str, task_type: str) -> str:
+def estimate_complexity(text: str, task_type: str) -> Complexity:
     """Estimate task complexity from message text."""
     word_count = len(text.split())
     if word_count < 15:
@@ -54,7 +75,7 @@ def estimate_complexity(text: str, task_type: str) -> str:
     return "simple"
 
 
-def infer_priority(user_text: str) -> str:
+def infer_priority(user_text: str) -> Priority:
     """Infer priority tier from urgency keywords.
 
     Returns a 6-tier priority value per ADR-K8S-014:

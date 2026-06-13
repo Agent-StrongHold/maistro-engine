@@ -14,7 +14,9 @@ from maistro_rsi.benchmarks.swebench_pro import (
 
 def _full_response(sample: dict) -> str:
     files_block = "\n".join(
-        f"`{path}`\n```python\n# fix touching {path}\n" + " ".join(sample["expected_keywords"]) + "\n```"
+        f"`{path}`\n```python\n# fix touching {path}\n"
+        + " ".join(sample["expected_keywords"])
+        + "\n```"
         for path in sample["files"]
     )
     return f"Here are the fixes:\n{files_block}"

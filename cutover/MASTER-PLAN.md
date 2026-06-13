@@ -263,7 +263,7 @@ All pages, endpoints, and features are specified in `design/PRODUCT-SPEC.md`.
 | Parallel run | Route conversations through both. Compare: classification accuracy, model selection quality, response time, tool dispatch correctness |
 | Verify persistence | Learnings, sessions, outcomes all persisting to Postgres |
 | Verify homelab tools | HA control, family chores, notifications, search, weather all work through new MCP servers |
-| Traefik cutover | Change `conductor.library.emeraldfam.org` route from `:8100` to `:8101` when stable |
+| Traefik cutover | Change `conductor.example.com` route from `:8100` to `:8101` when stable |
 | Conductor-router withers | Keep running but no longer primary |
 
 ---

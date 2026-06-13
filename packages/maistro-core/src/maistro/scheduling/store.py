@@ -11,6 +11,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Any
 
 _CRON_FIELD_COUNT = 5
@@ -47,6 +48,46 @@ def _validate_cron_field(value: str, field_min: int, field_max: int) -> bool:
     return False
 
 
+_MIN_INTERVAL_MINUTES = 15
+
+
+def _expand_field(value: str, field_min: int, field_max: int) -> list[int]:
+    """Expand a (already validated) cron field into the sorted set of values it matches."""
+    if value == "*":
+        return list(range(field_min, field_max + 1))
+    m = _STEP_RE.match(value)
+    if m:
+        step = int(m.group(1))
+        return list(range(field_min, field_max + 1, step))
+    m = _RANGE_RE.match(value)
+    if m:
+        lo, hi = int(m.group(1)), int(m.group(2))
+        return list(range(lo, hi + 1))
+    if _LIST_RE.match(value):
+        return sorted({int(v) for v in value.split(",")})
+    return [int(value)]
+
+
+def _min_gap_minutes(minute_field: str, hour_field: str) -> int:
+    """Smallest gap (in minutes) between consecutive fire-times the schedule implies.
+
+    Builds the full set of minute-of-day fire-times across a single representative
+    day from the minute and hour fields, then returns the minimum gap between
+    consecutive fires, wrapping across the midnight boundary.
+    """
+    minutes = _expand_field(minute_field, 0, 59)
+    hours = _expand_field(hour_field, 0, 23)
+
+    fires = sorted(h * 60 + mm for h in hours for mm in minutes)
+    if len(fires) < 2:
+        return 24 * 60  # at most once per day
+
+    gaps = [b - a for a, b in pairwise(fires)]
+    # Wrap-around: last fire of the day to the first fire of the next day.
+    gaps.append((fires[0] + 24 * 60) - fires[-1])
+    return min(gaps)
+
+
 def validate_cron(expression: str) -> None:
     """Validate a cron expression (5-field format).
 
@@ -66,16 +107,9 @@ def validate_cron(expression: str) -> None:
     minute_field = parts[0]
     hour_field = parts[1]
 
-    if minute_field == "*" and hour_field == "*":
+    if _min_gap_minutes(minute_field, hour_field) < _MIN_INTERVAL_MINUTES:
         msg = "Schedule too frequent: minimum interval is 15 min"
         raise ValueError(msg)
-
-    m = _STEP_RE.match(minute_field)
-    if m and hour_field == "*":
-        step = int(m.group(1))
-        if step < 15:
-            msg = "Schedule too frequent: minimum interval is 15 min"
-            raise ValueError(msg)
 
 
 @dataclass

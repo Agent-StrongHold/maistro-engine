@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+import contextlib
+from dataclasses import FrozenInstanceError
+from typing import ClassVar
 
 import pytest
 from pydantic import BaseModel
 
 from maistro.graph.dag_validator import (
     ValidationFinding,
-    ValidationReport,
     validate_dag,
 )
 from maistro.graph.nodes import BaseNode, NodeContext, register_node
-
 
 # --- Fixture nodes for the validator tests --------------------------------
 
@@ -74,10 +74,8 @@ class _CNode(BaseNode[_CIn, _COut]):
 
 
 for _cls in (_ANode, _BNode, _CNode):
-    try:
+    with contextlib.suppress(ValueError):
         register_node(_cls)
-    except ValueError:
-        pass
 
 
 # --- Valid DAG passes -----------------------------------------------------
@@ -183,10 +181,7 @@ def test_edge_with_unknown_from_endpoint_flagged() -> None:
         "entry_node": "a",
     }
     report = validate_dag(dag)
-    assert any(
-        f.code == "edge_missing_endpoint" and "ghost" in f.message
-        for f in report.findings
-    )
+    assert any(f.code == "edge_missing_endpoint" and "ghost" in f.message for f in report.findings)
 
 
 def test_cycle_detection() -> None:
@@ -284,7 +279,7 @@ def test_report_to_dict_shape() -> None:
 
 def test_validation_finding_immutable() -> None:
     f = ValidationFinding(code="x", severity="error", message="m")
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         f.code = "y"  # type: ignore[misc]
 
 

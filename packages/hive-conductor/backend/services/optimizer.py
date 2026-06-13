@@ -34,6 +34,7 @@ produce zero proposals and an empty result.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -51,7 +52,7 @@ WEIGHT_THUMB = 1.0
 
 # SkillOpt-inspired controls
 TEXTUAL_LEARNING_RATE = 4  # max edits per optimization pass (add/delete/replace)
-MAX_REJECTED_BUFFER = 20   # remember last N rejected edits to avoid repeating
+MAX_REJECTED_BUFFER = 20  # remember last N rejected edits to avoid repeating
 WEIGHT_LATENCY = 0.5
 
 # Proposal classes — gating for auto-apply vs propose-only.
@@ -97,8 +98,12 @@ class SignalSnapshot:
     @property
     def priority_score(self) -> float:
         return round(
-            self.error_score + self.edit_score + self.eval_score
-            + self.thumb_score + self.latency_score, 3,
+            self.error_score
+            + self.edit_score
+            + self.eval_score
+            + self.thumb_score
+            + self.latency_score,
+            3,
         )
 
 
@@ -109,7 +114,7 @@ def _collect_node_metrics(dag_id: str, window_seconds: int) -> dict[str, dict[st
     store = _metrics_store()
     # Roll up by node_id (per-node) so optimizer can target a specific
     # node, but also keep a per-kind view for kind-level decisions.
-    obs = store._filter(dag_id=dag_id, window_seconds=window_seconds)  # noqa: SLF001
+    obs = store._filter(dag_id=dag_id, window_seconds=window_seconds)
     by_node: dict[str, list[Any]] = {}
     for o in obs:
         by_node.setdefault(o.node_id, []).append(o)
@@ -164,13 +169,15 @@ def _collect_user_edits(dag_id: str) -> list[dict[str, Any]]:
     import stores
 
     return [
-        e for e in stores.audit_log.values()
+        e
+        for e in stores.audit_log.values()
         if e.get("action") == "dag_edit" and e.get("target") == dag_id
     ]
 
 
 def _build_snapshot_for_dag(
-    dag_id: str, window_seconds: int = 24 * 3600,
+    dag_id: str,
+    window_seconds: int = 24 * 3600,
 ) -> dict[str, SignalSnapshot]:
     """Build one SignalSnapshot per node_id that has any signal."""
     metrics = _collect_node_metrics(dag_id, window_seconds)
@@ -185,9 +192,10 @@ def _build_snapshot_for_dag(
     eval_context: list[dict[str, Any]] = []
     if verdicts:
         verdicts_sorted = sorted(
-            verdicts, key=lambda v: v.get("scored_at", ""), reverse=True,
+            verdicts,
+            key=lambda v: v.get("scored_at", ""),
+            reverse=True,
         )
-        latest = verdicts_sorted[0]
         # Use the WORST score as baseline — that's what needs improvement
         worst_score = min(float(v.get("score", 100)) for v in verdicts)
         eval_baseline = max(0.0, (100 - worst_score) / 100.0)
@@ -210,7 +218,7 @@ def _build_snapshot_for_dag(
     for nid in all_node_ids:
         m = metrics.get(nid, {})
         th = thumbs.get(nid, {"up": 0, "down": 0, "comments": []})
-        # Signal #1 error_code: fraction of failures × weight
+        # Signal #1 error_code: fraction of failures x weight
         n = m.get("count", 0)
         failed = m.get("failed", 0)
         err_score = (failed / max(n, 1)) * WEIGHT_ERROR_CODE if n else 0.0
@@ -249,45 +257,51 @@ def _propose_for_snapshot(
 
     # AUTO_APPLY candidate #1: model swap on high error_score
     if snapshot.error_score >= 1.5:
-        proposals.append({
-            "class": CLASS_AUTO_APPLY,
-            "kind": KIND_MODEL_SWAP,
-            "field_path": f"nodes[{snapshot.target_node_id}].model",
-            "rationale": (
-                f"Node {snapshot.target_node_id} is failing — "
-                f"{int(snapshot.context['metrics']['failed'])} of "
-                f"{int(snapshot.context['metrics']['count'])} runs failed. "
-                "Switching to a more capable model often clears tool-call "
-                "schema issues."
-            ),
-        })
+        proposals.append(
+            {
+                "class": CLASS_AUTO_APPLY,
+                "kind": KIND_MODEL_SWAP,
+                "field_path": f"nodes[{snapshot.target_node_id}].model",
+                "rationale": (
+                    f"Node {snapshot.target_node_id} is failing — "
+                    f"{int(snapshot.context['metrics']['failed'])} of "
+                    f"{int(snapshot.context['metrics']['count'])} runs failed. "
+                    "Switching to a more capable model often clears tool-call "
+                    "schema issues."
+                ),
+            }
+        )
 
     # AUTO_APPLY candidate #2: retry-count bump on moderate error_score
     elif snapshot.error_score >= 0.5:
-        proposals.append({
-            "class": CLASS_AUTO_APPLY,
-            "kind": KIND_RETRY_COUNT,
-            "field_path": f"nodes[{snapshot.target_node_id}].config.max_retries",
-            "rationale": (
-                f"Node {snapshot.target_node_id} fails intermittently. "
-                "A retry budget of 3 with exponential backoff would "
-                "absorb most transient errors."
-            ),
-        })
+        proposals.append(
+            {
+                "class": CLASS_AUTO_APPLY,
+                "kind": KIND_RETRY_COUNT,
+                "field_path": f"nodes[{snapshot.target_node_id}].config.max_retries",
+                "rationale": (
+                    f"Node {snapshot.target_node_id} fails intermittently. "
+                    "A retry budget of 3 with exponential backoff would "
+                    "absorb most transient errors."
+                ),
+            }
+        )
 
     # AUTO_APPLY candidate #3: edge weight tune on high latency_score
     if snapshot.latency_score > 0.0:
-        proposals.append({
-            "class": CLASS_AUTO_APPLY,
-            "kind": KIND_EDGE_WEIGHT,
-            "field_path": f"nodes[{snapshot.target_node_id}].config.weight",
-            "rationale": (
-                f"Node {snapshot.target_node_id} p95 latency "
-                f"{int(snapshot.context['metrics']['latency_ms_p95'])}ms "
-                "is above threshold; reduce downstream edge weight by "
-                "20% to deprioritize this hop."
-            ),
-        })
+        proposals.append(
+            {
+                "class": CLASS_AUTO_APPLY,
+                "kind": KIND_EDGE_WEIGHT,
+                "field_path": f"nodes[{snapshot.target_node_id}].config.weight",
+                "rationale": (
+                    f"Node {snapshot.target_node_id} p95 latency "
+                    f"{int(snapshot.context['metrics']['latency_ms_p95'])}ms "
+                    "is above threshold; reduce downstream edge weight by "
+                    "20% to deprioritize this hop."
+                ),
+            }
+        )
 
     # PROPOSE candidate: surface eval-judge topology_proposal verbatim
     for v in snapshot.context.get("eval_verdicts") or []:
@@ -296,32 +310,41 @@ def _propose_for_snapshot(
             continue
         # Match by target_node_id OR by role name (eval-judge may use either)
         target = tp.get("target_node_id", "")
-        if target and target != snapshot.target_node_id and target != "_dag_level_":
-            # Try matching by role — eval-judge often uses role names
-            if snapshot.target_node_id != "_dag_level_":
-                continue
-        proposals.append({
-            "class": CLASS_PROPOSE,
-            "kind": KIND_TOPOLOGY,
-            "field_path": f"nodes[{target}].{tp.get('kind', '')}",
-            "rationale": tp.get("expected_improvement", "")
-                       or "Eval-judge proposed this topology mutation.",
-            "topology_proposal": tp,
-        })
+        # Try matching by role — eval-judge often uses role names
+        if (
+            target
+            and target != snapshot.target_node_id
+            and target != "_dag_level_"
+            and snapshot.target_node_id != "_dag_level_"
+        ):
+            continue
+        proposals.append(
+            {
+                "class": CLASS_PROPOSE,
+                "kind": KIND_TOPOLOGY,
+                "field_path": f"nodes[{target}].{tp.get('kind', '')}",
+                "rationale": tp.get("expected_improvement", "")
+                or "Eval-judge proposed this topology mutation.",
+                "topology_proposal": tp,
+            }
+        )
 
     # PROPOSE candidate: prompt rewrite on persistent thumbs-down
     if snapshot.thumb_score >= 2.0:
         comments = snapshot.context["thumbs"]["comments"][:3]
-        proposals.append({
-            "class": CLASS_PROPOSE,
-            "kind": KIND_PROMPT,
-            "field_path": f"nodes[{snapshot.target_node_id}].prompt",
-            "rationale": (
-                "Users keep thumbing this node down. Recent comments: "
-                + " | ".join(comments[:3]) if comments else
-                "Users keep thumbing this node down without comments."
-            ),
-        })
+        proposals.append(
+            {
+                "class": CLASS_PROPOSE,
+                "kind": KIND_PROMPT,
+                "field_path": f"nodes[{snapshot.target_node_id}].prompt",
+                "rationale": (
+                    "Users keep thumbing this node down. Recent comments: "
+                    + " | ".join(comments[:3])
+                    if comments
+                    else "Users keep thumbing this node down without comments."
+                ),
+            }
+        )
 
     return proposals
 
@@ -354,9 +377,10 @@ def run_optimizer(
     if not dag_id:
         raise ValueError("dag_id is required")
 
-    from services.edit_lock import is_locked
-    from routes.audit import log_audit
     import stores
+    from routes.audit import log_audit
+
+    from services.edit_lock import is_locked
 
     snapshots = _build_snapshot_for_dag(dag_id, window_seconds=window_seconds)
     ranked = sorted(snapshots.values(), key=lambda s: s.priority_score, reverse=True)
@@ -375,8 +399,7 @@ def run_optimizer(
             applied = False
             field_path = raw["field_path"]
             blocked_by_lock = is_locked(dag_id, field_path, now=edit_lock_now)
-            if (raw["class"] == CLASS_AUTO_APPLY and apply_auto
-                    and not blocked_by_lock):
+            if raw["class"] == CLASS_AUTO_APPLY and apply_auto and not blocked_by_lock:
                 applied = True
                 auto_applied += 1
                 decision = DECISION_ACCEPTED
@@ -443,8 +466,7 @@ def record_decision(
     optimizer pass treats user-approval as positive reinforcement."""
     if decision not in (DECISION_ACCEPTED, DECISION_REJECTED):
         raise ValueError(
-            f"decision must be one of "
-            f"{(DECISION_ACCEPTED, DECISION_REJECTED)}, got {decision!r}"
+            f"decision must be one of {(DECISION_ACCEPTED, DECISION_REJECTED)}, got {decision!r}"
         )
     import stores
     from routes.audit import log_audit
@@ -485,12 +507,14 @@ _rejected_buffer: list[dict[str, Any]] = []
 
 def _record_rejected_edit(proposal: dict[str, Any]) -> None:
     """Remember a rejected edit so the optimizer avoids re-proposing it."""
-    _rejected_buffer.append({
-        "kind": proposal.get("kind"),
-        "field_path": proposal.get("field_path"),
-        "dag_id": proposal.get("dag_id"),
-        "rejected_at": datetime.now(UTC).isoformat(),
-    })
+    _rejected_buffer.append(
+        {
+            "kind": proposal.get("kind"),
+            "field_path": proposal.get("field_path"),
+            "dag_id": proposal.get("dag_id"),
+            "rejected_at": datetime.now(UTC).isoformat(),
+        }
+    )
     # Keep buffer bounded
     while len(_rejected_buffer) > MAX_REJECTED_BUFFER:
         _rejected_buffer.pop(0)
@@ -503,10 +527,123 @@ def get_rejected_buffer(dag_id: str = "") -> list[dict[str, Any]]:
     return list(_rejected_buffer)
 
 
+def _apply_node_field_mutation(node: dict[str, Any], kind: str, tp: dict[str, Any]) -> None:
+    """Mutate a single matched node's field in place, per `kind`."""
+    if kind == "swap_model":
+        node["model"] = tp.get("to_value", node.get("model"))
+    elif kind == "rewrite_prompt":
+        node["prompt"] = tp.get("to_value", node.get("prompt"))
+    elif kind == "change_schema":
+        node.setdefault("config", {})["output_schema"] = tp.get("to_value", "")
+    elif kind == "change_temperature":
+        with contextlib.suppress(ValueError, TypeError):
+            node["temperature"] = float(tp.get("to_value", 0.3))
+    elif kind == "change_max_tokens":
+        with contextlib.suppress(ValueError, TypeError):
+            node["max_tokens"] = int(tp.get("to_value", 4096))
+    elif kind == "change_strategy":
+        node["strategy"] = tp.get("to_value", "direct")
+    elif kind == "rename_node":
+        node["name"] = tp.get("to_value", node.get("name"))
+    elif kind == "change_role":
+        node["role"] = tp.get("to_value", node.get("role"))
+    elif kind == "upgrade_execution_tier":
+        # REQUIRES ADMIN APPROVAL — optimizer can propose but never auto-apply
+        # Upgrading from light→heavy or heavy→container is a security decision
+        node.setdefault("config", {})["execution_tier"] = tp.get("to_value", "")
+        node["config"]["tier_approved_by"] = "admin"  # must be set by admin accept
+
+
+def _apply_edge_field_mutation(edge: dict[str, Any], kind: str, tp: dict[str, Any]) -> None:
+    """Mutate a single matched edge's field in place, per `kind`."""
+    if kind == "tune_edge_weight":
+        with contextlib.suppress(ValueError, TypeError):
+            edge["weight"] = float(tp.get("to_value", 1.0))
+    elif kind == "set_edge_condition":
+        edge["condition"] = tp.get("to_value", "")
+
+
+# Kinds that mutate a single target node's field.
+_NODE_FIELD_KINDS = frozenset(
+    {
+        "swap_model",
+        "rewrite_prompt",
+        "change_schema",
+        "change_temperature",
+        "change_max_tokens",
+        "change_strategy",
+        "rename_node",
+        "change_role",
+        "upgrade_execution_tier",
+    }
+)
+# Kinds that mutate a matched edge's field (matched on from_node==target, to_node==from_value).
+_EDGE_FIELD_KINDS = frozenset({"tune_edge_weight", "set_edge_condition"})
+
+
+def _reorder_node(nodes: list[dict[str, Any]], target: str) -> None:
+    """Swap the target node with the node immediately after it, in place."""
+    ids = [n["id"] for n in nodes]
+    if target not in ids:
+        return
+    idx = ids.index(target)
+    if idx < len(nodes) - 1:
+        nodes[idx], nodes[idx + 1] = nodes[idx + 1], nodes[idx]
+
+
+def _apply_structural_mutation(
+    dag: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    kind: str,
+    target: str,
+    tp: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Apply a structural/graph-level mutation, returning the (possibly new) node/edge lists."""
+    from uuid import uuid4
+
+    if kind == "add_node":
+        new_id = str(uuid4())[:8]
+        nodes.append(
+            {
+                "id": new_id,
+                "role": "worker",
+                "name": tp.get("to_value", "New Node"),
+                "prompt": tp.get("expected_improvement", ""),
+                "model": "gemini-3.5-flash",
+                "strategy": "direct",
+            }
+        )
+        # Add edge from target to new node
+        if target:
+            edges.append({"id": str(uuid4())[:8], "from_node": target, "to_node": new_id})
+    elif kind == "drop_node":
+        nodes = [n for n in nodes if n.get("id") != target]
+        edges = [e for e in edges if e.get("from_node") != target and e.get("to_node") != target]
+    elif kind == "reorder":
+        _reorder_node(nodes, target)
+    elif kind == "add_edge":
+        edges.append(
+            {"id": str(uuid4())[:8], "from_node": target, "to_node": tp.get("to_value", "")}
+        )
+    elif kind == "remove_edge":
+        edges = [
+            e
+            for e in edges
+            if not (e.get("from_node") == target and e.get("to_node") == tp.get("to_value"))
+        ]
+    elif kind == "change_max_cycles":
+        with contextlib.suppress(ValueError, TypeError):
+            dag["max_cycles"] = int(tp.get("to_value", 5))
+    elif kind == "change_entry":
+        dag["entry_node"] = tp.get("to_value", dag.get("entry_node"))
+
+    return nodes, edges
+
+
 def _apply_topology_mutation(proposal: dict[str, Any]) -> None:
     """Apply an accepted topology mutation to the DAG in stores."""
     import stores
-    from uuid import uuid4
 
     dag_id = proposal.get("dag_id", "")
     tp = proposal.get("topology_proposal") or {}
@@ -520,113 +657,16 @@ def _apply_topology_mutation(proposal: dict[str, Any]) -> None:
     nodes = dag.get("nodes", [])
     edges = dag.get("edges", [])
 
-    if kind == "add_node":
-        new_id = str(uuid4())[:8]
-        nodes.append({
-            "id": new_id,
-            "role": "worker",
-            "name": tp.get("to_value", "New Node"),
-            "prompt": tp.get("expected_improvement", ""),
-            "model": "gemini-3.5-flash",
-            "strategy": "direct",
-        })
-        # Add edge from target to new node
-        if target:
-            edges.append({"id": str(uuid4())[:8], "from_node": target, "to_node": new_id})
-
-    elif kind == "drop_node":
-        nodes = [n for n in nodes if n.get("id") != target]
-        edges = [e for e in edges if e.get("from_node") != target and e.get("to_node") != target]
-
-    elif kind == "reorder":
-        # Swap target with the node after it
-        ids = [n["id"] for n in nodes]
-        if target in ids:
-            idx = ids.index(target)
-            if idx < len(nodes) - 1:
-                nodes[idx], nodes[idx + 1] = nodes[idx + 1], nodes[idx]
-
-    elif kind == "swap_model":
+    if kind in _NODE_FIELD_KINDS:
         for n in nodes:
             if n.get("id") == target:
-                n["model"] = tp.get("to_value", n.get("model"))
-
-    elif kind == "rewrite_prompt":
-        for n in nodes:
-            if n.get("id") == target:
-                n["prompt"] = tp.get("to_value", n.get("prompt"))
-
-    elif kind == "add_edge":
-        edges.append({"id": str(uuid4())[:8], "from_node": target, "to_node": tp.get("to_value", "")})
-
-    elif kind == "remove_edge":
-        edges = [e for e in edges if not (e.get("from_node") == target and e.get("to_node") == tp.get("to_value"))]
-
-    elif kind == "tune_edge_weight":
+                _apply_node_field_mutation(n, kind, tp)
+    elif kind in _EDGE_FIELD_KINDS:
         for e in edges:
             if e.get("from_node") == target and e.get("to_node") == tp.get("from_value"):
-                try:
-                    e["weight"] = float(tp.get("to_value", 1.0))
-                except (ValueError, TypeError):
-                    pass
-
-    elif kind == "set_edge_condition":
-        for e in edges:
-            if e.get("from_node") == target and e.get("to_node") == tp.get("from_value"):
-                e["condition"] = tp.get("to_value", "")
-
-    elif kind == "change_schema":
-        for n in nodes:
-            if n.get("id") == target:
-                n.setdefault("config", {})["output_schema"] = tp.get("to_value", "")
-
-    elif kind == "change_temperature":
-        for n in nodes:
-            if n.get("id") == target:
-                try:
-                    n["temperature"] = float(tp.get("to_value", 0.3))
-                except (ValueError, TypeError):
-                    pass
-
-    elif kind == "change_max_tokens":
-        for n in nodes:
-            if n.get("id") == target:
-                try:
-                    n["max_tokens"] = int(tp.get("to_value", 4096))
-                except (ValueError, TypeError):
-                    pass
-
-    elif kind == "change_strategy":
-        for n in nodes:
-            if n.get("id") == target:
-                n["strategy"] = tp.get("to_value", "direct")
-
-    elif kind == "change_max_cycles":
-        try:
-            dag["max_cycles"] = int(tp.get("to_value", 5))
-        except (ValueError, TypeError):
-            pass
-
-    elif kind == "change_entry":
-        dag["entry_node"] = tp.get("to_value", dag.get("entry_node"))
-
-    elif kind == "rename_node":
-        for n in nodes:
-            if n.get("id") == target:
-                n["name"] = tp.get("to_value", n.get("name"))
-
-    elif kind == "change_role":
-        for n in nodes:
-            if n.get("id") == target:
-                n["role"] = tp.get("to_value", n.get("role"))
-
-    elif kind == "upgrade_execution_tier":
-        # REQUIRES ADMIN APPROVAL — optimizer can propose but never auto-apply
-        # Upgrading from light→heavy or heavy→container is a security decision
-        for n in nodes:
-            if n.get("id") == target:
-                n.setdefault("config", {})["execution_tier"] = tp.get("to_value", "")
-                n["config"]["tier_approved_by"] = "admin"  # must be set by admin accept
+                _apply_edge_field_mutation(e, kind, tp)
+    else:
+        nodes, edges = _apply_structural_mutation(dag, nodes, edges, kind, target, tp)
 
     dag["nodes"] = nodes
     dag["edges"] = edges

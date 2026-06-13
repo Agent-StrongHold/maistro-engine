@@ -8,10 +8,10 @@ from maistro.credentials.store import (
 )
 
 __all__ = [
+    "PM_CREDENTIAL_PROVIDERS",
     "CredentialNotFound",
     "CredentialProvider",
     "CredentialStoreUnavailable",
-    "PM_CREDENTIAL_PROVIDERS",
     "UserCredentialStore",
     "get_provider",
 ]

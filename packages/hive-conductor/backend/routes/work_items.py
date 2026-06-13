@@ -65,9 +65,11 @@ def _list_drafts(user_id: str) -> list[WorkItemDraft]:
         try:
             d = WorkItemDraft.model_validate(raw)
         except Exception as _exc:
-            __import__('logging').getLogger('hive.routes.work_items').warning(
-                'error_swallowed file=%s line=%d: %s',
-                'packages/hive-conductor/backend/routes/work_items.py', 67, _exc,
+            __import__("logging").getLogger("hive.routes.work_items").warning(
+                "error_swallowed file=%s line=%d: %s",
+                "packages/hive-conductor/backend/routes/work_items.py",
+                67,
+                _exc,
             )
             continue
         if d.user_id == user_id and d.status != "cancelled":
@@ -107,7 +109,10 @@ def suggest_work_item_route(body: SuggestBody, request: Request) -> dict[str, An
     )
     _save_draft(draft)
     log_audit("work_item_suggest", uid, target=draft.id, detail={"work_type": body.work_type})
-    return {"draft": draft.as_dict(), "message": "Review clarifying questions, edit fields, then confirm to post to Jira."}
+    return {
+        "draft": draft.as_dict(),
+        "message": "Review clarifying questions, edit fields, then confirm to post to Jira.",
+    }
 
 
 @router.get("/{draft_id}")

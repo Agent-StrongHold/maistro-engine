@@ -14,6 +14,7 @@ def _login(username: str = "testuser", password: str = "testpass") -> TestClient
     return c
 
 
+@pytest.mark.ac("SPEC-176/AC-1")
 def test_health() -> None:
     r = client.get("/health")
     assert r.status_code == 200
@@ -22,6 +23,7 @@ def test_health() -> None:
     assert "uptime_seconds" in data
 
 
+@pytest.mark.ac("SPEC-176/AC-1")
 def test_health_ready() -> None:
     r = client.get("/health/ready")
     assert r.status_code == 200
@@ -137,16 +139,18 @@ def test_list_missions() -> None:
     assert missions[0]["id"]
 
 
-def test_install_plan_endpoint_retired_returns_405() -> None:
+def test_install_plan_endpoint_retired() -> None:
     """POST /v1/install/plan was retired in favor of POST /v1/install/session
     (the canonical 'kind=maistro_install_session' shape). Regression-pin
-    so nothing reintroduces it without an explicit decision."""
+    so nothing reintroduces it without an explicit decision. The path is
+    gone entirely, so the answer is 404 — or 405 when frontend/dist exists
+    and main.py's SPA GET catch-all makes the path method-mismatched."""
     c = _login()
     r = c.post(
         "/v1/install/plan",
         json={"schema_version": "1", "features": ["core_lib"]},
     )
-    assert r.status_code == 405
+    assert r.status_code in (404, 405)
 
 
 def test_install_session_get_and_post() -> None:
@@ -179,18 +183,15 @@ def test_chat_complete_stub() -> None:
     assert body["choices"][0]["message"]["role"] == "assistant"
 
 
-def test_chat_complete_with_mock_engine() -> None:
+def test_chat_complete_with_mock_llm_port() -> None:
     c = _login()
     expected_messages = [{"role": "user", "content": "Hello from mock"}]
-    mock_response = {
-        "choices": [{"message": {"role": "assistant", "content": "mock response"}}]
-    }
+    mock_response = {"choices": [{"message": {"role": "assistant", "content": "mock response"}}]}
 
-    mock_engine = MagicMock()
-    mock_engine.is_configured = True
-    mock_engine.route_request = AsyncMock(return_value=mock_response)
+    mock_llm = MagicMock()
+    mock_llm.complete = AsyncMock(return_value=mock_response)
 
-    with patch("services.engine._singleton", mock_engine):
+    with patch("services.chat_completion.build_llm_port", return_value=mock_llm):
         r = c.post(
             "/v1/chat/complete",
             json={"messages": expected_messages},
@@ -198,7 +199,11 @@ def test_chat_complete_with_mock_engine() -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["choices"][0]["message"]["content"] == "mock response"
-    mock_engine.route_request.assert_called_once_with(expected_messages)
+    mock_llm.complete.assert_called_once()
+    sent = mock_llm.complete.call_args.args[0]
+    # The user message is forwarded intact (a PM system prompt is prepended).
+    assert expected_messages[0] in sent.messages
+    assert sent.messages[0]["role"] == "system"
 
 
 def test_mission_create_dispatches_task() -> None:
@@ -259,7 +264,10 @@ def test_websocket_streams_task_events() -> None:
     mock_engine = MagicMock()
     mock_engine.iter_task_events = _fake_iter
 
-    with patch("services.engine._singleton", mock_engine), c.websocket_connect("/v1/ws/tasks/test-task-1") as ws:
+    with (
+        patch("services.engine._singleton", mock_engine),
+        c.websocket_connect("/v1/ws/tasks/test-task-1") as ws,
+    ):
         msg1 = ws.receive_json()
         assert msg1["status"] == "running"
         msg2 = ws.receive_json()
@@ -268,7 +276,9 @@ def test_websocket_streams_task_events() -> None:
 
 def test_elevate_flow() -> None:
     c = _login()
-    r = c.post("/v1/auth/elevate", json={"password": "testpass", "permissions": [], "task_id": "t-1"})
+    r = c.post(
+        "/v1/auth/elevate", json={"password": "testpass", "permissions": [], "task_id": "t-1"}
+    )
     assert r.status_code == 200
     data = r.json()
     assert data["task_id"] == "t-1"
@@ -313,12 +323,21 @@ def test_elevation_only_activates_granted_permissions() -> None:
         r = c.put("/v1/settings", json={"temperature": 0.5})
         assert r.status_code == 403, "should be blocked without elevation"
 
-        c.post("/v1/auth/elevate", json={"password": "frankpass", "permissions": ["config.write"], "task_id": "frank-task-1"})
+        c.post(
+            "/v1/auth/elevate",
+            json={
+                "password": "frankpass",
+                "permissions": ["config.write"],
+                "task_id": "frank-task-1",
+            },
+        )
         r2 = c.put("/v1/settings", json={"temperature": 0.5})
         assert r2.status_code == 200, "should work after elevation for granted perm"
 
         r3 = c.delete("/v1/settings")
-        assert r3.status_code == 403, "should still be blocked for ungranted perm even with elevation"
+        assert r3.status_code == 403, (
+            "should still be blocked for ungranted perm even with elevation"
+        )
     finally:
         stores.users.pop("frank", None)
 
@@ -343,7 +362,14 @@ def test_elevate_rejects_unassigned_permissions() -> None:
     )
     try:
         c = _login("frank", "frankpass")
-        r = c.post("/v1/auth/elevate", json={"password": "frankpass", "permissions": ["config.delete", "agents.delete"], "task_id": "t-bad"})
+        r = c.post(
+            "/v1/auth/elevate",
+            json={
+                "password": "frankpass",
+                "permissions": ["config.delete", "agents.delete"],
+                "task_id": "t-bad",
+            },
+        )
         assert r.status_code == 403, "should reject when none of the requested perms are assigned"
     finally:
         stores.users.pop("frank", None)
@@ -370,7 +396,10 @@ def test_elevation_revoked_on_task_completion() -> None:
     try:
         c = _login("frank", "frankpass")
 
-        c.post("/v1/auth/elevate", json={"password": "frankpass", "permissions": ["config.write"], "task_id": "m-1"})
+        c.post(
+            "/v1/auth/elevate",
+            json={"password": "frankpass", "permissions": ["config.write"], "task_id": "m-1"},
+        )
         r = c.put("/v1/settings", json={"temperature": 0.5})
         assert r.status_code == 200, "should work with elevated perm"
 

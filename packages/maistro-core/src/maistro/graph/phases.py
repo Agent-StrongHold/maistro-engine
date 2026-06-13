@@ -11,12 +11,14 @@ class NodePhase(StrEnum):
     CANCELLED = "cancelled"
 
 
-TERMINAL_NODE_PHASES = frozenset({
-    NodePhase.SUCCEEDED,
-    NodePhase.FAILED,
-    NodePhase.SKIPPED,
-    NodePhase.CANCELLED,
-})
+TERMINAL_NODE_PHASES = frozenset(
+    {
+        NodePhase.SUCCEEDED,
+        NodePhase.FAILED,
+        NodePhase.SKIPPED,
+        NodePhase.CANCELLED,
+    }
+)
 
 
 class GraphPhase(StrEnum):
@@ -27,7 +29,9 @@ class GraphPhase(StrEnum):
     FAILED = "failed"
 
 
-TERMINAL_GRAPH_PHASES = frozenset({
-    GraphPhase.COMPLETED,
-    GraphPhase.FAILED,
-})
+TERMINAL_GRAPH_PHASES = frozenset(
+    {
+        GraphPhase.COMPLETED,
+        GraphPhase.FAILED,
+    }
+)

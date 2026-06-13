@@ -18,8 +18,8 @@ state) — no isinstance / no-op patterns.
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from typing import Any
 
 import pytest
@@ -77,9 +77,7 @@ def test_add_and_remove_node(authed_client: Any) -> None:
 
 
 def test_add_node_dag_404(authed_client: Any) -> None:
-    r = authed_client.post(
-        "/v1/dags/missing-dag/nodes", json={"role": "scout", "name": "x"}
-    )
+    r = authed_client.post("/v1/dags/missing-dag/nodes", json={"role": "scout", "name": "x"})
     assert r.status_code == 404
 
 
@@ -164,8 +162,7 @@ def test_activate_dag(authed_client: Any) -> None:
     # audit entry for activate
     entries = list(stores.audit_log.values())
     assert any(
-        e["action"] == "dag_activate" and e["target"] == dag_id
-        for e in entries[before_audit:]
+        e["action"] == "dag_activate" and e["target"] == dag_id for e in entries[before_audit:]
     )
 
 
@@ -177,14 +174,12 @@ def test_activate_dag_missing_404(authed_client: Any) -> None:
 # --- POST /{id}/run (success + failure) -----------------------------------
 
 
-def test_run_dag_success_path(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_dag_success_path(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub services.graph_runner.execute_dag to return a deterministic
     payload; verify the wrapper returns status='completed' + execution_id."""
     import services.graph_runner as gr
 
-    async def _ok(dag_data: Any) -> Any:
+    async def _ok(dag_data: Any, **kwargs: Any) -> Any:
         return {"final": "ok", "ran": True}
 
     monkeypatch.setattr(gr, "execute_dag", _ok)
@@ -197,12 +192,10 @@ def test_run_dag_success_path(
     assert body["execution_id"]
 
 
-def test_run_dag_failure_path(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_dag_failure_path(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.graph_runner as gr
 
-    async def _boom(dag_data: Any) -> Any:
+    async def _boom(dag_data: Any, **kwargs: Any) -> Any:
         raise RuntimeError("graph blew up")
 
     monkeypatch.setattr(gr, "execute_dag", _boom)
@@ -222,9 +215,7 @@ def test_run_dag_missing_dag_returns_404(authed_client: Any) -> None:
 # --- POST /run-champion (success + failure) -------------------------------
 
 
-def test_run_champion_success(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_champion_success(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.graph_runner as gr
 
     async def _ok() -> Any:
@@ -238,9 +229,7 @@ def test_run_champion_success(
     assert body["execution_id"]
 
 
-def test_run_champion_failure(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_run_champion_failure(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.graph_runner as gr
 
     async def _boom() -> Any:

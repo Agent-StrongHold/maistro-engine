@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -35,7 +36,7 @@ class TaskCreate(BaseModel):
     task_type: str | None = None
     agent_id: str | None = None
     capability: str | None = None
-    program_context: dict | None = None
+    program_context: dict[str, Any] | None = None
     session_id: str | None = None
     # Set by API from auth — ignored if sent by client
     user_id: str | None = None
@@ -68,7 +69,7 @@ class TaskResponse(BaseModel):
     task_type: str | None = None
     agent_id: str | None = None
     capability: str | None = None
-    program_context: dict | None = None
+    program_context: dict[str, Any] | None = None
     tier: int
     phase: str | None = None
     progress: TaskProgress = Field(default_factory=TaskProgress)

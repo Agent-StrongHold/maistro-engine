@@ -69,7 +69,7 @@ async def llm_classify(
         for cat in _VALID_CATEGORIES:
             if cat in text:
                 return cat
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.debug("LLM classification failed for '%s'", user_text[:60], exc_info=True)
 
     return None

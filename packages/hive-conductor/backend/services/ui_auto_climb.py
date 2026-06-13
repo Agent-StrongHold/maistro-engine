@@ -19,7 +19,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import os
@@ -55,7 +54,9 @@ asyncio.run(main())
 """
     result = subprocess.run(
         [sys.executable, "-c", script],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     if result.returncode != 0:
         logger.error(f"Screenshot failed: {result.stderr[:200]}")
@@ -91,10 +92,18 @@ Reply JSON: {"score": int, "clarity": int, "density": int, "speed": int, "hierar
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
                     "model": "gemini-3.5-flash",
-                    "messages": [{"role": "user", "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
-                    ]}],
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+                                },
+                            ],
+                        }
+                    ],
                     "response_format": {"type": "json_object"},
                 },
             )
@@ -104,7 +113,9 @@ Reply JSON: {"score": int, "clarity": int, "density": int, "speed": int, "hierar
         return {"score": 0, "error": str(e)}
 
 
-async def generate_edit(code: str, visual_feedback: dict, code_feedback: dict) -> dict[str, Any] | None:
+async def generate_edit(
+    code: str, visual_feedback: dict, code_feedback: dict
+) -> dict[str, Any] | None:
     """Generate one targeted edit based on feedback."""
     base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
     if not base.endswith("/v1"):
@@ -113,9 +124,9 @@ async def generate_edit(code: str, visual_feedback: dict, code_feedback: dict) -
 
     prompt = f"""Make ONE targeted fix to this React component.
 
-VISUAL ISSUE: {visual_feedback.get('top_issue', 'none')}
-CODE ISSUE: {code_feedback.get('top_issue', 'none')}
-SUGGESTED FIX: {visual_feedback.get('fix', code_feedback.get('fix', 'none'))}
+VISUAL ISSUE: {visual_feedback.get("top_issue", "none")}
+CODE ISSUE: {code_feedback.get("top_issue", "none")}
+SUGGESTED FIX: {visual_feedback.get("fix", code_feedback.get("fix", "none"))}
 
 CURRENT CODE (first 4000 chars):
 ```
@@ -130,7 +141,11 @@ The "old" MUST be an exact substring of the code above."""
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": "gemini-3.5-flash", "messages": [{"role": "user", "content": prompt}], "response_format": {"type": "json_object"}},
+                json={
+                    "model": "gemini-3.5-flash",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"},
+                },
             )
             r.raise_for_status()
             return json.loads(r.json()["choices"][0]["message"]["content"])
@@ -153,9 +168,11 @@ def apply_edit(component_path: Path, edit: dict) -> bool:
     component_path.write_text(mutated)
 
     # Compile check
-    result = subprocess.run(["npx", "tsc", "--noEmit"], cwd=str(FRONTEND_DIR), capture_output=True, text=True)
+    result = subprocess.run(
+        ["npx", "tsc", "--noEmit"], cwd=str(FRONTEND_DIR), capture_output=True, text=True
+    )
     if result.returncode != 0:
-        logger.warning(f"Compile failed, reverting")
+        logger.warning("Compile failed, reverting")
         component_path.write_text(code)
         return False
 
@@ -164,9 +181,11 @@ def apply_edit(component_path: Path, edit: dict) -> bool:
     return True
 
 
-async def auto_climb(component: str, url: str = "http://localhost:8101", path: str = "/chat", max_passes: int = 10) -> dict[str, Any]:
+async def auto_climb(
+    component: str, url: str = "http://localhost:8101", path: str = "/chat", max_passes: int = 10
+) -> dict[str, Any]:
     """Autonomous hill-climb loop. No human needed.
-    
+
     Args:
         component: component filename (e.g. "Chat.tsx")
         url: running app URL
@@ -181,7 +200,7 @@ async def auto_climb(component: str, url: str = "http://localhost:8101", path: s
     best_score = 0
 
     for i in range(max_passes):
-        print(f"\n{'='*40} PASS {i+1}/{max_passes} {'='*40}")
+        print(f"\n{'=' * 40} PASS {i + 1}/{max_passes} {'=' * 40}")
 
         # 1. Screenshot
         img = await screenshot(url, path)
@@ -191,22 +210,25 @@ async def auto_climb(component: str, url: str = "http://localhost:8101", path: s
 
         # 3. Score code
         from services.ui_hill_climber import score_ui_code
+
         code_result = await score_ui_code(component_path.read_text())
 
         combined = (visual.get("score", 0) + code_result.get("score", 0)) // 2
-        print(f"  Visual: {visual.get('score', '?')}/100 | Code: {code_result.get('score', '?')}/100 | Combined: {combined}/100")
+        print(
+            f"  Visual: {visual.get('score', '?')}/100 | Code: {code_result.get('score', '?')}/100 | Combined: {combined}/100"
+        )
         print(f"  Visual issue: {visual.get('top_issue', '?')[:80]}")
         print(f"  Code issue: {code_result.get('top_issue', '?')[:80]}")
 
         if i == 0:
             best_score = combined
-            history.append({"pass": i+1, "score": combined, "action": "baseline"})
+            history.append({"pass": i + 1, "score": combined, "action": "baseline"})
             # Continue to first edit
         elif combined > best_score:
             best_score = combined
-            history.append({"pass": i+1, "score": combined, "action": "accepted"})
+            history.append({"pass": i + 1, "score": combined, "action": "accepted"})
         else:
-            history.append({"pass": i+1, "score": combined, "action": "no_improvement"})
+            history.append({"pass": i + 1, "score": combined, "action": "no_improvement"})
 
         # 4. Generate edit
         edit = await generate_edit(component_path.read_text(), visual, code_result)
@@ -218,17 +240,18 @@ async def auto_climb(component: str, url: str = "http://localhost:8101", path: s
 
         # 5. Apply, compile, rebuild
         if apply_edit(component_path, edit):
-            print(f"  ✓ Applied + rebuilt")
+            print("  ✓ Applied + rebuilt")
         else:
-            print(f"  ✗ Edit failed (find not matched or compile error)")
+            print("  ✗ Edit failed (find not matched or compile error)")
 
-    print(f"\n{'='*40} DONE {'='*40}")
+    print(f"\n{'=' * 40} DONE {'=' * 40}")
     print(f"Best score: {best_score}/100 over {max_passes} passes")
     return {"best_score": best_score, "passes": max_passes, "history": history}
 
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--component", default="Chat.tsx")
     parser.add_argument("--passes", type=int, default=5)

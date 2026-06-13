@@ -9,13 +9,22 @@ Measures:
 from __future__ import annotations
 
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Awaitable
+from typing import Any
 
 PROMPTS = [
-    {"id": "cr1", "prompt": "List 10 unusual uses for a paperclip.", "common_answers": {"bookmark", "lock pick", "earring", "zipper pull", "reset button"}},
+    {
+        "id": "cr1",
+        "prompt": "List 10 unusual uses for a paperclip.",
+        "common_answers": {"bookmark", "lock pick", "earring", "zipper pull", "reset button"},
+    },
     {"id": "cr2", "prompt": "Invent 5 new words and define them.", "common_answers": set()},
-    {"id": "cr3", "prompt": "Describe 5 ways the world would be different if humans could fly.", "common_answers": {"no cars", "no roads", "tall buildings", "no airports"}},
+    {
+        "id": "cr3",
+        "prompt": "Describe 5 ways the world would be different if humans could fly.",
+        "common_answers": {"no cars", "no roads", "tall buildings", "no airports"},
+    },
 ]
 
 
@@ -26,8 +35,8 @@ class EvalResult:
 
 
 def _count_items(text: str) -> list[str]:
-    lines = [l.strip() for l in text.split("\n") if l.strip()]
-    items = [l for l in lines if re.match(r"^[\d\-\*\•]", l) or len(l) > 10]
+    lines = [line.strip() for line in text.split("\n") if line.strip()]
+    items = [line for line in lines if re.match(r"^[\d\-\*\•]", line) or len(line) > 10]
     return items if items else lines
 
 
@@ -44,7 +53,9 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_prompts: int = 3
         fluency = min(30, len(items) * 6)
 
         # Flexibility: how many distinct first words (proxy for categories)
-        first_words = set(item.split()[1] if len(item.split()) > 1 else item.split()[0] for item in items)
+        first_words = {
+            item.split()[1] if len(item.split()) > 1 else item.split()[0] for item in items
+        }
         flexibility = min(30, len(first_words) * 8)
 
         # Originality: how many items are NOT in common answers

@@ -3,7 +3,7 @@ id: SPEC-175
 title: Task progress webhook (conductor-router compatibility)
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: AC Defined
 created: 2026-05-13
 accepted: 2026-05-13
 implemented: 2026-05-13
@@ -14,8 +14,6 @@ implements: []
 related:
   - maistro-engine#ADR-018
   - maistro-engine#SPEC-178
-source:
-  - potential-dead-code/code-worth-implementing-from-Project-mAIstro/conductor-orchestrator/progress.py
 contracts:
   - boundary
   - behavioral
@@ -24,6 +22,13 @@ tests:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
+  - status: Accepted
+    date: 2026-05-13
+  - status: AC Defined
+    date: 2026-05-13
 ---
 
 # SPEC-175: Task progress webhook
@@ -70,7 +75,11 @@ Port the behavior into **`maistro-core`** as an optional, injectable **`Progress
 - `maistro.tasks.progress_webhook.payload_from_task(task: TaskResponse) -> ConductorProgressPayload`
 - `TaskRunner(..., progress_webhook: ProgressWebhookNotifier | None = None)` — when set, runner invokes notifier at defined lifecycle points (awaited, bounded by client timeout).
 
-## Acceptance criteria
+## Acceptance Criteria
+
+- **AC-1**: When `TASK_PROGRESS_WEBHOOK_URL` is unset or empty, no outbound HTTP requests are made for progress mirroring.
+- **AC-2**: When `TASK_PROGRESS_WEBHOOK_URL` points to a reachable HTTP server and a task transitions through planning and coding, the server receives at least one POST whose JSON includes `task_id`, `status`, `current_step`, `steps_total`, `steps_completed`, `details`, and `error` fields.
+- **AC-3**: When `TASK_PROGRESS_WEBHOOK_URL` points to a blackhole or returns 500, the task still completes successfully and no exception propagates from the webhook layer.
 
 ### BDD — feature: optional progress webhook
 

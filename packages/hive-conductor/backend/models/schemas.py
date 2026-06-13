@@ -12,6 +12,7 @@ class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     role: Literal["user", "assistant", "system", "tool"]
     content: str
     timestamp: datetime | None = None
@@ -23,6 +24,7 @@ class ChatSession(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     title: str
     messages: list[ChatMessage] = Field(default_factory=list)
     created_at: datetime
@@ -33,6 +35,7 @@ class ChatSessionSummary(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     title: str
     message_count: int
     updated_at: datetime
@@ -53,6 +56,7 @@ class Mission(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     name: str
     description: str
     status: Literal["pending", "running", "completed", "failed", "paused"]
@@ -73,6 +77,7 @@ class MissionStep(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     mission_id: str
     name: str
     description: str
@@ -89,6 +94,7 @@ class Schedule(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     name: str
     description: str
     cron_expression: str
@@ -104,6 +110,7 @@ class Skill(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     name: str
     description: str
     version: str
@@ -121,6 +128,7 @@ class Agent(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     name: str
     description: str
     model: str
@@ -142,6 +150,7 @@ class MCPServer(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     name: str
     description: str
     url: str
@@ -156,6 +165,7 @@ class MCPTool(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     server_id: str
     name: str
     description: str
@@ -167,6 +177,7 @@ class Container(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     name: str
     image: str
     status: Literal["running", "stopped", "starting", "stopping", "error", "restarting"]
@@ -185,6 +196,7 @@ class MemoryEntry(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     key: str
     value: str
     namespace: str = "default"
@@ -204,6 +216,20 @@ class MemoryNamespace(BaseModel):
     size_bytes: int
 
 
+class CapabilitySetting(BaseModel):
+    """Operator-chosen state for one capability slot (SPEC-184).
+
+    The registry holds *what is installed*; this holds *what is active* — kept in
+    settings so toggles survive restart and ride the existing PATCH path.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = True
+    active_provider: str | None = None
+    provider_settings: dict[str, Any] = Field(default_factory=dict)
+
+
 class SettingsModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -217,12 +243,14 @@ class SettingsModel(BaseModel):
     auto_save_sessions: bool = True
     telemetry_enabled: bool = False
     log_level: Literal["debug", "info", "warn", "error"] = "debug"
+    capabilities: dict[str, CapabilitySetting] = Field(default_factory=dict)
 
 
 class HiveUser(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str
+    user_id: str = ""
     username: str
     password_hash: str
     role: Literal["admin", "user"]

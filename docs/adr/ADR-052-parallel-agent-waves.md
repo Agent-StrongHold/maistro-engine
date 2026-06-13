@@ -23,6 +23,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
 ---
 
 # ADR-052: Parallel agent waves — per-wave branch isolation and fan-in merge
@@ -93,13 +96,13 @@ wave:
 - [ ] Metric `maistro_wave_merge_conflicts_total{resolver}` per ADR-037.
 - [ ] Wave handles persisted on `TaskRecord` (ADR-018) for crash recovery (ADR-056).
 
-## Open questions
+## Resolved decisions (v0)
 
-1. **Max parallel ceiling.** Substrate hard cap vs recipe-only? Recommend recipe-declared with substrate cap (16) as a safety net.
-2. **Cross-wave communication mid-execution.** Recommend explicitly *no* — waves only see each other after fan-in. A wave needing another wave's output should be a separate task.
-3. **Wave-internal parallelism.** Each wave is internally sequential for v0. Nested fan-out deferred.
-4. **Speculative wave execution.** Running waves before all gates resolve. Out of scope; defer.
-5. **Merge resolver agent's tool surface.** Meta-resolver invocation needs read access to both branches but should not have write access elsewhere. Sentinel policy applies.
+1. **Max parallel ceiling → recipe-declared, substrate cap 16.** The recipe declares wave width; the substrate enforces a hard safety cap of 16.
+2. **Cross-wave communication mid-execution → none.** Waves see each other only after fan-in; a wave needing another's output is modelled as a separate task.
+3. **Wave-internal parallelism → sequential (v0).** Each wave runs internally sequential; nested fan-out is **deferred**.
+4. **Speculative wave execution → deferred.** Running waves before all gates resolve is out of scope for v0.
+5. **Merge-resolver tool surface → read-both, no other writes.** The meta-resolver gets read access to both branches and no write access elsewhere; Sentinel policy enforces it.
 
 ## Source references
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from maistro_bootstrap.plan import build_install_plan
 from maistro_bootstrap.schema import parse_answers_dict
 
@@ -21,6 +23,7 @@ def test_plan_includes_compose_profile_hints() -> None:
     assert any("observability" in h for h in hints)
 
 
+@pytest.mark.ac("SPEC-180/AC-1")
 def test_golden_plan_shape() -> None:
     raw = {
         "schema_version": "1",

@@ -59,7 +59,9 @@ class TestCredentialRecord:
 
 class TestSelectionStrategies:
     def test_fill_first_selects_first_available(self):
-        pool = CredentialPool("openai", [_rec("a"), _rec("b"), _rec("c")], SelectionStrategy.FILL_FIRST)
+        pool = CredentialPool(
+            "openai", [_rec("a"), _rec("b"), _rec("c")], SelectionStrategy.FILL_FIRST
+        )
         assert pool.select().key_id == "a"
 
     def test_fill_first_respects_priority_order(self):
@@ -129,7 +131,11 @@ class TestSelectionStrategies:
     def test_least_used_breaks_ties_by_priority(self):
         pool = CredentialPool(
             "openai",
-            [_rec("c", use_count=5, priority=10), _rec("a", use_count=5, priority=1), _rec("b", use_count=5, priority=5)],
+            [
+                _rec("c", use_count=5, priority=10),
+                _rec("a", use_count=5, priority=1),
+                _rec("b", use_count=5, priority=5),
+            ],
             SelectionStrategy.LEAST_USED,
         )
         assert pool.select().key_id == "a"
@@ -139,6 +145,7 @@ class TestAutomaticRotation:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_rotate_on_429(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
+
         async def call_fn(cred: CredentialRecord):
             if cred.key_id == "a":
                 raise _HttpError("Rate limit exceeded", 429)
@@ -154,6 +161,7 @@ class TestAutomaticRotation:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_429_default_cooldown_is_60_seconds(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
+
         async def call_fn(cred: CredentialRecord):
             if cred.key_id == "a":
                 raise _HttpError("Rate limit exceeded", 429)
@@ -167,6 +175,7 @@ class TestAutomaticRotation:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_429_with_retry_after_header(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
+
         async def call_fn(cred: CredentialRecord):
             if cred.key_id == "a":
                 raise _HttpError("Slow down", 429, headers={"retry-after": "30"})
@@ -180,6 +189,7 @@ class TestAutomaticRotation:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_429_retry_after_capped_at_60(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
+
         async def call_fn(cred: CredentialRecord):
             if cred.key_id == "a":
                 raise _HttpError("Slow down", 429, headers={"retry-after": "300"})
@@ -194,6 +204,7 @@ class TestAutomaticRotation:
     async def test_inner_loop_retries_transient(self, _mock_sleep):
         pool = _pool(["a"])
         calls: list[str] = []
+
         async def call_fn(cred: CredentialRecord):
             calls.append(cred.key_id)
             if len(calls) == 1:
@@ -213,6 +224,7 @@ class TestAutomaticRotation:
     async def test_transient_errors_set_no_cooldown(self, _mock_sleep):
         pool = _pool(["a"])
         attempt = 0
+
         async def call_fn(cred: CredentialRecord):
             nonlocal attempt
             attempt += 1
@@ -234,10 +246,13 @@ class TestAutomaticRotation:
 
 class TestPoolExhaustion:
     def test_all_keys_in_cooldown(self):
-        pool = CredentialPool("openai", [
-            _rec("a", cooldown_until=time.monotonic() + 30),
-            _rec("b", cooldown_until=time.monotonic() + 120),
-        ])
+        pool = CredentialPool(
+            "openai",
+            [
+                _rec("a", cooldown_until=time.monotonic() + 30),
+                _rec("b", cooldown_until=time.monotonic() + 120),
+            ],
+        )
         with pytest.raises(PoolExhaustedError) as exc_info:
             pool.select()
         err = exc_info.value
@@ -260,17 +275,22 @@ class TestPoolExhaustion:
         assert exc_info.value.total_keys == 1
 
     def test_error_contains_provider(self):
-        pool = CredentialPool("anthropic", [_rec("x", provider="anthropic", cooldown_until=time.monotonic() + 60)])
+        pool = CredentialPool(
+            "anthropic", [_rec("x", provider="anthropic", cooldown_until=time.monotonic() + 60)]
+        )
         with pytest.raises(PoolExhaustedError) as exc_info:
             pool.select()
         assert exc_info.value.provider == "anthropic"
 
     def test_mixed_blocked_and_cooldown(self):
-        pool = CredentialPool("openai", [
-            _rec("a", blocked=True),
-            _rec("b", cooldown_until=time.monotonic() + 30),
-            _rec("c", cooldown_until=time.monotonic() + 60),
-        ])
+        pool = CredentialPool(
+            "openai",
+            [
+                _rec("a", blocked=True),
+                _rec("b", cooldown_until=time.monotonic() + 30),
+                _rec("c", cooldown_until=time.monotonic() + 60),
+            ],
+        )
         with pytest.raises(PoolExhaustedError) as exc_info:
             pool.select()
         err = exc_info.value
@@ -319,7 +339,9 @@ class TestCooldownAndRecovery:
         assert 0 < remaining <= 60
 
     def test_clear_cooldown_resets_key(self):
-        rec = _rec("a", cooldown_until=time.monotonic() + 60, last_status=429, last_error_code="rate_limit")
+        rec = _rec(
+            "a", cooldown_until=time.monotonic() + 60, last_status=429, last_error_code="rate_limit"
+        )
         pool = CredentialPool("openai", [rec])
         pool.clear_cooldown("a")
         assert rec.cooldown_until is None
@@ -329,10 +351,13 @@ class TestCooldownAndRecovery:
         assert rec.last_error_code is None
 
     def test_clear_all_cooldowns(self):
-        pool = CredentialPool("openai", [
-            _rec("a", cooldown_until=time.monotonic() + 30, last_status=429),
-            _rec("b", blocked=True, last_status=401),
-        ])
+        pool = CredentialPool(
+            "openai",
+            [
+                _rec("a", cooldown_until=time.monotonic() + 30, last_status=429),
+                _rec("b", blocked=True, last_status=401),
+            ],
+        )
         pool.clear_all_cooldowns()
         assert all(e.is_available for e in pool._entries)
         assert all(e.last_status is None for e in pool._entries)
@@ -340,11 +365,14 @@ class TestCooldownAndRecovery:
 
 class TestPoolStats:
     def test_stats_reflect_current_state(self):
-        pool = CredentialPool("openai", [
-            _rec("a", use_count=100, error_count=2),
-            _rec("b", use_count=80, cooldown_until=time.monotonic() + 30),
-            _rec("c", blocked=True),
-        ])
+        pool = CredentialPool(
+            "openai",
+            [
+                _rec("a", use_count=100, error_count=2),
+                _rec("b", use_count=80, cooldown_until=time.monotonic() + 30),
+                _rec("c", blocked=True),
+            ],
+        )
         stats = pool.get_stats()
         assert stats.total_keys == 3
         assert stats.available_keys == 1
@@ -385,6 +413,7 @@ class TestPoolStats:
 class TestRotationIntegration:
     async def test_happy_path(self):
         pool = _pool(["a"])
+
         async def call_fn(cred: CredentialRecord):
             return "result"
 
@@ -398,6 +427,7 @@ class TestRotationIntegration:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_rotation_on_429_failure(self, _mock_sleep):
         pool = _pool(["a", "b"], SelectionStrategy.FILL_FIRST)
+
         async def call_fn(cred: CredentialRecord):
             if cred.key_id == "a":
                 raise _HttpError("Rate limit exceeded", 429)
@@ -411,6 +441,7 @@ class TestRotationIntegration:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_pool_exhaustion_from_rotation(self, _mock_sleep):
         pool = _pool(["a", "b"])
+
         async def call_fn(cred: CredentialRecord):
             raise _HttpError("Rate limit exceeded", 429)
 
@@ -421,6 +452,7 @@ class TestRotationIntegration:
 
     async def test_success_records_use_count(self):
         pool = _pool(["a"])
+
         async def call_fn(cred: CredentialRecord):
             return "ok"
 
@@ -430,6 +462,7 @@ class TestRotationIntegration:
     @patch("asyncio.sleep", new_callable=AsyncMock)
     async def test_max_key_rotations_limit(self, _mock_sleep):
         pool = _pool(["a", "b", "c"])
+
         async def call_fn(cred: CredentialRecord):
             raise _HttpError("Rate limit exceeded", 429)
 
@@ -438,6 +471,7 @@ class TestRotationIntegration:
 
     async def test_rotation_result_type(self):
         pool = _pool(["a"])
+
         async def call_fn(cred: CredentialRecord):
             return 42
 

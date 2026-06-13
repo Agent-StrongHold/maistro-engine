@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -67,8 +66,8 @@ def extract() -> dict:
     }
 
     auth_src = AUTH_TYPES_PATH.read_text()
-    scope_count = auth_src.count('Scope.')
-    category_count = auth_src.count('ScopeCategory.')
+    scope_count = auth_src.count("Scope.")
+    category_count = auth_src.count("ScopeCategory.")
     result["auth"] = {
         "scope_count": scope_count,
         "category_count": category_count,

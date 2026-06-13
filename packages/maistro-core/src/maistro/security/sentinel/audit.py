@@ -22,6 +22,7 @@ class InMemoryAuditLog:
         *,
         user_id: str | None = None,
         agent_id: str | None = None,
+        org_id: str = "",
         limit: int = 100,
     ) -> list[AuditEntry]:
         result = self._entries

@@ -27,6 +27,19 @@ class HardwarePreset(BaseModel):
     max_agents: int
     description: str = ""
 
+    def to_config(self) -> dict[str, Any]:
+        """Render this preset as a conductor state-config dict."""
+        return {
+            "hardware_preset": self.name,
+            "conductor_data_dir": "~/.conductor",
+            "conductor_state_db": "~/.conductor/state.db",
+            "db_backend": self.db_backend,
+            "reactor_enabled": self.reactor_enabled,
+            "max_agents": self.max_agents,
+            "networking": self.networking,
+            "gpu_available": self.gpu_available,
+        }
+
 
 HARDWARE_PRESETS: dict[str, HardwarePreset] = {
     "potato": HardwarePreset(
@@ -102,19 +115,3 @@ def resolve_preset(
 
 def preset_to_config(preset: HardwarePreset) -> dict[str, Any]:
     return preset.to_config()
-
-
-def _add_to_config(self: HardwarePreset) -> dict[str, Any]:
-    return {
-        "hardware_preset": self.name,
-        "conductor_data_dir": "~/.conductor",
-        "conductor_state_db": "~/.conductor/state.db",
-        "db_backend": self.db_backend,
-        "reactor_enabled": self.reactor_enabled,
-        "max_agents": self.max_agents,
-        "networking": self.networking,
-        "gpu_available": self.gpu_available,
-    }
-
-
-HardwarePreset.to_config = _add_to_config  # type: ignore[attr-defined]

@@ -20,6 +20,9 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-25
 ---
 
 # SPEC-013: 1kHz Reactor Loop

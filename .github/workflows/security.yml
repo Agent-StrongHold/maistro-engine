@@ -33,6 +33,12 @@ jobs:
       - name: uv sync
         run: uv sync --all-extras
 
+      # bandit is NOT a project extra (see requirements-dev-tools.txt) — install
+      # it into the synced venv; semgrep carries conflicting pins, so it runs
+      # isolated via uvx below.
+      - name: install SAST tools
+        run: uv pip install bandit
+
       - name: bandit (zero Medium+ on OUR code)
         run: |
           uv run bandit -r packages/maistro-core/src packages/hive-conductor/backend \
@@ -57,12 +63,13 @@ jobs:
 
       - name: semgrep (custom + p/security-audit + p/owasp-top-ten + p/secrets)
         run: |
-          uv run semgrep --metrics off \
+          set -o pipefail
+          uvx semgrep --metrics off \
             --config tools/semgrep/jfc-rules.yaml \
             --config p/security-audit \
             --config p/owasp-top-ten \
             --config p/secrets \
-            --error packages/ apps/ services/ tests/ 2>&1 | tee semgrep-report.txt
+            --error packages/ apps/ tests/ 2>&1 | tee semgrep-report.txt
 
       - name: gitleaks (full-history scan on main; commit-range on PR)
         uses: gitleaks/gitleaks-action@v2
@@ -83,9 +90,16 @@ jobs:
       - name: uv sync
         run: uv sync --all-extras
 
+      # pip-audit/safety are NOT project extras (see requirements-dev-tools.txt).
+      - name: install supply-chain tools
+        run: uv pip install pip-audit safety
+
       - name: pip-audit (strict; gate the known CVE list)
         run: |
-          uv run pip-audit --strict --format=json > pip-audit.json || true
+          # Workspace-local editable packages aren't on PyPI — pip-audit --strict
+          # refuses them, so audit the frozen third-party set (same as ci.yml).
+          uv pip freeze --exclude-editable > /tmp/deps.txt
+          uv run pip-audit --strict --format=json -r /tmp/deps.txt > pip-audit.json || true
           uv run python -c "
           import json, sys
           data = json.load(open('pip-audit.json'))

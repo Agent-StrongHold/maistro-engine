@@ -50,9 +50,7 @@ class Reactor:
     def is_running(self) -> bool:
         return self._running
 
-    def register_source(
-        self, name: str, handler: Callable[[Any], Awaitable[None]]
-    ) -> None:
+    def register_source(self, name: str, handler: Callable[[Any], Awaitable[None]]) -> None:
         self._handlers[name] = handler
 
     def set_bouncer(self, bouncer: Callable[[Any], Awaitable[bool]]) -> None:
@@ -161,9 +159,7 @@ class Reactor:
         try:
             while self._running:
                 try:
-                    source, data = await asyncio.wait_for(
-                        self._event_queue.get(), timeout=0.1
-                    )
+                    source, data = await asyncio.wait_for(self._event_queue.get(), timeout=0.1)
                 except TimeoutError:
                     continue
 

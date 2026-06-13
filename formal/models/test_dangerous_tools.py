@@ -133,7 +133,17 @@ def test_safe_commands_empty(cmd):
 
 @given(
     tool=st.sampled_from(
-        ["exec", "spawn", "shell", "sessions_spawn", "sessions_send", "fs_delete", "fs_move", "apply_patch", "sandbox_destroy"]
+        [
+            "exec",
+            "spawn",
+            "shell",
+            "sessions_spawn",
+            "sessions_send",
+            "fs_delete",
+            "fs_move",
+            "apply_patch",
+            "sandbox_destroy",
+        ]
     )
 )
 @settings(max_examples=10)
@@ -141,11 +151,7 @@ def test_dangerous_tool_names_detected(tool):
     assert is_dangerous_tool(tool)
 
 
-@given(
-    tool=st.sampled_from(
-        ["read", "write", "search", "list", "get", "put", "fetch", "render", "display", "compute"]
-    )
-)
+@given(tool=st.sampled_from(["read", "write", "search", "list", "get", "put", "fetch", "render", "display", "compute"]))
 @settings(max_examples=10)
 def test_safe_tool_names_pass(tool):
     assert not is_dangerous_tool(tool)
@@ -160,7 +166,9 @@ def test_dangerous_tool_case_insensitive(tool):
 
 
 @given(
-    path=st.sampled_from(["/etc", "/proc", "/sys", "/dev", "/root", "/boot", "/var/run/docker.sock", "/run/docker.sock"])
+    path=st.sampled_from(
+        ["/etc", "/proc", "/sys", "/dev", "/root", "/boot", "/var/run/docker.sock", "/run/docker.sock"]
+    )
 )
 @settings(max_examples=10)
 def test_blocked_paths_rejected(path):
@@ -186,11 +194,7 @@ def test_blocked_subdirs_rejected(path):
     assert is_blocked_path(path)
 
 
-@given(
-    path=st.sampled_from(
-        ["/home/user/project", "/workspace/src", "/tmp/build", "/var/log/app", "/opt/tools/bin"]
-    )
-)
+@given(path=st.sampled_from(["/home/user/project", "/workspace/src", "/tmp/build", "/var/log/app", "/opt/tools/bin"]))
 @settings(max_examples=10)
 def test_non_blocked_paths_allowed(path):
     assert not is_blocked_path(path)
@@ -217,9 +221,7 @@ def test_all_blocked_paths_absolute():
         assert path.startswith("/"), f"Blocked path not absolute: {path}"
 
 
-@given(
-    cmd=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N")))
-)
+@given(cmd=st.text(min_size=1, max_size=50, alphabet=st.characters(whitelist_categories=("L", "N"))))
 @settings(max_examples=100)
 def test_random_safe_commands(cmd):
     result = is_dangerous_command(cmd)

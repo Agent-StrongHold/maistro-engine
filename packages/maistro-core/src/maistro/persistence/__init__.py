@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-import asyncpg
+import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
 
 logger = logging.getLogger("maistro.persistence")
 
@@ -13,7 +13,7 @@ _pool: asyncpg.Pool | None = None
 
 async def get_pool(database_url: str) -> asyncpg.Pool:
     """Get or create the connection pool."""
-    global _pool  # noqa: PLW0603
+    global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(
             database_url,
@@ -27,7 +27,7 @@ async def get_pool(database_url: str) -> asyncpg.Pool:
 
 async def close_pool() -> None:
     """Close the connection pool."""
-    global _pool  # noqa: PLW0603
+    global _pool
     if _pool is not None:
         await _pool.close()
         _pool = None

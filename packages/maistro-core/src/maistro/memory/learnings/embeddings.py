@@ -117,16 +117,21 @@ class HybridLearningStore:
         user_text: str,
         *,
         agent_id: str | None = None,
+        org_id: str = "",
         max_results: int = 10,
     ) -> list[Learning]:
         """Hybrid search: keyword score + embedding cosine similarity.
 
         Combined score = keyword_score * KEYWORD_WEIGHT + cosine_sim * EMBEDDING_WEIGHT
         Falls back to keyword-only if embedding client unavailable.
+
+        ``org_id`` is forwarded to the underlying store so org-scoped isolation
+        (required by the LearningStore protocol) is preserved through hybrid search.
         """
         keyword_results = await self._store.find_relevant(
             user_text,
             agent_id=agent_id,
+            org_id=org_id,
             max_results=max_results * 2,
         )
 
@@ -156,9 +161,11 @@ class HybridLearningStore:
                     if learning.id is not None:
                         self._embedding_cache[learning.id] = vec
                 except Exception as _exc:
-                    __import__('logging').getLogger('maistro.memory.learnings.embeddings').warning(
-                        'error_swallowed file=%s line=%d: %s',
-                        'packages/maistro-core/src/maistro/memory/learnings/embeddings.py', 158, _exc,
+                    __import__("logging").getLogger("maistro.memory.learnings.embeddings").warning(
+                        "error_swallowed file=%s line=%d: %s",
+                        "packages/maistro-core/src/maistro/memory/learnings/embeddings.py",
+                        158,
+                        _exc,
                     )
                     pass
 

@@ -8,6 +8,7 @@ Used as fallback when AI vision analysis is unavailable or blocked.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from PIL import Image
@@ -45,99 +46,80 @@ def _rgb_to_hsl(r: int, g: int, b: int) -> tuple[float, float, float]:
     return (h * 360, s * 100, lum * 100)
 
 
+# Ordered (predicate, label) rules for HSL-based classification. The first
+# matching rule wins, preserving the original sequential if-ladder semantics.
+_HslRule = tuple[Callable[[float, float, float], bool], str]
+
+_HAIR_COLOR_RULES: list[_HslRule] = [
+    (lambda h, s, lum: lum < 15, "very dark black"),
+    (lambda h, s, lum: lum < 25 and s < 30, "black"),
+    (lambda h, s, lum: lum < 30 and 15 < h < 40, "very dark brown"),
+    (lambda h, s, lum: lum < 40 and 10 < h < 45 and s > 20, "dark brown"),
+    (lambda h, s, lum: lum < 50 and 10 < h < 45, "brown"),
+    (lambda h, s, lum: lum < 50 and 5 < h < 20 and s < 25, "dark ash brown"),
+    (lambda h, s, lum: lum < 55 and 15 < h < 40 and s > 30, "medium brown"),
+    (lambda h, s, lum: 40 <= lum < 55 and 20 < h < 50 and s > 40, "auburn"),
+    (lambda h, s, lum: 35 <= lum < 55 and 5 < h < 25 and s > 50, "reddish brown"),
+    (lambda h, s, lum: 40 <= lum < 55 and 10 < h < 30 and s < 25, "ash blonde"),
+    (lambda h, s, lum: 50 <= lum < 70 and 15 < h < 45 and s > 25, "light brown or dark blonde"),
+    (lambda h, s, lum: 55 <= lum < 75 and 20 < h < 50, "dirty blonde"),
+    (lambda h, s, lum: 60 <= lum < 80 and s < 25, "blonde"),
+    (lambda h, s, lum: 60 <= lum < 80 and 20 < h < 50 and s > 30, "golden blonde"),
+    (lambda h, s, lum: 70 <= lum < 90 and s < 20, "light blonde"),
+    (lambda h, s, lum: lum >= 75, "very light blonde or white"),
+    (lambda h, s, lum: 0 < h < 15 and s > 40, "red"),
+    (lambda h, s, lum: 5 < h < 30 and s > 30 and lum < 50, "ginger"),
+    (lambda h, s, lum: s < 15 and lum > 40, "grey or silver"),
+]
+
+_SKIN_TONE_RULES: list[_HslRule] = [
+    (lambda h, s, lum: lum < 30, "deep dark brown"),
+    (lambda h, s, lum: lum < 40 and 15 < h < 35, "dark brown"),
+    (lambda h, s, lum: lum < 50 and 15 < h < 40, "warm medium brown"),
+    (lambda h, s, lum: lum < 55 and 10 < h < 35, "medium olive or tan"),
+    (lambda h, s, lum: lum < 60 and 15 < h < 40 and s > 30, "warm light brown"),
+    (lambda h, s, lum: lum < 65 and 10 < h < 35, "light tan or olive"),
+    (lambda h, s, lum: lum < 70 and 15 < h < 40, "warm fair with golden undertones"),
+    (lambda h, s, lum: lum < 75 and s > 20, "fair with warm undertones"),
+    (lambda h, s, lum: lum < 75, "fair with cool undertones"),
+    (lambda h, s, lum: lum < 80, "very fair or porcelain"),
+]
+
+_EYE_COLOR_RULES: list[_HslRule] = [
+    (lambda h, s, lum: lum < 20, "very dark brown, almost black"),
+    (lambda h, s, lum: lum < 30 and s < 40, "dark brown"),
+    (lambda h, s, lum: lum < 40 and s < 50, "brown"),
+    (lambda h, s, lum: lum < 45 and 20 < h < 50 and s > 30, "warm brown with amber flecks"),
+    (lambda h, s, lum: 25 < h < 50 and s > 40 and 35 < lum < 55, "hazel"),
+    (lambda h, s, lum: 20 < h < 45 and s > 50 and lum > 40, "amber"),
+    (lambda h, s, lum: 50 < h < 170 and s > 20 and 25 < lum < 55, "green"),
+    (lambda h, s, lum: 170 < h < 260 and s > 15 and 20 < lum < 50, "blue"),
+    (lambda h, s, lum: 170 < h < 260 and s > 15 and lum >= 50, "light blue"),
+    (lambda h, s, lum: 170 < h < 260 and s < 15, "grey-blue"),
+    (lambda h, s, lum: s < 15 and lum < 40, "dark grey"),
+    (lambda h, s, lum: s < 20 and lum >= 40, "grey"),
+]
+
+
+def _first_match(rules: list[_HslRule], h: float, s: float, lum: float, default: str) -> str:
+    """Return the label of the first rule whose predicate matches, else default."""
+    for predicate, label in rules:
+        if predicate(h, s, lum):
+            return label
+    return default
+
+
 def _classify_hair_color(h: float, s: float, lum: float) -> str:
-    if lum < 15:
-        return "very dark black"
-    if lum < 25 and s < 30:
-        return "black"
-    if lum < 30 and 15 < h < 40:
-        return "very dark brown"
-    if lum < 40 and 10 < h < 45 and s > 20:
-        return "dark brown"
-    if lum < 50 and 10 < h < 45:
-        return "brown"
-    if lum < 50 and 5 < h < 20 and s < 25:
-        return "dark ash brown"
-    if lum < 55 and 15 < h < 40 and s > 30:
-        return "medium brown"
-    if 40 <= lum < 55 and 20 < h < 50 and s > 40:
-        return "auburn"
-    if 35 <= lum < 55 and 5 < h < 25 and s > 50:
-        return "reddish brown"
-    if 40 <= lum < 55 and 10 < h < 30 and s < 25:
-        return "ash blonde"
-    if 50 <= lum < 70 and 15 < h < 45 and s > 25:
-        return "light brown or dark blonde"
-    if 55 <= lum < 75 and 20 < h < 50:
-        return "dirty blonde"
-    if 60 <= lum < 80 and s < 25:
-        return "blonde"
-    if 60 <= lum < 80 and 20 < h < 50 and s > 30:
-        return "golden blonde"
-    if 70 <= lum < 90 and s < 20:
-        return "light blonde"
-    if lum >= 75:
-        return "very light blonde or white"
-    if 0 < h < 15 and s > 40:
-        return "red"
-    if 5 < h < 30 and s > 30 and lum < 50:
-        return "ginger"
-    if s < 15 and lum > 40:
-        return "grey or silver"
-    return "brown"
+    return _first_match(_HAIR_COLOR_RULES, h, s, lum, "brown")
 
 
 def _classify_skin_tone(h: float, s: float, lum: float) -> str:
-    if lum < 30:
-        return "deep dark brown"
-    if lum < 40 and 15 < h < 35:
-        return "dark brown"
-    if lum < 50 and 15 < h < 40:
-        return "warm medium brown"
-    if lum < 55 and 10 < h < 35:
-        return "medium olive or tan"
-    if lum < 60 and 15 < h < 40 and s > 30:
-        return "warm light brown"
-    if lum < 65 and 10 < h < 35:
-        return "light tan or olive"
-    if lum < 70 and 15 < h < 40:
-        return "warm fair with golden undertones"
-    if lum < 75 and s > 20:
-        return "fair with warm undertones"
-    if lum < 75:
-        return "fair with cool undertones"
-    if lum < 80:
-        return "very fair or porcelain"
-    return "very fair or pale"
+    return _first_match(_SKIN_TONE_RULES, h, s, lum, "very fair or pale")
 
 
 def _classify_eye_color(r: int, g: int, b: int) -> str:
     h, s, lum = _rgb_to_hsl(r, g, b)
-    if lum < 20:
-        return "very dark brown, almost black"
-    if lum < 30 and s < 40:
-        return "dark brown"
-    if lum < 40 and s < 50:
-        return "brown"
-    if lum < 45 and 20 < h < 50 and s > 30:
-        return "warm brown with amber flecks"
-    if 25 < h < 50 and s > 40 and 35 < lum < 55:
-        return "hazel"
-    if 20 < h < 45 and s > 50 and lum > 40:
-        return "amber"
-    if 50 < h < 170 and s > 20 and 25 < lum < 55:
-        return "green"
-    if 170 < h < 260 and s > 15 and 20 < lum < 50:
-        return "blue"
-    if 170 < h < 260 and s > 15 and lum >= 50:
-        return "light blue"
-    if 170 < h < 260 and s < 15:
-        return "grey-blue"
-    if s < 15 and lum < 40:
-        return "dark grey"
-    if s < 20 and lum >= 40:
-        return "grey"
-    return "brown"
+    return _first_match(_EYE_COLOR_RULES, h, s, lum, "brown")
 
 
 def _sample_region(

@@ -22,9 +22,12 @@ contracts:
   - boundary
   - cross-service
 tests: []
-layer: UserClient
+layer: Ability
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-09
 ---
 
 # ADR-045: Canvas Studio ↔ Engine Cutover

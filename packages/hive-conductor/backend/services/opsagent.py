@@ -7,9 +7,9 @@ Exposes OpsAgent as tools the PM chat can use:
 - Test it
 - Optimize it
 """
+
 from __future__ import annotations
 
-import json
 import logging
 import os
 from typing import Any
@@ -18,7 +18,7 @@ import httpx
 
 logger = logging.getLogger("hive.opsagent")
 
-OPSAGENT_BASE = os.environ.get("OPSAGENT_URL", "https://opsagent.example.com/api/v1")
+OPSAGENT_BASE = os.environ.get("OPSAGENT_URL", "")
 
 
 def _headers() -> dict[str, str]:
@@ -29,7 +29,9 @@ def _headers() -> dict[str, str]:
 async def create_team(team_id: str) -> dict[str, Any]:
     """Create a new chatbot team in OpsAgent."""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.post(f"{OPSAGENT_BASE}/teams", json={"teamID": team_id}, headers=_headers())
+        r = await client.post(
+            f"{OPSAGENT_BASE}/teams", json={"teamID": team_id}, headers=_headers()
+        )
         if r.status_code in (200, 201):
             return {"created": True, "team_id": team_id}
         return {"error": f"Failed to create team: {r.status_code} {r.text[:200]}"}
@@ -112,14 +114,18 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
 
         # Poll for completion
         import asyncio
-        for _ in range(30):  # max 30 polls × 2s = 60s
+
+        for _ in range(30):  # max 30 polls x 2s = 60s
             await asyncio.sleep(2)
             r = await client.get(f"{OPSAGENT_BASE}/chatbot/chat/{job_id}", headers=_headers())
             if r.status_code != 200:
                 continue
             result = r.json()
             if result.get("status") == "COMPLETED":
-                return {"response": result.get("response", ""), "conversation_id": result.get("conversation_id")}
+                return {
+                    "response": result.get("response", ""),
+                    "conversation_id": result.get("conversation_id"),
+                }
             if result.get("status") == "FAILED":
                 return {"error": result.get("error", "Job failed")}
 
@@ -129,7 +135,9 @@ async def chat(message: str, team_id: str = "", conversation_id: str = "") -> di
 async def get_team_config(team_id: str) -> dict[str, Any]:
     """Get full team configuration (model, tools, etc)."""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(f"{OPSAGENT_BASE}/ops-agent/teams/{team_id}/config", headers=_headers())
+        r = await client.get(
+            f"{OPSAGENT_BASE}/ops-agent/teams/{team_id}/config", headers=_headers()
+        )
         if r.status_code == 200:
             return r.json()
         return {"error": f"Failed to get config: {r.status_code}"}

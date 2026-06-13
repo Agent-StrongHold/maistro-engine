@@ -21,6 +21,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-07
+  - status: Accepted
+    date: 2026-05-07
 ---
 
 # ADR-031: Front-Matter and Registry Conventions
@@ -61,7 +66,8 @@ tests:
   - path/to/test_file.py::test_func
 
 # Classification
-layer: Foundation | Orchestration | Agents | Tools | Memory | Observability | Reliability | Governance | UserClient
+# (Evolve/Crypto/Connectivity/Ability/Identity added by ADR-098.)
+layer: Foundation | Orchestration | Agents | Tools | Memory | Observability | Reliability | Governance | UserClient | Evolve | Crypto | Connectivity | Ability | Identity
 owners:
   - '@github-handle'
 ---

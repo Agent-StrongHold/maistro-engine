@@ -1,3 +1,29 @@
+---
+id: ADR-007
+title: VariantSelector (Thompson sampling)
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-006
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts: [boundary]
+tests: []
+layer: Orchestration
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Accepted
+    date: 2026-04-26
+---
+
 # ADR-007: VariantSelector (Thompson sampling)
 
 **Status:** Accepted  

@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/auth/provider.py
-# hypothesis_version: 6.151.10
-
-['Bearer ', 'authorization', 'sk-svc-', 'x-service-key']

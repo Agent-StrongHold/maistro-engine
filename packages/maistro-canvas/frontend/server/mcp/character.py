@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -14,8 +15,7 @@ logger = logging.getLogger(__name__)
 
 CONDUCTOR_URL = "http://localhost:8100"
 LITELLM_URL = "http://localhost:4000"
-LITELLM_KEY = "sk-conductor-litellm-2026"
-ROUTER_KEY = "sk-conductor-router-2026"
+LITELLM_KEY = os.environ.get("LITELLM_API_KEY", "")
 
 VISION_MODEL = "google-gemini-2.5-flash"
 IMAGE_MODEL = "google-gemini-2.5-flash-image"
@@ -149,6 +149,49 @@ def _bytes_to_pil(data: bytes) -> Image.Image:
     return Image.open(io.BytesIO(data))
 
 
+def _resolve_image_url(
+    photo_path: str | Path | None,
+    photo_bytes: bytes | None,
+    photo_data_url: str | None,
+) -> str:
+    """Resolve a data/URL string for the vision request from one of the inputs."""
+    if photo_data_url:
+        return photo_data_url
+    if photo_bytes:
+        b64 = base64.b64encode(photo_bytes).decode()
+        return f"data:image/jpeg;base64,{b64}"
+    if photo_path:
+        path = Path(photo_path)
+        img = Image.open(path)
+        fmt = img.format or "PNG"
+        return _pil_to_data_url(img, fmt)
+    raise ValueError("Must provide one of: photo_path, photo_bytes, photo_data_url")
+
+
+def _extract_json_object(text: str) -> str:
+    """Strip any markdown code fence and isolate the JSON object in ``text``."""
+    if text.startswith("```"):
+        json_lines = []
+        in_fence = False
+        for line in text.split("\n"):
+            if line.strip().startswith("```"):
+                if in_fence:
+                    break
+                in_fence = True
+                continue
+            if in_fence:
+                json_lines.append(line)
+        text = "\n".join(json_lines).strip()
+
+    if not text.startswith("{"):
+        import re
+
+        m = re.search(r"\{[\s\S]*\}", text)
+        if m:
+            text = m.group(0)
+    return text
+
+
 def analyze_photo(
     photo_path: str | Path | None = None,
     photo_bytes: bytes | None = None,
@@ -156,18 +199,7 @@ def analyze_photo(
     child_name: str = "the child",
     child_age: int = 5,
 ) -> CharacterFeatures:
-    if photo_data_url:
-        image_url = photo_data_url
-    elif photo_bytes:
-        b64 = base64.b64encode(photo_bytes).decode()
-        image_url = f"data:image/jpeg;base64,{b64}"
-    elif photo_path:
-        path = Path(photo_path)
-        img = Image.open(path)
-        fmt = img.format or "PNG"
-        image_url = _pil_to_data_url(img, fmt)
-    else:
-        raise ValueError("Must provide one of: photo_path, photo_bytes, photo_data_url")
+    image_url = _resolve_image_url(photo_path, photo_bytes, photo_data_url)
 
     system_prompt = (
         "You are a character analysis engine. Given a photo of a child, "
@@ -209,27 +241,7 @@ def analyze_photo(
     resp.raise_for_status()
     data = resp.json()
     text = data["choices"][0]["message"]["content"].strip()
-
-    if text.startswith("```"):
-        lines = text.split("\n")
-        json_lines = []
-        in_fence = False
-        for line in lines:
-            if line.strip().startswith("```"):
-                if in_fence:
-                    break
-                in_fence = True
-                continue
-            if in_fence:
-                json_lines.append(line)
-        text = "\n".join(json_lines).strip()
-
-    if not text.startswith("{"):
-        import re
-
-        m = re.search(r"\{[\s\S]*\}", text)
-        if m:
-            text = m.group(0)
+    text = _extract_json_object(text)
 
     parsed = json.loads(text)
     return CharacterFeatures(
@@ -417,6 +429,19 @@ def build_character_prompt(features: CharacterFeatures, art_style: str = "warm w
     return "\n".join(p for p in parts if p is not None)
 
 
+def _image_from_content(content: object) -> Image.Image | None:
+    """Extract the first inline data-URL image from a chat message ``content``."""
+    if not isinstance(content, list):
+        return None
+    for part in content:
+        if isinstance(part, dict) and part.get("type") == "image_url":
+            url = part["image_url"]["url"]
+            if url.startswith("data:"):
+                b64 = url.split(",", 1)[1]
+                return _bytes_to_pil(base64.b64decode(b64))
+    return None
+
+
 def generate_character_sheet(
     features: CharacterFeatures,
     art_style: str = "warm watercolor",
@@ -459,31 +484,12 @@ def generate_character_sheet(
 
     content = data["choices"][0]["message"]["content"]
 
-    sheet_image = None
-    if isinstance(content, list):
-        for part in content:
-            if isinstance(part, dict) and part.get("type") == "image_url":
-                url = part["image_url"]["url"]
-                if url.startswith("data:"):
-                    b64 = url.split(",", 1)[1]
-                    sheet_image = _bytes_to_pil(base64.b64decode(b64))
-                    break
-    elif isinstance(content, str) and "data:image" in content:
-        pass
-
+    sheet_image = _image_from_content(content)
     if sheet_image is None:
         for choice in data.get("choices", []):
-            msg = choice.get("message", {})
-            inner = msg.get("content")
-            if isinstance(inner, list):
-                for part in inner:
-                    if isinstance(part, dict) and part.get("type") == "image_url":
-                        url = part["image_url"]["url"]
-                        if url.startswith("data:"):
-                            b64 = url.split(",", 1)[1]
-                            sheet_image = _bytes_to_pil(base64.b64decode(b64))
-                            break
-            if sheet_image:
+            inner = choice.get("message", {}).get("content")
+            sheet_image = _image_from_content(inner)
+            if sheet_image is not None:
                 break
 
     if sheet_image is None:

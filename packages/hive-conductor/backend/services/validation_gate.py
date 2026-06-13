@@ -9,6 +9,7 @@ Flow:
   4. Score variant B with eval-judge
   5. Only surface the proposal if B.score > A.score (strict improvement)
 """
+
 from __future__ import annotations
 
 import copy
@@ -24,8 +25,8 @@ async def validate_proposal(
     baseline_score: float,
 ) -> dict[str, Any]:
     """Test a proposed mutation. Returns the proposal with validation results."""
-    from services.graph_runner import execute_dag
     from services.benchmark_eval import evaluate_dag_run
+    from services.graph_runner import execute_dag
 
     # Create variant B by applying the mutation to a copy
     variant_b = copy.deepcopy(dag_data)
@@ -51,7 +52,10 @@ async def validate_proposal(
     improved = total_b > baseline_score
     logger.info(
         "validation_gate proposal=%s baseline=%.1f variant_b=%.1f improved=%s",
-        proposal.get("kind"), baseline_score, total_b, improved,
+        proposal.get("kind"),
+        baseline_score,
+        total_b,
+        improved,
     )
 
     return {
@@ -86,21 +90,26 @@ def _apply_mutation_to_dag(dag: dict[str, Any], proposal: dict[str, Any]) -> Non
 
     elif kind == "add_node":
         from uuid import uuid4
+
         new_id = str(uuid4())[:8]
-        nodes.append({
-            "id": new_id,
-            "role": "worker",
-            "name": tp.get("to_value", "New Node"),
-            "prompt": tp.get("expected_improvement", ""),
-            "model": "gemini-3.5-flash",
-            "strategy": "direct",
-        })
+        nodes.append(
+            {
+                "id": new_id,
+                "role": "worker",
+                "name": tp.get("to_value", "New Node"),
+                "prompt": tp.get("expected_improvement", ""),
+                "model": "gemini-3.5-flash",
+                "strategy": "direct",
+            }
+        )
         if target:
             edges.append({"id": str(uuid4())[:8], "from_node": target, "to_node": new_id})
 
     elif kind == "drop_node":
         dag["nodes"] = [n for n in nodes if n.get("id") != target and n.get("role") != target]
-        dag["edges"] = [e for e in edges if e.get("from_node") != target and e.get("to_node") != target]
+        dag["edges"] = [
+            e for e in edges if e.get("from_node") != target and e.get("to_node") != target
+        ]
         return
 
     dag["nodes"] = nodes
@@ -158,15 +167,15 @@ async def hill_climb_params(
 ) -> list[dict[str, Any]]:
     """Test parameter variations, return any that beat baseline."""
     import asyncio
-    results = []
 
     async def test_param(param: str, value: float) -> dict[str, Any]:
         variant = copy.deepcopy(dag_data)
         for n in variant.get("nodes", []):
             n.setdefault("config", {})[param] = value
         try:
-            from services.graph_runner import execute_dag
             from services.benchmark_eval import evaluate_dag_run
+            from services.graph_runner import execute_dag
+
             result = await execute_dag(variant)
             task = dag_data.get("description", dag_data.get("name", ""))
             score = await evaluate_dag_run(result, task)
@@ -184,7 +193,9 @@ async def hill_climb_params(
                 "topology_proposal": {
                     "kind": f"change_{param}",
                     "target_node_id": dag_data.get("nodes", [{}])[0].get("id", ""),
-                    "from_value": str(dag_data.get("nodes", [{}])[0].get("config", {}).get(param, "default")),
+                    "from_value": str(
+                        dag_data.get("nodes", [{}])[0].get("config", {}).get(param, "default")
+                    ),
                     "to_value": str(value),
                     "expected_improvement": f"{param}={value} scored {total} vs baseline {baseline_score}",
                 },
@@ -208,7 +219,7 @@ async def hill_climb_params(
 
 def _filter_above_knee(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep only variants above the quality/cost knee.
-    
+
     The knee is where marginal quality gain per unit cost drops sharply.
     Variants below the knee are expensive for minimal improvement.
     """
@@ -217,10 +228,19 @@ def _filter_above_knee(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     # Estimate cost from model (rough $/1M tokens)
     MODEL_COST = {
-        "gemini-3.1-flash-lite": 0.02, "gemini-3.5-flash": 0.20, "gemini-3.5-flash": 0.15,
-        "gemini-3.5-pro": 1.25, "gpt-4.1-nano": 0.05, "gpt-4.1-mini": 0.10,
-        "gpt-5-nano": 0.08, "gpt-5-mini": 0.15, "gpt-5.1": 0.50, "gpt-5.2": 0.75,
-        "gpt-5.4": 1.50, "gpt-5.5": 2.00, "claude-haiku-4-5": 0.25, "claude-sonnet-4-6": 1.50,
+        "gemini-3.1-flash-lite": 0.02,
+        "gemini-3.5-flash": 0.15,
+        "gemini-3.5-pro": 1.25,
+        "gpt-4.1-nano": 0.05,
+        "gpt-4.1-mini": 0.10,
+        "gpt-5-nano": 0.08,
+        "gpt-5-mini": 0.15,
+        "gpt-5.1": 0.50,
+        "gpt-5.2": 0.75,
+        "gpt-5.4": 1.50,
+        "gpt-5.5": 2.00,
+        "claude-haiku-4-5": 0.25,
+        "claude-sonnet-4-6": 1.50,
         "o4-mini": 0.30,
     }
     DEFAULT_COST = 0.20
@@ -248,7 +268,9 @@ def _filter_above_knee(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     logger.info(
         "knee_filter: %d/%d variants above knee (threshold=%.1f efficiency)",
-        len(above_knee), len(results), knee_threshold,
+        len(above_knee),
+        len(results),
+        knee_threshold,
     )
     return above_knee
 
@@ -259,10 +281,12 @@ async def hill_climb_models(
 ) -> list[dict[str, Any]]:
     """Test all candidate models in parallel, return any that beat baseline."""
     import asyncio
+
     current_model = dag_data.get("nodes", [{}])[0].get("model", "gemini-3.5-flash")
 
     async def test_model(model: str) -> dict[str, Any]:
         import time as _time
+
         proposal = {
             "kind": "topology_mutation",
             "rationale": f"Testing model swap: {current_model} → {model}",
@@ -279,7 +303,13 @@ async def hill_climb_models(
         _elapsed_ms = int((_time.monotonic() - _start) * 1000)
         result["model_tested"] = model
         result["latency_ms"] = _elapsed_ms
-        logger.info("model_test %s: score=%s latency=%dms improved=%s", model, result.get("variant_b_score"), _elapsed_ms, result.get("validated"))
+        logger.info(
+            "model_test %s: score=%s latency=%dms improved=%s",
+            model,
+            result.get("variant_b_score"),
+            _elapsed_ms,
+            result.get("validated"),
+        )
         return result
 
     # Run all model tests in parallel
@@ -290,10 +320,19 @@ async def hill_climb_models(
 
     # Pareto-optimal selection: best quality/cost/latency composite
     MODEL_COST = {
-        "gemini-3.1-flash-lite": 0.02, "gemini-3.5-flash": 0.20, "gemini-3.5-flash": 0.15,
-        "gemini-3.5-pro": 1.25, "gpt-4.1-nano": 0.05, "gpt-4.1-mini": 0.10,
-        "gpt-5-nano": 0.08, "gpt-5-mini": 0.15, "gpt-5.1": 0.50, "gpt-5.2": 0.75,
-        "gpt-5.4": 1.50, "gpt-5.5": 2.00, "claude-haiku-4-5": 0.25, "claude-sonnet-4-6": 1.50,
+        "gemini-3.1-flash-lite": 0.02,
+        "gemini-3.5-flash": 0.15,
+        "gemini-3.5-pro": 1.25,
+        "gpt-4.1-nano": 0.05,
+        "gpt-4.1-mini": 0.10,
+        "gpt-5-nano": 0.08,
+        "gpt-5-mini": 0.15,
+        "gpt-5.1": 0.50,
+        "gpt-5.2": 0.75,
+        "gpt-5.4": 1.50,
+        "gpt-5.5": 2.00,
+        "claude-haiku-4-5": 0.25,
+        "claude-sonnet-4-6": 1.50,
         "o4-mini": 0.30,
     }
     for r in results:
@@ -328,11 +367,15 @@ async def hill_climb_models(
         c = r.get("_cost", 999)
         if q > baseline_score:
             r["validated"] = True
-            r["rationale"] = f"Better quality ({q} vs {baseline_score}) — {r.get('model_tested')} in {r.get('_latency_ms',0)}ms"
+            r["rationale"] = (
+                f"Better quality ({q} vs {baseline_score}) — {r.get('model_tested')} in {r.get('_latency_ms', 0)}ms"
+            )
             winners.append(r)
         elif q >= baseline_score and c < current_cost:
             r["validated"] = True
-            r["rationale"] = f"Same quality, cheaper (${c} vs ${current_cost}) — {r.get('model_tested')} in {r.get('_latency_ms',0)}ms"
+            r["rationale"] = (
+                f"Same quality, cheaper (${c} vs ${current_cost}) — {r.get('model_tested')} in {r.get('_latency_ms', 0)}ms"
+            )
             winners.append(r)
 
     logger.info("pareto_models: %d tested, %d winners", len(results), len(winners))

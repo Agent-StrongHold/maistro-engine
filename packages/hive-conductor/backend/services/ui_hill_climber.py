@@ -11,7 +11,6 @@ both the visual result AND the code quality against the corpus.
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import logging
 import os
@@ -28,14 +27,24 @@ CANONICAL_UIS = [
     {"name": "ChatGPT", "url": "chatgpt.com", "why": "Single thread, streaming, minimal chrome"},
     {"name": "Linear", "url": "linear.app", "why": "Fast, keyboard-first, beautiful density"},
     {"name": "Notion", "url": "notion.so", "why": "Blocks, slash commands, progressive disclosure"},
-    {"name": "Vercel", "url": "vercel.com/dashboard", "why": "Status at a glance, deploy in one click"},
-    {"name": "Stripe Dashboard", "url": "dashboard.stripe.com", "why": "Data-dense but scannable, clear hierarchy"},
+    {
+        "name": "Vercel",
+        "url": "vercel.com/dashboard",
+        "why": "Status at a glance, deploy in one click",
+    },
+    {
+        "name": "Stripe Dashboard",
+        "url": "dashboard.stripe.com",
+        "why": "Data-dense but scannable, clear hierarchy",
+    },
 ]
 
 
-async def score_ui_visual(screenshot_b64: str, reference_descriptions: list[str] | None = None) -> dict[str, Any]:
+async def score_ui_visual(
+    screenshot_b64: str, reference_descriptions: list[str] | None = None
+) -> dict[str, Any]:
     """Score a UI screenshot against canonical examples using vision model.
-    
+
     Args:
         screenshot_b64: base64-encoded PNG of our UI
         reference_descriptions: optional text descriptions of what good looks like
@@ -71,13 +80,18 @@ Reply JSON: {{"score": int, "clarity": int, "density": int, "speed": int, "hiera
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
                     "model": "gemini-3.5-flash",
-                    "messages": [{
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
-                        ],
-                    }],
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+                                },
+                            ],
+                        }
+                    ],
                     "response_format": {"type": "json_object"},
                 },
             )
@@ -90,7 +104,7 @@ Reply JSON: {{"score": int, "clarity": int, "density": int, "speed": int, "hiera
 
 async def score_ui_code(component_code: str) -> dict[str, Any]:
     """Score UI component code against patterns from top open-source projects.
-    
+
     Evaluates: readability, component structure, accessibility, performance patterns.
     """
     base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
@@ -147,9 +161,11 @@ async def score_ui_full(screenshot_b64: str, component_code: str) -> dict[str, A
     }
 
 
-async def generate_ui_mutation(current_code: str, visual_feedback: dict, code_feedback: dict) -> str:
+async def generate_ui_mutation(
+    current_code: str, visual_feedback: dict, code_feedback: dict
+) -> str:
     """Generate a TARGETED EDIT — fix the single top issue, not a rewrite.
-    
+
     Like the DAG hill-climber: one mutation per pass. Small, testable, reversible.
     """
     base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
@@ -161,9 +177,9 @@ async def generate_ui_mutation(current_code: str, visual_feedback: dict, code_fe
 
 DO NOT rewrite the file. Make the SMALLEST change that fixes the top issue.
 
-TOP ISSUE (visual): {visual_feedback.get('top_issue', 'none')}
-TOP ISSUE (code): {code_feedback.get('top_issue', 'none')}
-SUGGESTED FIX: {code_feedback.get('fix', visual_feedback.get('fix', 'none'))}
+TOP ISSUE (visual): {visual_feedback.get("top_issue", "none")}
+TOP ISSUE (code): {code_feedback.get("top_issue", "none")}
+SUGGESTED FIX: {code_feedback.get("fix", visual_feedback.get("fix", "none"))}
 
 Pick the SINGLE highest-impact fix. Output a JSON diff:
 {{
@@ -217,7 +233,9 @@ Output ONLY the JSON object. One edit. Smallest possible change for maximum scor
                     logger.info(f"UI mutation inserted: {edit.get('description', 'insert')}")
                     return result
                 else:
-                    logger.warning(f"UI mutation insert_after not found: {edit['insert_after'][:80]}")
+                    logger.warning(
+                        f"UI mutation insert_after not found: {edit['insert_after'][:80]}"
+                    )
                     return current_code
             else:
                 logger.warning(f"UI mutation unknown format: {list(edit.keys())}")
@@ -229,7 +247,7 @@ Output ONLY the JSON object. One edit. Smallest possible change for maximum scor
 
 async def hill_climb_ui(component_path: str, screenshot_fn, n_passes: int = 5) -> dict[str, Any]:
     """Hill-climb a UI component: score → mutate → screenshot → re-score → accept/reject.
-    
+
     Args:
         component_path: path to the .tsx file
         screenshot_fn: async callable that returns base64 PNG of the rendered component
@@ -262,9 +280,7 @@ async def hill_climb_ui(component_path: str, screenshot_fn, n_passes: int = 5) -
             continue
 
         # Generate mutation based on feedback
-        mutated = await generate_ui_mutation(
-            current_code, result["visual"], result["code"]
-        )
+        mutated = await generate_ui_mutation(current_code, result["visual"], result["code"])
 
         # Write mutation
         Path(component_path).write_text(mutated)

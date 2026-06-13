@@ -1,3 +1,30 @@
+---
+id: ADR-014
+title: Memory protocols
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-013
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Memory
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Accepted
+    date: 2026-04-26
+---
+
 # ADR-014: Memory protocols
 
 **Status:** Accepted  

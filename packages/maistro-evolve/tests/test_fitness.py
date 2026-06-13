@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from maistro_evolve.fitness import (
-    _HARD_GATE_THRESHOLDS,
     _FITNESS_WEIGHTS,
-    compute_fitness,
+    _HARD_GATE_THRESHOLDS,
     _check_hard_gate,
-    _weighted_eval_score,
     _cost_efficiency,
     _latency_efficiency,
+    _weighted_eval_score,
+    compute_fitness,
 )
-from maistro_evolve.types import PipelineGenome, DAGTopology, NodeGenome, EvalWeights
+from maistro_evolve.types import DAGTopology, EvalWeights, NodeGenome, PipelineGenome
 
 
 def _genome(eval_scores=None, harness_params=None):
@@ -21,14 +19,29 @@ def _genome(eval_scores=None, harness_params=None):
         id="test-g1",
         name="test",
         topology=DAGTopology(
-            nodes=[NodeGenome(id="q1", role="queen", strategy="react", model="gpt-4", temperature=0.3, max_tokens=4096, system_prompt="test", max_tool_rounds=5)],
-            edges=[], entry_node="q1", max_cycles=3, beam_width=1, use_scout=False,
+            nodes=[
+                NodeGenome(
+                    id="q1",
+                    role="queen",
+                    strategy="react",
+                    model="gpt-4",
+                    temperature=0.3,
+                    max_tokens=4096,
+                    system_prompt="test",
+                    max_tool_rounds=5,
+                )
+            ],
+            edges=[],
+            entry_node="q1",
+            max_cycles=3,
+            beam_width=1,
+            use_scout=False,
         ),
         eval_weights=EvalWeights(),
         eval_scores=eval_scores or {},
         harness_params=harness_params or {},
-        created_at=datetime.now(timezone.utc).isoformat(),
-        updated_at=datetime.now(timezone.utc).isoformat(),
+        created_at=datetime.now(UTC).isoformat(),
+        updated_at=datetime.now(UTC).isoformat(),
     )
 
 
@@ -56,7 +69,16 @@ class TestHardGate:
 
     def test_gate_thresholds_cover_all_8_benchmarks(self):
         assert len(_HARD_GATE_THRESHOLDS) == 8
-        expected = {"ifeval", "bfcl", "swebench", "terminalbench", "tau_bench", "gaia", "ragas", "osworld"}
+        expected = {
+            "ifeval",
+            "bfcl",
+            "swebench",
+            "terminalbench",
+            "tau_bench",
+            "gaia",
+            "ragas",
+            "osworld",
+        }
         assert set(_HARD_GATE_THRESHOLDS.keys()) == expected
 
 
@@ -66,12 +88,12 @@ class TestWeightedEvalScore:
         assert _weighted_eval_score(g) == 0.0
 
     def test_all_ones(self):
-        scores = {k: 1.0 for k in EvalWeights.model_fields}
+        scores = dict.fromkeys(EvalWeights.model_fields, 1.0)
         g = _genome(eval_scores=scores)
         assert abs(_weighted_eval_score(g) - 1.0) < 0.001
 
     def test_all_zeros(self):
-        scores = {k: 0.0 for k in EvalWeights.model_fields}
+        scores = dict.fromkeys(EvalWeights.model_fields, 0.0)
         g = _genome(eval_scores=scores)
         assert _weighted_eval_score(g) == 0.0
 
@@ -129,7 +151,7 @@ class TestComputeFitness:
 
     def test_higher_eval_scores_higher_fitness(self):
         scores_low = {k: v + 0.05 for k, v in _HARD_GATE_THRESHOLDS.items()}
-        scores_high = {k: 0.9 for k in _HARD_GATE_THRESHOLDS}
+        scores_high = dict.fromkeys(_HARD_GATE_THRESHOLDS, 0.9)
         g_low = _genome(eval_scores=scores_low)
         g_high = _genome(eval_scores=scores_high)
         f_low = compute_fitness(g_low, [g_low])
@@ -137,7 +159,7 @@ class TestComputeFitness:
         assert f_high.total > f_low.total
 
     def test_elo_bonus_increases_fitness(self):
-        scores = {k: 0.8 for k in _HARD_GATE_THRESHOLDS}
+        scores = dict.fromkeys(_HARD_GATE_THRESHOLDS, 0.8)
         g_no_elo = _genome(eval_scores=scores, harness_params={})
         g_with_elo = _genome(eval_scores=scores, harness_params={"avg_elo": 1400.0})
         f_no = compute_fitness(g_no_elo, [g_no_elo])

@@ -17,8 +17,8 @@ Covers:
 from __future__ import annotations
 
 import asyncio
-import sys
 import pathlib
+import sys
 from typing import Any
 
 import pytest
@@ -31,6 +31,7 @@ if str(_BACKEND) not in sys.path:
 @pytest.fixture(autouse=True)
 def _reset_singleton():
     import services.evolution as evo
+
     prev = evo._service
     evo._service = None
     yield
@@ -52,7 +53,6 @@ def test_start_then_get_returns_instance(monkeypatch: pytest.MonkeyPatch) -> Non
     import services.evolution as evo
 
     started: list[Any] = []
-    real_create = asyncio.ensure_future
 
     def _capture(coro: Any) -> Any:
         started.append(coro)
@@ -140,17 +140,22 @@ def test_run_loop_initializes_and_stops_cleanly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Initialize population + tournament, take one short sleep, stop."""
-    from services.evolution import _EvolutionService
     import services.evolution as evo
+    from services.evolution import _EvolutionService
 
     class _StubPop:
-        def __init__(self) -> None: pass
-        def list_all(self) -> list[Any]: return []
+        def __init__(self) -> None:
+            pass
+
+        def list_all(self) -> list[Any]:
+            return []
 
     class _StubTour:
-        def get_stats(self) -> dict[str, Any]: return {"n": 0}
+        def get_stats(self) -> dict[str, Any]:
+            return {"n": 0}
 
     import types
+
     pop_mod = types.ModuleType("maistro_evolve.population")
     pop_mod.PopulationStore = _StubPop  # type: ignore[attr-defined]
     tour_mod = types.ModuleType("maistro_evolve.tournament")
@@ -175,14 +180,17 @@ def test_run_loop_captures_cycle_exception(
 ) -> None:
     """If _run_one_cycle raises, run_loop stores the message in
     _last_cycle_error and continues."""
-    from services.evolution import _EvolutionService
-    import services.evolution as evo
     import types
 
-    class _Pop:
-        def list_all(self) -> list[Any]: return []
+    import services.evolution as evo
+    from services.evolution import _EvolutionService
 
-    class _Tour: pass
+    class _Pop:
+        def list_all(self) -> list[Any]:
+            return []
+
+    class _Tour:
+        pass
 
     pop_mod = types.ModuleType("maistro_evolve.population")
     pop_mod.PopulationStore = _Pop  # type: ignore[attr-defined]
@@ -218,19 +226,23 @@ def test_run_loop_captures_cycle_exception(
 def test_run_one_cycle_invokes_evolution_cycle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.evolution import _EvolutionService
     import types
+
+    from services.evolution import _EvolutionService
 
     captured_kwargs: dict[str, Any] = {}
 
     class _StubPop:
-        def list_all(self) -> list[Any]: return [1, 2, 3]
+        def list_all(self) -> list[Any]:
+            return [1, 2, 3]
 
-    class _StubTour: pass
+    class _StubTour:
+        pass
 
     class _StubCycle:
         def __init__(self, harness: Any, tournament: Any) -> None:
-            self.harness = harness; self.tournament = tournament
+            self.harness = harness
+            self.tournament = tournament
 
         async def run_cycle(self, **kw: Any) -> None:
             captured_kwargs.update(kw)
@@ -269,7 +281,6 @@ def test_build_llm_call_returns_none_without_base_url(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from services.evolution import _EvolutionService
-    from config import Settings
 
     class _NoBase:
         maistro_llm_base_url = ""
@@ -280,6 +291,7 @@ def test_build_llm_call_returns_none_without_base_url(
 
     monkeypatch.setattr("services.evolution.__name__", "services.evolution")
     import config
+
     monkeypatch.setattr(config, "get_settings", lambda: _NoBase())
     s = _EvolutionService()
     assert s._build_llm_call() is None
@@ -289,9 +301,8 @@ def test_build_llm_call_swallows_exceptions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If `from config import get_settings` raises, returns None."""
-    from services.evolution import _EvolutionService
-
     import config
+    from services.evolution import _EvolutionService
 
     def _boom() -> Any:
         raise RuntimeError("synthetic")
@@ -306,9 +317,8 @@ async def test_build_llm_call_real_call_posts_and_extracts_content(
 ) -> None:
     """When settings have a base URL, _build_llm_call returns an
     async fn that posts to /v1/chat/completions and returns content."""
-    from services.evolution import _EvolutionService
-    import services.evolution as evo
     import httpx
+    from services.evolution import _EvolutionService
 
     class _Settings:
         maistro_llm_base_url = "http://test.example/api"
@@ -318,18 +328,23 @@ async def test_build_llm_call_real_call_posts_and_extracts_content(
         chat_default_model = "test-model"
 
     import config
+
     monkeypatch.setattr(config, "get_settings", lambda: _Settings())
 
     captured: dict[str, Any] = {}
 
     class _Resp:
-        def raise_for_status(self) -> None: pass
+        def raise_for_status(self) -> None:
+            pass
+
         def json(self) -> Any:
             return {"choices": [{"message": {"content": "the answer"}}]}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def post(self, url: str, *, json: Any, headers: Any) -> _Resp:
             captured["url"] = url
@@ -366,10 +381,12 @@ def test_status_reports_population_size_and_tournament_stats() -> None:
     from services.evolution import _EvolutionService
 
     class _Pop:
-        def list_all(self) -> list[int]: return [1, 2, 3, 4]
+        def list_all(self) -> list[int]:
+            return [1, 2, 3, 4]
 
     class _Tour:
-        def get_stats(self) -> dict[str, Any]: return {"matches": 10}
+        def get_stats(self) -> dict[str, Any]:
+            return {"matches": 10}
 
     s = _EvolutionService()
     s._population = _Pop()

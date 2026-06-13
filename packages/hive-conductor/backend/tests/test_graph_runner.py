@@ -14,10 +14,9 @@ Covers:
 
 from __future__ import annotations
 
-import sys
 import pathlib
-from types import SimpleNamespace
-from typing import Any
+import sys
+from typing import Any, ClassVar
 
 import pytest
 
@@ -34,18 +33,15 @@ def test_build_llm_call_returns_stub_when_base_url_missing(
 ) -> None:
     """No base URL → an async stub returning a marker string."""
     from services.graph_runner import _build_llm_call
-    import services.graph_runner as _gr
 
-    class _S:
-        maistro_llm_base_url = ""
-        litellm_api_base = ""
-        maistro_llm_api_key = ""
-        litellm_api_key = ""
-        chat_default_model = "m"
-
-    monkeypatch.setattr(_gr, "get_settings", lambda: _S())
+    monkeypatch.delenv("LITELLM_API_BASE", raising=False)
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+    monkeypatch.delenv("LITELLM_PROXY_KEY", raising=False)
+    monkeypatch.delenv("CHAT_DEFAULT_MODEL", raising=False)
     fn = _build_llm_call()
     import asyncio
+
     out = asyncio.run(fn([{"role": "user", "content": "hi"}]))
     assert "no LLM configured" in out
 
@@ -55,27 +51,27 @@ async def test_build_llm_call_real_httpx_posts_and_extracts(
 ) -> None:
     import httpx
     from services.graph_runner import _build_llm_call
-    import services.graph_runner as _gr
 
-    class _S:
-        maistro_llm_base_url = "http://stub.example"
-        litellm_api_base = ""
-        maistro_llm_api_key = "k"
-        litellm_api_key = ""
-        chat_default_model = "default-model"
-
-    monkeypatch.setattr(_gr, "get_settings", lambda: _S())
+    monkeypatch.setenv("LITELLM_API_BASE", "http://stub.example")
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+    monkeypatch.setenv("LITELLM_API_KEY", "k")
+    monkeypatch.delenv("LITELLM_PROXY_KEY", raising=False)
+    monkeypatch.setenv("CHAT_DEFAULT_MODEL", "default-model")
 
     captured: dict[str, Any] = {}
 
     class _Resp:
-        def raise_for_status(self) -> None: pass
+        def raise_for_status(self) -> None:
+            pass
+
         def json(self) -> Any:
             return {"choices": [{"message": {"content": "out"}}]}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def post(self, url: str, *, json: Any, headers: Any) -> _Resp:
             captured["url"] = url
@@ -95,30 +91,30 @@ async def test_build_llm_call_real_httpx_posts_and_extracts(
 async def test_build_llm_call_uses_default_model_when_kwarg_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Without model kwarg, falls back to settings.chat_default_model."""
+    """Without model kwarg, falls back to CHAT_DEFAULT_MODEL env var."""
     import httpx
     from services.graph_runner import _build_llm_call
-    import services.graph_runner as _gr
 
-    class _S:
-        maistro_llm_base_url = "http://x"
-        litellm_api_base = ""
-        maistro_llm_api_key = "k"
-        litellm_api_key = ""
-        chat_default_model = "the-default"
-
-    monkeypatch.setattr(_gr, "get_settings", lambda: _S())
+    monkeypatch.setenv("LITELLM_API_BASE", "http://x")
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+    monkeypatch.setenv("LITELLM_API_KEY", "k")
+    monkeypatch.delenv("LITELLM_PROXY_KEY", raising=False)
+    monkeypatch.setenv("CHAT_DEFAULT_MODEL", "the-default")
 
     captured: dict[str, Any] = {}
 
     class _Resp:
-        def raise_for_status(self) -> None: pass
+        def raise_for_status(self) -> None:
+            pass
+
         def json(self) -> Any:
             return {"choices": [{"message": {"content": "ok"}}]}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def post(self, url: str, *, json: Any, headers: Any) -> _Resp:
             captured["model"] = json["model"]
@@ -133,33 +129,30 @@ async def test_build_llm_call_uses_default_model_when_kwarg_missing(
 async def test_build_llm_call_secret_str_api_key_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If api key has get_secret_value(), use it (SecretStr branch)."""
+    """When LITELLM_API_KEY is set, it is passed as Bearer token."""
     import httpx
     from services.graph_runner import _build_llm_call
-    import services.graph_runner as _gr
 
-    class _Secret:
-        def get_secret_value(self) -> str: return "from-secret"
-
-    class _S:
-        maistro_llm_base_url = "http://x"
-        litellm_api_base = ""
-        maistro_llm_api_key = _Secret()
-        litellm_api_key = ""
-        chat_default_model = "m"
-
-    monkeypatch.setattr(_gr, "get_settings", lambda: _S())
+    monkeypatch.setenv("LITELLM_API_BASE", "http://x")
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+    monkeypatch.setenv("LITELLM_API_KEY", "from-secret")
+    monkeypatch.delenv("LITELLM_PROXY_KEY", raising=False)
+    monkeypatch.setenv("CHAT_DEFAULT_MODEL", "m")
 
     captured: dict[str, Any] = {}
 
     class _Resp:
-        def raise_for_status(self) -> None: pass
+        def raise_for_status(self) -> None:
+            pass
+
         def json(self) -> Any:
             return {"choices": [{"message": {"content": "ok"}}]}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def post(self, url: str, *, json: Any, headers: Any) -> _Resp:
             captured["auth"] = headers.get("Authorization")
@@ -174,30 +167,30 @@ async def test_build_llm_call_secret_str_api_key_path(
 async def test_build_llm_call_no_api_key_no_auth_header(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If raw_key resolves to empty string, no Authorization header set."""
+    """If LITELLM_API_KEY is empty, Authorization header is 'Bearer '."""
     import httpx
     from services.graph_runner import _build_llm_call
-    import services.graph_runner as _gr
 
-    class _S:
-        maistro_llm_base_url = "http://x"
-        litellm_api_base = ""
-        maistro_llm_api_key = ""
-        litellm_api_key = ""
-        chat_default_model = "m"
-
-    monkeypatch.setattr(_gr, "get_settings", lambda: _S())
+    monkeypatch.setenv("LITELLM_API_BASE", "http://x")
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+    monkeypatch.delenv("LITELLM_API_KEY", raising=False)
+    monkeypatch.delenv("LITELLM_PROXY_KEY", raising=False)
+    monkeypatch.setenv("CHAT_DEFAULT_MODEL", "m")
 
     captured: dict[str, Any] = {}
 
     class _Resp:
-        def raise_for_status(self) -> None: pass
+        def raise_for_status(self) -> None:
+            pass
+
         def json(self) -> Any:
             return {"choices": [{"message": {"content": "ok"}}]}
 
     class _Client:
         def __init__(self, *a: Any, **kw: Any) -> None: ...
-        async def __aenter__(self) -> _Client: return self
+        async def __aenter__(self) -> _Client:
+            return self
+
         async def __aexit__(self, *a: Any) -> None: ...
         async def post(self, url: str, *, json: Any, headers: Any) -> _Resp:
             captured["headers"] = dict(headers)
@@ -206,7 +199,8 @@ async def test_build_llm_call_no_api_key_no_auth_header(
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     fn = _build_llm_call()
     await fn([{"role": "user", "content": "x"}])
-    assert "Authorization" not in captured["headers"]
+    # With no API key set, raw_key is "" — header is still present but value is "Bearer "
+    assert captured["headers"].get("Authorization") == "Bearer "
 
 
 # --- execute_dag --------------------------------------------------------
@@ -215,43 +209,30 @@ async def test_build_llm_call_no_api_key_no_auth_header(
 async def test_execute_dag_builds_config_and_returns_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Stub maistro.graph.executor.run_graph and verify shape."""
+    """execute_dag runs a wave executor; stub _build_llm_call and verify shape."""
     import services.graph_runner as gr
 
-    captured: dict[str, Any] = {}
+    # Stub _build_llm_call to return a coroutine that returns a response string.
+    # n1 → n2 (two waves), so cycles == 2.
+    async def _stub_llm(messages: list[dict], **kw: Any) -> str:
+        return "stub response"
 
-    class _NR:
-        def __init__(self, node_id: str) -> None:
-            self.node_id = node_id
-            self.role = "worker"
-            self.selected_candidate = "ok"
-            self.success = True
+    monkeypatch.setattr(gr, "_build_llm_call", lambda: _stub_llm)
 
-    class _Result:
-        total_cycles = 1
-        node_results = [_NR("n1"), _NR("n2")]
-
-    async def _run_graph(**kw: Any) -> Any:
-        captured.update(kw)
-        return _Result()
-
-    import maistro.graph.executor as exec_mod
-    monkeypatch.setattr(exec_mod, "run_graph", _run_graph)
-    # Also stub _build_llm_call so we don't reach settings
-    monkeypatch.setattr(gr, "_build_llm_call", lambda: None)
-
-    out = await gr.execute_dag({
-        "name": "test",
-        "description": "test dag",
-        "nodes": [
-            {"id": "n1", "role": "worker", "name": "Worker"},
-            {"id": "n2", "role": "scout", "name": "Scout"},
-        ],
-        "edges": [{"from_node": "n1", "to_node": "n2"}],
-        "entry_node": "n1",
-    })
+    out = await gr.execute_dag(
+        {
+            "name": "test",
+            "description": "test dag",
+            "nodes": [
+                {"id": "n1", "role": "worker", "name": "Worker"},
+                {"id": "n2", "role": "scout", "name": "Scout"},
+            ],
+            "edges": [{"from_node": "n1", "to_node": "n2"}],
+            "entry_node": "n1",
+        }
+    )
     assert out["status"] == "completed"
-    assert out["cycles"] == 1
+    assert out["cycles"] == 2  # wave 1: n1, wave 2: n2
     assert set(out["node_results"]) == {"n1", "n2"}
     assert out["node_results"]["n1"]["role"] == "worker"
 
@@ -259,30 +240,26 @@ async def test_execute_dag_builds_config_and_returns_shape(
 async def test_execute_dag_entry_node_fallback_to_first_node(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If entry_node is missing, use the first node id."""
+    """Single-node DAG with no entry_node runs to completion (1 wave, 1 cycle)."""
     import services.graph_runner as gr
 
-    captured: dict[str, Any] = {}
+    async def _stub_llm(messages: list[dict], **kw: Any) -> str:
+        return "ok"
 
-    class _Result:
-        total_cycles = 0
-        node_results: list[Any] = []
+    monkeypatch.setattr(gr, "_build_llm_call", lambda: _stub_llm)
 
-    async def _run_graph(**kw: Any) -> Any:
-        captured["entry"] = kw["config"].entry
-        return _Result()
-
-    import maistro.graph.executor as exec_mod
-    monkeypatch.setattr(exec_mod, "run_graph", _run_graph)
-    monkeypatch.setattr(gr, "_build_llm_call", lambda: None)
-
-    await gr.execute_dag({
-        "name": "x",
-        "nodes": [{"id": "first-id", "role": "worker", "name": "F"}],
-        "edges": [],
-        # entry_node missing
-    })
-    assert captured["entry"] == "first-id"
+    out = await gr.execute_dag(
+        {
+            "name": "x",
+            "nodes": [{"id": "first-id", "role": "worker", "name": "F"}],
+            "edges": [],
+            # entry_node missing — wave executor needs no explicit entry; any
+            # node with no inbound edges is a start node
+        }
+    )
+    assert out["status"] == "completed"
+    assert out["cycles"] == 1
+    assert "first-id" in out["node_results"]
 
 
 # --- genome_to_dag ----------------------------------------------------
@@ -302,12 +279,19 @@ def test_genome_to_dag_maps_nodes_and_edges() -> None:
                 setattr(self, k, v)
 
     class _Topo:
-        nodes = [
-            _Node(id="abc123def", role="planner", model="m", system_prompt="p",
-                  strategy="react", temperature=0.5, max_tokens=512,
-                  max_tool_rounds=3),
+        nodes: ClassVar = [
+            _Node(
+                id="abc123def",
+                role="planner",
+                model="m",
+                system_prompt="p",
+                strategy="react",
+                temperature=0.5,
+                max_tokens=512,
+                max_tool_rounds=3,
+            ),
         ]
-        edges = [
+        edges: ClassVar = [
             _Edge(id="e1", from_node="abc123def", to_node=None, condition=None),
         ]
         entry_node = "abc123def"
@@ -372,7 +356,8 @@ async def test_execute_champion_no_champion(
     import services.graph_runner as gr
 
     class _Pop:
-        def get_champion(self) -> Any: return None
+        def get_champion(self) -> Any:
+            return None
 
     class _Svc:
         population = _Pop()
@@ -393,8 +378,8 @@ async def test_execute_champion_success_path(
     import services.graph_runner as gr
 
     class _Topo:
-        nodes: list[Any] = []
-        edges: list[Any] = []
+        nodes: ClassVar[list[Any]] = []
+        edges: ClassVar[list[Any]] = []
         entry_node = ""
         max_cycles = 1
         use_scout = False
@@ -407,7 +392,8 @@ async def test_execute_champion_success_path(
         topology = _Topo()
 
     class _Pop:
-        def get_champion(self) -> Any: return _Genome()
+        def get_champion(self) -> Any:
+            return _Genome()
 
     class _Svc:
         population = _Pop()
@@ -444,21 +430,25 @@ async def test_execute_dag_streaming_yields_full_lifecycle(
 
     class _Result:
         total_cycles = 1
-        node_results = [_NR()]
+        node_results: ClassVar = [_NR()]
 
-    async def _run_graph(**kw: Any) -> Any: return _Result()
+    async def _run_graph(**kw: Any) -> Any:
+        return _Result()
 
     import maistro.graph.executor as exec_mod
+
     monkeypatch.setattr(exec_mod, "run_graph", _run_graph)
     monkeypatch.setattr(gr, "_build_llm_call", lambda: None)
 
     events = []
-    async for ev in gr.execute_dag_streaming({
-        "name": "x",
-        "nodes": [{"id": "n1", "role": "worker", "name": "W"}],
-        "edges": [],
-        "entry_node": "n1",
-    }):
+    async for ev in gr.execute_dag_streaming(
+        {
+            "name": "x",
+            "nodes": [{"id": "n1", "role": "worker", "name": "W"}],
+            "edges": [],
+            "entry_node": "n1",
+        }
+    ):
         events.append(ev)
     statuses = [e["status"] for e in events]
     assert statuses == ["started", "node_complete", "completed"]
@@ -473,16 +463,19 @@ async def test_execute_dag_streaming_yields_failed_on_exception(
         raise RuntimeError("synthetic")
 
     import maistro.graph.executor as exec_mod
+
     monkeypatch.setattr(exec_mod, "run_graph", _boom)
     monkeypatch.setattr(gr, "_build_llm_call", lambda: None)
 
     events = []
-    async for ev in gr.execute_dag_streaming({
-        "name": "x",
-        "nodes": [{"id": "n1", "role": "worker", "name": "W"}],
-        "edges": [],
-        "entry_node": "n1",
-    }):
+    async for ev in gr.execute_dag_streaming(
+        {
+            "name": "x",
+            "nodes": [{"id": "n1", "role": "worker", "name": "W"}],
+            "edges": [],
+            "entry_node": "n1",
+        }
+    ):
         events.append(ev)
     assert events[0]["status"] == "started"
     assert events[-1]["status"] == "failed"

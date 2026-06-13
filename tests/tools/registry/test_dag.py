@@ -8,12 +8,19 @@ tests can be added in a follow-up if behavioral contracts (per
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 
-from maistro_registry.dag import Cycle, find_cycles
+from maistro_registry.dag import Cycle, DuplicateId, find_cycles, find_duplicate_ids
 from maistro_registry.schema import FrontMatter
+from maistro_registry.validator import ValidationResult
+
+
+def _make_result(item_id: str, path: str) -> ValidationResult:
+    fm = _make_fm(item_id)
+    return ValidationResult(path=Path(path), front_matter=fm)
 
 
 def _make_fm(
@@ -148,3 +155,44 @@ def test_cycle_render_multi_node() -> None:
     rendered = cycle.render()
     assert "blocks cycle" in rendered
     assert "->" in rendered
+
+
+def test_no_duplicates_among_unique_ids() -> None:
+    results = [
+        _make_result("ADR-001", "docs/adr/ADR-001-a.md"),
+        _make_result("ADR-002", "docs/adr/ADR-002-b.md"),
+    ]
+    assert find_duplicate_ids(results) == []
+
+
+def test_duplicate_id_detected() -> None:
+    results = [
+        _make_result("SPEC-184", "docs/specs/SPEC-184-a.md"),
+        _make_result("SPEC-184", "docs/specs/SPEC-184-b.md"),
+    ]
+    duplicates = find_duplicate_ids(results)
+    assert len(duplicates) == 1
+    assert duplicates[0].id == "SPEC-184"
+    assert duplicates[0].paths == (
+        Path("docs/specs/SPEC-184-a.md"),
+        Path("docs/specs/SPEC-184-b.md"),
+    )
+
+
+def test_results_without_front_matter_are_ignored() -> None:
+    results = [
+        ValidationResult(path=Path("docs/adr/ADR-broken.md"), front_matter=None, errors=["bad"]),
+        _make_result("ADR-001", "docs/adr/ADR-001-a.md"),
+    ]
+    assert find_duplicate_ids(results) == []
+
+
+def test_duplicate_id_render() -> None:
+    dup = DuplicateId(
+        id="SPEC-184",
+        paths=(Path("docs/specs/SPEC-184-a.md"), Path("docs/specs/SPEC-184-b.md")),
+    )
+    rendered = dup.render()
+    assert "SPEC-184" in rendered
+    assert "SPEC-184-a.md" in rendered
+    assert "SPEC-184-b.md" in rendered

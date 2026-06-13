@@ -12,17 +12,18 @@ substrate:
 implements: []
 related:
   - maistro-engine#SPEC-176
-source:
-  - Sibling gateway product repository (native node reference apps + shared Swift kit; not vendored here)
 contracts:
   - boundary
   - behavioral
 tests:
   - apps/maistro-gateway-node-flutter/test/
   - apps/maistro-gateway-node-flutter/integration_test/
-layer: User/Client
+layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
 ---
 
 # SPEC-179: Flutter gateway node companion (monorepo)

@@ -14,9 +14,9 @@ agent.yaml-only path), one of these tests will break first.
 
 from __future__ import annotations
 
+import contextlib
 from typing import ClassVar
 
-import pytest
 from pydantic import BaseModel
 
 from maistro.graph.durable_runs import (
@@ -25,8 +25,7 @@ from maistro.graph.durable_runs import (
     run_durable_dag,
 )
 from maistro.graph.nodes import BaseNode, NodeContext, get_node, register_node
-from maistro.projects import InMemoryProjectStore, Project, ProjectMemberRole
-
+from maistro.projects import InMemoryProjectStore
 
 # --- Creative-team (canvas_creative) DAG fixtures -------------------------
 
@@ -122,10 +121,9 @@ class _StubRfcReviewerNode(BaseNode):
 
 
 for _cls in (_CreativeBriefNode, _StubImageGenerateNode, _StubRfcReviewerNode):
-    try:
+    # re-registration in same pytest session is fine
+    with contextlib.suppress(ValueError):
         register_node(_cls)
-    except ValueError:
-        pass  # re-registration in same pytest session is fine
 
 
 def _resolver(node_id: str, dag: dict) -> BaseNode:
@@ -234,8 +232,7 @@ async def test_engineering_rfc_review_dag_runs_through_durable_executor() -> Non
                 "inputs": {
                     "rfc_title": "Durable DAG runs",
                     "body_markdown": (
-                        "## Goal\nPersist DAG runs across container restarts. "
-                        * 10  # ~600 chars
+                        "## Goal\nPersist DAG runs across container restarts. " * 10  # ~600 chars
                     ),
                 },
             }
@@ -298,8 +295,13 @@ async def test_three_domain_runs_coexist_in_one_store() -> None:
     pm_dag = {
         "id": "pm-trivial",
         "name": "pm",
-        "nodes": [{"id": "n", "kind": "test.creative.brief",
-                   "inputs": {"campaign_name": "QBR", "audience": "leadership"}}],
+        "nodes": [
+            {
+                "id": "n",
+                "kind": "test.creative.brief",
+                "inputs": {"campaign_name": "QBR", "audience": "leadership"},
+            }
+        ],
         "edges": [],
         "entry_node": "n",
     }
@@ -307,8 +309,13 @@ async def test_three_domain_runs_coexist_in_one_store() -> None:
     art_dag = {
         "id": "art-trivial",
         "name": "art",
-        "nodes": [{"id": "n", "kind": "test.creative.image_generate",
-                   "inputs": {"title": "Halloween", "headline": "Scary fun"}}],
+        "nodes": [
+            {
+                "id": "n",
+                "kind": "test.creative.image_generate",
+                "inputs": {"title": "Halloween", "headline": "Scary fun"},
+            }
+        ],
         "edges": [],
         "entry_node": "n",
     }
@@ -316,15 +323,26 @@ async def test_three_domain_runs_coexist_in_one_store() -> None:
     eng_dag = {
         "id": "eng-trivial",
         "name": "eng",
-        "nodes": [{"id": "n", "kind": "test.eng.rfc_review",
-                   "inputs": {"rfc_title": "Tiny", "body_markdown": "x"}}],
+        "nodes": [
+            {
+                "id": "n",
+                "kind": "test.eng.rfc_review",
+                "inputs": {"rfc_title": "Tiny", "body_markdown": "x"},
+            }
+        ],
         "edges": [],
         "entry_node": "n",
     }
 
-    pm_run = await run_durable_dag(pm_dag, store=store, node_resolver=_resolver, project_id="pm_proj_1")
-    art_run = await run_durable_dag(art_dag, store=store, node_resolver=_resolver, project_id="art_proj_1")
-    eng_run = await run_durable_dag(eng_dag, store=store, node_resolver=_resolver, project_id="eng_proj_1")
+    pm_run = await run_durable_dag(
+        pm_dag, store=store, node_resolver=_resolver, project_id="pm_proj_1"
+    )
+    art_run = await run_durable_dag(
+        art_dag, store=store, node_resolver=_resolver, project_id="art_proj_1"
+    )
+    eng_run = await run_durable_dag(
+        eng_dag, store=store, node_resolver=_resolver, project_id="eng_proj_1"
+    )
 
     # All three completed independently.
     for run in (pm_run, art_run, eng_run):

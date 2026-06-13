@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -43,6 +44,30 @@ class TuringConfig:
             raise ValueError("tick_rate_hz must be positive")
 
 
+def _env_truthy(value: str) -> bool:
+    return value.lower() in {"1", "true", "yes"}
+
+
+def _positive_int_or_none(value: str) -> int | None:
+    return int(value) or None
+
+
+# Maps an env var name to (config field, parser). The parser converts the raw
+# string into the typed config value.
+_ENV_FIELD_MAP: dict[str, tuple[str, Callable[[str], Any]]] = {
+    "TURING_TICK_RATE_HZ": ("tick_rate_hz", int),
+    "TURING_DB_PATH": ("db_path", str),
+    "TURING_LOG_LEVEL": ("log_level", str.upper),
+    "TURING_USE_FAKE_PROVIDER": ("use_fake_provider", _env_truthy),
+    "LITELLM_BASE_URL": ("litellm_base_url", str),
+    "LITELLM_VIRTUAL_KEY": ("litellm_virtual_key", str),
+    "TURING_POOLS_CONFIG": ("pools_config_path", str),
+    "TURING_CHAT_PORT": ("chat_port", _positive_int_or_none),
+    "TURING_CHAT_BIND": ("chat_bind", str),
+    "TURING_BASE_PROMPT_PATH": ("base_prompt", str),
+}
+
+
 def load_turing_config(
     overrides: dict[str, Any] | None = None,
 ) -> TuringConfig:
@@ -50,30 +75,9 @@ def load_turing_config(
     env = os.environ
     kwargs: dict[str, Any] = {}
 
-    if "TURING_TICK_RATE_HZ" in env:
-        kwargs["tick_rate_hz"] = int(env["TURING_TICK_RATE_HZ"])
-    if "TURING_DB_PATH" in env:
-        kwargs["db_path"] = env["TURING_DB_PATH"]
-    if "TURING_LOG_LEVEL" in env:
-        kwargs["log_level"] = env["TURING_LOG_LEVEL"].upper()
-    if "TURING_USE_FAKE_PROVIDER" in env:
-        kwargs["use_fake_provider"] = env["TURING_USE_FAKE_PROVIDER"].lower() in {
-            "1",
-            "true",
-            "yes",
-        }
-    if "LITELLM_BASE_URL" in env:
-        kwargs["litellm_base_url"] = env["LITELLM_BASE_URL"]
-    if "LITELLM_VIRTUAL_KEY" in env:
-        kwargs["litellm_virtual_key"] = env["LITELLM_VIRTUAL_KEY"]
-    if "TURING_POOLS_CONFIG" in env:
-        kwargs["pools_config_path"] = env["TURING_POOLS_CONFIG"]
-    if "TURING_CHAT_PORT" in env:
-        kwargs["chat_port"] = int(env["TURING_CHAT_PORT"]) or None
-    if "TURING_CHAT_BIND" in env:
-        kwargs["chat_bind"] = env["TURING_CHAT_BIND"]
-    if "TURING_BASE_PROMPT_PATH" in env:
-        kwargs["base_prompt"] = env["TURING_BASE_PROMPT_PATH"]
+    for env_name, (field, parser) in _ENV_FIELD_MAP.items():
+        if env_name in env:
+            kwargs[field] = parser(env[env_name])
 
     cfg = TuringConfig(**kwargs)
     if overrides:

@@ -17,9 +17,12 @@ contracts:
   - boundary
   - behavioral
 tests: []
-layer: Foundation
+layer: Connectivity
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-25
 ---
 
 # SPEC-016: Networking & Identity Substrate

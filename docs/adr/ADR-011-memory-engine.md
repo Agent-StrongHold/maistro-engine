@@ -1,3 +1,30 @@
+---
+id: ADR-011
+title: Memory engine + session factory wiring
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-002
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: Memory
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Accepted
+    date: 2026-04-26
+---
+
 # ADR-011: Memory engine + session factory wiring
 
 **Status:** Accepted  

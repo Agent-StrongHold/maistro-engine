@@ -175,7 +175,10 @@ async def _judge_cross_file_consistency(
         judge_response = await asyncio.wait_for(
             llm_call(
                 [
-                    {"role": "system", "content": "You are a strict code reviewer. Respond with only a number."},
+                    {
+                        "role": "system",
+                        "content": "You are a strict code reviewer. Respond with only a number.",
+                    },
                     {"role": "user", "content": judge_prompt},
                 ],
                 temperature=0.0,

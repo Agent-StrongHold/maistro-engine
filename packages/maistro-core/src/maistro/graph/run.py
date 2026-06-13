@@ -21,6 +21,7 @@ from maistro.graph.node import (
     NodeRun,
     _blackboard_prefix,
     _build_system_prompt,
+    _to_agent_role,
 )
 from maistro.graph.phases import TERMINAL_GRAPH_PHASES, GraphPhase, NodePhase
 from maistro.graph.strategy import get_strategy
@@ -41,7 +42,7 @@ logger = structlog.get_logger()
 
 
 def _get_temperature(
-    role: AgentRole,
+    role: AgentRole | str,
     node_config: NodeConfig | None = None,
     default: float | None = None,
 ) -> float | None:
@@ -90,15 +91,20 @@ def _compare(lhs: object, op: str, rhs: object) -> bool:
         return lhs == rhs
     if stripped in ("is not", "!="):
         return lhs != rhs
+    # Ordering comparisons are dynamic: operands come from a runtime-parsed
+    # condition string and may be any comparable type. Mismatched types raise
+    # TypeError, which we treat as "condition not satisfied".
+    a: Any = lhs
+    b: Any = rhs
     try:
         if stripped == "<":
-            return bool(lhs < rhs)
+            return bool(a < b)
         if stripped == ">":
-            return bool(lhs > rhs)
+            return bool(a > b)
         if stripped == "<=":
-            return bool(lhs <= rhs)
+            return bool(a <= b)
         if stripped == ">=":
-            return bool(lhs >= rhs)
+            return bool(a >= b)
     except TypeError:
         return False
     return False
@@ -120,24 +126,27 @@ def evaluate_condition(
     return False
 
 
+def _role_str(role: AgentRole | str) -> str:
+    """Render a role (enum or raw kind string) as its string identifier."""
+    return role.value if isinstance(role, AgentRole) else role
+
+
 def _next_nodes(
     config: GraphConfig,
-    current: AgentRole,
+    current: AgentRole | str,
     plan: PlanOutput | None,
     code: CodeOutput | None,
     review: ReviewOutput | None,
-) -> list[AgentRole]:
-    sequential: AgentRole | None = None
-    parallel: list[AgentRole] = []
+) -> list[AgentRole | str]:
+    sequential: AgentRole | str | None = None
+    parallel: list[AgentRole | str] = []
 
     for edge in config.edges:
         if edge.from_role != current:
             continue
         if edge.to_role is None:
             continue
-        cond_met = edge.condition is None or evaluate_condition(
-            edge.condition, plan, code, review
-        )
+        cond_met = edge.condition is None or evaluate_condition(edge.condition, plan, code, review)
         if not cond_met:
             continue
         if edge.parallel:
@@ -247,7 +256,9 @@ class GraphRun:
             return self._build_result()
 
         try:
-            return await self._execute(llm_call, model, temperature, timeout, max_retries, backoff_config)
+            return await self._execute(
+                llm_call, model, temperature, timeout, max_retries, backoff_config
+            )
         except asyncio.CancelledError:
             self._transition(GraphPhase.CANCELLING)
             for nr in self.node_runs:
@@ -257,6 +268,7 @@ class GraphRun:
             return self._build_result()
         except Exception as exc:
             from maistro.resilience.classifier import classify_error
+
             self.classified_error = classify_error(exc)
             self._transition(GraphPhase.FAILED)
             return self._build_result()
@@ -270,8 +282,10 @@ class GraphRun:
         max_retries: int,
         backoff_config: BackoffConfig | None,
     ) -> HyperagentOutput:
-        config = self.config or self.task.graph_config or GraphConfig(
-            nodes=[AgentRole.PLANNER, AgentRole.CODER, AgentRole.REVIEWER]
+        config = (
+            self.config
+            or self.task.graph_config
+            or GraphConfig(nodes=[AgentRole.PLANNER, AgentRole.CODER, AgentRole.REVIEWER])
         )
 
         self._transition(GraphPhase.RUNNING)
@@ -284,34 +298,58 @@ class GraphRun:
             max_iterations=config.max_cycles * len(config.nodes) * 3
         )
 
-        await self._emit(graph_started(
-            self.run_id,
-            nodes=[n.value for n in config.nodes],
-            entry=config.entry.value,
-            model=model,
-        ))
+        await self._emit(
+            graph_started(
+                self.run_id,
+                nodes=[_role_str(n) for n in config.nodes],
+                entry=_role_str(config.entry),
+                model=model,
+            )
+        )
 
         if config.run_scout:
-            await self._run_scout(llm_call, model, temperature, timeout, max_retries, backoff_config, budget)
+            await self._run_scout(
+                llm_call, model, temperature, timeout, max_retries, backoff_config, budget
+            )
 
-        active: list[AgentRole] = [config.entry]
+        active: list[AgentRole | str] = [config.entry]
         cycle = 0
 
         while active and cycle < config.max_cycles and not self._cancel_requested:
-            await self._emit(cycle_started(
-                self.run_id, cycle=cycle, active=[a.value for a in active],
-            ))
+            await self._emit(
+                cycle_started(
+                    self.run_id,
+                    cycle=cycle,
+                    active=[_role_str(a) for a in active],
+                )
+            )
 
             node_runs = [
                 self._create_node_run(
-                    role, config, model, temperature, max_retries,
-                    llm_call, timeout, backoff_config, budget, cycle,
+                    role,
+                    config,
+                    model,
+                    temperature,
+                    max_retries,
+                    llm_call,
+                    timeout,
+                    backoff_config,
+                    budget,
+                    cycle,
                 )
                 for role in active
             ]
 
             await asyncio.gather(
-                *[nr.execute(llm_call, timeout=timeout, backoff_config=backoff_config, iteration_budget=budget) for nr in node_runs],
+                *[
+                    nr.execute(
+                        llm_call,
+                        timeout=timeout,
+                        backoff_config=backoff_config,
+                        iteration_budget=budget,
+                    )
+                    for nr in node_runs
+                ],
                 return_exceptions=True,
             )
 
@@ -335,21 +373,30 @@ class GraphRun:
         result = self._build_result()
 
         if self.phase == GraphPhase.COMPLETED:
-            await self._emit(graph_completed(
-                self.run_id, success=success, cycles=cycle,
-                review_score=self.review.score if self.review else None,
-            ))
+            await self._emit(
+                graph_completed(
+                    self.run_id,
+                    success=success,
+                    cycles=cycle,
+                    review_score=self.review.score if self.review else None,
+                )
+            )
         else:
-            await self._emit(graph_failed(
-                self.run_id, cycles=cycle,
-                failed_nodes=[nr.role.value for nr in self.node_runs if nr.phase == NodePhase.FAILED],
-            ))
+            await self._emit(
+                graph_failed(
+                    self.run_id,
+                    cycles=cycle,
+                    failed_nodes=[
+                        nr.role.value for nr in self.node_runs if nr.phase == NodePhase.FAILED
+                    ],
+                )
+            )
 
         return result
 
     def _create_node_run(
         self,
-        role: AgentRole,
+        role: AgentRole | str,
         config: GraphConfig,
         model: str,
         temperature: float | None,
@@ -361,19 +408,25 @@ class GraphRun:
         cycle: int,
     ) -> NodeRun:
         strategy = get_strategy(role)
-        node_config = config.node_configs.get(role)
+        node_config = config.node_configs.get(_role_str(role))
+        role_enum = _to_agent_role(role) or AgentRole.PLANNER
 
         system_prompt = _build_system_prompt(role, node_config)
         bb = self.blackboard or GraphBlackboard(
-            task_objective=self.task.description, workspace=self.task.workspace,
+            task_objective=self.task.description,
+            workspace=self.task.workspace,
         )
         user_prompt = _blackboard_prefix(role, bb) + strategy.build_user_prompt(
-            self.task, bb, self.plan, self.code, self.review,
+            self.task,
+            bb,
+            self.plan,
+            self.code,
+            self.review,
         )
 
         nr = NodeRun(
             run_id=self.run_id,
-            role=role,
+            role=role_enum,
             strategy=strategy,
             beam_width=node_config.beam_width if node_config else 1,
             model=model,
@@ -398,10 +451,20 @@ class GraphRun:
         budget: IterationBudget,
     ) -> None:
         nr = self._create_node_run(
-            AgentRole.SCOUT, self.config or GraphConfig(nodes=[]),
-            model, temperature, max_retries, llm_call, timeout, backoff_config, budget, -1,
+            AgentRole.SCOUT,
+            self.config or GraphConfig(nodes=[]),
+            model,
+            temperature,
+            max_retries,
+            llm_call,
+            timeout,
+            backoff_config,
+            budget,
+            -1,
         )
-        await nr.execute(llm_call, timeout=timeout, backoff_config=backoff_config, iteration_budget=budget)
+        await nr.execute(
+            llm_call, timeout=timeout, backoff_config=backoff_config, iteration_budget=budget
+        )
         self.node_runs.append(nr)
 
         if nr.parsed_output is not None and self.blackboard is not None and nr.strategy is not None:
@@ -423,9 +486,9 @@ class GraphRun:
         node_runs: list[NodeRun],
         config: GraphConfig,
         cycle: int,
-    ) -> list[AgentRole]:
-        seen: set[AgentRole] = set()
-        next_active: list[AgentRole] = []
+    ) -> list[AgentRole | str]:
+        seen: set[AgentRole | str] = set()
+        next_active: list[AgentRole | str] = []
 
         for nr in node_runs:
             if nr.phase != NodePhase.SUCCEEDED:

@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/types/security.py
-# hypothesis_version: 6.152.9
-
-[1.0, 'admin', 'allowed', 'builtin', 'community', 'error', 'normal', 'skull', 't0', 't1', 't2', 't3', 't4', 'user']

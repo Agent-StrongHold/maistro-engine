@@ -6,7 +6,7 @@ services:
     build: .
     container_name: maistro-engine
     ports:
-      - "8000:8000"
+      - "${MAISTRO_BIND_HOST:-127.0.0.1}:${MAISTRO_PORT:-8000}:8000"
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -19,7 +19,8 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - DEFAULT_MODEL=${DEFAULT_MODEL:-anthropic/claude-sonnet-4-20250514}
-      - API_KEYS=${API_KEYS:?Set API_KEYS in .env for production}
+      - API_KEYS=${API_KEYS:-${MAISTRO_ACCESS_TOKEN:?Run ./install.sh to generate}}
+      - MAISTRO_ACCESS_TOKEN=${MAISTRO_ACCESS_TOKEN:-}
       - REQUIRE_AUTH=true
       - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
       - CI_WEBHOOK_SECRET=${CI_WEBHOOK_SECRET:-}
@@ -98,25 +99,6 @@ services:
     restart: unless-stopped
 
   # ─── Open WebUI (Chat Interface) ──────────────────────
-  open-webui:
-    image: ghcr.io/open-webui/open-webui:main
-    container_name: maistro-webui
-    ports:
-      - "3080:8080"
-    environment:
-      - OPENAI_API_BASE_URL=http://maistro-engine:8000/v1
-      - OPENAI_API_KEY=${API_KEYS}
-      - WEBUI_AUTH=true
-      - OAUTH_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-}
-      - OAUTH_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET:-}
-      - OPENID_PROVIDER_URL=${KEYCLOAK_OIDC_URL:-}
-    volumes:
-      - webui-data:/app/backend/data
-    depends_on:
-      - maistro-engine
-    restart: unless-stopped
-
 volumes:
   pgdata:
   workspace-data:
-  webui-data:

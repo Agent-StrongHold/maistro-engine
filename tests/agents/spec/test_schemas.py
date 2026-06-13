@@ -6,6 +6,8 @@ import sys
 import types
 
 import pytest
+from pydantic import ValidationError
+
 from maistro.agents.spec.schemas import (
     SCHEMA_REGISTRY,
     PlanOutput,
@@ -16,7 +18,6 @@ from maistro.agents.spec.schemas import (
     ScoutOutput,
     resolve_schema,
 )
-from pydantic import ValidationError
 
 
 class TestImports:

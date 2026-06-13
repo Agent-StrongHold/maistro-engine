@@ -7,7 +7,6 @@ Phase 2 will add PostgreSQL persistence via TaskRecord.
 from __future__ import annotations
 
 import asyncio
-import itertools
 from collections import OrderedDict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager

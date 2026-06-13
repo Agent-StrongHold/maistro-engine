@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from maistro.memory.learnings.store import InMemoryLearningStore
 from maistro.memory.types import Learning, MemoryScope
 
@@ -108,6 +106,63 @@ class TestMarkUsed:
         await store.mark_used([id1, id2])
         all_lr = await store.list_all()
         assert all(lr.hit_count == 1 for lr in all_lr)
+
+
+class TestMarkOutcome:
+    async def test_success_increments_success_after_use(self) -> None:
+        store = InMemoryLearningStore()
+        id_ = await store.store(_lr(keys=["key"]))
+        await store.mark_outcome([id_], success=True, org_id="org-1")
+        all_lr = await store.list_all()
+        assert all_lr[0].success_after_use == 1
+        assert all_lr[0].failure_after_use == 0
+
+    async def test_failure_increments_failure_after_use(self) -> None:
+        store = InMemoryLearningStore()
+        id_ = await store.store(_lr(keys=["key"]))
+        await store.mark_outcome([id_], success=False, org_id="org-1")
+        all_lr = await store.list_all()
+        assert all_lr[0].failure_after_use == 1
+        assert all_lr[0].success_after_use == 0
+
+    async def test_org_isolation(self) -> None:
+        store = InMemoryLearningStore()
+        id_a = await store.store(_lr(keys=["a"], org="org-A"))
+        await store.mark_outcome([id_a], success=True, org_id="org-B")
+        all_lr = await store.list_all(org_id="__system__")
+        target = next(lr for lr in all_lr if lr.id == id_a)
+        assert target.success_after_use == 0
+
+    async def test_empty_ids_noop(self) -> None:
+        store = InMemoryLearningStore()
+        await store.mark_outcome([], success=True, org_id="org-1")
+
+
+class TestListIneffective:
+    async def test_returns_learnings_with_more_failures_than_successes(self) -> None:
+        store = InMemoryLearningStore()
+        id_ = await store.store(_lr(keys=["key"]))
+        await store.mark_outcome([id_], success=False, org_id="org-1")
+        await store.mark_outcome([id_], success=False, org_id="org-1")
+        await store.mark_outcome([id_], success=True, org_id="org-1")
+        results = await store.list_ineffective(min_uses=3)
+        assert len(results) == 1
+        assert results[0].id == id_
+
+    async def test_excludes_below_min_uses(self) -> None:
+        store = InMemoryLearningStore()
+        id_ = await store.store(_lr(keys=["key"]))
+        await store.mark_outcome([id_], success=False, org_id="org-1")
+        results = await store.list_ineffective(min_uses=3)
+        assert results == []
+
+    async def test_excludes_when_successes_tie_or_exceed(self) -> None:
+        store = InMemoryLearningStore()
+        id_ = await store.store(_lr(keys=["key"]))
+        await store.mark_outcome([id_], success=True, org_id="org-1")
+        await store.mark_outcome([id_], success=False, org_id="org-1")
+        results = await store.list_ineffective(min_uses=2)
+        assert results == []
 
 
 class TestPromotion:

@@ -128,7 +128,9 @@ def get_pm_def(agent_id: str) -> PmAgentDef | None:
     return None
 
 
-def build_task_description(agent_id: str, capability: str, payload: dict[str, Any]) -> tuple[str, str]:
+def build_task_description(
+    agent_id: str, capability: str, payload: dict[str, Any]
+) -> tuple[str, str]:
     """Return (task_type, description) for TaskCreate."""
     defn = get_pm_def(agent_id)
     if defn is None:

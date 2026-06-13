@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 import uuid
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .types import (
     DAGEdgeGenome,
@@ -33,7 +33,7 @@ PROMPT_VARIATIONS = [
 
 
 def _fresh_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _new_id() -> str:
@@ -48,8 +48,7 @@ def mutate_topology(genome: PipelineGenome, rate: float) -> PipelineGenome:
             victim = random.choice(removable)
             topo.nodes = [n for n in topo.nodes if n.id != victim.id]
             topo.edges = [
-                e for e in topo.edges
-                if e.from_node != victim.id and e.to_node != victim.id
+                e for e in topo.edges if e.from_node != victim.id and e.to_node != victim.id
             ]
 
     if random.random() < rate:
@@ -114,7 +113,9 @@ def mutate_node(genome: PipelineGenome, rate: float) -> PipelineGenome:
         if random.random() < rate:
             node.model = random.choice(MODEL_REGISTRY)
         if random.random() < rate:
-            node.temperature = round(max(0.0, min(1.0, node.temperature + random.gauss(0, 0.15))), 2)
+            node.temperature = round(
+                max(0.0, min(1.0, node.temperature + random.gauss(0, 0.15))), 2
+            )
         if random.random() < rate:
             node.max_tokens = random.choice([256, 512, 1024, 2048, 4096, 8192, 16384])
         if random.random() < rate:

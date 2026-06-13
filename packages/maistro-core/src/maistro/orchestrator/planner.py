@@ -196,15 +196,22 @@ def _topological_sort(items: list[SubsystemDef]) -> list[list[SubsystemDef]]:
     """
     depths: dict[str, int] = {}
     item_map = {s.task_id: s for s in items}
+    in_progress: set[str] = set()
 
     def get_depth(tid: str) -> int:
         if tid in depths:
             return depths[tid]
+        if tid in in_progress:
+            raise ValueError(f"Dependency cycle detected involving task {tid!r}")
         item = item_map.get(tid)
         if item is None or not item.depends_on:
             depths[tid] = 0
             return 0
-        max_dep_depth = max(get_depth(d) for d in item.depends_on)
+        in_progress.add(tid)
+        try:
+            max_dep_depth = max(get_depth(d) for d in item.depends_on)
+        finally:
+            in_progress.discard(tid)
         depths[tid] = max_dep_depth + 1
         return depths[tid]
 
