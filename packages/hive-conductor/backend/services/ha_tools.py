@@ -10,9 +10,18 @@ logger = logging.getLogger(__name__)
 
 HA_URL = os.environ.get("HA_URL", "").rstrip("/")
 HA_TOKEN = os.environ.get("HA_TOKEN", "")
-HC_EXTERNAL_URL = os.environ.get("HC_EXTERNAL_URL", "http://10.10.42.100:8101").rstrip("/")
+HC_EXTERNAL_URL = os.environ.get("HC_EXTERNAL_URL", "http://localhost:8101").rstrip("/")
 
-CONTROLLABLE = {"light", "switch", "fan", "lock", "cover", "climate", "input_boolean", "media_player"}
+CONTROLLABLE = {
+    "light",
+    "switch",
+    "fan",
+    "lock",
+    "cover",
+    "climate",
+    "input_boolean",
+    "media_player",
+}
 
 _device_cache: list[dict] | None = None
 
@@ -35,7 +44,12 @@ async def fetch_devices() -> list[dict]:
             )
             r.raise_for_status()
             devices = [
-                {"entity_id": s["entity_id"], "state": s["state"], "name": s["attributes"].get("friendly_name", s["entity_id"]), "domain": s["entity_id"].split(".")[0]}
+                {
+                    "entity_id": s["entity_id"],
+                    "state": s["state"],
+                    "name": s["attributes"].get("friendly_name", s["entity_id"]),
+                    "domain": s["entity_id"].split(".")[0],
+                }
                 for s in r.json()
                 if s["entity_id"].split(".")[0] in CONTROLLABLE
             ]
@@ -58,9 +72,27 @@ def get_tool_definitions() -> list[dict]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "action": {"type": "string", "enum": ["turn_on", "turn_off", "toggle", "get_state", "set_percentage"], "description": "The action to perform. Use set_percentage for fan speed control."},
-                        "entity_id": {"type": "string", "description": "The HA entity ID, e.g. 'fan.smartceilingfan', 'light.living_room'"},
-                        "percentage": {"type": "integer", "description": "For set_percentage: speed 0-100", "minimum": 0, "maximum": 100},
+                        "action": {
+                            "type": "string",
+                            "enum": [
+                                "turn_on",
+                                "turn_off",
+                                "toggle",
+                                "get_state",
+                                "set_percentage",
+                            ],
+                            "description": "The action to perform. Use set_percentage for fan speed control.",
+                        },
+                        "entity_id": {
+                            "type": "string",
+                            "description": "The HA entity ID, e.g. 'fan.smartceilingfan', 'light.living_room'",
+                        },
+                        "percentage": {
+                            "type": "integer",
+                            "description": "For set_percentage: speed 0-100",
+                            "minimum": 0,
+                            "maximum": 100,
+                        },
                     },
                     "required": ["action", "entity_id"],
                 },
@@ -74,9 +106,21 @@ def get_tool_definitions() -> list[dict]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "message": {"type": "string", "description": "The question or action to confirm"},
-                        "target": {"type": "string", "enum": ["blake", "bella", "lilly"], "description": "Which person to send to"},
-                        "timeout_seconds": {"type": "integer", "description": "Seconds to wait for response (default 120)", "minimum": 10, "maximum": 600},
+                        "message": {
+                            "type": "string",
+                            "description": "The question or action to confirm",
+                        },
+                        "target": {
+                            "type": "string",
+                            "enum": ["blake", "bella", "lilly"],
+                            "description": "Which person to send to",
+                        },
+                        "timeout_seconds": {
+                            "type": "integer",
+                            "description": "Seconds to wait for response (default 120)",
+                            "minimum": 10,
+                            "maximum": 600,
+                        },
                     },
                     "required": ["message", "target"],
                 },
@@ -91,7 +135,10 @@ def get_tool_definitions() -> list[dict]:
                     "type": "object",
                     "properties": {
                         "message": {"type": "string", "description": "The text to speak"},
-                        "target": {"type": "string", "description": "The Alexa device name, e.g. 'living_room'"},
+                        "target": {
+                            "type": "string",
+                            "description": "The Alexa device name, e.g. 'living_room'",
+                        },
                     },
                     "required": ["message", "target"],
                 },
@@ -105,7 +152,12 @@ def get_tool_definitions() -> list[dict]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "seconds": {"type": "integer", "description": "Number of seconds to wait", "minimum": 1, "maximum": 300},
+                        "seconds": {
+                            "type": "integer",
+                            "description": "Number of seconds to wait",
+                            "minimum": 1,
+                            "maximum": 300,
+                        },
                     },
                     "required": ["seconds"],
                 },
@@ -131,7 +183,11 @@ async def execute_ha_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
                 )
                 r.raise_for_status()
                 state = r.json()
-                return {"entity_id": state["entity_id"], "state": state["state"], "name": state["attributes"].get("friendly_name", "")}
+                return {
+                    "entity_id": state["entity_id"],
+                    "state": state["state"],
+                    "name": state["attributes"].get("friendly_name", ""),
+                }
         except Exception as e:
             return {"error": str(e)}
 
@@ -148,11 +204,20 @@ async def execute_ha_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
             async with httpx.AsyncClient(timeout=10.0) as c:
                 r = await c.post(
                     f"{HA_URL}/api/services/fan/set_preset_mode",
-                    headers={"Authorization": f"Bearer {HA_TOKEN}", "Content-Type": "application/json"},
+                    headers={
+                        "Authorization": f"Bearer {HA_TOKEN}",
+                        "Content-Type": "application/json",
+                    },
                     json={"entity_id": entity_id, "preset_mode": preset},
                 )
                 r.raise_for_status()
-                return {"success": True, "entity_id": entity_id, "action": action, "preset_mode": preset, "percentage_requested": pct}
+                return {
+                    "success": True,
+                    "entity_id": entity_id,
+                    "action": action,
+                    "preset_mode": preset,
+                    "percentage_requested": pct,
+                }
         except Exception as e:
             return {"error": str(e), "entity_id": entity_id}
 
@@ -189,9 +254,7 @@ _PENDING_CONFIRMS: dict[str, dict] = {}
 
 def get_pending_confirms() -> list[dict]:
     return [
-        {**v, "confirm_id": k}
-        for k, v in _PENDING_CONFIRMS.items()
-        if v.get("status") == "pending"
+        {**v, "confirm_id": k} for k, v in _PENDING_CONFIRMS.items() if v.get("status") == "pending"
     ]
 
 
@@ -256,9 +319,11 @@ async def _get_state(entity_id: str) -> str | None:
             if r.status_code == 200:
                 return r.json().get("state")
     except Exception as _exc:
-        __import__('logging').getLogger('hive.services.ha_tools').warning(
-            'error_swallowed file=%s line=%d: %s',
-            'packages/hive-conductor/backend/services/ha_tools.py', 258, _exc,
+        __import__("logging").getLogger("hive.services.ha_tools").warning(
+            "error_swallowed file=%s line=%d: %s",
+            "packages/hive-conductor/backend/services/ha_tools.py",
+            258,
+            _exc,
         )
         pass
     return None
@@ -288,7 +353,11 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
         "timeout_seconds": timeout_seconds,
     }
 
-    await _set_state(state_entity, "pending", {"friendly_name": f"HC Confirm {confirm_id}", "confirm_id": confirm_id})
+    await _set_state(
+        state_entity,
+        "pending",
+        {"friendly_name": f"HC Confirm {confirm_id}", "confirm_id": confirm_id},
+    )
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as c:
@@ -324,8 +393,11 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
                     )
             except Exception as exc:
                 import logging as _logging
+
                 _logging.getLogger("hive.ha_tools").warning(
-                    "ha_state_cleanup_failed entity=%s: %s", state_entity, exc,
+                    "ha_state_cleanup_failed entity=%s: %s",
+                    state_entity,
+                    exc,
                 )
             return {"result": current, "confirm_id": confirm_id}
 
@@ -347,8 +419,10 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
                             return {"result": result, "confirm_id": confirm_id}
         except Exception as exc:
             import logging as _logging
+
             _logging.getLogger("hive.ha_tools").warning(
-                "ha_event_poll_failed: %s", exc,
+                "ha_event_poll_failed: %s",
+                exc,
             )
 
     return {"result": "timeout", "confirm_id": confirm_id}

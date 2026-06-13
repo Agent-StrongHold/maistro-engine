@@ -24,7 +24,8 @@ def get_evolution_service() -> _EvolutionService:
 async def start_evolution() -> None:
     global _service
     _service = _EvolutionService()
-    asyncio.ensure_future(_service.run_loop())
+    # Keep a reference to the background task so it isn't garbage-collected mid-flight.
+    _service.task = asyncio.ensure_future(_service.run_loop())
 
 
 async def stop_evolution() -> None:
@@ -40,6 +41,7 @@ class _EvolutionService:
         self._population: Any = None
         self._cycle_count = 0
         self._last_cycle_error: str | None = None
+        self.task: asyncio.Task[None] | None = None
         self._tournament: Any = None
 
     def stop(self) -> None:
@@ -61,6 +63,7 @@ class _EvolutionService:
         try:
             from maistro_evolve.population import PopulationStore
             from maistro_evolve.tournament import EloTournament
+
             self._population = PopulationStore()
             self._tournament = EloTournament()
         except Exception as exc:
@@ -78,7 +81,7 @@ class _EvolutionService:
                 logger.warning("Evolution cycle failed: %s", exc)
 
     async def _run_one_cycle(self) -> None:
-        from maistro_evolve.cycle import EvolutionCycle, EvolutionConfig
+        from maistro_evolve.cycle import EvolutionConfig, EvolutionCycle
         from maistro_evolve.harness import EvalHarness
 
         config = EvolutionConfig(
@@ -99,15 +102,21 @@ class _EvolutionService:
 
     def _build_llm_call(self):
         try:
-            from config import get_settings
             import httpx
+            from config import get_settings
 
             settings = get_settings()
             base = settings.maistro_llm_base_url or settings.litellm_api_base
             key = settings.maistro_llm_api_key or settings.litellm_api_key
             if not base:
                 return None
-            raw_key = key.get_secret_value() if hasattr(key, "get_secret_value") else str(key) if key else ""
+            raw_key = (
+                key.get_secret_value()
+                if hasattr(key, "get_secret_value")
+                else str(key)
+                if key
+                else ""
+            )
 
             async def _llm_call(messages: list[dict], **kwargs: Any) -> str:
                 headers = {"Content-Type": "application/json"}
@@ -120,9 +129,12 @@ class _EvolutionService:
                     "max_tokens": kwargs.get("max_tokens", 4096),
                 }
                 async with httpx.AsyncClient(timeout=120.0) as client:
-                    resp = await client.post(f"{base}/v1/chat/completions", json=payload, headers=headers)
+                    resp = await client.post(
+                        f"{base}/v1/chat/completions", json=payload, headers=headers
+                    )
                     resp.raise_for_status()
                     return resp.json()["choices"][0]["message"]["content"]
+
             return _llm_call
         except Exception:
             return None

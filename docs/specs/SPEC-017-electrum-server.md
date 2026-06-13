@@ -16,9 +16,12 @@ contracts:
   - boundary
   - behavioral
 tests: []
-layer: Tools
+layer: Crypto
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-25
 ---
 
 # SPEC-017: Electrum Server Plugin

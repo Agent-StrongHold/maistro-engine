@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from maistro.security.guardrail import (
     GuardrailAction,
     GuardrailResult,
@@ -117,10 +115,14 @@ class TestToolGuardrailIdempotent:
         assert r.action == GuardrailAction.ALLOW
 
     def test_block_on_idempotent_loop(self):
-        g = ToolGuardrail(GuardrailThresholds(
-            warn_after=10, block_after=20,
-            idempotent_warn=1, idempotent_block=2,
-        ))
+        g = ToolGuardrail(
+            GuardrailThresholds(
+                warn_after=10,
+                block_after=20,
+                idempotent_warn=1,
+                idempotent_block=2,
+            )
+        )
         _call(g, "read_file", {"path": "/tmp/x"}, result="same")
         _call(g, "read_file", {"path": "/tmp/x"}, result="same")
         r = _call(g, "read_file", {"path": "/tmp/x"}, result="same")
@@ -184,10 +186,14 @@ class TestToolGuardrailHashConsistency:
 
 class TestToolGuardrailPriority:
     def test_exact_repeat_takes_priority_over_same_tool(self):
-        g = ToolGuardrail(GuardrailThresholds(
-            warn_after=2, block_after=3,
-            same_tool_failure_warn=1, same_tool_failure_block=5,
-        ))
+        g = ToolGuardrail(
+            GuardrailThresholds(
+                warn_after=2,
+                block_after=3,
+                same_tool_failure_warn=1,
+                same_tool_failure_block=5,
+            )
+        )
         _call(g, "exec", {"cmd": "ls"}, error="fail")
         _call(g, "exec", {"cmd": "ls"}, error="fail")
         r = _call(g, "exec", {"cmd": "ls"}, error="fail")

@@ -8,10 +8,10 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from maistro_server.main import app
 
 from maistro.config.settings import Settings, get_settings
 from maistro.tasks.queue import get_task_queue
+from maistro_server.main import app
 
 
 def _client() -> TestClient:

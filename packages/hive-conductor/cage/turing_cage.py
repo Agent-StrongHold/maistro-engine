@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from cage.immutable_paths import is_immutable
-from cage.memory_rules import MemoryRules, MemoryTier
+from cage.memory_rules import MemoryRules
 from cage.permission_boundary import PermissionBoundary, Tier
 
 
@@ -45,15 +45,17 @@ _SECRET_PATTERNS = [
 ]
 
 # Tools that are never allowed regardless of tier
-_BLOCKED_TOOLS = frozenset([
-    "shell_exec_root",
-    "modify_cage",
-    "modify_eval",
-    "delete_all_memory",
-    "escalate_tier",
-    "disable_logging",
-    "raw_sql_exec",
-])
+_BLOCKED_TOOLS = frozenset(
+    [
+        "shell_exec_root",
+        "modify_cage",
+        "modify_eval",
+        "delete_all_memory",
+        "escalate_tier",
+        "disable_logging",
+        "raw_sql_exec",
+    ]
+)
 
 
 class TuringCage:
@@ -97,7 +99,9 @@ class TuringCage:
                 )
         return CageVerdict(blocked=False, reason="", checkpoint="check_output")
 
-    def check_tool_call(self, tool_name: str, agent_tier: Tier, args: dict[str, Any] | None = None) -> CageVerdict:
+    def check_tool_call(
+        self, tool_name: str, agent_tier: Tier, args: dict[str, Any] | None = None
+    ) -> CageVerdict:
         """Block disallowed tools and enforce tier permissions."""
         if tool_name in _BLOCKED_TOOLS:
             return CageVerdict(

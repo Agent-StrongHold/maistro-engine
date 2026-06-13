@@ -1,0 +1,311 @@
+"""Built-in design skills covering the five shipped modes (prototype/deck/template/design-system/image)."""
+
+from maistro_design.types import DesignSkill, DiscoveryField, OutputFormat, SkillMode
+
+BUILTINS: list[DesignSkill] = [
+    # ── Prototype ────────────────────────────────────────────────────────────
+    DesignSkill(
+        slug="login-flow",
+        name="Login Flow",
+        mode=SkillMode.PROTOTYPE,
+        description="Interactive login/auth flow prototype with form states and error handling.",
+        featured=True,
+        output_formats=[OutputFormat.HTML],
+        tags=["auth", "forms", "ux"],
+        discovery_form=[
+            DiscoveryField(
+                key="auth_methods",
+                label="Authentication methods",
+                description="Which auth methods should the flow support?",
+                field_type="multiselect",
+                options=("Email/Password", "Magic Link", "OAuth/SSO", "Passkey"),
+                default="Email/Password",
+            ),
+            DiscoveryField(
+                key="brand_tone",
+                label="Brand tone",
+                description="What tone should the UI convey?",
+                field_type="select",
+                options=("Professional", "Friendly", "Minimal", "Bold"),
+                default="Professional",
+            ),
+        ],
+    ),
+    DesignSkill(
+        slug="agent-browser",
+        name="Agent Browser UI",
+        mode=SkillMode.PROTOTYPE,
+        description="Browser-like UI shell for agentic web browsing workflows.",
+        featured=True,
+        output_formats=[OutputFormat.HTML],
+        tags=["agent", "browser", "automation"],
+        discovery_form=[
+            DiscoveryField(
+                key="primary_action",
+                label="Primary action",
+                description="What is the main thing the agent does in the browser?",
+                field_type="text",
+                default="Research and summarize web pages",
+            ),
+        ],
+    ),
+    # ── Deck ─────────────────────────────────────────────────────────────────
+    DesignSkill(
+        slug="pitch-deck",
+        name="Pitch Deck",
+        mode=SkillMode.DECK,
+        description="Investor-ready pitch deck with structured slides.",
+        featured=True,
+        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        tags=["pitch", "investor", "startup"],
+        discovery_form=[
+            DiscoveryField(
+                key="company_name",
+                label="Company / product name",
+                description="Name of the company or product.",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="one_liner",
+                label="One-liner",
+                description="What does the company do in one sentence?",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="stage",
+                label="Funding stage",
+                description="Current funding stage.",
+                field_type="select",
+                options=("Pre-seed", "Seed", "Series A", "Series B+"),
+                default="Seed",
+            ),
+            DiscoveryField(
+                key="slide_count",
+                label="Number of slides",
+                description="How many slides?",
+                field_type="select",
+                options=("10", "12", "15", "20"),
+                default="12",
+            ),
+        ],
+    ),
+    DesignSkill(
+        slug="product-demo-deck",
+        name="Product Demo Deck",
+        mode=SkillMode.DECK,
+        description="Feature walkthrough deck for customer demos and sales.",
+        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        tags=["demo", "sales", "product"],
+        discovery_form=[
+            DiscoveryField(
+                key="product_name",
+                label="Product name",
+                description="Name of the product being demoed.",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="audience",
+                label="Target audience",
+                description="Who is this demo for?",
+                field_type="select",
+                options=("Enterprise buyers", "Developers", "Executives", "End users"),
+                default="Enterprise buyers",
+            ),
+            DiscoveryField(
+                key="key_features",
+                label="Key features to highlight",
+                description="Comma-separated list of the top 3-5 features.",
+                field_type="text",
+            ),
+        ],
+    ),
+    # ── Template ─────────────────────────────────────────────────────────────
+    DesignSkill(
+        slug="landing-page",
+        name="Landing Page",
+        mode=SkillMode.TEMPLATE,
+        description="Conversion-optimised landing page with hero, features, and CTA sections.",
+        featured=True,
+        output_formats=[OutputFormat.HTML, OutputFormat.CSS],
+        tags=["landing", "marketing", "conversion"],
+        discovery_form=[
+            DiscoveryField(
+                key="product_name",
+                label="Product name",
+                description="Name of the product or service.",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="headline",
+                label="Hero headline",
+                description="The main value proposition headline.",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="cta_text",
+                label="CTA button text",
+                description="Call-to-action button label.",
+                field_type="text",
+                default="Get started",
+            ),
+            DiscoveryField(
+                key="section_count",
+                label="Number of sections",
+                description="How many content sections below the hero?",
+                field_type="select",
+                options=("3", "4", "5", "6"),
+                default="4",
+            ),
+        ],
+    ),
+    DesignSkill(
+        slug="email-template",
+        name="Email Template",
+        mode=SkillMode.TEMPLATE,
+        description="Responsive HTML email template for transactional or marketing sends.",
+        output_formats=[OutputFormat.HTML],
+        tags=["email", "marketing", "responsive"],
+        discovery_form=[
+            DiscoveryField(
+                key="email_type",
+                label="Email type",
+                description="What kind of email is this?",
+                field_type="select",
+                options=("Welcome", "Transactional", "Newsletter", "Re-engagement"),
+                default="Welcome",
+            ),
+            DiscoveryField(
+                key="sender_name",
+                label="Sender name",
+                description="Who is sending this email?",
+                field_type="text",
+            ),
+        ],
+    ),
+    # ── Design System ─────────────────────────────────────────────────────────
+    DesignSkill(
+        slug="brand-guidelines",
+        name="Brand Guidelines",
+        mode=SkillMode.DESIGN_SYSTEM,
+        description="Generate a brand guidelines document from a design system.",
+        featured=True,
+        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        tags=["brand", "guidelines", "identity"],
+        discovery_form=[
+            DiscoveryField(
+                key="brand_name",
+                label="Brand name",
+                description="Name of the brand.",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="brand_values",
+                label="Brand values",
+                description="3-5 core brand values or adjectives.",
+                field_type="text",
+                default="Innovative, Trustworthy, Human",
+            ),
+            DiscoveryField(
+                key="sections",
+                label="Sections to include",
+                description="Which sections should the guidelines cover?",
+                field_type="multiselect",
+                options=("Logo", "Colors", "Typography", "Spacing", "Voice & Tone", "Components"),
+                default="Logo",
+            ),
+        ],
+    ),
+    DesignSkill(
+        slug="design-token-sheet",
+        name="Design Token Sheet",
+        mode=SkillMode.DESIGN_SYSTEM,
+        description="Generate CSS custom properties and JSON token export for a design system.",
+        output_formats=[OutputFormat.CSS, OutputFormat.JSON],
+        tags=["tokens", "css", "design-system"],
+        discovery_form=[
+            DiscoveryField(
+                key="primary_color",
+                label="Primary brand color",
+                description="Hex color for the primary brand color.",
+                field_type="color",
+                default="#6366f1",
+            ),
+            DiscoveryField(
+                key="font_family",
+                label="Primary font family",
+                description="CSS font-family stack for body text.",
+                field_type="text",
+                default="Inter, system-ui, sans-serif",
+            ),
+            DiscoveryField(
+                key="border_radius",
+                label="Base border radius",
+                description="Base border-radius value (e.g. 4px, 8px, 0.5rem).",
+                field_type="text",
+                default="8px",
+            ),
+        ],
+    ),
+    # ── Image ─────────────────────────────────────────────────────────────────
+    DesignSkill(
+        slug="hero-image",
+        name="Hero Image",
+        mode=SkillMode.IMAGE,
+        description="Generate a hero/banner image for marketing or product pages.",
+        output_formats=[OutputFormat.PNG],
+        tags=["image", "hero", "marketing"],
+        discovery_form=[
+            DiscoveryField(
+                key="subject",
+                label="Image subject",
+                description="What should the image depict?",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="style",
+                label="Visual style",
+                description="What visual style should the image have?",
+                field_type="select",
+                options=("Photorealistic", "Illustrated", "Abstract", "Minimal", "3D render"),
+                default="Photorealistic",
+            ),
+            DiscoveryField(
+                key="aspect_ratio",
+                label="Aspect ratio",
+                description="Image dimensions.",
+                field_type="select",
+                options=("16:9", "4:3", "1:1", "3:2"),
+                default="16:9",
+            ),
+        ],
+    ),
+    DesignSkill(
+        slug="social-card",
+        name="Social Card",
+        mode=SkillMode.IMAGE,
+        description="Open Graph / Twitter card image for social sharing.",
+        output_formats=[OutputFormat.PNG],
+        tags=["image", "social", "og"],
+        discovery_form=[
+            DiscoveryField(
+                key="title",
+                label="Card title",
+                description="Main title text for the card.",
+                field_type="text",
+            ),
+            DiscoveryField(
+                key="subtitle",
+                label="Subtitle / tagline",
+                description="Supporting text below the title.",
+                field_type="text",
+                required=False,
+            ),
+        ],
+    ),
+]
+
+
+def load_builtins(registry: object) -> None:
+    """Register all built-in design skills into a registry."""
+    for skill in BUILTINS:
+        registry.register(skill)  # type: ignore[attr-defined]

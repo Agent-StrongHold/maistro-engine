@@ -15,6 +15,7 @@ for self-optimizing cycles + beam search.
 Rollback path: `MAISTRO_PM_USE_STUBS=true` env var reverts to the
 legacy `_run_stub()` dispatch in `tools.pm_stubs`.
 """
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,7 @@ from maistro.tools.browser import BrowserClient, BrowserToolError
 # regression vs v0 baseline.
 # ----------------------------------------------------------------------------
 _pm_outcome_store: object | None = None  # InMemoryOutcomeStore | OutcomeStore protocol
-_pm_event_bus: object | None = None      # EventBus
+_pm_event_bus: object | None = None  # EventBus
 
 
 def set_pm_outcome_store(store: object | None) -> None:
@@ -95,6 +96,7 @@ async def _record_outcome(
         return
     try:
         from maistro.memory.types import Outcome
+
         await _pm_outcome_store.record(  # type: ignore[attr-defined]
             Outcome(
                 task_type=role.value,
@@ -120,6 +122,7 @@ async def _emit_pm_event(event_type: str, payload: dict[str, Any]) -> None:
         return
     try:
         from maistro.events.bus import Event, EventCategory
+
         await _pm_event_bus.emit(  # type: ignore[attr-defined]
             Event(
                 category=EventCategory.AGENT,
@@ -130,6 +133,7 @@ async def _emit_pm_event(event_type: str, payload: dict[str, Any]) -> None:
         )
     except Exception:
         logger.warning("pm_event_emit_failed", event_type=event_type)
+
 
 _log = logging.getLogger("hive.engine.pm")
 logger = structlog.get_logger()
@@ -418,7 +422,10 @@ def _parse_pm_output(raw: str, capability: str) -> PMRoleOutput:
         )
     data.setdefault("capability", capability)
     data.setdefault("summary", "")
-    data.setdefault("result", {k: v for k, v in data.items() if k not in {"capability", "summary", "result", "source"}})
+    data.setdefault(
+        "result",
+        {k: v for k, v in data.items() if k not in {"capability", "summary", "result", "source"}},
+    )
     data.setdefault("source", "llm")
     try:
         return PMRoleOutput.model_validate(data)
@@ -431,7 +438,9 @@ def _parse_pm_output(raw: str, capability: str) -> PMRoleOutput:
         )
 
 
-def _wrap_for_hive(output: PMRoleOutput, agent_label: str, task_description: str) -> ConductorOutput:
+def _wrap_for_hive(
+    output: PMRoleOutput, agent_label: str, task_description: str
+) -> ConductorOutput:
     """Wrap PMRoleOutput in the legacy ConductorOutput shape the Hive
     backend expects until the program_hyperagent surface is migrated to
     HyperagentOutput (v0.5)."""
@@ -450,24 +459,37 @@ def _wrap_for_hive(output: PMRoleOutput, agent_label: str, task_description: str
     )
 
 
+def _run_pm_stub_rollback(task: TaskCreate) -> ConductorOutput:
+    """Legacy stub path, only used when MAISTRO_PM_USE_STUBS is explicitly set."""
+    from maistro.tools.pm_stubs import PM_STUB_HANDLERS
+
+    capability = normalize_capability(_resolve_capability(task))
+    result_dict = PM_STUB_HANDLERS.get(capability, lambda p: {})(
+        {"description": task.description, "program": task.program_context or {}}
+    )
+    out = PMRoleOutput(
+        capability=capability,
+        summary=f"[stub-rollback] {capability}",
+        result=result_dict,
+        source="no_data",
+    )
+    return _wrap_for_hive(out, "PM Agent (stub-rollback)", task.description)
+
+
+def _resolve_role(agent_id: str, capability: str) -> Any:
+    """Resolve a PM role from the agent id, falling back to the capability map."""
+    role = _PM_AGENT_TO_ROLE.get(agent_id) if agent_id else None
+    if role is None:
+        for r, primary in PM_PRIMARY_CAPABILITY.items():
+            if primary == capability:
+                return r
+    return role
+
+
 async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     """Execute a PM fleet capability via real Claude via the LLM gateway."""
     if os.environ.get("MAISTRO_PM_USE_STUBS", "").lower() in {"1", "true", "yes"}:
-        # Emergency rollback path: keep the legacy stub behavior available
-        # but only when an operator explicitly opts in.
-        from maistro.tools.pm_stubs import PM_STUB_HANDLERS
-
-        capability = normalize_capability(_resolve_capability(task))
-        result_dict = PM_STUB_HANDLERS.get(capability, lambda p: {})(
-            {"description": task.description, "program": task.program_context or {}}
-        )
-        out = PMRoleOutput(
-            capability=capability,
-            summary=f"[stub-rollback] {capability}",
-            result=result_dict,
-            source="no_data",
-        )
-        return _wrap_for_hive(out, "PM Agent (stub-rollback)", task.description)
+        return _run_pm_stub_rollback(task)
 
     capability = normalize_capability(_resolve_capability(task))
     prog_ctx = task.program_context if isinstance(task.program_context, dict) else {}
@@ -489,13 +511,7 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     defn = get_pm_def(agent_id) if agent_id else None
     agent_label = defn.display_name if defn else agent_id or "PM Agent"
 
-    role = _PM_AGENT_TO_ROLE.get(agent_id) if agent_id else None
-    if role is None:
-        # Fall back: derive role from capability via the primary-capability map.
-        for r, primary in PM_PRIMARY_CAPABILITY.items():
-            if primary == capability:
-                role = r
-                break
+    role = _resolve_role(agent_id, capability)
     if role is None:
         return _wrap_for_hive(
             _no_data_response(capability, {"description": task.description}),
@@ -511,6 +527,7 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     experience_context = await _get_experience_context(role)
     # --- emit node-started event for observability + eval-judge subscribers ---
     import time as _time
+
     _start = _time.monotonic()
     await _emit_pm_event(
         "pm_node_started",
@@ -533,9 +550,7 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
     elif capability in _NO_DATA_WITHOUT_TOOLS:
         out = _no_data_response(capability, payload)
     else:
-        messages = _build_messages(
-            role, capability, payload, experience_context=experience_context
-        )
+        messages = _build_messages(role, capability, payload, experience_context=experience_context)
         try:
             raw = await maistro_llm_call(messages, temperature=0.2, json_mode=True)
         except Exception as exc:
@@ -566,7 +581,9 @@ async def run_pm_task(task: TaskCreate) -> ConductorOutput:
 
     # --- record outcome + emit completion event ---
     duration_ms = int((_time.monotonic() - _start) * 1000)
-    success = out.source == "llm"  # source="no_data" counts as "not a real success" for the feedback loop
+    success = (
+        out.source == "llm"
+    )  # source="no_data" counts as "not a real success" for the feedback loop
     await _record_outcome(
         role=role,
         capability=capability,

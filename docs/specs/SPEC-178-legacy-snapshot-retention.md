@@ -3,23 +3,28 @@ id: SPEC-178
 title: Legacy snapshot directories — retention and removal
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: AC Defined
 created: 2026-05-13
-accepted: null
-implemented: null
+accepted: 2026-06-02
+implemented: 2026-06-02
 substrate:
   - maistro-engine#ADR-002
 implements: []
 related:
   - maistro-engine#SPEC-175
   - maistro-engine#SPEC-177
-source: []
-contracts:
-  - process
+contracts: []
 tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
+  - status: Accepted
+    date: 2026-06-02
+  - status: AC Defined
+    date: 2026-06-02
 ---
 
 # SPEC-178: Legacy snapshot retention and removal
@@ -67,7 +72,7 @@ Commit with a message that cites **SPEC-177** / **SPEC-175** / **SPEC-178** so h
 
 **Policy:** Do not re-add multi-megabyte `cp -R` snapshots without an ADR; prefer submodule, documented clone path, or CI artifact.
 
-## Acceptance criteria
+## Acceptance Criteria
 
 1. This matrix is referenced from [AGENTS.md](../../AGENTS.md) or root [README.md](../../README.md) “legacy” pointer (one sentence + link).
 2. When a row’s “Superseded when” condition is met, the matching paths are removed in a dedicated PR and `git grep` for the old path returns no hits (or only intentional changelog mentions).

@@ -1,3 +1,34 @@
+---
+id: ADR-022
+title: 'Hardware Signing Devices — Ledger / Trezor / YubiKey / Mobile'
+repo: maistro-engine
+kind: adr
+status: Accepted
+accepted: 2026-06-10
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+implements: []
+related:
+  - maistro-engine#ADR-020
+  - maistro-engine#ADR-023
+  - maistro-engine#ADR-028
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Crypto
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-07
+---
+
 # ADR-022: Hardware Signing Devices — Ledger / Trezor / YubiKey / Mobile
 
 **Status:** Proposed
@@ -14,7 +45,11 @@ The Conductor Seed (ADR-021) is encrypted at rest but decrypted into process mem
 
 ## Decision
 
-Four integration modes, all selectable in the setup wizard (ADR-020). Each replaces or augments the seed source from ADR-021.
+Four integration modes, all selectable in the setup wizard (ADR-020). Modes 1–3 **replace**
+the seed source from ADR-021 with hardware; **Mode 4 is the ADR-021 software seed itself** and
+is always available. Hardware is therefore optional and post-init — ADR-021 bootstraps first
+with no hardware, then migrates if the operator selects a hardware mode (no ADR-021 ↔ ADR-022
+bootstrap cycle).
 
 ### Mode 1: Ledger / Trezor as seed source
 

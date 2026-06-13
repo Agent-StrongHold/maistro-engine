@@ -19,9 +19,12 @@ contracts:
   - behavioral
   - cross-service
 tests: []
-layer: Orchestration
+layer: Crypto
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-25
 ---
 
 # SPEC-018: Lightning-Native Federation

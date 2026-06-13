@@ -39,6 +39,107 @@ def _is_bg_color(pixel: tuple[int, int, int, int], threshold: int, max_delta: in
     return not max_c - min_c > max_delta
 
 
+def _seed_edge_mask(
+    pixels: list[tuple[int, int, int, int]],
+    w: int,
+    h: int,
+    threshold: int,
+    max_delta: int,
+) -> tuple[list[int], deque[int]]:
+    """Mark all background-coloured edge pixels and return (mask, BFS queue)."""
+    mask = [0] * (w * h)
+    queue: deque[int] = deque()
+
+    def _seed(idx: int) -> None:
+        if _is_bg_color(pixels[idx], threshold, max_delta):
+            mask[idx] = 1
+            queue.append(idx)
+
+    for x in range(w):
+        _seed(x)
+        _seed((h - 1) * w + x)
+    for y in range(h):
+        _seed(y * w)
+        _seed(y * w + w - 1)
+    return mask, queue
+
+
+def _flood_fill(
+    pixels: list[tuple[int, int, int, int]],
+    mask: list[int],
+    queue: deque[int],
+    w: int,
+    h: int,
+    threshold: int,
+    max_delta: int,
+) -> None:
+    """BFS flood-fill of contiguous background regions from seeded edges."""
+    while queue:
+        idx = queue.popleft()
+        if mask[idx] != 1:
+            continue
+        x = idx % w
+        y = (idx - x) // w
+        neighbours: list[int] = []
+        if x > 0:
+            neighbours.append(idx - 1)
+        if x < w - 1:
+            neighbours.append(idx + 1)
+        if y > 0:
+            neighbours.append(idx - w)
+        if y < h - 1:
+            neighbours.append(idx + w)
+        for ni in neighbours:
+            if mask[ni] == 0 and _is_bg_color(pixels[ni], threshold, max_delta):
+                mask[ni] = 1
+                queue.append(ni)
+
+
+def _feather_distance(mask: list[int], x: int, y: int, w: int, h: int, feather: int) -> float:
+    """Distance from (x, y) to the nearest masked background pixel within feather."""
+    min_dist: float = feather + 1
+    for fy in range(-feather, feather + 1):
+        for fx in range(-feather, feather + 1):
+            nx = x + fx
+            ny = y + fy
+            if nx < 0 or nx >= w or ny < 0 or ny >= h:
+                continue
+            if mask[ny * w + nx] == 1:
+                d = (fx * fx + fy * fy) ** 0.5
+                if d < min_dist:
+                    min_dist = d
+    return min_dist
+
+
+def _apply_mask(
+    pixels: list[tuple[int, int, int, int]],
+    mask: list[int],
+    w: int,
+    h: int,
+    feather: int,
+) -> list[tuple[int, int, int, int]]:
+    """Produce the output pixel list with background cleared and edges feathered."""
+    new_pixels = list(pixels)
+    if feather <= 0:
+        for i in range(len(mask)):
+            if mask[i] == 1:
+                new_pixels[i] = (0, 0, 0, 0)
+        return new_pixels
+
+    for y in range(h):
+        for x in range(w):
+            idx = y * w + x
+            if mask[idx] == 1:
+                new_pixels[idx] = (0, 0, 0, 0)
+            elif mask[idx] == 2:
+                min_dist = _feather_distance(mask, x, y, w, h, feather)
+                if min_dist <= feather:
+                    alpha = round(255 * (min_dist / feather))
+                    r, g, b, _ = new_pixels[idx]
+                    new_pixels[idx] = (r, g, b, alpha)
+    return new_pixels
+
+
 def remove_background(
     image: Image.Image,
     threshold: int = 240,
@@ -49,88 +150,15 @@ def remove_background(
     w, h = img.size
     pixels = img.get_flattened_data()
 
-    mask = [0] * (w * h)
+    mask, queue = _seed_edge_mask(pixels, w, h, threshold, max_saturation_delta)
+    _flood_fill(pixels, mask, queue, w, h, threshold, max_saturation_delta)
 
-    queue: deque[int] = deque()
-
-    for x in range(w):
-        idx_top = x
-        if _is_bg_color(pixels[idx_top], threshold, max_saturation_delta):
-            mask[idx_top] = 1
-            queue.append(idx_top)
-        idx_bot = (h - 1) * w + x
-        if _is_bg_color(pixels[idx_bot], threshold, max_saturation_delta):
-            mask[idx_bot] = 1
-            queue.append(idx_bot)
-
-    for y in range(h):
-        idx_left = y * w
-        if _is_bg_color(pixels[idx_left], threshold, max_saturation_delta):
-            mask[idx_left] = 1
-            queue.append(idx_left)
-        idx_right = y * w + w - 1
-        if _is_bg_color(pixels[idx_right], threshold, max_saturation_delta):
-            mask[idx_right] = 1
-            queue.append(idx_right)
-
-    while queue:
-        idx = queue.popleft()
-        if mask[idx] != 1:
-            continue
-        x = idx % w
-        y = (idx - x) // w
-        if x > 0:
-            ni = idx - 1
-            if mask[ni] == 0 and _is_bg_color(pixels[ni], threshold, max_saturation_delta):
-                mask[ni] = 1
-                queue.append(ni)
-        if x < w - 1:
-            ni = idx + 1
-            if mask[ni] == 0 and _is_bg_color(pixels[ni], threshold, max_saturation_delta):
-                mask[ni] = 1
-                queue.append(ni)
-        if y > 0:
-            ni = idx - w
-            if mask[ni] == 0 and _is_bg_color(pixels[ni], threshold, max_saturation_delta):
-                mask[ni] = 1
-                queue.append(ni)
-        if y < h - 1:
-            ni = idx + w
-            if mask[ni] == 0 and _is_bg_color(pixels[ni], threshold, max_saturation_delta):
-                mask[ni] = 1
-                queue.append(ni)
-
+    # Unreached background-coloured pixels (interior) are marked as 2.
     for i in range(len(mask)):
         if mask[i] == 0:
             mask[i] = 2
 
-    new_pixels = list(pixels)
-    if feather > 0:
-        for y in range(h):
-            for x in range(w):
-                idx = y * w + x
-                if mask[idx] == 1:
-                    new_pixels[idx] = (0, 0, 0, 0)
-                elif mask[idx] == 2:
-                    min_dist = feather + 1
-                    for fy in range(-feather, feather + 1):
-                        for fx in range(-feather, feather + 1):
-                            nx = x + fx
-                            ny = y + fy
-                            if nx < 0 or nx >= w or ny < 0 or ny >= h:
-                                continue
-                            if mask[ny * w + nx] == 1:
-                                d = (fx * fx + fy * fy) ** 0.5
-                                if d < min_dist:
-                                    min_dist = d
-                    if min_dist <= feather:
-                        alpha = round(255 * (min_dist / feather))
-                        r, g, b, _ = new_pixels[idx]
-                        new_pixels[idx] = (r, g, b, alpha)
-    else:
-        for i in range(len(mask)):
-            if mask[i] == 1:
-                new_pixels[i] = (0, 0, 0, 0)
+    new_pixels = _apply_mask(pixels, mask, w, h, feather)
 
     result = Image.new("RGBA", (w, h))
     result.putdata(new_pixels)

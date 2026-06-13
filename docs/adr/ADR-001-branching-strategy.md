@@ -3,12 +3,15 @@ id: ADR-001
 title: Branching strategy — integration as default PR base
 repo: maistro-engine
 kind: adr
-status: Accepted
+status: Superseded
 created: 2026-04-26
 substrate: []
 implements: []
-related: []
+related:
+  - maistro-engine#ADR-095
 supersedes: []
+superseded-by:
+  - maistro-engine#ADR-095
 blocks: []
 blocked-by: []
 contracts: []
@@ -16,9 +19,16 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Superseded
+    date: 2026-04-26
 ---
 
 # ADR-001: Branching strategy — integration as default PR base
+
+> **Superseded by [ADR-095](ADR-095-four-tier-branch-model.md) (2026-05-29).** The model is now four-tier — `feat/* → develop → integration → main` — with enforced branch protection and CI gates. The `integration`-as-default-base and `research/<tranche>` staging below are historical.
 
 **Status:** Accepted
 **Date:** 2026-04-26

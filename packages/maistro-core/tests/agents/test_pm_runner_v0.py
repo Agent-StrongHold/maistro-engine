@@ -5,6 +5,7 @@ to LLM-gateway-backed Claude calls. Live LLM test gated by
 `RUN_LIVE_LLM=1` so default CI doesn't burn tokens; the offline tests
 monkeypatch `maistro_llm_call` and exercise schema/contract paths.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,19 +15,25 @@ import pytest
 
 from maistro.agents import pm_runner
 from maistro.agents.types import ConductorOutput
-from maistro.graph.types import AgentRole, PMRoleOutput
 from maistro.tasks.models import TaskCreate
 
 
-def _task(*, agent_id: str = "intake", capability: str = "create_initiative",
-          description: str = "Launch a new agent platform",
-          confirmed: bool = False) -> TaskCreate:
+def _task(
+    *,
+    agent_id: str = "intake",
+    capability: str = "create_initiative",
+    description: str = "Launch a new agent platform",
+    confirmed: bool = False,
+) -> TaskCreate:
     return TaskCreate(
         description=description,
         agent_id=agent_id,
         capability=capability,
-        program_context={"program_name": "MAISTRO v0", "goals": ["ship in 7 days"],
-                         "confirmed": confirmed},
+        program_context={
+            "program_name": "MAISTRO v0",
+            "goals": ["ship in 7 days"],
+            "confirmed": confirmed,
+        },
     )
 
 
@@ -35,17 +42,23 @@ async def test_runner_calls_llm_for_non_gated_capability(monkeypatch):
     """Non-gated capabilities (e.g. create_initiative) must invoke maistro_llm_call."""
     captured: dict[str, object] = {}
 
-    async def fake_llm_call(messages, *, model=None, temperature=None,
-                             json_mode=True, timeout=120.0):
+    async def fake_llm_call(
+        messages, *, model=None, temperature=None, json_mode=True, timeout=120.0
+    ):
         captured["messages"] = messages
         captured["model"] = model
-        return json.dumps({
-            "capability": "create_initiative",
-            "summary": "Drafted initiative for the MAISTRO v0 launch program — 6 goals identified.",
-            "result": {"title": "MAISTRO v0 launch", "goals": ["ship in 7 days"],
-                       "draft_status": "needs_confirm"},
-            "source": "llm",
-        })
+        return json.dumps(
+            {
+                "capability": "create_initiative",
+                "summary": "Drafted initiative for the MAISTRO v0 launch program — 6 goals identified.",
+                "result": {
+                    "title": "MAISTRO v0 launch",
+                    "goals": ["ship in 7 days"],
+                    "draft_status": "needs_confirm",
+                },
+                "source": "llm",
+            }
+        )
 
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
@@ -80,8 +93,9 @@ async def test_runner_short_circuits_no_data_capabilities(monkeypatch):
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
 
     result = await pm_runner.run_pm_task(
-        _task(agent_id="program_manager", capability="poll_airtable",
-              description="Sync from Airtable")
+        _task(
+            agent_id="program_manager", capability="poll_airtable", description="Sync from Airtable"
+        )
     )
     assert called is False, "poll_airtable must not invoke the LLM in v0 (Airtable not wired)"
     assert "source=no_data" in result.final_answer
@@ -99,13 +113,12 @@ async def test_jira_capability_without_pat_returns_no_data_with_link(monkeypatch
         raise AssertionError("MCP must not be called when there's no PAT")
 
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
-    monkeypatch.setattr(
-        pm_runner.AtlassianMCPClient, "jira_get_my_issues", fake_mcp_call
-    )
+    monkeypatch.setattr(pm_runner.AtlassianMCPClient, "jira_get_my_issues", fake_mcp_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
 
-    task = _task(agent_id="delivery", capability="poll_jira",
-                 description="Fetch open issues for Alice")
+    task = _task(
+        agent_id="delivery", capability="poll_jira", description="Fetch open issues for Alice"
+    )
     result = await pm_runner.run_pm_task(task)
     assert "source=no_data" in result.final_answer
     # Must surface the PAT URL so 2FA-retry flow works
@@ -128,23 +141,35 @@ async def test_jira_capability_with_pat_calls_mcp_then_llm(monkeypatch):
         mcp_called_with["jira_pat"] = jira_pat
         return JiraSearchResult(
             issues=(
-                JiraIssue(key="PROJ-1", summary="Ship pm-fleet v0",
-                          status="In Progress", assignee="alice",
-                          issuetype="Story"),
-                JiraIssue(key="PROJ-2", summary="Wire Atlassian MCP",
-                          status="Open", assignee="alice", issuetype="Task"),
+                JiraIssue(
+                    key="PROJ-1",
+                    summary="Ship pm-fleet v0",
+                    status="In Progress",
+                    assignee="alice",
+                    issuetype="Story",
+                ),
+                JiraIssue(
+                    key="PROJ-2",
+                    summary="Wire Atlassian MCP",
+                    status="Open",
+                    assignee="alice",
+                    issuetype="Task",
+                ),
             ),
             total=2,
             jql="assignee = currentUser()",
         )
 
-    async def fake_llm_call(messages, *, model=None, temperature=None,
-                             json_mode=True, timeout=120.0):
+    async def fake_llm_call(
+        messages, *, model=None, temperature=None, json_mode=True, timeout=120.0
+    ):
         llm_called_with["messages"] = messages
-        return ('{"capability":"poll_jira",'
-                '"summary":"Alice has 2 open issues — both v0 critical-path.",'
-                '"result":{"summary_count":2,"top_issue":"PROJ-1"},'
-                '"source":"llm"}')
+        return (
+            '{"capability":"poll_jira",'
+            '"summary":"Alice has 2 open issues — both v0 critical-path.",'
+            '"result":{"summary_count":2,"top_issue":"PROJ-1"},'
+            '"source":"llm"}'
+        )
 
     monkeypatch.setattr(
         pm_runner.AtlassianMCPClient,
@@ -191,11 +216,15 @@ async def test_detect_blockers_uses_blockers_jql(monkeypatch):
         return JiraSearchResult(issues=(), total=0, jql=jql)
 
     async def fake_llm_call(*args, **kwargs):
-        return ('{"capability":"detect_blockers","summary":"No blockers found.",'
-                '"result":{"blockers":[]},"source":"llm"}')
+        return (
+            '{"capability":"detect_blockers","summary":"No blockers found.",'
+            '"result":{"blockers":[]},"source":"llm"}'
+        )
 
     monkeypatch.setattr(
-        pm_runner.AtlassianMCPClient, "jira_search_issues", fake_search,
+        pm_runner.AtlassianMCPClient,
+        "jira_search_issues",
+        fake_search,
     )
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
@@ -218,13 +247,16 @@ async def test_jira_mcp_transport_error_returns_no_data_with_hint(monkeypatch):
 
     async def fake_mcp_raises(self, *, max_results, jira_pat):
         from maistro.tools.atlassian import AtlassianMCPError
+
         raise AtlassianMCPError("connection refused on http://atlassian-mcp:8000")
 
     async def fake_llm_call(*args, **kwargs):
         raise AssertionError("LLM must not be called when MCP fails")
 
     monkeypatch.setattr(
-        pm_runner.AtlassianMCPClient, "jira_get_my_issues", fake_mcp_raises,
+        pm_runner.AtlassianMCPClient,
+        "jira_get_my_issues",
+        fake_mcp_raises,
     )
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
@@ -247,18 +279,27 @@ async def test_gated_capability_generates_draft_without_raising(monkeypatch):
     draft_status='needs_confirm' embedded in the LLM output). The actual
     write gate lives in Hive's confirm handler, not here."""
     monkeypatch.setattr(
-        pm_runner, "maistro_llm_call",
+        pm_runner,
+        "maistro_llm_call",
         # `create_jira_ticket` is in _NO_DATA_WITHOUT_TOOLS so it short-circuits
         # before LLM in v0; we test create_initiative instead since it's gated
         # but not in the no-data set.
-        _ := __import__("asyncio").coroutine(lambda *a, **kw: '{"capability":"create_initiative","summary":"x","result":{"draft_status":"needs_confirm"},"source":"llm"}') if False else (
-            lambda *args, **kwargs: __import__("asyncio").sleep(0)
-        ),
+        _ := __import__("asyncio").coroutine(
+            lambda *a, **kw: (
+                '{"capability":"create_initiative","summary":"x","result":{"draft_status":"needs_confirm"},"source":"llm"}'
+            )
+        )
+        if False
+        else (lambda *args, **kwargs: __import__("asyncio").sleep(0)),
     )
+
     # Use a proper async stub via monkeypatch + an actual async fn:
     async def fake_llm_call(*args, **kwargs):
-        return ('{"capability":"create_initiative","summary":"Drafted initiative",'
-                '"result":{"draft_status":"needs_confirm"},"source":"llm"}')
+        return (
+            '{"capability":"create_initiative","summary":"Drafted initiative",'
+            '"result":{"draft_status":"needs_confirm"},"source":"llm"}'
+        )
+
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
 
@@ -328,10 +369,16 @@ async def test_web_search_calls_browser_then_llm(monkeypatch):
             query=query,
             summary="MAISTROis the company's agent platform; Claude is the LLM backbone.",
             citations=(
-                Citation(title="MAISTROdocs", url="https://example.com/docs",
-                         snippet="MAISTROdocumentation overview"),
-                Citation(title="Claude API", url="https://docs.anthropic.com",
-                         snippet="Anthropic API reference"),
+                Citation(
+                    title="MAISTROdocs",
+                    url="https://example.com/docs",
+                    snippet="MAISTROdocumentation overview",
+                ),
+                Citation(
+                    title="Claude API",
+                    url="https://docs.anthropic.com",
+                    snippet="Anthropic API reference",
+                ),
             ),
             duration_ms=8200,
             source="browser-use",
@@ -340,13 +387,16 @@ async def test_web_search_calls_browser_then_llm(monkeypatch):
     async def fake_aclose(self):
         return None
 
-    async def fake_llm_call(messages, *, model=None, temperature=None,
-                             json_mode=True, timeout=120.0):
+    async def fake_llm_call(
+        messages, *, model=None, temperature=None, json_mode=True, timeout=120.0
+    ):
         llm_messages["messages"] = messages
-        return ('{"capability":"web_search_background",'
-                '"summary":"Background: 2 reputable sources on maistro + Claude agent platforms.",'
-                '"result":{"queries":["maistro platform"],"hypotheses":["Claude is core"]},'
-                '"source":"llm"}')
+        return (
+            '{"capability":"web_search_background",'
+            '"summary":"Background: 2 reputable sources on maistro + Claude agent platforms.",'
+            '"result":{"queries":["maistro platform"],"hypotheses":["Claude is core"]},'
+            '"source":"llm"}'
+        )
 
     monkeypatch.setattr(pm_runner.BrowserClient, "search_web", fake_search_web)
     monkeypatch.setattr(pm_runner.BrowserClient, "aclose", fake_aclose)
@@ -385,8 +435,7 @@ async def test_web_search_fallback_when_browser_unavailable(monkeypatch):
 
     async def fake_search_web(self, query, *, max_results=3):
         raise BrowserToolError(
-            "browser-use not installed in this environment. "
-            "Image bakes it in via Dockerfile."
+            "browser-use not installed in this environment. Image bakes it in via Dockerfile."
         )
 
     async def fake_aclose(self):
@@ -421,13 +470,18 @@ async def test_experience_context_injected_when_outcome_store_wired(monkeypatch)
 
     class FakeOutcomeStore:
         async def get_experience_context(self, *, task_type=""):
-            return f"## Recent Failure Patterns\n- timeout (model: claude-sonnet-4-6) for {task_type}"
+            return (
+                f"## Recent Failure Patterns\n- timeout (model: claude-sonnet-4-6) for {task_type}"
+            )
 
-    async def fake_llm_call(messages, *, model=None, temperature=None,
-                             json_mode=True, timeout=120.0):
+    async def fake_llm_call(
+        messages, *, model=None, temperature=None, json_mode=True, timeout=120.0
+    ):
         captured["messages"] = messages
-        return ('{"capability":"create_initiative","summary":"Drafted with learned context.",'
-                '"result":{"draft_status":"needs_confirm"},"source":"llm"}')
+        return (
+            '{"capability":"create_initiative","summary":"Drafted with learned context.",'
+            '"result":{"draft_status":"needs_confirm"},"source":"llm"}'
+        )
 
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
@@ -456,8 +510,7 @@ async def test_node_lifecycle_events_emitted_when_bus_wired(monkeypatch):
             events.append((event.event_type, event.payload))
 
     async def fake_llm_call(*args, **kwargs):
-        return ('{"capability":"create_initiative","summary":"ok",'
-                '"result":{},"source":"llm"}')
+        return '{"capability":"create_initiative","summary":"ok","result":{},"source":"llm"}'
 
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
@@ -484,12 +537,13 @@ async def test_outcome_recorded_on_success_when_store_wired(monkeypatch):
     class FakeOutcomeStore:
         async def get_experience_context(self, *, task_type=""):
             return ""
+
         async def record(self, outcome):
             recorded.append(outcome)
             return 1
 
     async def fake_llm_call(*args, **kwargs):
-        return ('{"capability":"create_initiative","summary":"ok","result":{},"source":"llm"}')
+        return '{"capability":"create_initiative","summary":"ok","result":{},"source":"llm"}'
 
     monkeypatch.setattr(pm_runner, "maistro_llm_call", fake_llm_call)
     monkeypatch.delenv("MAISTRO_PM_USE_STUBS", raising=False)
@@ -509,7 +563,7 @@ async def test_outcome_recorded_on_success_when_store_wired(monkeypatch):
 @pytest.mark.skipif(
     os.environ.get("RUN_LIVE_LLM") != "1",
     reason="Live LLM gateway call; set RUN_LIVE_LLM=1 + LITELLM_URL + LITELLM_MASTER_KEY"
-        " + DEFAULT_MODEL to enable.",
+    " + DEFAULT_MODEL to enable.",
 )
 async def test_intake_create_initiative_live_through_llm_gateway():
     """End-to-end: hit the real LLM gateway via maistro_llm_call, parse a

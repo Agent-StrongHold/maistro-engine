@@ -3,7 +3,8 @@ id: ADR-054
 title: Agent sandbox lifecycle and task budget enforcement
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-018
@@ -15,6 +16,7 @@ related:
   - maistro-engine#ADR-028
   - maistro-engine#ADR-052
   - maistro-engine#ADR-056
+  - maistro-engine#ADR-068
 supersedes: []
 blocks: []
 blocked-by: []
@@ -25,6 +27,11 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-13
 ---
 
 # ADR-054: Agent sandbox lifecycle and task budget enforcement
@@ -120,13 +127,13 @@ class BudgetTracker(Protocol):
 - [ ] Recipe-declared `sandbox.tier` resolved to a concrete container spec at provision time.
 - [ ] Sandbox FS not used for any durable artefact (CI check via observability — sandbox-FS writes outside `/scratch` raise a `sandbox.fs.unexpected_write` event).
 
-## Open questions
+## Resolved decisions (v0)
 
-1. **Sandbox tier mapping.** Concrete container specs per `(small, large, gpu)` — needs product input. Defer to a small follow-up doc; substrate ships the enum and a default mapping.
-2. **Cold-start mitigation timeline.** Measure first; if p50 > 3s, ship per-recipe pre-baked images for the top-N most-used recipes.
-3. **Per-tool fine-grained resource limits inside the sandbox.** Out of scope for v0. Recipe-level limit only.
-4. **Composite vs per-resource budget approval.** Same as ADR-051 — collapse to a single prompt when multiple thresholds trip in the same window.
-5. **GPU sandbox provisioning for Canvas Studio.** Recipe declares `tier: gpu`; substrate routes to a GPU node pool. Specific node-pool selection is product/infra concern.
+1. **Sandbox tier mapping → substrate ships the enum + a default mapping.** The engine ships sensible default container specs per `(small | large | gpu)`; concrete specs are product-tunable via config rather than blocking on product input.
+2. **Cold-start mitigation → measure first.** If sandbox provision p50 exceeds 3s at volume, ship per-recipe pre-baked images for the top-N most-used recipes.
+3. **Per-tool fine-grained resource limits inside the sandbox → out of scope (v0).** Recipe-level (per-task) budget only.
+4. **Composite vs per-resource budget approval → collapse.** When multiple thresholds trip in the same wall-clock window, collapse to a single approval prompt (per ADR-051).
+5. **GPU provisioning → recipe declares `tier: gpu`; substrate routes to a GPU node pool.** Specific node-pool selection is a product/infra concern.
 
 ## Source references
 

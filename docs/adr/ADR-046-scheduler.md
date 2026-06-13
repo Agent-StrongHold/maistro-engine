@@ -3,7 +3,8 @@ id: ADR-046
 title: Scheduler — Recurring agent tasks
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
+accepted: 2026-06-10
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-018
@@ -21,6 +22,11 @@ tests: []
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-13
 ---
 
 # ADR-046: Scheduler — Recurring agent tasks
@@ -88,12 +94,12 @@ class Schedule(Base):
 - [ ] Prometheus counter `maistro_schedule_fires_total{schedule_id, outcome}` increments on each fire.
 - [ ] OTel span `schedule.fire` parents the resulting `task.run` span via the existing `@trace_agent` decorator.
 
-## Open questions
+## Resolved decisions (v0)
 
-1. **Per-schedule concurrency policy.** If a schedule fires while its previous task is still running, do we (a) skip, (b) queue anyway, (c) cancel-previous? Hermes does (b). Recommend (a) as the default with an `overlap_policy` enum field.
-2. **Multi-process deployments.** APScheduler in-memory works for the single-conductor case. For multi-replica deploys, do we need a Postgres-advisory-lock leader, or is that ADR-future scope?
-3. **Time-zone semantics on cron.** Store as IANA tz string on the row and apply at fire time, or normalize to UTC at create time? Hermes stores user-local. Recommend IANA-on-row to keep DST handling correct.
-4. **Skills-per-schedule (hermes feature).** Defer to `task_template` carrying skill ids — don't add a separate column unless skill-policy diverges from task-policy.
+1. **Per-schedule concurrency → `overlap_policy` enum, default `skip`.** If a schedule fires while its previous task still runs, the default is **skip**. `overlap_policy: skip | queue | cancel_previous` is a recipe-overridable field.
+2. **Multi-process → single-conductor v0.** In-memory APScheduler for the single-conductor case. Multi-replica leader election (Postgres advisory-lock leader) is **deferred** to a follow-up ADR.
+3. **Time-zone → IANA-on-row, applied at fire time.** Store the IANA tz string on the schedule row and apply at fire time (DST-correct); do **not** normalize to UTC at create time.
+4. **Skills-per-schedule → no separate column.** Skill ids ride on the `task_template`; add a dedicated column only if skill-policy ever diverges from task-policy.
 
 ## Source references
 

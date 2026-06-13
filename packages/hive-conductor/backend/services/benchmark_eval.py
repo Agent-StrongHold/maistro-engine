@@ -12,6 +12,7 @@ The evaluator:
 For now: LLM-as-judge with a strict rubric.
 Future: actual test execution in a sandbox.
 """
+
 from __future__ import annotations
 
 import json
@@ -73,7 +74,10 @@ async def evaluate_code_output(
 
     messages = [
         {"role": "system", "content": EVAL_RUBRIC},
-        {"role": "user", "content": f"TASK:\n{task}\n\nPLAN:\n{plan[:2000]}\n\nCODE:\n{code[:4000]}\n\nREVIEW:\n{review[:1000]}"},
+        {
+            "role": "user",
+            "content": f"TASK:\n{task}\n\nPLAN:\n{plan[:2000]}\n\nCODE:\n{code[:4000]}\n\nREVIEW:\n{review[:1000]}",
+        },
     ]
 
     try:
@@ -81,7 +85,11 @@ async def evaluate_code_output(
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-                json={"model": model, "messages": messages, "response_format": {"type": "json_object"}},
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "response_format": {"type": "json_object"},
+                },
             )
             r.raise_for_status()
             content = r.json()["choices"][0]["message"]["content"]
@@ -97,7 +105,6 @@ async def evaluate_dag_run(run_result: dict[str, Any], task: str) -> dict[str, A
 
     # Use all node outputs regardless of key names
     all_outputs = [nr.get("response", "") for nr in node_results.values() if nr.get("success")]
-    combined = "\n---\n".join(all_outputs)
 
     # Split into plan/code/review by position (first=plan, last=review, middle=code)
     if len(all_outputs) >= 3:
@@ -110,5 +117,7 @@ async def evaluate_dag_run(run_result: dict[str, Any], task: str) -> dict[str, A
         plan, code, review = "", "", ""
 
     score = await evaluate_code_output(task, plan, code, review)
-    logger.info("benchmark_score task=%s total=%s pass=%s", task[:40], score.get("total"), score.get("pass"))
+    logger.info(
+        "benchmark_score task=%s total=%s pass=%s", task[:40], score.get("total"), score.get("pass")
+    )
     return score

@@ -14,7 +14,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from maistro.types.intent import Intent
-from maistro.types.errors import ClassificationError
 
 if TYPE_CHECKING:
     from maistro.container import Container
@@ -31,6 +30,32 @@ async def determine_execution_tier(intent: Intent, agent: Any = None) -> Intent:
         current_tier = agent.priority_tier
     if current_tier != intent.tier:
         return dataclasses.replace(intent, tier=current_tier)
+    return intent
+
+
+def _stop_response(content: str) -> dict[str, Any]:
+    """Build an OpenAI-compatible single-message response with finish_reason=stop."""
+    return {
+        "choices": [
+            {
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
+def _apply_intent_hint(intent: Intent, intent_hint: str) -> Intent:
+    """Override the classified task_type when a valid intent_hint is supplied."""
+    if not intent_hint:
+        return intent
+    import dataclasses
+
+    from maistro.types.intent import TIER_ORDER
+
+    for task_type in TIER_ORDER:
+        if task_type == intent_hint.upper():
+            return dataclasses.replace(intent, task_type=task_type)
     return intent
 
 
@@ -55,42 +80,20 @@ class Conduit:
                 break
 
         if not last_user_msg:
-            return {
-                "choices": [
-                    {
-                        "message": {"role": "assistant", "content": "No message provided."},
-                        "finish_reason": "stop",
-                    }
-                ],
-            }
+            return _stop_response("No message provided.")
 
         # 1. Gate scan
-        gate_result = self.container.gate.check(last_user_msg)
-        if not gate_result.passed:
-            logger.warning("Gate blocked: %s", gate_result.reason)
-            return {
-                "choices": [
-                    {
-                        "message": {
-                            "role": "assistant",
-                            "content": f"Request blocked: {gate_result.reason}",
-                        },
-                        "finish_reason": "stop",
-                    }
-                ],
-            }
+        gate_result = await self.container.gate.process_input(last_user_msg, auth=auth)
+        if gate_result.blocked:
+            logger.warning("Gate blocked: %s", gate_result.block_reason)
+            return _stop_response(f"Request blocked: {gate_result.block_reason}")
 
         # 2. Classify intent
-        intent = await self.container.classifier.classify(last_user_msg)
-        if intent_hint:
-            from maistro.types.intent import TIER_ORDER
-
-            for task_type in TIER_ORDER:
-                if task_type == intent_hint.upper():
-                    import dataclasses
-
-                    intent = dataclasses.replace(intent, task_type=task_type)
-                    break
+        intent = await self.container.classifier.classify(
+            messages,
+            self.container.config.task_types,
+        )
+        intent = _apply_intent_hint(intent, intent_hint)
 
         logger.info(
             "Classified: task_type=%s complexity=%s tier=%s",
@@ -107,14 +110,7 @@ class Conduit:
             agent = next(iter(self.container.agents.values())) if self.container.agents else None
 
         if agent is None:
-            return {
-                "choices": [
-                    {
-                        "message": {"role": "assistant", "content": "No agents available."},
-                        "finish_reason": "stop",
-                    }
-                ],
-            }
+            return _stop_response("No agents available.")
 
         # 4. Determine execution tier
         intent = await determine_execution_tier(intent, agent)
@@ -129,23 +125,9 @@ class Conduit:
             )
         except Exception as exc:
             logger.exception("Agent %s failed", agent_name)
-            return {
-                "choices": [
-                    {
-                        "message": {"role": "assistant", "content": f"Agent error: {exc}"},
-                        "finish_reason": "stop",
-                    }
-                ],
-            }
+            return _stop_response(f"Agent error: {exc}")
 
         if isinstance(result, dict):
             return result
 
-        return {
-            "choices": [
-                {
-                    "message": {"role": "assistant", "content": str(result)},
-                    "finish_reason": "stop",
-                }
-            ],
-        }
+        return _stop_response(str(result))

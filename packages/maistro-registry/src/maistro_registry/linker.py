@@ -132,9 +132,7 @@ class GitHubResolver:
     Optional auth token reduces rate-limit pressure (5000 req/hr vs 60).
     """
 
-    repo_owners: dict[str, str] = field(
-        default_factory=lambda: dict(_DEFAULT_REPO_OWNERS)
-    )
+    repo_owners: dict[str, str] = field(default_factory=lambda: dict(_DEFAULT_REPO_OWNERS))
     token: str | None = None
     _id_cache: dict[str, set[str]] = field(default_factory=dict)
 

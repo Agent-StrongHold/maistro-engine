@@ -62,7 +62,7 @@ INTERVIEW_STEPS: tuple[dict[str, str], ...] = (
     {
         "field": "goals",
         "agent": "intake",
-        "question": "What outcomes must be true in the next 90 days? List the top 2–3.",
+        "question": "What outcomes must be true in the next 90 days? List the top 2-3.",
     },
     {
         "field": "tools",

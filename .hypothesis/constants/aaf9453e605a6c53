@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/sentinel/validator.py
-# hypothesis_version: 6.151.10
-
-[0.6, '1', 'array', 'boolean', 'default', 'enum', 'enum_fuzzy_match', 'error', 'info', 'integer', 'invalid_enum', 'missing_required', 'number', 'object', 'properties', 'required', 'string', 'system_to_tool', 'true', 'type', 'type_coercion', 'type_mismatch', 'warning', 'yes']

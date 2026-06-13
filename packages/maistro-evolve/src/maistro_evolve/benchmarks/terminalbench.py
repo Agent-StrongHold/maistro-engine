@@ -7,35 +7,78 @@ from typing import Any
 
 from ..types import EvalResult, PipelineGenome
 from .datasets import TERMINALBENCH_SAMPLES
-from .prompt_builder import build_system_prompt, build_model_config, build_messages
+from .prompt_builder import build_messages, build_model_config, build_system_prompt
 from .scoring import judge_score
+
+_COMMAND_HINTS = [
+    "grep",
+    "find",
+    "tar",
+    "docker",
+    "sed",
+    "curl",
+    "wget",
+    "chmod",
+    "ls",
+    "cat",
+    "ssh",
+    "ps",
+    "kill",
+    "du",
+    "wc",
+    "ss",
+    "netstat",
+]
+
+
+def _commands_from_code_blocks(response: str) -> list[str]:
+    code_blocks = re.findall(r"```(?:bash|sh)?\s*(.*?)```", response, re.DOTALL)
+    commands: list[str] = []
+    for block in code_blocks:
+        for raw_line in block.strip().split("\n"):
+            line = raw_line.strip()
+            if line and not line.startswith("#"):
+                commands.append(line)
+    return commands
+
+
+def _commands_from_lines(response: str) -> list[str]:
+    commands: list[str] = []
+    for raw_line in response.strip().split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if (
+            line.startswith("$")
+            or line.startswith(">")
+            or any(cmd in line.lower() for cmd in _COMMAND_HINTS)
+        ):
+            clean = line.lstrip("$> ").strip()
+            if clean:
+                commands.append(clean)
+    return commands
+
+
+def _alt_score(alternatives: list[str], all_command_text: str) -> float:
+    alt_score = 0.0
+    for alt in alternatives:
+        alt_clean = alt.lower()
+        if alt_clean in all_command_text:
+            return 1.0
+        alt_parts = alt_clean.split()
+        alt_parts_found = sum(1 for p in alt_parts if p in all_command_text)
+        partial = alt_parts_found / len(alt_parts) if alt_parts else 0.0
+        alt_score = max(alt_score, partial)
+    return alt_score
 
 
 def _score_command(response: str, sample: dict[str, Any]) -> float:
     expected_keywords = sample.get("expected_command_keywords", [])
     alternatives = sample.get("accept_alternatives", [])
 
-    code_blocks = re.findall(r"```(?:bash|sh)?\s*(.*?)```", response, re.DOTALL)
-    commands = []
-    if code_blocks:
-        for block in code_blocks:
-            for line in block.strip().split("\n"):
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    commands.append(line)
-
+    commands = _commands_from_code_blocks(response)
     if not commands:
-        lines = response.strip().split("\n")
-        for line in lines:
-            line = line.strip()
-            if line and (
-                line.startswith("$")
-                or line.startswith(">")
-                or any(cmd in line.lower() for cmd in ["grep", "find", "tar", "docker", "sed", "curl", "wget", "chmod", "ls", "cat", "ssh", "ps", "kill", "du", "wc", "ss", "netstat"])
-            ):
-                clean = line.lstrip("$> ").strip()
-                if clean:
-                    commands.append(clean)
+        commands = _commands_from_lines(response)
 
     if not commands:
         return 0.0
@@ -47,23 +90,13 @@ def _score_command(response: str, sample: dict[str, Any]) -> float:
         found = sum(1 for kw in expected_keywords if kw.lower() in all_command_text)
         keyword_score = found / len(expected_keywords)
 
-    alt_score = 0.0
-    if alternatives:
-        for alt in alternatives:
-            alt_clean = alt.lower()
-            if alt_clean in all_command_text:
-                alt_score = 1.0
-                break
-            alt_parts = alt_clean.split()
-            alt_parts_found = sum(1 for p in alt_parts if p in all_command_text)
-            partial = alt_parts_found / len(alt_parts) if alt_parts else 0
-            alt_score = max(alt_score, partial)
+    alt_score = _alt_score(alternatives, all_command_text) if alternatives else 0.0
 
     if keyword_score > 0 and alt_score > 0:
         return max(keyword_score, alt_score)
-    elif keyword_score > 0:
+    if keyword_score > 0:
         return keyword_score
-    elif alt_score > 0:
+    if alt_score > 0:
         return alt_score
     return 0.0
 
@@ -91,7 +124,10 @@ async def _judge_command(
         judge_response = await asyncio.wait_for(
             llm_call(
                 [
-                    {"role": "system", "content": "You are a Linux command expert. Respond with only a number."},
+                    {
+                        "role": "system",
+                        "content": "You are a Linux command expert. Respond with only a number.",
+                    },
                     {"role": "user", "content": judge_prompt},
                 ],
                 temperature=0.0,
@@ -100,7 +136,7 @@ async def _judge_command(
             timeout=15.0,
         )
         return judge_score(judge_response)
-    except (asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         return 0.0
 
 
@@ -153,7 +189,7 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
                 score = _heuristic_score(sample)
                 total_score += score
                 evaluated += 1
-        except (asyncio.TimeoutError, Exception):
+        except (TimeoutError, Exception):
             evaluated += 1
 
     avg_score = total_score / max(evaluated, 1)
@@ -171,6 +207,7 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
 
 def _heuristic_score(sample: dict[str, Any]) -> float:
     import random
+
     num_keywords = len(sample.get("expected_command_keywords", []))
     base = 0.55 if num_keywords <= 3 else 0.4 if num_keywords <= 5 else 0.3
     return max(0.1, min(0.85, base + random.uniform(-0.05, 0.1)))

@@ -61,9 +61,7 @@ class HarnessEnvironment:
         matching = [e for e in self.events if e.type == event_type]
         actual = len(matching)
         if actual != count:
-            raise AssertionError(
-                f"Expected {count} events of type '{event_type}', got {actual}"
-            )
+            raise AssertionError(f"Expected {count} events of type '{event_type}', got {actual}")
         return matching
 
     def reset(self) -> None:

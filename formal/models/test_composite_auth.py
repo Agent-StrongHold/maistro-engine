@@ -9,7 +9,7 @@ from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
 from maistro.security._types import AuthContext
-from maistro.security.auth_composite import CompositeAuthProvider
+from maistro.security.auth_composite import AuthError, CompositeAuthProvider
 
 
 class MockProvider:
@@ -40,10 +40,11 @@ class CompositeMachine(RuleBasedStateMachine):
         pb = MockProvider(should_fail=b_fails, auth_context=self.ctx_b)
         composite = CompositeAuthProvider([pa, pb])
         if a_fails and b_fails:
+            # Fix #13: an exhausted chain raises AuthError, not ValueError
             try:
                 asyncio.run(composite.authenticate("Bearer t"))
-                raise AssertionError("Expected ValueError")
-            except ValueError:
+                raise AssertionError("Expected AuthError")
+            except AuthError:
                 pass
         elif a_fails:
             ctx = asyncio.run(composite.authenticate("Bearer t"))
@@ -57,8 +58,8 @@ class CompositeMachine(RuleBasedStateMachine):
         composite = CompositeAuthProvider([])
         try:
             asyncio.run(composite.authenticate("Bearer t"))
-            raise AssertionError("Expected ValueError")
-        except ValueError:
+            raise AssertionError("Expected AuthError")
+        except AuthError:
             pass
 
 
@@ -87,8 +88,8 @@ def test_all_fail_raises():
     composite = CompositeAuthProvider([pa, pb])
     try:
         asyncio.run(composite.authenticate("Bearer t"))
-        raise AssertionError("Expected ValueError")
-    except ValueError:
+        raise AssertionError("Expected AuthError")
+    except AuthError:
         pass
 
 
@@ -96,8 +97,8 @@ def test_empty_list_raises():
     composite = CompositeAuthProvider([])
     try:
         asyncio.run(composite.authenticate("Bearer t"))
-        raise AssertionError("Expected ValueError")
-    except ValueError:
+        raise AssertionError("Expected AuthError")
+    except AuthError:
         pass
 
 

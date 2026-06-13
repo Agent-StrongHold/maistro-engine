@@ -12,11 +12,11 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.testclient import TestClient
+
+from maistro.config.settings import Settings, get_settings
 from maistro_server.api.auth import verify_api_key
 from maistro_server.api.health import router as health_router
 from maistro_server.api.tasks import router as tasks_router
-
-from maistro.config.settings import Settings, get_settings
 
 
 def _make_app(api_keys: list[str]) -> FastAPI:
@@ -78,7 +78,9 @@ class TestSecretComparison:
         settings = Settings(api_keys=["test-key-123"])
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="test-key-123")
         result = verify_api_key(creds, settings)
-        assert result == "test-key-123"
+        assert result is not None
+        assert result.token == "test-key-123"
+        assert result.user_id == "default"
 
     def test_wrong_key_rejected(self) -> None:
         settings = Settings(api_keys=["correct-key"])
@@ -95,7 +97,12 @@ class TestSecretComparison:
 
     def test_uses_constant_time_comparison(self) -> None:
         """Evidence: The implementation must use constant-time comparison, not ==."""
-        source = inspect.getsource(verify_api_key)
+        import maistro_server.api.auth as _auth_mod
+
+        # verify_api_key delegates to resolve_token_principal which does the comparison;
+        # check the full module source so the test isn't brittle to refactors that
+        # move the comparison into a helper.
+        source = inspect.getsource(_auth_mod)
         assert "secret_equal" in source or "compare_digest" in source, (
             "verify_api_key must use secret_equal or hmac.compare_digest"
         )

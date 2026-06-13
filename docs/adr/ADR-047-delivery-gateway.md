@@ -19,9 +19,12 @@ contracts:
   - boundary
   - cross-service
 tests: []
-layer: Tools
+layer: Connectivity
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
 ---
 
 # ADR-047: Outbound Delivery Gateway — Multi-channel notifier

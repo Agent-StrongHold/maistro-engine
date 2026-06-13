@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -12,7 +13,7 @@ from .character import POSES, CharacterFeatures
 logger = logging.getLogger(__name__)
 
 LITELLM_URL = "http://localhost:4000"
-LITELLM_KEY = "sk-conductor-litellm-2026"
+LITELLM_KEY = os.environ.get("LITELLM_API_KEY", "")
 STORY_MODEL = "google-gemini-2.5-flash"
 
 AgeGroup = Literal["toddler", "early_reader", "reader"]
@@ -275,13 +276,8 @@ def _extract_json(text: str) -> dict:
             for ch in candidate:
                 if ch in "{[":
                     stack.append(ch)
-                elif (
-                    ch == "}"
-                    and stack
-                    and stack[-1] == "{"
-                    or ch == "]"
-                    and stack
-                    and stack[-1] == "["
+                elif (ch == "}" and stack and stack[-1] == "{") or (
+                    ch == "]" and stack and stack[-1] == "["
                 ):
                     stack.pop()
             for s in reversed(stack):

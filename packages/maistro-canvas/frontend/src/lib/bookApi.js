@@ -1,24 +1,9 @@
-const LITELLM_URL = import.meta.env.VITE_LITELLM_URL || "http://localhost:4000";
-const LITELLM_KEY = import.meta.env.VITE_LITELLM_KEY || "sk-conductor-litellm-2026";
-const AZURE_KEY = import.meta.env.VITE_AZURE_KEY || "";
-const AZURE_ENDPOINT = import.meta.env.VITE_AZURE_ENDPOINT || "";
-const AZURE_DEPLOYMENT = "gpt-image-2-1";
+import { chat, generateImage } from "./llmClient";
+
+// Keys are server-side only (see server.js /api/llm/*). Nothing here holds them.
 
 async function llm(messages, model = "gemini-flash") {
-  const res = await fetch(`${LITELLM_URL}/v1/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${LITELLM_KEY}`,
-    },
-    body: JSON.stringify({ model, messages, temperature: 0.5, max_tokens: 4000 }),
-  });
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || `LLM ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  return chat(messages, model, { temperature: 0.5, max_tokens: 4000 });
 }
 
 function extractJSON(text) {
@@ -28,37 +13,13 @@ function extractJSON(text) {
 }
 
 async function azureGenImage(prompt, opts = {}) {
-  if (!AZURE_KEY || !AZURE_ENDPOINT) throw new Error("No Azure config");
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 120000);
-  try {
-    const res = await fetch(
-      `${AZURE_ENDPOINT}/openai/deployments/${AZURE_DEPLOYMENT}/images/generations?api-version=2025-03-01-preview`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "api-key": AZURE_KEY },
-        body: JSON.stringify({
-          prompt,
-          n: 1,
-          size: opts.size || "1024x1024",
-          quality: opts.quality || "medium",
-        }),
-        signal: controller.signal,
-      }
-    );
-    if (!res.ok) {
-      const e = await res.json().catch(() => ({}));
-      throw new Error(e.error?.message || `Azure ${res.status}`);
-    }
-    const data = await res.json();
-    const img = data.data?.[0];
-    if (!img) throw new Error("No image");
-    return img.b64_json
-      ? `data:image/png;base64,${img.b64_json}`
-      : img.url;
-  } finally {
-    clearTimeout(t);
-  }
+  // Routed through the server proxy; the server holds the Azure credentials.
+  return generateImage({
+    prompt,
+    model_id: "azure-gpt-image-2",
+    size: opts.size || "1024x1024",
+    quality: opts.quality || "medium",
+  });
 }
 
 function fileToBase64(file) {

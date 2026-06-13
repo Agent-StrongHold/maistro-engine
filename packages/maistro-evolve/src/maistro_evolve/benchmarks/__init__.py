@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from .ifeval import run_ifeval
 from .bfcl import run_bfcl
-from .swebench import run_swebench
-from .terminalbench import run_terminalbench
-from .tau_bench import run_tau_bench
 from .gaia import run_gaia
-from .ragas import run_ragas
+from .ifeval import run_ifeval
 from .osworld import run_osworld
+from .ragas import run_ragas
+from .swebench import run_swebench
+from .tau_bench import run_tau_bench
+from .terminalbench import run_terminalbench
 
 REAL_BENCHMARKS = {
     "ifeval": run_ifeval,

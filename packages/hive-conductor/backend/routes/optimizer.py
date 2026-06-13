@@ -44,7 +44,10 @@ def _user_id(request: Request) -> str:
 
 @router.post("/{dag_id}/run")
 async def trigger_optimizer(
-    dag_id: str, request: Request, apply_auto: bool = False, validate: bool = True,
+    dag_id: str,
+    request: Request,
+    apply_auto: bool = False,
+    validate: bool = True,
 ) -> dict[str, Any]:
     """Run optimizer. When validate=True (default), proposals are tested
     against the actual DAG before being surfaced. Only strictly-improving
@@ -58,11 +61,12 @@ async def trigger_optimizer(
     # Validation gate: test each proposal by running variant B
     if validate and result.get("proposals"):
         import stores
+
         dag_data = stores.dags.get(dag_id)
         if dag_data:
-            from services.validation_gate import validate_and_filter_proposals
-            from services.graph_runner import execute_dag
             from services.benchmark_eval import evaluate_dag_run
+            from services.graph_runner import execute_dag
+            from services.validation_gate import validate_and_filter_proposals
 
             # Run current DAG to get REAL baseline score (not historical)
             try:
@@ -74,10 +78,13 @@ async def trigger_optimizer(
                 baseline = 0.0
 
             validated = await validate_and_filter_proposals(
-                dict(dag_data), result["proposals"], baseline,
+                dict(dag_data),
+                result["proposals"],
+                baseline,
             )
             # Also test model variants
             from services.validation_gate import hill_climb_models, hill_climb_params
+
             model_improvements = await hill_climb_models(dict(dag_data), baseline)
             param_improvements = await hill_climb_params(dict(dag_data), baseline)
             validated.extend(model_improvements)
@@ -93,14 +100,17 @@ async def trigger_optimizer(
 
 @router.get("/{dag_id}/proposals")
 def list_for_dag(
-    dag_id: str, decision: str = "", limit: int = 50,
+    dag_id: str,
+    decision: str = "",
+    limit: int = 50,
 ) -> list[dict[str, Any]]:
     return list_proposals(dag_id=dag_id, decision=decision, limit=limit)
 
 
 @router.get("/proposals")
 def list_all_proposals(
-    decision: str = "", limit: int = 50,
+    decision: str = "",
+    limit: int = 50,
 ) -> list[dict[str, Any]]:
     return list_proposals(decision=decision, limit=limit)
 

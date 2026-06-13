@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .types import FitnessComponents, PipelineGenome
 
-
 _HARD_GATE_THRESHOLDS: dict[str, float] = {
     "ifeval": 0.25,
     "bfcl": 0.20,
@@ -48,14 +47,14 @@ def _weighted_eval_score(genome: PipelineGenome) -> float:
 
 
 def _cost_efficiency(genome: PipelineGenome) -> float:
-    cost = genome.harness_params.get("total_cost_usd", 0.0)
+    cost: float = genome.harness_params.get("total_cost_usd", 0.0)
     if cost <= 0.0:
         return 1.0
     return 1.0 / (1.0 + cost)
 
 
 def _latency_efficiency(genome: PipelineGenome) -> float:
-    latency = genome.harness_params.get("avg_latency_seconds", 0.0)
+    latency: float = genome.harness_params.get("avg_latency_seconds", 0.0)
     if latency <= 0.0:
         return 1.0
     return 1.0 / (1.0 + latency)
@@ -64,7 +63,7 @@ def _latency_efficiency(genome: PipelineGenome) -> float:
 def _diversity_bonus(genome: PipelineGenome, population: list[PipelineGenome]) -> float:
     if len(population) < 2:
         return 0.0
-    from .diversity import trait_vector, _euclidean
+    from .diversity import _euclidean, trait_vector
 
     v = trait_vector(genome)
     distances = []
@@ -78,7 +77,7 @@ def _diversity_bonus(genome: PipelineGenome, population: list[PipelineGenome]) -
 
 
 def _elo_bonus(genome: PipelineGenome) -> float:
-    avg_elo = genome.harness_params.get("avg_elo", 0.0)
+    avg_elo: float = genome.harness_params.get("avg_elo", 0.0)
     if avg_elo <= 0.0:
         return 0.0
     return min(max(0.0, (avg_elo - 1000.0) / 400.0), 1.0)

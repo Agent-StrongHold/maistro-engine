@@ -19,6 +19,7 @@ when the call expects PMRoleOutput shape. Caller decides via the
 Errors: HTTP errors raise `httpx.HTTPStatusError` (NodeRun's retry
 machinery handles 429/5xx). Auth failures (401/403) bubble immediately.
 """
+
 from __future__ import annotations
 
 import os
@@ -41,11 +42,7 @@ def _resolve_base_url() -> str:
 
 
 def _resolve_api_key() -> str:
-    return (
-        os.environ.get("LITELLM_MASTER_KEY")
-        or os.environ.get("LITELLM_PROXY_KEY")
-        or ""
-    )
+    return os.environ.get("LITELLM_MASTER_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
 
 
 def _resolve_model(model: str | None) -> str:
@@ -74,9 +71,7 @@ async def maistro_llm_call(
     base_url = _resolve_base_url()
     api_key = _resolve_api_key()
     if not base_url or not api_key:
-        raise RuntimeError(
-            "LLM gateway not configured: LITELLM_URL + LITELLM_MASTER_KEY required."
-        )
+        raise RuntimeError("LLM gateway not configured: LITELLM_URL + LITELLM_MASTER_KEY required.")
 
     body: dict[str, Any] = {
         "model": _resolve_model(model),
@@ -101,11 +96,10 @@ async def maistro_llm_call(
             # (unsupported response_format, bad model alias, etc.) are
             # debuggable from the logs rather than hidden behind httpx's
             # default short message.
-            raise RuntimeError(
-                f"LLM gateway {resp.status_code}: {resp.text[:1000]}"
-            )
+            raise RuntimeError(f"LLM gateway {resp.status_code}: {resp.text[:1000]}")
         data = resp.json()
-        return data["choices"][0]["message"]["content"]
+        content: str = data["choices"][0]["message"]["content"]
+        return content
 
 
 __all__ = ["maistro_llm_call"]

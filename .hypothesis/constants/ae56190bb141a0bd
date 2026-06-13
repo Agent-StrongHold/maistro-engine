@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/auth_static.py
-# hypothesis_version: 6.151.10
-
-['Bearer ', 'Invalid API key', 'api_key', 'openwebui_header', 'system', 'user', 'x-openwebui-user-id']

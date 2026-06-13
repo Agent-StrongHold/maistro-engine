@@ -11,6 +11,7 @@ Headless by default; pass `headless=False` only in dev. Google CAPTCHAs
 from corp egress fall back to duckduckgo.com/html — coded into the
 search task prompt rather than a separate code path.
 """
+
 from __future__ import annotations
 
 from maistro.tools.browser.client import (
@@ -24,9 +25,9 @@ from maistro.tools.browser.types import (
 )
 
 __all__ = [
+    "BrowseResult",
     "BrowserClient",
     "BrowserToolError",
-    "BrowseResult",
     "Citation",
     "SearchResult",
 ]

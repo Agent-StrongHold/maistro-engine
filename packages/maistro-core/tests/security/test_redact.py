@@ -155,21 +155,13 @@ class TestRedactPrivateKeys:
         assert "FAKEKEYDATA" not in result
 
     def test_ec_private_key(self):
-        key_block = (
-            "-----BEGIN EC PRIVATE KEY-----\n"
-            "FAKEECKEYDATA==\n"
-            "-----END EC PRIVATE KEY-----"
-        )
+        key_block = "-----BEGIN EC PRIVATE KEY-----\nFAKEECKEYDATA==\n-----END EC PRIVATE KEY-----"
         result = redact(key_block)
         assert "[REDACTED_PRIVATE_KEY]" in result
         assert "FAKEECKEYDATA" not in result
 
     def test_generic_private_key(self):
-        key_block = (
-            "-----BEGIN PRIVATE KEY-----\n"
-            "FAKEGENERICKEY==\n"
-            "-----END PRIVATE KEY-----"
-        )
+        key_block = "-----BEGIN PRIVATE KEY-----\nFAKEGENERICKEY==\n-----END PRIVATE KEY-----"
         result = redact(key_block)
         assert "[REDACTED_PRIVATE_KEY]" in result
         assert "FAKEGENERICKEY" not in result
@@ -207,24 +199,25 @@ class TestRedactDBConnections:
 
 class TestRedactJWTs:
     def test_jwt_long_enough(self):
-        token = "eyJ" + "A" * 47
+        # Real JWT shape: 3 base64url segments separated by dots
+        token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"
         result = redact(f"token={token}")
         assert "[REDACTED_JWT]" in result
         assert token not in result
 
     def test_jwt_too_short(self):
+        # Single segment without dots — not a JWT
         token = "eyJ" + "A" * 46
         result = redact(f"token={token}")
         assert "[REDACTED_JWT]" not in result
 
     def test_jwt_in_auth_header(self):
-        token = "eyJ" + "A" * 80
-        result = redact(f"Bearer {token}")
-        assert "FAKE" not in result or True
+        token = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.signatureAAAAAAAAAAAAAAAAAAAAAAAAA"
+        result = redact(f"Authorization: Bearer {token}")
         assert token not in result
 
     def test_jwt_with_dashes_and_underscores(self):
-        token = "eyJ" + "A_a-1B_b-2" * 5
+        token = "eyJhbGciOiJIUzI1NiJ9.eyJuYW1lIjoiSm9obiJ9.A_a-1B_b-2C_c-3D_d-4E_e-5F"
         result = redact(f"jwt: {token}")
         assert token not in result
 
@@ -275,8 +268,7 @@ class TestRedactQueryParams:
 class TestRedactMultipleSecrets:
     def test_multiple_secrets_in_one_text(self):
         text = (
-            f"db=postgres://fu:fp@host/db key={'sk-' + 'FAKE123'} "
-            f"auth=Bearer FAKE_TOKEN"
+            f"db=postgres://fu:fp@host/db key={'sk-' + 'FAKE12345678'} auth=Bearer FAKE_TOKEN_VALUE"
         )
         result = redact(text)
         assert "[REDACTED_DB_CONNECTION]" in result
@@ -285,12 +277,7 @@ class TestRedactMultipleSecrets:
 
     def test_multiline_with_mixed_secrets(self):
         sk_key = "sk-" + "FAKEVALUE12345"
-        text = (
-            f"connecting to db...\n"
-            f"postgres://fu:fp@host/db\n"
-            f"using key {sk_key}\n"
-            f"all good"
-        )
+        text = f"connecting to db...\npostgres://fu:fp@host/db\nusing key {sk_key}\nall good"
         result = redact(text)
         assert result.count("[REDACTED_") >= 2
         assert "all good" in result
@@ -312,7 +299,9 @@ class TestRedactNoFalsePositives:
 
 class TestRedactCompiledAtImportTime:
     def test_patterns_are_compiled(self):
-        from maistro.security.redact import _PATTERNS
         import re
+
+        from maistro.security.redact import _PATTERNS
+
         for pattern, _ in _PATTERNS:
             assert isinstance(pattern, re.Pattern)

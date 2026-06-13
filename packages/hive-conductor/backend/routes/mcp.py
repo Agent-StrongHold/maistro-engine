@@ -45,9 +45,11 @@ async def _health_check(server: MCPServer, *, user_id: str | None = None) -> MCP
                     }
                 )
     except Exception as _exc:
-        __import__('logging').getLogger('hive.routes.mc').warning(
-            'error_swallowed file=%s line=%d: %s',
-            'packages/hive-conductor/backend/routes/mcp.py', 47, _exc,
+        __import__("logging").getLogger("hive.routes.mc").warning(
+            "error_swallowed file=%s line=%d: %s",
+            "packages/hive-conductor/backend/routes/mcp.py",
+            47,
+            _exc,
         )
         pass
     return server.model_copy(update={"status": "disconnected", "last_ping": datetime.now(UTC)})

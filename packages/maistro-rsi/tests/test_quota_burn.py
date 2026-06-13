@@ -64,13 +64,18 @@ class TestQuotaBurnScheduler:
         await tracker.record_usage("openai", CYCLE, 900_000, 50_000)
 
         scheduler = QuotaBurnScheduler(
-            tracker, billing_cycle=CYCLE, free_tokens_per_provider=FREE_TOKENS,
+            tracker,
+            billing_cycle=CYCLE,
+            free_tokens_per_provider=FREE_TOKENS,
         )
         models = ["openai/busy", "anthropic/idle"]
 
         chosen = await scheduler.next_model(models)
         ranked = await rank_models_by_headroom(
-            models, tracker, billing_cycle=CYCLE, free_tokens_per_provider=FREE_TOKENS,
+            models,
+            tracker,
+            billing_cycle=CYCLE,
+            free_tokens_per_provider=FREE_TOKENS,
         )
 
         assert chosen == ranked[0].model == "anthropic/idle"
@@ -80,7 +85,9 @@ class TestQuotaBurnScheduler:
         """quota-5: record_attempt files usage under the model's provider prefix, affecting future ranking."""
         tracker = InMemoryQuotaTracker()
         scheduler = QuotaBurnScheduler(
-            tracker, billing_cycle=CYCLE, free_tokens_per_provider=FREE_TOKENS,
+            tracker,
+            billing_cycle=CYCLE,
+            free_tokens_per_provider=FREE_TOKENS,
         )
 
         await scheduler.record_attempt("openai/gpt-5", input_tokens=400_000, output_tokens=400_000)

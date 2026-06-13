@@ -114,10 +114,12 @@ class RsiCycle:
             )
 
             baseline_results = await self._harness.evaluate_genome(
-                baseline, benchmarks=self._config.benchmarks,
+                baseline,
+                benchmarks=self._config.benchmarks,
             )
             candidate_results = await self._harness.evaluate_genome(
-                candidate, benchmarks=self._config.benchmarks,
+                candidate,
+                benchmarks=self._config.benchmarks,
             )
 
             battles = [

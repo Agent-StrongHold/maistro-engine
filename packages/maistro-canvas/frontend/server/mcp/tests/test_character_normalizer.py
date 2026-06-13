@@ -20,7 +20,7 @@ def _make_char_on_white(
 ) -> Image.Image:
     img = Image.new("RGBA", img_size, (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
-    draw.rectangle(fg_region, fill=fg_color + (255,))
+    draw.rectangle(fg_region, fill=(*fg_color, 255))
     return img
 
 
@@ -111,12 +111,12 @@ class TestComputeNormalization:
 class TestNormalizeCharacter:
     def test_returns_correct_size(self):
         img = _make_char_on_white((200, 200))
-        result, sil, head, norm = normalize_character(img, target_width=512, target_height=512)
+        result, _sil, _head, _norm = normalize_character(img, target_width=512, target_height=512)
         assert result.size == (512, 512)
 
     def test_all_white_image(self):
         img = Image.new("RGBA", (100, 100), (255, 255, 255, 255))
-        result, sil, head, norm = normalize_character(img)
+        _result, sil, head, norm = normalize_character(img)
         assert sil is None
         assert head is None
         assert norm is None
@@ -124,7 +124,7 @@ class TestNormalizeCharacter:
     def test_with_pose_bounds(self):
         img = _make_char_on_white((200, 200), (40, 20, 160, 180))
         pose = Region(0.2, 0.1, 0.6, 0.8)
-        result, sil, head, norm = normalize_character(img, pose_bounds=pose)
+        result, sil, _head, _norm = normalize_character(img, pose_bounds=pose)
         assert result.size == (1024, 1024)
         assert sil is not None
 

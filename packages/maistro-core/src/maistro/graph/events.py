@@ -23,7 +23,9 @@ def graph_started(run_id: str, **detail: Any) -> GraphEvent:
 
 
 def graph_completed(run_id: str, **detail: Any) -> GraphEvent:
-    return GraphEvent(type="graph_completed", run_id=run_id, phase=GraphPhase.COMPLETED, detail=detail)
+    return GraphEvent(
+        type="graph_completed", run_id=run_id, phase=GraphPhase.COMPLETED, detail=detail
+    )
 
 
 def graph_failed(run_id: str, **detail: Any) -> GraphEvent:
@@ -32,29 +34,45 @@ def graph_failed(run_id: str, **detail: Any) -> GraphEvent:
 
 def node_started(run_id: str, node_id: str, role: str, **detail: Any) -> GraphEvent:
     return GraphEvent(
-        type="node_started", run_id=run_id, node_id=node_id,
-        role=role, phase=NodePhase.RUNNING, detail=detail,
+        type="node_started",
+        run_id=run_id,
+        node_id=node_id,
+        role=role,
+        phase=NodePhase.RUNNING,
+        detail=detail,
     )
 
 
 def node_completed(run_id: str, node_id: str, role: str, **detail: Any) -> GraphEvent:
     return GraphEvent(
-        type="node_completed", run_id=run_id, node_id=node_id,
-        role=role, phase=NodePhase.SUCCEEDED, detail=detail,
+        type="node_completed",
+        run_id=run_id,
+        node_id=node_id,
+        role=role,
+        phase=NodePhase.SUCCEEDED,
+        detail=detail,
     )
 
 
 def node_failed(run_id: str, node_id: str, role: str, **detail: Any) -> GraphEvent:
     return GraphEvent(
-        type="node_failed", run_id=run_id, node_id=node_id,
-        role=role, phase=NodePhase.FAILED, detail=detail,
+        type="node_failed",
+        run_id=run_id,
+        node_id=node_id,
+        role=role,
+        phase=NodePhase.FAILED,
+        detail=detail,
     )
 
 
 def node_retrying(run_id: str, node_id: str, role: str, **detail: Any) -> GraphEvent:
     return GraphEvent(
-        type="node_retrying", run_id=run_id, node_id=node_id,
-        role=role, phase=NodePhase.RETRYING, detail=detail,
+        type="node_retrying",
+        run_id=run_id,
+        node_id=node_id,
+        role=role,
+        phase=NodePhase.RETRYING,
+        detail=detail,
     )
 
 

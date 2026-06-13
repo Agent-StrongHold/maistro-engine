@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx
 
-from maistro.auth._types import Scope, ServiceIdentity
+from maistro.auth._types import ServiceIdentity
 
 logger = logging.getLogger("maistro.auth.client")
 

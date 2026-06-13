@@ -7,7 +7,6 @@ Validates X-Service-Key or Authorization: Bearer sk-svc-* headers.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Awaitable
 
 from maistro.auth._types import Scope, ServiceIdentity
 from maistro.auth.provider import ServiceKeyAuthProvider

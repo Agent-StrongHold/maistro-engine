@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/security/_types.py
-# hypothesis_version: 6.151.10
-
-[0.0, 'admin', 'interactive_agent', 'normal', 'service_account', 'system', 'user']

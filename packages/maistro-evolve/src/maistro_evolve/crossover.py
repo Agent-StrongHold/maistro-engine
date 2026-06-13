@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .mutate import mutate_all
 from .types import (
@@ -18,7 +18,7 @@ def _new_id() -> str:
 
 
 def _fresh_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def crossover(parent_a: PipelineGenome, parent_b: PipelineGenome) -> PipelineGenome:
@@ -36,7 +36,7 @@ def crossover(parent_a: PipelineGenome, parent_b: PipelineGenome) -> PipelineGen
     child_nodes: list[NodeGenome] = [entry_node]
     node_id_map: dict[str, str] = {entry_node.id: entry_node.id}
 
-    for i, nodes in enumerate([other_a, other_b]):
+    for nodes in (other_a, other_b):
         for n in nodes:
             new_id = _new_id()
             node_id_map[n.id] = new_id

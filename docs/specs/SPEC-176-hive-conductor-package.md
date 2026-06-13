@@ -3,7 +3,7 @@ id: SPEC-176
 title: Hive Conductor monorepo package
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: AC Defined
 created: 2026-05-13
 accepted: 2026-05-13
 implemented: 2026-05-13
@@ -13,8 +13,6 @@ implements: []
 related:
   - maistro-engine#SPEC-175
   - maistro-engine#SPEC-177
-source:
-  - packages/hive-conductor/
 contracts:
   - boundary
 tests:
@@ -22,6 +20,13 @@ tests:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
+  - status: Accepted
+    date: 2026-05-13
+  - status: AC Defined
+    date: 2026-05-13
 ---
 
 # SPEC-176: Hive Conductor monorepo package
@@ -44,12 +49,12 @@ Hive Conductor is a **mission-control style UI** with a **FastAPI stub** for loc
 
 - **MAISTRO**, **dev-ai-environment**, and **force-convergence** prototypes are **not** imported or required by this package. If they must integrate later, add paths and reuse notes per `docs/install/resolver-matrix.md` and extend acceptance criteria in a follow-on spec.
 
-## Acceptance criteria
+## Acceptance Criteria
 
-1. `uvicorn main:app --port 8101` from `packages/hive-conductor/backend` exposes `/health`, `/health/ready`, and `/v1/*` routes used by the UI.
-2. `npm run dev` in `packages/hive-conductor/frontend` proxies API calls to 8101.
-3. `docker build -f packages/hive-conductor/Dockerfile packages/hive-conductor` produces an image that serves API + SPA on 8101.
-4. CI runs **frontend build** and **backend pytest** for this package (see `.github/workflows/ci.yml`).
+- **AC-1**: `uvicorn main:app --port 8101` from `packages/hive-conductor/backend` exposes `/health`, `/health/ready`, and `/v1/*` routes used by the UI.
+- **AC-2**: `npm run dev` in `packages/hive-conductor/frontend` proxies API calls to 8101.
+- **AC-3**: `docker build -f packages/hive-conductor/Dockerfile packages/hive-conductor` produces an image that serves API + SPA on 8101.
+- **AC-4**: CI runs frontend build and backend pytest for this package.
 
 ## References
 

@@ -1,3 +1,36 @@
+---
+id: ADR-020
+title: 'Setup Wizard — Browser-first install ceremony'
+repo: maistro-engine
+kind: adr
+status: Accepted
+accepted: 2026-06-10
+created: 2026-05-07
+substrate:
+  - maistro-engine#ADR-021
+  - maistro-engine#ADR-026
+  - maistro-engine#ADR-028
+  - maistro-engine#ADR-029
+implements: []
+related:
+  - maistro-engine#ADR-022
+  - maistro-engine#ADR-023
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - behavioral
+tests: []
+layer: UserClient
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+  - status: Accepted
+    date: 2026-06-10
+    date: 2026-05-07
+---
+
 # ADR-020: Setup Wizard — Browser-first install ceremony
 
 **Status:** Proposed

@@ -4,9 +4,8 @@ import logging
 
 import httpx
 import stores
-from config import get_settings
 from fastapi import APIRouter
-from models.schemas import SettingsModel
+from models.schemas import CapabilitySetting, SettingsModel
 from pydantic import BaseModel, ConfigDict
 
 from routes.audit import log_audit
@@ -43,13 +42,19 @@ class PatchSettingsBody(BaseModel):
     auto_save_sessions: bool | None = None
     telemetry_enabled: bool | None = None
     log_level: str | None = None
+    capabilities: dict[str, CapabilitySetting] | None = None
 
 
 @router.patch("", response_model=SettingsModel)
 def patch_settings(body: PatchSettingsBody) -> SettingsModel:
     updates = body.model_dump(exclude_none=True)
+    # model_copy(update=...) skips validation, so keep nested models as instances
+    # (not the dicts model_dump produced) — otherwise capabilities is stored as
+    # plain dicts and downstream readers (the bridge) break.
+    if body.capabilities is not None:
+        updates["capabilities"] = body.capabilities
     stores.settings = stores.settings.model_copy(update=updates)
-    log_audit("settings_patch", "system", detail=updates)
+    log_audit("settings_patch", "system", detail=body.model_dump(exclude_none=True))
     return stores.settings
 
 
@@ -76,6 +81,7 @@ def settings_models() -> dict:
 
 def _fetch_available_models() -> list[str]:
     import os
+
     base = os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL") or ""
     key = os.environ.get("LITELLM_API_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
     if not base:
@@ -89,7 +95,7 @@ def _fetch_available_models() -> list[str]:
         resp.raise_for_status()
         data = resp.json()
         model_ids = [m.get("id", m.get("model", "")) for m in data.get("data", [])]
-        return sorted(set(m for m in model_ids if m)) or [stores.settings.default_model]
+        return sorted({m for m in model_ids if m}) or [stores.settings.default_model]
     except Exception:
         logger.debug("model list fetch failed, returning default")
         return [stores.settings.default_model]

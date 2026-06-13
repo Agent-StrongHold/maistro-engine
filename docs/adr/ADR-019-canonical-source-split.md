@@ -18,13 +18,22 @@ tests: []
 layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-06
+  - status: Accepted
+    date: 2026-05-06
 ---
 
 # ADR-019: Canonical Source Split — maistro-engine vs Stronghold
 
 **Context:** Three codebases share one Python runtime architecture. Need a rule for where new code lands.
 
-Extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) (Four-Repo Governance) which adds AgentTuring and Project_mAIstro to the picture and formalises the Copier-templated-product relationship.
+~~Extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) (Four-Repo Governance)~~ —
+**ADR-030 is now Superseded.** The four-repo / templated-peers model was reversed by the
+**monorepo consolidation**: this repo *contains* the Conductor + canvas and is *imported* by
+downstream products (Stronghold, Canvas book-maker); `Project_mAIstro` and `AgentTuring` were
+absorbed here, not kept as separate peers. See `CONSOLIDATION-PLAN.md` and `CLAUDE.md`.
 
 ## Decision
 
@@ -74,6 +83,15 @@ Extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) (Four-Repo Gover
 - Stronghold-only code (Keycloak, K8s, Redis, tenant isolation) stays in the Stronghold repo.
 - When in doubt, it goes in maistro-core. Multi-tenant concerns are the exception, not the rule.
 
+### Scope vs. tenancy (amended by ADR-068)
+
+The "no `org_id` in core" shorthand conflated **scope** with **tenancy**. Corrected: core
+carries the *soft scope axes* `global > org > team > user > agent > session` (a user may be
+in multiple teams/orgs); only the **hard `tenant` boundary** — fully segmented, one tenant
+per user — is Stronghold-only. So `org`/`team` filters in maistro-core (ADR-013/015/016/017)
+are legitimate scope, not tenancy. See ADR-068 for the full hierarchy and how it feeds the
+authorization model.
+
 ## Consequences
 
 - maistro-engine becomes the single source of truth for the Python runtime
@@ -83,4 +101,9 @@ Extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) (Four-Repo Gover
 
 ## Note on the four-repo system
 
-The "Products" framing in this ADR was extended by [`engine#ADR-030`](ADR-030-four-repo-governance.md) to four templated peers — `Project_mAIstro` (single-tenant secure multi-user), `AgentTuring` (autonoetic experiment), `agent-stronghold/stronghold` (multi-tenant enterprise), all rebasing from engine templates per [`engine#ADR-033`](ADR-033-templates-and-copier-workflow.md). The Canvas Studio and Project Turing entries above predate the formal four-repo split; their canonical homes are now noted in the engine `README.md` and `INVENTORY-ADRS-SPECS.md`.
+The "Products" framing in this ADR was briefly extended by `engine#ADR-030` to four templated
+peers (`Project_mAIstro`, `AgentTuring`, `stronghold`). **That model is Superseded:** the
+consolidation made `maistro-engine` a single monorepo that *contains* the Conductor + canvas and
+is *imported* by downstream products (Stronghold, Canvas book-maker); `Project_mAIstro` and
+`AgentTuring` were absorbed into this repo's `packages/` and `docs/`. Current structure lives in
+`CLAUDE.md`, `README.md`, and `CONSOLIDATION-PLAN.md`.

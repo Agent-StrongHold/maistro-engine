@@ -188,10 +188,6 @@ class CORSConfig(BaseModel):
         default_factory=lambda: [
             "Authorization",
             "Content-Type",
-            "X-OpenWebUI-User-Email",
-            "X-OpenWebUI-User-Name",
-            "X-OpenWebUI-User-Id",
-            "X-OpenWebUI-User-Role",
         ]
     )
     allow_credentials: bool = True

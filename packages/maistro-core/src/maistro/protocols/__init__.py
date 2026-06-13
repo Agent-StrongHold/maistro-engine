@@ -22,6 +22,7 @@ from maistro.protocols.notification import Notification, NotificationClient
 from maistro.protocols.prompts import PromptManager
 from maistro.protocols.quota import QuotaTracker
 from maistro.protocols.router import ModelRouter
+from maistro.protocols.scorer import Score, Scorer
 from maistro.protocols.secrets import SecretBackend, SecretResult
 from maistro.protocols.skills import SkillForge, SkillLoader, SkillMarketplace
 from maistro.protocols.spec import SpecStore, SpecVerifier
@@ -46,6 +47,8 @@ __all__ = [
     "PromptManager",
     "QuotaTracker",
     "RCAExtractor",
+    "Score",
+    "Scorer",
     "SecretBackend",
     "SecretResult",
     "SessionStore",

@@ -27,12 +27,15 @@ import OptimizationInbox from "./pages/OptimizationInbox";
 import Quotas from "./pages/Quotas";
 import Schedules from "./pages/Schedules";
 import Settings from "./pages/Settings";
+import Profile from "./pages/Profile";
 import Credentials from "./pages/Credentials";
 import Setup from "./pages/Setup";
 import Skills from "./pages/Skills";
 import Topology from "./pages/Topology";
 import WorkItems from "./pages/WorkItems";
 import KnowledgeBase from "./pages/KnowledgeBase";
+import DeckBuilder from "./pages/DeckBuilder";
+import ToolsLab from "./pages/ToolsLab";
 
 type UserInfo = {
   id: string;
@@ -119,31 +122,33 @@ function AppRoutes() {
             <Routes>
               <Route path="/" element={<AppShell />}>
                 <Route index element={<Navigate to={pmPoc ? "chat" : "dashboard"} replace />} />
-                {!pmPoc && <Route path="dashboard" element={<Dashboard />} />}
-                {pmPoc && <Route path="dashboard" element={<Dashboard />} />}
+                <Route path="dashboard" element={<Dashboard />} />
                 <Route path="chat" element={<Chat />} />
                 <Route path="missions" element={<Missions />} />
-                {!pmPoc && <Route path="dags" element={<DagBuilder />} />}
-                {!pmPoc && <Route path="dag-runs" element={<DagRuns />} />}
-                {!pmPoc && <Route path="schedules" element={<Schedules />} />}
+                <Route path="dags" element={<DagBuilder />} />
+                <Route path="dag-runs" element={<DagRuns />} />
+                <Route path="schedules" element={<Schedules />} />
                 <Route path="agents" element={pmPoc ? <Fleet /> : <Agents />} />
-                {pmPoc && <Route path="work-items" element={<WorkItems />} />}
-                {pmPoc && <Route path="knowledge" element={<KnowledgeBase />} />}
-                {!pmPoc && <Route path="skills" element={<Skills />} />}
+                <Route path="work-items" element={<WorkItems />} />
+                <Route path="knowledge" element={<KnowledgeBase />} />
+                <Route path="decks" element={<DeckBuilder />} />
+                <Route path="tools-lab" element={<ToolsLab />} />
+                <Route path="skills" element={<Skills />} />
                 <Route path="mcp" element={<MCP />} />
-                {!pmPoc && <Route path="topology" element={<Topology />} />}
+                <Route path="topology" element={<Topology />} />
                 <Route path="optimizer" element={<OptimizationInbox />} />
                 <Route path="optimization-inbox" element={<OptimizationInbox />} />
-                {!pmPoc && <Route path="messages" element={<MessageBoard />} />}
-                {!pmPoc && <Route path="quotas" element={<Quotas />} />}
-                {!pmPoc && <Route path="audit" element={<AuditLog />} />}
-                {!pmPoc && <Route path="cli" element={<CLI />} />}
-                {!pmPoc && <Route path="cli/canvas" element={<DesignStudio />} />}
-                {!pmPoc && <Route path="containers" element={<Containers />} />}
-                {!pmPoc && <Route path="docs" element={<Docs />} />}
-                {!pmPoc && <Route path="evolution" element={<Evolution />} />}
-                {!pmPoc && <Route path="memory" element={<Memory />} />}
+                <Route path="messages" element={<MessageBoard />} />
+                <Route path="quotas" element={<Quotas />} />
+                <Route path="audit" element={<AuditLog />} />
+                <Route path="cli" element={<CLI />} />
+                <Route path="cli/canvas" element={<DesignStudio />} />
+                <Route path="containers" element={<Containers />} />
+                <Route path="docs" element={<Docs />} />
+                <Route path="evolution" element={<Evolution />} />
+                <Route path="memory" element={<Memory />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="profile" element={<Profile />} />
                 <Route path="credentials" element={<Credentials />} />
               </Route>
             </Routes>

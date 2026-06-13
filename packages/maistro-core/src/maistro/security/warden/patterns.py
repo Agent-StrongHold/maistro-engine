@@ -8,8 +8,8 @@ from __future__ import annotations
 
 try:
     import regex
-except ImportError:
-    import re as regex
+except ImportError:  # pragma: no cover - fallback when the `regex` lib is absent
+    import re as regex  # type: ignore[no-redef]
 
 REJECT_PATTERNS: list[tuple[regex.Pattern[str], str]] = [
     (
@@ -142,6 +142,21 @@ REJECT_PATTERNS: list[tuple[regex.Pattern[str], str]] = [
             regex.IGNORECASE,
         ),
         "Context window stuffing attempt",
+    ),
+    (
+        regex.compile(
+            r"(?:curl|wget|fetch)\s+.*(?:\|\s*(?:bash|sh|base64|eval))",
+            regex.IGNORECASE,
+        ),
+        "Data exfiltration (pipe to execution)",
+    ),
+    (
+        regex.compile(
+            r"(?:send|post|upload|exfil(?:trate)?)\s+(?:\w+\s+){0,3}"
+            r"(?:to|towards?)\s+(?:https?://|ftp://|my\s+server)",
+            regex.IGNORECASE,
+        ),
+        "Data exfiltration (outbound transfer)",
     ),
 ]
 

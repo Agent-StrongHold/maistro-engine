@@ -81,13 +81,19 @@ class TestQuarantineScan:
 
         # Sensitive-surface diff, reviewer supplied and approves -> clears.
         approved = await quarantine_scan(
-            "diff", SENSITIVE_PATHS, FakeWarden(clean), adversarial_review=FakeAdversarialReview(approve=True),
+            "diff",
+            SENSITIVE_PATHS,
+            FakeWarden(clean),
+            adversarial_review=FakeAdversarialReview(approve=True),
         )
         assert approved.cleared is True
 
         # Sensitive-surface diff, reviewer supplied and rejects -> never clears.
         rejected = await quarantine_scan(
-            "diff", SENSITIVE_PATHS, FakeWarden(clean), adversarial_review=FakeAdversarialReview(approve=False),
+            "diff",
+            SENSITIVE_PATHS,
+            FakeWarden(clean),
+            adversarial_review=FakeAdversarialReview(approve=False),
         )
         assert rejected.cleared is False
 

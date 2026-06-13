@@ -22,12 +22,13 @@ Pins invariants that any future refactor MUST preserve:
 
 from __future__ import annotations
 
-import sys
 import pathlib
+import sys
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from hypothesis import HealthCheck, given, settings, strategies as st
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 _BACKEND = pathlib.Path(__file__).resolve().parents[1]
 if str(_BACKEND) not in sys.path:
@@ -62,7 +63,8 @@ def _field_path(draw):
 @given(_dag_id(), _field_path())
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_property_marked_field_is_immediately_locked(
-    dag_id: str, field_path: str,
+    dag_id: str,
+    field_path: str,
 ) -> None:
     from services import edit_lock
 
@@ -74,7 +76,9 @@ def test_property_marked_field_is_immediately_locked(
 @given(_dag_id(), _field_path(), st.text(alphabet="abcdefghij0_", min_size=1, max_size=5))
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_property_locking_parent_locks_every_descendant(
-    dag_id: str, parent: str, child_suffix: str,
+    dag_id: str,
+    parent: str,
+    child_suffix: str,
 ) -> None:
     """If parent path is locked, parent + '.' + anything is also locked."""
     from services import edit_lock
@@ -86,45 +90,62 @@ def test_property_locking_parent_locks_every_descendant(
 
 
 @given(
-    _dag_id(), _field_path(),
+    _dag_id(),
+    _field_path(),
     st.integers(min_value=1, max_value=29),  # before expiry
 )
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_property_lock_holds_within_ttl(
-    dag_id: str, field_path: str, days_after: int,
+    dag_id: str,
+    field_path: str,
+    days_after: int,
 ) -> None:
     from services import edit_lock
 
     edit_lock.clear()
     t0 = datetime(2026, 1, 1, tzinfo=UTC)
     edit_lock.mark_edited(dag_id, [field_path], now=t0)
-    assert edit_lock.is_locked(
-        dag_id, field_path, now=t0 + timedelta(days=days_after),
-    ) is True
+    assert (
+        edit_lock.is_locked(
+            dag_id,
+            field_path,
+            now=t0 + timedelta(days=days_after),
+        )
+        is True
+    )
 
 
 @given(
-    _dag_id(), _field_path(),
+    _dag_id(),
+    _field_path(),
     st.integers(min_value=31, max_value=365),  # past expiry
 )
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_property_lock_expires_after_ttl(
-    dag_id: str, field_path: str, days_after: int,
+    dag_id: str,
+    field_path: str,
+    days_after: int,
 ) -> None:
     from services import edit_lock
 
     edit_lock.clear()
     t0 = datetime(2026, 1, 1, tzinfo=UTC)
     edit_lock.mark_edited(dag_id, [field_path], now=t0)
-    assert edit_lock.is_locked(
-        dag_id, field_path, now=t0 + timedelta(days=days_after),
-    ) is False
+    assert (
+        edit_lock.is_locked(
+            dag_id,
+            field_path,
+            now=t0 + timedelta(days=days_after),
+        )
+        is False
+    )
 
 
 @given(_dag_id(), _field_path())
 @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_property_re_edit_refreshes_ttl(
-    dag_id: str, field_path: str,
+    dag_id: str,
+    field_path: str,
 ) -> None:
     from services import edit_lock
 
@@ -135,9 +156,14 @@ def test_property_re_edit_refreshes_ttl(
     t1 = t0 + timedelta(days=25)
     edit_lock.mark_edited(dag_id, [field_path], now=t1)
     # 25 more days after refresh (50 total) — still locked
-    assert edit_lock.is_locked(
-        dag_id, field_path, now=t1 + timedelta(days=25),
-    ) is True
+    assert (
+        edit_lock.is_locked(
+            dag_id,
+            field_path,
+            now=t1 + timedelta(days=25),
+        )
+        is True
+    )
 
 
 # --- SignalSnapshot.priority_score invariant ----------------------------
@@ -149,14 +175,22 @@ _scores = st.floats(min_value=0.0, max_value=5.0, allow_nan=False, allow_infinit
 @given(_scores, _scores, _scores, _scores, _scores)
 @settings(max_examples=100)
 def test_property_priority_score_equals_sum_of_components(
-    err: float, edit: float, evaljudge: float, thumb: float, latency: float,
+    err: float,
+    edit: float,
+    evaljudge: float,
+    thumb: float,
+    latency: float,
 ) -> None:
     from services.optimizer import SignalSnapshot
 
     s = SignalSnapshot(
-        dag_id="d", target_node_id="n",
-        error_score=err, edit_score=edit, eval_score=evaljudge,
-        thumb_score=thumb, latency_score=latency,
+        dag_id="d",
+        target_node_id="n",
+        error_score=err,
+        edit_score=edit,
+        eval_score=evaljudge,
+        thumb_score=thumb,
+        latency_score=latency,
     )
     expected = round(err + edit + evaljudge + thumb + latency, 3)
     assert abs(s.priority_score - expected) < 0.001
@@ -165,9 +199,13 @@ def test_property_priority_score_equals_sum_of_components(
 # --- topology_compare normalization invariant ---------------------------
 
 
-@given(st.lists(st.floats(min_value=0.0, max_value=1000.0,
-                          allow_nan=False, allow_infinity=False),
-                min_size=2, max_size=10))
+@given(
+    st.lists(
+        st.floats(min_value=0.0, max_value=1000.0, allow_nan=False, allow_infinity=False),
+        min_size=2,
+        max_size=10,
+    )
+)
 @settings(max_examples=50)
 def test_property_normalize_invert_smaller_is_better(values: list[float]) -> None:
     """invert=True: the smallest input maps to 1.0 (best), largest to 0.0.
@@ -186,9 +224,13 @@ def test_property_normalize_invert_smaller_is_better(values: list[float]) -> Non
         assert out[i_max] == 0.0
 
 
-@given(st.lists(st.floats(min_value=0.0, max_value=1000.0,
-                          allow_nan=False, allow_infinity=False),
-                min_size=2, max_size=10))
+@given(
+    st.lists(
+        st.floats(min_value=0.0, max_value=1000.0, allow_nan=False, allow_infinity=False),
+        min_size=2,
+        max_size=10,
+    )
+)
 @settings(max_examples=50)
 def test_property_normalize_invert_false_natural_order(values: list[float]) -> None:
     """invert=False: largest input maps to 1.0 (best)."""
@@ -202,19 +244,27 @@ def test_property_normalize_invert_false_natural_order(values: list[float]) -> N
 
 
 @given(
-    st.lists(st.floats(min_value=0.0, max_value=1.0,
-                       allow_nan=False, allow_infinity=False),
-             min_size=1, max_size=10),
-    st.lists(st.floats(min_value=0.0, max_value=1.0,
-                       allow_nan=False, allow_infinity=False),
-             min_size=1, max_size=10),
-    st.lists(st.floats(min_value=0.0, max_value=1.0,
-                       allow_nan=False, allow_infinity=False),
-             min_size=1, max_size=10),
+    st.lists(
+        st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+        min_size=1,
+        max_size=10,
+    ),
+    st.lists(
+        st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+        min_size=1,
+        max_size=10,
+    ),
+    st.lists(
+        st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+        min_size=1,
+        max_size=10,
+    ),
 )
 @settings(max_examples=50)
 def test_property_composite_in_valid_range(
-    success: list[float], latency: list[float], thumb: list[float],
+    success: list[float],
+    latency: list[float],
+    thumb: list[float],
 ) -> None:
     """composite = 0.5·s + 0.3·l + 0.2·t with each input in [0,1] →
     composite is in [0,1] too."""
@@ -229,24 +279,33 @@ def test_property_composite_in_valid_range(
 
 
 @given(
-    st.lists(st.sampled_from(["COMPLETED", "FAILED", "PENDING"]),
-             min_size=1, max_size=30),
-    st.lists(st.integers(min_value=0, max_value=10000),
-             min_size=30, max_size=30),
+    st.lists(st.sampled_from(["COMPLETED", "FAILED", "PENDING"]), min_size=1, max_size=30),
+    st.lists(st.integers(min_value=0, max_value=10000), min_size=30, max_size=30),
 )
 @settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_property_aggregate_count_equals_input_size(
-    phases: list[str], latencies: list[int],
+    phases: list[str],
+    latencies: list[int],
 ) -> None:
     from services.node_metrics_store import NodeMetricsStore, NodeObservation
 
     store = NodeMetricsStore()
     for i, phase in enumerate(phases):
-        store.append(NodeObservation(
-            run_id=f"r{i}", node_id="n", node_kind="x", project_id="p",
-            dag_id="d", phase=phase, latency_ms=latencies[i],
-            tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-        ))
+        store.append(
+            NodeObservation(
+                run_id=f"r{i}",
+                node_id="n",
+                node_kind="x",
+                project_id="p",
+                dag_id="d",
+                phase=phase,
+                latency_ms=latencies[i],
+                tokens_in=0,
+                tokens_out=0,
+                cost_usd=0.0,
+                model_used="",
+            )
+        )
     agg = store.aggregate(window_seconds=3600)
     assert agg["count"] == len(phases)
     # succeeded + failed never exceeds count (some phases are PENDING)
@@ -264,11 +323,21 @@ def test_property_aggregate_single_observation_percentile_is_value(
     from services.node_metrics_store import NodeMetricsStore, NodeObservation
 
     store = NodeMetricsStore()
-    store.append(NodeObservation(
-        run_id="r", node_id="n", node_kind="x", project_id="p",
-        dag_id="d", phase="COMPLETED", latency_ms=latency,
-        tokens_in=0, tokens_out=0, cost_usd=0.0, model_used="",
-    ))
+    store.append(
+        NodeObservation(
+            run_id="r",
+            node_id="n",
+            node_kind="x",
+            project_id="p",
+            dag_id="d",
+            phase="COMPLETED",
+            latency_ms=latency,
+            tokens_in=0,
+            tokens_out=0,
+            cost_usd=0.0,
+            model_used="",
+        )
+    )
     agg = store.aggregate(window_seconds=3600)
     assert agg["latency_ms_p50"] == latency
     assert agg["latency_ms_p95"] == latency
@@ -307,21 +376,29 @@ def test_property_validate_verdict_rationale_always_string(rat: str) -> None:
 )
 @settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
 async def test_property_record_thumb_persists_round_trip(
-    thumb: str, comment: str, user_id: str,
+    thumb: str,
+    comment: str,
+    user_id: str,
 ) -> None:
     """For any valid (thumb, comment, user_id): the recorded Outcome
     carries identical values + success=True + signal='user_thumb'."""
-    from maistro.memory.outcomes import InMemoryOutcomeStore
     from services.feedback_service import (
-        record_thumb, set_outcome_store,
+        record_thumb,
+        set_outcome_store,
     )
+
+    from maistro.memory.outcomes import InMemoryOutcomeStore
 
     fresh = InMemoryOutcomeStore()
     set_outcome_store(fresh)
     try:
         result = await record_thumb(
-            user_id=user_id, project_id="p", run_id="r",
-            thumb=thumb, comment=comment, node_id="n",
+            user_id=user_id,
+            project_id="p",
+            run_id="r",
+            thumb=thumb,
+            comment=comment,
+            node_id="n",
         )
         assert result["recorded"] is True
         assert result["signal"] == "user_thumb"
@@ -347,7 +424,8 @@ def test_property_optimizer_zero_signal_produces_zero_proposals(
     import stores
     from services import edit_lock
     from services.feedback_service import (
-        InMemoryOutcomeStore, set_outcome_store,
+        InMemoryOutcomeStore,
+        set_outcome_store,
     )
     from services.node_metrics_store import NodeMetricsStore, set_store
     from services.optimizer import run_optimizer

@@ -14,6 +14,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
 from maistro.config.settings import Settings, get_settings
 from maistro.observability.logging import configure_logging
 from maistro.observability.middleware import RequestIDMiddleware
@@ -21,7 +22,16 @@ from maistro.tasks.progress_webhook import ProgressWebhookNotifier
 from maistro.tasks.queue import get_task_queue
 from maistro.tasks.runner import TaskRunner
 from maistro.tools.sandbox.server import cleanup_all_containers
-from maistro_server.api import agents, chat_completions, health, metrics, models, tasks, webhooks, ws
+from maistro_server.api import (
+    agents,
+    chat_completions,
+    health,
+    metrics,
+    models,
+    tasks,
+    webhooks,
+    ws,
+)
 from maistro_server.api.rate_limit import RateLimitMiddleware
 from maistro_server.api.schemas import ErrorDetail, ErrorResponse
 
@@ -110,13 +120,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if engine:
         await engine.dispose()
     reset_engine_cache()
-
-    # Flush observability
-    from maistro.observability.tracing import get_langfuse
-
-    langfuse = get_langfuse()
-    if langfuse:
-        langfuse.flush()
 
     await logger.ainfo("maistro_engine_stopped")
 

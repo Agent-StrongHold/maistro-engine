@@ -24,9 +24,7 @@ def _docker_client() -> httpx.AsyncClient:
 async def _fetch_container_stats(container_id: str) -> dict:
     async with _docker_client() as client:
         with contextlib.suppress(Exception):
-            r = await client.get(
-                f"http://localhost/containers/{container_id}/stats?stream=false"
-            )
+            r = await client.get(f"http://localhost/containers/{container_id}/stats?stream=false")
             if r.status_code == 200:
                 return r.json()
     return {}
@@ -79,8 +77,14 @@ def _extract_stats(stats: dict | None) -> tuple[float, float, float, float, floa
 
     cpu_delta = stats.get("cpu_stats", {}).get("cpu_usage", {}).get("total_usage", 0)
     cpu_system = stats.get("precpu_stats", {}).get("cpu_usage", {}).get("total_usage", 0)
-    system_delta = stats.get("cpu_stats", {}).get("system_cpu_usage", 0) - stats.get("precpu_stats", {}).get("system_cpu_usage", 0)
-    cpu_usage = round(((cpu_delta - cpu_system) / system_delta) * 100.0, 2) if system_delta > 0 and cpu_delta > cpu_system else 0.0
+    system_delta = stats.get("cpu_stats", {}).get("system_cpu_usage", 0) - stats.get(
+        "precpu_stats", {}
+    ).get("system_cpu_usage", 0)
+    cpu_usage = (
+        round(((cpu_delta - cpu_system) / system_delta) * 100.0, 2)
+        if system_delta > 0 and cpu_delta > cpu_system
+        else 0.0
+    )
 
     mem = stats.get("memory_stats", {})
     mem_usage = round(mem.get("usage", 0) / (1024 * 1024), 2)
@@ -90,7 +94,13 @@ def _extract_stats(stats: dict | None) -> tuple[float, float, float, float, floa
     for ndata in stats.get("networks", {}).values():
         rx += ndata.get("rx_bytes", 0)
         tx += ndata.get("tx_bytes", 0)
-    return cpu_usage, mem_usage, mem_limit, round(rx / (1024 * 1024), 2), round(tx / (1024 * 1024), 2)
+    return (
+        cpu_usage,
+        mem_usage,
+        mem_limit,
+        round(rx / (1024 * 1024), 2),
+        round(tx / (1024 * 1024), 2),
+    )
 
 
 def _map_container(raw: dict, stats: dict | None = None) -> Container:
@@ -146,7 +156,9 @@ async def get_container(container_id: str) -> Container:
             r.raise_for_status()
             raw = r.json()
     except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=exc.response.status_code, detail="container not found") from exc
+        raise HTTPException(
+            status_code=exc.response.status_code, detail="container not found"
+        ) from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Docker API error: {exc}") from exc
 
@@ -251,4 +263,6 @@ class SuggestBody(BaseModel):
 
 @router.post("/suggest")
 def suggest_dockerfile(body: SuggestBody) -> dict:
-    return {"dockerfile": "FROM python:3.12-slim\nWORKDIR /app\nCOPY . .\nCMD [\"python\", \"main.py\"]"}
+    return {
+        "dockerfile": 'FROM python:3.12-slim\nWORKDIR /app\nCOPY . .\nCMD ["python", "main.py"]'
+    }

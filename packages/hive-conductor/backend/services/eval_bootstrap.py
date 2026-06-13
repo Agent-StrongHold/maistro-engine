@@ -26,7 +26,7 @@ logger = logging.getLogger("hive.eval_bootstrap")
 
 async def discover_quality_bar(topic: str, audience: str = "") -> dict[str, Any]:
     """Search for what 'good' looks like for this topic.
-    
+
     Returns real examples, patterns, and auto-generated eval criteria.
     """
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
@@ -53,7 +53,16 @@ async def discover_quality_bar(topic: str, audience: str = "") -> dict[str, Any]
                 r.raise_for_status()
                 data = r.json()
                 results = data.get("web", {}).get("results", [])[:5]
-                all_results.extend([{"title": r.get("title", ""), "snippet": r.get("description", "")[:200], "url": r.get("url", "")} for r in results])
+                all_results.extend(
+                    [
+                        {
+                            "title": r.get("title", ""),
+                            "snippet": r.get("description", "")[:200],
+                            "url": r.get("url", ""),
+                        }
+                        for r in results
+                    ]
+                )
         except Exception as e:
             logger.warning(f"Search failed for '{q}': {e}")
 
@@ -72,7 +81,9 @@ async def discover_quality_bar(topic: str, audience: str = "") -> dict[str, Any]
     }
 
 
-async def _extract_criteria(topic: str, audience: str, examples: list[dict]) -> list[dict[str, Any]]:
+async def _extract_criteria(
+    topic: str, audience: str, examples: list[dict]
+) -> list[dict[str, Any]]:
     """Use LLM to extract eval criteria from discovered examples."""
     base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
     if not base.endswith("/v1"):
@@ -81,7 +92,7 @@ async def _extract_criteria(topic: str, audience: str, examples: list[dict]) -> 
 
     examples_text = "\n".join(f"- {e['title']}: {e['snippet']}" for e in examples[:10])
 
-    prompt = f"""You are analyzing what makes great {topic} (audience: {audience or 'general'}).
+    prompt = f"""You are analyzing what makes great {topic} (audience: {audience or "general"}).
 
 Based on these real examples of highly-rated {topic}:
 
@@ -139,13 +150,16 @@ def build_eval_from_criteria(topic: str, criteria: list[dict[str, Any]]):
                 has_positive = any(s.lower() in output.lower() for s in pos)
                 has_negative = any(s.lower() in output.lower() for s in neg) if neg else False
                 return has_positive and not has_negative
+
             return check
 
-        eval_criteria.append({
-            "name": c["name"],
-            "weight": weight,
-            "check": make_check(positive, negative),
-        })
+        eval_criteria.append(
+            {
+                "name": c["name"],
+                "weight": weight,
+                "check": make_check(positive, negative),
+            }
+        )
 
     class AutoEval(RubricEval):
         department = "auto"
@@ -160,7 +174,7 @@ def build_eval_from_criteria(topic: str, criteria: list[dict[str, Any]]):
 
 async def bootstrap_eval(topic: str, audience: str = ""):
     """Full pipeline: discover what good looks like → build eval.
-    
+
     Usage:
         eval_instance = await bootstrap_eval("children's picture book", "ages 3-5")
         result = await eval_instance.score(my_output)

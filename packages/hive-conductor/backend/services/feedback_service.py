@@ -70,9 +70,7 @@ async def record_thumb(
     via the get_experience_context narrative path.
     """
     if thumb not in ALLOWED_THUMBS:
-        raise ValueError(
-            f"thumb must be one of {ALLOWED_THUMBS!r}, got {thumb!r}"
-        )
+        raise ValueError(f"thumb must be one of {ALLOWED_THUMBS!r}, got {thumb!r}")
     if not user_id:
         raise ValueError("user_id is required")
     if not run_id:
@@ -93,7 +91,12 @@ async def record_thumb(
     outcome_id = await store.record(outcome)
     logger.info(
         "feedback_recorded run_id=%s user=%s project=%s thumb=%s node=%s id=%d",
-        run_id, user_id, project_id, thumb, node_id or "(run)", outcome_id,
+        run_id,
+        user_id,
+        project_id,
+        thumb,
+        node_id or "(run)",
+        outcome_id,
     )
     return {
         "recorded": True,

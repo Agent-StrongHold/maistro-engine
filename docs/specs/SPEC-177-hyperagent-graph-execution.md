@@ -3,19 +3,16 @@ id: SPEC-177
 title: Hyperagent graph execution (legacy port)
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: AC Defined
 created: 2026-05-13
-accepted: null
-implemented: null
+accepted: 2026-06-02
+implemented: 2026-06-02
 substrate:
   - maistro-engine#ADR-002
   - maistro-engine#ADR-004
 implements: []
 related:
   - maistro-engine#SPEC-178
-source:
-  - potential-dead-code/code-worth-implementing-from-legacy/
-  - potential-dead-code/legacy-maistro-site/src/maistro/agents/graph.py
 contracts:
   - boundary
   - behavioral
@@ -24,6 +21,13 @@ tests:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-05-13
+  - status: Accepted
+    date: 2026-06-02
+  - status: AC Defined
+    date: 2026-06-02
 ---
 
 # SPEC-177: Hyperagent graph execution
@@ -70,13 +74,13 @@ Reintroduce **GRAPH** execution as an **optional path** controlled explicitly by
 - **Idempotent persistence:** Repeated optimization with the same traces must not corrupt store schema; tests use in-memory protocol fake.
 - **Non-blocking:** Optimizer failures log at **warning** and return the input `GraphConfig` unchanged (same spirit as SPEC-175 webhook).
 
-## Acceptance criteria
+## Acceptance Criteria
 
-1. **Unit tests** — In-memory graph run completes for a minimal triangle topology (e.g. planner → coder → reviewer) with mocked or stubbed LLM responses (no network in default CI path).
-2. **Mode isolation** — Default `TaskCreate` without graph fields behaves exactly as today (existing tests unchanged).
-3. **GRAPH validation** — `execution_mode=GRAPH` without `graph_config` raises validation error at Pydantic boundary.
-4. **Conductor branch** — Single integration test: dispatch with `GRAPH` reaches graph module (can short-circuit LLM with stub).
-5. **Documentation** — This spec’s appendix stays in sync with target module paths in the implementation PR.
+- **AC-1**: In-memory graph run completes for a minimal triangle topology (planner → coder → reviewer) with mocked LLM responses.
+- **AC-2**: Default `TaskCreate` without graph fields behaves exactly as today (existing tests unchanged).
+- **AC-3**: `execution_mode=GRAPH` without `graph_config` raises validation error at Pydantic boundary.
+- **AC-4**: Dispatch with `GRAPH` mode reaches graph module (can short-circuit LLM with stub).
+- **AC-5**: Spec appendix stays in sync with target module paths in the implementation PR.
 
 ## Appendix A — Reference bundle → target paths
 
@@ -95,10 +99,4 @@ Full legacy tree (API, `main.py`, duplicate memory) remains **diff-only** contex
 
 ## Appendix B — Archive deletion (after this spec is Implemented)
 
-When SPEC-177 is **Implemented** and tests above exist on `main`:
-
-- Safe to remove **`potential-dead-code/code-worth-implementing-from-legacy/`** (entire directory).
-- Safe to remove **`potential-dead-code/code-worth-implementing-from-legacy-site-complete/`** (duplicate full tree).
-- **`potential-dead-code/legacy-maistro-site/`** may be removed once no open porting work references it (confirm with `git grep legacy-maistro-site`); see [SPEC-178](./SPEC-178-legacy-snapshot-retention.md) for sequencing and git hygiene.
-
-Do **not** delete `potential-dead-code/` until SPEC-178 checklist is satisfied for sibling snapshot folders you still need for provenance.
+SPEC-177 is **Implemented** — graph execution ships under `packages/maistro-core/src/maistro/graph/` (`executor.py`, `dag_registry.py`, `node.py`, `nodes/`, `durable_runs/`, …). The entire `potential-dead-code/` tree — the legacy hyperagent bundle, the full-site duplicates, and the sibling snapshots — was **removed** per [SPEC-178](./SPEC-178-legacy-snapshot-retention.md); provenance lives in git history and the live sibling repos.

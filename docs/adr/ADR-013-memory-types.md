@@ -1,3 +1,30 @@
+---
+id: ADR-013
+title: "Memory types — Learning, EpisodicMemory, Outcome, scopes, tiers"
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-04-26
+substrate:
+  - maistro-engine#ADR-002
+implements: []
+related: []
+supersedes: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+tests: []
+layer: Memory
+owners:
+  - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-04-26
+  - status: Accepted
+    date: 2026-04-26
+---
+
 # ADR-013: Memory types — Learning, EpisodicMemory, Outcome, scopes, tiers
 
 **Status:** Accepted  
@@ -36,6 +63,13 @@ CONTRADICT_DELTA: float = 0.05
 def build_scope_filter(agent_id, user_id, team_id, org_id) -> list[tuple[str, str | None]]: ...
 def matches_scope(mem: EpisodicMemory, filters) -> bool: ...  # cross-tenant leakage prevention
 ```
+
+> **Single source of truth.** `WEIGHT_BOUNDS`, `REINFORCE_DELTA`, and `CONTRADICT_DELTA` are
+> defined **only** in `maistro.types.memory`. Protocol signatures and store implementations
+> MUST `from maistro.types.memory import REINFORCE_DELTA` rather than re-spelling the literal
+> `0.05` as a parameter default — inline literals are how these drift. (A CI lint catching
+> `delta: float = 0.05` defaults outside `types/memory.py` is the enforcement; tier-specific
+> decay deltas are a possible v1 refinement, out of scope here.)
 
 ## Acceptance criteria
 

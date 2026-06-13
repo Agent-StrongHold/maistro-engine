@@ -47,6 +47,22 @@ For *dependencies* (entries in `pyproject.toml`), the standard `LICENSE` / `NOTI
 - **`Khamel83/TrojanHorse`** (MIT) — local-first notes → RAG pattern; macOS-locked implementation, pattern only.
 - **`Khamel83/frugalos` (Hermes)** (MIT) — Ollama-first AI router with cloud fallback; pattern reference for `engine#ADR-038` model fallback chains.
 
+### Catalog reviewed June 2026
+
+Chat-UI / coding-agent / self-evolving survey. Classified *complementary*, *better*, or *better∧contradicts* against the engine; the contradictions are analyzed in `docs/adr/ADR-092-capability-vs-control-posture.md`.
+
+- **`239573049/deepchat`** — multi-model chat UI: artifacts pane, conversation forking + retry-variations, multi-window, CodeMirror code rendering, MCP tool-call display. *Complement:* the rendering/interaction layer we under-built (streaming, markdown/code, artifacts, tool-cards).
+- **`AIDotNet/OpenCowork`** — Electron multi-agent desktop: 5 session modes (chat/clarify/cowork/code/acp), HITL tool-approval, markdown skills, 8 messaging channels. *Complement:* mode-selector ≈ our strategy axis; approval pane ≈ `gate`/`hitl`. *Contradicts:* local-agent-on-host trust model (we are server-brokered) — ADR-092.
+- **`shuyu-labs/WebCode`** — Blazor browser mgmt for AI CLIs: control-plane÷data-plane split, provider snapshot, external transcript import/recovery, capability-probing UI, Feishu cards. *Free wins:* transcript import (anti-lock-in), capability-probing UI. *Contradicts (mirror):* pin-the-provider determinism is more auditable than `model="auto"` — ADR-092.
+- **`shuyu-labs/BigBanana-AI-Director`** — AI film/comic director: 5-phase workflow, per-stage edit, prompt version history, keyframe interpolation. *Complement:* phase-workflow + prompt-version-history → Score Builder UX.
+- **`pewdiepie-archdaemon/odysseus`** — self-hosted ChatGPT-alt: blind model compare, ChromaDB persistent memory, deep-research→report, PWA. *Complement:* model-compare (eval UI), deep-research capability. *Contradicts:* local-first full access — ADR-092.
+- **`chopratejas/headroom`** — context-compression layer: reversible compression (CCR) + on-demand retrieval, provider KV-cache prefix alignment, MCP-deployable. *Complement:* augments `graph/compaction.py`; provider cache-alignment is a cost lever.
+- **`SWE-agent/mini-swe-agent`** — ~100-line bash-only agent, 74%+ SWE-bench Verified. *better∧contradicts (capability-for-control):* scaffold-less; the lesson that our structure is a governance tax, not a capability edge — ADR-092.
+- **`SWE-agent/SWE-agent`** (NeurIPS 2024) — Agent-Computer Interface (ACI) thesis; single-YAML agent config. Validates the structured-definition direction — SPEC-193.
+- **Live-SWE-agent** (arXiv 2511.13646; Xia, Wang, Yang, Wei, Zhang) — online runtime self-evolution; 77.4% SWE-bench Verified. *better∧contradicts (capability-for-control):* adopt only as gated/audited evolution — ADR-092.
+- **AutoBG** (arXiv 2606.01976; Li et al.) — board-game design assistant: Ideator→Realizer→Critic→Persona; critic-gated iteration + 150-persona eval grounded in 180K real reviews. *Complement:* critic-gated loops + persona-eval from a real corpus for our eval layer.
+- **`AutoJunjie/awesome-agent-harness`** — curated harness catalog. Surfaced: AGENTS.md/GitAgent minimal-spec (non-control exception → SPEC-193), durable execution / LangGraph (→ ADR-091), OpenCode "44 lifecycle hooks" (governable extension surface), `cq` solution-commons.
+
 ### Frameworks not in catalog
 
 - **OWASP Agentic Top 10** (2026 baseline) — framing for `stronghold/COMPLIANCE.md` AT-* mappings.

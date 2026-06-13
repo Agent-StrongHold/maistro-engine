@@ -7,6 +7,7 @@ HttpOpenAILLMClient — thin httpx wrapper implementing maistro.protocols.llm.LL
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -100,10 +101,8 @@ class _HttpOpenAILLMClient:
         # Minimal streaming: fall back to non-streaming and yield as single chunk
         result = await self.complete(messages, model, **kwargs)
         content = ""
-        try:
+        with contextlib.suppress(KeyError, IndexError):
             content = result["choices"][0]["message"]["content"]
-        except (KeyError, IndexError):
-            pass
         yield content
 
 
@@ -112,6 +111,11 @@ class MaistroCoreBridge:
 
     def __init__(self) -> None:
         self._container: Any = None
+
+    @property
+    def container(self) -> Any:
+        """The wired maistro-core Container (holds the CapabilityRegistry), or None."""
+        return self._container
 
     async def start(self, settings: Settings) -> None:
         import os
@@ -123,9 +127,7 @@ class MaistroCoreBridge:
 
         llm_base = (settings.maistro_llm_base_url or "").strip()
         llm_key = (
-            settings.maistro_llm_api_key.get_secret_value()
-            if settings.maistro_llm_api_key
-            else ""
+            settings.maistro_llm_api_key.get_secret_value() if settings.maistro_llm_api_key else ""
         )
         model = settings.maistro_model
 

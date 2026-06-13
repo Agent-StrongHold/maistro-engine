@@ -1,4 +1,4 @@
-"""Department DAGs — 45 optimizable DAG definitions (9 departments × 5 each).
+"""Department DAGs — 45 optimizable DAG definitions (9 departments x 5 each).
 
 Each DAG is a dict with:
   - id: unique identifier
@@ -11,18 +11,36 @@ Each DAG is a dict with:
 """
 
 from __future__ import annotations
+
 from typing import Any
 
 
 def get_all_dags() -> list[dict[str, Any]]:
     """Return all 45 DAG definitions."""
     from dags import (
-        deep_research, product_management, engineering,
-        creative_writing, press_releases, finance,
-        hr_people_ops, marketing, legal,
+        creative_writing,
+        deep_research,
+        engineering,
+        finance,
+        hr_people_ops,
+        legal,
+        marketing,
+        press_releases,
+        product_management,
     )
+
     all_dags = []
-    for mod in [deep_research, product_management, engineering, creative_writing, press_releases, finance, hr_people_ops, marketing, legal]:
+    for mod in [
+        deep_research,
+        product_management,
+        engineering,
+        creative_writing,
+        press_releases,
+        finance,
+        hr_people_ops,
+        marketing,
+        legal,
+    ]:
         all_dags.extend(mod.DAGS)
     return all_dags
 

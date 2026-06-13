@@ -1,4 +1,0 @@
-# file: /vmpool/github/maistro-engine/packages/maistro-core/src/maistro/auth/checker.py
-# hypothesis_version: 6.151.10
-
-['Bearer sk-svc-', 'Registry issue: %s', 'Service key required', 'authorization', 'maistro.auth.checker', 'x-service-key']

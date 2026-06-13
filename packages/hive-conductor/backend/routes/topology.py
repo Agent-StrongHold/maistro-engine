@@ -12,11 +12,15 @@ router = APIRouter(tags=["topology"])
 
 @router.get("/{dag_id}/compare")
 def compare(
-    dag_id: str, group_by: str = "model_used", window_seconds: int = 24 * 3600,
+    dag_id: str,
+    group_by: str = "model_used",
+    window_seconds: int = 24 * 3600,
 ) -> dict[str, Any]:
     try:
         return compare_variants(
-            dag_id, group_by=group_by, window_seconds=window_seconds,
+            dag_id,
+            group_by=group_by,
+            window_seconds=window_seconds,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
