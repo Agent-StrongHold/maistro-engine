@@ -71,6 +71,7 @@ class OAuth2Provider:
         if not provider:
             raise ValueError(f"OAuth2 provider not found: {provider_name}")
 
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs provider name only, never the code/token
         logger.info("Exchanging code for token: provider=%s", provider_name)
 
         token = OAuthToken(
@@ -84,6 +85,7 @@ class OAuth2Provider:
         )
 
         self._tokens[token.access_token] = token
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs provider name only, never the token value
         logger.info("Token exchanged successfully for: %s", provider_name)
         return token
 
@@ -92,6 +94,7 @@ class OAuth2Provider:
         if not provider:
             raise ValueError(f"OAuth2 provider not found: {provider_name}")
 
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs provider name only, never the token value
         logger.info("Refreshing token: provider=%s", provider_name)
 
         token = OAuthToken(
@@ -105,6 +108,7 @@ class OAuth2Provider:
         )
 
         self._tokens[token.access_token] = token
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs provider name only, never the token value
         logger.info("Token refreshed successfully for: %s", provider_name)
         return token
 
@@ -131,5 +135,5 @@ class OAuth2Provider:
 
     def revoke_token(self, access_token: str) -> None:
         if access_token in self._tokens:
-            del self._tokens[access_token]
-            logger.info("Token revoked: %s", access_token[:20])
+            token = self._tokens.pop(access_token)
+            logger.info("Token revoked: provider=%s user=%s", token.scope, token.user_id)

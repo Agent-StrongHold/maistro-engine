@@ -164,6 +164,7 @@ def _apply_learnings(
         budget_chars -= len(block)
         kept_ids.extend(block_ids)
     if added < len(learnings):
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs learning counts and block kind, never credential data
         logger.debug(
             "Token budget: dropped %d/%d %s learnings",
             len(learnings) - added,

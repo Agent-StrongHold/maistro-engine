@@ -20,13 +20,24 @@ SANDBOX = os.environ.get("LULU_SANDBOX", "true").lower() != "false"
 CLIENT_KEY = os.environ.get("LULU_CLIENT_KEY", "")
 CLIENT_SECRET = os.environ.get("LULU_CLIENT_SECRET", "")
 CONTACT_EMAIL = os.environ.get("LULU_CONTACT_EMAIL", "orders@maincharacter.press")
+# Comma-separated list of allowed origins. Defaults to the local Vite dev
+# server and the book-maker Express server.
+CORS_ORIGINS = os.environ.get(
+    "LULU_CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
+)
 
 client: LuluClient | None = None
 if CLIENT_KEY and CLIENT_SECRET:
     client = LuluClient(CLIENT_KEY, CLIENT_SECRET, contact_email=CONTACT_EMAIL, sandbox=SANDBOX)
 
 app = FastAPI(title="Lulu Print Service", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in CORS_ORIGINS.split(",") if o.strip()],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class Address(BaseModel):

@@ -46,6 +46,9 @@ jobs:
       - name: install quality tools
         run: uv pip install radon xenon vulture pyright interrogate pytest-timeout
 
+      - name: install age (for vault tests)
+        run: sudo apt-get update && sudo apt-get install -y age
+
       # ----- Pillar 3: code smells -----
       - name: ruff lint (full ruleset)
         run: uv run ruff check .

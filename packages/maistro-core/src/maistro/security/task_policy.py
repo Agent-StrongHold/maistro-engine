@@ -109,6 +109,7 @@ class InMemoryTaskAcceptancePolicy:
         if token_budget is not None:
             max_tokens = self._calculate_token_budget(priority_tier)
             if token_budget > max_tokens:
+                # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs LLM token-budget counts, never credential data
                 logger.warning(
                     "Budget DENIED: user=%s tier=%s token_count=%s > max=%s",
                     user_id,

@@ -8,6 +8,9 @@ COPY packages/hive-conductor/frontend/dist/ /app/packages/hive-conductor/fronten
 
 RUN pip install --no-cache-dir -r /app/packages/hive-conductor/backend/requirements.txt 2>/dev/null || pip install --no-cache-dir fastapi uvicorn httpx pydantic bcrypt
 
+RUN useradd --system --no-create-home --uid 10001 app && chown -R app:app /app
+USER 10001
+
 WORKDIR /app/packages/hive-conductor/backend
 
 EXPOSE 8101

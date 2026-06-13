@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     poc_mode: str = ""
     maistro_base_url: str = "http://localhost:8000"
 
+    # Comma-separated list of allowed CORS origins (see docker-compose.pm-poc.yml /
+    # docs/PM_POC_RUNBOOK.md for the convention). Defaults to the local Vite dev
+    # server and the backend's own origin.
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8101,http://127.0.0.1:8101"
+    )
+
     # Host-health API (:8150) backing the infra_monitor / infra_action capability
     # slots. Token is read from the vault (key HOST_HEALTH_TOKEN) with this env as
     # fallback. URL empty → infra providers are not wired (slots stay SAFE_NOOP).

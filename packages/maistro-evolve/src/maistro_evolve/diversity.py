@@ -35,7 +35,7 @@ def trait_vector(genome: PipelineGenome) -> list[float]:
 
     model_hashes: list[float] = []
     for n in nodes:
-        h = hashlib.md5(n.model.encode()).hexdigest()
+        h = hashlib.sha256(n.model.encode()).hexdigest()
         model_hashes.append(int(h[:8], 16) / 0xFFFFFFFF)
     avg_model_hash = sum(model_hashes) / len(model_hashes)
 

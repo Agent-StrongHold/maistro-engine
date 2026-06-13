@@ -23,10 +23,9 @@ flake8 --select=DUO $TARGET 2>&1
 # semgrep (LGPL-2.1, license exception) — taint/dataflow SAST with OWASP + secrets rulesets
 semgrep --metrics off --error \
   --config p/security-audit --config p/owasp-top-ten --config p/secrets \
-  $( [ -f tools/semgrep/jfc-rules.yaml ] && echo --config tools/semgrep/jfc-rules.yaml ) \
+  --config tools/semgrep/maistro-rules.yaml \
   $TARGET 2>&1 | tail -40
 ```
-Note: `tools/semgrep/jfc-rules.yaml` is referenced by CI but may be absent — the `[ -f ... ]` guard skips it cleanly. If it's missing, say so (CI references it too — see the CI-parity note at the end).
 
 ## 2. Secret scanning
 
@@ -158,5 +157,4 @@ Map to the user's 12-step workflow step 11 (security) and the strict CI gates in
 
 ## CI-parity notes (flag these if you see them)
 
-- CI `security.yml` references `--config tools/semgrep/jfc-rules.yaml` and scans `services/` — both **may not exist** in the repo (no `tools/` dir; `services/` absent). If so, the CI semgrep step is broken or silently passing (its exit code is swallowed by `| tee`). Surface this; offer to create a starter `tools/semgrep/jfc-rules.yaml` (use the `semgrep-rule-creator` skill) and fix the scan paths.
 - The full tool roster + licenses lives in `docs/specs/` if a security-tooling spec exists; otherwise this skill is the source of truth.

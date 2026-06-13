@@ -83,14 +83,17 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_tasks: int = 5) 
         # Security check
         has_security_issue = any(p.search(code) for p in _SECURITY_PATTERNS)
 
-        # Test execution
+        # Test execution — skip running candidate code that already tripped the
+        # security pattern pre-screen above.
         tests_passed = 0
-        if valid_syntax:
+        if valid_syntax and not has_security_issue:
             try:
                 ns: dict[str, Any] = {}
+                # nosemgrep: python.lang.security.audit.exec-detected.exec-detected -- benchmark harness execs only self-generated candidate code that passed the _SECURITY_PATTERNS pre-screen above
                 exec(code, ns)
                 for test_expr in t["tests"]:
                     try:
+                        # nosemgrep: python.lang.security.audit.eval-detected.eval-detected -- evaluates fixed, hardcoded test expressions (TASKS above) against the candidate's namespace, not untrusted input
                         if eval(test_expr, ns):
                             tests_passed += 1
                     except Exception:
