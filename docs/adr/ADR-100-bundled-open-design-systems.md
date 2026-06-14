@@ -1,5 +1,5 @@
 ---
-id: ADR-096
+id: ADR-100
 title: "Bundled and cataloged Open Design design systems for maistro-design"
 repo: maistro-engine
 kind: adr
@@ -28,7 +28,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-096 — Bundled and cataloged Open Design design systems
+# ADR-100 — Bundled and cataloged Open Design design systems
 
 ## Context
 
