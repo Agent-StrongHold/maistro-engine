@@ -110,32 +110,26 @@ class InMemoryTaskAcceptancePolicy:
             max_tokens = self._calculate_token_budget(priority_tier)
             if token_budget > max_tokens:
                 logger.warning(
-                    "Budget DENIED: user=%s tier=%s token_count=%s > max=%s",
+                    "Budget check failed: user=%s tier=%s (token budget exceeded)",
                     user_id,
                     priority_tier,
-                    token_budget,
-                    max_tokens,
                 )
                 return False
 
         if cost_budget is not None and cost_budget > limits.get("max_cost", float("inf")):
             logger.warning(
-                "Budget DENIED: user=%s tier=%s cost=%s > max=%s",
+                "Budget check failed: user=%s tier=%s (cost budget exceeded)",
                 user_id,
                 priority_tier,
-                cost_budget,
-                limits["max_cost"],
             )
             return False
 
         max_seconds = limits.get("max_seconds", float("inf"))
         if wall_clock_seconds is not None and wall_clock_seconds > max_seconds:
             logger.warning(
-                "Budget DENIED: user=%s tier=%s seconds=%s > max=%s",
+                "Budget check failed: user=%s tier=%s (time budget exceeded)",
                 user_id,
                 priority_tier,
-                wall_clock_seconds,
-                limits["max_seconds"],
             )
             return False
 
