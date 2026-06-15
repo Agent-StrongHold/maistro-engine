@@ -29,25 +29,25 @@
   --shadow-lg: 0 14px 36px rgba(42, 31, 92, 0.12);
 
   /* Primary accent — sorcerer violet */
-  --accent:       #6D4AFF;
+  --accent:       var(--hyperion-indigo-800, #2D4D9A);
   --accent-light: rgba(109, 74, 255, 0.08);
-  --accent-hover: #5A3AE6;
-  --accent-bg:    #E9E3FF;
-  --violet:       #6D4AFF;
-  --violet-soft:  #E9E3FF;
+  --accent-hover: var(--hyperion-indigo-900, #323277);
+  --accent-bg:    var(--hyperion-indigo-100, #EBF6FF);
+  --violet:       var(--hyperion-indigo-800, #2D4D9A);
+  --violet-soft:  var(--hyperion-indigo-100, #EBF6FF);
 
   /* Secondary accent — enchanted gold (sparse: status, selected, publish) */
-  --honey:       #D6A84F;
+  --honey:       var(--hyperion-gold-600, #F4AF25);
   --honey-light: rgba(214, 168, 79, 0.1);
   --honey-dark:  #B8893A;
-  --gold:        #D6A84F;
-  --gold-soft:   #FFF2C7;
+  --gold:        var(--hyperion-gold-600, #F4AF25);
+  --gold-soft:   var(--hyperion-gold-100, #FFF4D9);
 
   /* Status */
-  --danger: #dc2626;
-  --ok:     #35B979;
-  --warn:   #D6A84F;
-  --purple: #6D4AFF;
+  --danger: var(--hyperion-red-800, #dc2626);
+  --ok:     var(--hyperion-green-700, #35B979);
+  --warn:   var(--hyperion-gold-600, #F4AF25);
+  --purple: var(--hyperion-indigo-800, #2D4D9A);
 
   /* Backgrounds */
   --comb-bg: transparent;
@@ -86,15 +86,15 @@
 }
 
 [data-theme="fantasia"] .nav-icon:hover {
-  color: #6D4AFF;
+  color: var(--hyperion-indigo-800, #2D4D9A);
   background: rgba(109, 74, 255, 0.06);
   border-color: transparent;
 }
 
 [data-theme="fantasia"] .nav-icon.active {
-  color: #6D4AFF;
-  background: #E9E3FF;
-  border-color: #6D4AFF;
+  color: var(--hyperion-indigo-800, #2D4D9A);
+  background: var(--hyperion-indigo-100, #EBF6FF);
+  border-color: var(--hyperion-indigo-800, #2D4D9A);
 }
 
 /* ─── Widget Cards ─── */
@@ -113,7 +113,7 @@
 /* Selected widget — gold border */
 [data-theme="fantasia"] .widget-card.selected,
 [data-theme="fantasia"] .widget-card[style*="gold"] {
-  border: 1.5px solid #D6A84F;
+  border: 1.5px solid var(--hyperion-gold-600, #F4AF25);
   box-shadow:
     0 0 0 3px rgba(214, 168, 79, 0.18),
     0 14px 36px rgba(42, 31, 92, 0.12);
@@ -122,7 +122,7 @@
 /* ─── Buttons ─── */
 [data-theme="fantasia"] .btn-primary,
 [data-theme="fantasia"] .btn-accent {
-  background: #6D4AFF;
+  background: var(--hyperion-indigo-800, #2D4D9A);
   color: #FFFFFF;
   border: none;
   border-radius: 10px;
@@ -131,7 +131,7 @@
 
 [data-theme="fantasia"] .btn-primary:hover,
 [data-theme="fantasia"] .btn-accent:hover {
-  background: #5A3AE6;
+  background: var(--hyperion-indigo-900, #323277);
 }
 
 /* ─── Inputs ─── */
@@ -142,7 +142,7 @@
   border: 1px solid #E6E0F6;
   border-radius: 10px;
   color: #17132B;
-  caret-color: #6D4AFF;
+  caret-color: var(--hyperion-indigo-800, #2D4D9A);
 }
 
 [data-theme="fantasia"] input::placeholder,
@@ -152,7 +152,7 @@
 
 [data-theme="fantasia"] input:focus,
 [data-theme="fantasia"] textarea:focus {
-  border-color: #6D4AFF;
+  border-color: var(--hyperion-indigo-800, #2D4D9A);
   box-shadow: 0 0 0 3px rgba(109, 74, 255, 0.1);
   outline: none;
 }
@@ -184,7 +184,7 @@
 [data-theme="fantasia"] .hex-badge-ok,
 [data-theme="fantasia"] .badge-ok {
   background: rgba(53, 185, 121, 0.1);
-  color: #35B979;
+  color: var(--hyperion-green-700, #35B979);
 }
 
 /* ─── Charts (override dark gradients) ─── */
@@ -194,7 +194,7 @@
 
 /* ─── Operational Status ─── */
 [data-theme="fantasia"] .status-ok {
-  color: #35B979;
+  color: var(--hyperion-green-700, #35B979);
 }
 
 /* ─── Model Dropdown ─── */
@@ -216,8 +216,8 @@
 }
 
 [data-theme="fantasia"] .model-option--active {
-  background: #E9E3FF;
-  color: #6D4AFF;
+  background: var(--hyperion-indigo-100, #EBF6FF);
+  color: var(--hyperion-indigo-800, #2D4D9A);
 }
 
 /* ─── Scrollbar ─── */
