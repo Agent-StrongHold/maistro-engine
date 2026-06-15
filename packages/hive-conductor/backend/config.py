@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     conductor_admin_public_key: str | None = None
     conductor_user_public_key: str | None = None
 
+    # CORS allow-list. Defaults to local-dev origins; set CORS_ORIGINS (JSON list)
+    # in deployment. Wildcard "*" is intentionally NOT the default — wildcard with
+    # credentials is rejected by browsers and flagged as insecure.
+    cors_origins: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:8101",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:8101",
+    ]
+
     hardware_preset: Literal["potato", "laptop", "desktop", "beast"] = "laptop"
     poc_mode: str = ""
     maistro_base_url: str = "http://localhost:8000"

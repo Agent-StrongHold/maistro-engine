@@ -23,9 +23,11 @@ def init_credential_store(data_dir: str | Path) -> bool:
     try:
         _store = UserCredentialStore.open(data_dir)
         # stdlib logger — keyword args raise TypeError. Use % formatting.
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the data directory path, never credential material
         logger.info("user_credential_store_ready data_dir=%s", str(data_dir))
         return True
     except Exception as exc:
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the exception, never credential material
         logger.warning("user_credential_store_unavailable: %s", exc)
         _store = None
         return False

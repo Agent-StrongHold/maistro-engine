@@ -53,7 +53,9 @@ DANGEROUS_TOOL_NAMES = frozenset(
     }
 )
 
-# Blocked host paths that should never be mounted or accessed
+# Blocked host paths that should never be mounted or accessed. The Docker socket
+# entries are a DENYLIST (paths we refuse to mount), not a mount/access of the
+# socket — per ADR-058 untrusted code uses SandboxProtocol (SPEC-190), never this.
 BLOCKED_HOST_PATHS = frozenset(
     {
         "/etc",
@@ -62,7 +64,7 @@ BLOCKED_HOST_PATHS = frozenset(
         "/dev",
         "/root",
         "/boot",
-        "/var/run/docker.sock",
+        "/var/run/docker.sock",  # nosemgrep: maistro-mounted-docker-socket -- denylist entry, not a mount
         "/run/docker.sock",
     }
 )

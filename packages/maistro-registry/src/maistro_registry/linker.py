@@ -116,12 +116,14 @@ class FilesystemResolver:
         if repo != "maistro-engine":
             return True  # optimistic; cross-repo check needs GitHubResolver
 
-        adr_dir = self.engine_root / "docs" / "adr"
-        if not adr_dir.is_dir():
-            return False
-
         prefix = f"{item_id}-"
-        return any(f.name.startswith(prefix) and f.suffix == ".md" for f in adr_dir.iterdir())
+        for dir_name in ("adr", "specs"):
+            dir_path = self.engine_root / "docs" / dir_name
+            if dir_path.is_dir() and any(
+                f.name.startswith(prefix) and f.suffix == ".md" for f in dir_path.iterdir()
+            ):
+                return True
+        return False
 
 
 @dataclass

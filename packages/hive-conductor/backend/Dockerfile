@@ -12,4 +12,9 @@ WORKDIR /app/packages/hive-conductor/backend
 
 EXPOSE 8101
 
+# Run as a non-root user. The default data dir is ~/.conductor, so the user needs
+# a writable home; /app is chowned so any build artifacts remain accessible.
+RUN useradd --create-home --uid 10001 appuser && chown -R appuser:appuser /app
+USER appuser
+
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8101"]

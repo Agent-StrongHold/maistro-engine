@@ -14,6 +14,10 @@ router = APIRouter(tags=["containers"])
 
 logger = logging.getLogger(__name__)
 
+# The Conductor's own (trusted, admin-only) container-management feature talks to
+# the host Docker daemon. This is NOT the untrusted/sandbox path ADR-058 governs —
+# agent/sandbox code uses SandboxProtocol (SPEC-190) and never touches this socket.
+# nosemgrep: maistro-mounted-docker-socket -- trusted admin container management, not sandbox code
 DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
 
 
