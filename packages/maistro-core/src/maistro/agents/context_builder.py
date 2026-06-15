@@ -165,7 +165,7 @@ def _apply_learnings(
         kept_ids.extend(block_ids)
     if added < len(learnings):
         logger.debug(
-            "Token budget: dropped %d/%d %s learnings",
+            "Context budget: dropped %d/%d %s learnings",
             len(learnings) - added,
             len(learnings),
             kind,

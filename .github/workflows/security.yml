@@ -211,6 +211,7 @@ jobs:
       - name: Boot the stack for DAST
         run: |
           # Compose env file (test secrets only).
+          mkdir -p container_registry/user_containers/sandbox_templates/maistro-engine
           cat > container_registry/user_containers/sandbox_templates/maistro-engine/.env <<EOF
           LITELLM_PROXY_URL=http://fake-litellm:4000
           LITELLM_PROXY_KEY=test-key

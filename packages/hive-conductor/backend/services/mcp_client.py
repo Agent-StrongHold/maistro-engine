@@ -54,6 +54,7 @@ def resolve_atlassian_token(user_id: str | None) -> str | None:
                 )
                 continue
     except Exception as exc:
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the exception, never credential material
         logger.debug("credential_lookup_failed: %s", exc)
     return None
 

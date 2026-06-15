@@ -41,6 +41,20 @@ jobs:
       - name: uv sync (full dev deps)
         run: uv sync --all-extras
 
+      # age/age-keygen are required by the vault + state encryption tests
+      # (SPEC-011 / SPEC-010). apt's `age` package omits age-keygen on some
+      # runners, so fall back to the upstream release tarball.
+      - name: install age + age-keygen
+        run: |
+          set -e
+          sudo apt-get update && sudo apt-get install -y age || true
+          if ! command -v age-keygen &> /dev/null; then
+            mkdir -p /tmp/age && cd /tmp/age
+            curl -fsSL https://dl.filippo.io/age/latest/age-linux-amd64.tar.gz | tar xz
+            sudo mv /tmp/age/age /tmp/age/age-keygen /usr/local/bin/
+            age-keygen --help > /dev/null && echo "✓ age-keygen ready"
+          fi
+
       # The analyzer CLIs are NOT project extras (see requirements-dev-tools.txt
       # — semgrep-class tools carry conflicting pins; these are safe in-venv).
       - name: install quality tools

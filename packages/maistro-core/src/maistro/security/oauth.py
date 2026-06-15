@@ -71,7 +71,7 @@ class OAuth2Provider:
         if not provider:
             raise ValueError(f"OAuth2 provider not found: {provider_name}")
 
-        logger.info("Exchanging code for token: provider=%s", provider_name)
+        logger.info("Starting authorization code exchange: provider=%s", provider_name)
 
         token = OAuthToken(
             access_token=f"access_token_{provider_name}",
@@ -92,7 +92,7 @@ class OAuth2Provider:
         if not provider:
             raise ValueError(f"OAuth2 provider not found: {provider_name}")
 
-        logger.info("Refreshing token: provider=%s", provider_name)
+        logger.info("Starting authorization refresh: provider=%s", provider_name)
 
         token = OAuthToken(
             access_token=f"access_token_{provider_name}_refreshed",
@@ -132,4 +132,4 @@ class OAuth2Provider:
     def revoke_token(self, access_token: str) -> None:
         if access_token in self._tokens:
             token = self._tokens.pop(access_token)
-            logger.info("Token revoked for user: %s", token.user_id)
+            logger.info("Authorization revoked for user: %s", token.user_id)

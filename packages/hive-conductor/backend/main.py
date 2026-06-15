@@ -146,7 +146,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Hive Conductor", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=get_settings().cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

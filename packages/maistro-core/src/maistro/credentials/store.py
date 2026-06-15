@@ -71,6 +71,7 @@ class UserCredentialStore:
             key_path.write_bytes(key)
             os.chmod(key_path, 0o600)
             # stdlib logger — keyword args raise TypeError. Use % formatting.
+            # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the key FILE path, never the key material
             logger.info("credential_master_key_created path=%s", str(key_path))
         return cls(path, master_key=key_path.read_bytes())
 
