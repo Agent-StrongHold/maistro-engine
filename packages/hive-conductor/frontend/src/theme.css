@@ -52,4 +52,8 @@
   --font-weight-heavy: 700;
   --font-weight-black: 800;
   --letter-spacing-default: -0.01em;
+
+  /* ─── Override broken Parks-Next text defaults (assumes dark bg) ─── */
+  --theme-color-text-default: var(--color-plum-900);
+  --theme-color-text-secondary: var(--color-plum-500);
 }

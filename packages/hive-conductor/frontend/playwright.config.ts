@@ -11,8 +11,5 @@ export default defineConfig({
     baseURL: BASE_URL,
     headless: true,
     screenshot: "only-on-failure",
-    extraHTTPHeaders: process.env.ACCESS_TOKEN ? {
-      "Cookie": `access_token=${process.env.ACCESS_TOKEN}; sid=${process.env.SID || ""}`,
-    } : undefined,
   },
 });

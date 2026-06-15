@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
+import "./chat.css";
 
 type Role = "user" | "assistant";
 type StepStatus = "running" | "done" | "error";

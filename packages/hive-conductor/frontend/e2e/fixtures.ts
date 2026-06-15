@@ -1,30 +1,17 @@
 import { test as base, expect } from "@playwright/test";
 
-const test = base.extend<{ setupDone: boolean }>({
-  setupDone: [async ({ page, context, baseURL }, use) => {
-    // Set auth cookies for the deployed environment
-    if (process.env.ACCESS_TOKEN && baseURL) {
-      const url = new URL(baseURL);
-      await context.addCookies([
-        { name: "access_token", value: process.env.ACCESS_TOKEN, domain: url.hostname, path: "/" },
-        ...(process.env.SID ? [{ name: "sid", value: process.env.SID, domain: url.hostname, path: "/" }] : []),
-      ]);
-    }
-
-    // Check if first-boot setup is needed
-    const res = await page.goto("./chat");
-    const body = await page.textContent("body");
-    if (body?.includes("Setup") || body?.includes("First boot")) {
-      await page.locator('input[placeholder="Hive Conductor"]').fill("Test Hive");
-      await page.locator("button", { hasText: "next" }).click();
-      await page.locator("text=Beast").first().click();
-      await page.locator("button", { hasText: "next" }).click();
-      await page.locator("button", { hasText: "next" }).click();
-      await page.locator("button", { hasText: "launch the hive" }).click();
-      await page.waitForURL(/\/(chat)?/, { timeout: 15000 }).catch(() => {});
-    }
-    await use(true);
-  }, { auto: true }],
+const test = base.extend({
+  page: async ({ browser, baseURL }, use) => {
+    const context = await browser.newContext({
+      baseURL: baseURL || undefined,
+      extraHTTPHeaders: process.env.ACCESS_TOKEN ? {
+        "Cookie": `access_token=${process.env.ACCESS_TOKEN}; sid=${process.env.SID || ""}`,
+      } : undefined,
+    });
+    const page = await context.newPage();
+    await use(page);
+    await context.close();
+  },
 });
 
 export { test, expect };

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react";
-import GridLayout from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import "./dashboard.css";
 import { TemplatePicker } from "../components/TemplatePicker";
 
@@ -86,12 +87,13 @@ function useMetrics() {
 
 // ─── Chat Bar ───────────────────────────────────────────────────────────────
 
-function ChatBar({ widgets, onWidgetsChange, editing, tabs, activeIdx }: { widgets: Widget[]; onWidgetsChange: (w: Widget[]) => void; editing: boolean; tabs: Tab[]; activeIdx: number }) {
+function ChatBar({ widgets, onWidgetsChange, editing, tabs, activeIdx, initialMessage }: { widgets: Widget[]; onWidgetsChange: (w: Widget[]) => void; editing: boolean; tabs: Tab[]; activeIdx: number; initialMessage?: string }) {
   const [value, setValue] = useState("");
   const [msgs, setMsgs] = useState<{ role: string; content: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const submitRef = useRef<(() => void) | null>(null);
 
   useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [msgs]);
 
@@ -272,6 +274,10 @@ BEHAVIOR:
     } catch (e: any) { setMsgs([...next, { role: "assistant", content: e?.name === "AbortError" ? "Request timed out (>2min). Try a simpler request." : "Connection error — check that the backend is running." }]); }
     finally { setLoading(false); }
   };
+
+  useEffect(() => {
+    if (initialMessage) { setValue(initialMessage); }
+  }, [initialMessage]);
 
   return (
     <div className="dash-chat">
@@ -872,7 +878,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
   const [cfgGroupBy, setCfgGroupBy] = useState(widget.config?.field || widget.config?.group_by || "");
   const [cfgFilter, setCfgFilter] = useState(widget.config?.filter_formula || "");
   const [cfgDisplayField, setCfgDisplayField] = useState(widget.config?.display_field || "");
-  const [cfgMaxRecords, setCfgMaxRecords] = useState(widget.config?.max_records || "20");
+  const [cfgMaxRecords, setCfgMaxRecords] = useState(widget.config?.max_records || "500");
   const [cfgFields, setCfgFields] = useState<string[]>([]);
 
   useEffect(() => {
@@ -916,7 +922,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
       // For legacy custom widgets
       if (!config.variables) { config.endpoint = cfgEndpoint; config.query = cfgQuery; }
     }
-    onUpdate({ ...widget, title: cfgTitle, type: cfgType, size: cfgSize as Widget["size"], rows: cfgRows as Widget["rows"], config: { ...config, refresh_minutes: Number(cfgRefresh) || 0, theme: cfgTheme, display: cfgDisplay !== "auto" ? cfgDisplay : undefined, ...(cfgTable ? { table: cfgTable, source: "airtable", filter_formula: cfgFilter || undefined, display_field: cfgDisplayField || undefined, max_records: cfgMaxRecords || "20" } : {}), ...(cfgGroupBy ? { field: cfgGroupBy, group_by: cfgGroupBy } : {}) } });
+    onUpdate({ ...widget, title: cfgTitle, type: cfgType, size: cfgSize as Widget["size"], rows: cfgRows as Widget["rows"], config: { ...config, refresh_minutes: Number(cfgRefresh) || 0, theme: cfgTheme, display: cfgDisplay !== "auto" ? cfgDisplay : undefined, ...(cfgTable ? { table: cfgTable, source: "airtable", filter_formula: cfgFilter || undefined, display_field: cfgDisplayField || undefined, max_records: cfgMaxRecords || "500" } : {}), ...(cfgGroupBy ? { field: cfgGroupBy, group_by: cfgGroupBy } : {}) } });
     setConfigOpen(false);
   };
 
@@ -1066,6 +1072,18 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
   );
 }
 
+// ─── Sortable Widget Wrapper ────────────────────────────────────────────────
+
+function SortableWidget({ widget, ...props }: { widget: Widget; agents: any[]; metrics: any; editing: boolean; onRemove: () => void; onResize: (s: Widget["size"]) => void; onUpdate: (w: Widget) => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: widget.id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, cursor: props.editing ? "grab" : "default" };
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...(props.editing ? listeners : {})} className={`dash-grid-item dash-grid-item--${widget.size}`}>
+      <WidgetCard widget={widget} {...props} />
+    </div>
+  );
+}
+
 // ─── Add Widget ─────────────────────────────────────────────────────────────
 
 const CATALOG = [
@@ -1151,12 +1169,22 @@ export default function Dashboard() {
   const [activeIdx, setActiveIdx] = useState(0);
   const [editing, setEditing] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [suggestMsg, setSuggestMsg] = useState("");
   const [history, setHistory] = useState<Tab[][]>([]);
   const [future, setFuture] = useState<Tab[][]>([]);
   const agents = useAgents();
   const metrics = useMetrics();
   useServerTabs(tabs, setTabs, setActiveIdx);
   const gridRef = useRef<HTMLDivElement>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const handleDragEnd = (event: any) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIdx = widgets.findIndex(w => w.id === active.id);
+      const newIdx = widgets.findIndex(w => w.id === over.id);
+      update(arrayMove(widgets, oldIdx, newIdx));
+    }
+  };
 
   const widgets = tabs[activeIdx]?.widgets || [];
 
@@ -1233,19 +1261,11 @@ export default function Dashboard() {
           </>)}
           <button className={`btn ${editing ? "btn--active" : ""}`} onClick={() => setEditing(!editing)}>{editing ? "✓ Done" : "✎ Edit"}</button>
           <button className="btn" onClick={() => setShowTemplates(true)}>✦ Templates</button>
-          <button className="btn btn--primary" onClick={() => {
-            const input = document.querySelector("input[placeholder*='Build'],input[placeholder*='Ask']") as HTMLInputElement;
-            if (input) {
-              const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
-              nativeSet.call(input, "Use analyze_dashboard to screenshot my dashboard and visually review it. Then suggest specific widget changes — what to add, remove, resize, or retype. Be specific with widget configs I can apply.");
-              input.dispatchEvent(new Event('input', { bubbles: true }));
-              setTimeout(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 50);
-            }
-          }}>✨ Suggest</button>
+          <button className="btn btn--primary" onClick={() => setSuggestMsg("Analyze my current dashboard. What should I add, remove, resize, or rearrange? Be specific.")}>✨ Suggest</button>
         </div>
       </div>
 
-      <ChatBar widgets={widgets} onWidgetsChange={(w) => update(w)} editing={editing} tabs={tabs} activeIdx={activeIdx} />
+      <ChatBar widgets={widgets} onWidgetsChange={(w) => update(w)} editing={editing} tabs={tabs} activeIdx={activeIdx} initialMessage={suggestMsg} />
 
       <div className="tabs">
         {tabs.map((t, i) => (
@@ -1259,16 +1279,18 @@ export default function Dashboard() {
         {editing && <button className="tab" onClick={addTab}>+ Add Tab</button>}
       </div>
 
-      <div ref={gridRef} className="dash-grid">
-        {widgets.map(w => (
-          <div key={w.id} className={`dash-grid-item dash-grid-item--${w.size}`}>
-            <WidgetCard widget={w} agents={agents} metrics={metrics} editing={editing}
-              onRemove={() => removeWidget(w.id)}
-              onResize={(s) => resizeWidget(w.id, s)}
-              onUpdate={(updated) => updateWidget(w.id, updated)} />
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={widgets.map(w => w.id)} strategy={rectSortingStrategy}>
+          <div ref={gridRef} className="dash-grid">
+            {widgets.map(w => (
+              <SortableWidget key={w.id} widget={w} agents={agents} metrics={metrics} editing={editing}
+                onRemove={() => removeWidget(w.id)}
+                onResize={(s) => resizeWidget(w.id, s)}
+                onUpdate={(updated) => updateWidget(w.id, updated)} />
+            ))}
           </div>
-        ))}
-      </div>
+        </SortableContext>
+      </DndContext>
       {editing && <AddWidget onAdd={addWidget} />}
       {showTemplates && <TemplatePicker onClose={() => setShowTemplates(false)} onSelect={(id) => {
         fetch(`/v1/dashboard/demos/${id}`, { credentials: "same-origin" })
