@@ -53,7 +53,9 @@ DANGEROUS_TOOL_NAMES = frozenset(
     }
 )
 
-# Blocked host paths that should never be mounted or accessed
+# Blocked host paths that should never be mounted or accessed (per SPEC-190 microVM backend requirement).
+# Docker socket paths are EXPLICITLY DENIED here; actual Docker access uses SandboxProtocol.
+# semgrep ignore: tools.semgrep.maistro-mounted-docker-socket (this is a denylist, not access)
 BLOCKED_HOST_PATHS = frozenset(
     {
         "/etc",
