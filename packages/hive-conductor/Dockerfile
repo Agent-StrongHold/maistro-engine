@@ -50,6 +50,9 @@ COPY packages/hive-conductor/dags/ /app/dags/
 COPY --from=frontend /build/dist /app/frontend/dist
 EXPOSE 8101
 WORKDIR /app/backend
+# Chainguard runs as nonroot (uid 65532) by default; make it explicit so the
+# image is unambiguously non-root.
+USER 65532
 # exec-form, stdlib healthcheck — no curl/shell in the image.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8101/health/ready', timeout=4).status==200 else 1)"]
