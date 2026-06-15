@@ -15,6 +15,7 @@ from maistro.graph.nodes.base import BaseNode, NodeContext
 from maistro_design.engine import DesignEngine
 from maistro_design.skills.builtins import load_builtins
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+from maistro_design.systems.importer import load_bundled
 from maistro_design.systems.registry import InMemoryDesignSystemRegistry
 from maistro_design.trust import TrustTier
 from maistro_design.types import DiscoveryResult
@@ -70,6 +71,7 @@ class DesignOrchestrateNode(BaseNode[DesignOrchestrateIn, DesignOrchestrateOut])
         skill_registry = InMemoryDesignSkillRegistry()
         load_builtins(skill_registry)
         system_registry = InMemoryDesignSystemRegistry()
+        load_bundled(system_registry)
 
         engine = DesignEngine(
             skill_registry=skill_registry,

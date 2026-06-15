@@ -143,5 +143,8 @@ Scenario: DesignOrchestrateNode is registered in the DAG registry
 - Admin panel UI for trust review decisions.
 - Mutmut configuration (deferred to ADR-033 template rollout).
 - LLM call inside the engine (caller's responsibility).
-- Bundled design systems (registry + loader infrastructure only).
+- ~~Bundled design systems (registry + loader infrastructure only).~~ Addressed by
+  ADR-100: a Tier-1 bundled set (`load_bundled()`, `T1`) plus a Tier-2 one-click
+  catalog (`import_from_catalog()`, `T2`), both sourced from Open Design's
+  Apache-2.0 `design-systems/` corpus behind a content scan.
 - Cross-tenant design system sharing (Stronghold concern).

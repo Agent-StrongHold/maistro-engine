@@ -12,6 +12,14 @@ from maistro_design.protocols import (
 )
 from maistro_design.skills.builtins import load_builtins
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+from maistro_design.systems.importer import (
+    ScanReport,
+    import_from_catalog,
+    import_open_design_system,
+    load_bundled,
+    load_catalog,
+    scan_design_system_content,
+)
 from maistro_design.systems.loader import DesignSystemLoader
 from maistro_design.systems.registry import InMemoryDesignSystemRegistry
 from maistro_design.trust import (
@@ -65,6 +73,7 @@ __all__ = [
     "InMemoryTrustReviewQueue",
     "IncompatibleDesignSystemError",
     "OutputFormat",
+    "ScanReport",
     "SkillMode",
     "SkillModeError",
     "SkillNotFoundError",
@@ -74,5 +83,10 @@ __all__ = [
     "TrustTier",
     "TrustUpgradeRequiredError",
     "TypographyToken",
+    "import_from_catalog",
+    "import_open_design_system",
     "load_builtins",
+    "load_bundled",
+    "load_catalog",
+    "scan_design_system_content",
 ]
