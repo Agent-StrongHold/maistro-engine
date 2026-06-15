@@ -40,7 +40,14 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
-      - run: sudo apt-get update && sudo apt-get install -y age
+      - run: |
+          sudo apt-get update && sudo apt-get install -y age || true
+          if ! command -v age-keygen &> /dev/null; then
+            mkdir -p /tmp/age && cd /tmp/age
+            curl -fsSL https://dl.filippo.io/age/latest/age-linux-amd64.tar.gz | tar xz
+            sudo mv /tmp/age/age /tmp/age/age-keygen /usr/local/bin/
+            age-keygen --help > /dev/null || exit 1
+          fi
       - run: uv sync --extra dev --extra bootstrap
       - run: uv run pytest packages/maistro-bootstrap/tests -v --tb=short
       - run: uv run pytest packages/maistro-core/tests -v --tb=short
