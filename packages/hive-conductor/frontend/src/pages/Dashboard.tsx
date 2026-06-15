@@ -1263,15 +1263,34 @@ export default function Dashboard() {
         {editing && <button onClick={addTab} style={{ padding: "4px 8px", border: "none", background: "transparent", color: C.muted, fontSize: "0.68rem", cursor: "pointer" }}>+ Tab</button>}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "0.6rem" }}>
+      <GridLayout
+        className="dashboard-grid"
+        layout={widgets.map((w, i) => ({ i: w.id, x: (i * Number(w.size || 2)) % 12, y: Math.floor((i * Number(w.size || 2)) / 12) * 4, w: Math.min(Number(w.size || 2) * 2, 12), h: 4 }))}
+        cols={12}
+        rowHeight={60}
+        width={1100}
+        isDraggable={editing}
+        isResizable={editing}
+        onLayoutChange={(layout) => {
+          if (!editing) return;
+          const updated = widgets.map(w => {
+            const l = layout.find(item => item.i === w.id);
+            if (l) return { ...w, size: String(Math.max(1, Math.round(l.w / 2))) };
+            return w;
+          });
+          update(updated);
+        }}
+      >
         {widgets.map(w => (
-          <WidgetCard key={w.id} widget={w} agents={agents} metrics={metrics} editing={editing}
-            onRemove={() => removeWidget(w.id)}
-            onResize={(s) => resizeWidget(w.id, s)}
-            onUpdate={(updated) => updateWidget(w.id, updated)} />
+          <div key={w.id}>
+            <WidgetCard widget={w} agents={agents} metrics={metrics} editing={editing}
+              onRemove={() => removeWidget(w.id)}
+              onResize={(s) => resizeWidget(w.id, s)}
+              onUpdate={(updated) => updateWidget(w.id, updated)} />
+          </div>
         ))}
-        {editing && <AddWidget onAdd={addWidget} />}
-      </div>
+      </GridLayout>
+      {editing && <AddWidget onAdd={addWidget} />}
       {showTemplates && <TemplatePicker onClose={() => setShowTemplates(false)} onSelect={(id) => {
         fetch(`/v1/dashboard/demos/${id}`, { credentials: "same-origin" })
           .then(r => r.json()).then(d => { if (d.widgets) update(d.widgets); });

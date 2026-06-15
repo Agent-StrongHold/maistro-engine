@@ -109,7 +109,7 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
     setLoading(true);
     try {
       const deckContext = slides.map((s, i) => `Slide ${i + 1}: ${s.html.replace(/<[^>]+>/g, " ").slice(0, 100)}`).join("\n");
-      const contextPrefix = `[DECK BUILDER: ${slides.length} slides exist. Wrap each new slide in <slide>...</slide> tags. Design rules: dark gradient backgrounds (#020617 to #1e1b4b), white/light text, large bold headings (48-58px), clean grid layouts, rounded cards. Do NOT include data charts or statistics unless the user specifically asks about data. Focus on the user's topic.]\n\n`;
+      const contextPrefix = `[DECK BUILDER: ${slides.length} slides exist. Wrap each new slide in <slide>...</slide> tags. Design rules: dark gradient backgrounds (#020617 to #1e1b4b), white/light text, large bold headings (48-58px), clean grid layouts, rounded cards. Do NOT include data charts or statistics unless the user specifically asks about data. NEVER generate inline SVG. Use styled HTML divs, text, and emoji only. Focus on the user's topic.]\n\n`;
       const r = await fetch("/v1/chat/stream", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
