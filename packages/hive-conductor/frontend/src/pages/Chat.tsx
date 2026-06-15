@@ -31,8 +31,8 @@ interface Session {
 const SUGGESTED_PROMPTS_HEADING = "AI Project Manager — ask about your sprint, run research, generate documents";
 const SUGGESTED_PROMPTS = [
   "What are my top blockers this sprint?",
-  "Research competitors to Cursor AI",
-  "Draft a PRD for real-time collaboration",
+  "Summarize recent activity",
+  "What should I focus on today?",
 ];
 
 // Keep the request payload bounded — mirrors the shipped client (messages.slice(-20)).
@@ -182,6 +182,14 @@ export default function ChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetch("/v1/chat/suggestions", { credentials: "same-origin" })
+      .then(r => r.json())
+      .then(d => { if (d.suggestions?.length) setDynamicSuggestions(d.suggestions); })
+      .catch(() => {});
+  }, []);
   const [model, setModel] = useState("");
 
   useEffect(() => {

@@ -1,0 +1,314 @@
+@import './wdpr-colors.css';
+@import './wdpr-vista-base.css';
+
+[data-theme='vista/parks-next'] {
+  --theme-color-black: var(--color-black-000);
+  --theme-color-white: var(--color-white-000);
+
+  /* Surface Colors */
+  --theme-color-surface-default: var(--color-white-000);
+  --theme-color-surface-default-alt: var(--color-plum-000);
+  --theme-color-surface-inverse: var(--color-purple-800);
+  --theme-color-surface-disabled: var(--color-indigo-000);
+  --theme-color-surface-disabled-alt: var(--color-violet-200);
+  --theme-color-surface-input: var(--color-white-000);
+  --theme-color-surface-overlay: var(--color-blue-900-a88);
+  --theme-color-surface-neutral-dark-small: var(--color-blue-900-a64);
+  --theme-color-surface-transparent: var(--color-white-000-a0);
+  --theme-color-surface-translucent: var(--color-white-000-a48);
+  --theme-color-surface-translucent-dark: var(--color-grey-900-a60);
+  --theme-color-surface-indigo-800-a32: var(--color-indigo-800-a32);
+  --theme-color-surface-white-000-a48: var(--color-white-000-a48);
+
+  --theme-color-surface-actionable-default: var(--color-purple-650);
+  --theme-color-surface-actionable-pressed: var(--color-purple-800);
+  --theme-color-surface-actionable-selected: var(--color-violet-200);
+  --theme-color-surface-actionable-hover: var(--color-purple-700);
+  --theme-color-surface-actionable-focus: var(--color-purple-800);
+  --theme-color-surface-actionable-disabled: var(--color-purple-200);
+  --theme-color-surface-actionable-disabled-alt: var(--color-purple-050);
+
+  --theme-color-surface-actionable-alt-default: var(--color-plum-600);
+  --theme-color-surface-actionable-alt-default-alt: var(--color-plum-100-a56);
+  --theme-color-surface-actionable-alt-default-a56: var(--color-plum-100-a56);
+  --theme-color-surface-actionable-alt-default-a68: var(--color-plum-900-a68);
+  --theme-color-surface-actionable-alt-default-a78: var(--color-plum-900-a78);
+  --theme-color-surface-actionable-alt-hover-a88: var(--color-plum-900-a88);
+  --theme-color-surface-actionable-alt-selected: var(--color-indigo-900);
+  --theme-color-surface-actionable-alt-pressed: var(--color-indigo-800);
+  --theme-color-surface-actionable-alt-hover: var(--color-plum-700);
+  --theme-color-surface-actionable-alt-focus: var(--color-indigo-800);
+  --theme-color-surface-actionable-alt-disabled: var(--color-plum-200);
+  --theme-color-surface-actionable-card-disabled: var(--color-plum-050);
+
+  --theme-color-surface-actionable-inverse-default: var(--color-white-000-a0);
+  --theme-color-surface-actionable-inverse-selected: var(--color-slate-200);
+  --theme-color-surface-actionable-inverse-hover: var(--color-white-000-a8);
+  --theme-color-surface-actionable-inverse-pressed: var(--color-white-000-a16);
+  --theme-color-surface-actionable-inverse-focus: var(--color-white-000-a0);
+  --theme-color-surface-actionable-inverse-disabled: var(--color-white-000-a0);
+
+  --theme-color-surface-status-critical: var(--color-red-600);
+  --theme-color-surface-status-critical-alt: var(--color-red-200);
+  --theme-color-surface-status-critical-alt-2: var(--color-red-200);
+  --theme-color-surface-status-informational: var(--color-slate-200);
+  --theme-color-surface-status-informational-alt: var(--color-slate-100);
+  --theme-color-surface-status-informational-alt-2: var(--color-slate-050);
+  --theme-color-surface-status-success: var(--color-green-200);
+  --theme-color-surface-status-success-alt: var(--color-green-100);
+  --theme-color-surface-status-success-alt-2: var(--color-green-050);
+  --theme-color-surface-status-warning: var(--color-gold-200);
+  --theme-color-surface-status-warning-alt: var(--color-gold-100);
+  --theme-color-surface-status-warning-alt-2: var(--color-gold-050);
+  --theme-color-surface-status-top-pick: var(--color-violet-050);
+  --theme-color-surface-status-neutral: var(--color-grey-050);
+  --theme-color-surface-status-neutral-dark: var(--color-blue-900-a64);
+
+  --theme-color-surface-neutral-extra-light: var(--color-purple-200);
+  --theme-color-surface-neutral-light: var(--color-purple-200);
+  --theme-color-surface-neutral-medium: var(--color-purple-400);
+  --theme-color-surface-neutral-default: var(--color-purple-400);
+  --theme-color-surface-neutral-dark: var(--color-purple-700);
+  --theme-color-surface-neutral-extra-dark: var(--color-purple-800);
+
+  --theme-color-surface-transactional-default: var(--color-green-600);
+  --theme-color-surface-transactional-hover: var(--color-green-700);
+  --theme-color-surface-transactional-pressed: var(--color-green-800);
+  --theme-color-surface-transactional-focus: var(--color-green-800);
+  --theme-color-surface-transactional-disabled: var(--color-green-100);
+
+  --theme-color-surface-destructive-default: var(--color-red-600);
+  --theme-color-surface-destructive-pressed: var(--color-red-800);
+  --theme-color-surface-destructive-pressed-alt: var(--color-red-100-a16);
+  --theme-color-surface-destructive-hover: var(--color-red-700);
+  --theme-color-surface-destructive-hover-alt: var(--color-red-100-a8);
+  --theme-color-surface-destructive-focused: var(--color-red-800);
+  --theme-color-surface-destructive-disabled: var(--color-red-050);
+  --theme-color-surface-destructive-disabled-alt: var(--color-red-100-a0);
+
+  --theme-color-surface-skeleton-default: var(--color-plum-700-a6);
+  --theme-color-surface-skeleton-default-alt: var(--color-plum-700-a12);
+
+  /* Text Colors */
+  --theme-color-text-body: var(--color-plum-700);
+  --theme-color-text-heading: var(--color-plum-900);
+  --theme-color-text-label: var(--color-plum-800);
+  --theme-color-text-inverse: var(--color-white-000);
+  --theme-color-text-disabled: var(--color-slate-200);
+  --theme-color-text-disabled-alt: var(--color-slate-400);
+  --theme-color-text-disclaimer: var(--color-plum-700);
+  --theme-color-text-transparent: var(--color-white-000-a0);
+  --theme-color-text-default: var(--color-white-000);
+  --theme-color-text-gold: var(--color-gold-600);
+  --theme-color-text-green-alt: var(--color-green-600);
+
+  --theme-color-text-actionable-default: var(--color-purple-650);
+  --theme-color-text-actionable-pressed: var(--color-purple-800);
+  --theme-color-text-actionable-hover: var(--color-purple-700);
+  --theme-color-text-actionable-focused: var(--color-purple-800);
+  --theme-color-text-actionable-disabled: var(--color-purple-200);
+  --theme-color-text-actionable-disabled-alt: var(--color-purple-050);
+
+  --theme-color-text-actionable-alt-default: var(--color-indigo-700);
+  --theme-color-text-actionable-alt-pressed: var(--color-indigo-600);
+  --theme-color-text-actionable-alt-hover: var(--color-indigo-700);
+  --theme-color-text-actionable-alt-focused: var(--color-indigo-600);
+  --theme-color-text-actionable-alt-disabled: var(--color-indigo-200);
+
+  --theme-color-text-actionable-inverse-default: var(--color-white-000);
+  --theme-color-text-actionable-inverse-hover: var(--color-white-000-a72);
+  --theme-color-text-actionable-inverse-pressed: var(--color-white-000-a88);
+  --theme-color-text-actionable-inverse-focused: var(--color-white-000);
+  --theme-color-text-actionable-inverse-disabled: var(--color-white-000-a48);
+
+  --theme-color-text-status-critical: var(--color-red-800);
+  --theme-color-text-status-critical-alt: var(--color-red-800);
+  --theme-color-text-status-informational: var(--color-slate-700);
+  --theme-color-text-status-success: var(--color-green-800);
+  --theme-color-text-status-success-alt: var(--color-green-700);
+  --theme-color-text-status-warning: var(--color-gold-800);
+  --theme-color-text-status-top-pick: var(--color-violet-700);
+  --theme-color-text-status-neutral: var(--color-plum-700);
+
+  --theme-color-text-neutral-extra-light: var(--color-purple-200);
+  --theme-color-text-neutral-light: var(--color-purple-200);
+  --theme-color-text-neutral-default: var(--color-purple-400);
+  --theme-color-text-neutral-dark: var(--color-purple-700);
+  --theme-color-text-neutral-extra-dark: var(--color-purple-800);
+
+  --theme-color-text-transactional-default: var(--color-white-000);
+  --theme-color-text-transactional-disabled: var(--color-green-400);
+
+  --theme-color-text-destructive-default: var(--color-red-600);
+  --theme-color-text-destructive-hover: var(--color-red-700);
+  --theme-color-text-destructive-pressed: var(--color-red-800);
+  --theme-color-text-destructive-focused: var(--color-red-800);
+  --theme-color-text-destructive-disabled: var(--color-red-200);
+
+  /* Page Colors */
+  --theme-color-page-default: var(--color-plum-000);
+  --theme-color-page-default-alt: var(--color-white-000);
+  --theme-color-page-overlay: var(--color-blue-900-a88);
+  --theme-color-page-overlay-light: var(--color-white-000-a76);
+  --theme-color-page-overlay-disabled: var(--color-plum-500-a40);
+
+  --theme-color-gradient-page-primary-stop-1: var(--color-grey-500);
+  --theme-color-gradient-page-primary-stop-2: var(--color-grey-500);
+  --theme-color-gradient-page-primary-stop-3: var(--color-grey-500);
+  --theme-color-gradient-page-primary-stop-4: var(--color-grey-500);
+  --theme-color-gradient-page-primary-stop-5: var(--color-grey-500);
+  --theme-color-gradient-page-primary-stop-6: var(--color-grey-500);
+  --theme-color-gradient-page-primary-stop-7: var(--color-grey-500);
+
+  /* Stroke Colors */
+  --theme-color-stroke-default: var(--color-purple-200);
+  --theme-color-stroke-inverse: var(--color-white-000);
+  --theme-color-stroke-disabled: var(--color-grey-100);
+  --theme-color-stroke-disabled-alt: var(--color-grey-050);
+  --theme-color-stroke-transparent: var(--color-white-000-a0);
+
+  --theme-color-stroke-actionable-default: var(--color-purple-650);
+  --theme-color-stroke-actionable-default-alt: var(--color-purple-650);
+  --theme-color-stroke-actionable-pressed: var(--color-purple-800);
+  --theme-color-stroke-actionable-hover: var(--color-purple-700);
+  --theme-color-stroke-actionable-focused: var(--color-purple-800);
+  --theme-color-stroke-actionable-disabled: var(--color-purple-200);
+  --theme-color-stroke-actionable-plum-900-a88: var(--color-plum-900-a88);
+
+  --theme-color-stroke-actionable-alt-default: var(--color-indigo-300);
+  --theme-color-stroke-actionable-alt-pressed: var(--color-indigo-900);
+  --theme-color-stroke-actionable-alt-hover: var(--color-indigo-600);
+  --theme-color-stroke-actionable-alt-focused: var(--color-indigo-900);
+  --theme-color-stroke-actionable-alt-disabled: var(--color-indigo-200);
+  --theme-color-stroke-actionable-alt-selected: var(--color-plum-900);
+
+  --theme-color-stroke-actionable-inverse-default: var(--color-white-000);
+  --theme-color-stroke-actionable-inverse-hover: var(--color-white-000-a72);
+  --theme-color-stroke-actionable-inverse-pressed: var(--color-white-000-a88);
+  --theme-color-stroke-actionable-inverse-focused: var(--color-white-000);
+  --theme-color-stroke-actionable-inverse-disabled: var(--color-white-000-a48);
+
+  --theme-color-stroke-status-critical: var(--color-red-800);
+  --theme-color-stroke-status-critical-alt: var(--color-red-800);
+  --theme-color-stroke-status-informational: var(--color-slate-700);
+  --theme-color-stroke-status-informational-alt: var(--color-slate-700);
+  --theme-color-stroke-status-success: var(--color-green-800);
+  --theme-color-stroke-status-success-alt: var(--color-green-800);
+  --theme-color-stroke-status-warning: var(--color-gold-800);
+  --theme-color-stroke-status-warning-alt: var(--color-gold-800);
+  --theme-color-stroke-status-top-pick: var(--color-violet-400);
+  --theme-color-stroke-status-neutral: var(--color-grey-400);
+
+  --theme-color-stroke-messaging-critical: var(--color-red-800);
+
+  --theme-color-stroke-neutral-extra-light: var(--color-purple-100);
+  --theme-color-stroke-neutral-light: var(--color-purple-100);
+  --theme-color-stroke-neutral-medium: var(--color-purple-400);
+  --theme-color-stroke-neutral-default: var(--color-purple-400);
+  --theme-color-stroke-neutral-dark: var(--color-purple-700);
+  --theme-color-stroke-neutral-extra-dark: var(--color-purple-800);
+
+  --theme-color-stroke-transactional-default: var(--color-green-600);
+  --theme-color-stroke-transactional-hover: var(--color-green-700);
+  --theme-color-stroke-transactional-pressed: var(--color-green-800);
+  --theme-color-stroke-transactional-focus: var(--color-green-800);
+  --theme-color-stroke-transactional-disabled: var(--color-green-100);
+
+  --theme-color-stroke-destructive-default: var(--color-red-600);
+  --theme-color-stroke-destructive-hover: var(--color-red-700);
+  --theme-color-stroke-destructive-pressed: var(--color-red-800);
+  --theme-color-stroke-destructive-focused: var(--color-red-800);
+  --theme-color-stroke-destructive-disabled: var(--color-red-200);
+
+  /* Component Icon Backgrounds */
+  --theme-color-component-icon: var(--color-blue-200-a30);
+
+  --theme-color-component-favorite-default: var(--color-pink-600);
+  --theme-color-component-favorite-hover: var(--color-pink-700);
+  --theme-color-component-favorite-pressed: var(--color-pink-800);
+  --theme-color-component-favorite-disabled: var(--color-pink-200);
+
+  --theme-color-component-add-default: var(--theme-color-text-inverse);
+  --theme-color-component-add-hover: var(--theme-color-text-inverse);
+  --theme-color-component-add-pressed: var(--theme-color-text-inverse);
+  --theme-color-component-add-disabled: var(--color-plum-200);
+
+  --theme-color-icon-inverse: var(--theme-color-text-inverse);
+  --theme-color-icon-disabled: var(--theme-color-text-disabled);
+
+  --theme-typography-font-weight-title-default: var(--font-weight-black);
+  --theme-typography-font-weight-title-alt: var(--font-weight-heavy);
+
+  --theme-typography-font-weight-heading-default: var(--font-weight-black);
+
+  --theme-typography-font-weight-label-default: var(--font-weight-medium);
+
+  --theme-icon-size-xxsmall: var(--theme-dimension-125);
+  --theme-icon-size-xsmall: var(--theme-dimension-150);
+  --theme-icon-size-small: var(--theme-dimension-200);
+  --theme-icon-size-medium: var(--theme-dimension-250);
+  --theme-icon-size-medium-alt: var(--theme-dimension-300);
+  --theme-icon-size-large: var(--theme-dimension-300);
+  --theme-icon-size-xlarge: var(--theme-dimension-400);
+
+  --theme-color-icon-actionable-default: var(--theme-color-text-actionable-default);
+  --theme-color-icon-actionable-focused: var(--theme-color-text-actionable-focused);
+  --theme-color-icon-actionable-hover: var(--theme-color-text-actionable-hover);
+
+  --theme-color-icon-body: var(--theme-color-text-body);
+
+  --theme-color-icon-with-background-gold: var(--color-gold-600);
+  --theme-color-icon-with-background-green-alt: var(--color-green-600);
+
+  --theme-color-icon-actionable-alt-default: var(--theme-color-text-actionable-alt-default);
+  --theme-color-icon-actionable-alt-pressed: var(--theme-color-text-actionable-alt-pressed);
+  --theme-color-icon-actionable-alt-hover: var(--theme-color-text-actionable-alt-hover);
+  --theme-color-icon-actionable-alt-focused: var(--theme-color-text-actionable-alt-focused);
+  --theme-color-icon-actionable-alt-disabled: var(--theme-color-text-actionable-alt-disabled);
+
+  --theme-color-icon-actionable-inverse-default: var(--theme-color-text-actionable-inverse-default);
+  --theme-color-icon-actionable-inverse-pressed: var(--theme-color-text-actionable-inverse-pressed);
+  --theme-color-icon-actionable-inverse-hover: var(--theme-color-text-actionable-inverse-hover);
+  --theme-color-icon-actionable-inverse-focused: var(--theme-color-text-actionable-inverse-focused);
+  --theme-color-icon-actionable-inverse-disabled: var(--theme-color-text-actionable-inverse-disabled);
+
+  --theme-color-icon-search-default: var(--color-plum-500);
+  --theme-color-icon-search-hover: var(--color-plum-600);
+  --theme-color-icon-search-pressed: var(--color-plum-700);
+  --theme-color-icon-search-disabled: var(--color-plum-200);
+
+  --theme-color-icon-destructive-default: var(--color-red-600);
+  --theme-color-icon-destructive-hover: var(--color-red-700);
+  --theme-color-icon-destructive-hover-alt: var(--color-white-000-a48);
+  --theme-color-icon-destructive-pressed: var(--color-red-800);
+  --theme-color-icon-destructive-pressed-alt: var(--color-white-000-a76);
+  --theme-color-icon-destructive-focused: var(--color-red-800);
+  --theme-color-icon-destructive-disabled: var(--color-red-200);
+
+  --theme-color-effect-black-050: var(--color-black-900-a4);
+  --theme-color-effect-black-100: var(--color-black-900-a8);
+  --theme-color-effect-black-200: var(--color-black-900-a16);
+  --theme-color-effect-black-300: var(--color-black-900-a24);
+  --theme-color-effect-black-400: var(--color-black-900-a24);
+  --theme-color-effect-white-950: var(--color-indigo-800-a32);
+  --theme-color-effect-indigo-050: var(--color-indigo-800-a32);
+  --theme-color-effect-indigo-100: var(--color-indigo-800-a32);
+  --theme-color-effect-indigo-400: var(--color-indigo-800-a32);
+  --theme-color-effect-blue-150: var(--color-blue-150-a60);
+  --theme-color-effect-plum-700: var(--color-plum-100-a56);
+  --theme-color-effect-plum-900: var(--color-plum-100-a72);
+  --theme-color-effect-plum-900-a78: var(--color-plum-900-a78);
+
+  --theme-color-effect-elevation-xsmall: var(--color-plum-100-a56);
+  --theme-color-effect-elevation-small: var(--color-plum-100-a56);
+  --theme-color-effect-elevation-medium: var(--color-plum-100-a56);
+  --theme-color-effect-elevation-large: var(--color-plum-100-a72);
+  --theme-color-effect-elevation-closed-caption: var(--color-grey-900);
+
+  /* Component Specific Colors */
+  --theme-color-component-camera-scan-stroke: var(--color-grey-200);
+
+  /* Radial Loader Rive Colors - temporary */
+  --theme-color-radial-loader-stop-1: var(--color-blue-500);
+  --theme-color-radial-loader-stop-2: var(--color-purple-650);
+}

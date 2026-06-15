@@ -1,0 +1,37 @@
+/* Overview page — Hyperion tokens */
+.overview-page { padding: 2rem 2.5rem; max-width: 1200px; margin: 0 auto; }
+.overview-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--theme-color-text-default, #17132b); margin: 0; }
+.overview-header p { font-size: 0.8rem; color: var(--theme-color-text-secondary, #6e6885); margin: 4px 0 0; }
+
+.overview-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.overview-kpi-card { background: var(--theme-color-surface-default, #fff); border: 1px solid var(--theme-color-border-default, #e6e0f6); border-radius: 16px; padding: 1.2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+.overview-kpi-icon { font-size: 1.2rem; margin-bottom: 6px; }
+.overview-kpi-label { font-size: 0.7rem; font-weight: 600; color: var(--theme-color-text-secondary, #6e6885); text-transform: uppercase; letter-spacing: 0.04em; }
+.overview-kpi-value { font-size: 1.8rem; font-weight: 800; color: var(--theme-color-text-default, #17132b); margin: 4px 0; }
+.overview-kpi-sub { font-size: 0.7rem; color: var(--theme-color-text-secondary, #6e6885); }
+
+.overview-greeting { background: var(--theme-color-surface-actionable-selected, #f1eeff); border: 1px solid var(--theme-color-border-default, #e6e0f6); border-radius: 16px; padding: 1rem 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 12px; }
+.overview-greeting-icon { font-size: 1.5rem; }
+.overview-greeting-text { font-size: 0.85rem; color: var(--theme-color-text-default, #17132b); line-height: 1.6; }
+.overview-greeting-loading { font-size: 0.85rem; color: var(--theme-color-text-secondary, #6e6885); font-style: italic; }
+
+.overview-widgets { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+.overview-widget-card { background: var(--theme-color-surface-default, #fff); border: 1px solid var(--theme-color-border-default, #e6e0f6); border-radius: 16px; padding: 1.2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+.overview-widget-title { font-size: 0.7rem; font-weight: 600; color: var(--theme-color-text-secondary, #6e6885); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+.overview-widget-loading { color: var(--theme-color-text-secondary, #6e6885); font-size: 0.75rem; }
+.overview-widget-count { font-size: 2rem; font-weight: 800; color: var(--theme-color-text-default, #17132b); }
+.overview-widget-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.overview-widget-bar-track { flex: 1; height: 6px; background: var(--theme-color-surface-disabled, #eef0f5); border-radius: 3px; overflow: hidden; }
+.overview-widget-bar-fill { height: 100%; background: var(--theme-color-surface-actionable-default, #6d4aff); border-radius: 3px; }
+.overview-widget-bar-label { font-size: 0.65rem; color: var(--theme-color-text-secondary, #6e6885); min-width: 80px; }
+.overview-widget-bar-value { font-size: 0.7rem; font-weight: 700; color: var(--theme-color-text-default, #17132b); }
+
+.overview-chat { background: var(--theme-color-surface-default, #fff); border: 1px solid var(--theme-color-border-default, #e6e0f6); border-radius: 16px; padding: 1rem 1.5rem; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+.overview-chat-title { font-size: 0.7rem; font-weight: 600; color: var(--theme-color-text-secondary, #6e6885); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.overview-chat-row { display: flex; gap: 8px; }
+.overview-chat-input { flex: 1; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--theme-color-border-default, #e6e0f6); font-size: 0.8rem; color: var(--theme-color-text-default, #17132b); background: var(--theme-color-surface-input, #fff); outline: none; }
+.overview-chat-input:focus { border-color: var(--theme-color-border-actionable-focus, #6d4aff); box-shadow: 0 0 0 3px rgba(109,74,255,0.1); }
+.overview-chat-input::placeholder { color: var(--theme-color-text-secondary, #6e6885); }
+.overview-chat-btn { padding: 8px 16px; border-radius: 10px; border: none; background: var(--theme-color-surface-actionable-default, #6d4aff); color: #fff; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+.overview-chat-btn:disabled { opacity: 0.5; cursor: default; }
+.overview-chat-answer { margin-top: 10px; font-size: 0.8rem; color: var(--theme-color-text-default, #17132b); line-height: 1.6; padding: 8px 12px; background: var(--theme-color-surface-actionable-selected, #f1eeff); border-radius: 8px; }

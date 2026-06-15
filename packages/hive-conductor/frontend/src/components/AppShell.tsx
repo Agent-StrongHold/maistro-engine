@@ -1,190 +1,64 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useUser } from "../App";
-import { ModeToggle } from "./ModeToggle";
-import { usePmPoc } from "../context/PocMode";
-import {
-  PM_NAV_CREDENTIALS,
-  PM_NAV_DRAFTS,
-  PM_NAV_INTEGRATIONS,
-  PM_NAV_MISSIONS,
-  PM_NAV_PROGRAM,
-  PM_PRODUCT_NAME,
-} from "../lib/pmBranding";
 
-const fullNav = [
-  { to: "/overview", icon: "🏠", label: "Overview" },
-  { to: "/chat", icon: "💬", label: "Chat" },
-  { to: "/dashboard", icon: "📊", label: "Dashboard" },
-  { to: "/dags", icon: "🔀", label: "DAG Builder" },
-  { to: "/dag-runs", icon: "▶️", label: "DAG Runs" },
-  { to: "/agents", icon: "🤖", label: "Agents" },
-  { to: "/topology", icon: "🗺️", label: "Topology" },
-  { to: "/optimizer", icon: "⚡", label: "Optimizer" },
-  { to: "/knowledge", icon: "📚", label: "Inner Temple" },
-  { to: "/decks", icon: "🎴", label: "Decks" },
-  { to: "/tools-lab", icon: "🧪", label: "Tools Lab" },
-  { to: "/mcp", icon: "🔌", label: "Integrations" },
-  { to: "/credentials", icon: "🔑", label: "Credentials" },
-  { to: "/settings", icon: "⚙", label: "Settings" },
-];
-
-import { Home, MessageCircle, LayoutDashboard, Brain, Hexagon, Target, Plug, KeyRound, Settings, Presentation } from "lucide-react";
-
-const pocNav = [
-  { to: "/overview", icon: Home, label: "Overview" },
-  { to: "/chat", icon: MessageCircle, label: "Chat" },
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/knowledge", icon: Brain, label: "Inner Temple" },
-  { to: "/decks", icon: Presentation, label: "Decks" },
-  { to: "/agents", icon: Hexagon, label: PM_NAV_PROGRAM },
-  { to: "/missions", icon: Target, label: PM_NAV_MISSIONS },
-  { to: "/mcp", icon: Plug, label: PM_NAV_INTEGRATIONS },
-  { to: "/credentials", icon: KeyRound, label: PM_NAV_CREDENTIALS },
-  { to: "/settings", icon: Settings, label: "Settings" },
+const NAV_ITEMS = [
+  { to: "/overview", label: "Overview", icon: "home" },
+  { to: "/chat", label: "Chat", icon: "message" },
+  { to: "/dashboard", label: "Dashboard", icon: "grid" },
+  { to: "/dags", label: "Flows", icon: "branch" },
+  { to: "/knowledge", label: "Inner Temple", icon: "brain" },
+  { to: "/decks", label: "Decks", icon: "presentation" },
+  { to: "/agents", label: "Program", icon: "hexagon" },
+  { to: "/missions", label: "Activity", icon: "target" },
+  { to: "/mcp", label: "Integrations", icon: "plug" },
+  { to: "/credentials", label: "Credentials", icon: "key" },
+  { to: "/settings", label: "Settings", icon: "settings" },
 ];
 
 async function logout() {
-  try {
-    await fetch("/v1/auth/logout", { method: "POST", credentials: "same-origin" });
-  } catch {
-    // best effort — even if it fails, redirecting lets the user log in fresh.
-  }
-  // Stay inside the Hive app (which auto-shows Login when no session); going
-  // to "/" dumps the user at the JFC catalog with no obvious way back.
+  try { await fetch("/v1/auth/logout", { method: "POST", credentials: "same-origin" }); } catch {}
   window.location.href = import.meta.env.BASE_URL || "/";
 }
 
 export function AppShell({ children }: { children?: ReactNode }) {
   const user = useUser();
-  const pmPoc = usePmPoc();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const nav = pocNav;
-  const shellTitle = PM_PRODUCT_NAME;
 
   return (
-    <div className="app-shell">
-      <button
-        className="hamburger"
-        onClick={() => setDrawerOpen(true)}
-        aria-label="Open menu"
-      >
-        <span /><span /><span />
-      </button>
-
-      <div className={`drawer-overlay${drawerOpen ? " open" : ""}`} onClick={() => setDrawerOpen(false)} />
-
-      <nav className={`drawer${drawerOpen ? " open" : ""}`}>
-        <div className="drawer-header">
-          <span style={{ fontFamily: "var(--hand)", fontSize: 20, fontWeight: 700 }}>{shellTitle}</span>
-          <ModeToggle />
-          <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu">&#x2715;</button>
+    <div className="fantasia-shell">
+      {/* Sidebar */}
+      <nav className="fantasia-sidebar">
+        <div className="fantasia-sidebar-brand">
+          <span className="fantasia-logo">✦</span>
+          <span className="fantasia-brand-text">Fantasia</span>
         </div>
-        {pmPoc ? (
-          <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--pencil)", padding: "0 12px 8px" }}>
-            PM demo · 6 agents · gated Jira drafts
-          </div>
-        ) : (
-          <div style={{ fontFamily: "var(--mono)", fontSize: 8, color: "var(--pencil)", padding: "0 12px 8px" }}>
-            Multi-agent · multi-MCP · Force Convergence sandbox
-          </div>
-        )}
-        {user && (
-          <div className="drawer-user">
-            <span className="hex-badge" style={{ background: user.role === "admin" ? "var(--danger)" : "var(--accent)", color: "var(--paper)" }}>{user.role}</span>
-            <NavLink to="/profile" style={{ fontFamily: "var(--mono)", fontSize: 10, color: "inherit", textDecoration: "none" }}>{user.username}</NavLink>
-            {user.did && <span style={{ fontSize: 8, opacity: 0.6 }} title={user.did}>DID</span>}
-          </div>
-        )}
-        <div className="drawer-nav">
-          {nav.map((item) => (
+
+        <div className="fantasia-nav-list">
+          {NAV_ITEMS.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => `drawer-link${isActive ? " active" : ""}`}
-              end={item.to === "/cli"}
-              onClick={() => setDrawerOpen(false)}
+              className={({ isActive }) => `fantasia-nav-item ${isActive ? "fantasia-nav-item--active" : ""}`}
             >
-              <span className="drawer-link-icon"><item.icon size={16} strokeWidth={1.5} /></span>
-              <span>{item.label}</span>
+              <span className="fantasia-nav-label">{item.label}</span>
             </NavLink>
           ))}
         </div>
-        <div style={{ flex: 1 }} />
-        <button className="drawer-link" style={{ borderTop: "1px solid var(--rule)", marginTop: 8 }} onClick={() => void logout()}>
-          <span className="drawer-link-icon">&#x2192;</span>
-          <span>Sign out {user?.username}</span>
-        </button>
+
+        <div className="fantasia-sidebar-footer">
+          {user && (
+            <div className="fantasia-user-badge">
+              <span className="fantasia-user-name">{user.username}</span>
+            </div>
+          )}
+          <button className="fantasia-nav-item fantasia-logout" onClick={logout}>
+            Sign out
+          </button>
+        </div>
       </nav>
 
-      <nav className="icon-sidebar">
-        {nav.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            className={({ isActive }) => `nav-icon${isActive ? " active" : ""}`}
-            end={item.to === "/cli"}
-            title={item.label}
-          >
-            <span aria-hidden><item.icon size={16} strokeWidth={1.5} /></span>
-            <span className="nav-icon-label">{item.label}</span>
-          </NavLink>
-        ))}
-        <div style={{ flex: 1 }} />
-        {user && (
-          <div
-            className="nav-icon"
-            style={{
-              color: "var(--pencil)",
-              fontSize: 9,
-              fontFamily: "var(--mono)",
-              lineHeight: 1.2,
-              textAlign: "center",
-              padding: "6px 0",
-              borderTop: "1px solid var(--rule)",
-              marginTop: 4,
-            }}
-            title={`Signed in as ${user.username} (${user.role}) — click to sign out`}
-          >
-            <span
-              style={{
-                display: "inline-block",
-                padding: "1px 4px",
-                borderRadius: 2,
-                background: user.role === "admin" ? "var(--danger)" : "var(--accent)",
-                color: "var(--paper)",
-                fontWeight: 700,
-                fontSize: 7,
-                letterSpacing: 0.5,
-              }}
-            >
-              {(user.role || "user").toUpperCase()}
-            </span>
-            <div style={{ fontSize: 8, marginTop: 3, color: "var(--ink)" }}>
-              {user.username}
-            </div>
-          </div>
-        )}
-        <button
-          type="button"
-          className="nav-icon"
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--danger)",
-            cursor: "pointer",
-            fontSize: 18,
-            padding: "10px 0",
-          }}
-          onClick={() => void logout()}
-          title="Sign out"
-          aria-label="Sign out"
-        >
-          <span aria-hidden>⎋</span>
-          <span className="nav-icon-label" style={{ color: "var(--danger)" }}>Sign out</span>
-        </button>
-      </nav>
-      <main className="main-content">
+      {/* Main content */}
+      <main className="fantasia-main">
         {children ?? <Outlet />}
       </main>
     </div>

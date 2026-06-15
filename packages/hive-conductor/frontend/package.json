@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@types/react-grid-layout": "^1.3.6",
+    "@wdpr/ra-web-components": "file:../../../../poc/wdpr-ra-web-components/packages/stencil-library",
+    "@wdpr/ra-web-components-react": "file:../../../../poc/wdpr-ra-web-components/packages/react-library",
     "lucide-react": "^1.18.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

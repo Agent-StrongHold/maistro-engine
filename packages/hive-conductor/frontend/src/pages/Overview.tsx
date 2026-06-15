@@ -1,50 +1,39 @@
 import { useState, useEffect, useCallback } from "react";
+import "../overview.css";
 
-interface KPI { label: string; value: string; sub: string; icon: string; delta?: string; deltaUp?: boolean }
-interface Widget { id: string; title: string; type: string; config: Record<string, unknown> }
+interface KPI { label: string; value: string; sub: string; icon: string }
 
 export default function Overview() {
+  const [username, setUsername] = useState("");
   const [kpis, setKpis] = useState<KPI[]>([]);
   const [greeting, setGreeting] = useState("");
   const [greetingLoading, setGreetingLoading] = useState(true);
-  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [widgets, setWidgets] = useState<any[]>([]);
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
 
-  // Load KPIs from dashboard metrics
   useEffect(() => {
-    fetch("/v1/dashboard/metrics", { credentials: "same-origin" })
-      .then(r => r.json())
-      .then(d => {
-        setKpis([
-          { label: "Active Agents", value: String(d.active_agents || 0), sub: "Connected", icon: "🤖" },
-          { label: "Runs Today", value: String(d.runs_today || 0), sub: "This session", icon: "⚡" },
-          { label: "Avg Latency", value: `${d.avg_latency_ms || 0}ms`, sub: "p50 response", icon: "⏱" },
-          { label: "Total Cost", value: `$${(d.total_cost || 0).toFixed(2)}`, sub: "This period", icon: "💰" },
-        ]);
-      })
-      .catch(() => {});
+    fetch("/v1/auth/whoami", { credentials: "same-origin" })
+      .then(r => r.json()).then(d => setUsername(d?.user?.username || "")).catch(() => {});
   }, []);
 
-  // Load Airtable KPIs
   useEffect(() => {
-    const fetchCount = async (filter: string, label: string, icon: string, sub: string) => {
+    const fetchKPI = async (filter: string, label: string, icon: string, sub: string) => {
       try {
-        const r = await fetch(`/v1/widgets/airtable?table=tblvcVTyk2HoZ8SzA&max_records=500&filter_formula=${encodeURIComponent(filter)}`, { credentials: "same-origin" });
+        const r = await fetch(`/v1/widgets/airtable?table=tblvcVTyk2HoZ8SzA&max_records=500&group_by=Status&filter_formula=${encodeURIComponent(filter)}`, { credentials: "same-origin" });
         const d = await r.json();
-        return { label, value: String(d.total || d.count || 0), sub, icon };
+        return { label, value: String(d.total || 0), sub, icon };
       } catch { return { label, value: "—", sub, icon }; }
     };
     Promise.all([
-      fetchCount('NOT(OR({Status}="Cancelled",{Status}="Sunset",{Status}="Paused"))', "Total Use Cases", "✦", "Active portfolio"),
-      fetchCount('OR({Status}="Development",{Status}="Discovery/Testing",{Status}="OTE Review",{Status}="Commercialization Request")', "In-Flight", "🚀", "Actively progressing"),
-      fetchCount('OR({V2 Migration Status}="Onboarding In-Progress",{V2 Migration Status}="Testing")', "Active Migration", "🔄", "Onboarding + testing"),
-      fetchCount('{Status}="Commercialized"', "Commercialized", "🏆", "Shipped to production"),
-    ]).then(results => setKpis(results));
+      fetchKPI('NOT(OR({Status}="Cancelled",{Status}="Sunset",{Status}="Paused"))', "Total Use Cases", "✦", "Active portfolio"),
+      fetchKPI('OR({Status}="Development",{Status}="Discovery/Testing",{Status}="OTE Review",{Status}="Commercialization Request")', "In-Flight", "🚀", "Actively progressing"),
+      fetchKPI('OR({V2 Migration Status}="Onboarding In-Progress",{V2 Migration Status}="Testing")', "Active Migration", "🔄", "Onboarding + testing"),
+      fetchKPI('{Status}="Commercialized"', "Commercialized", "🏆", "Shipped to production"),
+    ]).then(setKpis);
   }, []);
 
-  // LLM greeting (cached, max once/hour)
   useEffect(() => {
     const cacheKey = "fantasia_greeting";
     const cached = sessionStorage.getItem(cacheKey);
@@ -55,7 +44,7 @@ export default function Overview() {
     fetch("/v1/chat/stream", {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: [{ role: "user", content: "Give me a 2-3 sentence morning briefing about the current state of our use case portfolio. Be concise and encouraging. Mention key numbers if you have them. Do NOT use tools." }] }),
+      body: JSON.stringify({ messages: [{ role: "user", content: "Give me a 2-3 sentence briefing about the current state of our use case portfolio. Be encouraging and specific. Do NOT use tools." }] }),
     }).then(async r => {
       if (!r.ok || !r.body) { setGreetingLoading(false); return; }
       const reader = r.body.getReader();
@@ -76,16 +65,16 @@ export default function Overview() {
     }).catch(() => setGreetingLoading(false));
   }, []);
 
-  // Mini chat for data interrogation
+  useEffect(() => {
+    fetch("/v1/chat/overview-widgets", { credentials: "same-origin" })
+      .then(r => r.json()).then(d => setWidgets(d.widgets || [])).catch(() => {});
+  }, []);
+
   const ask = useCallback(async () => {
     if (!query.trim() || asking) return;
     setAsking(true); setAnswer("");
     try {
-      const r = await fetch("/v1/chat/stream", {
-        method: "POST", credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: query }] }),
-      });
+      const r = await fetch("/v1/chat/stream", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: query }] }) });
       if (!r.ok || !r.body) { setAnswer("Error"); setAsking(false); return; }
       const reader = r.body.getReader();
       const decoder = new TextDecoder();
@@ -97,11 +86,7 @@ export default function Overview() {
         const frames = buf.split("\n\n"); buf = frames.pop() ?? "";
         for (const f of frames) {
           if (!f.trim().startsWith("data:")) continue;
-          try {
-            const e = JSON.parse(f.trim().slice(5).trim());
-            if (e.type === "done") text = e.content || text;
-            else if (e.type === "delta") { text += e.content || ""; setAnswer(text); }
-          } catch {}
+          try { const e = JSON.parse(f.trim().slice(5).trim()); if (e.type === "done") text = e.content || text; else if (e.type === "delta") { text += e.content || ""; setAnswer(text); } } catch {}
         }
       }
       setAnswer(text);
@@ -110,59 +95,79 @@ export default function Overview() {
   }, [query, asking]);
 
   return (
-    <div style={{ padding: "2rem 2.5rem", maxWidth: 1200, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ marginBottom: "1.5rem" }}>
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, color: "var(--ink)", margin: 0 }}>Live Operations</h1>
-        <p style={{ fontSize: "0.8rem", color: "var(--pencil)", margin: "4px 0 0" }}>Real-time visibility into your orchestration</p>
+    <div className="overview-page">
+      <div className="overview-header">
+        <h1>Live Operations</h1>
+        <p>Real-time visibility into your orchestration</p>
       </div>
 
-      {/* KPI Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }}>
+      <div className="overview-kpi-row">
         {kpis.map(k => (
-          <div key={k.label} style={{ background: "var(--panel-bg, #fff)", border: "1px solid var(--rule)", borderRadius: 14, padding: "1.2rem", boxShadow: "var(--shadow-sm, 0 2px 8px rgba(42,31,92,0.05))" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: "1.2rem" }}>{k.icon}</span>
-              <span style={{ fontSize: "0.7rem", color: "var(--pencil)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>{k.label}</span>
-            </div>
-            <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--ink)", fontVariantNumeric: "tabular-nums" }}>{k.value}</div>
-            <div style={{ fontSize: "0.7rem", color: "var(--muted)", marginTop: 4 }}>{k.sub}</div>
+          <div key={k.label} className="overview-kpi-card">
+            <div className="overview-kpi-icon">{k.icon}</div>
+            <div className="overview-kpi-label">{k.label}</div>
+            <div className="overview-kpi-value">{k.value}</div>
+            <div className="overview-kpi-sub">{k.sub}</div>
           </div>
         ))}
       </div>
 
-      {/* LLM Greeting */}
-      <div style={{ background: "var(--panel-alt, #F1EEFF)", border: "1px solid var(--rule)", borderRadius: 14, padding: "1rem 1.5rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: "1.5rem" }}>🎵</span>
+      <div className="overview-greeting">
+        <span className="overview-greeting-icon">🎵</span>
         <div>
-          {greetingLoading ? (
-            <span style={{ fontSize: "0.85rem", color: "var(--muted)", fontStyle: "italic" }}>Composing your briefing...</span>
-          ) : (
-            <p style={{ fontSize: "0.85rem", color: "var(--ink)", margin: 0, lineHeight: 1.6 }}>{greeting || "Your orchestra is in harmony. All systems operational."}</p>
-          )}
+          {greetingLoading
+            ? <span className="overview-greeting-loading">Composing your briefing...</span>
+            : <p className="overview-greeting-text">{greeting || "Your orchestra is in harmony. All systems operational."}</p>
+          }
         </div>
       </div>
 
-      {/* Mini Chat */}
-      <div style={{ background: "var(--panel-bg, #fff)", border: "1px solid var(--rule)", borderRadius: 14, padding: "1rem 1.5rem", marginBottom: "1.5rem", boxShadow: "var(--shadow-sm)" }}>
-        <div style={{ fontSize: "0.7rem", color: "var(--pencil)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Ask about your data</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            value={query} onChange={e => setQuery(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && ask()}
-            placeholder="How many use cases are in development? What's our migration progress?"
-            style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: "1px solid var(--rule)", fontSize: "0.8rem", color: "var(--ink)", background: "var(--paper)", outline: "none" }}
-          />
-          <button onClick={ask} disabled={asking} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontSize: "0.75rem", fontWeight: 600, cursor: "pointer", opacity: asking ? 0.5 : 1 }}>
-            {asking ? "..." : "Ask"}
-          </button>
+      {widgets.length > 0 && (
+        <div className="overview-widgets">
+          {widgets.map(w => <OverviewWidget key={w.id} widget={w} />)}
         </div>
-        {answer && (
-          <div style={{ marginTop: 10, fontSize: "0.8rem", color: "var(--ink)", lineHeight: 1.6, padding: "8px 12px", background: "var(--panel-alt, #F1EEFF)", borderRadius: 8 }}>
-            {answer}
-          </div>
-        )}
+      )}
+
+      <div className="overview-chat">
+        <div className="overview-chat-title">Ask about your data</div>
+        <div className="overview-chat-row">
+          <input className="overview-chat-input" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && ask()} placeholder="How many use cases are in development?" />
+          <button className="overview-chat-btn" onClick={ask} disabled={asking}>{asking ? "..." : "Ask"}</button>
+        </div>
+        {answer && <div className="overview-chat-answer">{answer}</div>}
       </div>
+    </div>
+  );
+}
+
+function OverviewWidget({ widget }: { widget: any }) {
+  const [data, setData] = useState<any>(null);
+  const cfg = widget.config || {};
+  useEffect(() => {
+    if (cfg.source !== "airtable") return;
+    const p = new URLSearchParams({ table: cfg.table || "", max_records: cfg.max_records || "500" });
+    if (cfg.group_by) p.set("group_by", cfg.group_by);
+    if (cfg.filter_formula) p.set("filter_formula", cfg.filter_formula);
+    if (cfg.display_field) p.set("display_field", cfg.display_field);
+    fetch(`/v1/widgets/airtable?${p}`, { credentials: "same-origin" }).then(r => r.json()).then(setData).catch(() => {});
+  }, []);
+
+  const display = cfg.display || "bar";
+  return (
+    <div className="overview-widget-card">
+      <div className="overview-widget-title">{widget.title}</div>
+      {!data ? <div className="overview-widget-loading">Loading...</div> :
+        display === "count" ? <div className="overview-widget-count">{data.total || data.count || 0}</div> :
+        display === "list" && data.records ? <div>{data.records.slice(0, 5).map((r: any, i: number) => <div key={i} className="overview-widget-bar-label">{r.name}</div>)}</div> :
+        data.breakdown ? <div>{Object.entries(data.breakdown).slice(0, 6).map(([k, v]: [string, any]) => (
+          <div key={k} className="overview-widget-bar">
+            <div className="overview-widget-bar-track"><div className="overview-widget-bar-fill" style={{ width: `${(v / (data.total || 1)) * 100}%` }} /></div>
+            <span className="overview-widget-bar-label">{k}</span>
+            <span className="overview-widget-bar-value">{v}</span>
+          </div>
+        ))}</div> : <div className="overview-widget-loading">No data</div>
+      }
+      {cfg.sub && <div className="overview-kpi-sub">{cfg.sub}</div>}
     </div>
   );
 }

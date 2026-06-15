@@ -1,9 +1,11 @@
+import "./wdpr-parks-next-theme.css";
+import "./app-shell.css";
+import "./index.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import "./index.css";
-import "./fantasia-theme.css";
-import "./hyperion-tokens.css";
+import { defineCustomElements } from "@wdpr/ra-web-components/loader";
+defineCustomElements();
 import App from "./App";
 
 // When Vite is built with VITE_BASE_PATH=/pm/, the browser is at /pm/ but

@@ -1,0 +1,553 @@
+@import './wdpr-colors.css';
+
+
+
+
+
+:host,
+:root {
+  --theme-grid-margins: 24px;
+  --theme-grid-gutters: 16px;
+
+  --theme-effect-000: 0px;
+  --theme-effect-012: -1px;
+  --theme-effect-025: 2px;
+  --theme-effect-050: 4px;
+  --theme-effect-100: 8px;
+  --theme-effect-150: 12px;
+  --theme-effect-200: 16px;
+  --theme-effect-250: 20px;
+  --theme-effect-300: 24px;
+  --theme-effect-350: 28px;
+  --theme-effect-400: 32px;
+
+  --theme-opacity-000: 0;
+  --theme-opacity-100: 0.08;
+  --theme-opacity-200: 0.16;
+  --theme-opacity-300: 0.24;
+  --theme-opacity-400: 0.32;
+  --theme-opacity-500: 0.4;
+  --theme-opacity-600: 0.48;
+  --theme-opacity-700: 0.56;
+  --theme-opacity-800: 0.64;
+  --theme-opacity-900: 0.72;
+  --theme-opacity-1000: 0.8;
+  --theme-opacity-1100: 0.88;
+  --theme-opacity-1200: 0.96;
+  --theme-opacity-1250: 1;
+
+  --theme-radius-000: 0;
+  --theme-radius-050: 4px;
+  --theme-radius-075: 6px;
+  --theme-radius-100: 8px;
+  --theme-radius-125: 10px;
+  --theme-radius-150: 12px;
+  --theme-radius-200: 16px;
+  --theme-radius-300: 24px;
+  --theme-radius-400: 32px;
+  --theme-radius-pill: 999px;
+
+  --theme-stroke-000: 0;
+  --theme-stroke-006: 0.5px;
+  --theme-stroke-012: 1px;
+  --theme-stroke-025: 2px;
+  --theme-stroke-037: 3px;
+  --theme-stroke-050: 4px;
+  --theme-stroke-focus: var(--theme-stroke-025);
+
+  --theme-color-effect-elevation-xsmall: var(--color-plum-700-a16);
+  --theme-color-effect-elevation-small: var(--color-plum-700-a16);
+  --theme-color-effect-elevation-medium: var(--color-plum-700-a16);
+  --theme-color-effect-elevation-large: var(--color-plum-700-a20);
+
+  --theme-elevation-xsmall-soft: var(--theme-effect-000) var(--theme-effect-025) var(--theme-effect-100) var(--theme-effect-000) var(--theme-color-effect-elevation-xsmall);
+  --theme-elevation-small-soft: var(--theme-effect-000) var(--theme-effect-050) var(--theme-effect-200) var(--theme-effect-000) var(--theme-color-effect-elevation-small);
+  --theme-elevation-medium-soft: var(--theme-effect-000) var(--theme-effect-100) var(--theme-effect-300) var(--theme-effect-000) var(--theme-color-effect-elevation-medium);
+  --theme-elevation-large-soft: var(--theme-effect-000) var(--theme-effect-100) var(--theme-effect-400) var(--theme-effect-000) var(--theme-color-effect-elevation-large);
+
+  --theme-spacing-000: 0;
+  --theme-spacing-025: 2px;
+  --theme-spacing-050: 4px;
+  --theme-spacing-062: 5px;
+  --theme-spacing-075: 6px;
+  --theme-spacing-087: 7px;
+  --theme-spacing-100: 8px;
+  --theme-spacing-112: 9px;
+  --theme-spacing-125: 10px;
+  --theme-spacing-150: 12px;
+  --theme-spacing-175: 14px;
+  --theme-spacing-n200: -16px;
+  --theme-spacing-200: 16px;
+  --theme-spacing-250: 20px;
+  --theme-spacing-300: 24px;
+  --theme-spacing-350: 28px;
+  --theme-spacing-400: 32px;
+  --theme-spacing-500: 40px;
+  --theme-spacing-550: 44px;
+  --theme-spacing-600: 48px;
+  --theme-spacing-1000: 80px;
+
+  --theme-dimension-000: 0;
+  --theme-dimension-025: 2px;
+  --theme-dimension-037: 3px;
+  --theme-dimension-050: 4px;
+  --theme-dimension-075: 6px;
+  --theme-dimension-087: 7px;
+  --theme-dimension-100: 8px;
+  --theme-dimension-125: 10px;
+  --theme-dimension-150: 12px;
+  --theme-dimension-175: 14px;
+  --theme-dimension-200: 16px;
+  --theme-dimension-225: 18px;
+  --theme-dimension-250: 20px;
+  --theme-dimension-300: 24px;
+  --theme-dimension-400: 32px;
+  --theme-dimension-450: 36px;
+  --theme-dimension-500: 40px;
+  --theme-dimension-550: 44px;
+  --theme-dimension-600: 48px;
+  --theme-dimension-700: 56px;
+  --theme-dimension-750: 60px;
+  --theme-dimension-800: 64px;
+  --theme-dimension-900: 76px;
+  --theme-dimension-1000: 80px;
+  --theme-dimension-1100: 88px;
+  --theme-dimension-1200: 96px;
+  --theme-dimension-1500: 120px;
+  --theme-dimension-2000: 160px;
+  --theme-dimension-2100: 168px;
+
+  --theme-typography-font-size-label-large: var(--font-size-16);
+  --theme-typography-font-size-label-medium: var(--font-size-14);
+  --theme-typography-font-size-label-small: var(--font-size-12);
+  --theme-typography-font-size-label-xsmall: var(--font-size-10);
+
+  --theme-typography-font-size-component-xxxxlarge: var(--font-size-36);
+  --theme-typography-font-size-component-xxxlarge: var(--font-size-28);
+  --theme-typography-font-size-component-xxlarge: var(--font-size-24);
+  --theme-typography-font-size-component-xlarge: var(--font-size-18);
+  --theme-typography-font-size-component-large: var(--font-size-16);
+  --theme-typography-font-size-component-medium: var(--font-size-14);
+  --theme-typography-font-size-component-small: var(--font-size-12);
+  --theme-typography-font-size-component-xsmall: var(--font-size-10);
+
+  /* Title / heading / body / label: responsive scale (defaults = below 768px; see @media below). */
+  --theme-typography-font-size-title-large: var(--font-size-36);
+  --theme-typography-line-height-title-large: var(--line-height-48);
+  --theme-typography-font-size-title-medium: var(--font-size-32);
+  --theme-typography-line-height-title-medium: var(--line-height-40);
+  --theme-typography-font-size-title-small: var(--font-size-28);
+  --theme-typography-line-height-title-small: var(--line-height-40);
+  --theme-typography-font-size-title-xsmall: var(--font-size-24);
+  --theme-typography-line-height-title-xsmall: var(--line-height-32);
+
+  --theme-typography-font-size-heading-large: var(--font-size-24);
+  --theme-typography-line-height-heading-large: var(--line-height-32);
+  --theme-typography-font-size-heading-medium: var(--font-size-20);
+  --theme-typography-line-height-heading-medium: var(--line-height-24);
+  --theme-typography-font-size-heading-small: var(--font-size-18);
+  --theme-typography-line-height-heading-small: var(--line-height-24);
+  --theme-typography-font-size-heading-xsmall: var(--font-size-16);
+  --theme-typography-line-height-heading-xsmall: var(--line-height-24);
+  --theme-typography-font-size-heading-xxsmall: var(--font-size-14);
+  --theme-typography-line-height-heading-xxsmall: var(--line-height-16);
+
+  --theme-typography-font-size-body-xlarge: var(--font-size-18);
+  --theme-typography-line-height-body-xlarge: var(--line-height-24);
+  --theme-typography-font-size-body-large: var(--font-size-16);
+  --theme-typography-line-height-body-large: var(--line-height-24);
+  --theme-typography-font-size-body-medium: var(--font-size-14);
+  --theme-typography-line-height-body-medium: var(--line-height-21);
+  --theme-typography-font-size-body-small: var(--font-size-12);
+  --theme-typography-line-height-body-small: var(--line-height-16);
+  --theme-typography-font-size-body-xsmall: var(--font-size-10);
+  --theme-typography-line-height-body-xsmall: var(--line-height-16);
+
+  --theme-typography-line-height-label-large: var(--line-height-16);
+  --theme-typography-line-height-label-medium: var(--line-height-14);
+  --theme-typography-line-height-label-small: var(--line-height-12);
+  --theme-typography-line-height-label-xsmall: var(--line-height-10);
+
+  --theme-typography-font-weight-component-default: var(--font-weight-heavy);
+  --theme-typography-font-weight-component-alt: var(--font-weight-medium);
+  --theme-typography-font-weight-component-accent: var(--font-weight-black);
+
+  --theme-typography-font-weight-body-default: var(--font-weight-roman);
+  --theme-typography-font-weight-body-alt: var(--font-weight-heavy);
+
+  --theme-typography-font-weight-heading-alt: var(--font-weight-heavy);
+
+  --theme-typography-line-height-component-xxlarge-alt: var(--line-height-32);
+  --theme-typography-line-height-component-xxlarge: var(--line-height-31);
+  --theme-typography-line-height-component-xlarge: var(--line-height-26);
+  --theme-typography-line-height-component-large: var(--line-height-24);
+  --theme-typography-line-height-component-medium: var(--line-height-16);
+  --theme-typography-line-height-component-medium-alt: var(--line-height-18);
+  --theme-typography-line-height-component-small-alt: var(--line-height-16);
+  --theme-typography-line-height-component-small: var(--line-height-14);
+
+  --theme-typography-letter-spacing-02: var(--letter-spacing-02);
+  --theme-typography-letter-spacing-04: var(--letter-spacing-04);
+  --theme-typography-letter-spacing-50: var(--letter-spacing-50);
+  --theme-typography-letter-spacing-75: var(--letter-spacing-75);
+  --theme-typography-letter-spacing-default: var(--letter-spacing-default);
+  --theme-typography-letter-spacing--05: var(--letter-spacing--05);
+
+  --theme-font-family-default: var(--font-family-default);
+
+  --theme-breakpoint-md: 768px;
+  --theme-breakpoint-lg: 1024px;
+  --theme-breakpoint-xl: 1880px;
+
+  --theme-color-gradient-cards-accent-1-stop-1: var(--color-berry-700-a0);
+  --theme-color-gradient-cards-accent-1-stop-2: var(--color-berry-700);
+  --theme-color-gradient-cards-accent-2-stop-1: var(--color-gold-700-a0);
+  --theme-color-gradient-cards-accent-2-stop-2: var(--color-gold-700);
+  --theme-color-gradient-cards-accent-3-stop-1: var(--color-orange-700-a0);
+  --theme-color-gradient-cards-accent-3-stop-2: var(--color-orange-700);
+  --theme-color-gradient-cards-accent-4-stop-1: var(--color-aqua-700-a0);
+  --theme-color-gradient-cards-accent-4-stop-2: var(--color-aqua-700);
+  --theme-color-gradient-cards-accent-5-stop-1: var(--color-blue-700-a0);
+  --theme-color-gradient-cards-accent-5-stop-2: var(--color-blue-700);
+  --theme-color-gradient-cards-accent-6-stop-1: var(--color-indigo-700-a0);
+  --theme-color-gradient-cards-accent-6-stop-2: var(--color-indigo-700);
+  --theme-color-gradient-cards-accent-7-stop-1: var(--color-green-700-a0);
+  --theme-color-gradient-cards-accent-7-stop-2: var(--color-green-700);
+  --theme-color-gradient-cards-accent-8-stop-1: var(--color-lime-700-a0);
+  --theme-color-gradient-cards-accent-8-stop-2: var(--color-lime-700);
+  --theme-color-gradient-cards-accent-9-stop-1: var(--color-grey-700-a0);
+  --theme-color-gradient-cards-accent-9-stop-2: var(--color-grey-700);
+  --theme-color-gradient-cards-accent-10-stop-1: var(--color-slate-700-a0);
+  --theme-color-gradient-cards-accent-10-stop-2: var(--color-slate-700);
+  --theme-color-gradient-cards-base-layer-stop-1: var(--color-slate-800-a0);
+  --theme-color-gradient-cards-base-layer-stop-2: var(--color-slate-800);
+
+  --theme-color-gradient-surface-navigation-header-stop-1: var(--color-plum-900-a88);
+  --theme-color-gradient-surface-navigation-header-stop-2: var(--color-plum-900-a68);
+  --theme-color-gradient-surface-navigation-header-stop-3: var(--color-plum-900-a0);
+
+  --theme-gradient-surface-navigation-header: linear-gradient(
+    180deg,
+    var(--theme-color-gradient-surface-navigation-header-stop-1) 58%,
+    var(--theme-color-gradient-surface-navigation-header-stop-2) 82%,
+    var(--theme-color-gradient-surface-navigation-header-stop-3) 100%
+  );
+
+  --theme-gradient-component-cards-top-down-accent-1: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-1-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-1-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-1: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-1-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-1-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 90%);
+  --theme-gradient-component-cards-top-down-accent-2: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-2-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-2-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-2: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-2-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-2-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-3: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-3-stop-1) 30%,
+      var(--theme-color-gradient-cards-accent-3-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-3: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-3-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-3-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-4: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-4-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-4-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-4: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-4-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-4-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-5: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-5-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-5-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-5: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-5-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-5-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-6: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-6-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-6-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-6: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-6-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-6-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-7: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-7-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-7-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-7: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-7-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-7-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-8: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-8-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-8-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-8: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-8-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-8-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-9: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-9-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-9-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-9: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-9-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-9-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+  --theme-gradient-component-cards-top-down-accent-10: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-10-stop-2) 30%,
+      var(--theme-color-gradient-cards-accent-10-stop-1) 100%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-2) 12%, var(--theme-color-gradient-cards-base-layer-stop-1) 90%);
+  --theme-gradient-component-cards-bottom-up-accent-10: linear-gradient(
+      180deg,
+      var(--theme-color-gradient-cards-accent-10-stop-1) 0%,
+      var(--theme-color-gradient-cards-accent-10-stop-2) 70%
+    ),
+    linear-gradient(180deg, var(--theme-color-gradient-cards-base-layer-stop-1) 12%, var(--theme-color-gradient-cards-base-layer-stop-2) 89.8%);
+}
+
+/*
+ * Title / heading / body / label responsive type (768px tablet, 1024px laptop, 1880px display).
+ *
+ * To disable responsive scaling and keep mobile sizes at all viewport widths, add
+ * data-responsive-typography="false" to any ancestor element — including a scoped
+ * wrapper div if your app applies data-theme below <html>:
+ *
+ *   <!-- On <html> (most common) -->
+ *   <html data-responsive-typography="false" data-theme="vista/parks-next">
+ *
+ *   <!-- On a scoped wrapper (micro-frontend / federated app pattern) -->
+ *   <div data-theme="vista/parks-now" data-responsive-typography="false">
+ *
+ * Two mechanisms work together:
+ *   1. The :not() guards below prevent the @media overrides from firing when the
+ *      attribute is on :root / :host (covers the <html> case).
+ *   2. The scoped reset block at the bottom of this file re-declares all mobile
+ *      values directly on any element carrying the attribute, overriding inherited
+ *      values from :root for all descendants (covers the wrapper div case).
+ */
+@media (min-width: 768px) {
+  :root:not([data-responsive-typography="false"]),
+  :host:not([data-responsive-typography="false"]) {
+    --theme-typography-font-size-title-large: var(--font-size-46);
+    --theme-typography-line-height-title-large: var(--line-height-56);
+    --theme-typography-font-size-title-medium: var(--font-size-41);
+    --theme-typography-line-height-title-medium: var(--line-height-56);
+    --theme-typography-font-size-title-small: var(--font-size-36);
+    --theme-typography-line-height-title-small: var(--line-height-48);
+    --theme-typography-font-size-title-xsmall: var(--font-size-32);
+    --theme-typography-line-height-title-xsmall: var(--line-height-40);
+
+    --theme-typography-font-size-heading-large: var(--font-size-28);
+    --theme-typography-line-height-heading-large: var(--line-height-40);
+    --theme-typography-font-size-heading-medium: var(--font-size-24);
+    --theme-typography-line-height-heading-medium: var(--line-height-32);
+    --theme-typography-font-size-heading-small: var(--font-size-20);
+    --theme-typography-line-height-heading-small: var(--line-height-24);
+    --theme-typography-font-size-heading-xsmall: var(--font-size-18);
+    --theme-typography-line-height-heading-xsmall: var(--line-height-24);
+    --theme-typography-font-size-heading-xxsmall: var(--font-size-16);
+    --theme-typography-line-height-heading-xxsmall: var(--line-height-24);
+
+    --theme-typography-font-size-body-xlarge: var(--font-size-18);
+    --theme-typography-line-height-body-xlarge: var(--line-height-24);
+    --theme-typography-font-size-body-large: var(--font-size-16);
+    --theme-typography-line-height-body-large: var(--line-height-24);
+    --theme-typography-font-size-body-medium: var(--font-size-14);
+    --theme-typography-line-height-body-medium: var(--line-height-24);
+    --theme-typography-font-size-body-small: var(--font-size-12);
+    --theme-typography-line-height-body-small: var(--line-height-16);
+    --theme-typography-font-size-body-xsmall: var(--font-size-10);
+    --theme-typography-line-height-body-xsmall: var(--line-height-16);
+
+    --theme-typography-font-size-label-large: var(--font-size-16);
+    --theme-typography-line-height-label-large: var(--line-height-16);
+    --theme-typography-font-size-label-medium: var(--font-size-14);
+    --theme-typography-line-height-label-medium: var(--line-height-14);
+    --theme-typography-font-size-label-small: var(--font-size-12);
+    --theme-typography-line-height-label-small: var(--line-height-12);
+    --theme-typography-font-size-label-xsmall: var(--font-size-10);
+    --theme-typography-line-height-label-xsmall: var(--line-height-10);
+  }
+}
+
+@media (min-width: 1024px) {
+  :root:not([data-responsive-typography="false"]),
+  :host:not([data-responsive-typography="false"]) {
+    --theme-typography-font-size-title-large: var(--font-size-58);
+    --theme-typography-line-height-title-large: var(--line-height-72);
+    --theme-typography-font-size-title-medium: var(--font-size-52);
+    --theme-typography-line-height-title-medium: var(--line-height-64);
+    --theme-typography-font-size-title-small: var(--font-size-46);
+    --theme-typography-line-height-title-small: var(--line-height-56);
+    --theme-typography-font-size-title-xsmall: var(--font-size-41);
+    --theme-typography-line-height-title-xsmall: var(--line-height-56);
+
+    --theme-typography-font-size-heading-large: var(--font-size-32);
+    --theme-typography-line-height-heading-large: var(--line-height-40);
+    --theme-typography-font-size-heading-medium: var(--font-size-28);
+    --theme-typography-line-height-heading-medium: var(--line-height-40);
+    --theme-typography-font-size-heading-small: var(--font-size-24);
+    --theme-typography-line-height-heading-small: var(--line-height-32);
+    --theme-typography-font-size-heading-xsmall: var(--font-size-20);
+    --theme-typography-line-height-heading-xsmall: var(--line-height-24);
+    --theme-typography-font-size-heading-xxsmall: var(--font-size-18);
+    --theme-typography-line-height-heading-xxsmall: var(--line-height-24);
+
+    --theme-typography-font-size-body-xlarge: var(--font-size-20);
+    --theme-typography-line-height-body-xlarge: var(--line-height-32);
+    --theme-typography-font-size-body-large: var(--font-size-18);
+    --theme-typography-line-height-body-large: var(--line-height-24);
+    --theme-typography-font-size-body-medium: var(--font-size-16);
+    --theme-typography-line-height-body-medium: var(--line-height-24);
+    --theme-typography-font-size-body-small: var(--font-size-14);
+    --theme-typography-line-height-body-small: var(--line-height-24);
+    --theme-typography-font-size-body-xsmall: var(--font-size-12);
+    --theme-typography-line-height-body-xsmall: var(--line-height-16);
+
+    --theme-typography-font-size-label-large: var(--font-size-18);
+    --theme-typography-line-height-label-large: var(--line-height-18);
+    --theme-typography-font-size-label-medium: var(--font-size-16);
+    --theme-typography-line-height-label-medium: var(--line-height-16);
+    --theme-typography-font-size-label-small: var(--font-size-14);
+    --theme-typography-line-height-label-small: var(--line-height-14);
+    --theme-typography-font-size-label-xsmall: var(--font-size-12);
+    --theme-typography-line-height-label-xsmall: var(--line-height-12);
+  }
+}
+
+@media (min-width: 1880px) {
+  :root:not([data-responsive-typography="false"]),
+  :host:not([data-responsive-typography="false"]) {
+    --theme-typography-font-size-title-large: var(--font-size-74);
+    --theme-typography-line-height-title-large: var(--line-height-96);
+    --theme-typography-font-size-title-medium: var(--font-size-66);
+    --theme-typography-line-height-title-medium: var(--line-height-88);
+    --theme-typography-font-size-title-small: var(--font-size-58);
+    --theme-typography-line-height-title-small: var(--line-height-72);
+    --theme-typography-font-size-title-xsmall: var(--font-size-56);
+    --theme-typography-line-height-title-xsmall: var(--line-height-56);
+
+    --theme-typography-font-size-heading-large: var(--font-size-32);
+    --theme-typography-line-height-heading-large: var(--line-height-40);
+    --theme-typography-font-size-heading-medium: var(--font-size-28);
+    --theme-typography-line-height-heading-medium: var(--line-height-40);
+    --theme-typography-font-size-heading-small: var(--font-size-24);
+    --theme-typography-line-height-heading-small: var(--line-height-32);
+    --theme-typography-font-size-heading-xsmall: var(--font-size-20);
+    --theme-typography-line-height-heading-xsmall: var(--line-height-24);
+    --theme-typography-font-size-heading-xxsmall: var(--font-size-18);
+    --theme-typography-line-height-heading-xxsmall: var(--line-height-24);
+
+    --theme-typography-font-size-body-xlarge: var(--font-size-20);
+    --theme-typography-line-height-body-xlarge: var(--line-height-32);
+    --theme-typography-font-size-body-large: var(--font-size-18);
+    --theme-typography-line-height-body-large: var(--line-height-24);
+    --theme-typography-font-size-body-medium: var(--font-size-16);
+    --theme-typography-line-height-body-medium: var(--line-height-24);
+    --theme-typography-font-size-body-small: var(--font-size-14);
+    --theme-typography-line-height-body-small: var(--line-height-24);
+    --theme-typography-font-size-body-xsmall: var(--font-size-12);
+    --theme-typography-line-height-body-xsmall: var(--line-height-16);
+
+    --theme-typography-font-size-label-large: var(--font-size-18);
+    --theme-typography-line-height-label-large: var(--line-height-18);
+    --theme-typography-font-size-label-medium: var(--font-size-16);
+    --theme-typography-line-height-label-medium: var(--line-height-16);
+    --theme-typography-font-size-label-small: var(--font-size-14);
+    --theme-typography-line-height-label-small: var(--line-height-14);
+    --theme-typography-font-size-label-xsmall: var(--font-size-12);
+    --theme-typography-line-height-label-xsmall: var(--line-height-12);
+  }
+}
+
+[data-responsive-typography="false"] {
+  --theme-typography-font-size-title-large: var(--font-size-36);
+  --theme-typography-line-height-title-large: var(--line-height-48);
+  --theme-typography-font-size-title-medium: var(--font-size-32);
+  --theme-typography-line-height-title-medium: var(--line-height-40);
+  --theme-typography-font-size-title-small: var(--font-size-28);
+  --theme-typography-line-height-title-small: var(--line-height-40);
+  --theme-typography-font-size-title-xsmall: var(--font-size-24);
+  --theme-typography-line-height-title-xsmall: var(--line-height-32);
+
+  --theme-typography-font-size-heading-large: var(--font-size-24);
+  --theme-typography-line-height-heading-large: var(--line-height-32);
+  --theme-typography-font-size-heading-medium: var(--font-size-20);
+  --theme-typography-line-height-heading-medium: var(--line-height-24);
+  --theme-typography-font-size-heading-small: var(--font-size-18);
+  --theme-typography-line-height-heading-small: var(--line-height-24);
+  --theme-typography-font-size-heading-xsmall: var(--font-size-16);
+  --theme-typography-line-height-heading-xsmall: var(--line-height-24);
+  --theme-typography-font-size-heading-xxsmall: var(--font-size-14);
+  --theme-typography-line-height-heading-xxsmall: var(--line-height-16);
+
+  --theme-typography-font-size-body-xlarge: var(--font-size-18);
+  --theme-typography-line-height-body-xlarge: var(--line-height-24);
+  --theme-typography-font-size-body-large: var(--font-size-16);
+  --theme-typography-line-height-body-large: var(--line-height-24);
+  --theme-typography-font-size-body-medium: var(--font-size-14);
+  --theme-typography-line-height-body-medium: var(--line-height-21);
+  --theme-typography-font-size-body-small: var(--font-size-12);
+  --theme-typography-line-height-body-small: var(--line-height-16);
+  --theme-typography-font-size-body-xsmall: var(--font-size-10);
+  --theme-typography-line-height-body-xsmall: var(--line-height-16);
+
+  --theme-typography-font-size-label-large: var(--font-size-16);
+  --theme-typography-line-height-label-large: var(--line-height-16);
+  --theme-typography-font-size-label-medium: var(--font-size-14);
+  --theme-typography-line-height-label-medium: var(--line-height-14);
+  --theme-typography-font-size-label-small: var(--font-size-12);
+  --theme-typography-line-height-label-small: var(--line-height-12);
+  --theme-typography-font-size-label-xsmall: var(--font-size-10);
+  --theme-typography-line-height-label-xsmall: var(--line-height-10);
+}

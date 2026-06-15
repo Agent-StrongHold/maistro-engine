@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react";
+import GridLayout from "react-grid-layout";
+import "react-grid-layout/css/styles.css";
 import { TemplatePicker } from "../components/TemplatePicker";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -309,7 +311,7 @@ function KpiWidget({ title, config, agents, metrics }: { title: string; config?:
 
   return (
     <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: "100%", position: "relative", paddingLeft: 10 }}>
-      <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2, background: "linear-gradient(180deg, var(--accent), #8b5cf6)" }} />
+      <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2, background: "var(--hyperion-indigo-700, #306CCF)" }} />
       <div style={{ fontSize: "2.2rem", fontWeight: 800, color: "#f0f0f8", fontVariantNumeric: "tabular-nums", lineHeight: 1, letterSpacing: "-0.02em" }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
       <div style={{ fontSize: "0.62rem", color: "var(--muted)", marginTop: 6, letterSpacing: "0.02em", fontWeight: 500 }}>{config?.sub || field}</div>
     </div>
@@ -606,7 +608,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
     const max = Math.max(...entries.map(([, v]) => v), 1);
     const total = entries.reduce((s, [, v]) => s + v, 0);
     const palette = ({
-      default: ["var(--accent)", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6", "var(--accent)", "#fb7185", "#fbbf24", "#34d399", "#67e8f9", "#c084fc"],
+      default: ["var(--hyperion-indigo-700, #306CCF)", "var(--hyperion-violet-700, #A53ABF)", "var(--hyperion-gold-600, #F4AF25)", "var(--hyperion-green-700, #2B8C44)", "var(--hyperion-blue-700, #0079BC)", "var(--hyperion-orange-700, #D95E00)", "var(--hyperion-pink-700, #C2185B)", "var(--hyperion-indigo-500, #69A6FF)", "var(--hyperion-violet-500, #D568E0)", "var(--hyperion-gold-400, #FFD469)"],
       midnight: ["#1e40af", "#3730a3", "#1d4ed8", "#4338ca", "#2563eb", "#4f46e5", "var(--accent)", "#818cf8", "#93c5fd", "#60a5fa", "#a5b4fc", "#c7d2fe"],
       aurora: ["#059669", "#10b981", "#34d399", "#6ee7b7", "#14b8a6", "#2dd4bf", "#5eead4", "#99f6e4", "#a7f3d0", "#d1fae5", "#0d9488", "#0f766e"],
       sunset: ["#ea580c", "#f97316", "#fb923c", "#fdba74", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#db2777", "#ec4899", "#f472b6", "#f9a8d4"],
@@ -647,7 +649,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6, justifyContent: "center", height: "100%" }}>
           <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--ink)" }}>{pct}%</div>
           <div style={{ height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 6, overflow: "hidden" }}>
-            <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, var(--accent), #8b5cf6)`, borderRadius: 6 }} />
+            <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, var(--hyperion-indigo-700, #306CCF), var(--hyperion-blue-600, #0B9BDB))`, borderRadius: 6 }} />
           </div>
           <div style={{ fontSize: "0.58rem", color: "var(--muted)" }}>{achieved} / {target}</div>
         </div>
@@ -930,7 +932,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
   }
 
   return (
-    <div style={{ gridColumn: span[widget.size], background: "linear-gradient(135deg, var(--card-bg, var(--panel-bg)) 0%, var(--paper-2) 100%)", border: `1px solid ${editing ? C.gold : "var(--rule)"}`, borderRadius: 16, padding: "0.8rem", position: "relative", transition: "all 0.2s ease", maxHeight: 320, display: "flex", flexDirection: "column", boxShadow: "0 2px 8px rgba(0,0,0,0.2)" }}>
+    <div style={{ gridColumn: span[widget.size], background: "var(--panel-bg, #fff)", border: `1px solid ${editing ? "var(--hyperion-gold-500, #FFC23B)" : "var(--rule)"}`, borderRadius: 18, padding: "1rem", position: "relative", transition: "all 0.2s ease", maxHeight: 360, display: "flex", flexDirection: "column", boxShadow: "0 4px 16px rgba(42,31,92,0.06)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <span style={{ fontSize: "0.62rem", fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em" }}>{widget.title}</span>
         {editing && <button onClick={() => setConfigOpen(true)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "0.9rem" }}>⋯</button>}
@@ -938,7 +940,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
       {configOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 999 }}>
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }} onClick={() => setConfigOpen(false)} />
-          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 1000, background: "var(--panel-bg)", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", width: 340, maxHeight: "85vh", boxShadow: "0 24px 80px rgba(0,0,0,0.7)" }}>
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 1000, background: "var(--panel-bg)", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", width: 340, maxHeight: "85vh", boxShadow: "0 24px 80px rgba(42,31,92,0.15)" }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: "0.6rem", fontWeight: 600, color: C.gold, textTransform: "uppercase" }}>Configure Widget</span>
             <button onClick={() => setConfigOpen(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>✕</button>
