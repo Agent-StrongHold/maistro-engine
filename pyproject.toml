@@ -47,6 +47,7 @@ dev = [
     "questionary>=2.0",
     "aiosqlite>=0.20",
     "hypothesis>=6.0",
+    "cosmic-ray>=8.0.0",
 ]
 browser = ["playwright>=1.49"]
 scheduling = ["apscheduler>=3.11"]
