@@ -64,11 +64,17 @@ jobs:
       - name: semgrep (custom + p/security-audit + p/owasp-top-ten + p/secrets)
         run: |
           set -o pipefail
+          # cage/ and eval/ are IMMUTABLE (cage-guard.yml auto-rejects any PR that
+          # touches them), so they cannot carry inline # nosemgrep suppressions. The
+          # eval harness's whole function is to exec/eval model-generated code, so
+          # exclude these immutable paths from the scan rather than flag the unfixable.
           uvx semgrep --metrics off \
             --config tools/semgrep/jfc-rules.yaml \
             --config p/security-audit \
             --config p/owasp-top-ten \
             --config p/secrets \
+            --exclude 'packages/hive-conductor/eval' \
+            --exclude 'packages/hive-conductor/cage' \
             --error packages/ apps/ tests/ 2>&1 | tee semgrep-report.txt
 
       - name: gitleaks (full-history scan on main; commit-range on PR)

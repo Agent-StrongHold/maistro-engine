@@ -88,11 +88,9 @@ async def run(llm_call: Callable[[str, str], Awaitable[str]], n_tasks: int = 5) 
         if valid_syntax:
             try:
                 ns: dict[str, Any] = {}
-                # nosemgrep: python.lang.security.audit.exec-detected.exec-detected -- benchmark harness intentionally runs model-generated code to score correctness
                 exec(code, ns)
                 for test_expr in t["tests"]:
                     try:
-                        # nosemgrep: python.lang.security.audit.eval-detected.eval-detected -- benchmark harness evaluates the model's own test expressions
                         if eval(test_expr, ns):
                             tests_passed += 1
                     except Exception:
