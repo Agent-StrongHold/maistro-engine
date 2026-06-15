@@ -1,0 +1,55 @@
+/*
+ * Fantasia Theme — Single source of truth
+ * 
+ * Maps legacy shorthand vars used across all pages to the real
+ * Hyperion design tokens from wdpr-parks-next-theme.css / wdpr-colors.css.
+ * 
+ * RULE: Pages use ONLY these vars. No hex codes in components.
+ */
+
+:root {
+  /* ─── Surfaces ─── */
+  --paper: var(--color-white-000);                    /* primary surface (cards, panels) */
+  --paper-2: var(--color-plum-000);                   /* secondary surface (page bg) */
+  --panel-bg: var(--color-white-000);                 /* elevated panels */
+  --bg: var(--color-plum-000);                        /* page background */
+  --bg-elevated: var(--color-white-000);              /* elevated card */
+  --card: var(--color-white-000);                     /* card surface */
+  --surface: var(--color-white-000);                  /* generic surface */
+
+  /* ─── Text ─── */
+  --ink: var(--color-plum-900);                       /* primary text */
+  --pencil: var(--color-plum-700);                    /* secondary text */
+  --muted: var(--color-plum-500);                     /* tertiary/muted text */
+  --text: var(--color-plum-900);                      /* alias for --ink */
+
+  /* ─── Borders & Rules ─── */
+  --rule: var(--color-plum-100);                      /* subtle dividers */
+  --border: var(--color-plum-100);                    /* card borders */
+
+  /* ─── Accent ─── */
+  --accent: var(--color-purple-600);                  /* primary action color */
+  --accent-bg: var(--color-purple-050);               /* accent background tint */
+  --gold: var(--color-gold-500);                      /* status: gold highlights */
+
+  /* ─── Semantic ─── */
+  --ok: var(--color-green-600);                       /* success */
+  --success: var(--color-green-600);                  /* success alias */
+  --warn: var(--color-gold-600);                      /* warning */
+  --danger: var(--color-red-600);                     /* error/destructive */
+
+  /* ─── Legacy (used by some pages) ─── */
+  --hand: var(--color-plum-900);                      /* handwritten/display text */
+  --mono: var(--color-plum-800);                      /* monospace text */
+  --honey: var(--color-gold-400);                     /* decorative gold */
+  --honey-light: var(--color-gold-200);               /* light gold */
+  --honey-dark: var(--color-gold-700);                /* dark gold */
+
+  /* ─── Typography (referenced but not critical) ─── */
+  --font-family-default: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-weight-roman: 400;
+  --font-weight-medium: 500;
+  --font-weight-heavy: 700;
+  --font-weight-black: 800;
+  --letter-spacing-default: -0.01em;
+}

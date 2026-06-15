@@ -102,7 +102,6 @@
 /* ─── Main Content ─── */
 .fantasia-main {
   overflow-y: auto;
-  min-height: 100vh;
   background: var(--theme-color-surface-default-alt, #f8f5ff);
 }
 

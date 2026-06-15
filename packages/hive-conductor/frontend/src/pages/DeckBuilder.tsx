@@ -183,7 +183,7 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
           onKeyDown={e => e.key === "Enter" && submit()}
           placeholder="✦ Describe slides to generate, or ask to edit..."
           style={{ flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 12px", color: C.ink, fontSize: "0.72rem", outline: "none" }} />
-        <button onClick={submit} disabled={loading} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: C.acc, color: "#fff", fontSize: "0.68rem", fontWeight: 600, cursor: "pointer", opacity: loading ? 0.5 : 1 }}>
+        <button onClick={submit} disabled={loading} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: C.acc, color: "var(--ink)", fontSize: "0.68rem", fontWeight: 600, cursor: "pointer", opacity: loading ? 0.5 : 1 }}>
           {loading ? "..." : "Generate"}
         </button>
       </div>
@@ -240,7 +240,7 @@ ${slides.map(s => `<div class="slide">${s.html}</div>`).join("\n")}</div></body>
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Inter', -apple-system, system-ui, sans-serif", padding: "1.5rem 2rem" }}>
+    <div className="page">
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -248,7 +248,7 @@ ${slides.map(s => `<div class="slide">${s.html}</div>`).join("\n")}</div></body>
           <span style={{ fontSize: "0.6rem", color: C.muted }}>{slides.length} slides</span>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setPresenting(true)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: C.acc, color: "#fff", fontSize: "0.68rem", fontWeight: 600, cursor: "pointer" }}>Present</button>
+          <button onClick={() => setPresenting(true)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: C.acc, color: "var(--ink)", fontSize: "0.68rem", fontWeight: 600, cursor: "pointer" }}>Present</button>
           <button onClick={exportHTML} style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.ink, fontSize: "0.68rem", cursor: "pointer" }}>Export HTML</button>
           <button onClick={exportPDF} style={{ padding: "5px 12px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.ink, fontSize: "0.68rem", cursor: "pointer" }}>Print/PDF</button>
         </div>

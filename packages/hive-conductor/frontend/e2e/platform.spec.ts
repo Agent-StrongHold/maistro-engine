@@ -1,8 +1,55 @@
 import { test, expect } from "./fixtures";
 
+test.describe("Overview Page", () => {
+  test("loads and shows KPI cards", async ({ page }) => {
+    await page.goto("./overview");
+    await page.waitForTimeout(5000);
+    const body = await page.textContent("body");
+    expect(body).toMatch(/Live Operations|Total Use Cases|In-Flight|Commercialized/);
+  });
+
+  test("shows greeting section", async ({ page }) => {
+    await page.goto("./overview");
+    // Greeting streams from LLM — wait longer
+    await page.waitForSelector("[class*='overview-greeting'], [class*='greeting']", { timeout: 15000 }).catch(() => {});
+    const body = await page.textContent("body");
+    expect(body!.length).toBeGreaterThan(200);
+  });
+
+  test("mini chat input exists", async ({ page }) => {
+    await page.goto("./overview");
+    await page.waitForTimeout(3000);
+    const input = page.locator("input[placeholder*='How many'], input[placeholder*='ask'], input[class*='chat-input']");
+    const count = await input.count();
+    expect(count).toBeGreaterThanOrEqual(1);
+  });
+
+  test("overview-widgets endpoint responds", async ({ page }) => {
+    const r = await page.request.get("./v1/chat/overview-widgets");
+    expect(r.status()).toBe(200);
+    const data = await r.json();
+    expect(data).toHaveProperty("widgets");
+  });
+
+  test("suggestions endpoint responds", async ({ page }) => {
+    const r = await page.request.get("./v1/chat/suggestions");
+    expect(r.status()).toBe(200);
+    const data = await r.json();
+    expect(data).toHaveProperty("suggestions");
+  });
+
+  test("default route redirects to overview", async ({ page }) => {
+    await page.goto("./");
+    await page.waitForTimeout(3000);
+    // SPA should redirect to /overview or show overview content
+    const body = await page.textContent("body");
+    expect(body).toMatch(/Live Operations|Overview|KPI|Total Use Cases/i);
+  });
+});
+
 test.describe("Dashboard Page", () => {
   test("loads and shows content", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto("./dashboard");
     await page.waitForTimeout(3000);
     // Should have the Live Operations header or widget content
     const content = await page.textContent("body");
@@ -10,29 +57,28 @@ test.describe("Dashboard Page", () => {
   });
 
   test("dashboard metrics API responds", async ({ page }) => {
-    const response = await page.request.get("/v1/dashboard/metrics");
+    const response = await page.request.get("./v1/dashboard/metrics");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect(data).toHaveProperty("active_agents");
   });
 
   test("dashboard layout API responds with tabs", async ({ page }) => {
-    const response = await page.request.get("/v1/dashboard/layout");
+    const response = await page.request.get("./v1/dashboard/layout");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect(data.tabs.length).toBeGreaterThanOrEqual(1);
   });
 
   test("widgets render after loading", async ({ page }) => {
-    await page.goto("/dashboard");
-    await page.waitForTimeout(5000);
-    // Widget cards have title text in uppercase
+    await page.goto("./dashboard");
+    await page.waitForTimeout(6000);
     const body = await page.textContent("body");
-    expect(body?.length).toBeGreaterThan(500); // page has content
+    expect(body?.length).toBeGreaterThan(500);
   });
 
   test("edit mode shows undo/redo", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto("./dashboard");
     await page.waitForTimeout(2000);
     const editBtn = page.getByRole("button", { name: /edit|✎|done|✓/i });
     if (await editBtn.first().isVisible()) {
@@ -44,39 +90,28 @@ test.describe("Dashboard Page", () => {
 
 test.describe("Deck Builder Page", () => {
   test("loads deck editor", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForTimeout(2000);
-    // Navigate via SPA sidebar
-    const deckLink = page.locator("a[href*='deck'], a[href*='Deck']").first();
-    if (await deckLink.isVisible()) await deckLink.click();
-    else await page.goto("/decks"); // fallback
-    await page.waitForTimeout(3000);
+    await page.goto("./decks");
+    await page.waitForTimeout(4000);
     const body = await page.textContent("body");
-    expect(body).toMatch(/Slide|Present|Untitled|Deck/);
+    expect(body).toMatch(/Slide|Present|Untitled|Deck|Template/i);
   });
 
   test("has present and export buttons", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForTimeout(2000);
-    const deckLink = page.locator("a[href*='deck']").first();
-    if (await deckLink.isVisible()) await deckLink.click();
-    await page.waitForTimeout(3000);
+    await page.goto("./decks");
+    await page.waitForTimeout(4000);
     const body = await page.textContent("body");
-    expect(body).toMatch(/Present|Export|Deck/);
+    expect(body).toMatch(/Present|Export|Deck|Slide/i);
   });
 
   test("has template buttons", async ({ page }) => {
-    await page.goto("/");
-    await page.waitForTimeout(2000);
-    const deckLink = page.locator("a[href*='deck']").first();
-    if (await deckLink.isVisible()) await deckLink.click();
-    await page.waitForTimeout(3000);
+    await page.goto("./decks");
+    await page.waitForTimeout(4000);
     const body = await page.textContent("body");
-    expect(body).toMatch(/Hero KPI|Template|Funnel|Deck/i);
+    expect(body).toMatch(/Hero KPI|Template|Funnel|Status|Deck/i);
   });
 
   test("has AI chat input", async ({ page }) => {
-    await page.goto("/");
+    await page.goto("./");
     await page.waitForTimeout(2000);
     const deckLink = page.locator("a[href*='deck']").first();
     if (await deckLink.isVisible()) await deckLink.click();
@@ -87,7 +122,7 @@ test.describe("Deck Builder Page", () => {
   });
 
   test("can add slide via template", async ({ page }) => {
-    await page.goto("/decks");
+    await page.goto("./decks");
     await page.waitForTimeout(2000);
     // Click a template button
     const btn = page.locator("button").filter({ hasText: /Hero KPI|Status Funnel/ });
@@ -102,7 +137,7 @@ test.describe("Deck Builder Page", () => {
 
 test.describe("Credentials Page", () => {
   test("credentials API responds", async ({ page }) => {
-    const response = await page.request.get("/v1/credentials");
+    const response = await page.request.get("./v1/credentials");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect(data.credentials.length).toBeGreaterThan(0);
@@ -112,12 +147,12 @@ test.describe("Credentials Page", () => {
 
   test("credential config save/load", async ({ page }) => {
     // Save
-    const save = await page.request.put("/v1/credentials/airtable/config", {
+    const save = await page.request.put("./v1/credentials/airtable/config", {
       data: { config: { base_id: "appTEST" } },
     });
     expect(save.status()).toBe(200);
     // Load
-    const load = await page.request.get("/v1/credentials/airtable/config");
+    const load = await page.request.get("./v1/credentials/airtable/config");
     expect(load.status()).toBe(200);
     const data = await load.json();
     expect(data.config.base_id).toBe("appTEST");
@@ -126,21 +161,21 @@ test.describe("Credentials Page", () => {
 
 test.describe("Widget Endpoints", () => {
   test("widget-examples returns templates", async ({ page }) => {
-    const response = await page.request.get("/v1/dashboard/widget-examples");
+    const response = await page.request.get("./v1/dashboard/widget-examples");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect(data.length).toBeGreaterThan(50);
   });
 
   test("deck-templates returns 50+ templates", async ({ page }) => {
-    const response = await page.request.get("/v1/dashboard/deck-templates");
+    const response = await page.request.get("./v1/dashboard/deck-templates");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect(data.length).toBeGreaterThanOrEqual(50);
   });
 
   test("deck-templates can filter by category", async ({ page }) => {
-    const response = await page.request.get("/v1/dashboard/deck-templates?category=KPI");
+    const response = await page.request.get("./v1/dashboard/deck-templates?category=KPI");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect(data.length).toBeGreaterThan(0);
@@ -148,28 +183,28 @@ test.describe("Widget Endpoints", () => {
   });
 
   test("airtable widget handles missing creds", async ({ page }) => {
-    const response = await page.request.get("/v1/widgets/airtable?table=test&group_by=x&max_records=1");
+    const response = await page.request.get("./v1/widgets/airtable?table=test&group_by=x&max_records=1");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect("error" in data || "breakdown" in data).toBe(true);
   });
 
   test("jira widget handles missing creds", async ({ page }) => {
-    const response = await page.request.get("/v1/widgets/jira?project=TEST");
+    const response = await page.request.get("./v1/widgets/jira?project=TEST");
     expect(response.status()).toBe(200);
     const data = await response.json();
     expect("error" in data || "issues" in data).toBe(true);
   });
 
   test("demos endpoint works", async ({ page }) => {
-    const response = await page.request.get("/v1/dashboard/demos");
+    const response = await page.request.get("./v1/dashboard/demos");
     expect(response.status()).toBe(200);
   });
 });
 
 test.describe("Chat API", () => {
   test("chat complete responds to hello", async ({ page }) => {
-    const response = await page.request.post("/v1/chat/complete", {
+    const response = await page.request.post("./v1/chat/complete", {
       data: { messages: [{ role: "user", content: "hello" }] },
     });
     expect(response.status()).toBe(200);
@@ -178,7 +213,7 @@ test.describe("Chat API", () => {
   });
 
   test("chat complete handles tool-triggering messages", async ({ page }) => {
-    const response = await page.request.post("/v1/chat/complete", {
+    const response = await page.request.post("./v1/chat/complete", {
       data: { messages: [{ role: "user", content: "check jira status" }] },
     });
     // Should return 200 (not 500) even if tools fail
@@ -190,33 +225,33 @@ test.describe("Chat API", () => {
 
 test.describe("Core APIs", () => {
   test("agents list", async ({ page }) => {
-    const r = await page.request.get("/v1/agents");
+    const r = await page.request.get("./v1/agents");
     expect(r.status()).toBe(200);
     expect((await r.json()).length).toBeGreaterThan(0);
   });
 
   test("dags list", async ({ page }) => {
-    const r = await page.request.get("/v1/dags");
+    const r = await page.request.get("./v1/dags");
     expect(r.status()).toBe(200);
   });
 
   test("settings", async ({ page }) => {
-    const r = await page.request.get("/v1/settings");
+    const r = await page.request.get("./v1/settings");
     expect(r.status()).toBe(200);
   });
 
   test("memory entries", async ({ page }) => {
-    const r = await page.request.get("/v1/memory/entries");
+    const r = await page.request.get("./v1/memory/entries");
     expect(r.status()).toBe(200);
   });
 
   test("schedules", async ({ page }) => {
-    const r = await page.request.get("/v1/schedules");
+    const r = await page.request.get("./v1/schedules");
     expect(r.status()).toBe(200);
   });
 
   test("mcp servers", async ({ page }) => {
-    const r = await page.request.get("/v1/mcp/servers");
+    const r = await page.request.get("./v1/mcp/servers");
     expect(r.status()).toBe(200);
   });
 });

@@ -134,7 +134,7 @@ export default function Quotas() {
   const maxModelTasks = modelEntries.length > 0 ? modelEntries[0][1].total : 1;
 
   return (
-    <div style={{ minHeight: "calc(100vh - 60px)" }}>
+    <div className="page">
       <PageHeader title="Quotas & Stats" subtitle={`${providers.length} providers · ${models.length} models — track AI usage and costs`} helpHref="/docs#quotas" />
       <Tabs tabs={[`Providers (${providers.length})`, `Models (${models.length})`, `Outcomes (${outcomes?.total ?? 0})`]} active={tab} onChange={setTab} />
 

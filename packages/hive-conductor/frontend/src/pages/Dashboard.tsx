@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react";
 import GridLayout from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
+import "./dashboard.css";
 import { TemplatePicker } from "../components/TemplatePicker";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -17,9 +18,9 @@ interface Widget {
 // ─── Palette ────────────────────────────────────────────────────────────────
 
 const C = {
-  bg: "var(--paper)", card: "var(--paper-2)", border: "rgba(196,166,97,0.1)",
-  gold: "var(--gold)", ink: "#fff", muted: "var(--pencil)", dim: "var(--muted)",
-  ok: "#7cd4a0", danger: "#e87c7c", accent: "#9b8ec4",
+  bg: "var(--bg)", card: "var(--card)", border: "var(--rule)",
+  gold: "var(--accent)", ink: "var(--ink)", muted: "var(--muted)", dim: "var(--muted)",
+  ok: "var(--ok)", danger: "var(--danger)", accent: "var(--accent)",
 };
 
 // ─── Persistence ────────────────────────────────────────────────────────────
@@ -273,21 +274,21 @@ BEHAVIOR:
   };
 
   return (
-    <div style={{ marginBottom: "1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: C.card, border: `1px solid ${C.border}`, borderRadius: 10 }}>
-        <span style={{ color: C.gold, fontSize: "0.75rem" }}>✦</span>
+    <div className="dash-chat">
+      <div className="dash-chat-row">
+        <span className="dash-chat-icon">✦</span>
         <input value={value} onChange={e => setValue(e.target.value)} onKeyDown={(e: KeyboardEvent) => e.key === "Enter" && submit()}
-          placeholder={editing ? "Build: add widgets, resize, configure..." : "Ask: drill into data, compare, explain trends..."}  disabled={loading}
-          style={{ flex: 1, border: "none", background: "transparent", color: "#ffffff", fontSize: "0.82rem", outline: "none" }} />
-        {msgs.length > 0 && <button onClick={() => setOpen(!open)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "0.63rem" }}>{open ? "▾" : `▸${msgs.length}`}</button>}
-        {loading && <span style={{ fontSize: "0.63rem", color: C.muted }}>…</span>}
+          placeholder={editing ? "Build: add widgets, resize, configure..." : "Ask: drill into data, compare, explain trends..."} disabled={loading}
+          className="dash-chat-input" />
+        {msgs.length > 0 && <button onClick={() => setOpen(!open)} className="dash-chat-toggle">{open ? "▾" : `▸${msgs.length}`}</button>}
+        {loading && <span className="dash-chat-toggle">…</span>}
       </div>
       {open && msgs.length > 0 && (
-        <div ref={ref} style={{ maxHeight: 160, overflowY: "auto", background: "#0e0d1a", border: `1px solid ${C.border}`, borderRadius: 8, padding: "8px 10px", marginTop: 6 }}>
+        <div ref={ref} className="dash-chat-history">
           {msgs.map((m, i) => (
-            <div key={i} style={{ marginBottom: 6 }}>
-              <div style={{ fontSize: "0.56rem", color: m.role === "user" ? C.gold : C.ok, fontWeight: 600, textTransform: "uppercase" }}>{m.role === "user" ? "You" : "Fantasia"}</div>
-              <div style={{ fontSize: "0.74rem", color: C.ink, whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{m.content}</div>
+            <div key={i} className="dash-chat-msg">
+              <div className={`dash-chat-role ${m.role === "user" ? "dash-chat-role--user" : "dash-chat-role--ai"}`}>{m.role === "user" ? "You" : "Fantasia"}</div>
+              <div className="dash-chat-content">{m.content}</div>
             </div>
           ))}
         </div>
@@ -310,10 +311,9 @@ function KpiWidget({ title, config, agents, metrics }: { title: string; config?:
   else if (field === "ttft") { const ms = metrics?.latency_ms_p50 || 0; value = ms ? `${Math.round(ms)}ms` : "0ms"; }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: "100%", position: "relative", paddingLeft: 10 }}>
-      <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2, background: "var(--hyperion-indigo-700, #306CCF)" }} />
-      <div style={{ fontSize: "2.2rem", fontWeight: 800, color: "#f0f0f8", fontVariantNumeric: "tabular-nums", lineHeight: 1, letterSpacing: "-0.02em" }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
-      <div style={{ fontSize: "0.62rem", color: "var(--muted)", marginTop: 6, letterSpacing: "0.02em", fontWeight: 500 }}>{config?.sub || field}</div>
+    <div className="dash-kpi">
+      <div className="dash-kpi-value">{typeof value === "number" ? value.toLocaleString() : value}</div>
+      <div className="dash-kpi-sub">{config?.sub || field}</div>
     </div>
   );
 }
@@ -648,7 +648,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, justifyContent: "center", height: "100%" }}>
           <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--ink)" }}>{pct}%</div>
-          <div style={{ height: 10, background: "rgba(255,255,255,0.05)", borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ height: 10, background: "var(--bg)", borderRadius: 6, overflow: "hidden" }}>
             <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, var(--hyperion-indigo-700, #306CCF), var(--hyperion-blue-600, #0B9BDB))`, borderRadius: 6 }} />
           </div>
           <div style={{ fontSize: "0.58rem", color: "var(--muted)" }}>{achieved} / {target}</div>
@@ -715,7 +715,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
         {entries.slice(0, 10).map(([label, count], i) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: "0.62rem", color: "var(--pencil)", width: 80, textAlign: "right", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }} title={label}>{label}</span>
-            <div style={{ flex: 1, height: 20, background: "rgba(255,255,255,0.03)", borderRadius: 6, overflow: "hidden" }}>
+            <div style={{ flex: 1, height: 20, background: "var(--bg)", borderRadius: 6, overflow: "hidden" }}>
               <div style={{ width: `${(count / max) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${palette[i % palette.length]}cc, ${palette[i % palette.length]})`, borderRadius: 6, minWidth: 4, transition: "width 0.4s ease" }} />
             </div>
             <span style={{ fontSize: "0.65rem", color: "var(--ink)", width: 32, flexShrink: 0, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{count}</span>
@@ -799,7 +799,7 @@ function AirtableCascade({ cfgTable, setCfgTable, cfgGroupBy, setCfgGroupBy, cfg
   const [tables, setTables] = useState<{id:string;name:string}[]>([]);
   const [selectedBase, setSelectedBase] = useState("");
   const [loadingTables, setLoadingTables] = useState(false);
-  const inputStyle = { background: "#0f0f14", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#fff", padding: "4px 8px", fontSize: "0.72rem", width: "100%" };
+  const inputStyle = { background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 6, color: "var(--ink)", padding: "4px 8px", fontSize: "0.72rem", width: "100%" };
 
   // Load bases on mount
   useEffect(() => {
@@ -932,23 +932,23 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
   }
 
   return (
-    <div style={{ gridColumn: span[widget.size], background: "var(--panel-bg, #fff)", border: `1px solid ${editing ? "var(--hyperion-gold-500, #FFC23B)" : "var(--rule)"}`, borderRadius: 18, padding: "1rem", position: "relative", transition: "all 0.2s ease", maxHeight: 360, display: "flex", flexDirection: "column", boxShadow: "0 4px 16px rgba(42,31,92,0.06)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <span style={{ fontSize: "0.62rem", fontWeight: 600, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.08em" }}>{widget.title}</span>
-        {editing && <button onClick={() => setConfigOpen(true)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "0.9rem" }}>⋯</button>}
+    <div className={`card dash-widget ${editing ? "dash-widget--editing" : ""}`}>
+      <div className="dash-widget-header">
+        <span className="dash-widget-title">{widget.title}</span>
+        {editing && <button className="dash-widget-menu" onClick={() => setConfigOpen(true)}>⋯</button>}
       </div>
       {configOpen && (
         <div style={{ position: "fixed", inset: 0, zIndex: 999 }}>
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)" }} onClick={() => setConfigOpen(false)} />
-          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 1000, background: "var(--panel-bg)", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", border: "1px solid rgba(255,255,255,0.08)", width: 340, maxHeight: "85vh", boxShadow: "0 24px 80px rgba(42,31,92,0.15)" }}>
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.25)" }} onClick={() => setConfigOpen(false)} />
+          <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 1000, background: "var(--panel-bg)", borderRadius: 16, padding: 20, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", border: "1px solid var(--rule)", width: 340, maxHeight: "85vh", boxShadow: "0 24px 80px rgba(42,31,92,0.15)" }}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span style={{ fontSize: "0.6rem", fontWeight: 600, color: C.gold, textTransform: "uppercase" }}>Configure Widget</span>
             <button onClick={() => setConfigOpen(false)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer" }}>✕</button>
           </div>
           <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Title</label>
-          <input value={cfgTitle} onChange={e => setCfgTitle(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
+          <input value={cfgTitle} onChange={e => setCfgTitle(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
           <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Type</label>
-          <select value={cfgType} onChange={e => setCfgType(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
+          <select value={cfgType} onChange={e => setCfgType(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
             <option value="kpi">KPI Card</option>
             <option value="jira">Jira Query</option>
             <option value="agent-orbs">Agent Status</option>
@@ -965,7 +965,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
           <span style={{ fontSize: "0.58rem", color: C.ink, textAlign: "center" }}>{cfgRows} row{Number(cfgRows) > 1 ? "s" : ""}</span>
           {cfgType === "kpi" && (<>
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Data Field</label>
-            <select value={cfgField} onChange={e => setCfgField(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
+            <select value={cfgField} onChange={e => setCfgField(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
               <option value="active_agents">Active Agents</option>
               <option value="runs_today">Runs Today</option>
               <option value="avg_latency">Avg Latency</option>
@@ -974,7 +974,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
               <option value="ttft">TTFT</option>
             </select>
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Subtitle</label>
-            <input value={cfgSub} onChange={e => setCfgSub(e.target.value)} placeholder="vs last hour" style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
+            <input value={cfgSub} onChange={e => setCfgSub(e.target.value)} placeholder="vs last hour" style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
           </>)}
           {cfgType !== "kpi" && widget.config?.variables && (<>
             {(widget.config.variables as any[]).map((v: any) => (
@@ -1000,17 +1000,17 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
           </>)}
           {cfgType === "jira" && !widget.config?.variables && (<>
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Project Key</label>
-            <input value={cfgProject} onChange={e => setCfgProject(e.target.value)} placeholder="e.g. JEDAI" style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
+            <input value={cfgProject} onChange={e => setCfgProject(e.target.value)} placeholder="e.g. JEDAI" style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Status</label>
-            <input value={cfgStatus} onChange={e => setCfgStatus(e.target.value)} placeholder="Open, In Progress, Done..." style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
+            <input value={cfgStatus} onChange={e => setCfgStatus(e.target.value)} placeholder="Open, In Progress, Done..." style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Assignee</label>
-            <input value={cfgAssignee} onChange={e => setCfgAssignee(e.target.value)} placeholder="currentUser() or username" style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
+            <input value={cfgAssignee} onChange={e => setCfgAssignee(e.target.value)} placeholder="currentUser() or username" style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Days Back</label>
-            <input type="number" value={cfgDays} onChange={e => setCfgDays(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
+            <input type="number" value={cfgDays} onChange={e => setCfgDays(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Extra JQL</label>
-            <input value={cfgJqlExtra} onChange={e => setCfgJqlExtra(e.target.value)} placeholder="AND labels = ..." style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
+            <input value={cfgJqlExtra} onChange={e => setCfgJqlExtra(e.target.value)} placeholder="AND labels = ..." style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }} />
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Display</label>
-            <select value={cfgJiraDisplay} onChange={e => setCfgJiraDisplay(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
+            <select value={cfgJiraDisplay} onChange={e => setCfgJiraDisplay(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
               <option value="count">Count (bar chart)</option>
               <option value="list">Issue List</option>
               <option value="status-breakdown">Status Breakdown</option>
@@ -1018,7 +1018,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
           </>)}
           {cfgType !== "kpi" && cfgType !== "jira" && !widget.config?.variables && (<>
             <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Data Source</label>
-            <select value={cfgTable ? "airtable" : (widget.config?.source || "none")} onChange={e => { if (e.target.value === "none") setCfgTable(""); }} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
+            <select value={cfgTable ? "airtable" : (widget.config?.source || "none")} onChange={e => { if (e.target.value === "none") setCfgTable(""); }} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
               <option value="none">None</option>
               <option value="airtable">Airtable</option>
               <option value="metrics">Metrics</option>
@@ -1026,7 +1026,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
             {(cfgTable || widget.config?.source === "airtable") && (<AirtableCascade cfgTable={cfgTable} setCfgTable={setCfgTable} cfgGroupBy={cfgGroupBy} setCfgGroupBy={setCfgGroupBy} cfgDisplayField={cfgDisplayField} setCfgDisplayField={setCfgDisplayField} cfgFilter={cfgFilter} setCfgFilter={setCfgFilter} cfgMaxRecords={cfgMaxRecords} setCfgMaxRecords={setCfgMaxRecords} cfgFields={cfgFields} />)}
           </>)}
           <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Chart Type</label>
-          <select value={cfgDisplay} onChange={e => setCfgDisplay(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
+          <select value={cfgDisplay} onChange={e => setCfgDisplay(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
             <option value="auto">Auto (based on data)</option>
             <option value="bar">Horizontal Bars</option>
             <option value="donut">Donut / Pie</option>
@@ -1037,7 +1037,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
             <option value="table">Data Table</option>
           </select>
           <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Theme</label>
-          <select value={cfgTheme} onChange={e => setCfgTheme(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
+          <select value={cfgTheme} onChange={e => setCfgTheme(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
             <option value="default">Default (Dark)</option>
             <option value="midnight">Midnight Blue</option>
             <option value="aurora">Aurora (Green/Teal)</option>
@@ -1049,7 +1049,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
             <option value="neon">Neon (Vivid)</option>
           </select>
           <label style={{ fontSize: "0.62rem", color: "var(--pencil)", fontWeight: 500, marginTop: 4 }}>Auto-refresh</label>
-          <select value={cfgRefresh} onChange={e => setCfgRefresh(e.target.value)} style={{ background: "#0d0d1a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#ffffff", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
+          <select value={cfgRefresh} onChange={e => setCfgRefresh(e.target.value)} style={{ background: "var(--bg)", border: "1px solid var(--rule)", borderRadius: 8, color: "var(--ink)", padding: "6px 10px", fontSize: "0.72rem", outline: "none", width: "100%", caretColor: "var(--accent)" }}>
             <option value="0">Off</option>
             <option value="1">Every 1 min</option>
             <option value="5">Every 5 min</option>
@@ -1061,7 +1061,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
           <button onClick={() => { if (window.confirm(`Remove "${widget.title}"?`)) { onRemove(); setConfigOpen(false); } }} style={{ marginTop: 4, padding: "5px 0", borderRadius: 8, border: `1px solid ${C.danger}`, background: "transparent", color: C.danger, fontSize: "0.62rem", cursor: "pointer" }}>Delete Widget</button>
         </div></div>
       )}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.1) transparent" }}>{content}</div>
+      <div className="dash-widget-body">{content}</div>
     </div>
   );
 }
@@ -1156,6 +1156,7 @@ export default function Dashboard() {
   const agents = useAgents();
   const metrics = useMetrics();
   useServerTabs(tabs, setTabs, setActiveIdx);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   const widgets = tabs[activeIdx]?.widgets || [];
 
@@ -1217,27 +1218,22 @@ export default function Dashboard() {
   const updateWidget = (id: string, w: Widget) => update(widgets.map(x => x.id === id ? w : x));
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Inter', -apple-system, system-ui, sans-serif", padding: "1.5rem 2rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+    <div className="page">
+      <div className="page-header">
         <div>
-          <h1 style={{ fontSize: "1.3rem", fontWeight: 700, margin: 0 }}>Live Operations</h1>
-          <p style={{ fontSize: "0.7rem", color: C.muted, margin: "2px 0 0" }}>Real-time visibility into your orchestration</p>
+          <h1>Agent Dashboard Builder</h1>
+          <p>Design and compose operational views for your agents.</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: "0.63rem", padding: "4px 10px", borderRadius: 12, background: "rgba(34,197,94,0.1)", color: C.ok, fontWeight: 600 }}>● Operational</span>
-          <button onClick={() => window.location.reload()} style={{ padding: "4px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontSize: "0.63rem", cursor: "pointer" }}>↻ Refresh</button>
+        <div className="page-actions">
+          <span className="badge badge--ok">● Operational</span>
+          <button className="btn" onClick={() => window.location.reload()}>↻ Refresh</button>
           {editing && (<>
-            <button onClick={undo} disabled={history.length === 0} style={{ padding: "4px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: history.length ? C.card : "transparent", color: history.length ? C.ink : C.dim, fontSize: "0.7rem", cursor: history.length ? "pointer" : "default", opacity: history.length ? 1 : 0.4 }}>← Undo</button>
-            <button onClick={redo} disabled={future.length === 0} style={{ padding: "4px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: future.length ? C.card : "transparent", color: future.length ? C.ink : C.dim, fontSize: "0.7rem", cursor: future.length ? "pointer" : "default", opacity: future.length ? 1 : 0.4 }}>Redo →</button>
+            <button className="btn" onClick={undo} disabled={history.length === 0}>↶ Undo</button>
+            <button className="btn" onClick={redo} disabled={future.length === 0}>↷ Redo</button>
           </>)}
-          <button onClick={() => setEditing(!editing)} style={{
-            padding: "4px 12px", borderRadius: 12, border: `1px solid ${editing ? C.gold : C.border}`,
-            background: editing ? "rgba(196,166,97,0.1)" : "transparent",
-            color: editing ? C.gold : C.muted, fontSize: "0.63rem", fontWeight: 600, cursor: "pointer",
-          }}>{editing ? "✓ Done" : "✎ Edit"}</button>
-          <button onClick={() => setShowTemplates(true)} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.accent, fontSize: "0.63rem", cursor: "pointer" }}>📂 Templates</button>
-          <button onClick={() => update(DEFAULT_WIDGETS)} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid ${C.border}`, background: "transparent", color: C.ok, fontSize: "0.63rem", cursor: "pointer" }}>Reset Default</button>
-          <button onClick={() => {
+          <button className={`btn ${editing ? "btn--active" : ""}`} onClick={() => setEditing(!editing)}>{editing ? "✓ Done" : "✎ Edit"}</button>
+          <button className="btn" onClick={() => setShowTemplates(true)}>✦ Templates</button>
+          <button className="btn btn--primary" onClick={() => {
             const input = document.querySelector("input[placeholder*='Build'],input[placeholder*='Ask']") as HTMLInputElement;
             if (input) {
               const nativeSet = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
@@ -1245,53 +1241,34 @@ export default function Dashboard() {
               input.dispatchEvent(new Event('input', { bubbles: true }));
               setTimeout(() => input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })), 50);
             }
-          }} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid rgba(99,102,241,0.3)`, background: "rgba(99,102,241,0.08)", color: "var(--accent)", fontSize: "0.63rem", cursor: "pointer" }}>✨ Suggest Layout</button>
+          }}>✨ Suggest</button>
         </div>
       </div>
 
       <ChatBar widgets={widgets} onWidgetsChange={(w) => update(w)} editing={editing} tabs={tabs} activeIdx={activeIdx} />
 
-      {/* Tabs */}
-      <div style={{ display: "flex", alignItems: "center", gap: 2, marginBottom: "0.8rem", borderBottom: `1px solid ${C.border}`, paddingBottom: 6, overflowX: "auto", scrollbarWidth: "none" }}>
+      <div className="tabs">
         {tabs.map((t, i) => (
-          <button key={i} onClick={() => setActiveIdx(i)} onDoubleClick={() => editing && renameTab(i)}
-            style={{ padding: "4px 12px", borderRadius: "8px 8px 0 0", border: "none", background: i === activeIdx ? C.card : "transparent", color: i === activeIdx ? C.gold : C.muted, fontSize: "0.68rem", fontWeight: i === activeIdx ? 600 : 400, cursor: "pointer", position: "relative", whiteSpace: "nowrap", flexShrink: 0 }}>
+          <button key={i} className={`tab ${i === activeIdx ? "tab--active" : ""}`} onClick={() => setActiveIdx(i)} onDoubleClick={() => editing && renameTab(i)}>
             {t.name}
             {editing && tabs.length > 1 && i === activeIdx && (
-              <span onClick={(e) => { e.stopPropagation(); removeTab(i); }} style={{ marginLeft: 6, color: C.danger, fontSize: "0.55rem", cursor: "pointer" }}>✕</span>
+              <span className="dash-tab-close" onClick={(e) => { e.stopPropagation(); removeTab(i); }}>✕</span>
             )}
           </button>
         ))}
-        {editing && <button onClick={addTab} style={{ padding: "4px 8px", border: "none", background: "transparent", color: C.muted, fontSize: "0.68rem", cursor: "pointer" }}>+ Tab</button>}
+        {editing && <button className="tab" onClick={addTab}>+ Add Tab</button>}
       </div>
 
-      <GridLayout
-        className="dashboard-grid"
-        layout={widgets.map((w, i) => ({ i: w.id, x: (i * Number(w.size || 2)) % 12, y: Math.floor((i * Number(w.size || 2)) / 12) * 4, w: Math.min(Number(w.size || 2) * 2, 12), h: 4 }))}
-        cols={12}
-        rowHeight={60}
-        width={1100}
-        isDraggable={editing}
-        isResizable={editing}
-        onLayoutChange={(layout) => {
-          if (!editing) return;
-          const updated = widgets.map(w => {
-            const l = layout.find(item => item.i === w.id);
-            if (l) return { ...w, size: String(Math.max(1, Math.round(l.w / 2))) };
-            return w;
-          });
-          update(updated);
-        }}
-      >
+      <div ref={gridRef} className="dash-grid">
         {widgets.map(w => (
-          <div key={w.id}>
+          <div key={w.id} className={`dash-grid-item dash-grid-item--${w.size}`}>
             <WidgetCard widget={w} agents={agents} metrics={metrics} editing={editing}
               onRemove={() => removeWidget(w.id)}
               onResize={(s) => resizeWidget(w.id, s)}
               onUpdate={(updated) => updateWidget(w.id, updated)} />
           </div>
         ))}
-      </GridLayout>
+      </div>
       {editing && <AddWidget onAdd={addWidget} />}
       {showTemplates && <TemplatePicker onClose={() => setShowTemplates(false)} onSelect={(id) => {
         fetch(`/v1/dashboard/demos/${id}`, { credentials: "same-origin" })

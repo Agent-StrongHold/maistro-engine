@@ -313,7 +313,7 @@ export default function Missions() {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div style={{ minHeight: "calc(100vh - 60px)" }}>
+    <div className="page">
       <PageHeader
         title={pmPoc ? PM_NAV_MISSIONS : "Missions"}
         subtitle={
@@ -483,8 +483,8 @@ export default function Missions() {
                 )}
                 {active.status === "running" && (
                   <>
-                    <button onClick={() => void patchStatus(active.id, "completed")} style={{ ...btnBase, background: "#5a9a4a", color: "#fff", borderColor: "#5a9a4a" }}>Complete</button>
-                    <button onClick={() => void patchStatus(active.id, "failed")} style={{ ...btnBase, background: "#c4452a", color: "#fff", borderColor: "#c4452a" }}>Fail</button>
+                    <button onClick={() => void patchStatus(active.id, "completed")} style={{ ...btnBase, background: "#5a9a4a", color: "var(--ink)", borderColor: "#5a9a4a" }}>Complete</button>
+                    <button onClick={() => void patchStatus(active.id, "failed")} style={{ ...btnBase, background: "#c4452a", color: "var(--ink)", borderColor: "#c4452a" }}>Fail</button>
                     <button onClick={() => void patchStatus(active.id, "pending")} style={btnBase}>Cancel</button>
                   </>
                 )}

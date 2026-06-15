@@ -1,8 +1,18 @@
 import { test as base, expect } from "@playwright/test";
 
 const test = base.extend<{ setupDone: boolean }>({
-  setupDone: [async ({ page, baseURL }, use) => {
-    const res = await page.goto("/chat");
+  setupDone: [async ({ page, context, baseURL }, use) => {
+    // Set auth cookies for the deployed environment
+    if (process.env.ACCESS_TOKEN && baseURL) {
+      const url = new URL(baseURL);
+      await context.addCookies([
+        { name: "access_token", value: process.env.ACCESS_TOKEN, domain: url.hostname, path: "/" },
+        ...(process.env.SID ? [{ name: "sid", value: process.env.SID, domain: url.hostname, path: "/" }] : []),
+      ]);
+    }
+
+    // Check if first-boot setup is needed
+    const res = await page.goto("./chat");
     const body = await page.textContent("body");
     if (body?.includes("Setup") || body?.includes("First boot")) {
       await page.locator('input[placeholder="Hive Conductor"]').fill("Test Hive");

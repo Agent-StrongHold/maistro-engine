@@ -1,6 +1,8 @@
-import "./wdpr-parks-next-theme.css";
-import "./app-shell.css";
-import "./index.css";
+import "./wdpr-parks-next-theme.css"; // 1. Hyperion primitives (--color-*, --theme-color-*)
+import "./theme.css";               // 2. App theme (maps --ink, --paper etc → Hyperion)
+import "./components.css";           // 3. Shared component patterns
+import "./app-shell.css";           // 4. Shell layout
+import "./index.css";               // 5. Resets
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";

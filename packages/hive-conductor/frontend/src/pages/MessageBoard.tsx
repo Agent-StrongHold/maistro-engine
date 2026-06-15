@@ -178,7 +178,7 @@ export default function MessageBoard() {
     : messages;
 
   return (
-    <div style={{ minHeight: "calc(100vh - 60px)" }}>
+    <div className="page">
       <PageHeader
         title="Message Board"
         subtitle={`${unreadCount} unread — alerts and updates from your agents`}

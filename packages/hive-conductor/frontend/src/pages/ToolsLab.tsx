@@ -40,7 +40,7 @@ export default function ToolsLab() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Inter', -apple-system, system-ui, sans-serif", padding: "1.5rem 2rem" }}>
+    <div className="page">
       <div style={{ marginBottom: "1.25rem" }}>
         <h1 style={{ fontSize: "1.3rem", fontWeight: 700, margin: 0, fontFamily: "Georgia, serif" }}>Tools Lab</h1>
         <p style={{ fontSize: "0.7rem", color: C.muted, margin: "2px 0 0" }}>Eval, workflow, and observability tools — lazy-started on demand</p>
@@ -60,14 +60,14 @@ export default function ToolsLab() {
             </div>
             <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
               {tool.status === "stopped" && (
-                <button onClick={() => launch(tool.id)} style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: C.acc, color: "#fff", fontSize: "0.66rem", fontWeight: 600, cursor: "pointer" }}>Launch</button>
+                <button onClick={() => launch(tool.id)} style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: C.acc, color: "var(--ink)", fontSize: "0.66rem", fontWeight: 600, cursor: "pointer" }}>Launch</button>
               )}
               {tool.status === "starting" && (
                 <span style={{ fontSize: "0.66rem", color: C.gold }}>Starting...</span>
               )}
               {tool.status === "running" && (
                 <>
-                  {tool.url && <a href={tool.url} target="_blank" rel="noreferrer" style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: C.acc, color: "#fff", fontSize: "0.66rem", fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>Open</a>}
+                  {tool.url && <a href={tool.url} target="_blank" rel="noreferrer" style={{ padding: "5px 14px", borderRadius: 6, border: "none", background: C.acc, color: "var(--ink)", fontSize: "0.66rem", fontWeight: 600, cursor: "pointer", textDecoration: "none" }}>Open</a>}
                   <button onClick={() => stop(tool.id)} style={{ padding: "5px 14px", borderRadius: 6, border: `1px solid ${C.border}`, background: "transparent", color: C.danger, fontSize: "0.66rem", cursor: "pointer" }}>Stop</button>
                 </>
               )}

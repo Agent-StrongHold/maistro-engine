@@ -124,7 +124,7 @@ export default function AuditLog() {
   const handleRefresh = () => { load(); };
 
   return (
-    <div style={{ minHeight: "calc(100vh - 60px)" }}>
+    <div className="page">
       <PageHeader
         title="Audit Log"
         subtitle={`${entries.length} entries — a record of every action taken in the system`}

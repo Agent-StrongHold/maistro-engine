@@ -311,7 +311,7 @@ export default function Agents() {
   };
 
   return (
-    <div style={{ minHeight: "calc(100vh - 60px)" }}>
+    <div className="page">
       <PageHeader
         title="The Hive"
         subtitle={`${agents.length} agents — AI workers that handle your tasks`}

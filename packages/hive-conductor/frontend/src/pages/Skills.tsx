@@ -58,7 +58,7 @@ export default function Skills() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <h2 style={{ fontFamily: "var(--hand)", fontSize: 22, fontWeight: 600, margin: "0 0 8px" }}>{sel.name}</h2>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <button className="btn" style={{ fontSize: 9, padding: "2px 10px", background: sel.enabled ? "var(--danger, #c4452a)" : "var(--ok, #5a9a4a)", color: "#fff", border: "none" }} onClick={() => void toggleSkill(sel.id)}>{sel.enabled ? "Disable" : "Enable"}</button>
+              <button className="btn" style={{ fontSize: 9, padding: "2px 10px", background: sel.enabled ? "var(--danger, #c4452a)" : "var(--ok, #5a9a4a)", color: "var(--ink)", border: "none" }} onClick={() => void toggleSkill(sel.id)}>{sel.enabled ? "Disable" : "Enable"}</button>
               <span className="btn" style={{ fontSize: 9, padding: "2px 8px" }} onClick={() => setSel(null)}>close</span>
             </div>
           </div>

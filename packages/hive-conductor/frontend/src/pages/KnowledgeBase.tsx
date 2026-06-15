@@ -116,7 +116,7 @@ Current memories:\n${entries.slice(0, 15).map(e => `- [${e.namespace}] ${e.value
   const totalFields = Object.values(PROFILE_SECTIONS).reduce((n, s) => n + s.fields.length, 0);
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Inter', -apple-system, system-ui, sans-serif", padding: "1.5rem 2rem" }}>
+    <div className="page">
       <div style={{ marginBottom: "1rem" }}>
         <h1 style={{ fontSize: "1.3rem", fontWeight: 700, margin: 0, fontFamily: "Georgia, serif" }}>Inner Temple</h1>
         <p style={{ fontSize: "0.7rem", color: C.muted, margin: "2px 0 0" }}>Your personal chamber — identity, preferences, and everything Fantasia knows about you</p>
@@ -216,7 +216,7 @@ Current memories:\n${entries.slice(0, 15).map(e => `- [${e.namespace}] ${e.value
                 style={{ width: "100%", border: "none", background: "transparent", color: C.ink, fontSize: "0.76rem", resize: "vertical", outline: "none", fontFamily: "inherit" }} />
               <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}>
                 <input value={newTags} onChange={e => setNewTags(e.target.value)} placeholder="tags" style={{ flex: 1, border: `1px solid ${C.border}`, background: "transparent", borderRadius: 6, padding: "3px 8px", color: C.ink, fontSize: "0.66rem", outline: "none" }} />
-                <button onClick={addEntry} disabled={!newContent.trim()} style={{ padding: "3px 10px", borderRadius: 6, border: "none", background: C.acc, color: "#fff", fontSize: "0.66rem", fontWeight: 600, cursor: "pointer", opacity: newContent.trim() ? 1 : 0.4 }}>Save</button>
+                <button onClick={addEntry} disabled={!newContent.trim()} style={{ padding: "3px 10px", borderRadius: 6, border: "none", background: C.acc, color: "var(--ink)", fontSize: "0.66rem", fontWeight: 600, cursor: "pointer", opacity: newContent.trim() ? 1 : 0.4 }}>Save</button>
               </div>
             </div>
             {loading ? <div style={{ color: C.muted, fontSize: "0.72rem" }}>Loading...</div> :
