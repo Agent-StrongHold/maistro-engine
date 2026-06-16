@@ -225,11 +225,11 @@ def isolated_workspace_factory(
 
 def worktree_workspace_factory(
     *,
-    repo_url: str,  # noqa: ARG001 — ignored; worktree uses the local checkout
+    repo_url: str,  # ignored; worktree uses the local checkout
     patch: str | None = None,
     base_commit: str | None = None,
     base_ref: str | None = None,
-    image_ref: str | None = None,  # noqa: ARG001 — no image in worktree mode
+    image_ref: str | None = None,  # ignored; no image in worktree mode
 ) -> CampaignWorkspace:
     """Create a trusted-development workspace backed by a local git worktree.
 

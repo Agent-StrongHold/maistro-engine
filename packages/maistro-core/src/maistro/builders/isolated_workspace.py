@@ -6,6 +6,7 @@ import asyncio
 import os
 import re
 import threading
+import uuid
 from collections.abc import Coroutine
 from pathlib import PurePosixPath
 from typing import Any, TypeVar, cast
@@ -21,7 +22,9 @@ _OUTPUT_CAP = 1 * 1024 * 1024
 _MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
 _MAX_PATCH_BYTES = 32 * 1024 * 1024
 _WORKSPACE = PurePosixPath("/workspace")
-_ARCHIVE = "/tmp/maistro-repo.tar"
+# Directories the VM sandbox is permitted to write to.  This is a sandbox
+# access-control policy, not a temp-file path — bandit B108 does not apply.
+_VM_WRITABLE_DIRS = ("/workspace", "/tmp")  # nosec B108
 _BLOCKED_PATTERNS = ("sudo", "git push", "git force", "mount ", "umount ", "mkfs", "dd if=")
 _COMMIT_SHA = re.compile(r"^[0-9a-fA-F]{40,64}$")
 _GIT_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$")
@@ -105,6 +108,10 @@ class IsolatedBuilderSandbox:
         image = image_ref or os.environ.get("MAISTRO_BUILDERS_IMAGE", "maistro-builders:latest")
         materializer: SandboxInstance | None = None
         execution: SandboxInstance | None = None
+        # Unique per-call names prevent any cross-materialization path collisions.
+        _run = uuid.uuid4().hex
+        archive_path = f"/tmp/maistro-repo-{_run}.tar"
+        git_template_dir = f"/tmp/maistro-git-tmpl-{_run}"
 
         try:
             materializer_config = active_selector.build_config(
@@ -112,14 +119,14 @@ class IsolatedBuilderSandbox:
                 image_ref=image,
                 network=True,
                 lifetime_s=900,
-                writable_paths=["/workspace", "/tmp"],
+                writable_paths=list(_VM_WRITABLE_DIRS),
             )
             materializer = bridge.call(materializer_backend.spawn(config=materializer_config))
             _checked_exec(
                 bridge,
                 materializer_backend,
                 materializer,
-                ["mkdir", "-p", "/tmp/empty-git-template"],
+                ["mkdir", "-p", git_template_dir],
             )
             clone_command = [
                 "env",
@@ -136,7 +143,7 @@ class IsolatedBuilderSandbox:
                 "--no-recurse-submodules",
                 "--depth=1",
                 "--single-branch",
-                "--template=/tmp/empty-git-template",
+                f"--template={git_template_dir}",
             ]
             if base_ref is not None:
                 clone_command.extend(["--branch", base_ref])
@@ -193,14 +200,14 @@ class IsolatedBuilderSandbox:
                 bridge,
                 materializer_backend,
                 materializer,
-                ["tar", "-C", "/workspace/repo", "-cf", _ARCHIVE, "."],
+                ["tar", "-C", "/workspace/repo", "-cf", archive_path, "."],
                 timeout_s=300,
             )
             archive_size = _checked_exec(
                 bridge,
                 materializer_backend,
                 materializer,
-                ["stat", "-c", "%s", _ARCHIVE],
+                ["stat", "-c", "%s", archive_path],
             )
             try:
                 size_bytes = int(archive_size.stdout.strip())
@@ -210,7 +217,7 @@ class IsolatedBuilderSandbox:
                 raise ValueError(
                     f"Repository archive exceeds the {_MAX_ARCHIVE_BYTES}-byte Builders limit"
                 )
-            archive = bridge.call(materializer_backend.read_file(materializer, _ARCHIVE))
+            archive = bridge.call(materializer_backend.read_file(materializer, archive_path))
             bridge.call(materializer_backend.destroy(materializer))
             materializer = None
 
@@ -219,22 +226,22 @@ class IsolatedBuilderSandbox:
                 image_ref=image,
                 network=False,
                 lifetime_s=21600,
-                writable_paths=["/workspace", "/tmp"],
+                writable_paths=list(_VM_WRITABLE_DIRS),
             )
             execution = bridge.call(execution_backend.spawn(config=execution_config))
-            bridge.call(execution_backend.write_file(execution, _ARCHIVE, archive))
+            bridge.call(execution_backend.write_file(execution, archive_path, archive))
             _checked_exec(
                 bridge,
                 execution_backend,
                 execution,
-                ["tar", "-C", "/workspace", "-xf", _ARCHIVE],
+                ["tar", "-C", "/workspace", "-xf", archive_path],
                 timeout_s=300,
             )
             _checked_exec(
                 bridge,
                 execution_backend,
                 execution,
-                ["rm", "--", _ARCHIVE],
+                ["rm", "--", archive_path],
             )
             _harden_git_config(bridge, execution_backend, execution)
             execution.metadata["base_commit"] = resolved_base
@@ -248,10 +255,11 @@ class IsolatedBuilderSandbox:
                 raise RuntimeError("Sandbox returned an invalid Git runtime version")
             execution.metadata["git_version"] = git_version
             if patch:
+                replay_patch = f"/tmp/maistro-replay-{_run}.patch"
                 bridge.call(
                     execution_backend.write_file(
                         execution,
-                        "/tmp/maistro-replay.patch",
+                        replay_patch,
                         patch.encode("utf-8"),
                     )
                 )
@@ -259,14 +267,14 @@ class IsolatedBuilderSandbox:
                     bridge,
                     execution_backend,
                     execution,
-                    ["git", "apply", "--binary", "--whitespace=nowarn", "/tmp/maistro-replay.patch"],
+                    ["git", "apply", "--binary", "--whitespace=nowarn", replay_patch],
                     timeout_s=300,
                 )
                 _checked_exec(
                     bridge,
                     execution_backend,
                     execution,
-                    ["rm", "--", "/tmp/maistro-replay.patch"],
+                    ["rm", "--", replay_patch],
                 )
             return cls(
                 backend=execution_backend,
@@ -337,7 +345,7 @@ class IsolatedBuilderSandbox:
         patch_bytes = patch.encode("utf-8")
         if len(patch_bytes) > _MAX_PATCH_BYTES:
             raise ValueError(f"Builders candidate patch exceeds {_MAX_PATCH_BYTES} bytes")
-        patch_path = "/tmp/maistro-candidate.patch"
+        patch_path = f"/tmp/maistro-patch-{uuid.uuid4().hex}.patch"
         self._bridge.call(self._backend.write_file(self._instance, patch_path, patch_bytes))
         try:
             result = self._exec(
@@ -483,9 +491,10 @@ def _harden_git_config(
     backend: SandboxProtocol,
     instance: SandboxInstance,
 ) -> None:
-    _checked_exec(bridge, backend, instance, ["mkdir", "-p", "/tmp/maistro-disabled-hooks"])
+    hooks_dir = f"/tmp/maistro-hooks-{uuid.uuid4().hex}"
+    _checked_exec(bridge, backend, instance, ["mkdir", "-p", hooks_dir])
     settings = (
-        ("core.hooksPath", "/tmp/maistro-disabled-hooks"),
+        ("core.hooksPath", hooks_dir),
         ("credential.helper", ""),
         ("protocol.file.allow", "never"),
         ("submodule.recurse", "false"),

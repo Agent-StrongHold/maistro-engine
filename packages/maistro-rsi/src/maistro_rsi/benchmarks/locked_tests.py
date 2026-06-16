@@ -32,8 +32,7 @@ def _parse_counts(output: str) -> tuple[int, int]:
 
 def run(test_path: str, extra_args: list[str]) -> int:
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", test_path, "-q", "--tb=no", "--no-header"]
-        + extra_args,
+        [sys.executable, "-m", "pytest", test_path, "-q", "--tb=no", "--no-header", *extra_args],
         capture_output=True,
         text=True,
     )
