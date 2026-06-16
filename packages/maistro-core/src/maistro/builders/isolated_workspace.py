@@ -110,8 +110,8 @@ class IsolatedBuilderSandbox:
         execution: SandboxInstance | None = None
         # Unique per-call names prevent any cross-materialization path collisions.
         _run = uuid.uuid4().hex
-        archive_path = f"/tmp/maistro-repo-{_run}.tar"
-        git_template_dir = f"/tmp/maistro-git-tmpl-{_run}"
+        archive_path = f"/tmp/maistro-repo-{_run}.tar"  # nosec B108 — VM-internal path, not host filesystem; UUID prevents collisions
+        git_template_dir = f"/tmp/maistro-git-tmpl-{_run}"  # nosec B108 — same: VM-internal, UUID-scoped
 
         try:
             materializer_config = active_selector.build_config(
@@ -255,7 +255,7 @@ class IsolatedBuilderSandbox:
                 raise RuntimeError("Sandbox returned an invalid Git runtime version")
             execution.metadata["git_version"] = git_version
             if patch:
-                replay_patch = f"/tmp/maistro-replay-{_run}.patch"
+                replay_patch = f"/tmp/maistro-replay-{_run}.patch"  # nosec B108 — VM-internal path, UUID-scoped
                 bridge.call(
                     execution_backend.write_file(
                         execution,
@@ -345,7 +345,7 @@ class IsolatedBuilderSandbox:
         patch_bytes = patch.encode("utf-8")
         if len(patch_bytes) > _MAX_PATCH_BYTES:
             raise ValueError(f"Builders candidate patch exceeds {_MAX_PATCH_BYTES} bytes")
-        patch_path = f"/tmp/maistro-patch-{uuid.uuid4().hex}.patch"
+        patch_path = f"/tmp/maistro-patch-{uuid.uuid4().hex}.patch"  # nosec B108 — VM-internal, UUID-scoped
         self._bridge.call(self._backend.write_file(self._instance, patch_path, patch_bytes))
         try:
             result = self._exec(
@@ -491,7 +491,7 @@ def _harden_git_config(
     backend: SandboxProtocol,
     instance: SandboxInstance,
 ) -> None:
-    hooks_dir = f"/tmp/maistro-hooks-{uuid.uuid4().hex}"
+    hooks_dir = f"/tmp/maistro-hooks-{uuid.uuid4().hex}"  # nosec B108 — VM-internal path, UUID-scoped
     _checked_exec(bridge, backend, instance, ["mkdir", "-p", hooks_dir])
     settings = (
         ("core.hooksPath", hooks_dir),

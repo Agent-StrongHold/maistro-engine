@@ -50,7 +50,7 @@ class RecordingVmBackend:
         self.files[(instance.id, path)] = content
 
     async def read_file(self, instance: SandboxInstance, path: str) -> bytes:
-        if path == "/tmp/maistro-repo.tar":
+        if path.endswith(".tar"):  # UUID-named archive; path changes per call
             return b"archive"
         return self.files[(instance.id, path)]
 
@@ -97,13 +97,16 @@ def test_replay_patch_is_applied_only_in_offline_vm() -> None:
         selector=_selector(backend),
     )
     try:
-        assert backend.files[("vm-2", "/tmp/maistro-replay.patch")].startswith(b"diff --git")
+        replay_key = next(
+            k for k in backend.files if k[0] == "vm-2" and "maistro-replay" in k[1]
+        )
+        assert backend.files[replay_key].startswith(b"diff --git")
         apply_instance, apply_command = next(
             item for item in backend.commands if item[1][:2] == ["git", "apply"]
         )
         assert apply_instance == "vm-2"
         assert backend.configs[1].network is False
-        assert "/tmp/maistro-replay.patch" in apply_command
+        assert replay_key[1] in apply_command
     finally:
         sandbox.close()
 
@@ -159,8 +162,9 @@ def test_candidate_patch_is_applied_only_in_offline_vm() -> None:
         )
         assert apply_instance == "vm-2"
         assert backend.configs[1].network is False
-        assert backend.files[("vm-2", "/tmp/maistro-candidate.patch")].startswith(b"diff --git")
-        assert apply_command[-1] == "/tmp/maistro-candidate.patch"
+        patch_path = apply_command[-1]
+        assert "maistro-patch" in patch_path and patch_path.endswith(".patch")
+        assert backend.files[("vm-2", patch_path)].startswith(b"diff --git")
     finally:
         sandbox.close()
 

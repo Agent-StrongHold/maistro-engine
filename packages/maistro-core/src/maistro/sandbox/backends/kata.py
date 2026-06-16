@@ -19,7 +19,7 @@ from uuid import uuid4
 from maistro.sandbox.protocol import ExecResult, SandboxConfig, SandboxInstance
 from maistro.tools.sandbox.env_sanitize import sanitize_env
 
-_ALLOWED_FILE_ROOTS = (PurePosixPath("/workspace"), PurePosixPath("/tmp"))
+_ALLOWED_FILE_ROOTS = (PurePosixPath("/workspace"), PurePosixPath("/tmp"))  # nosec B108 — access-control allowlist, not a file creation; the /tmp entry defines what the sandbox is *permitted* to access, not a predictable temp path on the host
 
 
 class KataSandboxBackend:
@@ -92,7 +92,7 @@ class KataSandboxBackend:
                 "uid=65532,gid=65532,mode=0700"
             ),
             "--tmpfs",
-            "/tmp:rw,nosuid,nodev,size=256m,uid=65532,gid=65532,mode=0700",
+            "/tmp:rw,nosuid,nodev,size=256m,uid=65532,gid=65532,mode=0700",  # nosec B108 — Docker --tmpfs mount spec for the container filesystem, not a host path; the /tmp here belongs to the isolated container, not the host
             "--label",
             "maistro.sandbox=true",
             "--label",
