@@ -44,8 +44,11 @@ builders = [
     "anthropic>=0.28",
     "maistro-bootstrap[builders]",
 ]
+rsi = [
+    "maistro-rsi>=0.1",
+]
 all = [
-    "maistro-core[llm,sandbox,observability,tui,builders]",
+    "maistro-core[llm,sandbox,observability,tui,builders,rsi]",
 ]
 dev = [
     "pytest>=8.3",

@@ -22,7 +22,7 @@ import structlog
 
 from maistro_evolve.harness import EvalHarness
 from maistro_evolve.tournament import EloTournament, GenomeBattle
-from maistro_evolve.types import EvalResult, PipelineGenome
+from maistro_evolve.types import EvalFidelity, EvalResult, PipelineGenome
 from maistro_rsi.benchmarks import RSI_BENCHMARKS
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quota_burn import QuotaBurnScheduler
@@ -41,7 +41,7 @@ class RsiCycleConfig:
     workspace_root: str = "/tmp/maistro-workspace/rsi"
     benchmarks: list[str] = field(default_factory=lambda: list(DEFAULT_BENCHMARKS))
     open_prs: bool = False
-    base_branch: str = "main"
+    base_branch: str = "develop"
 
 
 @dataclass
@@ -58,16 +58,30 @@ class RsiCycleResult:
         return sum(1 for b in self.battles if b.winner_id == b.genome_b_id)
 
     @property
-    def improved(self) -> bool:
+    def candidate_outperformed(self) -> bool:
         return self.branch_result.tests_passed and self.benchmarks_won > len(self.battles) / 2
 
+    @property
+    def promotion_eligible(self) -> bool:
+        results = [*self.baseline_results, *self.candidate_results]
+        return (
+            bool(results)
+            and all(result.promotion_eligible for result in results)
+            and self.branch_result.quarantine is not None
+            and self.branch_result.quarantine.cleared
+        )
 
-def build_harness(use_real_benchmarks: bool = True) -> EvalHarness:
+    @property
+    def improved(self) -> bool:
+        return self.candidate_outperformed and self.promotion_eligible
+
+
+def build_harness(benchmark_fidelity: EvalFidelity = EvalFidelity.PROXY) -> EvalHarness:
     """An `EvalHarness` carrying both maistro-evolve's stock benchmarks and
     the longer-horizon ones added here (e.g. SWE-Bench Pro)."""
-    harness = EvalHarness(use_real_benchmarks=use_real_benchmarks)
+    harness = EvalHarness(benchmark_fidelity=benchmark_fidelity)
     for name, runner in RSI_BENCHMARKS.items():
-        harness.register_benchmark(name, runner)
+        harness.register_benchmark(name, runner, fidelity=EvalFidelity.PROXY)
     return harness
 
 
@@ -94,6 +108,11 @@ class RsiCycle:
         candidate: PipelineGenome,
         available_models: list[str],
     ) -> RsiCycleResult:
+        if self._config.open_prs:
+            raise RuntimeError(
+                "Direct PR creation is disabled for autonomous RSI cycles; "
+                "publish proposal artifacts through the external approval gate"
+            )
         run_id = uuid.uuid4().hex[:10]
         workspace = f"{self._config.workspace_root}/{run_id}"
         model = await self._scheduler.next_model(available_models)
@@ -121,6 +140,15 @@ class RsiCycle:
                 candidate,
                 benchmarks=self._config.benchmarks,
             )
+            expected = set(self._config.benchmarks)
+            baseline_seen = {result.benchmark for result in baseline_results}
+            candidate_seen = {result.benchmark for result in candidate_results}
+            if baseline_seen != expected or candidate_seen != expected:
+                raise RuntimeError(
+                    "RSI evaluation incomplete; "
+                    f"expected={sorted(expected)} baseline={sorted(baseline_seen)} "
+                    f"candidate={sorted(candidate_seen)}"
+                )
 
             battles = [
                 self._tournament.record_battle(
@@ -152,6 +180,8 @@ class RsiCycle:
             tests_passed=branch_result.tests_passed,
             benchmarks_won=result.benchmarks_won,
             benchmarks_total=len(battles),
+            candidate_outperformed=result.candidate_outperformed,
+            promotion_eligible=result.promotion_eligible,
             improved=result.improved,
             opened_pr=branch_result.pr_url is not None,
         )

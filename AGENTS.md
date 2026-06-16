@@ -4,6 +4,14 @@
 
 Shared Python runtime and monorepo substrate for AI agent platforms: orchestrator, agents, memory, security, skills, tools, and related packages. Not an end-user product — downstream products (Conductor, Stronghold, Canvas) consume this repo. See [README.md](README.md) and [docs/adr/](docs/adr/) for governance and ADRs.
 
+## Current focus — read before substantial work
+
+- Active work happens on **`develop`**.
+- Read and update [`docs/plans/MAISTRO-LAUNCH-BUILDERS-RSI-SECURITY-PLAN.md`](docs/plans/MAISTRO-LAUNCH-BUILDERS-RSI-SECURITY-PLAN.md). It is the plan of record for Hacker News launch readiness, isolated Builders mode, RSI/Evolve self-improvement, portable Git in sandboxes, and security-posture reconciliation.
+- Read [`.cursor/context/maistro-focus.md`](.cursor/context/maistro-focus.md) for the concise durable constraints.
+- Do not treat a git worktree as a security sandbox, a Docker container as a microVM, or heuristic benchmark adapters as real benchmarks.
+- Security and deployment claims require a wired runtime control plus tests.
+
 ## Stack
 
 - Python **3.12+** (strict typing with mypy)

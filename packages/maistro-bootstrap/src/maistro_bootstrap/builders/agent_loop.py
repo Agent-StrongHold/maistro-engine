@@ -82,9 +82,9 @@ class AgentLoopConfig:
     model: str | None = None
     worker: str = "frank"
     system_prompt: str = (
-        "You are a precise coding assistant working inside an isolated git worktree. "
+        "You are a precise coding assistant working inside a disposable offline VM. "
         "Use the provided tools to read files, write changes, and run commands. "
-        "Always confirm destructive actions before executing them. "
+        "Work autonomously inside the workspace. "
         "Never access paths outside the workspace root."
     )
     tool_definitions: list[dict[str, Any]] = field(default_factory=list)
@@ -98,9 +98,8 @@ def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
 
     Structured tools (run_tests, run_lint, git_status, git_diff) map to fixed
     argv lists executed with shell=False — no LLM-controlled string reaches the
-    shell.  run_command is retained for flexibility but is narrowed: the sandbox
-    applies metachar rejection + shlex parsing + path-escape checks, and callers
-    must set requires_human_approval=true for anything outside the common cases.
+    shell. run_command is retained for full coding-shell flexibility and executes
+    autonomously only when the controller supplied a VM-grade sandbox.
     """
     return [
         {
@@ -158,20 +157,14 @@ def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
             "name": "run_command",
             "description": (
                 "Run an arbitrary command in the sandbox. "
-                "Shell metacharacters (;|&<>`$\\) are rejected. "
                 "Use structured tools (run_tests, run_lint, git_status) when possible. "
-                "Set requires_human_approval=true for any destructive or network operation."
+                "Full shell syntax runs autonomously inside the disposable offline VM."
             ),
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "cmd": {"type": "string"},
                     "timeout": {"type": "integer", "default": 30},
-                    "requires_human_approval": {
-                        "type": "boolean",
-                        "description": "Set true for destructive/network commands.",
-                        "default": False,
-                    },
                 },
                 "required": ["cmd"],
             },
@@ -222,11 +215,14 @@ def _dispatch_tool(session: BuilderSession, name: str, inputs: dict[str, Any]) -
         if result is not None:
             return result
         if name == "run_command":
-            if inputs.get("requires_human_approval"):
-                logger.warning("run_command flagged for human approval — cmd=%r", inputs["cmd"])
+            if getattr(sandbox, "isolation_tier", "") != "vm":
+                logger.warning(
+                    "run_command refused outside VM-grade sandbox backend=%s",
+                    getattr(sandbox, "backend_name", "unknown"),
+                )
                 return (
-                    f"[REQUIRES_HUMAN_APPROVAL] Command not executed automatically: {inputs['cmd']!r}. "
-                    "Confirm in the TUI to proceed."
+                    "[REFUSED] Arbitrary commands run autonomously only inside a VM-grade "
+                    "Builders sandbox."
                 )
             return sandbox.run_command(inputs["cmd"], timeout=inputs.get("timeout", 30))
     except Exception as exc:

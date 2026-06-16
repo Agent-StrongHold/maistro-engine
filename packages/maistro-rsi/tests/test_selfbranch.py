@@ -144,8 +144,8 @@ class TestRunSelfBranchAttempt:
         assert result.tests_passed is False
 
     @pytest.mark.asyncio
-    async def test_pr_opened_only_when_open_pr_true_and_tests_pass(self, patch_git_ops):
-        """selfbranch-5: PR creation requires open_pr=True AND a passing test command."""
+    async def test_pr_requires_open_pr_tests_and_cleared_quarantine(self, patch_git_ops):
+        """selfbranch-5: PR creation requires open_pr, passing tests, and cleared quarantine."""
         fake = patch_git_ops
         attempt = new_attempt("https://github.com/org/repo.git", "pytest -q")
 
@@ -172,7 +172,7 @@ class TestRunSelfBranchAttempt:
         assert r2.pr_url is None
         assert "create_pr" not in fake.calls
 
-        # open_pr=True, tests pass -> PR opened
+        # open_pr=True, tests pass, no quarantine -> no PR
         fake.calls.clear()
         r3 = await run_self_branch_attempt(
             FakeSandbox(exec_result=(0, "ok")),
@@ -181,8 +181,8 @@ class TestRunSelfBranchAttempt:
             _noop_patch,
             open_pr=True,
         )
-        assert r3.pr_url == "https://github.com/org/repo/pull/1"
-        assert "create_pr" in fake.calls
+        assert r3.pr_url is None
+        assert "create_pr" not in fake.calls
 
     @pytest.mark.asyncio
     async def test_diff_reflects_captured_git_diff_output(self, patch_git_ops):

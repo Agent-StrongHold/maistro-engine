@@ -11,6 +11,11 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /workspace
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    HOME=/tmp/maistro-home \
+    GIT_CONFIG_NOSYSTEM=1 \
+    GIT_TERMINAL_PROMPT=0
+
+RUN git --version
 
 CMD ["sleep", "infinity"]

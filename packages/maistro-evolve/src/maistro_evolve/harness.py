@@ -7,7 +7,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from .types import EvalResult, PipelineGenome
+from .types import EvalFidelity, EvalResult, PipelineGenome
 
 logger = logging.getLogger("maistro_evolve.harness")
 
@@ -28,22 +28,36 @@ def _make_stub(benchmark_name: str) -> BenchmarkRunner:
             cost_usd=round(random.uniform(0.001, 0.05), 4),
             duration_seconds=round(elapsed, 3),
             samples_evaluated=random.randint(50, 500),
-            metadata={"stub": True},
+            metadata={"stub": True, "runner": "stub"},
+            fidelity=EvalFidelity.STUB,
         )
 
     return stub
 
 
 class EvalHarness:
-    def __init__(self, use_real_benchmarks: bool = True) -> None:
+    def __init__(self, benchmark_fidelity: EvalFidelity = EvalFidelity.PROXY) -> None:
         self._benchmarks: dict[str, BenchmarkRunner] = {}
-        if use_real_benchmarks:
-            self._register_real_benchmarks()
-        else:
+        self._fidelity: dict[str, EvalFidelity] = {}
+        if benchmark_fidelity is EvalFidelity.PROXY:
+            self._register_proxy_benchmarks()
+        elif benchmark_fidelity is EvalFidelity.STUB:
             self._register_default_stubs()
+        else:
+            raise RuntimeError(
+                "No real benchmark harnesses are registered. Real evidence must come from "
+                "an explicit, sandboxed benchmark integration."
+            )
 
-    def register_benchmark(self, name: str, runner_fn: BenchmarkRunner) -> None:
+    def register_benchmark(
+        self,
+        name: str,
+        runner_fn: BenchmarkRunner,
+        *,
+        fidelity: EvalFidelity = EvalFidelity.PROXY,
+    ) -> None:
         self._benchmarks[name] = runner_fn
+        self._fidelity[name] = fidelity
 
     def _register_default_stubs(self) -> None:
         for name in [
@@ -56,20 +70,20 @@ class EvalHarness:
             "ragas",
             "osworld",
         ]:
-            self.register_benchmark(name, _make_stub(name))
+            self.register_benchmark(name, _make_stub(name), fidelity=EvalFidelity.STUB)
 
-    def _register_real_benchmarks(self) -> None:
+    def _register_proxy_benchmarks(self) -> None:
         try:
-            from .benchmarks import REAL_BENCHMARKS
+            from .benchmarks import PROXY_BENCHMARKS
 
-            for name, runner in REAL_BENCHMARKS.items():
-                self.register_benchmark(name, runner)
+            for name, runner in PROXY_BENCHMARKS.items():
+                self.register_benchmark(name, runner, fidelity=EvalFidelity.PROXY)
         except ImportError as exc:
             # Falling back to random-number stubs SILENTLY would let evolution
             # optimize against pure noise with no signal that it happened. Make
             # it loud — a stub fallback during a real run is a serious problem.
             logger.warning(
-                "evolve_harness_stub_fallback: real benchmarks failed to import "
+                "evolve_harness_stub_fallback: proxy benchmarks failed to import "
                 "(%s); fitness scores will be RANDOM stubs, not real evals — "
                 "results must not be trusted. Stub results carry metadata.stub=True.",
                 exc,
@@ -87,8 +101,14 @@ class EvalHarness:
         for name in bench_list:
             runner = self._benchmarks.get(name)
             if runner is None:
-                continue
+                raise ValueError(f"Unknown or unavailable benchmark requested: {name}")
             result = await runner(genome, llm_call)
+            result.fidelity = self._fidelity[name]
+            result.metadata = {
+                **result.metadata,
+                "runner": result.fidelity.value,
+                "fidelity": result.fidelity.value,
+            }
             results.append(result)
         return results
 

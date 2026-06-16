@@ -83,12 +83,13 @@ class _EvolutionService:
     async def _run_one_cycle(self) -> None:
         from maistro_evolve.cycle import EvolutionConfig, EvolutionCycle
         from maistro_evolve.harness import EvalHarness
+        from maistro_evolve.types import EvalFidelity
 
         config = EvolutionConfig(
             self_improve=True,
             self_improve_top_n=3,
         )
-        harness = EvalHarness(use_real_benchmarks=True)
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.PROXY)
 
         cycle = EvolutionCycle(harness=harness, tournament=self._tournament)
         await cycle.run_cycle(

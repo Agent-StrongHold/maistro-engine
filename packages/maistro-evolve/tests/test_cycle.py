@@ -8,7 +8,7 @@ from maistro_evolve.cycle import EvolutionConfig, EvolutionCycle
 from maistro_evolve.harness import EvalHarness
 from maistro_evolve.population import PopulationStore
 from maistro_evolve.tournament import EloTournament
-from maistro_evolve.types import DAGTopology, EvalWeights, NodeGenome, PipelineGenome
+from maistro_evolve.types import DAGTopology, EvalFidelity, EvalWeights, NodeGenome, PipelineGenome
 
 
 def _genome(name="test"):
@@ -126,7 +126,7 @@ class TestEvolutionCycle:
         for i in range(6):
             population.add(_genome(f"s{i}"))
 
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.STUB)
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=10,
@@ -149,7 +149,7 @@ class TestEvolutionCycle:
             g.fitness_score = float(i) * 10
             population.add(g)
 
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.STUB)
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=6,
@@ -173,7 +173,7 @@ class TestEvolutionCycle:
         for i in range(3):
             population.add(_genome(f"fill{i}"))
 
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.STUB)
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=5,
@@ -191,11 +191,11 @@ class TestEvolutionCycle:
 
 class TestEvalHarness:
     def test_stub_harness(self):
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.STUB)
         assert len(harness._benchmarks) == 8
 
-    def test_real_harness(self):
-        harness = EvalHarness(use_real_benchmarks=True)
+    def test_proxy_harness(self):
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.PROXY)
         assert len(harness._benchmarks) == 8
         for name in [
             "ifeval",
@@ -211,7 +211,7 @@ class TestEvalHarness:
 
     @pytest.mark.asyncio
     async def test_evaluate_genome_stubs(self):
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.STUB)
         g = _genome("eval")
         results = await harness.evaluate_genome(g)
         assert len(results) == 8
@@ -220,11 +220,23 @@ class TestEvalHarness:
             assert r.metadata.get("stub") is True
 
     @pytest.mark.asyncio
-    async def test_evaluate_genome_real_no_llm(self):
-        harness = EvalHarness(use_real_benchmarks=True)
+    async def test_evaluate_genome_proxy_no_llm(self):
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.PROXY)
         g = _genome("eval")
         results = await harness.evaluate_genome(g, benchmarks=["ifeval", "gaia"])
         assert len(results) == 2
         for r in results:
             assert 0.0 <= r.score <= 1.0
-            assert r.metadata.get("runner") == "real"
+            assert r.metadata.get("runner") == "proxy"
+            assert r.fidelity.value == "proxy"
+            assert r.promotion_eligible is False
+
+    @pytest.mark.asyncio
+    async def test_unknown_benchmark_fails_closed(self):
+        harness = EvalHarness(benchmark_fidelity=EvalFidelity.PROXY)
+        with pytest.raises(ValueError, match="Unknown or unavailable benchmark"):
+            await harness.evaluate_genome(_genome("eval"), benchmarks=["not-a-benchmark"])
+
+    def test_real_harness_fails_closed_until_registered(self):
+        with pytest.raises(RuntimeError, match="No real benchmark harnesses"):
+            EvalHarness(benchmark_fidelity=EvalFidelity.REAL)

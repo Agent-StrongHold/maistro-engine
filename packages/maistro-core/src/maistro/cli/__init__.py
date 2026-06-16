@@ -27,12 +27,14 @@ from maistro.cli._approvals import app as _approvals_app  # noqa: E402
 from maistro.cli._builders import app as _builders_app  # noqa: E402
 from maistro.cli._install import app as _install_app  # noqa: E402
 from maistro.cli._launch import app as _launch_app  # noqa: E402
+from maistro.cli._rsi import app as _rsi_app  # noqa: E402
 from maistro.cli._upgrade import app as _upgrade_app  # noqa: E402
 
 app.add_typer(_install_app, name="install")
 app.add_typer(_upgrade_app, name="upgrade")
 app.add_typer(_launch_app, name="launch")
 app.add_typer(_builders_app, name="builders")
+app.add_typer(_rsi_app, name="rsi")
 app.add_typer(_approvals_app, name="approvals")
 
 

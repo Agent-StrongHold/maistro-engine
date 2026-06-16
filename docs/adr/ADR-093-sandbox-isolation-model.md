@@ -12,6 +12,7 @@ implements: []
 related:
   - maistro-engine#SPEC-184
   - maistro-engine#SPEC-012
+  - maistro-engine#ADR-097
 supersedes: []
 blocks: []
 blocked-by: []
@@ -58,7 +59,7 @@ container-with-socket model acceptable?
    containment deliberately.
 4. **The substrate is an implementation detail behind a protocol.** No business logic depends on
    "Docker" or "Firecracker"; it depends on a `SandboxProtocol` (per the project's protocol-driven DI
-   rule). The concrete backend (rootless container, Kata, Firecracker, Cloud Hypervisor, Hyperlight)
+   rule). The concrete backend (Docker Sandboxes, rootless container, Kata, Firecracker, Cloud Hypervisor, Hyperlight)
    is selected by configuration. The protocol and migration are specified in SPEC-190.
 
 This is a **posture decision**, not a substrate mandate: it fixes the *required guarantee*
@@ -86,12 +87,13 @@ socket). Which microVM technology satisfies the guarantee is SPEC-190's design s
 
 - A `SandboxProtocol` exists and the Docker backend is one implementation behind it (SPEC-190).
 - No code path mounts the host Docker socket into a sandbox running untrusted code.
-- At least one hardware-VM backend (Kata or Firecracker) passes the sandbox conformance/escape tests
+- At least one hardware-VM backend passes the sandbox conformance/escape tests
   defined in SPEC-190.
 
 ## Open questions
 
-1. Default backend for self-hosted (Agent Conductor) vs enterprise (Stronghold) deployments?
+1. The simple installer default is resolved by ADR-097: Docker Sandboxes inside the supported install
+   envelope. Other products and custom deployments may select a conforming provider explicitly.
 2. Is rootless-container an acceptable *fallback* where KVM is unavailable, or do we hard-fail closed?
 3. Does the sandbox become a capability provider under SPEC-184 (so isolation level is a declared
    capability slot)?

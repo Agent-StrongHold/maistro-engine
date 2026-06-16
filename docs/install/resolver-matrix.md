@@ -84,6 +84,13 @@ dry_run: true
 
 Used by `InstallAnswersV1` (Pydantic) and `POST /v1/install/plan` in Hive Conductor. See [SPEC-180](../specs/SPEC-180-maistro-install-bootstrap.md).
 
+> This schema is the implemented legacy/bootstrap planner, not the accepted secure default
+> installer. ADR-097/SPEC-207 define the target Linux path: provision an Ubuntu VM, install the
+> complete Maistro stack inside it, and use Docker Sandboxes for untrusted execution. ADR-098/SPEC-208
+> define the target Windows/macOS path: containerized Maistro plus a signed narrow host sandbox
+> broker. ADR-099/SPEC-209 define the target public web wizard, signed compatibility catalog, and
+> manifest v2. The Proxmox helper only automates provisioning the Linux VM.
+
 | Key | Type | Purpose |
 |-----|------|---------|
 | `schema_version` | `"1"` | Version gate for golden tests / API parity. |

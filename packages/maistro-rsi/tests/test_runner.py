@@ -148,12 +148,12 @@ class TestRsiCycleRun:
         assert {r.benchmark for r in result.candidate_results} == {"swebench", "swebench_pro"}
 
     @pytest.mark.asyncio
-    async def test_battles_only_recorded_for_benchmarks_present_in_both_result_sets(
+    async def test_incomplete_benchmark_sets_fail_closed(
         self,
         patched_sandbox,
         patched_self_branch,
     ):
-        """runner-2: a benchmark missing from either side is skipped, not battled with a missing score."""
+        """runner-2: a benchmark missing from either side fails the cycle closed."""
         scores = {
             "baseline": {"swebench": 0.4, "swebench_pro": 0.2},
             "candidate": {"swebench": 0.6},  # no swebench_pro score for the candidate
@@ -166,10 +166,8 @@ class TestRsiCycleRun:
             _noop_patch,
         )
 
-        result = await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
-
-        assert len(result.battles) == 1
-        assert result.battles[0].benchmark == "swebench"
+        with pytest.raises(RuntimeError, match="RSI evaluation incomplete"):
+            await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
 
     @pytest.mark.asyncio
     async def test_benchmarks_won_counts_only_outright_candidate_wins(
@@ -201,7 +199,7 @@ class TestRsiCycleRun:
         patched_self_branch,
         monkeypatch,
     ):
-        """runner-4: improved is True only with BOTH a passing test suite and a benchmark majority."""
+        """runner-4: proxy evidence can show outperformance but cannot claim improvement."""
         winning_scores = {
             "baseline": {"a": 0.3, "b": 0.3},
             "candidate": {"a": 0.9, "b": 0.9},  # candidate wins both
@@ -216,7 +214,9 @@ class TestRsiCycleRun:
             _noop_patch,
         )
         result_ok = await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
-        assert result_ok.improved is True
+        assert result_ok.candidate_outperformed is True
+        assert result_ok.promotion_eligible is False
+        assert result_ok.improved is False
 
         # Case 2: candidate wins majority but tests fail -> not improved
         async def failing_attempt(sandbox, workspace, attempt, apply_patch, open_pr=False):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from ..types import EvalResult, PipelineGenome
@@ -72,7 +73,8 @@ def _alt_score(alternatives: list[str], all_command_text: str) -> float:
     return alt_score
 
 
-def _score_command(response: str, sample: dict[str, Any]) -> float:
+def score_terminal_response(response: str, sample: dict[str, Any]) -> float:
+    """Score one proposed response against a TerminalBench proxy sample."""
     expected_keywords = sample.get("expected_command_keywords", [])
     alternatives = sample.get("accept_alternatives", [])
 
@@ -135,12 +137,21 @@ async def _judge_command(
             ),
             timeout=15.0,
         )
-        return judge_score(judge_response)
+        return float(judge_score(judge_response))
     except (TimeoutError, Exception):
         return 0.0
 
 
 async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    return await run_terminalbench_samples(genome, llm_call, TERMINALBENCH_SAMPLES)
+
+
+async def run_terminalbench_samples(
+    genome: PipelineGenome,
+    llm_call: Any,
+    samples_to_run: Sequence[dict[str, Any]],
+) -> EvalResult:
+    """Run a fixed TerminalBench proxy sample subset through an injected model provider."""
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -154,9 +165,9 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
     total_score = 0.0
     evaluated = 0
     total_cost = 0.0
-    samples = len(TERMINALBENCH_SAMPLES)
+    samples = len(samples_to_run)
 
-    for sample in TERMINALBENCH_SAMPLES:
+    for sample in samples_to_run:
         user_msg = (
             f"Task: {sample['task']}\n\n"
             f"Provide the command(s) to accomplish this. Wrap in ```bash``` code blocks."
@@ -175,7 +186,7 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
                 )
                 total_cost += 0.001
 
-                static = _score_command(response, sample)
+                static = score_terminal_response(response, sample)
                 if static >= 0.6:
                     total_score += static
                 else:
@@ -201,7 +212,7 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real"},
+        metadata={"total_samples": samples, "runner": "proxy", "fidelity": "proxy"},
     )
 
 

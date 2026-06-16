@@ -39,7 +39,7 @@ def _weighted_eval_score(genome: PipelineGenome) -> float:
     if not genome.eval_scores:
         return 0.0
     total = 0.0
-    for field_name in genome.eval_weights.model_fields:
+    for field_name in type(genome.eval_weights).model_fields:
         weight = getattr(genome.eval_weights, field_name)
         score = genome.eval_scores.get(field_name, 0.0)
         total += weight * score

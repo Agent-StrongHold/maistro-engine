@@ -13,6 +13,12 @@ implements: []
 related:
   - maistro-engine#ADR-033
   - maistro-engine#SPEC-176
+  - maistro-engine#ADR-097
+  - maistro-engine#SPEC-207
+  - maistro-engine#ADR-098
+  - maistro-engine#SPEC-208
+  - maistro-engine#ADR-099
+  - maistro-engine#SPEC-209
 contracts:
   - boundary
 tests:
@@ -48,6 +54,13 @@ Operators need a **repeatable** path from feature intent → printed or applied 
 - **Stronghold / multi-tenant product** code in this repo (per resolver-matrix): print Copier hints only.
 - **`curl | bash` remote fetch** of a pinned installer payload: `scripts/install-maestro.sh` documents clone + `uv` only for now.
 - **Automatic OS package installation** (brew, dnf, …): wizard prints hints; execution stays explicit.
+
+## Secure Installer Transition
+
+ADR-099 and SPEC-209 replace this answers/plan shape with signed manifest v2 for the target official
+web installer. SPEC-207 and SPEC-208 define the target execution envelopes. This implemented v1
+bootstrap remains a planning and legacy interface until manifest v2, the stable bootstrap, and the
+target recipes pass conformance.
 
 ## Acceptance criteria
 

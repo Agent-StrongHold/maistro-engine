@@ -59,7 +59,7 @@ def crossover(parent_a: PipelineGenome, parent_b: PipelineGenome) -> PipelineGen
         )
 
     child_weights = {}
-    for field_name in parent_a.eval_weights.model_fields:
+    for field_name in type(parent_a.eval_weights).model_fields:
         va = getattr(parent_a.eval_weights, field_name)
         vb = getattr(parent_b.eval_weights, field_name)
         child_weights[field_name] = round((va + vb) / 2.0, 4)

@@ -1,19 +1,24 @@
 ---
 id: SPEC-190
-title: "Pluggable sandbox substrate — SandboxProtocol with container and microVM (Kata/Firecracker) backends"
+title: Pluggable sandbox substrate - Docker Sandboxes default with optional providers
 repo: maistro-engine
 kind: spec
 status: Proposed
 created: 2026-05-31
 substrate:
   - maistro-engine#ADR-093
+  - maistro-engine#ADR-097
 implements:
   - maistro-engine#ADR-093
+  - maistro-engine#ADR-097
 related:
   - maistro-engine#SPEC-184
   - maistro-engine#SPEC-012
   - maistro-engine#SPEC-011
   - maistro-engine#SPEC-013
+  - maistro-engine#SPEC-207
+  - maistro-engine#ADR-098
+  - maistro-engine#SPEC-208
 supersedes: []
 blocks: []
 blocked-by: []
@@ -31,32 +36,30 @@ owners:
 ## Context
 
 Per ADR-093, untrusted agent/tool code must run behind a hardware-VM boundary, and the substrate must
-sit behind a protocol rather than being hardwired to Docker. Today `maistro.tools.sandbox.docker`
-exposes a single concrete `SandboxContainer` that shells out to the `docker` CLI and assumes a
-reachable Docker socket — there is no interface, so the runtime cannot be swapped.
+sit behind a protocol rather than being hardwired to Docker. The legacy
+`maistro.tools.sandbox.docker` implementation shells out to the Docker CLI and assumes a reachable
+Docker socket. That is not an acceptable production boundary.
 
-This spec defines the `SandboxProtocol`, refactors the existing Docker code into one backend behind
-it, and adds hardware-VM backends (Kata, then Firecracker). The host already exposes `/dev/kvm` with
-virtualization-capable CPUs, so the substrate is available; the work is abstraction + backends +
-migration.
+ADR-097 and ADR-098 select Docker Sandboxes as the official simple installer backend. Linux invokes
+the adapter inside the Ubuntu VM. Windows/macOS control-plane containers invoke it through the
+narrow host broker in SPEC-208. This spec defines the common protocol and conformance contract.
 
 ## Goals
 
-- A `SandboxProtocol` that all sandbox callers depend on (no direct Docker references in business code).
-- Today's Docker behaviour preserved as one backend (no behavioural regression during migration).
-- A microVM backend (Kata first — drop-in OCI; Firecracker second — max isolation) satisfying ADR-093.
-- A conformance suite (including escape/containment assertions) every backend must pass.
-- Backend selection via configuration, defaulting safe (fail-closed when KVM is required but absent).
+- A `SandboxProtocol` that all sandbox callers depend on.
+- A Docker Sandboxes microVM backend satisfying ADR-093 and ADR-097.
+- A conformance suite, including escape and containment assertions, that every backend must pass.
+- Safe backend selection that fails closed when the required isolation is unavailable.
+- An honest transition path for legacy container behavior used only by trusted development flows.
 
 ## Non-goals
 
-- Image supply-chain hardening (distroless/Chainguard) — separate track.
-- A general container orchestrator; this is a single-tenant, ephemeral execution sandbox.
-- Hyperlight/wasm execution — noted as a future backend, not in this spec's scope.
+- Implementing every possible Linux, cloud, or hypervisor backend in the default installer.
+- Image supply-chain hardening, which is a separate track.
+- A general container orchestrator.
+- Hyperlight or wasm execution in the first implementation.
 
-## Decision
-
-### SandboxProtocol (sketch)
+## Protocol Sketch
 
 ```python
 class SandboxHandle(Protocol):
@@ -68,70 +71,92 @@ class SandboxHandle(Protocol):
 
 class SandboxProtocol(Protocol):
     async def spawn(self, spec: SandboxSpec) -> SandboxHandle: ...
-    def capabilities(self) -> SandboxCapabilities: ...   # isolation level, kvm_required, max_mem, net policy
+    def capabilities(self) -> SandboxCapabilities: ...
 
 @dataclass(frozen=True)
 class SandboxSpec:
-    image_ref: str                 # OCI ref or rootfs id
-    workspace: WorkspaceMount      # read-write scratch; host paths never bind-mounted raw
-    network: NetPolicy             # default DENY; explicit egress allowlist
-    limits: ResourceLimits         # cpu, mem, pids, wall-clock
-    env: Mapping[str, str]         # already passed through env_sanitize
+    image_ref: str
+    workspace: WorkspaceMount
+    network: NetPolicy
+    limits: ResourceLimits
+    env: Mapping[str, str]
 ```
 
-`SandboxCapabilities.isolation` is an enum: `SHARED_KERNEL` (container) < `VM` (Kata/Firecracker).
-ADR-093 requires `VM` for untrusted code; callers handling untrusted input assert the minimum.
+`SandboxCapabilities.isolation` reports the actual boundary. Callers handling untrusted input assert
+VM-grade isolation before execution.
 
-### Backends
+## Providers
 
-| Backend | isolation | runs OCI image? | kvm_required | phase |
-|---------|-----------|-----------------|--------------|-------|
-| `container` (rootless, **no docker socket**) | SHARED_KERNEL | yes | no | 1 (refactor of today) |
-| `kata` (kata-runtime under containerd) | VM | yes, unchanged | yes | 2 |
-| `firecracker` (kernel + ext4 rootfs, jailer) | VM | no (rootfs build) | yes | 3 |
-| `hyperlight` (wasm/guest binary) | VM, no guest kernel | no | yes | future |
+| Backend | Isolation | KVM required | Status |
+|---------|-----------|--------------|--------|
+| `docker-sandboxes` | VM | yes | Official installer default; implement first |
+| `container` (rootless, no host socket) | Shared kernel | no | Transition/dev only |
+| `proxmox-vm` / `incus-vm` / `libvirt-vm` | VM | host-specific | Backlog |
+| `gvisor` | Hardened shared kernel | no | Backlog |
+| `kata` | VM | yes | Backlog |
+| `firecracker` | VM | yes | Backlog |
+| `hyperlight` | VM-style bounded guest | yes | Future |
 
-### Wiring
+The default installer does not branch across these providers. Custom deployments may select an
+implemented provider explicitly after it passes conformance.
 
-Registered in the DI container like every other subsystem; selected by config
-(`sandbox.backend`). Fail-closed: if the configured backend needs KVM and `/dev/kvm` is absent, the
-container refuses to start rather than silently falling back to a weaker boundary (configurable
-override for dev). Secrets reach the sandbox only via the SPEC-011 vault broker, never the raw
-environment; privilege boundaries follow SPEC-012.
+## Docker Sandboxes Contract
 
-## Acceptance criteria
+- Use clone mode only against a sanitized staging repository reconstructed from the pinned base plus
+  accepted patch; never expose the live host working tree.
+- Disable all push URLs and verify that Git and control-plane credentials are absent before candidate
+  code executes.
+- Never expose the host Docker socket.
+- Keep control-plane credentials outside candidate-controlled sandboxes.
+- Use a networked materialization phase and a separate default-deny execution phase.
+- Export patches, artifacts, logs, and campaign state through the protocol.
+- Support stop/resume or pinned-base-plus-patch replay without trusting mutable guest state.
+- Report the actual backend and isolation tier in execution evidence.
 
-- [ ] `SandboxProtocol` + `SandboxSpec`/`SandboxHandle` defined in `protocols/`; `tools/sandbox/docker.py`
-      reworked into a `ContainerSandbox` backend implementing it, **with the host Docker socket removed**.
-- [ ] A `FakeSandbox` backend exists for unit tests; all existing sandbox callers depend only on the protocol.
-- [ ] Conformance suite passes for `container` and at least one `VM` backend, including:
-      network-deny-by-default, no host-path escape, resource-limit enforcement, and a negative
-      "attempt to reach host / docker socket fails" test.
-- [ ] Backend selectable by config; KVM-required backend fails closed when `/dev/kvm` is missing.
-- [ ] No regression: existing sandbox-dependent tool tests pass on the `container` backend.
+## Wiring
+
+Backends are registered through dependency injection and selected through `sandbox.backend`. The
+official installer selects `docker-sandboxes`: directly inside the supported Linux VM envelope or
+through the desktop broker. If Docker Sandboxes or the required virtualization substrate is
+unavailable, untrusted execution refuses to start rather than silently falling back.
+
+Explicit development configuration may select a weaker backend only for trusted workloads. Secrets
+reach a sandbox only through the approved broker, never through the raw control-plane environment.
+
+## Acceptance Criteria
+
+- [ ] `SandboxProtocol`, `SandboxSpec`, and `SandboxHandle` are the only execution interface used by
+      Builders, RSI/Evolve candidates, and executable benchmarks.
+- [ ] A `FakeSandbox` backend supports unit tests.
+- [ ] A Docker Sandboxes backend implements the protocol and private workspace behavior.
+- [ ] Conformance covers network deny by default, no live host checkout, disabled push URLs, no
+      inherited credentials, no host-path escape, no host Docker socket, resource limits, artifact
+      export, persistence/replay, and teardown.
+- [ ] Backend selection fails closed when a caller requests unavailable VM-grade isolation.
+- [ ] Every result records the actual backend and isolation tier.
 
 ## Testing
 
-- Protocol-level conformance tests parametrized across backends (skip VM backends when `/dev/kvm`
-  absent, and **log the skip** — never silently treat unskipped as covered).
-- Escape/containment tests are the security core: assert the sandbox cannot read a host marker file,
-  cannot reach the Docker socket, and cannot egress outside the allowlist.
-- Property-based fuzzing of `SandboxSpec` (resource limits, env, paths) under `formal/` for the
-  boundary invariants.
+- Protocol-level conformance tests are parametrized across implemented providers.
+- VM-provider tests may skip only when the environment lacks the required substrate, and the skip is
+  reported explicitly.
+- Escape tests assert the sandbox cannot read a host marker, reach a host runtime socket, or egress
+  outside policy.
+- Property-based tests fuzz resource limits, environment, and paths at the protocol boundary.
 
-## Open questions
+## Backlog
 
-1. Kata vs Firecracker as the *default* VM backend — Kata is lower-effort (drop-in OCI); Firecracker is
-   leaner/denser but needs rootfs+kernel management. Start Kata, revisit?
-2. Networking model for VM backends (TAP + bridge per VM) and its interaction with the egress allowlist.
-3. Snapshot/restore for sub-100ms spawn — needed for the SPEC-013 reactor cadence, or acceptable to
-   pool warm sandboxes?
-4. Does the sandbox register as a SPEC-184 capability provider so "isolation level" is a declared slot?
+- Proxmox API-managed sibling builder VMs.
+- Incus and libvirt/KVM lifecycle providers.
+- gVisor, Kata, Firecracker, Hyperlight, and managed sandbox providers.
+- Provider-specific networking and snapshot optimization.
+- High-density cloud and Kubernetes deployment profiles.
 
 ## References
 
-- ADR-093 — sandbox isolation model (the decision this implements).
-- `packages/maistro-core/src/maistro/tools/sandbox/` — current implementation (`docker.py`,
-  `env_sanitize.py`, `workspace.py`, `server.py`).
-- SPEC-011 (vault), SPEC-012 (privilege separation), SPEC-013 (reactor), SPEC-184 (capability platform).
-- Firecracker, Kata Containers, Cloud Hypervisor, Microsoft Hyperlight (substrate candidates).
+- ADR-093 - sandbox isolation model.
+- ADR-097 - secure default Linux install.
+- SPEC-207 - secure default installer and Proxmox helper.
+- ADR-098 and SPEC-208 - secure desktop install and host broker.
+- `packages/maistro-core/src/maistro/sandbox/` - current central sandbox implementation.
+- SPEC-011, SPEC-012, SPEC-013, and SPEC-184.

@@ -338,15 +338,6 @@ def test_apply_result_merges_new_artifacts_without_duplicates() -> None:
     assert len(matching) == 1
 
 
-@pytest.mark.xfail(
-    reason=(
-        "DEFECT: apply_result dedup compares full StageEvent.model_dump(), which "
-        "includes the per-call `timestamp` default. Two otherwise-identical results "
-        "produce events with different timestamps, so the idempotency guard at "
-        "orchestrator.py:170 never fires and a duplicate event is appended."
-    ),
-    strict=True,
-)
 def test_apply_result_is_idempotent_for_duplicate_result() -> None:
     orch = BuildersOrchestrator()
     _new_run(orch)

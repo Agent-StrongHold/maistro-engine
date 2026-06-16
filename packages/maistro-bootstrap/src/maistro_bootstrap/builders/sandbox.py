@@ -66,6 +66,10 @@ _SAFE_ENV = {
 class BuilderSandbox(Protocol):
     """Interface shared by all sandbox implementations."""
 
+    @property
+    def isolation_tier(self) -> str: ...
+    @property
+    def backend_name(self) -> str: ...
     def read_file(self, path: str) -> str: ...
     def write_file(self, path: str, content: str) -> None: ...
     def run_command(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str: ...
@@ -273,6 +277,14 @@ class LocalWorktreeSandbox:
         self._ws: GitWorktreeWorkspace | None = None
         self._shell: SandboxedShell | None = None
 
+    @property
+    def isolation_tier(self) -> str:
+        return "trusted-host"
+
+    @property
+    def backend_name(self) -> str:
+        return "local-worktree"
+
     def __enter__(self) -> LocalWorktreeSandbox:
         self._ws = GitWorktreeWorkspace(self._repo_root, base_ref=self._base_ref)
         self._ws.__enter__()
@@ -286,12 +298,17 @@ class LocalWorktreeSandbox:
 
     def _require_shell(self) -> SandboxedShell:
         if self._shell is None:
-            # Lazy: create a shell on the repo root if not used as context manager
-            self._shell = SandboxedShell(self._repo_root)
+            raise RuntimeError(
+                "Trusted local worktree sandbox is not active; use it as a context manager"
+            )
         return self._shell
 
     def _resolve(self, path: str) -> Path:
-        root = self._ws.path if self._ws else self._repo_root
+        if self._ws is None:
+            raise RuntimeError(
+                "Trusted local worktree sandbox is not active; use it as a context manager"
+            )
+        root = self._ws.path
         resolved = (root / path).resolve()
         try:
             resolved.relative_to(root)
@@ -314,18 +331,18 @@ class LocalWorktreeSandbox:
         return self._require_shell().run_argv(argv, timeout=timeout)
 
     def diff(self) -> str:
-        if self._ws:
-            return self._ws.diff()
-        result = subprocess.run(  # nosec B603
-            ["git", "diff"],
-            cwd=self._repo_root,
-            capture_output=True,
-            text=True,
-        )
-        return result.stdout
+        if self._ws is None:
+            raise RuntimeError(
+                "Trusted local worktree sandbox is not active; use it as a context manager"
+            )
+        return self._ws.diff()
 
     def search(self, pattern: str, *, glob: str = "**/*.py") -> list[str]:
-        root = self._ws.path if self._ws else self._repo_root
+        if self._ws is None:
+            raise RuntimeError(
+                "Trusted local worktree sandbox is not active; use it as a context manager"
+            )
+        root = self._ws.path
         matches = []
         for p in root.glob(glob):
             try:

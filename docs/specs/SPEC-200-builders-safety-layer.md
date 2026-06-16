@@ -3,10 +3,8 @@ id: SPEC-200
 title: Builders Safety Layer — execution contexts + ephemeral workspace
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: Proposed
 created: 2026-06-03
-accepted: 2026-06-03
-implemented: 2026-06-03
 substrate:
   - maistro-engine#ADR-038
   - maistro-engine#SPEC-190
@@ -25,10 +23,16 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
+> **Current status:** Proposed / partially implemented. The original worktree layer is a
+> trusted-development convenience, not a security sandbox. The live TUI now fails closed unless a
+> VM-grade backend is available and uses pinned-base-plus-patch replay. Real Docker Sandboxes/Kata
+> conformance, the target Docker Sandboxes adapter, brokered capabilities, and the remaining
+> acceptance criteria are still open.
+
 # SPEC-200 — Builders Safety Layer: Execution Contexts + Ephemeral Workspace
 
-> **Status:** Implemented — the builders safety layer shipped to `develop` in #107
-> (`maistro-bootstrap/src/maistro_bootstrap/builders/`). This document is the spec of record.
+> The original worktree layer shipped to `develop` in #107. This document remains the spec of record
+> for the unfinished security boundary.
 
 ---
 

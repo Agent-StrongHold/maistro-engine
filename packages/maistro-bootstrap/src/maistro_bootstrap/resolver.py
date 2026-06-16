@@ -24,7 +24,7 @@ FEATURES: dict[str, Feature] = {
     "tui": Feature(
         id="tui",
         label="TUI helpers (Typer + Rich on maistro-core)",
-        commands=('uv pip install -e "./packages/maistro-core[tui]"',),
+        commands=('uv pip install -e "./packages/maistro-core[tui,rsi]"',),
     ),
     "server": Feature(
         id="server",

@@ -132,7 +132,7 @@ async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real"},
+        metadata={"total_samples": samples, "runner": "proxy", "fidelity": "proxy"},
     )
 
 

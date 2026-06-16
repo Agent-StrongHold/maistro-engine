@@ -6,14 +6,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from maistro_bootstrap.builders.sandbox import LocalWorktreeSandbox
+from maistro_bootstrap.builders.sandbox import BuilderSandbox
 
 
 @dataclass
 class BuilderSession:
     """Holds the sandbox and conversation history for one coding session."""
 
-    sandbox: LocalWorktreeSandbox
+    sandbox: BuilderSandbox
     messages: list[dict[str, Any]] = field(default_factory=list)
     workspace_path: Path | None = None
 

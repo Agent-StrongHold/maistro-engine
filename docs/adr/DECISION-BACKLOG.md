@@ -140,6 +140,12 @@ in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR expli
 - ☐ **Browser-tool safety + sandbox egress policy** (default-deny egress allow-list).
 - ☐ **Tool result caching / memoization.**
 
+- **Custom sandbox/deployment providers after ADR-097 default** - Proxmox sibling builder VMs,
+  Incus/libvirt VMs, gVisor, Kata, Firecracker, managed sandboxes, Kubernetes/cloud automation,
+  bare-metal/non-Ubuntu direct installs, native Windows/macOS Maistro, WSL-based Maistro, existing
+  user-managed VMs, and trusted-workload rootless containers. Do not add these as branches in the
+  simple installer before the ADR-097 and ADR-098 default paths pass conformance.
+
 ### Quota / billing / rate-limiting
 - ☐ **Cost attribution + quota policy ADR** — per-user/agent/task spend; rate-limiting/throttling.
 - **Billing / invoicing / metering** — Stronghold (multi-tenant commercial).

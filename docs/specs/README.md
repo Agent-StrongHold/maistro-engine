@@ -27,5 +27,8 @@ Frozen **reference** trees that specs ported from (hyperagent bundle, gateway sn
 | SPEC-193 | [Slot-aware local inference gateway](SPEC-193-slot-aware-inference-gateway.md) |
 | SPEC-194 | [Ultra Think — tiered parallel diverse generation](SPEC-194-ultra-think-parallel-generation.md) |
 | SPEC-195 | [Operational training data collection](SPEC-195-operational-training-data.md) |
+| SPEC-207 | [Secure default Linux installer and Proxmox VM provisioner](SPEC-207-secure-default-installer.md) |
+| SPEC-208 | [Desktop Docker Sandboxes broker](SPEC-208-desktop-sandbox-broker.md) |
+| SPEC-209 | [Cloudflare web configurator and signed installer manifest v2](SPEC-209-cloudflare-web-installer.md) |
 
 Cross-repo inventory: [`docs/INVENTORY-ADRS-SPECS.md`](../INVENTORY-ADRS-SPECS.md). Pull sibling product specs with `./scripts/pull-sibling-product-specs.sh` (see root `AGENTS.md`).

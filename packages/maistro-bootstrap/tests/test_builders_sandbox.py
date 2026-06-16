@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from maistro_bootstrap.builders.agent_loop import AgentLoopConfig, TurnRunner
+from maistro_bootstrap.builders.agent_loop import AgentLoopConfig, TurnRunner, _dispatch_tool
 from maistro_bootstrap.builders.errors import (
     BlockedCommandError,
     CommandTimeoutError,
@@ -32,7 +33,10 @@ def shell(tmp_root: Path) -> SandboxedShell:
 
 @pytest.fixture()
 def sandbox(tmp_root: Path) -> LocalWorktreeSandbox:
-    return LocalWorktreeSandbox(tmp_root)
+    active = LocalWorktreeSandbox(tmp_root)
+    active._ws = SimpleNamespace(path=tmp_root, diff=lambda: "")  # type: ignore[assignment]
+    active._shell = SandboxedShell(tmp_root)
+    return active
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +118,13 @@ def test_env_does_not_contain_os_environ(
 # ---------------------------------------------------------------------------
 # LocalWorktreeSandbox — file operations
 # ---------------------------------------------------------------------------
+
+
+def test_unentered_local_worktree_sandbox_fails_closed(tmp_root: Path) -> None:
+    inactive = LocalWorktreeSandbox(tmp_root)
+    with pytest.raises(RuntimeError, match="not active"):
+        inactive.write_file("host-write.txt", "blocked")
+    assert not (tmp_root / "host-write.txt").exists()
 
 
 def test_write_and_read_file(sandbox: LocalWorktreeSandbox) -> None:
@@ -198,6 +209,12 @@ def test_session_add_and_clear(sandbox: LocalWorktreeSandbox) -> None:
     assert len(session.messages) == 2
     session.clear_history()
     assert session.messages == []
+
+
+def test_arbitrary_command_refused_outside_vm(sandbox: LocalWorktreeSandbox) -> None:
+    session = BuilderSession(sandbox=sandbox)
+    result = _dispatch_tool(session, "run_command", {"cmd": "echo refused"})
+    assert result.startswith("[REFUSED]")
 
 
 # ---------------------------------------------------------------------------

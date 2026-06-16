@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel
@@ -58,6 +59,12 @@ class PipelineGenome(BaseModel):
     updated_at: str
 
 
+class EvalFidelity(StrEnum):
+    STUB = "stub"
+    PROXY = "proxy"
+    REAL = "real"
+
+
 class EvalResult(BaseModel):
     benchmark: str
     score: float
@@ -65,6 +72,11 @@ class EvalResult(BaseModel):
     duration_seconds: float = 0.0
     samples_evaluated: int = 0
     metadata: dict[str, Any] = {}
+    fidelity: EvalFidelity = EvalFidelity.PROXY
+
+    @property
+    def promotion_eligible(self) -> bool:
+        return self.fidelity is EvalFidelity.REAL
 
 
 class FitnessComponents(BaseModel):

@@ -4,6 +4,12 @@ Recursive self-improvement: an agent that branches, patches, tests, and
 benchmarks its own codebase inside an isolated sandbox, with results scored
 through the shared `maistro-evolve` Elo tournament.
 
+**Current path distinction:** Sections 1-6 describe the legacy compatibility
+`RsiCycle` path and its tests. That path is not approved for autonomous
+untrusted execution because it still contains Docker-as-microVM and host-Git
+architecture. The approved installed path is specified in
+`docs/specs/SPEC-203-autonomous-rsi-campaign.md`.
+
 Each section below is a human-readable behavior spec. Acceptance criteria are
 numbered `<module>-<n>` and every test in `tests/` must reference the AC(s) it
 verifies in its docstring — no test exists without a traceable AC, and no AC
@@ -72,7 +78,7 @@ harness) that hasn't been scanned and, where warranted, adversarially reviewed.
 | selfbranch-2 | A failed clone short-circuits the workflow: no branch/patch/test/PR/quarantine steps run, and the result carries a non-`None` `error`. |
 | selfbranch-3 | On a successful clone, the workflow calls `git_branch`, then `apply_patch`, then `git_commit`, in that order, before running tests. |
 | selfbranch-4 | `tests_passed` is `True` iff the sandboxed test command exits `0` *and* no error was recorded — a clone failure must never read as "tests passed". |
-| selfbranch-5 | A PR is opened (`github_create_pr` invoked, `pr_url` populated) only when `open_pr=True` **and** the test command exits `0` **and** (`quarantine_check` is absent **or** returns a cleared verdict). A failing test suite or an uncleared quarantine verdict must never produce a PR, regardless of `open_pr`. |
+| selfbranch-5 | A PR is opened (`github_create_pr` invoked, `pr_url` populated) only when `open_pr=True`, the test command exits `0`, and a supplied quarantine check returns a cleared verdict. Missing quarantine, failing tests, or an uncleared verdict must never produce a PR. |
 | selfbranch-6 | The returned `diff` reflects `git diff` output captured after the patch is applied and committed. |
 | selfbranch-7 | `paths_touched_by_diff` extracts every `a/...`/`b/...` path named in a unified diff's `diff --git` headers, de-duplicated and in first-seen order. |
 | selfbranch-8 | The `quarantine` field on the result carries the verdict `quarantine_check` returned, so callers can inspect *why* a change was held without re-deriving it. |

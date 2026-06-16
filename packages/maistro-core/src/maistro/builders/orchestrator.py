@@ -167,7 +167,9 @@ class BuildersOrchestrator:
             actor=result.worker.value,
             message=result.summary,
         )
-        if run.events and run.events[-1].model_dump() == event.model_dump():
+        if run.events and run.events[-1].model_dump(exclude={"timestamp"}) == event.model_dump(
+            exclude={"timestamp"}
+        ):
             return run
 
         existing_ids = {artifact.artifact_id for artifact in run.artifacts}

@@ -60,7 +60,7 @@ class SelfBranchAttempt:
     commit_message: str
     pr_title: str
     pr_body: str = ""
-    base_branch: str = "main"
+    base_branch: str = "develop"
 
 
 @dataclass
@@ -82,7 +82,7 @@ def new_attempt(
     repo_url: str,
     test_command: str,
     *,
-    base_branch: str = "main",
+    base_branch: str = "develop",
     label: str = "rsi",
 ) -> SelfBranchAttempt:
     """Build an attempt with a unique, collision-free branch name."""
@@ -139,7 +139,7 @@ async def run_self_branch_attempt(
         quarantine_verdict = await quarantine_check(diff, paths_touched_by_diff(diff))
 
     pr_url: str | None = None
-    cleared_to_ship = quarantine_verdict is None or quarantine_verdict.cleared
+    cleared_to_ship = quarantine_verdict is not None and quarantine_verdict.cleared
     if open_pr and exit_code == 0 and cleared_to_ship:
         await git_push(workspace, attempt.branch_name)
         pr = await github_create_pr(
