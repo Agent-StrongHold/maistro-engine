@@ -79,7 +79,9 @@ class CodexCliProvider:
 
             if process.returncode != 0:
                 detail = stderr.decode("utf-8", errors="replace")[-2000:]
-                raise RuntimeError(f"Codex CLI request failed with exit {process.returncode}: {detail}")
+                raise RuntimeError(
+                    f"Codex CLI request failed with exit {process.returncode}: {detail}"
+                )
             if not output_path.is_file():
                 detail = stdout.decode("utf-8", errors="replace")[-2000:]
                 raise RuntimeError(f"Codex CLI did not produce a final message: {detail}")

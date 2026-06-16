@@ -86,7 +86,9 @@ class RecordingWorkspaceFactory:
 
     def __call__(self, **kwargs: object) -> FakeWorkspace:
         self.calls.append(kwargs)
-        workspace = FakeWorkspace(kwargs.get("patch") if isinstance(kwargs.get("patch"), str) else None)
+        workspace = FakeWorkspace(
+            kwargs.get("patch") if isinstance(kwargs.get("patch"), str) else None
+        )
         self.workspaces.append(workspace)
         return workspace
 

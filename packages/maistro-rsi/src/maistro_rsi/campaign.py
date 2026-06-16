@@ -71,6 +71,7 @@ class CampaignConfig:
 
     def validate(self) -> None:
         from maistro.builders.isolated_workspace import validate_git_ref, validate_repo_url
+
         validate_repo_url(self.repo_url)
         validate_git_ref(self.base_ref)
         if not _CAMPAIGN_ID.fullmatch(self.campaign_id):
@@ -89,7 +90,10 @@ class CampaignConfig:
             raise ValueError("Campaign provider retry delay must not be negative")
         if self.minimum_speedup is not None and not 0 < self.minimum_speedup < 1:
             raise ValueError("Campaign minimum_speedup must be between zero and one")
-        if any(not path or path.startswith(("/", "\\")) or ".." in Path(path).parts for path in self.protected_paths):
+        if any(
+            not path or path.startswith(("/", "\\")) or ".." in Path(path).parts
+            for path in self.protected_paths
+        ):
             raise ValueError("Campaign protected paths must be non-empty relative paths")
 
 
@@ -211,6 +215,7 @@ def isolated_workspace_factory(
 ) -> CampaignWorkspace:
     """Create the production VM-grade offline Builders workspace."""
     from maistro.builders.isolated_workspace import IsolatedBuilderSandbox
+
     return cast(
         CampaignWorkspace,
         IsolatedBuilderSandbox.create(
@@ -358,9 +363,8 @@ class CampaignStore:
                     break
         candidate_output: str | None = None
         for record in reversed(self.ledger.records()):
-            if (
-                record.get("type") == "measurement"
-                and str(record.get("phase", "")).startswith("candidate-")
+            if record.get("type") == "measurement" and str(record.get("phase", "")).startswith(
+                "candidate-"
             ):
                 candidate_output = str(record.get("output", ""))[-4000:]
                 break
@@ -550,7 +554,9 @@ class AutonomousCampaign:
         )
         proposal_workspace = self._workspace(config, state.base_commit, incumbent_patch)
         try:
-            proposal = await self.provider.propose(_ProposalWorkspaceView(proposal_workspace), request)
+            proposal = await self.provider.propose(
+                _ProposalWorkspaceView(proposal_workspace), request
+            )
         except Exception as exc:
             proposal_workspace.close()
             failures = state.consecutive_provider_failures + 1
@@ -692,9 +698,7 @@ class AutonomousCampaign:
         )
         return updated
 
-    def _workspace(
-        self, config: CampaignConfig, base_commit: str, patch: str
-    ) -> CampaignWorkspace:
+    def _workspace(self, config: CampaignConfig, base_commit: str, patch: str) -> CampaignWorkspace:
         return self.workspace_factory(
             repo_url=config.repo_url,
             patch=patch or None,
@@ -746,7 +750,9 @@ def _decide_trial(
     minimum_speedup: float | None,
 ) -> ExperimentDecision:
     if not candidate_test.passed:
-        return ExperimentDecision(False, "candidate test command failed", baseline_test, candidate_test)
+        return ExperimentDecision(
+            False, "candidate test command failed", baseline_test, candidate_test
+        )
     if baseline_benchmark is not None or candidate_benchmark is not None:
         if baseline_benchmark is None or candidate_benchmark is None:
             return ExperimentDecision(

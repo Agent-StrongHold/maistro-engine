@@ -95,7 +95,9 @@ def start_campaign(
         sandbox_image=sandbox_image,
         protected_paths=tuple(protected_paths or DEFAULT_PROTECTED_PATHS),
     )
-    campaign = _campaign(store, model=model, provider=provider, ollama_url=ollama_url, worktree=worktree)
+    campaign = _campaign(
+        store, model=model, provider=provider, ollama_url=ollama_url, worktree=worktree
+    )
     asyncio.run(campaign.initialize(config))
     return asyncio.run(campaign.run())
 
@@ -107,7 +109,9 @@ def resume_campaign(*, state_root: Path, campaign_id: str) -> CampaignState:
     # the campaign state directory (worktree mode stores no image, VM mode does).
     worktree = config.sandbox_image is None and (store.root / "worktree.mode").is_file()
     return asyncio.run(
-        _campaign(store, model=config.provider_model, provider="codex", ollama_url="", worktree=worktree).resume()
+        _campaign(
+            store, model=config.provider_model, provider="codex", ollama_url="", worktree=worktree
+        ).resume()
     )
 
 

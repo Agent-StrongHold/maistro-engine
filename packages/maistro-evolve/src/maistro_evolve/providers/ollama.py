@@ -57,8 +57,7 @@ class OllamaProvider:
                 )
             except httpx.ConnectError as exc:
                 raise RuntimeError(
-                    f"Cannot reach Ollama at {self._base_url}. "
-                    "Is `ollama serve` running?"
+                    f"Cannot reach Ollama at {self._base_url}. Is `ollama serve` running?"
                 ) from exc
 
         if response.status_code != 200:

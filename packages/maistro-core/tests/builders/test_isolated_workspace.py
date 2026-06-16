@@ -97,9 +97,7 @@ def test_replay_patch_is_applied_only_in_offline_vm() -> None:
         selector=_selector(backend),
     )
     try:
-        replay_key = next(
-            k for k in backend.files if k[0] == "vm-2" and "maistro-replay" in k[1]
-        )
+        replay_key = next(k for k in backend.files if k[0] == "vm-2" and "maistro-replay" in k[1])
         assert backend.files[replay_key].startswith(b"diff --git")
         apply_instance, apply_command = next(
             item for item in backend.commands if item[1][:2] == ["git", "apply"]
@@ -156,9 +154,7 @@ def test_candidate_patch_is_applied_only_in_offline_vm() -> None:
     try:
         sandbox.apply_patch("diff --git a/a.txt b/a.txt\n")
         apply_instance, apply_command = next(
-            item
-            for item in reversed(backend.commands)
-            if item[1][:2] == ["git", "apply"]
+            item for item in reversed(backend.commands) if item[1][:2] == ["git", "apply"]
         )
         assert apply_instance == "vm-2"
         assert backend.configs[1].network is False

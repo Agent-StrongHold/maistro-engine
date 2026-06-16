@@ -34,9 +34,7 @@ class KataSandboxBackend:
         runtime: str | None = None,
     ) -> None:
         self._engine = engine or os.environ.get("MAISTRO_KATA_ENGINE", "docker")
-        self._runtime = runtime or os.environ.get(
-            "MAISTRO_KATA_RUNTIME", "io.containerd.kata.v2"
-        )
+        self._runtime = runtime or os.environ.get("MAISTRO_KATA_RUNTIME", "io.containerd.kata.v2")
         if "kata" not in self._runtime.lower():
             raise ValueError("KataSandboxBackend requires a Kata runtime name")
 
@@ -87,10 +85,7 @@ class KataSandboxBackend:
             "--workdir",
             workspace,
             "--tmpfs",
-            (
-                f"{workspace}:rw,nosuid,nodev,size={config.disk_mb}m,"
-                "uid=65532,gid=65532,mode=0700"
-            ),
+            (f"{workspace}:rw,nosuid,nodev,size={config.disk_mb}m,uid=65532,gid=65532,mode=0700"),
             "--tmpfs",
             "/tmp:rw,nosuid,nodev,size=256m,uid=65532,gid=65532,mode=0700",  # nosec B108 — Docker --tmpfs mount spec for the container filesystem, not a host path; the /tmp here belongs to the isolated container, not the host
             "--label",
@@ -141,9 +136,7 @@ class KataSandboxBackend:
             *command,
         ]
         try:
-            return_code, stdout, stderr = await self._run(
-                engine_command, timeout_s=timeout_s + 10
-            )
+            return_code, stdout, stderr = await self._run(engine_command, timeout_s=timeout_s + 10)
         except TimeoutError:
             return ExecResult(
                 exit_code=124,

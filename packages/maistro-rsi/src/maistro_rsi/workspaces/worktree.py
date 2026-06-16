@@ -59,6 +59,7 @@ class WorktreeCampaignWorkspace:
         rev = _resolve_rev(resolved_root, base_commit=base_commit, base_ref=base_ref)
 
         import tempfile
+
         tmp = Path(tempfile.mkdtemp(prefix="maistro-rsi-wt-"))
         try:
             _run(
@@ -140,7 +141,8 @@ class WorktreeCampaignWorkspace:
         return [
             str(p.relative_to(self._root))
             for p in self._root.glob(glob)
-            if p.is_file() and ".git" not in p.parts
+            if p.is_file()
+            and ".git" not in p.parts
             and pattern in p.read_text(encoding="utf-8", errors="ignore")
         ]
 
@@ -163,8 +165,13 @@ class WorktreeCampaignWorkspace:
         )
         result = subprocess.run(
             [
-                "git", "diff", "--binary", "--no-ext-diff", "--no-textconv",
-                self._base_commit, "--",
+                "git",
+                "diff",
+                "--binary",
+                "--no-ext-diff",
+                "--no-textconv",
+                self._base_commit,
+                "--",
             ],
             cwd=self._root,
             capture_output=True,
@@ -195,6 +202,7 @@ class WorktreeCampaignWorkspace:
 
     def _env(self) -> dict[str, str]:
         import sys
+
         env = dict(os.environ)
         # Ensure commands resolve to the active Python (venv), not system stubs.
         venv_bin = str(Path(sys.executable).parent)
@@ -244,9 +252,7 @@ def _resolve_rev(root: Path, *, base_commit: str | None, base_ref: str | None) -
 def _run(cmd: list[str], *, cwd: Path | None = None) -> str:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(
-            f"Command failed {cmd[0]!r}: {(result.stderr or result.stdout)[:500]}"
-        )
+        raise RuntimeError(f"Command failed {cmd[0]!r}: {(result.stderr or result.stdout)[:500]}")
     return result.stdout
 
 
@@ -261,4 +267,5 @@ def _prune_worktree(repo_root: Path, worktree_path: Path) -> None:
 
 def _monotonic() -> float:
     import time
+
     return time.monotonic()

@@ -20,7 +20,9 @@ console = Console()
 @app.command("start")  # type: ignore[untyped-decorator]
 def start(
     repo_url: str = typer.Option(..., help="Credential-free HTTPS Git repository."),
-    objective: str = typer.Option(..., help="Improvement objective supplied to the candidate agent."),
+    objective: str = typer.Option(
+        ..., help="Improvement objective supplied to the candidate agent."
+    ),
     test_command: str = typer.Option(..., help="Fixed regression command run in fresh sandboxes."),
     benchmark_command: str | None = typer.Option(
         None, help="Fixed command whose final line is real-fidelity score JSON."

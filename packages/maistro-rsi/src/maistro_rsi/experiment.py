@@ -100,20 +100,30 @@ def decide_candidate(
     if baseline.command != candidate.command:
         return ExperimentDecision(False, "benchmark command changed", baseline, candidate)
     if candidate.passed and not baseline.passed:
-        return ExperimentDecision(True, "candidate repaired a failing baseline", baseline, candidate)
+        return ExperimentDecision(
+            True, "candidate repaired a failing baseline", baseline, candidate
+        )
     if baseline.passed and not candidate.passed:
-        return ExperimentDecision(False, "candidate regressed a passing baseline", baseline, candidate)
+        return ExperimentDecision(
+            False, "candidate regressed a passing baseline", baseline, candidate
+        )
     if not baseline.passed and not candidate.passed:
         return ExperimentDecision(False, "both baseline and candidate failed", baseline, candidate)
     if baseline.quality_score is not None and candidate.quality_score is not None:
         if candidate.quality_score > baseline.quality_score:
-            return ExperimentDecision(True, "candidate improved the configured quality score", baseline, candidate)
+            return ExperimentDecision(
+                True, "candidate improved the configured quality score", baseline, candidate
+            )
         if candidate.quality_score < baseline.quality_score:
-            return ExperimentDecision(False, "candidate regressed the configured quality score", baseline, candidate)
+            return ExperimentDecision(
+                False, "candidate regressed the configured quality score", baseline, candidate
+            )
     threshold = baseline.duration_seconds * (1.0 - minimum_speedup)
     if candidate.duration_seconds < threshold:
         return ExperimentDecision(True, "candidate met the minimum speedup", baseline, candidate)
-    return ExperimentDecision(False, "candidate did not demonstrate a material improvement", baseline, candidate)
+    return ExperimentDecision(
+        False, "candidate did not demonstrate a material improvement", baseline, candidate
+    )
 
 
 async def measure_sample_set(
@@ -154,7 +164,9 @@ def decide_sample_candidate(
         return SampleSetDecision(False, "benchmark or sample set changed", baseline, candidate)
     if candidate.mean_score >= baseline.mean_score + minimum_delta:
         return SampleSetDecision(True, "candidate improved mean sample score", baseline, candidate)
-    return SampleSetDecision(False, "candidate did not improve mean sample score", baseline, candidate)
+    return SampleSetDecision(
+        False, "candidate did not improve mean sample score", baseline, candidate
+    )
 
 
 class ExperimentLedger:

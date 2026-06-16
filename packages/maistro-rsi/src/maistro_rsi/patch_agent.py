@@ -88,7 +88,9 @@ class EvolvingToolLoopPatchProvider:
 
     def _save_guidance(self, guidance: str) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        fd, temp_name = tempfile.mkstemp(prefix=f".{self.state_path.name}.", dir=self.state_path.parent)
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{self.state_path.name}.", dir=self.state_path.parent
+        )
         temp = Path(temp_name)
         try:
             with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
@@ -131,11 +133,7 @@ def _request_prompt(request: CandidateRequest, strategy_guidance: str) -> str:
         if request.prior_feedback is not None
         else ""
     )
-    strategy = (
-        f"\nEvolved candidate strategy:\n{strategy_guidance}"
-        if strategy_guidance
-        else ""
-    )
+    strategy = f"\nEvolved candidate strategy:\n{strategy_guidance}" if strategy_guidance else ""
     return (
         f"Campaign: {request.campaign_id}\n"
         f"Iteration: {request.iteration}\n"

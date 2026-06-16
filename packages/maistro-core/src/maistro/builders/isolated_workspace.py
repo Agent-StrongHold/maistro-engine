@@ -310,9 +310,7 @@ class IsolatedBuilderSandbox:
         self._require_open()
         target = self._workspace_path(path)
         data = cast(bytes, self._bridge.call(self._backend.read_file(self._instance, target)))
-        return data.decode(
-            "utf-8", errors="replace"
-        )
+        return data.decode("utf-8", errors="replace")
 
     def write_file(self, path: str, content: str) -> None:
         self._require_open()
@@ -353,7 +351,9 @@ class IsolatedBuilderSandbox:
                 timeout=300,
             )
             if result.exit_code != 0 or result.timed_out:
-                raise RuntimeError(f"Failed to apply Builders candidate patch: {_result_output(result)}")
+                raise RuntimeError(
+                    f"Failed to apply Builders candidate patch: {_result_output(result)}"
+                )
         finally:
             self._exec(["rm", "-f", "--", patch_path])
 
@@ -446,7 +446,9 @@ def validate_repo_url(repo_url: str) -> str:
     if parsed.scheme != "https" or not parsed.hostname:
         raise ValueError("Secure Builders accepts HTTPS repository URLs only")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise ValueError("Repository URLs must not contain credentials, query strings, or fragments")
+        raise ValueError(
+            "Repository URLs must not contain credentials, query strings, or fragments"
+        )
     if parsed.port not in {None, 443}:
         raise ValueError("Repository URLs must use the default HTTPS port")
     if parsed.hostname.lower() not in hosts:

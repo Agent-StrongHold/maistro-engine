@@ -47,9 +47,7 @@ def test_normal_coding_is_autonomous_and_boundary_crossings_use_leases() -> None
 
 
 def test_evolve_and_rsi_are_autonomous_until_promotion() -> None:
-    capabilities = {
-        capability.name: capability for capability in SECURE_BUILDERS_CAPABILITIES
-    }
+    capabilities = {capability.name: capability for capability in SECURE_BUILDERS_CAPABILITIES}
     assert capabilities["evolve_benchmark_evaluation"].approval is ApprovalMode.AUTONOMOUS
     assert capabilities["rsi_candidate_generation"].approval is ApprovalMode.AUTONOMOUS
     assert capabilities["rsi_candidate_promotion"].approval is ApprovalMode.PER_ACTION
