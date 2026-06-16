@@ -60,8 +60,16 @@ class SandboxSelector:
     def build_config(self, policy: WorkloadPolicy, **overrides: Any) -> SandboxConfig:
         """Build a SandboxConfig from a policy."""
         return SandboxConfig(
+            image_ref=overrides.get("image_ref", "maistro-builders:latest"),
+            workspace_path=overrides.get("workspace_path", "/workspace"),
             memory_mb=overrides.get("memory_mb", policy.max_memory_mb),
+            cpu_cores=overrides.get("cpu_cores", 1.0),
+            pids_limit=overrides.get("pids_limit", 256),
+            disk_mb=overrides.get("disk_mb", 2048),
             timeout_s=overrides.get("timeout_s", policy.max_timeout_s),
+            lifetime_s=overrides.get("lifetime_s", 3600),
             network=overrides.get("network", policy.network_allowed),
+            writable_paths=overrides.get("writable_paths", []),
+            env=overrides.get("env", {}),
             min_isolation=policy.min_tier,
         )

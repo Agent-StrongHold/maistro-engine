@@ -30,6 +30,14 @@ UNTRUSTED_CODE = WorkloadPolicy(
     reason="Model-generated code must run behind a VM boundary",
 )
 
+REPO_MATERIALIZATION = WorkloadPolicy(
+    min_tier="vm",
+    network_allowed=True,
+    max_memory_mb=1024,
+    max_timeout_s=600,
+    reason="Clone an untrusted repository before offline execution",
+)
+
 TRUSTED_TOOL = WorkloadPolicy(
     min_tier="container",
     network_allowed=True,

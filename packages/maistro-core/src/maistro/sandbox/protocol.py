@@ -40,9 +40,14 @@ class SandboxProtocol(Protocol):
 class SandboxConfig:
     """What the sandbox needs to provide."""
 
+    image_ref: str = "maistro-builders:latest"
+    workspace_path: str = "/workspace"
     memory_mb: int = 256
     cpu_cores: float = 1.0
+    pids_limit: int = 256
+    disk_mb: int = 2048
     timeout_s: int = 120
+    lifetime_s: int = 3600
     network: bool = False
     writable_paths: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
