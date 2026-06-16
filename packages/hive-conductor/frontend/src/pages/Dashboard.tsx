@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "re
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { DonutChart, ColumnChart, LineChart, FunnelChart, StackedBarChart } from "../components/Charts";
 import "./dashboard.css";
 import { TemplatePicker } from "../components/TemplatePicker";
 
@@ -679,40 +680,22 @@ function UnknownWidget({ widget }: { widget: Widget }) {
 
     // Donut chart
     if (cfg.display === "donut") {
-      let angle = 0;
-      const slices = entries.map(([label, count], i) => {
-        const pct = count / total;
-        const start = angle;
-        angle += pct * 360;
-        return { label, count, pct, start, end: angle, color: palette[i % palette.length] };
-      });
-      const r = 50, cx = 60, cy = 60, inner = 30;
-      return (
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <svg width={120} height={120} viewBox="0 0 120 120">
-            {slices.map((s, i) => {
-              const startRad = (s.start - 90) * Math.PI / 180;
-              const endRad = (s.end - 90) * Math.PI / 180;
-              const largeArc = s.pct > 0.5 ? 1 : 0;
-              const x1 = cx + r * Math.cos(startRad), y1 = cy + r * Math.sin(startRad);
-              const x2 = cx + r * Math.cos(endRad), y2 = cy + r * Math.sin(endRad);
-              const ix1 = cx + inner * Math.cos(endRad), iy1 = cy + inner * Math.sin(endRad);
-              const ix2 = cx + inner * Math.cos(startRad), iy2 = cy + inner * Math.sin(startRad);
-              return <path key={i} d={`M${x1},${y1} A${r},${r} 0 ${largeArc} 1 ${x2},${y2} L${ix1},${iy1} A${inner},${inner} 0 ${largeArc} 0 ${ix2},${iy2} Z`} fill={s.color} />;
-            })}
-            <text x={cx} y={cy + 4} textAnchor="middle" style={{ fontSize: "14px", fontWeight: 700, fill: "var(--ink)" }}>{total}</text>
-          </svg>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.62rem" }}>
-            {slices.slice(0, 8).map((s, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, flexShrink: 0, boxShadow: `0 0 6px ${s.color}44` }} />
-                <span style={{ color: "var(--pencil)", flex: 1 }}>{s.label}</span>
-                <span style={{ color: "var(--ink)", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{s.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
+      return <DonutChart data={{ labels: entries.map(([k]) => k), values: entries.map(([, v]) => v) }} centerLabel={String(total)} />;
+    }
+
+    // Line chart
+    if (cfg.display === "line") {
+      return <LineChart data={{ labels: entries.map(([k]) => k), values: entries.map(([, v]) => v) }} />;
+    }
+
+    // Column chart (vertical bars)
+    if (cfg.display === "column") {
+      return <ColumnChart data={{ labels: entries.map(([k]) => k), values: entries.map(([, v]) => v) }} />;
+    }
+
+    // Funnel (horizontal sorted bars with distinct colors)
+    if (cfg.display === "funnel") {
+      return <FunnelChart data={{ labels: entries.map(([k]) => k), values: entries.map(([, v]) => v) }} />;
     }
 
     // Default: bar chart
