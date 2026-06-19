@@ -15,6 +15,8 @@ from __future__ import annotations
 from maistro.tools.atlassian.client import (
     AtlassianMCPClient,
     AtlassianMCPError,
+    ConfluencePage,
+    ConfluenceSearchResult,
     JiraIssue,
     JiraSearchResult,
 )
@@ -22,6 +24,8 @@ from maistro.tools.atlassian.client import (
 __all__ = [
     "AtlassianMCPClient",
     "AtlassianMCPError",
+    "ConfluencePage",
+    "ConfluenceSearchResult",
     "JiraIssue",
     "JiraSearchResult",
 ]

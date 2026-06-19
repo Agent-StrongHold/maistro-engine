@@ -19,9 +19,30 @@ from typing import Any
 
 import httpx
 
+_MAX_DESCRIPTION = 2000
+_MAX_CONFLUENCE_CONTENT = 4000
+
 
 class AtlassianMCPError(RuntimeError):
-    """Raised when mcp-atlassian returns an error or is unreachable."""
+    """Raised when mcp-atlassian returns an error or is unreachable.
+
+    Carries the same machine-readable fields as the MCP-tool-layer fail()
+    dicts (error_code, recoverable, suggested_action) so callers can branch
+    on them via the exception rather than parsing the message string.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str = "atlassian_mcp_error",
+        recoverable: bool = True,
+        suggested_action: str = "Retry; if it persists, verify ATLASSIAN_MCP_URL and the PAT.",
+    ) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.recoverable = recoverable
+        self.suggested_action = suggested_action
 
 
 @dataclass(frozen=True)
@@ -58,6 +79,38 @@ class JiraSearchResult:
                 }
                 for i in self.issues
             ],
+        }
+
+
+@dataclass(frozen=True)
+class ConfluencePage:
+    id: str
+    title: str
+    space: str = ""
+    url: str | None = None
+    content: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "space": self.space,
+            "url": self.url,
+            "content": self.content,
+        }
+
+
+@dataclass(frozen=True)
+class ConfluenceSearchResult:
+    pages: tuple[ConfluencePage, ...]
+    total: int
+    query: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "query": self.query,
+            "total": self.total,
+            "pages": [p.to_dict() for p in self.pages],
         }
 
 
@@ -108,9 +161,16 @@ class AtlassianMCPClient:
             try:
                 resp = await client.get(self.health_url)
             except httpx.HTTPError as exc:
-                raise AtlassianMCPError(f"healthz unreachable: {exc}") from exc
+                raise AtlassianMCPError(
+                    f"healthz unreachable: {exc}",
+                    error_code="atlassian_unreachable",
+                    suggested_action="Check that the mcp-atlassian container is running and ATLASSIAN_MCP_URL is correct, then retry.",
+                ) from exc
         if resp.status_code >= 400:
-            raise AtlassianMCPError(f"healthz returned {resp.status_code}: {resp.text[:300]}")
+            raise AtlassianMCPError(
+                f"healthz returned {resp.status_code}: {resp.text[:300]}",
+                error_code="atlassian_http_error",
+            )
         try:
             health: dict[str, Any] = resp.json()
             return health
@@ -145,22 +205,36 @@ class AtlassianMCPClient:
                 )
             except httpx.HTTPError as exc:
                 raise AtlassianMCPError(
-                    f"MCP transport error for tool '{tool_name}': {exc}"
+                    f"MCP transport error for tool '{tool_name}': {exc}",
+                    error_code="atlassian_unreachable",
+                    suggested_action="Check that the mcp-atlassian container is running and ATLASSIAN_MCP_URL is correct, then retry.",
                 ) from exc
         if resp.status_code >= 400:
+            recoverable = resp.status_code not in (401, 403)
+            suggested = (
+                "Regenerate the PAT under Hive → Credentials and retry."
+                if not recoverable
+                else "Retry; if it persists, check mcp-atlassian's logs."
+            )
             raise AtlassianMCPError(
-                f"MCP '{tool_name}' returned {resp.status_code}: {resp.text[:500]}"
+                f"MCP '{tool_name}' returned {resp.status_code}: {resp.text[:500]}",
+                error_code="atlassian_http_error",
+                recoverable=recoverable,
+                suggested_action=suggested,
             )
         try:
             payload = resp.json()
         except ValueError as exc:
             raise AtlassianMCPError(
-                f"MCP '{tool_name}' returned non-JSON: {resp.text[:300]}"
+                f"MCP '{tool_name}' returned non-JSON: {resp.text[:300]}",
+                error_code="atlassian_invalid_response",
             ) from exc
         if "error" in payload:
             err = payload["error"]
             raise AtlassianMCPError(
-                f"MCP '{tool_name}' error: {err.get('message', err)} (code={err.get('code', '?')})"
+                f"MCP '{tool_name}' error: {err.get('message', err)} (code={err.get('code', '?')})",
+                error_code="atlassian_tool_error",
+                suggested_action="Inspect the error message — e.g. invalid JQL or page id — adjust arguments and retry.",
             )
         result = payload.get("result", payload)
         return result if isinstance(result, dict) else {"raw": result}
@@ -219,19 +293,25 @@ class AtlassianMCPClient:
         *,
         max_results: int = 25,
         confluence_pat: str,
-    ) -> dict[str, Any]:
-        return await self.call_tool(
+    ) -> ConfluenceSearchResult:
+        result = await self.call_tool(
             "confluence_search",
             {"query": query, "max_results": max_results},
             confluence_pat=confluence_pat,
         )
+        return self._parse_confluence_search(result, query=query)
 
-    async def confluence_get_page(self, page_id: str, *, confluence_pat: str) -> dict[str, Any]:
-        return await self.call_tool(
+    async def confluence_get_page(self, page_id: str, *, confluence_pat: str) -> ConfluencePage:
+        result = await self.call_tool(
             "confluence_get_page",
             {"page_id": page_id},
             confluence_pat=confluence_pat,
         )
+        # mcp-atlassian shape: result is either a page dict or wraps one in "content"
+        page = result.get("page") or result.get("content") or result
+        if isinstance(page, list) and page:
+            page = page[0]
+        return self._parse_confluence_page(page if isinstance(page, dict) else {})
 
     @staticmethod
     def _parse_jira_search(result: dict[str, Any], *, jql: str) -> JiraSearchResult:
@@ -274,15 +354,67 @@ class AtlassianMCPClient:
             issuetype=str(issuetype or ""),
             url=str(d.get("self") or d.get("url") or "") or None,
             description=str(fields.get("description", "") if isinstance(fields, dict) else "")[
-                :2000
+                :_MAX_DESCRIPTION
             ],
             labels=tuple(str(lbl) for lbl in labels) if isinstance(labels, list) else (),
+        )
+
+    @staticmethod
+    def _parse_confluence_search(result: dict[str, Any], *, query: str) -> ConfluenceSearchResult:
+        # Same tolerance story as Jira search — try the shapes mcp-atlassian
+        # and FastMCP are known to produce.
+        raw_pages = (
+            result.get("results")
+            or result.get("pages")
+            or result.get("content")
+            or result.get("data", {}).get("results")
+            or []
+        )
+        if not isinstance(raw_pages, list):
+            raw_pages = []
+        pages = tuple(
+            AtlassianMCPClient._parse_confluence_page(p) for p in raw_pages if isinstance(p, dict)
+        )
+        total = int(result.get("total", len(pages)))
+        return ConfluenceSearchResult(pages=pages, total=total, query=query)
+
+    @staticmethod
+    def _parse_confluence_page(d: dict[str, Any]) -> ConfluencePage:
+        # Confluence REST nests the rendered body under body.storage.value
+        # or body.view.value depending on the `expand` params used; FastMCP
+        # may instead flatten it to a top-level "content" string.
+        body = d.get("body")
+        content = ""
+        if isinstance(body, dict):
+            rendered = body.get("storage") or body.get("view") or {}
+            if isinstance(rendered, dict):
+                content = str(rendered.get("value", ""))
+        elif isinstance(body, str):
+            content = body
+        if not content:
+            content = str(d.get("content", ""))
+
+        space_obj = d.get("space")
+        space = space_obj.get("key", "") if isinstance(space_obj, dict) else str(space_obj or "")
+
+        raw_links = d.get("_links")
+        links = raw_links if isinstance(raw_links, dict) else {}
+        url = d.get("url") or links.get("webui") or links.get("self")
+
+        return ConfluencePage(
+            id=str(d.get("id", "")),
+            title=str(d.get("title", "")),
+            space=space,
+            url=str(url) if url else None,
+            content=content[:_MAX_CONFLUENCE_CONTENT],
         )
 
 
 __all__ = [
     "AtlassianMCPClient",
     "AtlassianMCPError",
+    "ConfluencePage",
+    "ConfluenceSearchResult",
     "JiraIssue",
     "JiraSearchResult",
 ]

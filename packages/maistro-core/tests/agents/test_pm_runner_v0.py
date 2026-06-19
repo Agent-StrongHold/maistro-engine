@@ -243,7 +243,7 @@ async def test_detect_blockers_uses_blockers_jql(monkeypatch):
 @pytest.mark.asyncio
 async def test_jira_mcp_transport_error_returns_no_data_with_hint(monkeypatch):
     """When mcp-atlassian is unreachable or returns an error, we must
-    return source='no_data' with a 2FA-retry hint, not crash."""
+    return source='no_data' with an actionable hint, not crash."""
 
     async def fake_mcp_raises(self, *, max_results, jira_pat):
         from maistro.tools.atlassian import AtlassianMCPError
@@ -270,7 +270,8 @@ async def test_jira_mcp_transport_error_returns_no_data_with_hint(monkeypatch):
     result = await pm_runner.run_pm_task(task)
     assert "source=no_data" in result.final_answer
     assert "Atlassian MCP error" in result.final_answer
-    assert "regenerate" in result.final_answer or "2FA" in result.final_answer
+    answer_lower = result.final_answer.lower()
+    assert "retry" in answer_lower or "pat" in answer_lower
 
 
 @pytest.mark.asyncio

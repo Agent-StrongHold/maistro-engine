@@ -370,12 +370,12 @@ async def _run_jira_driven(
     except AtlassianMCPError as exc:
         return PMRoleOutput(
             capability=capability,
-            summary=(
-                f"Atlassian MCP error: {exc}. "
-                "If your PAT has 2FA, regenerate it at the same Jira URL and "
-                "save again under Hive → Credentials."
-            ),
-            result={"error": str(exc)},
+            summary=f"Atlassian MCP error: {exc}. {exc.suggested_action}",
+            result={
+                "error": str(exc),
+                "error_code": exc.error_code,
+                "recoverable": exc.recoverable,
+            },
             source="no_data",
         )
 
