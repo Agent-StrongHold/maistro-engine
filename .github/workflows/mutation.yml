@@ -82,7 +82,9 @@ jobs:
           for line in open('mutation-results.json'):
               line = line.strip()
               if line:
-                  rows.append(json.loads(line))
+                  parsed = json.loads(line)
+                  if isinstance(parsed, dict):
+                      rows.append(parsed)
           total = len(rows)
           killed = sum(1 for r in rows if r.get('test_outcome') == 'killed')
           if total == 0:
@@ -151,6 +153,7 @@ jobs:
               line = line.strip()
               if not line: continue
               r = json.loads(line)
+              if not isinstance(r, dict): continue
               mod = r.get('module', 'unknown')
               per_module[mod]['total'] += 1
               if r.get('test_outcome') == 'killed':
