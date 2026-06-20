@@ -1,5 +1,5 @@
 ---
-id: ADR-100
+id: ADR-101
 title: Foreign harness adapters, hierarchical orchestration, and agent/skill portability
 repo: maistro-engine
 kind: adr
