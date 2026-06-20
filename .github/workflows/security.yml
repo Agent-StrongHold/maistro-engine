@@ -187,6 +187,11 @@ jobs:
           name: sboms-${{ github.event.pull_request.number || 'nightly' }}
           path: sbom-*.json
 
+      - name: Install uv + Python
+        uses: astral-sh/setup-uv@v3
+      - name: Setup Python 3.12
+        run: uv python install 3.12
+
       - name: License compliance (no GPL/AGPL on new deps)
         run: |
           uv run pip install pip-licenses
