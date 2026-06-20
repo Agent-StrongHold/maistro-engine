@@ -48,6 +48,15 @@ INHERITANCE_PRIORITY: dict[MemoryTier, int] = {
 REINFORCE_DELTA: float = 0.05
 CONTRADICT_DELTA: float = 0.05
 
+# Decay + reinforcement dynamics (ADR-080 part A / SPEC-240).
+DEFAULT_DECAY_RATE: float = 0.01  # weight lost per hour at decay_rate=1.0
+BOOST_RATE: float = 1.5  # weight multiplier on thumbs-up
+DROP_RATE: float = 0.5  # weight multiplier on thumbs-down
+SLOW_DECAY: float = 0.5  # decay_rate multiplier on thumbs-up
+FAST_DECAY: float = 2.0  # decay_rate multiplier on thumbs-down
+WISDOM_PROMOTE_THRESHOLD: int = 5  # reinforcement_count to promote -> WISDOM
+REGRET_DEMOTE_THRESHOLD: int = 5  # contradiction_count to demote -> REGRET
+
 
 class MemoryScope(StrEnum):
     """Memory visibility scopes — hierarchical from broadest to narrowest."""
@@ -156,3 +165,4 @@ class EpisodicMemory:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_accessed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     deleted: bool = False
+    decay_rate: float = DEFAULT_DECAY_RATE

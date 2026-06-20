@@ -3,7 +3,7 @@ id: SPEC-240
 title: "Memory decay + reinforcement dynamics (ADR-080 part A)"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-20
 substrate:
   - maistro-engine#ADR-013
@@ -20,7 +20,7 @@ blocked-by: []
 contracts:
   - behavioral
 tests:
-  - packages/maistro-core/tests/memory/test_episodic_decay.py
+  - packages/maistro-core/tests/memory/episodic/test_decay.py
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
@@ -105,19 +105,19 @@ calls `reclassify` and returns a copy with `tier` updated if it changed.
 
 ## Acceptance criteria
 
-- [ ] `on_access` updates `last_accessed_at` to `now` and leaves weight/tier unchanged.
-- [ ] `on_feedback(m, "up")` increases weight (clamped to tier ceiling) and decreases `decay_rate`.
-- [ ] `on_feedback(m, "down")` decreases weight (clamped to tier floor) and increases `decay_rate`.
-- [ ] `reclassify` returns WISDOM once `reinforcement_count >= WISDOM_PROMOTE_THRESHOLD`, REGRET once
+- [x] `on_access` updates `last_accessed_at` to `now` and leaves weight/tier unchanged.
+- [x] `on_feedback(m, "up")` increases weight (clamped to tier ceiling) and decreases `decay_rate`.
+- [x] `on_feedback(m, "down")` decreases weight (clamped to tier floor) and increases `decay_rate`.
+- [x] `reclassify` returns WISDOM once `reinforcement_count >= WISDOM_PROMOTE_THRESHOLD`, REGRET once
       `contradiction_count >= REGRET_DEMOTE_THRESHOLD`, else the memory's current tier.
-- [ ] `tick_decay` reduces weight proportionally to `decay_rate * elapsed_hours`, never below the
+- [x] `tick_decay` reduces weight proportionally to `decay_rate * elapsed_hours`, never below the
       tier floor (REGRET >= 0.6, WISDOM >= 0.9, per existing `WEIGHT_BOUNDS`).
-- [ ] A memory promoted to WISDOM or demoted to REGRET keeps that tier's floor on subsequent
+- [x] A memory promoted to WISDOM or demoted to REGRET keeps that tier's floor on subsequent
       `tick_decay` calls (no regression below floor even after many decay ticks).
 
 ## Testing
 
-- `packages/maistro-core/tests/memory/test_episodic_decay.py` (new) — unit tests for `on_access`,
+- `packages/maistro-core/tests/memory/episodic/test_decay.py` (new) — unit tests for `on_access`,
   `on_feedback` (both signals), `reclassify` (both promotion and demotion thresholds), `tick_decay`
   (decay over elapsed time, floor enforcement at WISDOM/REGRET).
 - Existing `packages/maistro-core/tests/` coverage for `clamp_weight`/`reinforce`/`decay` continues
