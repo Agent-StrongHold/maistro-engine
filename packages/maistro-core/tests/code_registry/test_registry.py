@@ -6,6 +6,7 @@ import hashlib
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 from maistro.code_registry.registry import CodeRegistry
 from maistro.code_registry.types import CodeEntry, CodeKind, CodeRefUnresolved, InvalidSignature
 from maistro.code_registry.verify import Ed25519Verifier
