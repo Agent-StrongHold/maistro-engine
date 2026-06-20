@@ -60,7 +60,7 @@ jobs:
           module-path = "packages/maistro-core/src/maistro"
           timeout = 30.0
           excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git"]
-          test-command = "PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=15 -q -x"
+          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=15 -q -x"
 
           [cosmic-ray.distributor]
           name = "local"
@@ -133,7 +133,7 @@ jobs:
           module-path = "packages/maistro-core/src/maistro"
           timeout = 60.0
           excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git", "maistro.maistro-canvas", "maistro.maistro-turing"]
-          test-command = "PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=20 -q"
+          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=20 -q"
 
           [cosmic-ray.distributor]
           name = "local"
