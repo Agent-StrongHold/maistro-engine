@@ -3,7 +3,7 @@ id: SPEC-242
 title: "Memory cross-scope sharing under owner consent (ADR-080 part C)"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-20
 substrate:
   - maistro-engine#ADR-013
@@ -20,7 +20,8 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/memory/episodic/test_sharing.py
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
@@ -92,16 +93,16 @@ Scope comparison uses the existing ordering `global > org > team > user > agent 
 
 ## Acceptance criteria
 
-- [ ] `can_read` returns true for a reader in the memory's exact scope.
-- [ ] `can_read` returns true for a reader at-or-above the memory's scope only when `shared` is set;
+- [x] `can_read` returns true for a reader in the memory's exact scope.
+- [x] `can_read` returns true for a reader at-or-above the memory's scope only when `shared` is set;
       returns false otherwise (no default leakage across scope boundaries).
-- [ ] `can_read` returns false for a different agent reading another agent's memory unless the
+- [x] `can_read` returns false for a different agent reading another agent's memory unless the
       memory is explicitly marked shareable, regardless of scope.
-- [ ] `propose_widen` rejects (raises or returns an error) a `target_scope` narrower than the
-      memory's current scope.
-- [ ] `apply_widen` only takes effect when the `ConsentTask.status == "approved"`; calling it on a
-      pending or rejected task is a no-op / raises.
-- [ ] A rejected consent task leaves the memory's scope and `shared` flag unchanged.
+- [x] `propose_widen` rejects (raises or returns an error) a `target_scope` narrower than the
+      memory's current scope (raises `ScopeNarrowingError`).
+- [x] `apply_widen` only takes effect when the `ConsentTask.status == "approved"`; calling it on a
+      pending or rejected task is a no-op.
+- [x] A rejected consent task leaves the memory's scope and `shared` flag unchanged.
 
 ## Testing
 

@@ -69,6 +69,18 @@ class MemoryScope(StrEnum):
     SESSION = "session"
 
 
+# Broadest-to-narrowest rank (ADR-013/068 axes); higher rank = broader scope.
+# Used by ADR-080 part C's can_read/propose_widen scope comparisons.
+SCOPE_RANK: dict[MemoryScope, int] = {
+    MemoryScope.GLOBAL: 5,
+    MemoryScope.ORGANIZATION: 4,
+    MemoryScope.TEAM: 3,
+    MemoryScope.USER: 2,
+    MemoryScope.AGENT: 1,
+    MemoryScope.SESSION: 0,
+}
+
+
 @dataclass
 class Learning:
     """A self-improving correction learned from tool call patterns."""
@@ -167,3 +179,7 @@ class EpisodicMemory:
     last_accessed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     deleted: bool = False
     decay_rate: float = DEFAULT_DECAY_RATE
+    # ADR-080 part C: explicit cross-scope/cross-agent shareability marker.
+    shared: bool = False
+    # ADR-080 part B: contradiction review queue marker (never auto-resolved).
+    flagged_for_review: bool = False

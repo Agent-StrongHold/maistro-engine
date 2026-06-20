@@ -3,7 +3,7 @@ id: SPEC-243
 title: "Hybrid BM25 + vector memory retrieval ranking (ADR-080 part D)"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-20
 substrate:
   - maistro-engine#ADR-016
@@ -20,7 +20,8 @@ blocked-by:
   - maistro-engine#SPEC-240
 contracts:
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/memory/episodic/test_ranking.py
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
@@ -87,13 +88,16 @@ the ADR-079 embedding client.
 
 ## Acceptance criteria
 
-- [ ] `score` returns `(lexical_fn + vector_fn) * memory.weight` exactly — a zero-weight memory
+- [x] `score` returns `(lexical_fn + vector_fn) * memory.weight` exactly — a zero-weight memory
       (post-decay, pre-floor) scores at or near zero regardless of lexical/vector match strength.
-- [ ] `rank` returns memories sorted descending by `score`, truncated to `k`.
-- [ ] A WISDOM-tier memory (`weight >= 0.9`) with equal lexical/vector relevance to a OBSERVATION-tier
+- [x] `rank` returns memories sorted descending by `score`, truncated to `k`.
+- [x] A WISDOM-tier memory (`weight >= 0.9`) with equal lexical/vector relevance to a OBSERVATION-tier
       memory ranks higher, demonstrating reinforced memories surface first.
-- [ ] `memory/episodic/retrieval.py`'s production `lexical_fn` reuses the existing store's lexical
-      index (BM25 or `pg_trgm`, whichever is already present) rather than adding a second one.
+- [x] `memory/episodic/retrieval.py`'s production `lexical_fn` reuses the existing store's lexical
+      index — there is no BM25/`pg_trgm` index in this in-memory store today, so it reuses the
+      existing keyword-overlap function rather than adding a second lexical index; the vector term
+      reuses the existing `EmbeddingClient`/`cosine_similarity` wiring. Both terms are now **summed**
+      (previously either/or) per the ADR-080 formula.
 
 ## Testing
 

@@ -3,7 +3,7 @@ id: SPEC-241
 title: "Memory consolidation — merge, contradiction review, incremental writes (ADR-080 part B)"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-20
 substrate:
   - maistro-engine#ADR-013
@@ -20,7 +20,8 @@ blocked-by:
   - maistro-engine#SPEC-240
 contracts:
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/memory/episodic/test_consolidation.py
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
@@ -97,16 +98,19 @@ history survives.
 
 ## Acceptance criteria
 
-- [ ] `consolidate` merges memories whose `similarity_fn` exceeds a threshold, weighting the merged
+- [x] `consolidate` merges memories whose `similarity_fn` exceeds a threshold, weighting the merged
       result by each input's current `weight`.
-- [ ] `consolidate` flags (does not merge) pairs where `contradiction_fn` returns true, computing a
+- [x] `consolidate` flags (does not merge) pairs where `contradiction_fn` returns true, computing a
       `confidence_delta` that lowers both sides rather than discarding either.
-- [ ] Applying a merge result never deletes the absorbed records — they are marked `deleted=True`,
+- [x] Applying a merge result never deletes the absorbed records — they are marked `deleted=True`,
       preserving history (incremental write, never full replacement).
-- [ ] The immediate-trigger path runs `consolidate` for a single new-memory-vs-existing pair
-      synchronously after a write that yields contradiction, without waiting for the batch runner.
-- [ ] The overnight batch runner processes the scope's memory set in batches and reports
-      counts (merged, flagged) for observability.
+- [x] The immediate-trigger path runs `consolidate` for a single new-memory-vs-existing pair
+      synchronously after a write that yields contradiction, without waiting for the batch runner
+      (`consolidate_pair`).
+- [x] The overnight batch runner processes the scope's memory set in batches and reports
+      counts (merged, flagged) for observability (`run_batch` / `BatchReport`). Note: `run_batch`
+      applies proposals via injected `apply_store_merge`/`apply_store_contradiction` callbacks — the
+      real cron/batch-token-pricing wiring is deferred to ADR-046 (Scheduler), per Non-goals.
 
 ## Testing
 
