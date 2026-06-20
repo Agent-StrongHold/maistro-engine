@@ -1,0 +1,190 @@
+"""Tests tied to SPEC.md §7 (Hypothesis-Tree Refinement) acceptance criteria
+htr-1..7."""
+
+from __future__ import annotations
+
+import pytest
+
+from maistro_rsi.htr import (
+    HypothesisEvidence,
+    HypothesisTree,
+    NodeStatus,
+)
+
+
+def _evidence(*, tests_passed=True, won=0, battles=0, improved=False) -> HypothesisEvidence:
+    return HypothesisEvidence(
+        tests_passed=tests_passed,
+        benchmarks_won=won,
+        battles=battles,
+        improved=improved,
+    )
+
+
+class TestEvidence:
+    def test_rejects_impossible_tallies_and_computes_net_gain(self):
+        """htr-1: impossible tallies raise; net_gain is +1/-1/0 for sweep/loss/split."""
+        with pytest.raises(ValueError):
+            HypothesisEvidence(tests_passed=True, benchmarks_won=3, battles=2, improved=True)
+        with pytest.raises(ValueError):
+            HypothesisEvidence(tests_passed=True, benchmarks_won=-1, battles=2, improved=False)
+        with pytest.raises(ValueError):
+            HypothesisEvidence(tests_passed=True, benchmarks_won=0, battles=-1, improved=False)
+
+        assert _evidence(won=4, battles=4).net_gain == pytest.approx(1.0)
+        assert _evidence(won=0, battles=4).net_gain == pytest.approx(-1.0)
+        assert _evidence(won=2, battles=4).net_gain == pytest.approx(0.0)
+        assert _evidence(won=0, battles=0).net_gain == 0.0
+
+
+class TestNodeScore:
+    def test_unscored_until_recorded_then_evidence_grounded(self):
+        """htr-2: score is None pre-execution, 0.0 on failed tests, else net gain in [0,1]."""
+        tree = HypothesisTree("root direction")
+        root = tree.nodes[tree.root_id]
+        assert root.score is None  # never a silent 0.0 for "unknown"
+
+        # tests fail -> worthless regardless of a benchmark sweep
+        a = tree.expand(root.id, "a")
+        tree.record(a.id, _evidence(tests_passed=False, won=4, battles=4, improved=False))
+        assert a.score == 0.0
+
+        # clean sweep with tests passing -> 1.0
+        b = tree.expand(root.id, "b")
+        tree.record(b.id, _evidence(won=4, battles=4, improved=True))
+        assert b.score == pytest.approx(1.0)
+
+        # even split with tests passing -> 0.5
+        c = tree.expand(root.id, "c")
+        tree.record(c.id, _evidence(won=2, battles=4, improved=False))
+        assert c.score == pytest.approx(0.5)
+
+
+class TestExpand:
+    def test_child_depth_parentage_and_guards(self):
+        """htr-3: expand adds an OPEN child at depth+1, errors on unknown/abandoned parents."""
+        tree = HypothesisTree("root")
+        root = tree.nodes[tree.root_id]
+
+        child = tree.expand(root.id, "try X")
+        assert child.status is NodeStatus.OPEN
+        assert child.depth == root.depth + 1
+        assert child.id in root.children
+
+        with pytest.raises(KeyError):
+            tree.expand("does-not-exist", "y")
+
+        # abandon the child, then refuse to grow it
+        tree.record(child.id, _evidence(tests_passed=False, won=0, battles=2, improved=False))
+        assert child.status is NodeStatus.ABANDONED
+        with pytest.raises(ValueError):
+            tree.expand(child.id, "z")
+
+
+class TestRecord:
+    def test_status_artifacts_and_auto_distill(self):
+        """htr-4: record sets ABANDONED on no-progress, EXPLORED otherwise, stores artifacts, distills."""
+        tree = HypothesisTree("root")
+        root = tree.nodes[tree.root_id]
+
+        # net gain <= 0 (even split) but tests pass -> still a dead end for the frontier
+        flat = tree.expand(root.id, "flat change")
+        tree.record(flat.id, _evidence(won=1, battles=2, improved=False))
+        assert flat.status is NodeStatus.ABANDONED
+
+        win = tree.expand(root.id, "real win")
+        tree.record(
+            win.id,
+            _evidence(won=3, battles=4, improved=True),
+            diff="diff-body",
+            pr_url="http://pr/1",
+            run_id="run123",
+        )
+        assert win.status is NodeStatus.EXPLORED
+        assert win.artifacts == {"diff": "diff-body", "pr_url": "http://pr/1", "run_id": "run123"}
+        assert win.insight is not None and "real win" in win.insight
+
+    def test_explicit_insight_overrides_auto_distill(self):
+        """htr-4: a supplied insight is kept verbatim instead of the distilled one."""
+        tree = HypothesisTree("root")
+        node = tree.expand(tree.root_id, "h")
+        tree.record(node.id, _evidence(won=2, battles=2, improved=True), insight="custom lesson")
+        assert node.insight == "custom lesson"
+
+
+class TestBestNode:
+    def test_returns_highest_score_with_deterministic_tiebreak(self):
+        """htr-5: best_node is the top score, None until any run, shallower depth breaks ties."""
+        tree = HypothesisTree("root")
+        assert tree.best_node() is None
+
+        root = tree.nodes[tree.root_id]
+        shallow = tree.expand(root.id, "shallow")
+        tree.record(shallow.id, _evidence(won=3, battles=4, improved=True))
+
+        deep_parent = tree.expand(root.id, "deep parent")
+        tree.record(deep_parent.id, _evidence(won=3, battles=4, improved=True))
+        deep = tree.expand(deep_parent.id, "deep")
+        tree.record(deep.id, _evidence(won=3, battles=4, improved=True))  # same score, deeper
+
+        # all three share the same score; the shallowest (depth 1, earliest) wins
+        assert tree.best_node().id == shallow.id
+
+        # a strictly better node takes over
+        winner = tree.expand(root.id, "winner")
+        tree.record(winner.id, _evidence(won=4, battles=4, improved=True))
+        assert tree.best_node().id == winner.id
+
+
+class TestFrontier:
+    def test_pending_prefers_stronger_parent_seeds_are_explored_only(self):
+        """htr-6: pending is OPEN-only ordered by parent score; expandable_seeds is EXPLORED-only."""
+        tree = HypothesisTree("root")
+        root = tree.nodes[tree.root_id]
+
+        strong = tree.expand(root.id, "strong parent")
+        tree.record(strong.id, _evidence(won=4, battles=4, improved=True))  # score 1.0
+        weak = tree.expand(root.id, "weak parent")
+        tree.record(weak.id, _evidence(won=3, battles=4, improved=True))  # score 0.875
+
+        child_of_strong = tree.expand(strong.id, "from strong")
+        child_of_weak = tree.expand(weak.id, "from weak")
+
+        pending_ids = [n.id for n in tree.pending()]
+        # both OPEN children present; the one off the higher-scoring parent first
+        assert pending_ids[0] == child_of_strong.id
+        assert child_of_weak.id in pending_ids
+        # explored/abandoned nodes are not pending
+        assert strong.id not in pending_ids
+
+        seed_ids = {n.id for n in tree.expandable_seeds()}
+        assert seed_ids == {strong.id, weak.id}  # EXPLORED only, root (OPEN) excluded
+
+
+class TestDistilledInsights:
+    def test_lineage_insights_oldest_first_deduped(self):
+        """htr-7: distilled_insights walks root->node lineage, oldest first, de-duplicated."""
+        tree = HypothesisTree("root")
+        root = tree.nodes[tree.root_id]
+
+        a = tree.expand(root.id, "a")
+        tree.record(a.id, _evidence(won=3, battles=4, improved=True), insight="lesson-A")
+        b = tree.expand(a.id, "b")
+        tree.record(b.id, _evidence(won=4, battles=4, improved=True), insight="lesson-B")
+        # a sibling lesson that must NOT leak into b's lineage
+        other = tree.expand(root.id, "other")
+        tree.record(other.id, _evidence(won=4, battles=4, improved=True), insight="lesson-OTHER")
+
+        assert tree.distilled_insights(b.id) == ["lesson-A", "lesson-B"]
+
+        # no-arg follows the best node's lineage (best == a full sweep at depth 1, 'other')
+        assert tree.distilled_insights() == ["lesson-OTHER"]
+
+    def test_duplicate_insights_collapse(self):
+        """htr-7: a repeated insight along a lineage appears once."""
+        tree = HypothesisTree("root")
+        a = tree.expand(tree.root_id, "a")
+        tree.record(a.id, _evidence(won=3, battles=4, improved=True), insight="same")
+        b = tree.expand(a.id, "b")
+        tree.record(b.id, _evidence(won=3, battles=4, improved=True), insight="same")
+        assert tree.distilled_insights(b.id) == ["same"]

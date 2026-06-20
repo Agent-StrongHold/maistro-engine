@@ -1,0 +1,275 @@
+"""Hypothesis-Tree Refinement (HTR) — cumulative memory across RSI cycles.
+
+On its own, one RSI cycle (`maistro_rsi.runner.RsiCycle`) is a *local* attempt:
+branch, patch, test, benchmark, keep or discard. Run a hundred of them and you
+get a hundred independent attempts that never learn from each other. The Arbor
+paper (arXiv:2606.11926, "Toward Generalist Autonomous Research via
+Hypothesis-Tree Refinement") makes the loop *cumulative*: a long-lived
+coordinator keeps a persistent tree of hypotheses; each short-lived executor
+expands one node and returns evidence; the coordinator distills a reusable
+insight from that evidence and refines which part of the frontier to explore
+next, so reusable lessons propagate across time instead of being thrown away.
+
+This module is the tree itself — the data structure plus the refinement policy.
+It is deliberately pure: no sandbox, git, or network. The coordinator that
+drives real RSI cycles (`maistro_rsi.coordinator`) depends on this, but the
+frontier-selection and insight-propagation logic can be reasoned about (and
+tested) without ever standing up a sandbox.
+"""
+
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass, field
+from enum import StrEnum
+
+
+class NodeStatus(StrEnum):
+    """Lifecycle of a hypothesis node.
+
+    A node is OPEN once proposed, EXPLORED once an executor has run it and
+    recorded evidence worth building on, and ABANDONED when the recorded
+    evidence marks it a dead end (broke the build, or made no benchmark
+    progress). Only OPEN and EXPLORED nodes are ever expanded — abandonment is
+    how the coordinator prunes the frontier "based on returned results".
+    """
+
+    OPEN = "open"
+    EXPLORED = "explored"
+    ABANDONED = "abandoned"
+
+
+@dataclass(frozen=True)
+class HypothesisEvidence:
+    """The returned result of executing one hypothesis: did the self-change
+    pass its own tests, and how did the candidate fare against the baseline
+    across the benchmark battles. Mirrors what `RsiCycleResult` already
+    exposes, kept as a small frozen value object so the tree never depends on
+    the heavy runner.
+    """
+
+    tests_passed: bool
+    benchmarks_won: int
+    battles: int
+    improved: bool
+
+    def __post_init__(self) -> None:
+        if self.battles < 0:
+            raise ValueError("battles cannot be negative")
+        if not 0 <= self.benchmarks_won <= self.battles:
+            raise ValueError(
+                f"benchmarks_won ({self.benchmarks_won}) must be in [0, battles={self.battles}]"
+            )
+
+    @property
+    def net_gain(self) -> float:
+        """Net benchmark win rate in [-1, 1]: +1 if the candidate swept, -1 if
+        it lost every battle, 0 on an even split or no battles."""
+        if self.battles == 0:
+            return 0.0
+        losses = self.battles - self.benchmarks_won
+        return (self.benchmarks_won - losses) / self.battles
+
+
+@dataclass
+class HypothesisNode:
+    """One node in the hypothesis tree: a proposed direction for a self-change,
+    plus — once executed — the evidence it produced, the artifacts it left
+    behind (diff, PR), and a distilled, reusable insight."""
+
+    id: str
+    parent_id: str | None
+    depth: int
+    hypothesis: str
+    order: int
+    status: NodeStatus = NodeStatus.OPEN
+    evidence: HypothesisEvidence | None = None
+    insight: str | None = None
+    artifacts: dict[str, str] = field(default_factory=dict)
+    children: list[str] = field(default_factory=list)
+
+    @property
+    def score(self) -> float | None:
+        """Evidence-grounded desirability in [0, 1], or ``None`` when the node
+        has not been executed yet — never a silent 0.0 for "unknown".
+
+        A change that breaks its own test suite is worthless regardless of
+        benchmarks (score 0.0), mirroring `RsiCycleResult.improved`'s refusal
+        to call a broken build an improvement. Otherwise the net benchmark gain
+        in [-1, 1] is mapped onto [0, 1]: a tests-passing clean sweep scores
+        1.0, an even split 0.5, a clean loss 0.0.
+        """
+        if self.evidence is None:
+            return None
+        if not self.evidence.tests_passed:
+            return 0.0
+        return (self.evidence.net_gain + 1.0) / 2.0
+
+
+class HypothesisTree:
+    """A persistent tree of hypotheses with an evidence-driven refinement
+    policy. The root is the seed direction; every other node is a refinement of
+    its parent. Executors record evidence against nodes; the coordinator reads
+    the frontier and the distilled lineage insights to decide what to try next.
+    """
+
+    def __init__(self, root_hypothesis: str) -> None:
+        self._order = 0
+        root = self._new_node(parent_id=None, depth=0, hypothesis=root_hypothesis)
+        self.root_id = root.id
+        self.nodes: dict[str, HypothesisNode] = {root.id: root}
+
+    def _new_node(self, *, parent_id: str | None, depth: int, hypothesis: str) -> HypothesisNode:
+        node = HypothesisNode(
+            id=uuid.uuid4().hex[:12],
+            parent_id=parent_id,
+            depth=depth,
+            hypothesis=hypothesis,
+            order=self._order,
+        )
+        self._order += 1
+        return node
+
+    # -- growth -------------------------------------------------------------
+
+    def expand(self, parent_id: str, hypothesis: str) -> HypothesisNode:
+        """Propose a refinement of ``parent_id`` as a new OPEN child node.
+
+        Raises ``KeyError`` for an unknown parent and ``ValueError`` for an
+        abandoned one — the coordinator must not grow a branch already pruned
+        as a dead end.
+        """
+        parent = self.nodes[parent_id]
+        if parent.status is NodeStatus.ABANDONED:
+            raise ValueError(f"cannot expand abandoned node {parent_id}")
+        child = self._new_node(
+            parent_id=parent_id,
+            depth=parent.depth + 1,
+            hypothesis=hypothesis,
+        )
+        parent.children.append(child.id)
+        self.nodes[child.id] = child
+        return child
+
+    def record(
+        self,
+        node_id: str,
+        evidence: HypothesisEvidence,
+        *,
+        diff: str | None = None,
+        pr_url: str | None = None,
+        run_id: str | None = None,
+        insight: str | None = None,
+    ) -> HypothesisNode:
+        """Attach an executor's returned evidence to a node, distill a reusable
+        insight, and set the node's status. A node that broke its tests or made
+        no net benchmark progress is ABANDONED (pruned from the frontier);
+        otherwise it becomes EXPLORED and is eligible to be expanded further.
+        """
+        node = self.nodes[node_id]
+        node.evidence = evidence
+        node.insight = insight if insight is not None else _distill(node.hypothesis, evidence)
+        if diff is not None:
+            node.artifacts["diff"] = diff
+        if pr_url is not None:
+            node.artifacts["pr_url"] = pr_url
+        if run_id is not None:
+            node.artifacts["run_id"] = run_id
+
+        dead_end = not evidence.tests_passed or evidence.net_gain <= 0
+        node.status = NodeStatus.ABANDONED if dead_end else NodeStatus.EXPLORED
+        return node
+
+    # -- frontier refinement ------------------------------------------------
+
+    def pending(self) -> list[HypothesisNode]:
+        """OPEN nodes awaiting execution, best-first: a node whose parent scored
+        higher is explored before one descending from a weaker (or unscored)
+        parent, ties broken by recency so the freshest hypothesis wins."""
+
+        def priority(node: HypothesisNode) -> tuple[float, int]:
+            parent_score = 0.0
+            if node.parent_id is not None:
+                parent_score = self.nodes[node.parent_id].score or 0.0
+            return (parent_score, node.order)
+
+        return sorted(
+            (n for n in self.nodes.values() if n.status is NodeStatus.OPEN),
+            key=priority,
+            reverse=True,
+        )
+
+    def expandable_seeds(self) -> list[HypothesisNode]:
+        """EXPLORED, non-abandoned nodes worth growing a new child from, ordered
+        most promising first (highest score, then shallower, then earliest)."""
+        seeds = [n for n in self.nodes.values() if n.status is NodeStatus.EXPLORED]
+        return sorted(seeds, key=lambda n: (-(n.score or 0.0), n.depth, n.order))
+
+    def best_node(self) -> HypothesisNode | None:
+        """The cumulative best-so-far: the highest-scoring executed node.
+        Deterministic ties: shallower depth wins, then earliest proposed.
+        ``None`` until at least one node has recorded evidence."""
+        scored = [n for n in self.nodes.values() if n.evidence is not None]
+        if not scored:
+            return None
+        return max(scored, key=lambda n: ((n.score or 0.0), -n.depth, -n.order))
+
+    def select_seed(self) -> HypothesisNode:
+        """The node a fresh hypothesis should refine when nothing is queued:
+        the most promising explored branch, or the root while the tree is still
+        young (nothing explored yet)."""
+        seeds = self.expandable_seeds()
+        return seeds[0] if seeds else self.nodes[self.root_id]
+
+    # -- lineage / insight propagation --------------------------------------
+
+    def lineage(self, node_id: str) -> list[HypothesisNode]:
+        """Root-to-node path, root first — the chain of refinements that led
+        here."""
+        chain: list[HypothesisNode] = []
+        current: str | None = node_id
+        while current is not None:
+            node = self.nodes[current]
+            chain.append(node)
+            current = node.parent_id
+        chain.reverse()
+        return chain
+
+    def distilled_insights(self, node_id: str | None = None) -> list[str]:
+        """The reusable lessons to carry into the next attempt, gathered along
+        the lineage of ``node_id`` (or of the best node, if omitted) — oldest
+        first, de-duplicated. This is what makes the loop cumulative rather than
+        local: expanding a node inherits everything learned on the path to it.
+        """
+        if node_id is None:
+            best = self.best_node()
+            node_id = best.id if best is not None else self.root_id
+        out: list[str] = []
+        seen: set[str] = set()
+        for node in self.lineage(node_id):
+            if node.insight and node.insight not in seen:
+                seen.add(node.insight)
+                out.append(node.insight)
+        return out
+
+    def summary(self) -> dict[str, int]:
+        """Node counts by status — for logging the coordinator's progress."""
+        counts = {status.value: 0 for status in NodeStatus}
+        for node in self.nodes.values():
+            counts[node.status.value] += 1
+        counts["total"] = len(self.nodes)
+        return counts
+
+
+def _distill(hypothesis: str, evidence: HypothesisEvidence) -> str:
+    """Turn raw evidence into a short, reusable lesson stated in terms of the
+    hypothesis — the unit that propagates down the tree to inform later
+    attempts."""
+    tally = f"{evidence.benchmarks_won}/{evidence.battles} benchmarks"
+    if evidence.improved:
+        return (
+            f"'{hypothesis}' improved the agent ({tally}, tests passing) — build on this direction."
+        )
+    if not evidence.tests_passed:
+        return f"'{hypothesis}' broke the test suite — avoid changes of this kind."
+    return f"'{hypothesis}' kept tests green but did not win a benchmark majority ({tally}) — insufficient alone."

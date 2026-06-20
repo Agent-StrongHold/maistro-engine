@@ -132,3 +132,49 @@ not improvement either.
 | runner-3 | `benchmarks_won` counts only battles the candidate (`genome_b`) outright won — draws and baseline wins do not count. |
 | runner-4 | `improved` is `True` only when `branch_result.tests_passed` is `True` **and** `benchmarks_won` is a strict majority of `battles`; either condition failing makes it `False`. |
 | runner-5 | The sandbox is destroyed even when `apply_patch` or evaluation raises — no leaked containers on a failed cycle. |
+
+---
+
+## 7. Hypothesis-Tree Refinement (`htr.py`)
+
+**Spec:** Run on its own, each RSI cycle is a *local* attempt that learns
+nothing from the cycles before it. Following Arbor (arXiv:2606.11926), `htr.py`
+keeps a persistent tree of hypotheses so the loop becomes *cumulative*: each
+node is a proposed direction for a self-change; once an executor runs it, the
+node carries the returned evidence, the artifacts it produced, and a distilled,
+reusable insight. The tree's scoring is evidence-grounded (an unexecuted node
+has no score — never a silent zero; a change that breaks its own tests is
+worthless regardless of benchmarks), and its refinement policy prunes dead-end
+branches while propagating the lessons learned along a lineage into whatever is
+tried next. The module is pure — no sandbox, git, or network — so the policy is
+reasoned about independently of execution.
+
+| AC | Criterion |
+|----|-----------|
+| htr-1 | `HypothesisEvidence` rejects impossible tallies — `benchmarks_won` outside `[0, battles]` (or a negative `battles`) raises `ValueError` — and `net_gain` is `+1`/`-1`/`0` for a sweep/clean-loss/even-split, `0.0` when there are no battles. |
+| htr-2 | A node's `score` is `None` until evidence is recorded (unknown is never a silent `0.0`); once recorded it is `0.0` whenever the tests failed regardless of benchmark wins, and otherwise the net benchmark gain mapped onto `[0, 1]` (clean sweep → `1.0`, even split → `0.5`). |
+| htr-3 | `expand(parent_id, hypothesis)` adds an OPEN child whose `depth` is the parent's `depth + 1`, appends it to the parent's `children`, raises `KeyError` for an unknown parent, and raises `ValueError` for an ABANDONED parent (a pruned branch is never grown). |
+| htr-4 | `record` marks a node ABANDONED when its tests failed **or** its net benchmark gain is `<= 0`, and EXPLORED otherwise; it also stores the supplied `diff`/`pr_url`/`run_id` artifacts and distills an insight when none is supplied. |
+| htr-5 | `best_node` returns the highest-scoring executed node — `None` while none have run — with deterministic tie-breaking (shallower depth, then earliest proposed). |
+| htr-6 | `pending` returns only OPEN nodes, ordered so a node descending from a higher-scoring parent comes first (ties broken by recency); `expandable_seeds` returns only EXPLORED nodes, most-promising first. |
+| htr-7 | `distilled_insights(node_id)` returns the non-empty insights along that node's root-to-node lineage, oldest first and de-duplicated; called with no argument it follows the best node's lineage. This is the cumulative-not-local property: a node inherits every lesson on the path to it. |
+
+---
+
+## 8. HTR coordinator (`coordinator.py`)
+
+**Spec:** The long-lived coordinator drives short-lived executors against the
+tree. On each step it acts on an already-queued hypothesis if one exists,
+otherwise grows a fresh hypothesis off the most promising explored branch; it
+hands the executor the node *and the insights distilled from that node's
+lineage*; and it records the returned report back into the tree. A real
+`RsiCycleResult` bridges into the coordinator's `ExecutionReport` without the
+coordinator importing the sandbox/git chain.
+
+| AC | Criterion |
+|----|-----------|
+| coordinator-1 | `run(n, propose)` executes exactly `n` steps, recording one node per step, and `propose` is invoked only on steps where no OPEN hypothesis is already queued. |
+| coordinator-2 | When a hypothesis is already queued (OPEN), the coordinator acts on it rather than proposing a new one; the node handed to the executor is the highest-priority pending node. |
+| coordinator-3 | The `HtrContext` passed to the executor carries `distilled_insights` for the acted-on node's lineage, so a child attempt sees its ancestors' recorded lessons. |
+| coordinator-4 | Each executor `ExecutionReport` is recorded against its node (evidence, artifacts, insight), so after the run the tree's statuses/scores reflect every step and `CoordinatorResult.best` is the tree's best node. |
+| coordinator-5 | `report_from_cycle_result` maps an `RsiCycleResult` into an `ExecutionReport` — `tests_passed`/`benchmarks_won`/`battles`/`improved` evidence plus `diff`/`pr_url`/`run_id` artifacts — and importing `coordinator` does not import the runner/sandbox chain. |
