@@ -114,7 +114,7 @@ async def run_program_pulse(user_id: str, *, max_actions: int = 4) -> dict[str, 
     engine = get_engine()
     queued: list[dict[str, str]] = []
 
-    if engine._queue is None:
+    if engine._backend is None:
         return {
             "queued": [],
             "proposed": [a.as_dict() for a in actions],
