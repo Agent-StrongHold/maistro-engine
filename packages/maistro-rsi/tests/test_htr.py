@@ -160,6 +160,39 @@ class TestFrontier:
         seed_ids = {n.id for n in tree.expandable_seeds()}
         assert seed_ids == {strong.id, weak.id}  # EXPLORED only, root (OPEN) excluded
 
+    def test_pending_excludes_descendants_of_abandoned_ancestors(self):
+        """htr-6: pending excludes OPEN children of abandoned parents — pruned branches do not re-grow."""
+        tree = HypothesisTree("root")
+        root = tree.nodes[tree.root_id]
+
+        # Create a branch, queue a child while parent is OPEN, then abandon the parent
+        dead_branch = tree.expand(root.id, "dead branch")
+        orphan = tree.expand(dead_branch.id, "orphan")  # queue child before abandoning parent
+        tree.record(dead_branch.id, _evidence(tests_passed=False, won=0, battles=2, improved=False))
+
+        # Create a good branch with a queued child
+        good_branch = tree.expand(root.id, "good branch")
+        tree.record(good_branch.id, _evidence(won=3, battles=4, improved=True))
+        child_of_good = tree.expand(good_branch.id, "child of good")
+
+        pending_ids = [n.id for n in tree.pending()]
+        # only the child of the good branch should be pending
+        assert child_of_good.id in pending_ids
+        # the orphan (child of abandoned parent) must not be queued
+        assert orphan.id not in pending_ids
+
+    def test_select_seed_raises_when_root_abandoned_and_no_seeds(self):
+        """htr-6: select_seed raises ValueError if root is abandoned and no explored branches exist."""
+        tree = HypothesisTree("root")
+        root = tree.nodes[tree.root_id]
+
+        # Abandon the root on first attempt, leaving no EXPLORED branches
+        tree.record(root.id, _evidence(tests_passed=False, won=0, battles=2, improved=False))
+
+        # Now select_seed should raise because root is abandoned and nothing is explored
+        with pytest.raises(ValueError, match="root is abandoned and no explored branches exist"):
+            tree.select_seed()
+
 
 class TestDistilledInsights:
     def test_lineage_insights_oldest_first_deduped(self):

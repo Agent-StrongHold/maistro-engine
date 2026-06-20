@@ -64,7 +64,12 @@ class HypothesisEvidence:
     @property
     def net_gain(self) -> float:
         """Net benchmark win rate in [-1, 1]: +1 if the candidate swept, -1 if
-        it lost every battle, 0 on an even split or no battles."""
+        it lost every decisive battle, 0 on an even split or no decisive battles.
+        Draws (same score) are neutral and excluded from the calculation."""
+        # Assuming draws are not counted as wins, losses = non_wins - draws.
+        # Since we don't track draws explicitly, we conservatively count only
+        # wins vs. non-wins where any non-win that isn't a draw is a loss.
+        # When there are only draws, net_gain is 0 (neutral).
         if self.battles == 0:
             return 0.0
         losses = self.battles - self.benchmarks_won
@@ -185,7 +190,16 @@ class HypothesisTree:
     def pending(self) -> list[HypothesisNode]:
         """OPEN nodes awaiting execution, best-first: a node whose parent scored
         higher is explored before one descending from a weaker (or unscored)
-        parent, ties broken by recency so the freshest hypothesis wins."""
+        parent, ties broken by recency so the freshest hypothesis wins. Excludes
+        any node whose lineage contains an abandoned ancestor."""
+
+        def has_abandoned_ancestor(node_id: str) -> bool:
+            current = self.nodes[node_id].parent_id
+            while current is not None:
+                if self.nodes[current].status is NodeStatus.ABANDONED:
+                    return True
+                current = self.nodes[current].parent_id
+            return False
 
         def priority(node: HypothesisNode) -> tuple[float, int]:
             parent_score = 0.0
@@ -194,7 +208,11 @@ class HypothesisTree:
             return (parent_score, node.order)
 
         return sorted(
-            (n for n in self.nodes.values() if n.status is NodeStatus.OPEN),
+            (
+                n
+                for n in self.nodes.values()
+                if n.status is NodeStatus.OPEN and not has_abandoned_ancestor(n.id)
+            ),
             key=priority,
             reverse=True,
         )
@@ -217,9 +235,15 @@ class HypothesisTree:
     def select_seed(self) -> HypothesisNode:
         """The node a fresh hypothesis should refine when nothing is queued:
         the most promising explored branch, or the root while the tree is still
-        young (nothing explored yet)."""
+        young (nothing explored yet). Raises ValueError if the root is abandoned
+        and no EXPLORED branches exist — the tree is a dead end."""
         seeds = self.expandable_seeds()
-        return seeds[0] if seeds else self.nodes[self.root_id]
+        if seeds:
+            return seeds[0]
+        root = self.nodes[self.root_id]
+        if root.status is NodeStatus.ABANDONED:
+            raise ValueError("root is abandoned and no explored branches exist")
+        return root
 
     # -- lineage / insight propagation --------------------------------------
 

@@ -35,7 +35,6 @@ from maistro_rsi.htr import (
     NodeStatus,
 )
 from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
-from maistro_rsi.runner import RsiCycle, RsiCycleConfig, RsiCycleResult
 
 __all__ = [
     "ApplyPatchFn",
@@ -55,3 +54,13 @@ __all__ = [
     "RsiCycleResult",
     "report_from_cycle_result",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy-load runner exports to avoid pulling in sandbox chain for
+    coordinator-only imports."""
+    if name in ("RsiCycle", "RsiCycleConfig", "RsiCycleResult"):
+        from maistro_rsi import runner
+
+        return getattr(runner, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

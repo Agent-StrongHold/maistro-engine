@@ -156,7 +156,7 @@ reasoned about independently of execution.
 | htr-3 | `expand(parent_id, hypothesis)` adds an OPEN child whose `depth` is the parent's `depth + 1`, appends it to the parent's `children`, raises `KeyError` for an unknown parent, and raises `ValueError` for an ABANDONED parent (a pruned branch is never grown). |
 | htr-4 | `record` marks a node ABANDONED when its tests failed **or** its net benchmark gain is `<= 0`, and EXPLORED otherwise; it also stores the supplied `diff`/`pr_url`/`run_id` artifacts and distills an insight when none is supplied. |
 | htr-5 | `best_node` returns the highest-scoring executed node — `None` while none have run — with deterministic tie-breaking (shallower depth, then earliest proposed). |
-| htr-6 | `pending` returns only OPEN nodes, ordered so a node descending from a higher-scoring parent comes first (ties broken by recency); `expandable_seeds` returns only EXPLORED nodes, most-promising first. |
+| htr-6 | `pending` returns only OPEN nodes ordered so a node descending from a higher-scoring parent comes first (ties broken by recency), **excluding** any node whose lineage contains an abandoned ancestor (pruned branches never re-grow); `expandable_seeds` returns only EXPLORED nodes, most-promising first; `select_seed` returns the top seed or the root (if unexecuted), and raises `ValueError` if the root is abandoned and no explored branches exist. |
 | htr-7 | `distilled_insights(node_id)` returns the non-empty insights along that node's root-to-node lineage, oldest first and de-duplicated; called with no argument it follows the best node's lineage. This is the cumulative-not-local property: a node inherits every lesson on the path to it. |
 
 ---
