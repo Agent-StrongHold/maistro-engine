@@ -1,5 +1,5 @@
 ---
-id: ADR-100
+id: ADR-061526-f383
 title: Foreign harness adapters, hierarchical orchestration, and agent/skill portability
 repo: maistro-engine
 kind: adr
@@ -31,7 +31,11 @@ history:
     date: 2026-06-15
 ---
 
-# ADR-100: Foreign harness adapters, hierarchical orchestration, and agent/skill portability
+# ADR-061526-f383: Foreign harness adapters, hierarchical orchestration, and agent/skill portability
+
+> Renumbered from `ADR-100` (2026-06-20): that ID collided with `ADR-100-bundled-open-design-systems.md`,
+> assigned in a concurrent PR. See `ADR-101-date-based-adr-spec-ids.md` for why new IDs are now
+> date-based instead of sequential.
 
 ## Context
 

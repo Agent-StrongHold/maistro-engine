@@ -6,12 +6,12 @@ kind: spec
 status: Proposed
 created: 2026-06-15
 substrate:
-  - maistro-engine#ADR-100
+  - maistro-engine#ADR-061526-f383
   - maistro-engine#SPEC-184
   - maistro-engine#ADR-058
   - maistro-engine#ADR-062
 implements:
-  - maistro-engine#ADR-100
+  - maistro-engine#ADR-061526-f383
 related:
   - maistro-engine#ADR-083
   - maistro-engine#ADR-019
@@ -32,7 +32,7 @@ history:
 
 # SPEC-208: Foreign harness adapter
 
-**Implements:** ADR-100. ADR-100 decides *that* maistro wraps foreign agent harnesses behind a
+**Implements:** ADR-061526-f383. ADR-061526-f383 decides *that* maistro wraps foreign agent harnesses behind a
 `harness_runner` slot, can be wrapped the same way by other orchestrators, and adopts an
 import-wide/export-narrow posture for agent and skill formats. This spec defines *how*: the slot
 and protocol shapes, the safety wrapper, the import adapter catalog, the export artifact, and the
@@ -211,7 +211,7 @@ dedicated scope (`harness:session`) gates this route.
 
 - Per-harness session lifecycle limits (idle timeout, max concurrent sessions per host) —
   resource-management policy, likely belongs with the follow-up stateful policy engine
-  (ADR-100, Follow-ups) rather than this spec.
+  (ADR-061526-f383, Follow-ups) rather than this spec.
 - Whether `HarnessNodeStrategy` needs its own `priority_tier` interaction with
   `determine_execution_tier` (`conduit.py:24-33`) when a foreign harness reports its own
   cost/latency profile.
@@ -220,7 +220,7 @@ dedicated scope (`harness:session`) gates this route.
 
 ## References
 
-- [ADR-100: Foreign harness adapters, hierarchical orchestration, and agent/skill portability](../adr/ADR-100-foreign-harness-adapters-and-portability.md)
+- [ADR-061526-f383: Foreign harness adapters, hierarchical orchestration, and agent/skill portability](../adr/ADR-061526-f383-foreign-harness-adapters-and-portability.md)
 - [SPEC-184: Modular capability platform](SPEC-184-modular-capability-platform.md)
 - [ADR-058: A2A delegation protocol](../adr/ADR-058-a2a-delegation-protocol.md)
 - [ADR-062: Graph execution protocol](../adr/ADR-062-graph-execution-protocol.md)

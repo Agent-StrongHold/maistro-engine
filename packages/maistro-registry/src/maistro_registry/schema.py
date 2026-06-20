@@ -87,14 +87,17 @@ class Contract(StrEnum):
     CROSS_SERVICE = "cross-service"
 
 
-# Local id pattern: e.g. ADR-024, SPEC-138
-_ID_PATTERN = re.compile(r"^(ADR|SPEC)-\d{3}$")
+# Local id pattern: legacy sequential e.g. ADR-024, SPEC-138 (frozen — no new
+# sequential IDs are assigned; see ADR-101), or date-based MMDDYY + 4-hex
+# disambiguator e.g. ADR-061526-f383, SPEC-061526-f383 (collision-safe across
+# concurrent PRs, unlike sequential numbering — see ADR-101).
+_ID_PATTERN = re.compile(r"^(ADR|SPEC)-(\d{3}|\d{6}-[0-9a-f]{4})$")
 
-# Cross-repo reference pattern: e.g. maistro-engine#ADR-024.
+# Cross-repo reference pattern: e.g. maistro-engine#ADR-024, maistro-engine#ADR-061526-f383.
 # Other repos may use their own ID scheme (Project_mAIstro uses S-NNN for specs),
 # so references accept ADR/SPEC/S; our own IDs stay strict via _ID_PATTERN.
 _REF_PATTERN = re.compile(
-    r"^(maistro-engine|Project_mAIstro|AgentTuring|stronghold)#(ADR|SPEC|S)-\d{3}$"
+    r"^(maistro-engine|Project_mAIstro|AgentTuring|stronghold)#(ADR|SPEC|S)-(\d{3}|\d{6}-[0-9a-f]{4})$"
 )
 
 
@@ -164,7 +167,10 @@ class FrontMatter(BaseModel):
     @classmethod
     def _validate_id(cls, v: str) -> str:
         if not _is_valid_id(v):
-            raise ValueError(f"id must match ^(ADR|SPEC)-NNN$, got {v!r}")
+            raise ValueError(
+                f"id must match ^(ADR|SPEC)-NNN$ (legacy) or ^(ADR|SPEC)-MMDDYY-[0-9a-f]{{4}}$ "
+                f"(current), got {v!r}"
+            )
         return v
 
     @field_validator(
