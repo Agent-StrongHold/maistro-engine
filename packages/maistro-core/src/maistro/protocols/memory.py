@@ -90,8 +90,8 @@ class EpisodicStore(Protocol):
         *,
         agent_id: str | None = None,
         user_id: str | None = None,
-        team: str | None = None,
-        task_type: str = "",
+        team_id: str | None = None,
+        org_id: str | None = None,
         limit: int = 5,
     ) -> list[EpisodicMemory]:
         """Retrieve relevant memories, scope-filtered."""
@@ -136,6 +136,8 @@ class OutcomeStore(Protocol):
         task_type: str,
         tool_name: str = "",
         limit: int = 5,
+        org_id: str = "",
+        project_id: str = "",
     ) -> str:
         """Get recent failure patterns as a prompt section for experience-augmented context."""
         ...
