@@ -15,6 +15,7 @@ E = TypeVar("E")
 async def repertoire_run(  # noqa: UP047 (PEP 695 generics require py3.12; this package supports 3.11)
     rep: Repertoire[InputT, S, E], inp: InputT, *, stakes: float, gate: PerformGate
 ) -> S:
+    """Recall -> gate -> improvise -> rehearse -> compose, returning the resulting solution."""
     input_class = rep.class_of(inp)
     entry = rep.recall(input_class)
     if entry is not None and gate.should_perform(entry, stakes=stakes):
