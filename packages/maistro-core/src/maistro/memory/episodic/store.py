@@ -52,3 +52,32 @@ class InMemoryEpisodicStore:
             if mem.memory_id == memory_id:
                 self._memories[i] = _reinforce(mem, delta)
                 break
+
+    async def list_by_scope(
+        self,
+        *,
+        agent_id: str | None = None,
+        team_id: str | None = None,
+        org_id: str | None = None,
+        project_id: str | None = None,
+        min_weight: float = 0.0,
+        limit: int = 50,
+    ) -> list[EpisodicMemory]:
+        scope_filters = build_scope_filter(
+            agent_id=agent_id,
+            team_id=team_id,
+            org_id=org_id,
+        )
+        # No agent/team/org filter given: project_id alone selects memories
+        # (e.g. project changelog recall), independent of scope hierarchy.
+        no_scope_filter = not (agent_id or team_id or org_id)
+        matched = [
+            mem
+            for mem in self._memories
+            if not mem.deleted
+            and (no_scope_filter or matches_scope(mem, scope_filters))
+            and mem.weight >= min_weight
+            and (not project_id or mem.project_id == project_id)
+        ]
+        matched.sort(key=lambda m: m.weight, reverse=True)
+        return matched[:limit]

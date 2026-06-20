@@ -101,6 +101,19 @@ class EpisodicStore(Protocol):
         """Reinforce a memory (increase weight, clamped to tier ceiling)."""
         ...
 
+    async def list_by_scope(
+        self,
+        *,
+        agent_id: str | None = None,
+        team_id: str | None = None,
+        org_id: str | None = None,
+        project_id: str | None = None,
+        min_weight: float = 0.0,
+        limit: int = 50,
+    ) -> list[EpisodicMemory]:
+        """Scope-filtered memories at or above min_weight, no content matching."""
+        ...
+
 
 @runtime_checkable
 class OutcomeStore(Protocol):
@@ -204,6 +217,42 @@ class SessionStore(Protocol):
 
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
+        ...
+
+
+@runtime_checkable
+class ContextAssemblyPolicy(Protocol):
+    """Assembles Level-1 storage types into Layer 0-4 LLM-prompt text (ADR-091)."""
+
+    async def layer0(self, project_id: str) -> str:
+        """Pinned project constraints text. Always included; drives KV cache key."""
+        ...
+
+    async def layer1(self, run_id: str, agent_id: str, session_id: str) -> str:
+        """Active task context: high-confidence episodic memories scoped to this agent."""
+        ...
+
+    async def layer2(self, session_id: str, budget_tokens: int) -> str:
+        """Compressed conversation history (SPEC-189 rolling window)."""
+        ...
+
+    async def layer3(self, project_id: str, n: int = 20) -> str:
+        """Project changelog: recent Outcome records + WISDOM-tier episodic memories."""
+        ...
+
+    async def layer4(self, project_id: str) -> str:
+        """Knowledge graph context. Returns '' until implemented."""
+        ...
+
+    async def assemble(
+        self,
+        project_id: str,
+        run_id: str,
+        agent_id: str,
+        session_id: str,
+        budget_tokens: int,
+    ) -> str:
+        """Concatenate layers 0-4 in order, respecting budget_tokens total."""
         ...
 
 

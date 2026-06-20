@@ -158,6 +158,7 @@ class EpisodicMemory:
     agent_id: str | None = None
     user_id: str | None = None
     scope: MemoryScope = MemoryScope.AGENT
+    project_id: str = ""
     source: str = ""
     context: dict[str, str] = field(default_factory=dict)
     reinforcement_count: int = 0
