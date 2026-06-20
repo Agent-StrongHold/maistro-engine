@@ -138,7 +138,7 @@ Invalid synthetic JSON must fail `ConductorProgressPayload.model_validate` with 
 | T-175-3 | unit | behavioral | notifier swallows transport errors |
 | T-175-4 | integration | behavioral | `TaskRunner` with mock notifier receives calls across a mocked executor path (no real LLM) |
 
-**E2E (deferred):** Full stack POST to a containerized mock router is not required for SPEC-175 closure; track under `docs/testing-audit.md` if CI gains a compose profile.
+**E2E (deferred):** Full stack POST to a containerized mock router is not required for SPEC-175 closure; track under `docs/audit/TESTING-AUDIT-2026-02-20.md` (historical) or a fresh CI compose-profile spec if CI gains one.
 
 ## Implementation order
 

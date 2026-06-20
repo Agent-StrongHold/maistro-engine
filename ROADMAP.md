@@ -170,6 +170,19 @@ Dominant constraint: multi-tenant isolation. See [`stronghold/ROADMAP-v1.0.md`](
 | `[sh-050]` On-prem (OKD) + cloud (AKS) parity | Proposed; `gap-impl` | Same Helm + image set |
 | `[sh-060]` Append-only audit chain (signed, hash-chained) | Proposed; `gap-impl` | Indefinite retention |
 
+#### `maistro-engine` (Hive Conductor) — distribution & frontend completion
+
+Migrated from the archived `docs/archive/MASTER-PLAN.md` + `docs/archive/PRODUCT-SPEC.md`; detail in `BACKLOG.md` `[engine-100]`–`[engine-105]`.
+
+| Item | Status | Detail |
+|---|---|---|
+| `[engine-100]` Hosted curl installer + web wizard | Proposed | `get.hiveconductor.com` distribution; local `get.sh`/`install.sh` only cover manual clone today |
+| `[engine-101]` GHCR image publishing pipeline | Proposed | Blocks `engine-100` |
+| `[engine-102]` Frontend completion vs. archived PRODUCT-SPEC | Proposed; `gap-impl` | Page-by-page coverage unverified |
+| `[engine-103]` MCP server implementations | Proposed | Decide wrap-existing-tools vs. build-new |
+| `[engine-104]` Port remaining Project mAIstro experimental features | Proposed | Bouncer, Agent Factory, Spawner, APM, Heartbeat, Red Team, Skill Forge, Message Board |
+| `[engine-105]` Wire Master Orchestrator security gate + API dispatch | Accepted; `gap-impl` | J1–J4 shipped (`orchestrator/master.py`, `planner.py`); J5/J6 open |
+
 ### Phase F — Contracts as the bar (weeks 6–12)
 
 Per [`engine#ADR-032`](https://github.com/BlakeMatthews-dev/maistro-engine/blob/main/docs/adr/ADR-032-contracts-as-acceptance-criteria.md). Mutation-testing kill rate is the v1.0 quality bar.

@@ -351,7 +351,7 @@ Current `bridge.py` has 4 adapters. The migration requires these additions:
 ### Phase 9: Integration & Cleanup (1-2 days) → [Detailed spec](turing-phases/phase-9-integration.md)
 
 - [ ] Update `maistro-engine/CLAUDE.md` with new commands
-- [ ] Update `maistro-engine/CONSOLIDATION-PLAN.md` — mark Turing tasks complete
+- [ ] Update `maistro-engine/docs/archive/CONSOLIDATION-PLAN.md` — mark Turing tasks complete
 - [ ] Write ADR for Turing migration decisions
 - [ ] Remove `code_modification.py` (StrongholdClient) from AgentTuring — now in maistro-core
 - [ ] Update `BlakeMatthews-dev/AgentTuring` README to point to maistro-turing

@@ -33,7 +33,7 @@ history:
 **ADR-030 is now Superseded.** The four-repo / templated-peers model was reversed by the
 **monorepo consolidation**: this repo *contains* the Conductor + canvas and is *imported* by
 downstream products (Stronghold, Canvas book-maker); `Project_mAIstro` and `AgentTuring` were
-absorbed here, not kept as separate peers. See `CONSOLIDATION-PLAN.md` and `CLAUDE.md`.
+absorbed here, not kept as separate peers. See `docs/archive/CONSOLIDATION-PLAN.md` and `CLAUDE.md`.
 
 ## Decision
 
@@ -106,4 +106,4 @@ peers (`Project_mAIstro`, `AgentTuring`, `stronghold`). **That model is Supersed
 consolidation made `maistro-engine` a single monorepo that *contains* the Conductor + canvas and
 is *imported* by downstream products (Stronghold, Canvas book-maker); `Project_mAIstro` and
 `AgentTuring` were absorbed into this repo's `packages/` and `docs/`. Current structure lives in
-`CLAUDE.md`, `README.md`, and `CONSOLIDATION-PLAN.md`.
+`CLAUDE.md`, `README.md`, and `docs/archive/CONSOLIDATION-PLAN.md`.

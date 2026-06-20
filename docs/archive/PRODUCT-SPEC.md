@@ -1,5 +1,10 @@
 # Hive Conductor — Product Specification
 
+> **⚠️ HISTORICAL (archived 2026-06-20).** Companion to the now-archived
+> `docs/archive/MASTER-PLAN.md`. Page-by-page frontend coverage against this spec is
+> unverified; tracked as `[engine-102]` in `BACKLOG.md`. Kept for historical
+> design-rationale reference.
+
 **Product**: Hive Conductor — Multi-agent AI platform
 **Distribution**: curl installer + web wizard → docker compose up
 **Date**: 2026-05-12

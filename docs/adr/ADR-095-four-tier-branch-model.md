@@ -30,7 +30,7 @@ history:
 
 ## Context
 
-ADR-001 established `main < integration` with `integration` as the default PR base and `main` taking periodic sync PRs. As the repo consolidated into a single monorepo (see `CONSOLIDATION-PLAN.md`) and shifted to high-volume AI-assisted change, we want a clearer separation between *active feature integration* and *stabilized QA*, plus enforced (not just conventional) protection so nothing reaches `main` un-reviewed or un-tested.
+ADR-001 established `main < integration` with `integration` as the default PR base and `main` taking periodic sync PRs. As the repo consolidated into a single monorepo (see `docs/archive/CONSOLIDATION-PLAN.md`) and shifted to high-volume AI-assisted change, we want a clearer separation between *active feature integration* and *stabilized QA*, plus enforced (not just conventional) protection so nothing reaches `main` un-reviewed or un-tested.
 
 ## Decision
 
@@ -76,5 +76,5 @@ feat/* bug/* idea/* doc/* chore/*   →  develop  →  integration  →  main
 ## Source references
 
 - Supersedes ADR-001 (integration-as-default-base).
-- `CONSOLIDATION-PLAN.md` — monorepo consolidation context.
+- `docs/archive/CONSOLIDATION-PLAN.md` — monorepo consolidation context.
 - ADR-031 (front-matter/registry), ADR-032 (contracts as acceptance criteria) — CI gates that will become required checks.

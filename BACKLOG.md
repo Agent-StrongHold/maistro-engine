@@ -138,6 +138,28 @@ Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-e
 
 **[engine-085] Trace export to long-term storage — Proposed**
 
+### Hive Conductor distribution & frontend (migrated from archived `cutover/MASTER-PLAN.md` + `design/PRODUCT-SPEC.md`)
+
+**[engine-100] Hosted curl installer + web wizard — Proposed**
+- `get.hiveconductor.com/install.sh` and `install.hiveconductor.com` web wizard never built
+- Local `get.sh`/`install.sh` cover a manual-clone install path; the hosted one-liner distribution does not exist
+
+**[engine-101] GHCR image publishing pipeline — Proposed**
+- No workflow publishes `ghcr.io/blakematthews-dev/hive-conductor` (or sibling) images; CI builds but doesn't push
+- Blocks `engine-100` (hosted installer pulls pre-built images)
+
+**[engine-102] Hive Conductor frontend completion vs. PRODUCT-SPEC — Proposed; `gap-impl`**
+- Cross-check `packages/hive-conductor/frontend/src` against the archived 10-page spec; several shared components exist (`AppShell.tsx`, `AgentFleetCard.tsx`, `WidgetMicroChat.tsx`) but full page coverage (Missions, Schedules, Skills marketplace, MCP discovery, CLI terminal, Container Builder, Memory Explorer) is unverified/incomplete
+
+**[engine-103] MCP server implementations — Proposed**
+- `mcp-sandbox`, `mcp-git`, `mcp-browser`, `mcp-ha`, `mcp-utils`, `mcp-trading`, `mcp-reminders` were planned as standalone MCP servers; core already has overlapping in-process tools (`tools/sandbox`, `tools/git`, `tools/browser`) — decide wrap-existing vs. build-new before scoping
+
+**[engine-104] Port remaining Project mAIstro experimental features — Proposed**
+- Bouncer, Agent Factory, Spawner, APM, Heartbeat, Red Team, Skill Forge, Message Board — feature-flagged off, not yet ported into the consolidated monorepo
+
+**[engine-105] Wire Master Orchestrator security gate + API dispatch — Accepted; `gap-impl`**
+- `orchestrator/master.py` + `orchestrator/planner.py` exist (Group J1–J4 done), but the Security Scanner gate (J5) and wiring into the `maistro-server` API (J6) from the archived consolidation plan are still open
+
 ### NEW — from May 2026 catalog review (engine)
 
 **[engine-090] Chat-UI integration contract — Proposed; `gap-spec` — v1.1**
