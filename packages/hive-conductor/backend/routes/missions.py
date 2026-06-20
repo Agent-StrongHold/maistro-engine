@@ -42,7 +42,7 @@ def _task_to_mission(rec: object) -> Mission:
 @router.get("", response_model=list[Mission])
 def list_missions() -> list[Mission]:
     engine = get_engine()
-    if engine.is_configured or engine._queue is not None:
+    if engine.is_configured or engine._backend is not None:
         tasks = engine.list_tasks()
         if tasks:
             return [_task_to_mission(t) for t in tasks]
@@ -59,7 +59,7 @@ class ClearMissionsBody(BaseModel):
 def clear_missions(body: ClearMissionsBody) -> dict[str, int]:
     """Remove terminal missions from the in-memory queue (POC cleanup)."""
     engine = get_engine()
-    if engine._queue is None:
+    if engine._backend is None:
         return {"removed": 0}
     removed = engine.clear_tasks(status=body.status)
     log_audit("missions_clear", "system", detail={"status": body.status, "removed": removed})
@@ -69,7 +69,7 @@ def clear_missions(body: ClearMissionsBody) -> dict[str, int]:
 @router.get("/{mission_id}", response_model=Mission)
 def get_mission(mission_id: str) -> Mission:
     engine = get_engine()
-    if engine.is_configured or engine._queue is not None:
+    if engine.is_configured or engine._backend is not None:
         rec = engine.get_task(mission_id)
         if rec is not None:
             return _task_to_mission(rec)
@@ -81,7 +81,7 @@ def get_mission(mission_id: str) -> Mission:
 @router.get("/{mission_id}/steps", response_model=list[MissionStep])
 def get_steps(mission_id: str) -> list[MissionStep]:
     engine = get_engine()
-    if engine.is_configured or engine._queue is not None:
+    if engine.is_configured or engine._backend is not None:
         rec = engine.get_task(mission_id)
         if rec is not None:
             # Synthesise step list from current task phase
@@ -113,7 +113,7 @@ class CreateMissionBody(BaseModel):
 @router.post("", response_model=Mission)
 async def create_mission(body: CreateMissionBody) -> Mission:
     engine = get_engine()
-    if engine.is_configured or engine._queue is not None:
+    if engine.is_configured or engine._backend is not None:
         rec = await engine.submit_task(body.name, body.description or body.name)
         log_audit("mission_create", "system", target=rec.id, detail={"name": body.name})
         return _task_to_mission(rec)
@@ -156,7 +156,7 @@ def update_mission_status(
     request: Request,
 ) -> Mission:
     engine = get_engine()
-    if engine._queue is not None:
+    if engine._backend is not None:
         rec = engine.get_task(mission_id)
         if rec is not None:
             # Maistro task runner owns lifecycle; UI status buttons are legacy stubs only.
@@ -203,7 +203,7 @@ def _revoke_task_elevation(request: Request, task_id: str) -> None:
 @router.delete("/{mission_id}", status_code=204)
 def delete_mission(mission_id: str, request: Request) -> None:
     engine = get_engine()
-    if engine._queue is not None:
+    if engine._backend is not None:
         if not engine.delete_task(mission_id):
             raise HTTPException(
                 status_code=404,

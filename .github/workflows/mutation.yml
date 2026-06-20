@@ -60,7 +60,7 @@ jobs:
           module-path = "packages/maistro-core/src/maistro"
           timeout = 30.0
           excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git"]
-          test-command = "PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=15 -q -x"
+          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=15 -q -x"
 
           [cosmic-ray.distributor]
           name = "local"
@@ -78,11 +78,18 @@ jobs:
           # Compute kill rate. Surviving mutants → list them; fail gate at <90%.
           uv run python -c "
           import json, sys
+          # cosmic-ray dump prints one JSON array per line: [work_item_dict, result_dict_or_null].
           rows = []
           for line in open('mutation-results.json'):
               line = line.strip()
-              if line:
-                  rows.append(json.loads(line))
+              if not line:
+                  continue
+              parsed = json.loads(line)
+              if not (isinstance(parsed, list) and len(parsed) == 2):
+                  continue
+              _, result = parsed
+              if isinstance(result, dict):
+                  rows.append(result)
           total = len(rows)
           killed = sum(1 for r in rows if r.get('test_outcome') == 'killed')
           if total == 0:
@@ -126,7 +133,7 @@ jobs:
           module-path = "packages/maistro-core/src/maistro"
           timeout = 60.0
           excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git", "maistro.maistro-canvas", "maistro.maistro-turing"]
-          test-command = "PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=20 -q"
+          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=20 -q"
 
           [cosmic-ray.distributor]
           name = "local"
@@ -146,14 +153,19 @@ jobs:
           uv run python -c "
           import json
           from collections import defaultdict
+          # cosmic-ray dump prints one JSON array per line: [work_item_dict, result_dict_or_null].
           per_module = defaultdict(lambda: {'total': 0, 'killed': 0})
           for line in open('mutation-nightly.json'):
               line = line.strip()
               if not line: continue
-              r = json.loads(line)
-              mod = r.get('module', 'unknown')
+              parsed = json.loads(line)
+              if not (isinstance(parsed, list) and len(parsed) == 2): continue
+              work_item, result = parsed
+              if not isinstance(result, dict): continue
+              mutations = work_item.get('mutations') or []
+              mod = mutations[0].get('module_path', 'unknown') if mutations else 'unknown'
               per_module[mod]['total'] += 1
-              if r.get('test_outcome') == 'killed':
+              if result.get('test_outcome') == 'killed':
                   per_module[mod]['killed'] += 1
           print('# Mutation kill rate (nightly)')
           for mod, stats in sorted(per_module.items()):

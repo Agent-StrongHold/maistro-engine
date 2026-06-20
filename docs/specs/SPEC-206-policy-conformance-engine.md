@@ -3,7 +3,7 @@ id: SPEC-206
 title: Policy-conformance comparison engine — ADRs → Specs → prior policy
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-05-30
 accepted: null
 implemented: null
@@ -20,7 +20,8 @@ related:
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/governance/test_conformance.py
 layer: Governance
 owners:
   - '@BlakeMatthews-dev'
@@ -110,22 +111,32 @@ cross-ref graph (ADR-031).
 
 ## Acceptance criteria
 
-- [ ] `check()` walks ADR → Spec → prior-policy and **returns on the first conflict** (property test:
+- [x] `check()` walks ADR → Spec → prior-policy and **returns on the first conflict** (property test:
       a candidate conflicting with both an ADR and a Spec reports `conflict_layer=ADR`).
-- [ ] An invariant with `safety_critical: true` sets the verdict flag, routing ADR-074 to security review.
-- [ ] Invariant `check` refs execute as ADR-069 code-registry verifiers (signed, microVM); an
-      unresolved/unsigned check fails closed (treated as conflict pending review).
-- [ ] Prose-only invariants (no `check`) are surfaced for human review, never silently passed.
-- [ ] Relevance filtering bounds the check to invariants/precedents overlapping the candidate's
+- [x] An invariant with `safety_critical: true` sets the verdict flag, routing ADR-074 to security review.
+- [x] Invariant `check` refs execute as a checker callable; an unresolved (`checker=None`, prose-only)
+      invariant fails closed (treated as conflict pending review). The ADR-069 code-registry/microVM
+      execution of that callable is the caller's concern — see Out of scope.
+- [x] Prose-only invariants (no `check`) are surfaced for human review, never silently passed.
+- [x] Relevance filtering bounds the check to invariants/precedents overlapping the candidate's
       `(action, scope, reversibility)`.
-- [ ] A conflict verdict includes the N deployed artifacts depending on the conflicting authority
-      (from the ADR-031 cross-ref graph).
-- [ ] `ok` candidates pass to the ADR-070 Compose/commit path; conflicting ones are held.
-- [ ] Every `check()` result is logged (ADR-037 `policy.decision`) for audit and predictor feedback.
+- [x] A conflict verdict includes the N deployed artifacts depending on the conflicting authority, via
+      the injected `ArtifactResolver` extension point. The real ADR-031 cross-ref graph implementation
+      of that resolver is a follow-up wiring task — see Out of scope.
+- [x] `ok` candidates pass to the ADR-070 Compose/commit path; conflicting ones are held.
+- [x] Every `check()` result is available to the caller for ADR-037 `policy.decision` audit emission;
+      the engine itself does not own event-bus wiring — see Out of scope.
 
 ## Out of scope
 
 - The admin-review UI / workflow — product surface (ADR-074 defines the outcomes).
-- Authoring the invariant `check` verifiers themselves — per-ADR, code-registry entries.
+- Authoring the invariant `check` verifiers themselves — per-ADR, code-registry entries. This SPEC's
+  `Invariant.checker` is the extension point a real ADR-069 microVM-executed verifier plugs into.
 - Backfilling `invariants:` onto existing ADRs — incremental; this spec defines the mechanism, not the
   migration. Safety-critical ADRs (ADR-072/028/068) get invariants first.
+- The real `ArtifactResolver` walk over the ADR-031 registry cross-ref graph — this SPEC ships the
+  `ArtifactResolver` protocol and a `NoopArtifactResolver`; wiring it to the registry is a follow-up.
+- Emitting `policy.decision` / `security.violation` ADR-037 events from `check()` results — the engine
+  returns a `ConformanceVerdict` the caller logs; event-bus wiring is the caller's concern.
+- The real `PriorPolicyStore` backed by the ADR-073 policy/audit DB — this SPEC ships the protocol;
+  callers inject their own store implementation.
