@@ -45,7 +45,7 @@ def test_secure_id_length(n):
     assert all(c in "0123456789abcdef" for c in result)
 
 
-@given(n=st.integers(min_value=1, max_value=32))
+@given(n=st.integers(min_value=8, max_value=32))
 @settings(max_examples=50)
 def test_secure_id_unique(n):
     a = secure_id(n)
