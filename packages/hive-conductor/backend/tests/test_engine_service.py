@@ -258,7 +258,7 @@ async def test_maistro_server_task_backend_submit_get_list_cancel(
         "task_id": "srv-1",
         "status": "queued",
         "description": "ship it",
-        "workspace": "/tmp/maistro-workspace",
+        "workspace": "/tmp/maistro-workspace",  # nosec B108 — static test fixture, mirrors TaskCreate's documented default
         "tier": 2,
         "phase": "queued",
         "progress": {"subtasks": 0, "completed": 0, "current": ""},
