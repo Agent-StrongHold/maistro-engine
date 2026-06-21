@@ -60,18 +60,18 @@ honest gap is a red flag, not a clean bill of health.
 | # | Attack class | Anchor CVE(s) | Upstream | Maistro residual | Primary control | Status |
 |---|--------------|---------------|----------|------------------|-----------------|--------|
 | 1 | Unauthenticated code/expression-exec endpoint | Langflow CVE-2025-3248 (9.8); Flowise CVE-2025-59528 (10.0); n8n CVE-2025-68613 (9.9); MCP Inspector CVE-2025-49596 (9.4) | 9.4–10.0 | ~2–3 *Strongly reduced* | No exec endpoint + sandbox (ADR-093) + auth on every boundary (ADR-068) | Mixed |
-| 2 | Insecure deserialization / serialization injection | LangChain "LangGrinch" CVE-2025-68664 (9.3); CVE-2024-36480 (9.0) | 9.0–9.3 | ~2 *Strongly reduced* | No untrusted→live-object load; secrets in vault not env (ADR-072 assets, `vault.py`) | Implemented |
+| 2 | Insecure deserialization / serialization injection | LangChain "LangGrinch" CVE-2025-68664 (9.3); CVE-2024-36480 (9.0) | 9.0–9.3 | ~3 *Strongly reduced* | No untrusted→live-object load (gadget absent); deployment secrets still partly env-sourced | Mixed |
 | 3 | Web-driven account takeover → RCE | Langflow CVE-2025-34291 (9.4 v4) | 9.4 | ~3 *Reduced* | Web-session hardening (ADR-077) + OAuth2 (ADR-059) + #1's exec absence | Specified |
 | 4 | SSRF via agent tools | LangChain CVE-2023-46229 | 8.x | ~3 *Reduced* | Egress allow-list + Warden egress scan + tool sandbox (ADR-093 / SPEC-190) | Mixed |
-| 5 | Indirect / zero-click prompt-injection exfiltration | EchoLeak CVE-2025-32711 (9.3) | 9.3 | ~4 *Partial* | External-content quarantine + bidirectional Warden + authority envelope (ADR-068) + egress | Mixed |
+| 5 | Indirect / zero-click prompt-injection exfiltration | EchoLeak CVE-2025-32711 (9.3) | 9.3 | ~5 *Partial* | External-content quarantine (detection-only normalization) + bidirectional Warden + authority envelope (ADR-068) + egress | Mixed |
 | 6 | MCP tool poisoning / rug-pull / shadowing / confused deputy | MCP ecosystem (no single CVE); CVE-2025-49596 for Inspector | n/a–9.4 | ~3 *Reduced* | Skills/MCP trust tiers + signing (ADR-083) + bidirectional Warden + Sentinel adjudication | Mixed |
 | 7 | Malicious third-party code / supply chain | (class; Langflow Flodrix botnet as outcome) | up to 10.0 | ~3 *Reduced* | microVM isolation (ADR-093) + signing + SBOM + egress (ADR-072 anchor adversary) | Specified |
 | 8 | Transparent credential/traffic exfil via shared config | LangSmith "AgentSmith" CVE-class (8.8) | 8.8 | ~3 *Reduced* | Per-user encrypted creds + provider-key redaction + egress allow-list | Mixed |
 | 9 | Memory / learned-policy poisoning | (class; agent-memory research) | n/a | ~3 *Reduced* | Memory scopes + deconfliction immune system (ADR-074) | Specified |
-| 10 | Excessive agency / over-privileged tool use | (OWASP LLM06; class) | n/a | ~3 *Reduced* | Authority envelope (ADR-068) + reversibility gates (ADR-050/051) + trust-boundary grants | Implemented |
-| 11 | One-click cross-site WebSocket / blind-origin hijacking | OpenClaw CVE-2026-25253 (8.8) | 8.8 | ~3 *Reduced* | Web-session origin validation (ADR-077); tokens never in URL params | Specified |
-| 12 | Token/scope-rotation privilege escalation | OpenClaw CVE-2026-32922 (9.9 / 9.4 v4) | 9.4–9.9 | ~2 *Strongly reduced* | `agent authority = own ∩ owner's`, agent-never-self-elevates (SPEC-245, ADR-068) | Implemented |
-| 13 | Skill-marketplace supply-chain campaign | OpenClaw ClawHavoc / ClawHub (1,184 malicious skills) | up to 10.0 | ~3 *Reduced* | Signed VC + revocation **+ import scan/sanitize/salvage-or-block + per-use re-scan** (SPEC-005, **SPEC-062126-d421**, ADR-083, `skills.parser/fixer/forge/canary`) | Specified |
+| 10 | Excessive agency / over-privileged tool use | (OWASP LLM06; class) | n/a | ~5 *Partial* | Dangerous-tool/command screening wired; reversibility gates + owner-scope cap specified, not integrated | Specified |
+| 11 | One-click cross-site WebSocket / blind-origin hijacking | OpenClaw CVE-2026-25253 (8.8) | 8.8 | ~5 *Partial* | Web-session origin validation (ADR-077, specified); live `/stream/{task_id}` route still tokens-in-URL | Specified |
+| 12 | Token/scope-rotation privilege escalation | OpenClaw CVE-2026-32922 (9.9 / 9.4 v4) | 9.4–9.9 | ~7 *Partial* | Agent-never-self-elevates implemented/tested; `agent authority = own ∩ owner's` unimplemented, `authorize()` uncalled | Specified |
+| 13 | Skill-marketplace supply-chain campaign | OpenClaw ClawHavoc / ClawHub (1,184 malicious skills) | up to 10.0 | ~6 *Partial* | Only `security_scan` + URL SSRF-block wired today; signing, salvage-or-block, T3-by-default, re-scan-on-use are Proposed (SPEC-005, **SPEC-062126-d421**) | Specified |
 | 14 | Prompt-injection → host RCE via a *legitimate* tool ("prompts become shells") | Semantic Kernel CVE-2026-25592 / CVE-2026-26030; PraisonAI CVE-2026-44338; LangChain path-traversal CVE-2026-34070; Langflow CVE-2026-33017 | 9.x | ~3–4 *Partial* | External-content quarantine + sandbox (ADR-093) + path-traversal rejection + dangerous-cmd screen | Mixed |
 | 15 | Memory / self-improvement-loop poisoning | Hermes-agent (analyst threat-model; no landed CVE) | n/a | ~3 *Reduced* | Scoped memory + deconfliction immune system on learned-policy/RSI drift (ADR-074) | Mixed |
 
@@ -135,19 +135,28 @@ process env where a deserializer can scoop them.
 - We do **not** rehydrate untrusted/model-produced payloads into executable objects. Persistence uses
   typed stores (Pydantic/SQLAlchemy validation), not `pickle.loads`/`yaml.load`/object-graph
   deserializers on attacker-influenced input (verified: no such call on an untrusted path in-tree).
-- **Secrets aren't in env-injectable reach.** ADR-072 lists provider credentials and the Conductor
-  seed as top assets guarded by the **age-encrypted vault** (`vault.py`, SPEC-011) and a redaction
-  layer (ADR-064) — not loose process-environment variables a deserializer can read. The exact
-  `secrets_from_env`-style amplifier that made LangGrinch a *secret-exfil* bug is absent.
+- **The deserialization gadget is absent — the env-secrets amplifier is not.** Because we don't
+  rehydrate untrusted payloads, there's no `loads()`-style call site that could ever reach process
+  env via a forged object. But the env itself is not secret-free: `maistro.config.loader` reads
+  `LITELLM_MASTER_KEY`, `JWT_SECRET`, `DATABASE_URL`, `MAISTRO_WEBHOOK_SECRET`, `ROUTER_API_KEY` via
+  `os.getenv`, and hive-conductor services read `LITELLM_API_KEY`, `GITHUB_TOKEN`,
+  `BRAVE_SEARCH_API_KEY` the same way. The age-encrypted vault (`vault.py`, SPEC-011) holds a
+  *separate* set of secrets (provider creds, Conductor seed per ADR-072) — it is not the only place
+  secrets live. If a deserialization gadget were ever introduced on an untrusted path, `secrets_from_env`
+  would still find live secrets to exfiltrate.
 - Template rendering uses Jinja2's sandboxed/escaped path for any value that could carry untrusted
   content; untrusted text is quarantined as data (see entry 5), not handed to a template compiler.
 
-**Upstream 9.0–9.3 → Maistro residual ~2 (Strongly reduced).** Both the deserialization gadget and
-its secret-exfil amplifier are absent by construction.
+**Upstream 9.0–9.3 → Maistro residual ~3 (Strongly reduced).** The deserialization gadget is
+structurally absent; the secret-exfil amplifier (secrets reachable via process env) is not — it's
+just unpaired today because there's no call site to exploit it.
 
 **Residual risk / gaps.** Third-party dependencies could still introduce an unsafe loader; this is
-covered transitively by the supply-chain controls in entry 7 and the `security-scan` / SCA CI gates,
-not by anything specific to this class. **Status: Implemented.**
+covered transitively by the supply-chain controls in entry 7 and the `security-scan` / SCA CI gates.
+Independently of that: deployment secrets are read from `os.environ` in `maistro.config.loader` and
+across hive-conductor services, not exclusively from the vault — so the LangGrinch-style amplifier
+would still find live secrets if any future code path deserialized untrusted data into objects.
+**Status: Mixed** (deserialization-gadget absence is Implemented; env-secret isolation is not).
 
 ---
 
@@ -207,13 +216,21 @@ classifier evasion + Markdown link/image auto-fetch + a CSP-allowed proxy to sil
 anything the assistant can read. This is the **structural** agent risk, not a product bug.
 
 **How our design changes the outcome.**
-- **Untrusted content is quarantined as data.** `maistro.security.external_content` wraps every
-  external source (email, webhook, web fetch, browser, upload) in explicit
-  `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` boundary markers with a do-not-follow notice, **NFKC-normalizes
-  and strips invisible/zero-width characters** (the exact white-on-white / hidden-char trick EchoLeak
-  used), and runs `detect_injection()` pattern matching. The Gate (`security/gate.py`) sanitizes and
-  Warden-scans all user input before it reaches the agent, with strike-based lockout on repeat
-  violations.
+- **Untrusted content is quarantined as data, with a gap in what actually gets cleaned.**
+  `maistro.security.external_content.wrap_external_content()` wraps every external source (email,
+  webhook, web fetch, browser, upload) in explicit `<<<EXTERNAL_UNTRUSTED_CONTENT>>>` boundary markers
+  with a do-not-follow notice — but it only strips the two literal marker strings from the body; it
+  does **not** NFKC-normalize or strip invisible/zero-width characters in the content that actually
+  reaches the model. That normalization (`_normalize_text()`) is currently used only inside
+  `detect_injection()`/`contains_markers()` — for detection, not for what gets embedded in the prompt.
+  A white-on-white / hidden-char payload (the exact EchoLeak trick) can still ride inside the wrapper
+  even when the detector's normalized copy looks clean.
+- **The Gate exists, but not every entrypoint calls it.** `security/gate.py`'s `Gate.process_input()`
+  does `sanitize()` (strips zero-width chars) plus a Warden scan, and is wired into
+  `Conduit.route_request()` with strike-based lockout on repeat violations. But the OpenAI-compatible
+  `/v1/chat/completions` path (`maistro_server/api/chat_completions.py`) calls
+  `maistro.agents.conductor.run_task()` directly, which never calls Gate, `sanitize()`, or Warden on
+  `task.description` before it reaches the LLM prompt.
 - **Bidirectional Warden.** ADR-072/073: Warden scans **egress** as well as ingress — "an
   exfiltration attempt leaves as much as it enters." The auto-fetch-an-image exfil channel is an
   outbound event subject to the egress allow-list.
@@ -221,14 +238,19 @@ anything the assistant can read. This is the **structural** agent risk, not a pr
   authority* — is the structural backstop the threat model (ADR-072 adversary #2) relies on and is
   named as a property test. Injection can't grant the agent reach it didn't already have.
 
-**Upstream 9.3 → Maistro residual ~4 (Partial).** We remove the specific delivery tricks (invisible
-chars, marker confusion) and constrain the exfil channel (egress + bounded authority), but **prompt
-injection is not solved by anyone** — detection is heuristic.
+**Upstream 9.3 → Maistro residual ~5 (Partial).** We constrain the exfil channel (egress + bounded
+authority) and *detect* the specific delivery trick, but don't yet *strip* it from what the model
+sees — invisible chars survive into the wrapped content, only the detector's copy is normalized — and
+one major entrypoint (the OpenAI-compatible task path) bypasses the Gate entirely. **Prompt injection
+is not solved by anyone** — detection is heuristic on top of that.
 
 **Residual risk / gaps.** Warden's fast tier is pattern/heuristic + an LLM-judge escalation; a novel,
-well-obfuscated indirect injection can still pass detection. The honest defense here is *containment*
-(quarantine + egress + authority bound), not *detection*. Egress allow-listing being only partially
-enforced (entry 4) is the load-bearing gap. **Status: Mixed.**
+well-obfuscated indirect injection can still pass detection. Two concrete gaps to close: **(1)**
+`wrap_external_content()` should apply `_normalize_text()`-equivalent stripping to the embedded
+content itself, not just to the detection copy; **(2)** the `/v1/chat/completions` → `run_task()` path
+needs to route `task.description` through the Gate before it reaches the conductor, the same as
+`Conduit.route_request()` does. Egress allow-listing being only partially enforced (entry 4) is the
+other load-bearing gap. **Status: Mixed.**
 
 ---
 
@@ -355,22 +377,36 @@ bounds, or memory poisoning of non-policy learnings, is detection-limited. **Sta
 more authority than the task needs, so any compromise (entries 5–9) cashes out larger.
 
 **How our design changes the outcome.**
-- **Authority envelope** (ADR-068): an agent holds a *subset* of its owner's authority; an
-  injected/compromised request cannot exceed the principal's authority — the named property-test
-  invariant the threat model leans on.
-- **Reversibility + approval gates** (ADR-050/051): tools default `irreversible`; destructive/elevated
-  actions hit the Sentinel gate (tier ladder → approver matrix → budget veto) before executing.
-- **Dangerous-tool/command screening** (`security/dangerous_tools.py`, `patterns.py`): dangerous
-  commands, tool names, and blocked host paths are screened; per-task grants are TTL-bounded and
-  command-allow-listed (entry 7).
+- **Authority envelope is the design target, not yet a coded cap.** ADR-068/SPEC-245 specify that an
+  agent holds a *subset* of its owner's authority (`agent authority = own ∩ owner's`); in code,
+  `Principal.owner` (`security/sentinel/authz_types.py`) is a declared field that no function reads —
+  `Sentinel.authorize()`/`resolve_tier()`/`check_permission()` evaluate only the principal's own
+  roles/scopes. The intersection invariant is specified, not enforced (detail in entry 12).
+- **The tier ladder exists but is wired to nothing, and its default is the open tier, not
+  `irreversible`.** `Sentinel.resolve_tier()` defaults `reversibility="reversible"`, which resolves to
+  `Tier.OPEN` (`needs="none"`, no approval) unless a caller explicitly passes
+  `reversibility="irreversible"`. More to the point, `Sentinel.authorize()`/`resolve_tier()` have **no
+  production call sites**: the boundary actually wired into agent strategies
+  (`Sentinel.pre_call()`/`post_call()`, used from `agents/strategies/react.py` and
+  `agents/artificer/strategy.py`) does permission-table lookup, schema validation, and a Warden scan —
+  it never resolves a tier or asks for approval. SPEC-245 itself lists this wiring as a non-goal,
+  deferred to SPEC-246/247.
+- **Dangerous-tool/command screening** (`security/dangerous_tools.py`, `patterns.py`) *is* wired —
+  `maistro.tools.sandbox` calls `is_dangerous_command`/`is_dangerous_tool`/`is_blocked_path` before
+  exec; per-task grants are TTL-bounded and command-allow-listed (entry 7).
 
-**Upstream n/a → Maistro residual ~3 (Reduced).** Blast radius of any single compromise is bounded by
-least-authority + reversibility gates + budget veto.
+**Upstream n/a → Maistro residual ~5 (Partial).** The mitigation that's actually wired into the
+execution path is dangerous-command/tool/path screening. The two structural claims this entry leaned
+on most — the owner-scope cap and the reversibility-gated approval ladder — are specified (SPEC-245)
+but not enforced in code today.
 
-**Residual risk / gaps.** Gate effectiveness depends on the approver matrix and θ-thresholds being
-tuned correctly (ADR-073 declarative layer); a misconfigured policy widens authority. Reversibility
-classification is only as good as the per-tool taxonomy coverage (ADR-050). **Status: Implemented**
-(core enforcement exists; tuning is operational).
+**Residual risk / gaps.** This was the most overstated control in the original ledger pass: neither
+the owner-authority intersection nor the tier-ladder approval gate has a production call site, so a
+tool registered as `irreversible` in `tools/reversibility_registry.py` gets no extra scrutiny unless a
+caller manually threads that classification into `authorize()` — and nothing currently does. Closing
+this means wiring `Sentinel.authorize()` (with the registry's reversibility lookup and the
+owner-intersection) into the `pre_call()` path agents actually use. **Status: Specified**
+(dangerous-tool screening Implemented; tier ladder + owner-cap Specified, not integrated).
 
 ---
 
@@ -387,20 +423,29 @@ context can read or redirect it. Classic CSWSH + token-in-the-wrong-place, appli
 gateway.
 
 **How our design changes the outcome.**
-- **ADR-077 (web-session security)** is exactly this surface: session/origin handling, CSRF/CSWSH
-  defenses, and not placing bearer tokens where cross-site script or a URL parameter can exfiltrate
-  them. The "blindly connect to a URL-param-supplied gateway" primitive is a web-session-hardening
-  failure ADR-077 is scoped to prevent.
+- **ADR-077 (web-session security) is scoped to this exact surface, but the live route hasn't caught
+  up.** ADR-077 calls for session/origin handling, CSRF/CSWSH defenses, and not placing bearer tokens
+  where cross-site script or a URL parameter can exfiltrate them — but `maistro-server`'s actual
+  `/stream/{task_id}` WebSocket route (`maistro_server/api/ws.py`) authenticates via
+  `token: str | None = Query(None)` today, i.e. the bearer token **is** placed in a URL query
+  parameter, the same primitive this CVE class exploits. There's no "blindly connect to a
+  URL-param-supplied gateway" behavior in our control UI — that half of the OpenClaw chain doesn't
+  apply — but the token-in-URL half is still live.
 - **Auth is not optional** here. ADR-068 puts Sentinel adjudication on every boundary and ADR-059
   user auth on the control surface — there is no "63% run with no auth" default; an unauthenticated
   control plane is not a supported configuration.
 
-**Upstream 8.8 → Maistro residual ~3 (Reduced).** The token-leak-via-blind-origin primitive is the
-thing ADR-077 exists to remove; even a hijacked session is bounded by the entry-12 authority cap.
+**Upstream 8.8 → Maistro residual ~5 (Partial).** Half the chain (client blindly trusting an
+attacker-supplied gateway URL) doesn't apply to our control UI; the other half (token readable from
+the URL — logs, browser history, `Referer` headers, proxy logs) is present in the shipped code today,
+not just an audit gap. Note entry 12's authority-cap backstop is itself unimplemented (see entry 12),
+so it can't be relied on to bound a hijacked session here either.
 
-**Residual risk / gaps.** ADR-077 is **Specified** — the concrete origin-validation and
-token-placement audit against the live hive-conductor frontend/WebSocket layer must be done before
-claiming the CSWSH path is closed. **Status: Specified.**
+**Residual risk / gaps.** This needs a code change, not just an audit: move the WS handshake to a
+cookie or `Sec-WebSocket-Protocol` subprotocol token plus explicit `Origin` validation on
+`/stream/{task_id}`, matching ADR-077's intent. Until then, treat the token-in-URL primitive as open.
+**Status: Specified** (ADR-077 intent decided; the WebSocket route itself still uses the pattern
+ADR-077 is meant to remove).
 
 ---
 
@@ -411,24 +456,39 @@ function fails to constrain a newly minted token's scopes to the **caller's exis
 any principal can rotate itself a broader-scoped token. Privilege escalation by design omission.
 
 **How our design changes the outcome.**
-- This is the **exact invariant SPEC-245 implements** (status: *Implemented*, property-tested): in
-  `authorize()`, **"agents are capped at `principal.owner`'s authority — `agent authority = own ∩
-  owner's`"**, and **"an agent never self-elevates"** (an agent resolving to `self_elevation` gets
-  `scoped_2fa` instead, ADR-068 §D). A rotation that *widens* scope beyond the caller's set is
-  precisely the operation the authority-envelope intersection forbids.
-- The **budget hard-veto** and tier ladder (SPEC-245 steps 2–4) short-circuit before any
-  capability is granted, and every decision is a signed VC (ADR-073) — a silent self-widening
-  rotation would be both blocked and audited.
+- **Half of the SPEC-245 invariant is implemented and tested; the other half isn't.** "An agent never
+  self-elevates" is real: `Sentinel.authorize()` maps an agent principal's `self_elevation` tier to
+  `needs="scoped_2fa"` instead (ADR-068 §D), and `test_authz_tier_ladder.py` asserts it. But the other
+  half — **"agents are capped at `principal.owner`'s authority (`agent authority = own ∩ owner's`)"**
+  — is not coded: `Principal.owner` (`security/sentinel/authz_types.py`) is a declared field that no
+  function reads. `authorize()`'s permission check (`check_permission` → an `AuthContext` built from
+  the principal's own `id`/`roles`) never looks up or intersects with the owner's scopes. A
+  `device.token.rotate`-equivalent operation in this codebase would not be capped by its caller's
+  authority through this mechanism, because the mechanism doesn't compute that cap.
+- The **budget hard-veto** (SPEC-245 step 3) and the tier classification itself are real and
+  unit-tested at the `Sentinel.authorize()` level. But `authorize()` has **no production call site at
+  all** — `agents/strategies/react.py` and `agents/artificer/strategy.py` call
+  `Sentinel.pre_call()`/`post_call()` (permission-table check + schema repair + Warden scan), never
+  `authorize()`/`resolve_tier()`. So today, nothing in the runtime evaluates the tier ladder, the
+  budget veto, or the (unimplemented) owner cap for a real token-rotation or capability-grant request —
+  SPEC-245 added the primitive, but it's reachable only from its own tests.
 
-**Upstream 9.4–9.9 → Maistro residual ~2 (Strongly reduced).** We didn't get lucky here — the
-least-authority intersection and no-self-elevation rules are an *implemented, tested* core invariant,
-not aspirational. The scope-widening primitive is denied at the authorize step.
+**Upstream 9.4–9.9 → Maistro residual ~7 (Partial).** The no-self-elevation rule is real but narrow —
+it only fires for callers that already reach `authorize()`, and nothing in production does. The actual
+CVE-2026-32922 pattern (a rotation widening scope past the caller's own set) has no enforced cap in
+this codebase yet: the intersection logic doesn't exist, and the function it would live in isn't
+called.
 
-**Residual risk / gaps.** SPEC-245's `authorize()` exists at the Sentinel level but is **not yet
-wired into every HTTP/MCP/A2A boundary** (SPEC-245 non-goals; SPEC-246/247 integration pending) — a
-boundary that mints/rotates tokens *without* routing through `authorize()` would bypass the cap. The
-invariant is correct; coverage of all token-issuing paths is the work to finish. **Status:
-Implemented (core), integration pending.**
+**Residual risk / gaps.** Two separate gaps, not one. **(1)** The owner-scope intersection
+(`own ∩ owner's`) that this entry's headline guarantee rests on is unimplemented — `Principal.owner`
+is unused today, despite SPEC-245's own front matter marking `status: Implemented` and its Decision
+section describing the intersection as built (worth correcting at the SPEC level too, separately from
+this ledger). **(2)** Even the parts of `authorize()` that *are* correct (self-elevation swap, budget
+veto) are not wired into any HTTP/MCP/A2A boundary or token-issuing path (SPEC-245 non-goals;
+SPEC-246/247 pending) — confirmed by grep: `authorize()`/`resolve_tier()` have zero callers outside
+`policy.py` and its own tests. Both gaps need closing before this entry can claim more than partial
+mitigation. **Status: Specified** (self-elevation swap implemented and tested in isolation;
+owner-cap unimplemented; neither is wired into a real boundary).
 
 ---
 
@@ -443,53 +503,47 @@ abstract supply-chain class.
 `S-111-clawhub-full` — the same "claw" naming heritage), so this is not someone else's problem; it is
 the precise threat our marketplace design must withstand.
 
-**How our design changes the outcome.**
+**What's actually wired today.** `skills.marketplace.install()` runs `parser.security_scan()` over the
+content and blocks SSRF targets at URL fetch (`_BLOCKED_HOSTNAME_PREFIXES` rejects `metadata.`,
+`localhost`, link-local, …) — that's it. It defaults every install to trust tier **`t2`**, not a
+sandboxed tier. It never calls `skills.fixer.fix_content()`, `skills.forge`, or `skills.canary` — grep
+confirms `forge`/`canary` have **zero production call sites** anywhere in the codebase (forge is
+referenced only in a planner subsystem TODO comment; canary has no callers at all, including from
+`marketplace.py`). So today a ClawHavoc-style flood would be scanned and SSRF-checked, but a skill
+that passes the pattern scan installs straight to `t2` with no salvage, no sandbox floor, no canary
+rollout, and no re-scan-on-use.
+
+**What the design specifies (not yet built).**
 - **Signed publisher VC trust chain, unsigned-blocked, revocation re-check** (SPEC-005 acceptance
-  criteria): every install verifies a publisher Verifiable Credential against the publisher DID
-  document (signature + content hash + revocation status); **an unsigned skill is refused at install**
-  with no "run anyway" path except an explicit `--allow-unsigned` + admin signature; revocation is
-  re-checked on every install/update and emits a `PLUGIN_VC_REVOKED` alert that blocks further use. A
-  ClawHavoc-style flood of unsigned/malicious skills can't auto-install, and a compromised publisher's
-  credential can be revoked fleet-wide.
-- **ADR-083 (skills/MCP trust):** skills are signed, trust-tiered, and **sandbox-by-default**; even an
-  admitted skill runs confined (ADR-093 microVM) with egress control — AMOS-style infostealer exfil
-  hits a denied-egress boundary, not the host keychain.
-- **Import-time salvage-or-block pipeline (SPEC-062126-d421, the Medley import posture).** A user can import a skill
-  from ClawHub *or any source* — URL, file upload, or pasted text. Every import runs the same gauntlet
-  before it can become a usable tool, regardless of provenance:
-  1. **Scan for malicious intent** — `skills.parser.security_scan()` (returns `(is_clean, issues)`)
-     plus a Warden pass over the body; the URL-import path additionally blocks SSRF targets at fetch
-     (`marketplace._BLOCKED_HOSTNAME_PREFIXES` rejects `metadata.`, `localhost`, …).
-  2. **Sanitize / salvage** — `skills.fixer.fix_content()` returns
-     `(fixed_content, fixes_applied, unfixable_issues)`: it NFKD-normalizes, strips hidden
-     direction/zero-width markers, and removes dangerous constructs (e.g. `exec()` calls). This is the
-     "can this be made safe?" step.
-  3. **Improve + register** — a salvaged skill is improved/normalized via `skills.forge` and saved as
-     **tools + prompts** (`SkillDefinition`), starting at a **sandboxed trust tier (T3)**, rolled out
-     under `skills.canary` staged deployment with auto-rollback.
-  4. **Re-scan payload on every use** — the per-call Warden/Sentinel boundary re-scans the actual
-     payload at execution time, so a skill that is benign at import but **mutates or rug-pulls** later
-     (entry 6) is caught at use, not just at install.
-  5. **Fail-closed with a report** — if `unfixable_issues` is non-empty (it was *only* a scam/attack,
-     nothing to salvage), the import is **blocked** and a structured report is produced — so the user
-     can escalate to the source's abuse/report channel if one exists. Blocking, not best-effort
-     salvage, is the guarantee.
+  criteria, **status: Proposed**) — verifying a publisher Verifiable Credential against a publisher DID
+  document and refusing unsigned skills at install. No VC/signing code exists in `maistro.skills` today.
+- **ADR-083 (skills/MCP trust, status: Proposed):** skills signed, trust-tiered, and
+  sandbox-by-default, confined under an ADR-093 microVM (ADR-093 itself is Accepted, but nothing in
+  `skills/` invokes a sandbox).
+- **Import-time salvage-or-block pipeline (SPEC-062126-d421, status: Proposed)** — the gauntlet every
+  import (registry/URL/upload/paste) would run before becoming a usable tool: scan → salvage via
+  `fix_content` → re-scan the salvaged output → register at **T3** via `canary` → re-scan on every use
+  so a post-install mutation/rug-pull (entry 6) is caught at execution, not just at install — with a
+  fail-closed block + structured report when `unfixable_issues` is non-empty. The salvage primitives
+  (`fixer.fix_content`, `forge`) exist and are unit-tested in isolation; the orchestration that chains
+  them to `marketplace.install()` does not.
 
-**Upstream up to 10.0 → Maistro residual ~3 (Reduced).** Mass-malicious-package distribution is
-defeated at install (signing/revocation + scan/salvage-or-block), contained at runtime (sandbox/egress
-+ per-use re-scan), and made safe-by-default for *any* import source, not just the signed registry.
+**Upstream up to 10.0 → Maistro residual ~6 (Partial).** The only live control is pattern-scan +
+SSRF-block at install; that catches naive/known-pattern payloads but not the AMOS-class or
+adversarially-obfuscated skill, and a clean-scanning skill installs at `t2` with no sandbox floor, no
+salvage, and no re-scan-on-use. Mass-malicious-package distribution is *not yet* "defeated at install" —
+that claim describes the SPEC-062126-d421/SPEC-005 design, not current behavior.
 
-**Residual risk / gaps.** Two honesty notes. **(1)** Automated *sanitization and "improvement" of
-adversarial code is detection- and transform-limited* — you cannot guarantee turning an attacker's
-skill into a safe tool, and the LLM "improve" step (forge) must never be the thing trusted to make it
-safe. The load-bearing parts are `security_scan` + `fix_content`'s explicit unfixable split, the T3
-sandbox floor, and the per-use re-scan; **the salvage is a convenience, the block is the guarantee.**
-**(2)** The *primitives* are Implemented (`parser.security_scan`, `fixer.fix_content`, `forge` T3-start,
-`canary`, marketplace SSRF host-block), but the **end-to-end orchestration, the report artifact, and
-the per-use re-scan binding are the design to finish** — now specified in **SPEC-062126-d421** (Proposed) —
-and SPEC-005 signing/revocation is still **Proposed**. This remains the single most important thing to
-*build*, given we ship a marketplace and the campaign is live. **Status: Specified (primitives
-Implemented; pipeline + report Designed in SPEC-062126-d421).**
+**Residual risk / gaps.** Two honesty notes. **(1)** Even once built, automated *sanitization and
+"improvement" of adversarial code is detection- and transform-limited* — you cannot guarantee turning
+an attacker's skill into a safe tool, and the LLM "improve" step (forge) must never be the thing trusted
+to make it safe; the block, not the salvage, has to be the guarantee. **(2)** Right now neither honesty
+note matters in production because the pipeline isn't called: `fix_content`, `forge`, and `canary` are
+Implemented as standalone primitives with their own tests, but `marketplace.install()` never reaches
+them, the T3-sandboxed-by-default posture is unenforced (default is `t2`), and SPEC-005
+signing/revocation is still Proposed. This remains the single most important thing to *build*, given we
+ship a marketplace and the campaign is live. **Status: Specified (primitives Implemented in isolation;
+end-to-end pipeline Designed in SPEC-062126-d421, not wired into `marketplace.install()`).**
 
 ---
 
