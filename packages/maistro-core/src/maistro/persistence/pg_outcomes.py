@@ -196,6 +196,7 @@ class PgOutcomeStore:
         tool_name: str = "",
         limit: int = 5,
         org_id: str = "",
+        project_id: str = "",
     ) -> str:
         """Get recent failure patterns as a prompt section."""
         cutoff = datetime.now(UTC) - timedelta(days=7)
