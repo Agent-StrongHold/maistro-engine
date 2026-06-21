@@ -71,7 +71,7 @@ honest gap is a red flag, not a clean bill of health.
 | 10 | Excessive agency / over-privileged tool use | (OWASP LLM06; class) | n/a | ~3 *Reduced* | Authority envelope (ADR-068) + reversibility gates (ADR-050/051) + trust-boundary grants | Implemented |
 | 11 | One-click cross-site WebSocket / blind-origin hijacking | OpenClaw CVE-2026-25253 (8.8) | 8.8 | ~3 *Reduced* | Web-session origin validation (ADR-077); tokens never in URL params | Specified |
 | 12 | Token/scope-rotation privilege escalation | OpenClaw CVE-2026-32922 (9.9 / 9.4 v4) | 9.4–9.9 | ~2 *Strongly reduced* | `agent authority = own ∩ owner's`, agent-never-self-elevates (SPEC-245, ADR-068) | Implemented |
-| 13 | Skill-marketplace supply-chain campaign | OpenClaw ClawHavoc / ClawHub (1,184 malicious skills) | up to 10.0 | ~3 *Reduced* | Signed VC + revocation **+ import scan/sanitize/salvage-or-block + per-use re-scan** (SPEC-005, ADR-083, `skills.parser/fixer/forge/canary`) | Specified |
+| 13 | Skill-marketplace supply-chain campaign | OpenClaw ClawHavoc / ClawHub (1,184 malicious skills) | up to 10.0 | ~3 *Reduced* | Signed VC + revocation **+ import scan/sanitize/salvage-or-block + per-use re-scan** (SPEC-005, **SPEC-259**, ADR-083, `skills.parser/fixer/forge/canary`) | Specified |
 | 14 | Prompt-injection → host RCE via a *legitimate* tool ("prompts become shells") | Semantic Kernel CVE-2026-25592 / CVE-2026-26030; PraisonAI CVE-2026-44338; LangChain path-traversal CVE-2026-34070; Langflow CVE-2026-33017 | 9.x | ~3–4 *Partial* | External-content quarantine + sandbox (ADR-093) + path-traversal rejection + dangerous-cmd screen | Mixed |
 | 15 | Memory / self-improvement-loop poisoning | Hermes-agent (analyst threat-model; no landed CVE) | n/a | ~3 *Reduced* | Scoped memory + deconfliction immune system on learned-policy/RSI drift (ADR-074) | Mixed |
 
@@ -449,7 +449,7 @@ the precise threat our marketplace design must withstand.
 - **ADR-083 (skills/MCP trust):** skills are signed, trust-tiered, and **sandbox-by-default**; even an
   admitted skill runs confined (ADR-093 microVM) with egress control — AMOS-style infostealer exfil
   hits a denied-egress boundary, not the host keychain.
-- **Import-time salvage-or-block pipeline (the planned Medley posture).** A user can import a skill
+- **Import-time salvage-or-block pipeline (SPEC-259, the Medley import posture).** A user can import a skill
   from ClawHub *or any source* — URL, file upload, or pasted text. Every import runs the same gauntlet
   before it can become a usable tool, regardless of provenance:
   1. **Scan for malicious intent** — `skills.parser.security_scan()` (returns `(is_clean, issues)`)
@@ -481,9 +481,10 @@ safe. The load-bearing parts are `security_scan` + `fix_content`'s explicit unfi
 sandbox floor, and the per-use re-scan; **the salvage is a convenience, the block is the guarantee.**
 **(2)** The *primitives* are Implemented (`parser.security_scan`, `fixer.fix_content`, `forge` T3-start,
 `canary`, marketplace SSRF host-block), but the **end-to-end orchestration, the report artifact, and
-the per-use re-scan binding are the design to finish** — and SPEC-005 signing/revocation is still
-**Proposed**. This remains the single most important thing to *build*, given we ship a marketplace and
-the campaign is live. **Status: Specified (primitives Implemented; pipeline + report Designed).**
+the per-use re-scan binding are the design to finish** — now specified in **SPEC-259** (Proposed) —
+and SPEC-005 signing/revocation is still **Proposed**. This remains the single most important thing to
+*build*, given we ship a marketplace and the campaign is live. **Status: Specified (primitives
+Implemented; pipeline + report Designed in SPEC-259).**
 
 ---
 
@@ -724,7 +725,7 @@ in those documents. This ledger should be re-scored as that work lands.
   `SECURITY.md` (analyst commentary; no landed CVE at time of writing).
 - Internal: ADR-013, ADR-024, ADR-028, ADR-047, ADR-050, ADR-051, ADR-058, ADR-059, ADR-064,
   ADR-068, ADR-069, ADR-070, ADR-072, ADR-073, ADR-074, ADR-077, ADR-083, ADR-093; SPEC-005,
-  SPEC-011, SPEC-012, SPEC-183, SPEC-190, SPEC-245, SPEC-251; `security/external_content.py`,
+  SPEC-011, SPEC-012, SPEC-183, SPEC-190, SPEC-245, SPEC-251, SPEC-259; `security/external_content.py`,
   `security/gate.py`, `security/trust_boundary.py`, `security/dangerous_tools.py`,
   `security/patterns.py`, `security/sentinel/authz_types.py`, `tools/reversibility_registry.py`,
   `delivery/dispatch.py`, `skills/parser.py` (`security_scan`), `skills/fixer.py` (`fix_content`),
