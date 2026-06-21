@@ -25,40 +25,40 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const user = useUser();
 
   return (
-    <div className="fantasia-shell">
+    <div className="app-shell">
       {/* Sidebar */}
-      <nav className="fantasia-sidebar">
-        <div className="fantasia-sidebar-brand">
-          <span className="fantasia-logo">✦</span>
-          <span className="fantasia-brand-text">Fantasia</span>
+      <nav className="app-sidebar">
+        <div className="app-sidebar-brand">
+          <span className="app-logo">✦</span>
+          <span className="app-brand-text">Maistro</span>
         </div>
 
-        <div className="fantasia-nav-list">
+        <div className="app-nav-list">
           {NAV_ITEMS.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => `fantasia-nav-item ${isActive ? "fantasia-nav-item--active" : ""}`}
+              className={({ isActive }) => `app-nav-item ${isActive ? "app-nav-item--active" : ""}`}
             >
-              <span className="fantasia-nav-label">{item.label}</span>
+              <span className="app-nav-label">{item.label}</span>
             </NavLink>
           ))}
         </div>
 
-        <div className="fantasia-sidebar-footer">
+        <div className="app-sidebar-footer">
           {user && (
-            <div className="fantasia-user-badge">
-              <span className="fantasia-user-name">{user.username}</span>
+            <div className="app-user-badge">
+              <span className="app-user-name">{user.username}</span>
             </div>
           )}
-          <button className="fantasia-nav-item fantasia-logout" onClick={logout}>
+          <button className="app-nav-item app-logout" onClick={logout}>
             Sign out
           </button>
         </div>
       </nav>
 
       {/* Main content */}
-      <main className="fantasia-main">
+      <main className="app-main">
         {children ?? <Outlet />}
       </main>
     </div>

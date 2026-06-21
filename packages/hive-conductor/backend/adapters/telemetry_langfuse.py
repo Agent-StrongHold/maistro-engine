@@ -31,12 +31,12 @@ def _init_tracer():
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-        resource = Resource.create({"service.name": "fantasia-engine"})
+        resource = Resource.create({"service.name": "maistro-engine"})
         provider = TracerProvider(resource=resource)
         exporter = OTLPSpanExporter(endpoint=endpoint + "/v1/traces")
         provider.add_span_processor(BatchSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
-        _tracer = trace.get_tracer("fantasia.llm")
+        _tracer = trace.get_tracer("maistro.llm")
     except Exception:
         _tracer = None
 
@@ -67,7 +67,7 @@ def trace_llm(
             span.set_attribute("user.id", user_id)
         if metadata:
             for k, v in metadata.items():
-                span.set_attribute(f"fantasia.{k}", str(v))
+                span.set_attribute(f"maistro.{k}", str(v))
 
         yield ctx
 
@@ -76,7 +76,7 @@ def trace_llm(
         if ctx.get("output"):
             span.set_attribute("gen_ai.completion", str(ctx["output"])[:4000])
         if ctx.get("tool_calls"):
-            span.set_attribute("fantasia.tool_calls", str(ctx["tool_calls"]))
+            span.set_attribute("maistro.tool_calls", str(ctx["tool_calls"]))
         if ctx.get("tokens"):
             span.set_attribute("gen_ai.usage.total_tokens", ctx["tokens"])
         if ctx.get("error"):

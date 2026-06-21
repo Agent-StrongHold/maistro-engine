@@ -126,7 +126,7 @@ def _build_system_prompt(user_id: str) -> str:
     """Build a PM-specific system prompt with program context."""
     ctx = _get_program_context(user_id)
     base = (
-        "You are a Fantasia orchestration assistant — an AI that helps conduct agent workflows. "
+        "You are a Maistro orchestration assistant — an AI that helps conduct agent workflows. "
         "You have tools for: Jira (poll_jira, search_jira, get_issue, check_blockers), "
         "Confluence (search_confluence), agent management (create/modify/remove/list_agent_buttons), "
         "runtime metrics (query_metrics — latency p50/p95/p99, TTFT, tokens, cost, success rate), "
@@ -563,7 +563,7 @@ PM_TOOLS = [
 ]
 
 
-_JIRA_BASE = "https://myjira.disney.com"
+_JIRA_BASE = os.environ.get("MAISTRO_JIRA_BASE_URL", "https://jira.example.com").rstrip("/")
 
 
 def _jira_headers(jira_pat: str) -> dict[str, str]:
@@ -574,7 +574,7 @@ async def _tool_poll_jira(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
     if not jira_pat:
-        return {"error": "No Jira PAT configured. Go to Credentials and add your Disney Jira PAT."}
+        return {"error": "No Jira PAT configured. Go to Credentials and add your Jira PAT."}
     import httpx
 
     max_results = min(args.get("max_results", 10), 15)
@@ -789,7 +789,7 @@ async def _tool_search_confluence(
         return {"error": "query is required"}
     import httpx
 
-    confluence_base = "https://mywiki.disney.com"
+    confluence_base = os.environ.get("MAISTRO_CONFLUENCE_BASE_URL", "https://wiki.example.com").rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(

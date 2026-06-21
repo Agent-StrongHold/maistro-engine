@@ -1,13 +1,11 @@
-import "./wdpr-parks-next-theme.css"; // 1. Hyperion primitives (--color-*, --theme-color-*)
-import "./theme.css";               // 2. App theme (maps --ink, --paper etc → Hyperion)
+import "./design-theme.css"; // 1. design primitives (--color-*, --theme-color-*)
+import "./theme.css";               // 2. App theme (maps --ink, --paper etc → design tokens)
 import "./components.css";           // 3. Shared component patterns
 import "./app-shell.css";           // 4. Shell layout
 import "./index.css";               // 5. Resets
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { defineCustomElements } from "@wdpr/ra-web-components/loader";
-defineCustomElements();
 import App from "./App";
 
 // When Vite is built with VITE_BASE_PATH=/pm/, the browser is at /pm/ but

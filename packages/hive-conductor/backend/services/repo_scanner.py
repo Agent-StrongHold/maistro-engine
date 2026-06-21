@@ -12,7 +12,7 @@ PRIMITIVE_ID = "repo_security_scan"
 
 async def scan_repo(repo_url: str, branch: str = "main") -> dict[str, Any]:
     """Clone repo and run static analysis. Returns {status, findings, summary}."""
-    workdir = Path(tempfile.mkdtemp(prefix="fantasia-scan-"))
+    workdir = Path(tempfile.mkdtemp(prefix="maistro-scan-"))
     try:
         await _clone(repo_url, branch, workdir)
         return await scan_repo_dir(workdir)

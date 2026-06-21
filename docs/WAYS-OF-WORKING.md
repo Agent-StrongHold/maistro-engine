@@ -18,7 +18,7 @@ alone. The [Anti-patterns](#anti-patterns--what-not-to-do) section is the part t
 
 `maistro-engine` is a **consolidation monorepo** that is both a **library** (`maistro-core`,
 imported by downstream products) and an **app host** (it contains `hive-conductor` and the
-canvas ability). Downstream products — **Stronghold** (planned) and **Fantasia** (enterprise
+canvas ability). Downstream products — **Stronghold** (planned) and **Conductor** (enterprise
 distribution) — *import or track* the engine; they do not live here.
 
 The single most important consequence: **product-specific work does not belong in the
@@ -67,7 +67,7 @@ Observability · Reliability · Governance · UserClient
 maistro-engine · Project_mAIstro · AgentTuring · stronghold
 ```
 References in `substrate:` / `related:` must match `<repo>#(ADR|SPEC)-NNN` **and resolve to a
-real record**, or the registry's link check fails. Downstream peers (e.g. `fantasia-engine`)
+real record**, or the registry's link check fails. Downstream peers (e.g. `maistro-engine`)
 extend this enum *in their own fork's schema*, not here.
 
 ### Validate locally before pushing
@@ -130,9 +130,9 @@ file + update `id:` + the `# SPEC-NNN:` heading + any references), don't merge a
 
 ---
 
-## 6. Downstream products (Stronghold, Fantasia) and re-syncing
+## 6. Downstream products (Stronghold, Conductor) and re-syncing
 
-Downstream peers track the engine. **Fantasia** (enterprise distribution) re-baselines onto a known engine
+Downstream peers track the engine. **Conductor** (enterprise distribution) re-baselines onto a known engine
 commit and re-applies a thin product layer on top. Two rules make this sustainable:
 
 1. **Keep the product layer thin and identifiable** — branding, product ADRs under a

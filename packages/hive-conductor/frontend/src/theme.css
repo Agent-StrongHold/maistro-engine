@@ -1,8 +1,8 @@
 /*
- * Fantasia Theme — Single source of truth
+ * Maistro Theme — Single source of truth
  * 
  * Maps legacy shorthand vars used across all pages to the real
- * Hyperion design tokens from wdpr-parks-next-theme.css / wdpr-colors.css.
+ * design tokens from design-theme.css / design-colors.css.
  * 
  * RULE: Pages use ONLY these vars. No hex codes in components.
  */
@@ -53,7 +53,7 @@
   --font-weight-black: 800;
   --letter-spacing-default: -0.01em;
 
-  /* ─── Override broken Parks-Next text defaults (assumes dark bg) ─── */
+  /* ─── Override broken design-system text defaults (assumes dark bg) ─── */
   --theme-color-text-default: var(--color-plum-900);
   --theme-color-text-secondary: var(--color-plum-500);
 }

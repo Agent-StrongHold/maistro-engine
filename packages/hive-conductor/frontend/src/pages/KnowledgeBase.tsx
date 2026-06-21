@@ -119,7 +119,7 @@ Current memories:\n${entries.slice(0, 15).map(e => `- [${e.namespace}] ${e.value
     <div className="page">
       <div style={{ marginBottom: "1rem" }}>
         <h1 style={{ fontSize: "1.3rem", fontWeight: 700, margin: 0, fontFamily: "Georgia, serif" }}>Inner Temple</h1>
-        <p style={{ fontSize: "0.7rem", color: C.muted, margin: "2px 0 0" }}>Your personal chamber — identity, preferences, and everything Fantasia knows about you</p>
+        <p style={{ fontSize: "0.7rem", color: C.muted, margin: "2px 0 0" }}>Your personal chamber — identity, preferences, and everything Maistro knows about you</p>
       </div>
 
       {/* Persistent Chat Bar */}

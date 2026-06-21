@@ -1,4 +1,4 @@
-@import './wdpr-colors.css';
+@import './design-colors.css';
 
 
 
@@ -363,7 +363,7 @@
  * wrapper div if your app applies data-theme below <html>:
  *
  *   <!-- On <html> (most common) -->
- *   <html data-responsive-typography="false" data-theme="vista/parks-next">
+ *   <html data-responsive-typography="false" data-theme="maistro/default">
  *
  *   <!-- On a scoped wrapper (micro-frontend / federated app pattern) -->
  *   <div data-theme="vista/parks-now" data-responsive-typography="false">

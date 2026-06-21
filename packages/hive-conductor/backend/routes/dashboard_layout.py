@@ -77,7 +77,7 @@ async def get_layout(request: Request) -> dict:
                 import httpx
                 r = httpx.get(
                     f"{POSTGREST_URL}/user_service_state",
-                    params={"user_id": f"eq.{uid}", "service": "eq.fantasia", "key": "eq.dashboard_layout"},
+                    params={"user_id": f"eq.{uid}", "service": "eq.maistro", "key": "eq.dashboard_layout"},
                     timeout=3,
                 )
                 if r.status_code == 200:
@@ -120,7 +120,7 @@ async def save_layout(request: Request, body: DashboardLayout) -> dict:
         if is_pg_available():
             import asyncio
             asyncio.ensure_future(pg_upsert("user_service_state", {
-                "user_id": uid, "service": "fantasia",
+                "user_id": uid, "service": "maistro",
                 "key": "dashboard_layout", "value": json.dumps(body.model_dump()),
             }))
     except Exception:

@@ -6,6 +6,7 @@ Widgets call these directly — no LLM in the loop at render time.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -14,7 +15,7 @@ from fastapi import APIRouter, Query, Request
 router = APIRouter(tags=["widgets"])
 logger = logging.getLogger("hive.widgets")
 
-_JIRA_BASE = "https://myjira.disney.com"
+_JIRA_BASE = os.environ.get("MAISTRO_JIRA_BASE_URL", "https://jira.example.com").rstrip("/")
 
 
 def _jira_headers(pat: str) -> dict[str, str]:

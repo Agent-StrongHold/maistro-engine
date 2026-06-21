@@ -74,7 +74,7 @@ const TEMPLATES = [
 <div style="display:flex;flex-direction:column;gap:8px">
 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">AI-Powered Survey QA Evaluator</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(139,92,246,0.15);padding:2px 8px;border-radius:4px">Testing</span></div>
 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#22c55e;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">RAG Chatbot for Incentive Queries</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(139,92,246,0.15);padding:2px 8px;border-radius:4px">Testing</span></div>
-<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">Disney MOCA Agent</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:4px">Onboarding</span></div>
+<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">Example Agent</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:4px">Onboarding</span></div>
 <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(99,102,241,0.06);border:1px solid rgba(99,102,241,0.15);border-radius:8px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></span><span style="font-size:0.85rem;color:#e8e8f0">DCL Revenue Management AI Email</span><span style="margin-left:auto;font-size:0.65rem;color:#8b83a8;background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:4px">Onboarding</span></div>
 </div></div>` },
 
@@ -89,7 +89,7 @@ const TEMPLATES = [
 <p style="font-size:4rem;margin-bottom:1rem">🐝</p>
 <h1 style="font-size:2.5rem;font-family:Georgia,serif;color:#f3f0fb">Thank You</h1>
 <p style="font-size:1rem;color:#8b83a8;margin-top:1rem;max-width:35ch;line-height:1.6">Questions, feedback, or ideas — reach out anytime</p>
-<div style="margin-top:2.5rem;padding:12px 24px;border:1px solid rgba(167,139,250,0.3);border-radius:8px;font-size:0.8rem;color:#a78bfa">blake.matthews@disney.com</div>
+<div style="margin-top:2.5rem;padding:12px 24px;border:1px solid rgba(167,139,250,0.3);border-radius:8px;font-size:0.8rem;color:#a78bfa">user@example.com</div>
 </div>` },
 ];
 

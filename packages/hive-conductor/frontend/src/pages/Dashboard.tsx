@@ -294,7 +294,7 @@ BEHAVIOR:
         <div ref={ref} className="dash-chat-history">
           {msgs.map((m, i) => (
             <div key={i} className="dash-chat-msg">
-              <div className={`dash-chat-role ${m.role === "user" ? "dash-chat-role--user" : "dash-chat-role--ai"}`}>{m.role === "user" ? "You" : "Fantasia"}</div>
+              <div className={`dash-chat-role ${m.role === "user" ? "dash-chat-role--user" : "dash-chat-role--ai"}`}>{m.role === "user" ? "You" : "Maistro"}</div>
               <div className="dash-chat-content">{m.content}</div>
             </div>
           ))}
@@ -431,7 +431,7 @@ function JiraWidget({ widget }: { widget: Widget }) {
         <div style={{ color: C.muted, marginBottom: 4 }}>{data.total} issues</div>
         {(data.issues || []).slice(0, 8).map((iss: any, i: number) => (
           <div key={i} style={{ display: "flex", gap: 6, padding: "3px 0", borderBottom: `1px solid ${C.border}` }}>
-            <a href={`https://myjira.disney.com/browse/${iss.key}`} target="_blank" rel="noopener noreferrer" style={{ color: C.gold, fontWeight: 600, flexShrink: 0, textDecoration: "none" }}>{iss.key}</a>
+            <a href={`https://jira.example.com/browse/${iss.key}`} target="_blank" rel="noopener noreferrer" style={{ color: C.gold, fontWeight: 600, flexShrink: 0, textDecoration: "none" }}>{iss.key}</a>
             <span style={{ color: C.ink, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{iss.summary}</span>
             <span style={{ color: C.muted, flexShrink: 0, fontSize: "0.58rem" }}>{iss.status}</span>
           </div>
@@ -615,7 +615,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
     const max = Math.max(...entries.map(([, v]) => v), 1);
     const total = entries.reduce((s, [, v]) => s + v, 0);
     const palette = ({
-      default: ["var(--hyperion-indigo-700, #306CCF)", "var(--hyperion-violet-700, #A53ABF)", "var(--hyperion-gold-600, #F4AF25)", "var(--hyperion-green-700, #2B8C44)", "var(--hyperion-blue-700, #0079BC)", "var(--hyperion-orange-700, #D95E00)", "var(--hyperion-pink-700, #C2185B)", "var(--hyperion-indigo-500, #69A6FF)", "var(--hyperion-violet-500, #D568E0)", "var(--hyperion-gold-400, #FFD469)"],
+      default: ["var(--color-indigo-700, #306CCF)", "var(--color-violet-700, #A53ABF)", "var(--color-gold-600, #F4AF25)", "var(--color-green-700, #2B8C44)", "var(--color-blue-700, #0079BC)", "var(--color-orange-700, #D95E00)", "var(--color-pink-700, #C2185B)", "var(--color-indigo-500, #69A6FF)", "var(--color-violet-500, #D568E0)", "var(--color-gold-400, #FFD469)"],
       midnight: ["#1e40af", "#3730a3", "#1d4ed8", "#4338ca", "#2563eb", "#4f46e5", "var(--accent)", "#818cf8", "#93c5fd", "#60a5fa", "#a5b4fc", "#c7d2fe"],
       aurora: ["#059669", "#10b981", "#34d399", "#6ee7b7", "#14b8a6", "#2dd4bf", "#5eead4", "#99f6e4", "#a7f3d0", "#d1fae5", "#0d9488", "#0f766e"],
       sunset: ["#ea580c", "#f97316", "#fb923c", "#fdba74", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#db2777", "#ec4899", "#f472b6", "#f9a8d4"],
@@ -656,7 +656,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6, justifyContent: "center", height: "100%" }}>
           <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--ink)" }}>{pct}%</div>
           <div style={{ height: 10, background: "var(--bg)", borderRadius: 6, overflow: "hidden" }}>
-            <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, var(--hyperion-indigo-700, #306CCF), var(--hyperion-blue-600, #0B9BDB))`, borderRadius: 6 }} />
+            <div style={{ width: `${pct}%`, height: "100%", background: `linear-gradient(90deg, var(--color-indigo-700, #306CCF), var(--color-blue-600, #0B9BDB))`, borderRadius: 6 }} />
           </div>
           <div style={{ fontSize: "0.58rem", color: "var(--muted)" }}>{achieved} / {target}</div>
         </div>

@@ -29,7 +29,7 @@ export default function Overview() {
   }, []);
 
   useEffect(() => {
-    const cacheKey = "fantasia_greeting";
+    const cacheKey = "app_greeting";
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
       const { text, ts } = JSON.parse(cached);

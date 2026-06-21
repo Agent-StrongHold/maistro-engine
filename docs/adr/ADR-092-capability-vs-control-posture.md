@@ -85,7 +85,7 @@ regulated" does not rescue us:
   security/interpretability/auditability are the value proposition; capability is the
   commodity input every harness gets. Projects that trade control away build a better
   *tool*; we build a *trustable substrate*.
-- **Downstream peers inherit this posture** (Fantasia, stronghold, …) — they do not
+- **Downstream peers inherit this posture** (Conductor, Stronghold, Canvas, …) — they do not
   re-decide it.
 
 ## Status

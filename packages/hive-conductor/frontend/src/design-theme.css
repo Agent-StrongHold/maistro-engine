@@ -1,7 +1,7 @@
-@import './wdpr-colors.css';
-@import './wdpr-vista-base.css';
+@import './design-colors.css';
+@import './design-base.css';
 
-[data-theme='vista/parks-next'] {
+[data-theme='maistro/default'] {
   --theme-color-black: var(--color-black-000);
   --theme-color-white: var(--color-white-000);
 

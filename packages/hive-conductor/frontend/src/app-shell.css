@@ -1,6 +1,6 @@
-/* Fantasia App Shell — built on Hyperion/Vista Parks-Next tokens */
+/* Maistro App Shell — built on Maistro design tokens */
 
-.fantasia-shell {
+.app-shell {
   display: grid;
   grid-template-columns: 220px 1fr;
   min-height: 100vh;
@@ -8,7 +8,7 @@
 }
 
 /* ─── Sidebar ─── */
-.fantasia-sidebar {
+.app-sidebar {
   background: var(--theme-color-surface-default, #fff);
   border-right: 1px solid var(--theme-color-border-default, #e6e0f6);
   display: flex;
@@ -17,7 +17,7 @@
   overflow-y: auto;
 }
 
-.fantasia-sidebar-brand {
+.app-sidebar-brand {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -26,12 +26,12 @@
   margin-bottom: 8px;
 }
 
-.fantasia-logo {
+.app-logo {
   font-size: 20px;
   color: var(--theme-color-text-actionable-default, #6d4aff);
 }
 
-.fantasia-brand-text {
+.app-brand-text {
   font-size: 16px;
   font-weight: 700;
   color: var(--color-plum-900);
@@ -39,7 +39,7 @@
 }
 
 /* ─── Nav Items ─── */
-.fantasia-nav-list {
+.app-nav-list {
   flex: 1;
   padding: 8px 12px;
   display: flex;
@@ -47,7 +47,7 @@
   gap: 2px;
 }
 
-.fantasia-nav-item {
+.app-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -65,52 +65,52 @@
   text-align: left;
 }
 
-.fantasia-nav-item:hover {
+.app-nav-item:hover {
   background: var(--theme-color-surface-actionable-selected, #f1eeff);
   color: var(--color-plum-900);
 }
 
-.fantasia-nav-item--active {
+.app-nav-item--active {
   background: var(--theme-color-surface-actionable-selected, #f1eeff);
   color: var(--theme-color-text-actionable-default, #6d4aff);
   font-weight: 600;
 }
 
 /* ─── Sidebar Footer ─── */
-.fantasia-sidebar-footer {
+.app-sidebar-footer {
   padding: 12px;
   border-top: 1px solid var(--theme-color-border-default, #e6e0f6);
   margin-top: 8px;
 }
 
-.fantasia-user-badge {
+.app-user-badge {
   padding: 8px 12px;
   font-size: 12px;
   color: var(--theme-color-text-secondary, #6e6885);
 }
 
-.fantasia-user-name {
+.app-user-name {
   font-weight: 600;
   color: var(--color-plum-900);
 }
 
-.fantasia-logout {
+.app-logout {
   color: var(--theme-color-text-alert-default, #dc2626) !important;
   font-size: 12px;
 }
 
 /* ─── Main Content ─── */
-.fantasia-main {
+.app-main {
   overflow-y: auto;
   background: var(--theme-color-surface-default-alt, #f8f5ff);
 }
 
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
-  .fantasia-shell {
+  .app-shell {
     grid-template-columns: 1fr;
   }
-  .fantasia-sidebar {
+  .app-sidebar {
     display: none;
   }
 }
