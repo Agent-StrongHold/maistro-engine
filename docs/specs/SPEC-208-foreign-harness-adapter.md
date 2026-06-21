@@ -3,7 +3,7 @@ id: SPEC-208
 title: Foreign harness adapter — HarnessRunner slot and agent/skill format adapters
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-06-15
 substrate:
   - maistro-engine#ADR-100
@@ -21,13 +21,16 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/harness/test_spec208.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
 history:
   - status: Proposed
     date: 2026-06-15
+  - status: Accepted
+    date: 2026-06-21
 ---
 
 # SPEC-208: Foreign harness adapter
@@ -169,26 +172,26 @@ dedicated scope (`harness:session`) gates this route.
 
 ## Acceptance criteria
 
-- [ ] `harness_runner` `SlotSpec` defined with `FallbackPolicy.SAFE_NOOP`; `HarnessRunner` Protocol
+- [x] `harness_runner` `SlotSpec` defined with `FallbackPolicy.SAFE_NOOP`; `HarnessRunner` Protocol
       added to `capabilities/protocols.py`, `mypy --strict` clean.
-- [ ] At least one real `HarnessRunner` provider (e.g. `pi` or `openclaw`) implements
+- [x] At least one real `HarnessRunner` provider (e.g. `pi` or `openclaw`) implements
       `start_session`/`send`/`stream`/`stop` over a sandboxed subprocess; `healthcheck()` reflects
       binary presence + sandbox reachability.
-- [ ] Every `send()` call passes its `messages` through Warden before reaching the subprocess, and
+- [x] Every `send()` call passes its `messages` through Warden before reaching the subprocess, and
       every action in the harness's response passes through Sentinel before being surfaced —
       asserted via a fake harness that emits a flagged payload and a flagged action.
-- [ ] A crashed/unhealthy `HarnessRunner` provider degrades the slot to `SAFE_NOOP`
+- [x] A crashed/unhealthy `HarnessRunner` provider degrades the slot to `SAFE_NOOP`
       (`Unavailable`); the calling agent/graph node receives the typed result, never an exception.
-- [ ] At least two `AgentImporter`/`SkillImporter` implementations exist (one agent format, one
+- [x] At least two `AgentImporter`/`SkillImporter` implementations exist (one agent format, one
       skill format — e.g. Claude Code `SKILL.md` and one of Pi/OpenClaw/Codex), each with
       `detect()` + `to_agent_config()`/`to_skill_definitions()` round-tripped in a unit test.
-- [ ] `export_agent()` produces a valid MCP server manifest (validated against the MCP schema) and
+- [x] `export_agent()` produces a valid MCP server manifest (validated against the MCP schema) and
       a `SKILL.md` whose frontmatter `skills/parser.py` can re-parse — for an agent that was
       itself imported via one of the new importers (proves the import→export round trip through
       the internal representation).
-- [ ] `HarnessNodeStrategy` runs as a graph node under ADR-062's `GraphRun`, recording `NodeRun`
+- [x] `HarnessNodeStrategy` runs as a graph node under ADR-062's `GraphRun`, recording `NodeRun`
       telemetry identically to a native strategy, and respects `IterationBudget`.
-- [ ] `POST /v1/harness/sessions` (+ send/stream/stop) is reachable with a `harness:session`
+- [x] `POST /v1/harness/sessions` (+ send/stream/stop) is reachable with a `harness:session`
       service-key scope and rejects requests without it; a session created this way produces the
       same response shape as a local `Conduit.route_request()` call for the same messages.
 

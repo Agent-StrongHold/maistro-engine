@@ -31,6 +31,12 @@ class SlotSpec:
     baseline_provider: str | None = None  # provider name; required when policy is BASELINE
 
 
+HARNESS_RUNNER_SLOT = SlotSpec(
+    name="harness_runner",
+    fallback_policy=FallbackPolicy.SAFE_NOOP,
+)
+
+
 @dataclass(frozen=True)
 class Unavailable:
     """Typed 'capability unavailable' result for SAFE_NOOP slots."""

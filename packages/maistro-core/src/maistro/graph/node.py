@@ -9,7 +9,17 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-import structlog
+try:
+    import structlog
+except ModuleNotFoundError:  # pragma: no cover - dependency bootstrap fallback
+    import logging
+
+    class _StructlogFallback:
+        @staticmethod
+        def get_logger() -> logging.Logger:
+            return logging.getLogger(__name__)
+
+    structlog = _StructlogFallback()
 
 from maistro.agents.circuit_breaker import CircuitBreaker
 from maistro.graph.events import (

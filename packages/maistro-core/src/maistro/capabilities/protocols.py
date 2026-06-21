@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from collections.abc import AsyncIterator
+from typing import Any, Protocol, runtime_checkable
 
 from maistro.capabilities.types import ProviderHealth
+from maistro.types.config import AgentConfig
 
 
 @runtime_checkable
@@ -29,3 +31,24 @@ class CapabilityProvider(Protocol):
         ...
 
     async def healthcheck(self) -> ProviderHealth: ...
+
+
+@runtime_checkable
+class HarnessRunner(CapabilityProvider, Protocol):
+    """Adapter over a foreign agent harness's session/process API."""
+
+    async def start_session(self, agent_spec: AgentConfig, *, workdir: str) -> str:
+        """Start or attach to a harness session and return its session id."""
+        ...
+
+    async def send(self, session_id: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        """Send one turn to the harness and return the normalized response envelope."""
+        ...
+
+    def stream(self, session_id: str) -> AsyncIterator[dict[str, Any]]:
+        """Stream incremental harness events for a session."""
+        ...
+
+    async def stop(self, session_id: str) -> None:
+        """Terminate the underlying process/session."""
+        ...

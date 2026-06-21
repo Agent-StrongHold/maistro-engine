@@ -20,6 +20,7 @@ _PUBLIC_PREFIXES = (
     "/v1/auth/login",
     "/v1/auth/register",
     "/v1/voice/",
+    "/v1/harness/",
     "/health",
     "/docs",
     "/openapi",

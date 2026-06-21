@@ -31,5 +31,6 @@ class SkillMetadata:
     author: str = ""
     version: str = ""
     source_type: str = ""
+    import_format: str | None = None
     tags: tuple[str, ...] = ()
     download_count: int = 0

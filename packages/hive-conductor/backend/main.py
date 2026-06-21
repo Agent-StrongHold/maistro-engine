@@ -27,6 +27,7 @@ from routes import (
     dashboard_layout,
     eval_judge,
     feedback,
+    harness,
     health,
     install,
     mcp,
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     app.add_middleware(AuthMiddleware)
 
     app.include_router(health.router)
+    app.include_router(harness.router, prefix="/v1/harness")
     app.include_router(auth.router, prefix="/v1/auth")
     app.include_router(credentials.router, prefix="/v1/credentials")
     app.include_router(install.router, prefix="/v1/install")
