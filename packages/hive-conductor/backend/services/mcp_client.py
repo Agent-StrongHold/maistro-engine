@@ -28,9 +28,11 @@ def atlassian_site_url() -> str:
 
 
 def resolve_atlassian_token(user_id: str | None) -> str | None:
-    """Env first, then encrypted credential store (jira or atlassian_rovo_mcp)."""
+    """Vault first, then env, then encrypted credential store (jira or atlassian_rovo_mcp)."""
+    from services.secrets import resolve_secret
+
     for key in ("ATLASSIAN_API_TOKEN", "JIRA_API_TOKEN"):
-        val = os.getenv(key, "").strip()
+        val = resolve_secret(key, env_var=key)
         if val:
             return val
     if not user_id:

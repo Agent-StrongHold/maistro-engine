@@ -42,6 +42,11 @@ class Foundation:
     def _init_vault(self, settings: Settings, data_dir: Path) -> None:
         vault_path = settings.conductor_vault_path or str(data_dir / "secrets.age")
         identity_path = settings.conductor_identity_path or str(data_dir / "admin.key")
+        # A vault file already on disk means secrets were provisioned into it;
+        # failing to open it must fail closed (SPEC-003), not silently degrade
+        # to env-var secrets. A fresh install with no vault file yet is fine —
+        # SPEC-011's vault is optional by default until `vault.add()` is used.
+        vault_provisioned = Path(vault_path).exists()
         try:
             from maistro.vault import Vault
 
@@ -52,7 +57,14 @@ class Foundation:
             self.vault_available = True
             logger.info("Vault initialised: %s", vault_path)
         except Exception as exc:
-            logger.warning("Vault unavailable (%s) — secrets stay in env vars", exc)
+            if vault_provisioned:
+                logger.error("SECRET_MISSING: vault at %s failed to open (%s)", vault_path, exc)
+                raise SystemExit(f"SECRET_MISSING: vault unavailable ({exc})") from exc
+            logger.info(
+                "No vault provisioned yet (%s) — secrets resolve from config/env until "
+                "vault.add() is used",
+                exc,
+            )
 
     def _init_credentials(self, data_dir: Path) -> None:
         from services import user_credentials as cred_svc

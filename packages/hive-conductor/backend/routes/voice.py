@@ -63,13 +63,10 @@ async def voice_intent(
 
     from adapters.llm_http import HttpOpenAIProtocolLLM
     from config import get_settings
+    from services.secrets import litellm_api_key as resolve_litellm_api_key
 
     settings = get_settings()
-    key = (
-        settings.litellm_api_key.get_secret_value()
-        if settings.litellm_api_key
-        else os.environ.get("LITELLM_API_KEY", "")
-    )
+    key = resolve_litellm_api_key(settings) or os.environ.get("LITELLM_API_KEY", "")
     base = settings.litellm_api_base or os.environ.get("LITELLM_API_BASE", "")
     if base and key:
         llm = HttpOpenAIProtocolLLM(base_url=base, api_key=key, variant="chat_completions")
