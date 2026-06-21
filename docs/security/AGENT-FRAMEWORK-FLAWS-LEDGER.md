@@ -71,7 +71,7 @@ honest gap is a red flag, not a clean bill of health.
 | 10 | Excessive agency / over-privileged tool use | (OWASP LLM06; class) | n/a | ~3 *Reduced* | Authority envelope (ADR-068) + reversibility gates (ADR-050/051) + trust-boundary grants | Implemented |
 | 11 | One-click cross-site WebSocket / blind-origin hijacking | OpenClaw CVE-2026-25253 (8.8) | 8.8 | ~3 *Reduced* | Web-session origin validation (ADR-077); tokens never in URL params | Specified |
 | 12 | Token/scope-rotation privilege escalation | OpenClaw CVE-2026-32922 (9.9 / 9.4 v4) | 9.4–9.9 | ~2 *Strongly reduced* | `agent authority = own ∩ owner's`, agent-never-self-elevates (SPEC-245, ADR-068) | Implemented |
-| 13 | Skill-marketplace supply-chain campaign | OpenClaw ClawHavoc / ClawHub (1,184 malicious skills) | up to 10.0 | ~3 *Reduced* | Signed publisher VC + unsigned-install-blocked + revocation re-check (SPEC-005, ADR-083) | Specified |
+| 13 | Skill-marketplace supply-chain campaign | OpenClaw ClawHavoc / ClawHub (1,184 malicious skills) | up to 10.0 | ~3 *Reduced* | Signed VC + revocation **+ import scan/sanitize/salvage-or-block + per-use re-scan** (SPEC-005, ADR-083, `skills.parser/fixer/forge/canary`) | Specified |
 | 14 | Prompt-injection → host RCE via a *legitimate* tool ("prompts become shells") | Semantic Kernel CVE-2026-25592 / CVE-2026-26030; PraisonAI CVE-2026-44338; LangChain path-traversal CVE-2026-34070; Langflow CVE-2026-33017 | 9.x | ~3–4 *Partial* | External-content quarantine + sandbox (ADR-093) + path-traversal rejection + dangerous-cmd screen | Mixed |
 | 15 | Memory / self-improvement-loop poisoning | Hermes-agent (analyst threat-model; no landed CVE) | n/a | ~3 *Reduced* | Scoped memory + deconfliction immune system on learned-policy/RSI drift (ADR-074) | Mixed |
 
@@ -251,6 +251,10 @@ validating audience. First malicious MCP package observed in the wild Sept 2025;
   on the way in (poisoned-description detection), and tool output is scanned on the way out
   (exfil/shadowing). Sentinel adjudicates every tool call (ADR-068/073), so a shadowed tool still
   faces tier resolution + approver matrix + reversibility gate before it runs.
+- **Per-use payload re-scan defeats the rug-pull specifically.** Skills/tools imported through the
+  Medley salvage pipeline (entry 13) are **re-scanned at every use**, not just at install — so a tool
+  that is benign when adopted and later mutates its payload is caught at execution time, which is the
+  exact window a rug-pull exploits.
 - **No token passthrough.** Authz is scoped per principal (ADR-068); we don't forward caller tokens
   to downstream APIs as bearer credentials — the confused-deputy primitive is absent by design.
 - **microVM containment (ADR-093)** bounds what a poisoned/rug-pulled tool can reach once running.
@@ -445,15 +449,41 @@ the precise threat our marketplace design must withstand.
 - **ADR-083 (skills/MCP trust):** skills are signed, trust-tiered, and **sandbox-by-default**; even an
   admitted skill runs confined (ADR-093 microVM) with egress control — AMOS-style infostealer exfil
   hits a denied-egress boundary, not the host keychain.
+- **Import-time salvage-or-block pipeline (the planned Medley posture).** A user can import a skill
+  from ClawHub *or any source* — URL, file upload, or pasted text. Every import runs the same gauntlet
+  before it can become a usable tool, regardless of provenance:
+  1. **Scan for malicious intent** — `skills.parser.security_scan()` (returns `(is_clean, issues)`)
+     plus a Warden pass over the body; the URL-import path additionally blocks SSRF targets at fetch
+     (`marketplace._BLOCKED_HOSTNAME_PREFIXES` rejects `metadata.`, `localhost`, …).
+  2. **Sanitize / salvage** — `skills.fixer.fix_content()` returns
+     `(fixed_content, fixes_applied, unfixable_issues)`: it NFKD-normalizes, strips hidden
+     direction/zero-width markers, and removes dangerous constructs (e.g. `exec()` calls). This is the
+     "can this be made safe?" step.
+  3. **Improve + register** — a salvaged skill is improved/normalized via `skills.forge` and saved as
+     **tools + prompts** (`SkillDefinition`), starting at a **sandboxed trust tier (T3)**, rolled out
+     under `skills.canary` staged deployment with auto-rollback.
+  4. **Re-scan payload on every use** — the per-call Warden/Sentinel boundary re-scans the actual
+     payload at execution time, so a skill that is benign at import but **mutates or rug-pulls** later
+     (entry 6) is caught at use, not just at install.
+  5. **Fail-closed with a report** — if `unfixable_issues` is non-empty (it was *only* a scam/attack,
+     nothing to salvage), the import is **blocked** and a structured report is produced — so the user
+     can escalate to the source's abuse/report channel if one exists. Blocking, not best-effort
+     salvage, is the guarantee.
 
 **Upstream up to 10.0 → Maistro residual ~3 (Reduced).** Mass-malicious-package distribution is
-defeated at install (signing/revocation) and contained at runtime (sandbox/egress) rather than
-running on the publisher's word.
+defeated at install (signing/revocation + scan/salvage-or-block), contained at runtime (sandbox/egress
++ per-use re-scan), and made safe-by-default for *any* import source, not just the signed registry.
 
-**Residual risk / gaps.** SPEC-005 is **Proposed** and ADR-083 **Proposed** — the signing/revocation
-chain is *designed in detail* but not yet the enforced default of a shipped marketplace. Until it is,
-this entry's residual is a design promise, not a deployed control. This is the single most important
-item to *build*, given we ship a marketplace and the campaign is live. **Status: Specified.**
+**Residual risk / gaps.** Two honesty notes. **(1)** Automated *sanitization and "improvement" of
+adversarial code is detection- and transform-limited* — you cannot guarantee turning an attacker's
+skill into a safe tool, and the LLM "improve" step (forge) must never be the thing trusted to make it
+safe. The load-bearing parts are `security_scan` + `fix_content`'s explicit unfixable split, the T3
+sandbox floor, and the per-use re-scan; **the salvage is a convenience, the block is the guarantee.**
+**(2)** The *primitives* are Implemented (`parser.security_scan`, `fixer.fix_content`, `forge` T3-start,
+`canary`, marketplace SSRF host-block), but the **end-to-end orchestration, the report artifact, and
+the per-use re-scan binding are the design to finish** — and SPEC-005 signing/revocation is still
+**Proposed**. This remains the single most important thing to *build*, given we ship a marketplace and
+the campaign is live. **Status: Specified (primitives Implemented; pipeline + report Designed).**
 
 ---
 
@@ -697,5 +727,6 @@ in those documents. This ledger should be re-scored as that work lands.
   SPEC-011, SPEC-012, SPEC-183, SPEC-190, SPEC-245, SPEC-251; `security/external_content.py`,
   `security/gate.py`, `security/trust_boundary.py`, `security/dangerous_tools.py`,
   `security/patterns.py`, `security/sentinel/authz_types.py`, `tools/reversibility_registry.py`,
-  `delivery/dispatch.py`, `vault.py`.
+  `delivery/dispatch.py`, `skills/parser.py` (`security_scan`), `skills/fixer.py` (`fix_content`),
+  `skills/forge.py`, `skills/canary.py`, `skills/marketplace.py`, `vault.py`.
 ```
