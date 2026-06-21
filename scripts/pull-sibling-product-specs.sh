@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fast-forward the sibling product repo so maistro-engine work traces current specs.
-# See CONSOLIDATION-PLAN.md § "Sibling product specs".
+# See docs/archive/CONSOLIDATION-PLAN.md § "Sibling product specs".
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel 2>/dev/null || true)"

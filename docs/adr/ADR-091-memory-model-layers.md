@@ -242,7 +242,11 @@ pass both filters to appear in a given layer.
 
 ## Out of scope
 
-- Changing the `EpisodicMemory`, `Learning`, `Outcome`, `SkillMutation` schemas.
+- Changing the `EpisodicMemory`, `Learning`, `Outcome`, `SkillMutation` schemas,
+  except for an additive `EpisodicMemory.project_id: str = ""` field (added by
+  SPEC-244) needed to make Layer 3's "project changelog" claim true rather than
+  approximated by team/agent scope — this is the one exception to this ADR's
+  original no-schema-change stance, decided during SPEC-244's implementation.
 - Memory consolidation policy (when memories merge, decay schedule) — see
   DECISION-BACKLOG ☐ "Memory consolidation ADR".
 - Vector store / semantic search for Layer 3 or 4 — separate ADR.

@@ -8,7 +8,7 @@ Covers:
 - apply_guidance_and_pulse: interview-complete branch (pulse succeeds)
 - apply_guidance_and_pulse: pulse exception → pulse_note set
 - run_program_pulse: interview incomplete → skipped result
-- run_program_pulse: engine._queue is None → notes returned, no submit
+- run_program_pulse: engine._backend is None → notes returned, no submit
 - run_program_pulse: autonomous action invokes engine.submit_task + adds
   to queued list
 - run_program_pulse: submit failure swallowed (continue), pulse continues
@@ -209,7 +209,7 @@ async def test_run_program_pulse_no_queue_returns_note(
     monkeypatch.setattr(ph, "propose_work_item_suggestions", lambda c, uid: [])
 
     class _Engine:
-        _queue = None  # not running
+        _backend = None  # not running
 
     monkeypatch.setattr(ph, "get_engine", lambda: _Engine())
     out = await ph.run_program_pulse("u1")
@@ -253,7 +253,7 @@ async def test_run_program_pulse_submits_autonomous_action(
         id = "task-1"
 
     class _Engine:
-        _queue = object()
+        _backend = object()
 
         async def submit_task(self, *a: Any, **kw: Any) -> Any:
             submitted.append((a, kw))
@@ -292,7 +292,7 @@ async def test_run_program_pulse_submit_failure_swallowed(
     monkeypatch.setattr("maistro.agents.program_context.context_for_task", lambda c: {})
 
     class _Engine:
-        _queue = object()
+        _backend = object()
 
         async def submit_task(self, *a: Any, **kw: Any) -> Any:
             raise RuntimeError("queue rejected")
@@ -330,7 +330,7 @@ async def test_run_program_pulse_skips_non_autonomous_actions(
     submitted = [0]
 
     class _Engine:
-        _queue = object()
+        _backend = object()
 
         async def submit_task(self, *a: Any, **kw: Any) -> Any:
             submitted[0] += 1

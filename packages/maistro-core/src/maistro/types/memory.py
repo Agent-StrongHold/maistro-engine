@@ -48,6 +48,15 @@ INHERITANCE_PRIORITY: dict[MemoryTier, int] = {
 REINFORCE_DELTA: float = 0.05
 CONTRADICT_DELTA: float = 0.05
 
+# Decay + reinforcement dynamics (ADR-080 part A / SPEC-240).
+DEFAULT_DECAY_RATE: float = 0.01  # weight lost per hour at decay_rate=1.0
+BOOST_RATE: float = 1.5  # weight multiplier on thumbs-up
+DROP_RATE: float = 0.5  # weight multiplier on thumbs-down
+SLOW_DECAY: float = 0.5  # decay_rate multiplier on thumbs-up
+FAST_DECAY: float = 2.0  # decay_rate multiplier on thumbs-down
+WISDOM_PROMOTE_THRESHOLD: int = 5  # reinforcement_count to promote -> WISDOM
+REGRET_DEMOTE_THRESHOLD: int = 5  # contradiction_count to demote -> REGRET
+
 
 class MemoryScope(StrEnum):
     """Memory visibility scopes — hierarchical from broadest to narrowest."""
@@ -58,6 +67,18 @@ class MemoryScope(StrEnum):
     USER = "user"
     AGENT = "agent"
     SESSION = "session"
+
+
+# Broadest-to-narrowest rank (ADR-013/068 axes); higher rank = broader scope.
+# Used by ADR-080 part C's can_read/propose_widen scope comparisons.
+SCOPE_RANK: dict[MemoryScope, int] = {
+    MemoryScope.GLOBAL: 5,
+    MemoryScope.ORGANIZATION: 4,
+    MemoryScope.TEAM: 3,
+    MemoryScope.USER: 2,
+    MemoryScope.AGENT: 1,
+    MemoryScope.SESSION: 0,
+}
 
 
 @dataclass
@@ -149,6 +170,7 @@ class EpisodicMemory:
     agent_id: str | None = None
     user_id: str | None = None
     scope: MemoryScope = MemoryScope.AGENT
+    project_id: str = ""
     source: str = ""
     context: dict[str, str] = field(default_factory=dict)
     reinforcement_count: int = 0
@@ -156,3 +178,8 @@ class EpisodicMemory:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_accessed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     deleted: bool = False
+    decay_rate: float = DEFAULT_DECAY_RATE
+    # ADR-080 part C: explicit cross-scope/cross-agent shareability marker.
+    shared: bool = False
+    # ADR-080 part B: contradiction review queue marker (never auto-resolved).
+    flagged_for_review: bool = False

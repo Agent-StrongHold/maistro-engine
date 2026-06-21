@@ -28,7 +28,7 @@ services:
     volumes:
       # CRIT-01: Docker socket mount — required for sandbox containers.
       # TODO: Replace with Docker-in-Docker sidecar or remote Docker API
-      # for production deployments. See AUDIT.md CRIT-01.
+      # for production deployments. See docs/audit/AUDIT-2026-02-20.md CRIT-01.
       - /var/run/docker.sock:/var/run/docker.sock
       - workspace-data:/repos
     depends_on:

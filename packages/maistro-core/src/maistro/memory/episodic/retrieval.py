@@ -1,7 +1,7 @@
 """Scored episodic retrieval with embedding reranking.
 
-In-memory version uses keyword overlap + optional embedding similarity,
-weighted by the memory's confidence weight.
+Hybrid lexical (keyword overlap) + vector (embedding cosine) ranking, scaled
+by the memory's confidence weight (ADR-080 part D / SPEC-243).
 
 Ported from Stronghold.
 """
@@ -23,10 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 class ScoredEpisodicRetrieval:
-    """Retrieves episodic memories with scope filtering and similarity scoring.
+    """Retrieves episodic memories with scope filtering and hybrid similarity scoring.
 
-    Score = text_similarity * memory_weight
-    Where text_similarity is either keyword overlap or cosine similarity.
+    Score = (lexical_relevance + vector_similarity) * memory_weight (ADR-080 part D).
     Higher weight memories (LESSON, REGRET, WISDOM) rank above lower ones.
     """
 
@@ -77,16 +76,16 @@ class ScoredEpisodicRetrieval:
         query_words = set(query.lower().split())
 
         for mem in scoped:
+            lexical = self._keyword_similarity(query_words, mem.content)
+            vector = 0.0
             if query_vec:
                 try:
                     mem_vec = await self._embeddings.embed(mem.content)  # type: ignore[union-attr]
-                    sim = cosine_similarity(query_vec, mem_vec)
+                    vector = cosine_similarity(query_vec, mem_vec)
                 except Exception:
-                    sim = self._keyword_similarity(query_words, mem.content)
-            else:
-                sim = self._keyword_similarity(query_words, mem.content)
+                    vector = 0.0
 
-            score = sim * mem.weight
+            score = (lexical + vector) * mem.weight
             if score > 0:
                 scored.append((score, mem))
 

@@ -7,9 +7,10 @@ Post-call: Warden scan tool result, PII filter, token optimize, audit log.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from maistro.security._types import AuditEntry, SentinelVerdict, Violation, WardenVerdict
+from maistro.security.sentinel.authz_types import AuthzDecision, Principal, Tier
 from maistro.security.sentinel.pii_filter import scan_and_redact
 from maistro.security.sentinel.token_optimizer import optimize_result
 from maistro.security.sentinel.validator import validate_and_repair
@@ -29,6 +30,12 @@ def check_permission(
     return auth_context.can_use_tool(tool_name, permission_table)
 
 
+def _principal_auth_context(principal: Principal) -> AuthContext:
+    from maistro.security._types import AuthContext as _AuthContext
+
+    return _AuthContext(user_id=principal.id, roles=frozenset(principal.roles))
+
+
 class Sentinel:
     """Policy enforcement at every boundary crossing.
 
@@ -42,10 +49,94 @@ class Sentinel:
         warden: Warden,
         permission_table: PermissionTable,
         audit_log: AuditLog | None = None,
+        tier_policy: dict[tuple[str, str], Tier] | None = None,
     ) -> None:
         self._warden = warden
         self._permission_table = permission_table
         self._audit_log = audit_log
+        self._tier_policy = tier_policy or {}
+
+    def resolve_tier(
+        self,
+        action: str,
+        principal: Principal,
+        *,
+        reversibility: str = "reversible",
+    ) -> Tier:
+        """Most-specific static policy entry for (action, principal scope/role); else
+        falls back to the ADR-050 reversibility default (SPEC-245 §Decision)."""
+        for scope in (*principal.scopes, *principal.roles):
+            tier = self._tier_policy.get((action, scope))
+            if tier is not None:
+                return tier
+        if reversibility == "irreversible":
+            return Tier.SELF_ELEVATION
+        return Tier.OPEN
+
+    async def authorize(
+        self,
+        action: str,
+        principal: Principal,
+        *,
+        reversibility: str = "reversible",
+        within_budget: bool = True,
+    ) -> AuthzDecision:
+        """ADR-068 §F steps 1-4, short-circuiting on first deny."""
+        tier = self.resolve_tier(action, principal, reversibility=reversibility)
+
+        authorized = check_permission(
+            _principal_auth_context(principal), action, self._permission_table
+        )
+        if not authorized:
+            return AuthzDecision(
+                tier=tier,
+                authorized=False,
+                needs="none",
+                approver_scope=None,
+                within_budget=within_budget,
+                rlphd=None,
+                reason=f"principal '{principal.id}' lacks capability for '{action}'",
+            )
+
+        if not within_budget:
+            return AuthzDecision(
+                tier=tier,
+                authorized=False,
+                needs="none",
+                approver_scope=None,
+                within_budget=False,
+                rlphd=None,
+                reason="over budget",
+            )
+
+        if tier in (Tier.OPEN, Tier.ROLE_AUTO):
+            needs: Literal["none", "self_elevation", "scoped_2fa", "delegated", "admin"] = "none"
+        elif tier == Tier.SELF_ELEVATION:
+            needs = "scoped_2fa" if principal.kind == "agent" else "self_elevation"
+        elif tier == Tier.DELEGATED:
+            needs = "delegated"
+        elif tier == Tier.ADMIN:
+            needs = "admin"
+        else:  # Tier.BLOCKED
+            return AuthzDecision(
+                tier=tier,
+                authorized=False,
+                needs="none",
+                approver_scope=None,
+                within_budget=True,
+                rlphd=None,
+                reason="action is blocked",
+            )
+
+        return AuthzDecision(
+            tier=tier,
+            authorized=True,
+            needs=needs,
+            approver_scope=None,
+            within_budget=True,
+            rlphd=None,
+            reason="",
+        )
 
     async def pre_call(
         self,
