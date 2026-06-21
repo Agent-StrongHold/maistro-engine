@@ -90,8 +90,8 @@ class EpisodicStore(Protocol):
         *,
         agent_id: str | None = None,
         user_id: str | None = None,
-        team: str | None = None,
-        task_type: str = "",
+        team_id: str | None = None,
+        org_id: str | None = None,
         limit: int = 5,
     ) -> list[EpisodicMemory]:
         """Retrieve relevant memories, scope-filtered."""
@@ -99,6 +99,19 @@ class EpisodicStore(Protocol):
 
     async def reinforce(self, memory_id: str, delta: float = 0.05) -> None:
         """Reinforce a memory (increase weight, clamped to tier ceiling)."""
+        ...
+
+    async def list_by_scope(
+        self,
+        *,
+        agent_id: str | None = None,
+        team_id: str | None = None,
+        org_id: str | None = None,
+        project_id: str | None = None,
+        min_weight: float = 0.0,
+        limit: int = 50,
+    ) -> list[EpisodicMemory]:
+        """Scope-filtered memories at or above min_weight, no content matching."""
         ...
 
 
@@ -123,6 +136,8 @@ class OutcomeStore(Protocol):
         task_type: str,
         tool_name: str = "",
         limit: int = 5,
+        org_id: str = "",
+        project_id: str = "",
     ) -> str:
         """Get recent failure patterns as a prompt section for experience-augmented context."""
         ...
@@ -204,6 +219,42 @@ class SessionStore(Protocol):
 
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
+        ...
+
+
+@runtime_checkable
+class ContextAssemblyPolicy(Protocol):
+    """Assembles Level-1 storage types into Layer 0-4 LLM-prompt text (ADR-091)."""
+
+    async def layer0(self, project_id: str) -> str:
+        """Pinned project constraints text. Always included; drives KV cache key."""
+        ...
+
+    async def layer1(self, run_id: str, agent_id: str, session_id: str) -> str:
+        """Active task context: high-confidence episodic memories scoped to this agent."""
+        ...
+
+    async def layer2(self, session_id: str, budget_tokens: int) -> str:
+        """Compressed conversation history (SPEC-189 rolling window)."""
+        ...
+
+    async def layer3(self, project_id: str, n: int = 20) -> str:
+        """Project changelog: recent Outcome records + WISDOM-tier episodic memories."""
+        ...
+
+    async def layer4(self, project_id: str) -> str:
+        """Knowledge graph context. Returns '' until implemented."""
+        ...
+
+    async def assemble(
+        self,
+        project_id: str,
+        run_id: str,
+        agent_id: str,
+        session_id: str,
+        budget_tokens: int,
+    ) -> str:
+        """Concatenate layers 0-4 in order, respecting budget_tokens total."""
         ...
 
 

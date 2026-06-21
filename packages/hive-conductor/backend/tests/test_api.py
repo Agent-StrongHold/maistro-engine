@@ -224,7 +224,7 @@ def test_mission_create_dispatches_task() -> None:
 
     mock_engine = MagicMock()
     mock_engine.is_configured = False
-    mock_engine._queue = MagicMock()
+    mock_engine._backend = MagicMock()
     mock_engine.submit_task = AsyncMock(return_value=fake_rec)
 
     with patch("services.engine._singleton", mock_engine):
@@ -241,7 +241,7 @@ def test_mission_create_dispatches_task() -> None:
 
 
 def test_mission_status_maps_correctly() -> None:
-    from services.engine import _STATUS_MAP
+    from adapters.task_backend import _STATUS_MAP
 
     assert _STATUS_MAP["queued"] == "pending"
     assert _STATUS_MAP["planning"] == "running"

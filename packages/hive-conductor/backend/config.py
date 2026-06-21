@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     hardware_preset: Literal["potato", "laptop", "desktop", "beast"] = "laptop"
     poc_mode: str = ""
     maistro_base_url: str = "http://localhost:8000"
+    # ADR-096: maistro-server is the canonical backend for production task
+    # execution. "demo" is the only mode allowed to run an in-process
+    # in-process LocalTaskBackend — see SPEC-226.
+    hive_mode: Literal["production", "demo"] = "production"
 
     # Host-health API (:8150) backing the infra_monitor / infra_action capability
     # slots. Token is read from the vault (key HOST_HEALTH_TOKEN) with this env as

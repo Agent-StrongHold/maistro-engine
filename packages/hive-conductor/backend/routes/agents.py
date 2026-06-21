@@ -69,10 +69,7 @@ def list_agents(request: Request) -> list[Agent]:
     if is_pm_poc_mode():
         engine = get_engine()
         uid = _user_id(request)
-        raw_tasks = []
-        if engine._queue is not None:
-            items, _ = engine._queue.list_tasks(limit=200, user_id=uid)
-            raw_tasks = items
+        raw_tasks = [r.raw for r in engine.list_tasks(user_id=uid)]
         return list_pm_agents(raw_tasks, user_id=uid)
     return list(stores.agents.values())
 

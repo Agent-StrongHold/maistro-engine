@@ -2,93 +2,32 @@
 
 Exposes two surfaces:
   chat   — route_request() delegates to MaistroCoreBridge
-  tasks  — submit_task() / get_task() / list_tasks() / iter_task_events() via TaskQueue
+  tasks  — submit_task() / get_task() / list_tasks() / iter_task_events() via
+           a TaskBackend (ADR-096 / SPEC-226): MaistroServerTaskBackend calls
+           maistro-server's /tasks API in production; LocalTaskBackend wraps
+           an in-process TaskQueue/runner, demo mode only.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import logging
 from collections.abc import AsyncIterator
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
+
+from adapters.task_backend import TaskRecord
 
 logger = logging.getLogger("hive.engine")
 
 if TYPE_CHECKING:
     from config import Settings
 
-_STATUS_MAP = {
-    "queued": "pending",
-    "planning": "running",
-    "coding": "running",
-    "reviewing": "running",
-    "testing": "running",
-    "completed": "completed",
-    "failed": "failed",
-    "cancelled": "failed",
-}
-
-_TERMINAL = frozenset({"completed", "failed"})
-
-
-class TaskRecord:
-    def __init__(self, task: Any) -> None:
-        self._task = task
-
-    @property
-    def id(self) -> str:
-        return self._task.task_id
-
-    @property
-    def name(self) -> str:
-        return self._task.description[:60]
-
-    @property
-    def description(self) -> str:
-        return self._task.description
-
-    @property
-    def mission_status(self) -> str:
-        return _STATUS_MAP.get(str(self._task.status), "pending")
-
-    @property
-    def progress(self) -> float:
-        p = self._task.progress
-        if p.subtasks:
-            return p.completed / p.subtasks
-        if self.mission_status == "completed":
-            return 1.0
-        return 0.0
-
-    @property
-    def current_step(self) -> str:
-        return self._task.progress.current or self._task.phase or ""
-
-    @property
-    def created_at(self) -> datetime:
-        return self._task.created_at
-
-    @property
-    def started_at(self) -> datetime | None:
-        return self._task.started_at
-
-    @property
-    def completed_at(self) -> datetime | None:
-        return self._task.completed_at
-
-    @property
-    def error(self) -> str | None:
-        result = self._task.result
-        return result.error if result is not None else None
+__all__ = ["EngineService", "TaskRecord", "get_engine", "start_engine", "stop_engine"]
 
 
 class EngineService:
     def __init__(self) -> None:
         self._agent_port: Any = None
-        self._queue: Any = None
-        self._runner: Any = None
+        self._backend: Any = None
         self._configured = False
         self._capabilities: Any = None
 
@@ -128,48 +67,57 @@ class EngineService:
         self._wire_capabilities(settings)
 
         try:
-            import os
+            if settings.hive_mode == "demo":
+                import os
 
-            from maistro.tasks.queue import TaskQueue
-            from maistro.tasks.runner import TaskRunner
+                from adapters.task_backend import LocalTaskBackend
 
-            pm_mode = (
-                os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower()
-                == "pm"
-            )
-            if pm_mode:
-                from maistro.agents.pm_runner import run_pm_task
-
-                executor = run_pm_task
-                # pm_runner makes real Claude calls through the LLM gateway
-                # for LLM-reasoning capabilities and short-circuits to
-                # source='no_data' for data tools that need PATs (jira) or
-                # Chromium (browser-use) when those aren't wired yet.
-                logger.info(
-                    "TaskRunner using PM runner — real LLM via LLM gateway "
-                    "(source='no_data' for Jira/Airtable/web until PATs set)"
+                pm_mode = (
+                    os.getenv("MAISTRO_POC_MODE", os.getenv("HIVE_POC_MODE", "")).strip().lower()
+                    == "pm"
                 )
+                if pm_mode:
+                    from maistro.agents.pm_runner import run_pm_task
+
+                    executor = run_pm_task
+                    # pm_runner makes real Claude calls through the LLM gateway
+                    # for LLM-reasoning capabilities and short-circuits to
+                    # source='no_data' for data tools that need PATs (jira) or
+                    # Chromium (browser-use) when those aren't wired yet.
+                    logger.info(
+                        "LocalTaskBackend (demo) using PM runner — real LLM via LLM gateway "
+                        "(source='no_data' for Jira/Airtable/web until PATs set)"
+                    )
+                else:
+                    from maistro.agents.conductor import run_task
+
+                    executor = run_task
+                    logger.info("LocalTaskBackend (demo) using engineering conductor executor")
+
+                backend = LocalTaskBackend(executor=executor)
+                await backend.start()
+                self._backend = backend
+                if pm_mode:
+                    from maistro.agents.catalog import AgentCatalog
+                    from maistro.agents.pm_fleet import register_pm_fleet
+
+                    catalog = AgentCatalog()
+                    register_pm_fleet(catalog)
+                    self._pm_catalog = catalog
             else:
-                from maistro.agents.conductor import run_task
+                from adapters.task_backend import MaistroServerTaskBackend
 
-                executor = run_task
-                logger.info("TaskRunner using engineering conductor executor")
-
-            self._queue = TaskQueue()
-            self._runner = TaskRunner(self._queue, executor=executor)
-            await self._runner.start()
-            if pm_mode:
-                from maistro.agents.catalog import AgentCatalog
-                from maistro.agents.pm_fleet import register_pm_fleet
-
-                catalog = AgentCatalog()
-                register_pm_fleet(catalog)
-                self._pm_catalog = catalog
+                self._backend = MaistroServerTaskBackend(
+                    base_url=settings.maistro_base_url,
+                    api_key=settings.maistro_router_api_key,
+                )
+                logger.info(
+                    "MaistroServerTaskBackend wired — production tasks via %s",
+                    settings.maistro_base_url,
+                )
         except Exception as exc:
-            import logging
-
             logging.getLogger("hive.engine").warning(
-                "TaskRunner failed (%s) — mission dispatch disabled", exc
+                "TaskBackend setup failed (%s) — mission dispatch disabled", exc
             )
 
     def _wire_capabilities(self, settings: Settings) -> None:
@@ -204,9 +152,11 @@ class EngineService:
             logger.warning("capability wiring failed (%s) — slots use baselines/SAFE_NOOP", exc)
 
     async def stop(self) -> None:
-        if self._runner is not None:
+        if self._backend is not None:
+            import contextlib
+
             with contextlib.suppress(Exception):
-                await self._runner.stop()
+                await self._backend.stop()
 
     async def route_request(
         self,
@@ -232,7 +182,7 @@ class EngineService:
         capability: str | None = None,
         program_context: dict | None = None,
     ) -> TaskRecord:
-        if self._queue is None:
+        if self._backend is None:
             raise RuntimeError("TaskQueue not available")
         from maistro.agents.pm_capabilities import is_gated, normalize_capability
         from maistro.tasks.models import TaskCreate
@@ -254,7 +204,7 @@ class EngineService:
             except Exception:
                 pctx = None
 
-        task = await self._queue.submit(
+        rec = await self._backend.submit(
             TaskCreate(
                 description=description or name,
                 task_type=task_type,
@@ -266,33 +216,37 @@ class EngineService:
         )
         logger.info(
             "task_submitted id=%s user=%s agent=%s capability=%s type=%s",
-            task.task_id,
+            rec.id,
             user_id or "-",
             agent_id or "-",
             capability or "-",
             task_type or "-",
         )
-        return TaskRecord(task)
+        return rec
 
     def get_task(self, task_id: str, *, user_id: str | None = None) -> TaskRecord | None:
-        if self._queue is None:
+        if self._backend is None:
             return None
-        task = self._queue.get(task_id, user_id=user_id)
-        return TaskRecord(task) if task is not None else None
+        return self._backend.get(task_id, user_id=user_id)
 
     def list_tasks(self, *, user_id: str | None = None) -> list[TaskRecord]:
-        if self._queue is None:
+        if self._backend is None:
             return []
-        items, _ = self._queue.list_tasks(limit=200, user_id=user_id)
-        return [TaskRecord(t) for t in reversed(items)]
+        return self._backend.list_tasks(user_id=user_id)
 
     def delete_task(self, task_id: str) -> bool:
-        if self._queue is None:
+        if self._backend is None:
             return False
-        return self._queue.remove(task_id)
+        remove = getattr(self._backend, "remove", None)
+        if remove is not None:
+            return bool(remove(task_id))
+        return False
 
     def clear_tasks(self, *, status: str | None = None) -> int:
-        if self._queue is None:
+        if self._backend is None:
+            return 0
+        remove_where = getattr(self._backend, "remove_where", None)
+        if remove_where is None:
             return 0
         from maistro.tasks.models import TaskStatus
 
@@ -301,26 +255,13 @@ class EngineService:
             filter_status = TaskStatus.FAILED
         elif status == "completed":
             filter_status = TaskStatus.COMPLETED
-        return self._queue.remove_where(status=filter_status)
+        return remove_where(status=filter_status)
 
     async def iter_task_events(self, task_id: str) -> AsyncIterator[dict[str, Any]]:
-        if self._queue is None:
+        if self._backend is None:
             return
-        while True:
-            task = self._queue.get(task_id)
-            if task is None:
-                return
-            rec = TaskRecord(task)
-            yield {
-                "id": rec.id,
-                "status": rec.mission_status,
-                "progress": rec.progress,
-                "current_step": rec.current_step,
-            }
-            if rec.mission_status in _TERMINAL:
-                return
-            with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._queue.wait_for_update(task_id), timeout=30.0)
+        async for event in self._backend.iter_events(task_id):
+            yield event
 
 
 _singleton: EngineService | None = None

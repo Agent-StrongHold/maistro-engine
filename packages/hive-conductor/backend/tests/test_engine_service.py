@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import pathlib
 import sys
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -169,6 +170,27 @@ async def test_start_with_no_router_key_uses_stub_agent_port(
 
     class _Settings:
         maistro_router_api_key = ""
+        maistro_base_url = "http://localhost:8000"
+        hive_mode = "production"
+
+    svc = EngineService()
+    await svc.start(_Settings())  # type: ignore[arg-type]
+    assert svc._agent_port is not None
+    # type name reflects stub fallback
+    assert type(svc._agent_port).__name__ == "StubAgentPort"
+    # production hive_mode → MaistroServerTaskBackend, never a TaskRunner
+    assert type(svc._backend).__name__ == "MaistroServerTaskBackend"
+
+
+async def test_start_in_demo_mode_uses_local_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from services.engine import EngineService
+
+    class _Settings:
+        maistro_router_api_key = ""
+        maistro_base_url = "http://localhost:8000"
+        hive_mode = "demo"
 
     # Stub out TaskQueue/TaskRunner so .start doesn't try to spawn real ones
     class _Q:
@@ -199,30 +221,122 @@ async def test_start_with_no_router_key_uses_stub_agent_port(
 
     svc = EngineService()
     await svc.start(_Settings())  # type: ignore[arg-type]
-    assert svc._agent_port is not None
-    # type name reflects stub fallback
-    assert type(svc._agent_port).__name__ == "StubAgentPort"
+    assert type(svc._backend).__name__ == "LocalTaskBackend"
 
 
-async def test_stop_with_no_runner_is_safe() -> None:
+async def test_stop_with_no_backend_is_safe() -> None:
     from services.engine import EngineService
 
     svc = EngineService()
-    # _runner is None — stop should be a no-op
+    # _backend is None — stop should be a no-op
     await svc.stop()
 
 
-async def test_stop_with_failing_runner_is_swallowed() -> None:
-    """The runner's stop() might raise; contextlib.suppress lets it pass."""
+async def test_stop_with_failing_backend_is_swallowed() -> None:
+    """The backend's stop() might raise; contextlib.suppress lets it pass."""
     from services.engine import EngineService
 
-    class _Runner:
+    class _Backend:
         async def stop(self) -> None:
             raise RuntimeError("synthetic")
 
     svc = EngineService()
-    svc._runner = _Runner()
+    svc._backend = _Backend()
     await svc.stop()  # no raise
+
+
+async def test_maistro_server_task_backend_submit_get_list_cancel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MaistroServerTaskBackend maps 1:1 onto maistro-server's /tasks API."""
+    import httpx
+    from adapters.task_backend import MaistroServerTaskBackend
+
+    from maistro.tasks.models import TaskCreate
+
+    task_body = {
+        "task_id": "srv-1",
+        "status": "queued",
+        "description": "ship it",
+        "workspace": "/tmp/maistro-workspace",  # nosec B108 — static test fixture, mirrors TaskCreate's documented default
+        "tier": 2,
+        "phase": "queued",
+        "progress": {"subtasks": 0, "completed": 0, "current": ""},
+        "result": None,
+        "created_at": "2026-06-20T00:00:00Z",
+        "started_at": None,
+        "completed_at": None,
+    }
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST" and request.url.path == "/tasks":
+            return httpx.Response(
+                202, json={"task_id": "srv-1", "status": "queued", "task": task_body}
+            )
+        if request.method == "GET" and request.url.path == "/tasks/srv-1":
+            return httpx.Response(200, json=task_body)
+        if request.method == "GET" and request.url.path == "/tasks":
+            return httpx.Response(200, json={"items": [task_body], "next_cursor": None, "count": 1})
+        if request.method == "DELETE" and request.url.path == "/tasks/srv-1":
+            return httpx.Response(200, json={"cancelled": True})
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(_handler)
+
+    backend = MaistroServerTaskBackend(base_url="http://maistro-server", api_key="k")
+
+    _OrigAsyncClient = httpx.AsyncClient
+    _OrigClient = httpx.Client
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kw: _OrigAsyncClient(
+            transport=transport, **{k: v for k, v in kw.items() if k != "transport"}
+        ),
+    )
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda **kw: _OrigClient(
+            transport=transport, **{k: v for k, v in kw.items() if k != "transport"}
+        ),
+    )
+
+    rec = await backend.submit(TaskCreate(description="ship it"), user_id="u1")
+    assert rec.id == "srv-1"
+
+    got = backend.get("srv-1")
+    assert got is not None
+    assert got.id == "srv-1"
+
+    items = backend.list_tasks()
+    assert [i.id for i in items] == ["srv-1"]
+
+    cancelled = await backend.cancel("srv-1")
+    assert cancelled is True
+
+
+async def test_maistro_server_task_backend_get_missing_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+    from adapters.task_backend import MaistroServerTaskBackend
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(_handler)
+    _OrigClient = httpx.Client
+    monkeypatch.setattr(
+        httpx,
+        "Client",
+        lambda **kw: _OrigClient(
+            transport=transport, **{k: v for k, v in kw.items() if k != "transport"}
+        ),
+    )
+
+    backend = MaistroServerTaskBackend(base_url="http://maistro-server", api_key=None)
+    assert backend.get("missing") is None
 
 
 # --- submit_task ---------------------------------------------------------
@@ -248,7 +362,7 @@ async def test_submit_task_gated_capability_without_confirmed_raises(
     monkeypatch.setattr(caps, "normalize_capability", lambda c: c)
 
     svc = EngineService()
-    svc._queue = SimpleNamespace()  # truthy
+    svc._backend = SimpleNamespace()  # truthy
     with pytest.raises(ValueError, match="work-item draft flow"):
         await svc.submit_task(
             "n",
@@ -261,19 +375,19 @@ async def test_submit_task_gated_capability_without_confirmed_raises(
 async def test_submit_task_success_returns_task_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from services.engine import EngineService
+    from services.engine import EngineService, TaskRecord
 
     import maistro.agents.pm_capabilities as caps
 
     monkeypatch.setattr(caps, "is_gated", lambda c: False)
     monkeypatch.setattr(caps, "normalize_capability", lambda c: c)
 
-    class _Queue:
+    class _Backend:
         async def submit(self, body: Any, *, user_id: str = "") -> Any:
-            return _fake_task(task_id="new-task", description=body.description)
+            return TaskRecord(_fake_task(task_id="new-task", description=body.description))
 
     svc = EngineService()
-    svc._queue = _Queue()
+    svc._backend = _Backend()
     rec = await svc.submit_task(
         "n",
         "ship hello",
@@ -288,22 +402,22 @@ async def test_submit_task_success_returns_task_record(
 # --- get_task / list_tasks / delete_task / clear_tasks ------------------
 
 
-def test_get_task_no_queue_returns_none() -> None:
+def test_get_task_no_backend_returns_none() -> None:
     from services.engine import EngineService
 
     svc = EngineService()
     assert svc.get_task("any") is None
 
 
-def test_get_task_with_queue_returns_record() -> None:
-    from services.engine import EngineService
+def test_get_task_with_backend_returns_record() -> None:
+    from services.engine import EngineService, TaskRecord
 
-    class _Q:
-        def get(self, tid: str, *, user_id: Any) -> Any:
-            return _fake_task(task_id=tid)
+    class _B:
+        def get(self, tid: str, *, user_id: Any = None) -> Any:
+            return TaskRecord(_fake_task(task_id=tid))
 
     svc = EngineService()
-    svc._queue = _Q()
+    svc._backend = _B()
     rec = svc.get_task("t-1")
     assert rec is not None
     assert rec.id == "t-1"
@@ -312,57 +426,56 @@ def test_get_task_with_queue_returns_record() -> None:
 def test_get_task_missing_returns_none() -> None:
     from services.engine import EngineService
 
-    class _Q:
-        def get(self, tid: str, *, user_id: Any) -> Any:
+    class _B:
+        def get(self, tid: str, *, user_id: Any = None) -> Any:
             return None
 
     svc = EngineService()
-    svc._queue = _Q()
+    svc._backend = _B()
     assert svc.get_task("missing") is None
 
 
-def test_list_tasks_empty_queue_returns_empty() -> None:
+def test_list_tasks_empty_backend_returns_empty() -> None:
     from services.engine import EngineService
 
     svc = EngineService()
     assert svc.list_tasks() == []
 
 
-def test_list_tasks_returns_reversed_records() -> None:
-    from services.engine import EngineService
+def test_list_tasks_passes_through_backend() -> None:
+    from services.engine import EngineService, TaskRecord
 
-    class _Q:
-        def list_tasks(self, *, limit: int, user_id: Any) -> tuple[list[Any], int]:
-            return ([_fake_task(task_id="a"), _fake_task(task_id="b")], 2)
+    class _B:
+        def list_tasks(self, *, user_id: Any = None) -> Any:
+            return [TaskRecord(_fake_task(task_id="b")), TaskRecord(_fake_task(task_id="a"))]
 
     svc = EngineService()
-    svc._queue = _Q()
+    svc._backend = _B()
     out = svc.list_tasks()
-    # Reversed
     assert [r.id for r in out] == ["b", "a"]
 
 
-def test_delete_task_no_queue_returns_false() -> None:
+def test_delete_task_no_backend_returns_false() -> None:
     from services.engine import EngineService
 
     svc = EngineService()
     assert svc.delete_task("any") is False
 
 
-def test_delete_task_with_queue_passes_through() -> None:
+def test_delete_task_with_backend_passes_through() -> None:
     from services.engine import EngineService
 
-    class _Q:
+    class _B:
         def remove(self, tid: str) -> bool:
             return tid == "exists"
 
     svc = EngineService()
-    svc._queue = _Q()
+    svc._backend = _B()
     assert svc.delete_task("exists") is True
     assert svc.delete_task("nope") is False
 
 
-def test_clear_tasks_no_queue_returns_zero() -> None:
+def test_clear_tasks_no_backend_returns_zero() -> None:
     from services.engine import EngineService
 
     svc = EngineService()
@@ -374,13 +487,13 @@ def test_clear_tasks_filters_by_status(monkeypatch: pytest.MonkeyPatch) -> None:
 
     captured: list[Any] = []
 
-    class _Q:
+    class _B:
         def remove_where(self, *, status: Any) -> int:
             captured.append(status)
             return 3
 
     svc = EngineService()
-    svc._queue = _Q()
+    svc._backend = _B()
     from maistro.tasks.models import TaskStatus
 
     # No filter → status=None
@@ -397,7 +510,7 @@ def test_clear_tasks_filters_by_status(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- iter_task_events --------------------------------------------------
 
 
-async def test_iter_task_events_no_queue_returns_immediately() -> None:
+async def test_iter_task_events_no_backend_returns_immediately() -> None:
     from services.engine import EngineService
 
     svc = EngineService()
@@ -408,26 +521,16 @@ async def test_iter_task_events_no_queue_returns_immediately() -> None:
 async def test_iter_task_events_yields_then_terminates() -> None:
     from services.engine import EngineService
 
-    states = [
-        _fake_task(task_id="t-1", status="planning"),
-        _fake_task(
-            task_id="t-1",
-            status="completed",
-            progress=SimpleNamespace(subtasks=1, completed=1, current="done"),
-        ),
-    ]
-    idx = [0]
+    async def _events(tid: str) -> AsyncIterator[dict[str, Any]]:
+        yield {"id": tid, "status": "running", "progress": 0.0, "current_step": "planning"}
+        yield {"id": tid, "status": "completed", "progress": 1.0, "current_step": "done"}
 
-    class _Q:
-        def get(self, tid: str, *, user_id: Any = None) -> Any:
-            i = min(idx[0], len(states) - 1)
-            return states[i]
-
-        async def wait_for_update(self, tid: str) -> None:
-            idx[0] += 1
+    class _B:
+        def iter_events(self, tid: str) -> Any:
+            return _events(tid)
 
     svc = EngineService()
-    svc._queue = _Q()
+    svc._backend = _B()
     events = [ev async for ev in svc.iter_task_events("t-1")]
     statuses = [e["status"] for e in events]
     assert statuses == ["running", "completed"]
@@ -436,11 +539,15 @@ async def test_iter_task_events_yields_then_terminates() -> None:
 async def test_iter_task_events_returns_when_task_disappears() -> None:
     from services.engine import EngineService
 
-    class _Q:
-        def get(self, tid: str, *, user_id: Any = None) -> Any:
-            return None
+    async def _events(tid: str) -> AsyncIterator[dict[str, Any]]:
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+    class _B:
+        def iter_events(self, tid: str) -> Any:
+            return _events(tid)
 
     svc = EngineService()
-    svc._queue = _Q()
+    svc._backend = _B()
     events = [ev async for ev in svc.iter_task_events("missing")]
     assert events == []
