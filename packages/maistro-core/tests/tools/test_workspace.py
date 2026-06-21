@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from maistro.tools.sandbox.workspace import validate_workspace_path
+from maistro.tools.sandbox.workspace import ensure_workspace, validate_workspace_path
 
 
 def _resolved_tmp_workspace_root() -> str:
@@ -67,3 +67,22 @@ class TestPathTraversal:
         assert str(path).startswith(_resolved_tmp_workspace_root())
         # '..' was resolved, so 'a' is gone
         assert "/a/" not in str(path)
+
+
+class TestEnsureWorkspace:
+    """Evidence: ensure_workspace validates then creates the directory."""
+
+    def test_creates_directory_when_missing(self, tmp_path: Path) -> None:
+        target = f"/tmp/maistro-workspace/{tmp_path.name}/nested"
+        resolved = ensure_workspace(target)
+        assert resolved.is_dir()
+
+    def test_idempotent_when_directory_exists(self, tmp_path: Path) -> None:
+        target = f"/tmp/maistro-workspace/{tmp_path.name}/again"
+        ensure_workspace(target)
+        resolved = ensure_workspace(target)
+        assert resolved.is_dir()
+
+    def test_raises_for_disallowed_path(self) -> None:
+        with pytest.raises(ValueError, match="not in an allowed location"):
+            ensure_workspace("/etc/maistro-workspace")
