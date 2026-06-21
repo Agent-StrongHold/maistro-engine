@@ -8,7 +8,7 @@
 
 ## Architecture
 
-Consolidation **monorepo** (single git repo, `uv` workspace) with 7 packages + the hive-conductor app. It is *not* just a library: it **contains** the Agent Conductor app (`hive-conductor`, the personal/homelab product) and the canvas ability (`maistro-canvas`), and exposes `maistro-core` for downstream products to import. (Was historically split across sibling repos — see `CONSOLIDATION-PLAN.md`.)
+Consolidation **monorepo** (single git repo, `uv` workspace) with 7 packages + the hive-conductor app. It is *not* just a library: it **contains** the Agent Conductor app (`hive-conductor`, the personal/homelab product) and the canvas ability (`maistro-canvas`), and exposes `maistro-core` for downstream products to import. (Was historically split across sibling repos — see `docs/archive/CONSOLIDATION-PLAN.md`.)
 
 ```
 packages/

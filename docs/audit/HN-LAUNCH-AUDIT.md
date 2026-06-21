@@ -32,7 +32,7 @@ What does ship is employer and home-network information:
 | 1.3 | Work-machine path leaking full name + employer OneDrive + internal project (macOS OneDrive path with full name and project), plus an internal-wiki reference | `packages/hive-conductor/OVERNIGHT-PLAN.md:261-264` | Remove lines; covered by the same history-rewrite pass. |
 | 1.4 | Employer-internal project data in demo fixtures: internal Jira project key and Airtable table/field names; `carlos_pm.json` appears to be a real colleague's dashboard | `packages/hive-conductor/backend/data/demo_dashboards/*.json`, `DEMO-READY.md:31,48`, `docs/WAYS-OF-WORKING.md`, `packages/hive-conductor/frontend/src/fantasia-theme.css` | Rename to generic demo project/persona names. |
 | 1.5 | Home-LAN topology in code defaults: private RFC-1918 addresses in `ha_tools.py:13`, `playwright.config.ts:9`, SPEC-185, SPEC-187 | hive-conductor + docs/specs | Replace with `localhost`/env placeholders. |
-| 1.6 | Personal/family domain + home reverse-proxy hostname: a personal email address and reverse-proxy hostname | `docs/specs/SPEC-002-email-channel.md:3,31-32`, `cutover/MASTER-PLAN.md:266` | Replace with `example.com` placeholders. |
+| 1.6 | Personal/family domain + home reverse-proxy hostname: a personal email address and reverse-proxy hostname | `docs/specs/SPEC-002-email-channel.md:3,31-32`, `docs/archive/MASTER-PLAN.md` (line numbers shifted on archive) | Replace with `example.com` placeholders. **Still open** — not addressed by the 2026-06-20 doc-archival pass. |
 | 1.7 | Hardcoded Postgres credential (localhost dev default, no env override) | `packages/maistro-canvas/frontend/server.js:10` | Read from env; rotate if that password is reused anywhere real. |
 
 Minor: commit message `433b362` discloses personal financial planning (cloud-credit amounts); `docker-compose.pm-poc.yml` ships `alice:changeme-alice` POC keys (documented, acceptable); `orders@maincharacter.press` ships as a library default in the Lulu client — confirm intentional; ADR-024/026 use `brigid` as an instance name — genericize if it's a real device.
@@ -86,10 +86,10 @@ What an HN reader sees in the first five minutes:
 | # | Finding | Action |
 |---|---------|--------|
 | 4.1 | **No LICENSE file exists** (`git ls-files | grep -i license` → nothing), yet README:150, CLAUDE.md, and INSPIRATIONS.md all claim Apache 2.0; no pyproject declares a `license` field. Legally the code is all-rights-reserved. | Add `LICENSE` (Apache-2.0) + `license` field in all 9 pyprojects. |
-| 4.2 | **Root `AUDIT.md` is the guaranteed HN screenshot**: "Verdict: NOT READY FOR COMMERCIAL PRODUCTION — 4 Critical · 16 Major" — describing a codebase that no longer exists (most findings now fixed, see §3), with no remediation status. | Delete, or move under `docs/audit/` with a prominent "historical — since remediated, see HN-LAUNCH-AUDIT" header. |
+| 4.2 | ~~Root `AUDIT.md` is the guaranteed HN screenshot~~ — **Done (2026-06-20):** moved to `docs/audit/AUDIT-2026-02-20.md` with a historical banner pointing here; `docs/testing-audit.md` similarly archived to `docs/audit/TESTING-AUDIT-2026-02-20.md`. | — |
 | 4.3 | README links a nonexistent ADR (`ADR-042-graph-execution-protocol.md` — graph execution is ADR-062) and misstates the ADR count ("through ADR-057"; there are 96). CLAUDE.md says 43. Three documents, three different counts, all wrong. | Fix links/counts; CLAUDE.md needs a refresh pass (also claims ~375 core tests — 1,508 collect; documents a root `src/maistro/` layout that no longer exists; misses `maistro-design`/`maistro-registry`). |
 | 4.4 | Hard links to private repos that 404 for the public: `Project_mAIstro`, `AgentTuring`, `agent-stronghold/stronghold` in ROADMAP.md, BACKLOG.md, docs/proposals/. | De-link or move to private tracking. |
-| 4.5 | `CONSOLIDATION-PLAN.md` leaks local filesystem paths (`/root/github/stronghold/`, `/root/docker/conductor-router/`); README links to it. | Move to docs/ or delete. |
+| 4.5 | ~~`CONSOLIDATION-PLAN.md` leaks local filesystem paths~~ — **Done (2026-06-20):** moved to `docs/archive/CONSOLIDATION-PLAN.md`, paths redacted to `<workspace-root>/...` placeholders, README/CLAUDE.md/etc. links updated. | — |
 | 4.6 | `.github/workflows/mutation.yml` and `security.yml` reference a tree from different infrastructure (`container_registry/user_containers/sandbox_templates/...`) that doesn't exist here. | Fix or remove the workflows. |
 | 4.7 | Product naming is inconsistent three ways: "Agent Conductor" (README/CLAUDE.md) vs "Hive Conductor" (cutover/, design/, `get.hiveconductor.com`) vs package `hive-conductor`; plus "Canvas book-maker (name TBD)". | Pick one name per product before launch. |
 | 4.8 | `docs/JFC-SANDBOX.md` — filename reads as a profanity acronym, references internal "Vibe Hosting" container-broker infra, and contains a relative link escaping the repo. | Rename/remove. |
@@ -113,8 +113,8 @@ Comment hygiene is genuinely good: 30 TODOs / 3 FIXMEs repo-wide, zero profanity
 
 **P1 — strongly recommended:**
 7. Relocate the 9 misplaced security-regression tests; fix root `uv run pytest` (§2).
-8. Archive root `AUDIT.md` with remediation status; fix README ADR links/counts; refresh CLAUDE.md (§4.2–4.3).
-9. De-link private repos; delete/relocate CONSOLIDATION-PLAN.md; fix the two foreign-infra workflows (§4.4–4.6).
+8. ~~Archive root `AUDIT.md` with remediation status~~ — **Done** (§4.2). README ADR links/counts and CLAUDE.md refresh still open (§4.3).
+9. ~~Delete/relocate CONSOLIDATION-PLAN.md~~ — **Done** (§4.5). De-link private repos; fix the two foreign-infra workflows still open (§4.4, §4.6).
 10. Resolve product naming; rename `JFC-SANDBOX.md` (§4.7–4.8).
 
 **P2 — nice before the traffic spike:**

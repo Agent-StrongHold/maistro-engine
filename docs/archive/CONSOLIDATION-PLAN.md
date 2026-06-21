@@ -1,11 +1,18 @@
 # Maistro Engine — Consolidation Master Plan
 
+> **⚠️ HISTORICAL (archived 2026-06-20).** The monorepo consolidation described below has
+> shipped — see ADR-019 and ADR-030 (both reference this doc) and the `packages/` layout
+> in `CLAUDE.md`. The handful of items that were still open when this plan was archived
+> (Master Orchestrator security gate + API wiring) are tracked as `[engine-105]` in
+> `BACKLOG.md`. Kept for historical trace of the consolidation rationale and subsystem
+> provenance mapping.
+
 **Canonical shape (2026-05):** `maistro-engine` is the primary substrate monorepo; wholesale absorption of sibling product trees (older mega-merge drafts) stays **deferred**. Prefer additive `packages/*` and `apps/*`, registry/spec pulls, and Copier rebases over flattening repos.
 
 **Date:** 2026-05-01
 **Status:** Active
-**Target:** `/root/github/maistro-engine/`
-**Sources:** Stronghold (`/root/github/stronghold/`), Project mAIstro (`/root/github/Project_mAIstro/`), conductor-router (`/root/docker/conductor-router/`)
+**Target:** `<workspace-root>/maistro-engine/`
+**Sources:** Stronghold (`<workspace-root>/stronghold/`), Project mAIstro (`<workspace-root>/Project_mAIstro/`), conductor-router (`<workspace-root>/conductor-router/`)
 
 ---
 

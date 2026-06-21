@@ -1,5 +1,12 @@
 # Hive Conductor — Master Cutover Plan
 
+> **⚠️ HISTORICAL (archived 2026-06-20).** Most of this plan shipped (Docker Compose
+> structure, config schema, base porting). The genuinely still-open items — hosted curl
+> installer, GHCR image publishing, full frontend page coverage, MCP server
+> implementations, remaining Project mAIstro feature ports — are tracked as
+> `[engine-100]`–`[engine-104]` in `BACKLOG.md`. See also the companion
+> `docs/archive/PRODUCT-SPEC.md`. Kept for historical design-rationale reference.
+
 **Product**: Hive Conductor — Multi-agent AI platform
 **Codebase**: maistro-engine monorepo (`maistro-core`, `maistro-server`, `maistro-turing`, `maistro-canvas`)
 **Date**: 2026-05-12
