@@ -120,15 +120,15 @@ class MaistroCoreBridge:
     async def start(self, settings: Settings) -> None:
         import os
 
+        from services.secrets import maistro_llm_api_key
+
         from maistro.agents.factory import create_agents
         from maistro.container import create_container
         from maistro.prompts.store import InMemoryPromptManager
         from maistro.types.config import AgentConfig
 
         llm_base = (settings.maistro_llm_base_url or "").strip()
-        llm_key = (
-            settings.maistro_llm_api_key.get_secret_value() if settings.maistro_llm_api_key else ""
-        )
+        llm_key = maistro_llm_api_key(settings) or ""
         model = settings.maistro_model
 
         config = AgentConfig(

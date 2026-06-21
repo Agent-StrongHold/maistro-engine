@@ -105,18 +105,13 @@ class _EvolutionService:
             import httpx
             from config import get_settings
 
+            from services.secrets import litellm_api_key, maistro_llm_api_key
+
             settings = get_settings()
             base = settings.maistro_llm_base_url or settings.litellm_api_base
-            key = settings.maistro_llm_api_key or settings.litellm_api_key
             if not base:
                 return None
-            raw_key = (
-                key.get_secret_value()
-                if hasattr(key, "get_secret_value")
-                else str(key)
-                if key
-                else ""
-            )
+            raw_key = maistro_llm_api_key(settings) or litellm_api_key(settings) or ""
 
             async def _llm_call(messages: list[dict], **kwargs: Any) -> str:
                 headers = {"Content-Type": "application/json"}
