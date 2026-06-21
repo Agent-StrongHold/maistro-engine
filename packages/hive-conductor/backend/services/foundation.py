@@ -58,6 +58,7 @@ class Foundation:
             logger.info("Vault initialised: %s", vault_path)
         except Exception as exc:
             if vault_provisioned:
+                # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the vault file path and exception, never secret values
                 logger.error("SECRET_MISSING: vault at %s failed to open (%s)", vault_path, exc)
                 raise SystemExit(f"SECRET_MISSING: vault unavailable ({exc})") from exc
             logger.info(

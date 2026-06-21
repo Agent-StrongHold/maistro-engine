@@ -22,7 +22,7 @@ owners:
 history:
   - status: Proposed
     date: 2026-03-23
-  - status: Amended
+  - status: AC Defined
     date: 2026-06-20
 ---
 

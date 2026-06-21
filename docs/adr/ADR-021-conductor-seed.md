@@ -27,7 +27,7 @@ history:
     date: 2026-05-07
   - status: Accepted
     date: 2026-05-07
-  - status: Amended
+  - status: Accepted
     date: 2026-06-19
 ---
 
