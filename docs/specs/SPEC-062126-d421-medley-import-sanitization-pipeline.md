@@ -1,5 +1,5 @@
 ---
-id: SPEC-259
+id: SPEC-062126-d421
 title: "Medley import sanitization pipeline — scan, salvage-or-block, register, re-scan-on-use"
 repo: maistro-engine
 kind: spec
@@ -30,7 +30,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-259: Medley import sanitization pipeline
+# SPEC-062126-d421: Medley import sanitization pipeline
 
 ## Context
 
