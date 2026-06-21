@@ -122,28 +122,7 @@ class Sentinel:
                 reason="over budget",
             )
 
-        if tier in (Tier.OPEN, Tier.ROLE_AUTO):
-            needs: Literal["none", "self_elevation", "scoped_2fa", "delegated", "admin"] = "none"
-        elif tier == Tier.SELF_ELEVATION:
-            needs = "scoped_2fa" if principal.kind == "agent" else "self_elevation"
-            if self._elevation_store is not None:
-                args_hash = hash_args(args) if needs == "scoped_2fa" and args else None
-                grant = await self._elevation_store.find_valid(principal.id, action, args_hash)
-                if grant is not None:
-                    return AuthzDecision(
-                        tier=tier,
-                        authorized=True,
-                        needs="none",
-                        approver_scope=None,
-                        within_budget=True,
-                        rlphd=None,
-                        reason="cleared by a prior elevation grant",
-                    )
-        elif tier == Tier.DELEGATED:
-            needs = "delegated"
-        elif tier == Tier.ADMIN:
-            needs = "admin"
-        else:  # Tier.BLOCKED
+        if tier == Tier.BLOCKED:
             return AuthzDecision(
                 tier=tier,
                 authorized=False,
@@ -154,35 +133,24 @@ class Sentinel:
                 reason="action is blocked",
             )
 
+        needs = self._resolve_needs(tier, principal)
+        if tier == Tier.SELF_ELEVATION:
+            cleared = await self._check_elevation_grant(action, principal, needs, args)
+            if cleared is not None:
+                return cleared
+
         approver_scope: str | None = None
         if tier == Tier.DELEGATED and self._approver_graph is not None:
             requester_scope = principal.scopes[0] if principal.scopes else principal.id
             approver_scope = self._approver_graph.resolve(action, requester_scope)
 
         rlphd_verdict: RlphdVerdict | None = None
-        if (
-            tier == Tier.DELEGATED
-            and self._rlphd_model is not None
-            and self._rlphd_threshold_store is not None
-        ):
-            opted_in = await self._rlphd_threshold_store.opted_in(principal.id, action)
-            if opted_in:
-                theta = await self._rlphd_threshold_store.get_theta(
-                    principal.id, action, "delegated"
-                )
-                p = self._rlphd_model.predict(rlphd_features or {})
-                auto_acted = p >= theta
-                rlphd_verdict = RlphdVerdict(p=p, theta=theta, auto_acted=auto_acted)
-                if auto_acted:
-                    return AuthzDecision(
-                        tier=tier,
-                        authorized=True,
-                        needs="none",
-                        approver_scope=approver_scope,
-                        within_budget=True,
-                        rlphd=rlphd_verdict,
-                        reason="auto-acted by RLPHD prediction",
-                    )
+        if tier == Tier.DELEGATED:
+            rlphd_verdict, auto_acted_decision = await self._try_rlphd(
+                action, principal, approver_scope, rlphd_features
+            )
+            if auto_acted_decision is not None:
+                return auto_acted_decision
 
         return AuthzDecision(
             tier=tier,
@@ -193,6 +161,71 @@ class Sentinel:
             rlphd=rlphd_verdict,
             reason="",
         )
+
+    def _resolve_needs(
+        self, tier: Tier, principal: Principal
+    ) -> Literal["none", "self_elevation", "scoped_2fa", "delegated", "admin"]:
+        if tier in (Tier.OPEN, Tier.ROLE_AUTO):
+            return "none"
+        if tier == Tier.SELF_ELEVATION:
+            return "scoped_2fa" if principal.kind == "agent" else "self_elevation"
+        if tier == Tier.DELEGATED:
+            return "delegated"
+        return "admin"  # Tier.ADMIN
+
+    async def _check_elevation_grant(
+        self,
+        action: str,
+        principal: Principal,
+        needs: Literal["none", "self_elevation", "scoped_2fa", "delegated", "admin"],
+        args: dict[str, Any] | None,
+    ) -> AuthzDecision | None:
+        """Return a cleared AuthzDecision if a prior elevation grant covers this call, else None."""
+        if self._elevation_store is None:
+            return None
+        args_hash = hash_args(args) if needs == "scoped_2fa" and args else None
+        grant = await self._elevation_store.find_valid(principal.id, action, args_hash)
+        if grant is None:
+            return None
+        return AuthzDecision(
+            tier=Tier.SELF_ELEVATION,
+            authorized=True,
+            needs="none",
+            approver_scope=None,
+            within_budget=True,
+            rlphd=None,
+            reason="cleared by a prior elevation grant",
+        )
+
+    async def _try_rlphd(
+        self,
+        action: str,
+        principal: Principal,
+        approver_scope: str | None,
+        rlphd_features: dict[str, float] | None,
+    ) -> tuple[RlphdVerdict | None, AuthzDecision | None]:
+        """Predict and maybe auto-act at the DELEGATED tier; returns (verdict, auto_acted_decision)."""
+        if self._rlphd_model is None or self._rlphd_threshold_store is None:
+            return None, None
+        opted_in = await self._rlphd_threshold_store.opted_in(principal.id, action)
+        if not opted_in:
+            return None, None
+        theta = await self._rlphd_threshold_store.get_theta(principal.id, action, "delegated")
+        p = self._rlphd_model.predict(rlphd_features or {})
+        auto_acted = p >= theta
+        verdict = RlphdVerdict(p=p, theta=theta, auto_acted=auto_acted)
+        if not auto_acted:
+            return verdict, None
+        decision = AuthzDecision(
+            tier=Tier.DELEGATED,
+            authorized=True,
+            needs="none",
+            approver_scope=approver_scope,
+            within_budget=True,
+            rlphd=verdict,
+            reason="auto-acted by RLPHD prediction",
+        )
+        return verdict, decision
 
     async def pre_call(
         self,

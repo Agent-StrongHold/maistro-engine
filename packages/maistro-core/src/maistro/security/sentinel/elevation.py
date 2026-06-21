@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
-    pass
+    from maistro.security._types import AuditLog
 
 
 class ScopedTwoFactorForHumanError(ValueError):
@@ -41,9 +41,7 @@ class ElevationGrant:
         elapsed = (now - self.granted_at).total_seconds()
         if elapsed > self.ttl_seconds:
             return False
-        if self.kind == "scoped_2fa" and self.action_args_hash != args_hash:
-            return False
-        return True
+        return not (self.kind == "scoped_2fa" and self.action_args_hash != args_hash)
 
 
 @dataclass(frozen=True)
