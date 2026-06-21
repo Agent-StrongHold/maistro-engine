@@ -62,6 +62,11 @@ honest gap is a red flag, not a clean bill of health.
 | 8 | Transparent credential/traffic exfil via shared config | LangSmith "AgentSmith" CVE-class (8.8) | 8.8 | ~3 *Reduced* | Per-user encrypted creds + provider-key redaction + egress allow-list | Mixed |
 | 9 | Memory / learned-policy poisoning | (class; agent-memory research) | n/a | ~3 *Reduced* | Memory scopes + deconfliction immune system (ADR-074) | Specified |
 | 10 | Excessive agency / over-privileged tool use | (OWASP LLM06; class) | n/a | ~3 *Reduced* | Authority envelope (ADR-068) + reversibility gates (ADR-050/051) + trust-boundary grants | Implemented |
+| 11 | One-click cross-site WebSocket / blind-origin hijacking | OpenClaw CVE-2026-25253 (8.8) | 8.8 | ~3 *Reduced* | Web-session origin validation (ADR-077); tokens never in URL params | Specified |
+| 12 | Token/scope-rotation privilege escalation | OpenClaw CVE-2026-32922 (9.9 / 9.4 v4) | 9.4–9.9 | ~2 *Strongly reduced* | `agent authority = own ∩ owner's`, agent-never-self-elevates (SPEC-245, ADR-068) | Implemented |
+| 13 | Skill-marketplace supply-chain campaign | OpenClaw ClawHavoc / ClawHub (1,184 malicious skills) | up to 10.0 | ~3 *Reduced* | Signed publisher VC + unsigned-install-blocked + revocation re-check (SPEC-005, ADR-083) | Specified |
+| 14 | Prompt-injection → host RCE via a *legitimate* tool ("prompts become shells") | Semantic Kernel CVE-2026-25592 / CVE-2026-26030; PraisonAI CVE-2026-44338; LangChain path-traversal CVE-2026-34070; Langflow CVE-2026-33017 | 9.x | ~3–4 *Partial* | External-content quarantine + sandbox (ADR-093) + path-traversal rejection + dangerous-cmd screen | Mixed |
+| 15 | Memory / self-improvement-loop poisoning | Hermes-agent (analyst threat-model; no landed CVE) | n/a | ~3 *Reduced* | Scoped memory + deconfliction immune system on learned-policy/RSI drift (ADR-074) | Mixed |
 
 ---
 
@@ -353,6 +358,182 @@ classification is only as good as the per-tool taxonomy coverage (ADR-050). **St
 
 ---
 
+## 11. One-click cross-site WebSocket / blind-origin hijacking
+
+**Anchor CVE.** OpenClaw **`CVE-2026-25253`** (CVSS 8.8) — one-click RCE via cross-site WebSocket
+hijacking: the Control UI blindly trusts a `gatewayUrl` URL parameter and auto-connects to it,
+leaking the user's auth token to an attacker who merely gets them to open a page. At disclosure (Feb
+2026) 40,000+ instances were exposed and ~63% ran with **no authentication at all**.
+
+**Root cause (generalized).** A local agent's control plane (a) trusts an attacker-supplied
+connection target from an unauthenticated context, and (b) carries the auth token where a cross-site
+context can read or redirect it. Classic CSWSH + token-in-the-wrong-place, applied to an agent
+gateway.
+
+**How our design changes the outcome.**
+- **ADR-077 (web-session security)** is exactly this surface: session/origin handling, CSRF/CSWSH
+  defenses, and not placing bearer tokens where cross-site script or a URL parameter can exfiltrate
+  them. The "blindly connect to a URL-param-supplied gateway" primitive is a web-session-hardening
+  failure ADR-077 is scoped to prevent.
+- **Auth is not optional** here. ADR-068 puts Sentinel adjudication on every boundary and ADR-059
+  user auth on the control surface — there is no "63% run with no auth" default; an unauthenticated
+  control plane is not a supported configuration.
+
+**Upstream 8.8 → Maistro residual ~3 (Reduced).** The token-leak-via-blind-origin primitive is the
+thing ADR-077 exists to remove; even a hijacked session is bounded by the entry-12 authority cap.
+
+**Residual risk / gaps.** ADR-077 is **Specified** — the concrete origin-validation and
+token-placement audit against the live hive-conductor frontend/WebSocket layer must be done before
+claiming the CSWSH path is closed. **Status: Specified.**
+
+---
+
+## 12. Token / scope-rotation privilege escalation
+
+**Anchor CVE.** OpenClaw **`CVE-2026-32922`** (CVSS 3.1 9.9 / v4.0 9.4) — the `device.token.rotate`
+function fails to constrain a newly minted token's scopes to the **caller's existing scope set**, so
+any principal can rotate itself a broader-scoped token. Privilege escalation by design omission.
+
+**How our design changes the outcome.**
+- This is the **exact invariant SPEC-245 implements** (status: *Implemented*, property-tested): in
+  `authorize()`, **"agents are capped at `principal.owner`'s authority — `agent authority = own ∩
+  owner's`"**, and **"an agent never self-elevates"** (an agent resolving to `self_elevation` gets
+  `scoped_2fa` instead, ADR-068 §D). A rotation that *widens* scope beyond the caller's set is
+  precisely the operation the authority-envelope intersection forbids.
+- The **budget hard-veto** and tier ladder (SPEC-245 steps 2–4) short-circuit before any
+  capability is granted, and every decision is a signed VC (ADR-073) — a silent self-widening
+  rotation would be both blocked and audited.
+
+**Upstream 9.4–9.9 → Maistro residual ~2 (Strongly reduced).** We didn't get lucky here — the
+least-authority intersection and no-self-elevation rules are an *implemented, tested* core invariant,
+not aspirational. The scope-widening primitive is denied at the authorize step.
+
+**Residual risk / gaps.** SPEC-245's `authorize()` exists at the Sentinel level but is **not yet
+wired into every HTTP/MCP/A2A boundary** (SPEC-245 non-goals; SPEC-246/247 integration pending) — a
+boundary that mints/rotates tokens *without* routing through `authorize()` would bypass the cap. The
+invariant is correct; coverage of all token-issuing paths is the work to finish. **Status:
+Implemented (core), integration pending.**
+
+---
+
+## 13. Skill-marketplace supply-chain campaign
+
+**Anchor disclosure.** OpenClaw's **ClawHavoc** campaign: Antiy CERT confirmed **1,184 malicious
+skills** on **ClawHub** (OpenClaw's package registry) — ~1 in 5 packages at peak — with 341+ skills
+deploying the **Atomic Stealer (AMOS)** infostealer. The live, at-scale instance of entry 7's
+abstract supply-chain class.
+
+**Direct relevance.** This engine has its *own* skill marketplace (SPEC-005 "Medley", lineage
+`S-111-clawhub-full` — the same "claw" naming heritage), so this is not someone else's problem; it is
+the precise threat our marketplace design must withstand.
+
+**How our design changes the outcome.**
+- **Signed publisher VC trust chain, unsigned-blocked, revocation re-check** (SPEC-005 acceptance
+  criteria): every install verifies a publisher Verifiable Credential against the publisher DID
+  document (signature + content hash + revocation status); **an unsigned skill is refused at install**
+  with no "run anyway" path except an explicit `--allow-unsigned` + admin signature; revocation is
+  re-checked on every install/update and emits a `PLUGIN_VC_REVOKED` alert that blocks further use. A
+  ClawHavoc-style flood of unsigned/malicious skills can't auto-install, and a compromised publisher's
+  credential can be revoked fleet-wide.
+- **ADR-083 (skills/MCP trust):** skills are signed, trust-tiered, and **sandbox-by-default**; even an
+  admitted skill runs confined (ADR-093 microVM) with egress control — AMOS-style infostealer exfil
+  hits a denied-egress boundary, not the host keychain.
+
+**Upstream up to 10.0 → Maistro residual ~3 (Reduced).** Mass-malicious-package distribution is
+defeated at install (signing/revocation) and contained at runtime (sandbox/egress) rather than
+running on the publisher's word.
+
+**Residual risk / gaps.** SPEC-005 is **Proposed** and ADR-083 **Proposed** — the signing/revocation
+chain is *designed in detail* but not yet the enforced default of a shipped marketplace. Until it is,
+this entry's residual is a design promise, not a deployed control. This is the single most important
+item to *build*, given we ship a marketplace and the campaign is live. **Status: Specified.**
+
+---
+
+## 14. Prompt-injection → host RCE via a *legitimate* tool ("prompts become shells")
+
+**Anchor CVEs.** Microsoft's *"When prompts become shells"* research (May 2026): **Semantic Kernel
+`CVE-2026-25592` and `CVE-2026-26030`** — a single prompt launches `calc.exe` on the agent host
+(prompt injection → host RCE through a tool path; fixed in `semantic-kernel` ≥ 1.39.4). **PraisonAI
+`CVE-2026-44338`** — legacy API-server RCE, exploited within hours of disclosure. **LangChain
+`CVE-2026-34070`** — path traversal via the prompt-loading API (arbitrary file read, no validation).
+**Langflow `CVE-2026-33017`** — unauthenticated RCE + file-write via a single HTTP request.
+
+**Root cause (generalized).** Distinct from entry 1's *unauthenticated exec endpoint*: here a
+**legitimate, intended tool** (shell, file loader, plugin invoker) is turned into RCE/file-access by
+*injected* instructions. Once a model is wired to tools, prompt injection stops being a content
+problem and becomes a code-execution problem.
+
+**How our design changes the outcome.**
+- **Containment over trust.** Untrusted content is quarantined as data (entry 5: `external_content`
+  markers, invisible-char stripping, `detect_injection`), and any tool that *does* execute runs
+  behind the **fail-closed sandbox** (ADR-093) — a prompt that reaches a shell tool launches its
+  `calc.exe` equivalent inside a disposable guest, not on the host.
+- **Path traversal is structurally rejected.** `security/trust_boundary.py` rejects `..` in write
+  scopes and absolute paths outside the workspace allow-list — the `CVE-2026-34070` prompt-loader
+  traversal primitive is denied at the boundary, and per-task grants are command-allow-listed
+  (`^(python|pytest|ruff|mypy|git|npm|pip|uv)\b`), so an injected `curl|sh` doesn't match.
+- **No unauthenticated single-request RCE path** (entry 1) covers the Langflow `CVE-2026-33017`
+  variant directly.
+
+**Upstream 9.x → Maistro residual ~3–4 (Partial).** File-traversal and unauth-RCE variants are
+strongly reduced (structural rejection / absent endpoint); the pure prompt-injection→tool→sandbox
+path is *contained, not prevented* — it shares entry 5's heuristic-detection ceiling.
+
+**Residual risk / gaps.** The sandbox containment leans on ADR-093's microVM being the deployed tier
+(SPEC-190 migration in progress); on a Tier-3-only host an injected shell tool runs behind a shared
+kernel. Injection detection remains heuristic. **Status: Mixed.**
+
+---
+
+## 15. Memory / self-improvement-loop poisoning
+
+**Anchor exemplar.** Nous Research **hermes-agent** (analyst threat-model; **no landed CVE yet**):
+its persistent-memory architecture is assessed as the most-exposed of the workstation-agent class,
+and its **self-learning loop** is reported to raise vulnerability rates **~37.6% after 5 iterations**,
+with reward-hacking observable at inference time. The risk: an agent that rewrites its own
+memory/policy can be *steered* into degrading its own safety over time.
+
+**Why this one matters to us specifically.** This engine has self-improvement machinery
+(`maistro-evolve` Elo optimizer, `maistro-rsi` recursive self-improvement) — the exact "agent
+improves itself" loop the Hermes analysis flags. So this isn't a competitor's bug; it's a direct
+warning about our own roadmap.
+
+**How our design changes the outcome.**
+- **Learned change is never silently applied.** ADR-074 (deconfliction immune system) + ADR-073:
+  any learned-policy / RLPHD / RBAC change is a Repertoire *Compose* that must pass the ADR-070
+  *Rehearse* gate — conformance vs ADRs → Specs → prior policy. **A learned policy drifting against a
+  safety-critical ADR is treated as a poisoning signal and held for admin review, not auto-applied.**
+  A self-improvement loop that trends less-safe trips the immune system instead of compounding.
+- **Scoped memory + admin-scoped policy/audit** (ADR-013 scopes, ADR-068): cross-scope memory
+  poisoning is bounded, and an agent principal can neither read the approver matrix nor forge a
+  decision record — it can't quietly rewrite the rules it runs under.
+
+**Upstream n/a → Maistro residual ~3 (Reduced).** Self-degradation becomes a detected, gated,
+audited event rather than a silent capability slide — *provided* the RSI/evolve commit path is routed
+through the Rehearse/deconfliction gate.
+
+**Residual risk / gaps.** ADR-074 and the Rehearse gate are **Specified**; the binding requirement —
+that `maistro-evolve` / `maistro-rsi` self-modifications *must* route through deconfliction before
+taking effect — needs to be enforced, not assumed. The immune system also only catches drift *against
+an encoded safety ADR*; poisoning within policy bounds, or of non-policy learnings, is
+detection-limited. **Status: Mixed.**
+
+---
+
+## Watchlist / unresolved
+
+- **"pi"** — I could not confidently map this to a specific agent framework with a citable
+  disclosure (candidates include Inflection's *Pi*, Physical Intelligence *π*, *pipecat*, and
+  *pydantic-ai*; none has a clear agent-framework CVE I'd stake the ledger's credibility on).
+  **Left out deliberately rather than fabricate an entry.** Tell me which "pi" you meant and I'll
+  research and add it.
+- Re-score entries 11–15 as the Specified controls land (ADR-077 web-session audit; SPEC-245
+  boundary wiring; SPEC-005/ADR-083 marketplace signing; SPEC-190 sandbox migration; ADR-074
+  RSI/evolve routing).
+
+---
+
 ## Cross-cutting: why the *class* mostly doesn't reach us
 
 The recurring root cause across Langflow/Flowise/n8n/MCP-Inspector is a single anti-pattern:
@@ -406,8 +587,17 @@ in those documents. This ledger should be re-scored as that work lands.
 - MCP threat taxonomy / tool poisoning / rug-pull / confused deputy: eSentire; Checkmarx Zero; Simon
   Willison; `CVE-2025-49596` (MCP Inspector).
 - EchoLeak `CVE-2025-32711` (CVSS 9.3): Aim Security; arXiv 2509.10540; HackTheBox; Sentra.
-- Internal: ADR-028, ADR-050, ADR-051, ADR-058, ADR-059, ADR-064, ADR-068, ADR-069, ADR-070,
-  ADR-072, ADR-073, ADR-074, ADR-077, ADR-083, ADR-093; SPEC-011, SPEC-183, SPEC-190;
-  `security/external_content.py`, `security/gate.py`, `security/trust_boundary.py`,
-  `security/dangerous_tools.py`, `vault.py`.
+- OpenClaw one-click RCE `CVE-2026-25253` (CVSS 8.8): ProArch; Conscia. Token-scope escalation
+  `CVE-2026-32922` (9.9 / 9.4 v4): ARMO. ClawHavoc / ClawHub supply-chain (1,184 malicious skills,
+  AMOS): Antiy CERT; cyberdesserts.
+- "When prompts become shells" (May 2026): Microsoft Security Blog. Semantic Kernel
+  `CVE-2026-25592` / `CVE-2026-26030`; PraisonAI `CVE-2026-44338` (cybersecuritynews); LangChain
+  path-traversal `CVE-2026-34070`; Langflow `CVE-2026-33017` (securityonline).
+- Hermes-agent (Nous Research) threat model: Repello AI; Pebblous; NousResearch/hermes-agent
+  `SECURITY.md` (analyst commentary; no landed CVE at time of writing).
+- Internal: ADR-013, ADR-024, ADR-028, ADR-050, ADR-051, ADR-058, ADR-059, ADR-064, ADR-068,
+  ADR-069, ADR-070, ADR-072, ADR-073, ADR-074, ADR-077, ADR-083, ADR-093; SPEC-005, SPEC-011,
+  SPEC-183, SPEC-190, SPEC-245; `security/external_content.py`, `security/gate.py`,
+  `security/trust_boundary.py`, `security/dangerous_tools.py`,
+  `security/sentinel/authz_types.py`, `vault.py`.
 ```
