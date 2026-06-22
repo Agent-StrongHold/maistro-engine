@@ -13,6 +13,7 @@ implements: []
 related:
   - maistro-engine#ADR-019
   - maistro-engine#ADR-053
+  - maistro-engine#SPEC-261
 supersedes: []
 blocks: []
 blocked-by: []
@@ -110,11 +111,13 @@ memory:
 
 ## Open questions
 
-1. **Hybrid as a distinct enum value vs emergent from per-block tags.** Recommend keep `HYBRID` explicit — clearer that the store advertises per-block decision-making.
-2. **Default mode for new agents.** `SYSTEM_MANAGED` (safest, agents opt-in to write) vs `AGENT_MANAGED` (matches Turing's existing implicit behaviour). Recommend `SYSTEM_MANAGED` — write authority is a privilege agents request, not a default.
-3. **Migration for existing agents that don't declare a mode.** Recommend implicit `AGENT_MANAGED` with deprecation warning until v2.0; hard requirement after.
-4. **Per-scope mode override.** Each memory scope (`global / team / user / agent / session`) carrying its own mode vs agent-instance-level only. Recommend agent-instance-level for v0 — per-scope is over-engineering until a real use case surfaces.
-5. **Memory promotion under `SYSTEM_MANAGED`.** Strictly admin-only, or agent-suggests-admin-approves (an ADR-051 gate)? Recommend admin-only for v0; gate-mediated promotion can be a follow-up ADR.
+Resolved by maistro-engine#SPEC-261:
+
+1. **Hybrid as a distinct enum value vs emergent from per-block tags.** Resolved: keep `HYBRID` explicit, as recommended.
+2. **Default mode for new agents.** Resolved: moot — there is no implicit default at all (see #3); every agent declares explicitly.
+3. **Migration for existing agents that don't declare a mode.** Resolved: mandatory declaration, no implicit fallback, no deprecation window — supersedes this ADR's own "implicit AGENT_MANAGED + deprecation warning" recommendation. An undeclared mode raises `MemoryUndeclaredModeError` immediately. maistro-turing's recipes gain an explicit `agent_managed` declaration in the same change.
+4. **Per-scope mode override.** Resolved: agent-instance-level only for v0, as recommended.
+5. **Memory promotion under `SYSTEM_MANAGED`.** Resolved: admin-only for v0, as recommended.
 
 ## Source references
 
