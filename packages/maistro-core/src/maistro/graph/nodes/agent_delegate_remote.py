@@ -35,6 +35,8 @@ from .base import BaseNode, NodeContext, now_utc, pause_until
 
 
 class DelegateRemoteIn(BaseModel):
+    """Inputs for dispatching a task to an in-process or cross-instance peer agent."""
+
     from_agent: str = Field(default="", description="Agent initiating the delegation")
     task: str = Field(default="", description="Task/contract handed to the remote agent")
     peer_name: str | None = Field(
@@ -50,6 +52,8 @@ class DelegateRemoteIn(BaseModel):
 
 
 class DelegateRemoteOut(BaseModel):
+    """Result of a delegated task once the remote session resumes or fails."""
+
     status: Literal["completed", "failed", "rejected", "timed_out"] = "completed"
     task_id: str = ""
     result: str | None = None
@@ -59,6 +63,8 @@ class DelegateRemoteOut(BaseModel):
 
 @register_node
 class AgentDelegateRemoteNode(BaseNode[DelegateRemoteIn, DelegateRemoteOut]):
+    """Pause the DAG while another agent session runs a delegated subgraph."""
+
     kind: ClassVar[str] = "agent.delegate_remote"
     kind_category: ClassVar = "wait"
     input_schema: ClassVar[type[BaseModel]] = DelegateRemoteIn
@@ -78,10 +84,12 @@ class AgentDelegateRemoteNode(BaseNode[DelegateRemoteIn, DelegateRemoteOut]):
         a2a_delegator: A2ADelegator | None = None,
         guest_peers: GuestPeerManager | None = None,
     ) -> None:
+        """Wire in the in-process delegator and/or cross-instance guest-peer manager."""
         self._a2a_delegator = a2a_delegator
         self._guest_peers = guest_peers
 
     async def _execute(self, inputs: DelegateRemoteIn, ctx: NodeContext) -> DelegateRemoteOut:
+        """Dispatch on first run, or return the resumed delegation result."""
         answers = (ctx.metadata or {}).get("hitl_answers") or {}
         resumed = answers.get(ctx.node_id)
         if resumed is not None:
@@ -100,6 +108,7 @@ class AgentDelegateRemoteNode(BaseNode[DelegateRemoteIn, DelegateRemoteOut]):
     async def _dispatch_cross_instance(
         self, inputs: DelegateRemoteIn, ctx: NodeContext
     ) -> DelegateRemoteOut:
+        """Delegate to a trusted external peer via `GuestPeerManager`, then pause."""
         if self._guest_peers is None:
             return DelegateRemoteOut(status="failed", error="no guest_peers manager configured")
 
@@ -121,6 +130,7 @@ class AgentDelegateRemoteNode(BaseNode[DelegateRemoteIn, DelegateRemoteOut]):
     async def _dispatch_in_process(
         self, inputs: DelegateRemoteIn, ctx: NodeContext
     ) -> DelegateRemoteOut:
+        """Delegate to another agent in the same Conductor instance, then pause."""
         if self._a2a_delegator is None:
             return DelegateRemoteOut(status="failed", error="no a2a_delegator configured")
 
@@ -140,6 +150,7 @@ class AgentDelegateRemoteNode(BaseNode[DelegateRemoteIn, DelegateRemoteOut]):
         return DelegateRemoteOut()  # unreachable
 
     def _pause(self, inputs: DelegateRemoteIn, *, task_id: str, mode: str) -> None:
+        """Checkpoint the DAG until the delegated task completes or times out."""
         resume_at = now_utc() + timedelta(seconds=inputs.timeout_seconds)
         pause_until(
             "awaiting_remote_delegation",
