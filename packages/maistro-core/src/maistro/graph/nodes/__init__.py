@@ -140,6 +140,8 @@ def _import_node_modules() -> None:
         "dashboard_append_section",  # registers "dashboard.append_section"
         "human_approve_draft",  # registers "human.approve_draft"
         "human_ask_question",  # registers "human.ask_question"
+        "human_delegate_to_role",  # registers "human.delegate_to_role"
+        "human_review_and_edit",  # registers "human.review_and_edit"
         "jira_poll",  # registers "jira.poll"
         "jira_wait_for_subtasks",  # registers "jira.wait_for_subtasks"
         "llm_summarize",  # registers "llm.summarize"
