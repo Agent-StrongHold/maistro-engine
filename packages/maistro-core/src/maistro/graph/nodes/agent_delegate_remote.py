@@ -110,7 +110,7 @@ class AgentDelegateRemoteNode(BaseNode[DelegateRemoteIn, DelegateRemoteOut]):
         )
         if result.status in ("rejected", "failed"):
             return DelegateRemoteOut(
-                status=result.status,  # type: ignore[arg-type]
+                status=result.status,
                 task_id=result.task_id,
                 error=result.error,
             )
