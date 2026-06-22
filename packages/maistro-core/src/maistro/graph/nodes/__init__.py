@@ -135,6 +135,7 @@ def _import_node_modules() -> None:
     import importlib
 
     module_names = (
+        "agent_delegate_remote",  # registers "agent.delegate_remote"
         "airtable_poll",  # registers "airtable.poll"
         "compliance_block",  # registers "compliance.block"
         "dashboard_append_section",  # registers "dashboard.append_section"
