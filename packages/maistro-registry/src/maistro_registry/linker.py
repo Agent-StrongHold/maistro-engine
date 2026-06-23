@@ -19,6 +19,7 @@ Resolvers shipped:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -168,10 +169,11 @@ class GitHubResolver:
                 if not name.endswith(".md"):
                     continue
                 stem = name[: -len(".md")]
-                # "ADR-030-foo" -> first two hyphen-delimited parts: "ADR-030"
-                parts = stem.split("-", 2)
-                if len(parts) >= 2:
-                    ids.add(f"{parts[0]}-{parts[1]}")
+                # Legacy: "ADR-030-foo" -> "ADR-030".
+                # Date-based: "ADR-061526-f383-foo" -> "ADR-061526-f383".
+                match = re.match(r"^(ADR|SPEC)-(\d{3}|\d{6}-[0-9a-f]{4})(-|$)", stem)
+                if match:
+                    ids.add(f"{match.group(1)}-{match.group(2)}")
 
         self._id_cache[repo] = ids
         return ids

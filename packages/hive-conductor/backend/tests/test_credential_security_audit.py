@@ -212,11 +212,11 @@ def test_no_new_lambda_s_s_in_critical_callsites() -> None:
     # Paths are relative to repo_root = parents[3] (the `packages/` dir).
     ALLOWLIST = {
         "hive-conductor/backend/routes/daily_report.py:53",
-        "hive-conductor/backend/services/mcp_client.py:47",
+        "hive-conductor/backend/services/mcp_client.py:49",
         # Centralised _use_secret helpers — one lambda per file (refactored from inline callsites)
         "hive-conductor/backend/routes/daily_report_v2.py:18",
         "hive-conductor/backend/routes/agents.py:26",
-        "hive-conductor/backend/services/chat_completion.py:26",
+        "hive-conductor/backend/services/chat_completion.py:28",
         "hive-conductor/backend/services/program_hyperagent.py:25",
         "hive-conductor/backend/routes/widgets.py:33",
     }

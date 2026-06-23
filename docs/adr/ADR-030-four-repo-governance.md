@@ -41,7 +41,7 @@ history:
 > ability (`packages/maistro-canvas`); **Stronghold** and the **Canvas book-maker POC** are
 > downstream products that *import* the engine. `Project_mAIstro` and `AgentTuring` were absorbed
 > into this repo (their substance lives in `packages/` and `docs/`), not maintained as separate
-> templated peers. See `CONSOLIDATION-PLAN.md`, ADR-019, and `CLAUDE.md` for the current
+> templated peers. See `docs/archive/CONSOLIDATION-PLAN.md`, ADR-019, and `CLAUDE.md` for the current
 > structure. This ADR is retained as historical record; do not cite it as the live model.
 
 ## Context

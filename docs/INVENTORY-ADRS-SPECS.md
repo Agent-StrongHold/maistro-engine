@@ -115,11 +115,11 @@ Engine-internal architectural decisions. Numbering is sequential (`ADR-NNN`) and
 
 No `specs/` tree exists in this repo (and won't — specs live in product repos per ADR-019/030). Closest analogues remain:
 
-- `AUDIT.md`, `CONSOLIDATION-PLAN.md` (root)
+- `docs/archive/CONSOLIDATION-PLAN.md` (historical — see archived banner)
 - `docs/anthropic-agent-framework.md`
 - `docs/claude-quality-enforcement.md`
 - `docs/quality-standards.md`
-- `docs/testing-audit.md`
+- `docs/audit/AUDIT-2026-02-20.md`, `docs/audit/TESTING-AUDIT-2026-02-20.md` (historical — see `docs/audit/HN-LAUNCH-AUDIT.md` for current state)
 - `docs/analysis/` (cross-framework comparisons)
 - `docs/specs/SPEC-176-hive-conductor-package.md` — Hive Conductor monorepo package (`packages/hive-conductor/`)
 - `docs/specs/SPEC-180-maistro-install-bootstrap.md` — `maistro-install` answers schema, plan JSON, `--apply`, Hive `/v1/install/plan`

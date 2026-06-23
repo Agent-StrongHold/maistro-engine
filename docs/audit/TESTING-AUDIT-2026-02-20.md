@@ -1,5 +1,12 @@
 # Maistro Engine — Testing Infrastructure Audit
 
+> **⚠️ HISTORICAL (archived 2026-06-20).** Targets the old `src/maistro/` layout, since
+> replaced by the `packages/` monorepo. Every major claim below is now false: CI exists
+> (`.github/workflows/ci.yml`, `quality.yml`, `security.yml`, `mutation.yml`,
+> `formal-conformance*.yml`), `formal/` has 30+ Hypothesis property-test files, and
+> dedicated resilience tests exist under `packages/*/tests/resilience/`. Kept for
+> historical trace only.
+
 **Date:** 2026-02-20
 **Scope:** Full codebase (`src/maistro/`, `tests/`, infrastructure configs)
 **Methodology:** Six-agent parallel analysis covering property testing, contracts, chaos/fault injection, observability, mutation testing, and CI/CD pipeline infrastructure.

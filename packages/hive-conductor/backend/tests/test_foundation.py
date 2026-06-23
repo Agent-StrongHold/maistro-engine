@@ -151,7 +151,7 @@ def test_init_vault_exception_swallowed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """If Vault import fails, vault_available stays False."""
+    """If Vault import fails and no vault file was ever provisioned, degrade quietly."""
     import types
 
     from services.foundation import Foundation
@@ -168,6 +168,34 @@ def test_init_vault_exception_swallowed(
     fnd._init_vault(_StubSettings(tmp_path), tmp_path)
     assert fnd.vault_available is False
     assert fnd.vault is None
+
+
+def test_init_vault_provisioned_but_unopenable_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SPEC-003: a provisioned vault that fails to open must not silently fall
+    back to env-var secrets — it fails closed (SystemExit), not a swallowed warning."""
+    import types
+
+    from services.foundation import Foundation
+
+    vault_path = tmp_path / "secrets.age"
+    vault_path.write_bytes(b"age-encrypted-blob")
+
+    broken = types.ModuleType("maistro.vault")
+
+    def _broken_attr(name: str) -> Any:
+        raise ImportError(f"synthetic no {name}")
+
+    broken.__getattr__ = _broken_attr  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "maistro.vault", broken)
+
+    fnd = Foundation()
+    settings = _StubSettings(tmp_path)
+    settings.conductor_vault_path = str(vault_path)
+    with pytest.raises(SystemExit, match="SECRET_MISSING"):
+        fnd._init_vault(settings, tmp_path)
 
 
 # --- _init_state -------------------------------------------------------

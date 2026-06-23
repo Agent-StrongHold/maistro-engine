@@ -24,7 +24,7 @@ Detail: [`ADR-060`](docs/adr/ADR-060-four-tier-branch-model.md) (supersedes [`AD
 
 ## How to add an ADR
 
-1. Copy [`docs/adr/ADR-000-template.md`](docs/adr/ADR-000-template.md) to `docs/adr/ADR-NNN-kebab-title.md`. NNN is the next free number — check the directory listing.
+1. Copy [`docs/adr/ADR-000-template.md`](docs/adr/ADR-000-template.md) to `docs/adr/ADR-MMDDYY-xxxx-kebab-title.md`, where `MMDDYY` is today's date and `xxxx` is 4 lowercase hex chars (e.g. `sha1(<title-slug>)[:4]`, or any reproducible/random source) — see [`ADR-062026-9b30`](docs/adr/ADR-062026-9b30-date-based-adr-spec-ids.md). Sequential `ADR-NNN` IDs are frozen; don't mint new ones (existing ones are untouched).
 2. Fill in the YAML front-matter block. Schema and required fields are in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md).
 3. Write the body. ADRs are short — context, decision, consequences, status. Keep it under one screen if you can.
 4. If your decision has cross-repo implications, use `<repo>#<id>` references (e.g. `AgentTuring#turing-001`). The registry resolves these.
@@ -40,13 +40,16 @@ Detail: [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md) §front-matte
 
 ## How to cite substrate
 
-Use `<repo>#<ID>` in front-matter references, where `<ID>` is `ADR-NNN` or `SPEC-NNN`. Valid repos: `maistro-engine`, `Project_mAIstro`, `AgentTuring`, `stronghold` (the latter three are transitional cross-repo refs while sibling trees consolidate into this monorepo — see [`CONSOLIDATION-PLAN.md`](CONSOLIDATION-PLAN.md)). Examples:
+Use `<repo>#<ID>` in front-matter references, where `<ID>` is `ADR-NNN`/`SPEC-NNN` (legacy, frozen) or `ADR-MMDDYY-xxxx`/`SPEC-MMDDYY-xxxx` (current — see [`ADR-062026-9b30`](docs/adr/ADR-062026-9b30-date-based-adr-spec-ids.md)). Valid repos: `maistro-engine`, `Project_mAIstro`, `AgentTuring`, `stronghold` (the latter three are transitional cross-repo refs while sibling trees consolidate into this monorepo — see [`CONSOLIDATION-PLAN.md`](docs/archive/CONSOLIDATION-PLAN.md)). Examples:
 
-- `maistro-engine#ADR-036` — engine architectural decision
+- `maistro-engine#ADR-036` — engine architectural decision (legacy ID)
+- `maistro-engine#ADR-061526-f383` — engine architectural decision (current, date-based ID)
 - `maistro-engine#SPEC-178` — engine spec
 - `stronghold#ADR-010` — a Stronghold ADR
 
-The registry validates these — every reference must match `<repo>#(ADR|SPEC)-NNN` and resolve to an existing record. (Backlog ids like `engine-001` are a separate concept — they live in [`BACKLOG.md`](BACKLOG.md), not in front-matter refs.)
+`Project_mAIstro` specs use `S-NNN` and haven't adopted the date-based form — keep those references three-digit.
+
+The registry validates these — every reference must match `<repo>#(ADR|SPEC)-(NNN|MMDDYY-xxxx)` (or `<repo>#S-NNN` for `Project_mAIstro`) and resolve to an existing record. (Backlog ids like `engine-001` are a separate concept — they live in [`BACKLOG.md`](BACKLOG.md), not in front-matter refs.)
 
 ## Layered contracts (acceptance criteria)
 

@@ -16,6 +16,8 @@ from config import get_settings
 from models.schemas import ChatCompletionRequest
 from protocols.llm import LLMPort
 
+from services.secrets import litellm_api_key as _resolve_litellm_api_key
+
 logger = logging.getLogger("hive.chat")
 
 
@@ -31,11 +33,7 @@ def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
 def build_llm_port() -> LLMPort:
     s = get_settings()
     base = os.environ.get("LITELLM_API_BASE") or (s.litellm_api_base or "").strip()
-    key = None
-    if s.litellm_api_key:
-        key = s.litellm_api_key.get_secret_value()
-    if not key:
-        key = os.environ.get("LITELLM_API_KEY") or os.environ.get("LITELLM_PROXY_KEY")
+    key = _resolve_litellm_api_key(s) or os.environ.get("LITELLM_PROXY_KEY")
     if not base:
         base = os.environ.get("LITELLM_PROXY_URL")
     if not base or not key:
@@ -1416,7 +1414,7 @@ async def _tool_analyze_dashboard(
 
         s = get_settings()
         base = s.litellm_api_base or ""
-        key = s.litellm_api_key.get_secret_value() if s.litellm_api_key else ""
+        key = _resolve_litellm_api_key(s) or ""
         if not base or not key:
             return {"error": "LLM not configured"}
 
