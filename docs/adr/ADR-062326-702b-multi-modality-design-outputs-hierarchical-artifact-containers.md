@@ -3,8 +3,10 @@ id: ADR-062326-702b
 title: Multi-modality design outputs and hierarchical artifact containers
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-06-23
+accepted: 2026-06-23
+implemented: 2026-06-23
 substrate:
   - maistro-engine#ADR-061
   - maistro-engine#ADR-100
@@ -17,10 +19,24 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-design/tests/test_design.py
+  - packages/maistro-design/tests/test_scan.py
+source:
+  - packages/maistro-design/src/maistro_design/types.py
+  - packages/maistro-design/src/maistro_design/scan.py
+  - packages/maistro-design/src/maistro_design/engine.py
+  - packages/maistro-design/src/maistro_design/protocols.py
 layer: Ability
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-23
+  - status: Accepted
+    date: 2026-06-23
+  - status: Implemented
+    date: 2026-06-23
 ---
 
 # ADR-062326-702b: Multi-modality design outputs and hierarchical artifact containers

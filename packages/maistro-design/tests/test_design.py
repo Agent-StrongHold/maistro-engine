@@ -284,6 +284,7 @@ class TestDesignErrors:
     def test_all_error_codes_are_distinct(self):
         from maistro_design.types import (
             DesignError,
+            DesignOutputShapeError,
             DesignProjectNotFoundError,
             DesignSystemNotFoundError,
             DiscoveryIncompleteError,
@@ -302,6 +303,7 @@ class TestDesignErrors:
             SkillModeError,
             DesignProjectNotFoundError,
             IncompatibleDesignSystemError,
+            DesignOutputShapeError,
             TrustBannedError,
             TrustUpgradeRequiredError,
         ]
@@ -313,6 +315,7 @@ class TestDesignErrors:
     def test_all_errors_inherit_design_error(self):
         from maistro_design.types import (
             DesignError,
+            DesignOutputShapeError,
             DesignSystemNotFoundError,
             DiscoveryIncompleteError,
             IncompatibleDesignSystemError,
@@ -327,9 +330,154 @@ class TestDesignErrors:
             DiscoveryIncompleteError,
             SkillModeError,
             IncompatibleDesignSystemError,
+            DesignOutputShapeError,
             TrustBannedError,
         ]:
             assert issubclass(cls, DesignError)
+
+
+# ─── ArtifactNode / ArtifactKind ──────────────────────────────────────────────
+
+
+class TestArtifactNode:
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_get_resolves_dotted_address_through_containers(self):
+        from maistro_design.types import ArtifactKind, ArtifactNode, OutputFormat
+
+        root = ArtifactNode(
+            key="root",
+            kind=ArtifactKind.CONTAINER,
+            children={
+                "characters": ArtifactNode(
+                    key="characters",
+                    kind=ArtifactKind.CONTAINER,
+                    children={
+                        "joe-smith": ArtifactNode(
+                            key="joe-smith",
+                            kind=ArtifactKind.BLOB,
+                            format=OutputFormat.PNG,
+                            value=b"\x89PNG",
+                        )
+                    },
+                )
+            },
+        )
+        leaf = root.get("characters.joe-smith")
+        assert leaf is not None
+        assert leaf.kind is ArtifactKind.BLOB
+        assert leaf.value == b"\x89PNG"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_get_returns_none_for_unknown_address(self):
+        from maistro_design.types import ArtifactKind, ArtifactNode
+
+        root = ArtifactNode(key="root", kind=ArtifactKind.CONTAINER)
+        assert root.get("does.not.exist") is None
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_walk_yields_dotted_addresses_for_every_leaf(self):
+        from maistro_design.types import ArtifactKind, ArtifactNode, OutputFormat
+
+        root = ArtifactNode(
+            key="svg",
+            kind=ArtifactKind.CONTAINER,
+            children={
+                "typography": ArtifactNode(
+                    key="typography",
+                    kind=ArtifactKind.CONTAINER,
+                    children={
+                        "header": ArtifactNode(
+                            key="header",
+                            kind=ArtifactKind.FILE,
+                            format=OutputFormat.SVG,
+                            value="<svg>header</svg>",
+                        ),
+                        "body": ArtifactNode(
+                            key="body",
+                            kind=ArtifactKind.FILE,
+                            format=OutputFormat.SVG,
+                            value="<svg>body</svg>",
+                        ),
+                    },
+                )
+            },
+        )
+        addresses = dict(root.walk())
+        assert set(addresses) == {"svg.typography.header", "svg.typography.body"}
+        assert addresses["svg.typography.header"].value == "<svg>header</svg>"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_walk_on_single_file_root_yields_its_own_key(self):
+        from maistro_design.types import ArtifactKind, ArtifactNode, OutputFormat
+
+        root = ArtifactNode(
+            key="prompt-stack", kind=ArtifactKind.FILE, format=OutputFormat.MARKDOWN, value="hi"
+        )
+        addresses = dict(root.walk())
+        assert set(addresses) == {"prompt-stack"}
+
+
+# ─── DesignOutput ──────────────────────────────────────────────────────────────
+
+
+class TestDesignOutput:
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_content_and_format_for_single_file_output(self):
+        from maistro_design.types import ArtifactKind, ArtifactNode, DesignOutput, OutputFormat
+
+        output = DesignOutput(
+            root=ArtifactNode(
+                key="index", kind=ArtifactKind.FILE, format=OutputFormat.HTML, value="<h1>hi</h1>"
+            )
+        )
+        assert output.content == "<h1>hi</h1>"
+        assert output.format is OutputFormat.HTML
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_content_raises_shape_error_for_container_root(self):
+        from maistro_design.types import (
+            ArtifactKind,
+            ArtifactNode,
+            DesignOutput,
+            DesignOutputShapeError,
+        )
+
+        output = DesignOutput(root=ArtifactNode(key="root", kind=ArtifactKind.CONTAINER))
+        with pytest.raises(DesignOutputShapeError):
+            _ = output.content
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_content_raises_shape_error_for_blob_root(self):
+        from maistro_design.types import (
+            ArtifactKind,
+            ArtifactNode,
+            DesignOutput,
+            DesignOutputShapeError,
+            OutputFormat,
+        )
+
+        output = DesignOutput(
+            root=ArtifactNode(
+                key="hero", kind=ArtifactKind.BLOB, format=OutputFormat.PNG, value=b"x"
+            )
+        )
+        with pytest.raises(DesignOutputShapeError):
+            _ = output.content
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_output_format_includes_js(self):
+        from maistro_design.types import OutputFormat
+
+        assert OutputFormat.JS.value == "js"
+        assert OutputFormat.JS in set(OutputFormat)
 
 
 # ─── Skill registry ───────────────────────────────────────────────────────────
@@ -751,6 +899,74 @@ class TestDesignEngineGenerate:
 
     @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
+    async def test_generate_raises_skill_mode_error_for_missing_renderer(
+        self, skill_registry, system_registry
+    ):
+        """
+        Given a skill that requires an HTML renderer and an engine with none injected
+        When generate() is called
+        Then SkillModeError is raised.
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DesignSkill, DiscoveryResult, SkillMode, SkillModeError
+
+        skill_registry.register(
+            DesignSkill(
+                slug="rendered-template",
+                name="Rendered Template",
+                mode=SkillMode.TEMPLATE,
+                description="requires an HTML renderer to rasterize its output",
+                required_renderer="html",
+            )
+        )
+        eng = DesignEngine(skill_registry=skill_registry, system_registry=system_registry)
+        discovery = DiscoveryResult(
+            skill_slug="rendered-template",
+            design_system_slug="default",
+            responses={},
+        )
+        with pytest.raises(SkillModeError):
+            await eng.generate(discovery)
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_generate_succeeds_when_required_renderer_is_provided(
+        self, skill_registry, system_registry
+    ):
+        """
+        Given a skill that requires an HTML renderer and an engine with one injected
+        When generate() is called
+        Then no SkillModeError is raised.
+        """
+        from unittest.mock import AsyncMock
+
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DesignSkill, DiscoveryResult, SkillMode
+
+        skill_registry.register(
+            DesignSkill(
+                slug="rendered-template",
+                name="Rendered Template",
+                mode=SkillMode.TEMPLATE,
+                description="requires an HTML renderer to rasterize its output",
+                required_renderer="html",
+            )
+        )
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+            html_renderer=AsyncMock(),
+        )
+        discovery = DiscoveryResult(
+            skill_slug="rendered-template",
+            design_system_slug="default",
+            responses={},
+        )
+        project = await eng.generate(discovery)
+        assert project.skill_slug == "rendered-template"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
     async def test_generate_raises_trust_banned_error(self, skill_registry, system_registry):
         """
         Given a banish list with a matching pattern
@@ -825,6 +1041,63 @@ class TestDesignEngineGenerate:
         )
         await engine.generate(discovery)
         assert engine.context_trust_tier == TrustTier.T3
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_generate_scans_assembled_output_for_script_injection(
+        self, skill_registry, system_registry
+    ):
+        """
+        Given a skill whose system_prompt carries a <script> tag (not a discovery
+        response, so the discovery-response scan never sees it)
+        When generate() is called
+        Then TrustBannedError is raised by the output-side scan over the assembled
+        prompt stack.
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import (
+            DesignSkill,
+            DiscoveryResult,
+            SkillMode,
+            TrustBannedError,
+        )
+
+        skill_registry.register(
+            DesignSkill(
+                slug="evil-skill",
+                name="Evil Skill",
+                mode=SkillMode.PROTOTYPE,
+                description="carries an injected script in its system prompt",
+                system_prompt="<script>alert(1)</script>",
+            )
+        )
+        eng = DesignEngine(skill_registry=skill_registry, system_registry=system_registry)
+        discovery = DiscoveryResult(
+            skill_slug="evil-skill", design_system_slug="default", responses={}
+        )
+        with pytest.raises(TrustBannedError):
+            await eng.generate(discovery)
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_generate_output_is_a_file_artifact(self, engine):
+        """
+        Given a happy-path generate() call
+        When the resulting DesignOutput is inspected
+        Then its root is a FILE artifact carrying the assembled prompt stack.
+        """
+        from maistro_design.types import ArtifactKind, DiscoveryResult, OutputFormat
+
+        discovery = DiscoveryResult(
+            skill_slug="pitch-deck",
+            design_system_slug="default",
+            responses={"company_name": "X", "one_liner": "Y", "stage": "Seed", "slide_count": "12"},
+        )
+        project = await engine.generate(discovery)
+        output = project.outputs[0]
+        assert output.root.kind is ArtifactKind.FILE
+        assert output.format is OutputFormat.MARKDOWN
+        assert output.content == output.root.value
 
 
 # ─── Protocol compliance ──────────────────────────────────────────────────────
