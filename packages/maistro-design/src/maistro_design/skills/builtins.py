@@ -2,6 +2,20 @@
 
 from maistro_design.types import DesignSkill, DiscoveryField, OutputFormat, SkillMode
 
+_CODE_OUTPUT_INSTRUCTIONS = """## Code Output Instructions
+
+When the user requests React/TSX output:
+
+1. Generate a single, self-contained `.tsx` file that exports a default React component.
+2. Use functional components and React hooks (useState, useEffect). No class components.
+3. Style exclusively with Tailwind utility classes. No CSS-in-JS, no CSS modules, no inline styles.
+4. Import only:
+   - `react` (React, useState, useEffect, etc.)
+   - Tailwind CSS (already available in the rendering environment)
+5. Do not make external API calls. Use local state for all interactivity.
+6. Include a JSDoc comment at the top with the component's purpose and discovery response summary.
+7. Ensure the component is accessible (ARIA labels, semantic HTML, keyboard navigation)."""
+
 BUILTINS: list[DesignSkill] = [
     # ── Prototype ────────────────────────────────────────────────────────────
     DesignSkill(
@@ -10,8 +24,14 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.PROTOTYPE,
         description="Interactive login/auth flow prototype with form states and error handling.",
         featured=True,
-        output_formats=[OutputFormat.HTML],
+        output_formats=[OutputFormat.HTML, OutputFormat.REACT_TSX],
         tags=["auth", "forms", "ux"],
+        system_prompt=f"""You are designing an interactive login/authentication flow prototype.
+
+The user has provided a design system with colors, typography, and spacing tokens.
+Follow the design guidelines strictly to ensure visual consistency.
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         discovery_form=[
             DiscoveryField(
                 key="auth_methods",
@@ -37,8 +57,14 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.PROTOTYPE,
         description="Browser-like UI shell for agentic web browsing workflows.",
         featured=True,
-        output_formats=[OutputFormat.HTML],
+        output_formats=[OutputFormat.HTML, OutputFormat.REACT_TSX],
         tags=["agent", "browser", "automation"],
+        system_prompt=f"""You are designing a browser-like UI shell for agentic web automation.
+
+The user has specified the primary action the agent will perform.
+Build a realistic browser interface that supports this workflow.
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         discovery_form=[
             DiscoveryField(
                 key="primary_action",
@@ -126,7 +152,16 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.TEMPLATE,
         description="Conversion-optimised landing page with hero, features, and CTA sections.",
         featured=True,
-        output_formats=[OutputFormat.HTML, OutputFormat.CSS],
+        output_formats=[OutputFormat.HTML, OutputFormat.CSS, OutputFormat.REACT_TSX],
+        system_prompt=f"""You are designing a conversion-optimized landing page.
+
+Use the provided design system strictly. Follow best practices for:
+- Clear hierarchy and visual flow
+- Compelling headlines and value propositions
+- Strong call-to-action placement
+- Responsive layout across device sizes
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         tags=["landing", "marketing", "conversion"],
         discovery_form=[
             DiscoveryField(
@@ -163,8 +198,17 @@ BUILTINS: list[DesignSkill] = [
         name="Email Template",
         mode=SkillMode.TEMPLATE,
         description="Responsive HTML email template for transactional or marketing sends.",
-        output_formats=[OutputFormat.HTML],
+        output_formats=[OutputFormat.HTML, OutputFormat.REACT_TSX],
         tags=["email", "marketing", "responsive"],
+        system_prompt=f"""You are designing a responsive email template.
+
+Email constraints:
+- Use inline styles (CSS will be inlined by mail clients)
+- Support dark mode where possible
+- Test on major email clients (Gmail, Outlook, Apple Mail)
+- Clear single-column layout for mobile
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         discovery_form=[
             DiscoveryField(
                 key="email_type",

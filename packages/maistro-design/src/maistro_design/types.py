@@ -30,6 +30,7 @@ class OutputFormat(StrEnum):
     PDF = "pdf"
     CSS = "css"
     JSON = "json"
+    REACT_TSX = "react_tsx"
 
 
 @dataclass(frozen=True)

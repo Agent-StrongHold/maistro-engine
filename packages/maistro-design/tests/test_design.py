@@ -827,6 +827,316 @@ class TestDesignEngineGenerate:
         assert engine.context_trust_tier == TrustTier.T3
 
 
+# ─── REACT_TSX output format (SPEC-062326-e9c6) ──────────────────────────────
+
+
+class TestReactTsxOutputFormat:
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_react_tsx_in_output_format_enum(self):
+        """
+        Scenario: REACT_TSX value exists in OutputFormat
+          When OutputFormat.REACT_TSX is accessed
+          Then its value is "react_tsx"
+        """
+        from maistro_design.types import OutputFormat
+
+        assert OutputFormat.REACT_TSX == "react_tsx"
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_login_flow_declares_react_tsx(self):
+        """
+        Scenario: login-flow declares HTML and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("login-flow") is called
+          Then skill.output_formats contains OutputFormat.HTML
+          And skill.output_formats contains OutputFormat.REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("login-flow")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_agent_browser_declares_react_tsx(self):
+        """
+        Scenario: agent-browser declares HTML and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("agent-browser") is called
+          Then skill.output_formats contains OutputFormat.HTML
+          And skill.output_formats contains OutputFormat.REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("agent-browser")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_landing_page_declares_react_tsx(self):
+        """
+        Scenario: landing-page declares HTML, CSS, and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("landing-page") is called
+          Then skill.output_formats contains OutputFormat.HTML, CSS, and REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("landing-page")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.CSS in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_email_template_declares_react_tsx(self):
+        """
+        Scenario: email-template declares HTML and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("email-template") is called
+          Then skill.output_formats contains OutputFormat.HTML and REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("email-template")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_prototype_skills_include_code_instructions(self):
+        """
+        Scenario: Prototype skills include "Code Output Instructions" in system_prompt
+          When registry.get("login-flow").system_prompt is examined
+          Then it contains "Code Output Instructions"
+          And functional component guidance is present
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("login-flow")
+        assert skill is not None
+        prompt = skill.system_prompt
+        assert "Code Output Instructions" in prompt
+        assert "functional" in prompt.lower() or "tsx" in prompt.lower()
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_template_skills_include_code_instructions(self):
+        """
+        Scenario: Template skills include "Code Output Instructions" in system_prompt
+          When registry.get("landing-page").system_prompt is examined
+          Then it contains "Code Output Instructions"
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("landing-page")
+        assert skill is not None
+        prompt = skill.system_prompt
+        assert "Code Output Instructions" in prompt
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_react_tsx_output_inherits_trust_tier(self, skill_registry, system_registry):
+        """
+        Scenario: REACT_TSX output inherits project trust tier
+          Given a DesignEngine and a DiscoveryResult with trust_tier=T3
+          When generate() is called for "login-flow"
+          Then project.trust_tier == T3
+          And project.outputs[0].trust_tier == T3
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="login-flow",
+            design_system_slug="default",
+            responses={
+                "auth_methods": "Email/Password",
+                "brand_tone": "Professional",
+            },
+            trust_tier=TrustTier.T3,
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+        assert project.outputs[0].trust_tier == TrustTier.T3
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_code_output_does_not_auto_upgrade_trust(self, skill_registry, system_registry):
+        """
+        Scenario: Code output does not auto-upgrade trust
+          Given T3 discovery responses
+          When generate() is called
+          Then project.trust_tier == T3 (the minimum, not upgraded)
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="login-flow",
+            design_system_slug="default",
+            responses={"auth_methods": "Email/Password", "brand_tone": "Professional"},
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("integration")
+    async def test_prototype_mode_no_canvas_auto_create(self, skill_registry, system_registry):
+        """
+        Scenario: PROTOTYPE mode does not auto-create canvas
+          Given a DesignEngine with canvas_store provided
+          And a DiscoveryResult for "login-flow" (PROTOTYPE mode)
+          When generate() is called
+          Then project.canvas_id is None
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DiscoveryResult
+
+        class MockCanvasStore:
+            async def create_canvas(self, name: str, width: int, height: int):
+                raise AssertionError("create_canvas should not be called for PROTOTYPE")
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+            canvas_store=MockCanvasStore(),  # type: ignore
+        )
+        discovery = DiscoveryResult(
+            skill_slug="login-flow",
+            design_system_slug="default",
+            responses={"auth_methods": "Email/Password", "brand_tone": "Professional"},
+        )
+        project = await eng.generate(discovery)
+        assert project.canvas_id is None
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("integration")
+    async def test_template_mode_canvas_creation_is_mode_driven(
+        self, skill_registry, system_registry
+    ):
+        """
+        Scenario: TEMPLATE mode auto-creates canvas (canvas creation is mode-driven)
+          Given a DesignEngine with canvas_store provided
+          And a DiscoveryResult for "landing-page" (TEMPLATE mode)
+          When generate() is called
+          Then project.canvas_id is not None (canvas auto-created by mode)
+
+        Note: Per ADR-062326-616c, code output does not change canvas behavior.
+        The engine's canvas creation is mode-driven (IMAGE/TEMPLATE always create if store available).
+        Downstream callers decide whether to use canvas for code artifacts or store separately.
+        """
+        from maistro_canvas.types import CanvasRecord
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DiscoveryResult
+
+        class MockCanvasStore:
+            async def create_canvas(self, name: str, width: int, height: int):
+                return CanvasRecord(
+                    id="canvas-landing",
+                    name=name,
+                    width=width,
+                    height=height,
+                )
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+            canvas_store=MockCanvasStore(),  # type: ignore
+        )
+        discovery = DiscoveryResult(
+            skill_slug="landing-page",
+            design_system_slug="default",
+            responses={
+                "product_name": "MyApp",
+                "headline": "The best app",
+                "cta_text": "Get started",
+                "section_count": "4",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.canvas_id == "canvas-landing"
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("integration")
+    async def test_image_mode_still_auto_creates_canvas(self, skill_registry, system_registry):
+        """
+        Scenario: IMAGE mode still auto-creates canvas (unchanged behavior)
+          Given a DesignEngine with canvas_store and image_gen provided
+          And a DiscoveryResult for "hero-image" (IMAGE mode)
+          When generate() is called
+          Then project.canvas_id is not None
+        """
+        from maistro_canvas.types import CanvasRecord
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DiscoveryResult
+
+        class MockCanvasStore:
+            async def create_canvas(self, name: str, width: int, height: int):
+                return CanvasRecord(id="canvas-123", name=name, width=width, height=height)
+
+        class MockImageGen:
+            pass
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+            canvas_store=MockCanvasStore(),  # type: ignore
+            image_gen=MockImageGen(),  # type: ignore
+        )
+        discovery = DiscoveryResult(
+            skill_slug="hero-image",
+            design_system_slug="default",
+            responses={
+                "subject": "A beautiful landscape",
+                "style": "Photorealistic",
+                "aspect_ratio": "16:9",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.canvas_id == "canvas-123"
+
+
 # ─── Protocol compliance ──────────────────────────────────────────────────────
 
 
