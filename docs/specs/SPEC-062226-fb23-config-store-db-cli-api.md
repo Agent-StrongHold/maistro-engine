@@ -1,5 +1,5 @@
 ---
-id: SPEC-262
+id: SPEC-062226-fb23
 title: "ConfigStore: DB table model, caching, CLI commands, and admin API endpoints (ADR-078)"
 repo: maistro-engine
 kind: spec
@@ -8,7 +8,7 @@ created: 2026-06-22
 substrate:
   - maistro-engine#ADR-068
   - maistro-engine#ADR-078
-  - maistro-engine#ADR-102
+  - maistro-engine#ADR-062226-674b
 implements:
   - maistro-engine#ADR-078
 related:
@@ -25,14 +25,14 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-262: ConfigStore — DB model, caching, CLI, and admin API
+# SPEC-062226-fb23: ConfigStore — DB model, caching, CLI, and admin API
 
 ## Context
 
 ADR-078 makes the database the online source of truth for hot-editable config (Sentinel
 policy, RLPHD weights, feature flags, model registry/routing rules, general tunables), with
 RBAC-gated edits and human-readable export — but explicitly left "the DB config table schema
-and the caching/invalidation strategy" as a follow-up SPEC. ADR-102 adds a maturity ladder
+and the caching/invalidation strategy" as a follow-up SPEC. ADR-062226-674b adds a maturity ladder
 (Tunable → Enumerated → Locked) for implementation-defined constants, and names ConfigStore
 as the mechanism Tunable-stage constants are backed by. Today there is no `ConfigStore`
 implementation at all — `maistro.config.loader`/`settings.py` only cover the *static*
@@ -42,7 +42,7 @@ UI calls.
 
 ## Goals
 
-- Define the DB table schema for config entries: key, typed value, the ADR-102 ladder stage
+- Define the DB table schema for config entries: key, typed value, the ADR-062226-674b ladder stage
   (`tunable`/`enumerated`/`locked`), allowed-value constraints (range for `tunable`, closed set
   for `enumerated`), last-modified principal/timestamp, and audit linkage.
 - Implement `ConfigStore` (ADR-078's `Protocol`: `get`/`set`/`export`) against that table, with
@@ -77,7 +77,7 @@ CREATE TABLE config_entries (
     key             TEXT PRIMARY KEY,
     value           JSONB NOT NULL,
     value_type      TEXT NOT NULL,              -- 'int' | 'float' | 'bool' | 'str' | 'enum'
-    stage           TEXT NOT NULL DEFAULT 'tunable',  -- ADR-102 ladder: tunable|enumerated|locked
+    stage           TEXT NOT NULL DEFAULT 'tunable',  -- ADR-062226-674b ladder: tunable|enumerated|locked
     allowed_range   JSONB,                       -- {"min": ..., "max": ...} for tunable numerics
     allowed_values  JSONB,                       -- [...] closed set for enumerated
     description     TEXT NOT NULL,
@@ -86,7 +86,7 @@ CREATE TABLE config_entries (
 );
 ```
 
-A `locked` entry is removed from this table entirely (ADR-102: locked constants go back to
+A `locked` entry is removed from this table entirely (ADR-062226-674b: locked constants go back to
 being plain Python module constants, not DB rows) — so this table only ever holds `tunable`
 and `enumerated` entries; `stage` distinguishes the two without needing a separate table.
 
@@ -150,7 +150,7 @@ whole table from a file.
 ## Acceptance criteria
 
 - [ ] `config_entries` table exists with the schema above; `locked`-stage constants are never
-      persisted as rows (ADR-102 compliance: locked = plain constant, not DB-tracked).
+      persisted as rows (ADR-062226-674b compliance: locked = plain constant, not DB-tracked).
 - [ ] `DbConfigStore.get`/`set`/`export` implement ADR-078's `ConfigStore` protocol exactly.
 - [ ] `set()` rejects an unauthorized principal (RBAC, ADR-068) before any write.
 - [ ] `set()` rejects a value outside `allowed_range` (tunable) or not in `allowed_values`
@@ -186,7 +186,7 @@ whole table from a file.
 ## References
 
 - [ADR-078: Configuration Management](../adr/ADR-078-configuration-management.md)
-- [ADR-102: Constant tunability ladder](../adr/ADR-102-constant-tunability-ladder.md)
+- [ADR-062226-674b: Constant tunability ladder](../adr/ADR-062226-674b-constant-tunability-ladder.md)
 - [ADR-068: Unified Authorization & Elevation](../adr/ADR-068-unified-authorization-and-elevation.md)
 - `packages/maistro-core/src/maistro/config/` — existing static bootstrap-file loader (unchanged
   by this SPEC; that path stays file-based per ADR-078's read-order split).
