@@ -39,7 +39,11 @@ def test_list_cli_sessions_seeds_default_when_empty(authed_client: Any) -> None:
 
 
 def test_list_cli_sessions_does_not_reseed_when_nonempty(authed_client: Any) -> None:
-    stores.cli_sessions["existing"] = {"id": "existing", "cwd": "/tmp", "history": ["ls"]}
+    stores.cli_sessions["existing"] = {
+        "id": "existing",
+        "cwd": "/tmp",  # nosec B108 — fixture data for a CLI session record, not a filesystem write target
+        "history": ["ls"],
+    }
     r = authed_client.get("/v1/cli/sessions")
     body = r.json()
     assert [s["id"] for s in body] == ["existing"]
