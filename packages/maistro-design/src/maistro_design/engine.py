@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from maistro_design.scan import scan_design_output
 from maistro_design.trust import (
     InMemoryTrustBanishList,
     InMemoryTrustReviewQueue,
@@ -19,6 +20,8 @@ from maistro_design.trust import (
     scan_and_record,
 )
 from maistro_design.types import (
+    ArtifactKind,
+    ArtifactNode,
     DesignOutput,
     DesignProject,
     DesignSystemNotFoundError,
@@ -34,7 +37,39 @@ from maistro_design.types import (
 
 if TYPE_CHECKING:
     from maistro_canvas.protocols import CanvasStore, ImageGenClient
-    from maistro_design.protocols import DesignSkillRegistry, DesignSystemRegistry
+    from maistro_design.protocols import (
+        DesignSkillRegistry,
+        DesignSystemRegistry,
+        HTMLRenderer,
+        SVGRenderer,
+        TypographyRenderer,
+    )
+
+
+_RENDERER_ATTRS: dict[str, str] = {
+    "html": "_html_renderer",
+    "svg": "_svg_renderer",
+    "typography": "_typography_renderer",
+}
+
+
+def _scan_output_or_raise(output: DesignOutput, banish_list: InMemoryTrustBanishList) -> None:
+    report = scan_design_output(output, banish_list=banish_list)
+    if not report.passed:
+        msg = f"Generated output failed the output scan: {report.blocking_flags}"
+        raise TrustBannedError(msg)
+
+
+def _build_output(prompt_stack: str, trust_tier: TrustTier) -> DesignOutput:
+    return DesignOutput(
+        root=ArtifactNode(
+            key="prompt-stack",
+            kind=ArtifactKind.FILE,
+            format=OutputFormat.MARKDOWN,
+            value=prompt_stack,
+        ),
+        trust_tier=trust_tier,
+    )
 
 
 class DesignEngine:
@@ -51,6 +86,9 @@ class DesignEngine:
         trust_review_queue: InMemoryTrustReviewQueue | None = None,
         canvas_store: CanvasStore | None = None,
         image_gen: ImageGenClient | None = None,
+        html_renderer: HTMLRenderer | None = None,
+        svg_renderer: SVGRenderer | None = None,
+        typography_renderer: TypographyRenderer | None = None,
     ) -> None:
         self._skills = skill_registry
         self._systems = system_registry
@@ -60,6 +98,9 @@ class DesignEngine:
         )
         self._canvas_store = canvas_store
         self._image_gen = image_gen
+        self._html_renderer = html_renderer
+        self._svg_renderer = svg_renderer
+        self._typography_renderer = typography_renderer
         self._context_trust_tier: TrustTier = TrustTier.T0
 
     @property
@@ -86,6 +127,17 @@ class DesignEngine:
             msg = (
                 f"Skill '{skill.slug}' requires an image generation client "
                 f"(mode={skill.mode}) but none was provided to DesignEngine."
+            )
+            raise SkillModeError(msg)
+
+    def _check_renderer_available(self, skill: Any) -> None:
+        if skill.required_renderer is None:
+            return
+        attr_name = _RENDERER_ATTRS[skill.required_renderer]
+        if getattr(self, attr_name) is None:
+            msg = (
+                f"Skill '{skill.slug}' requires a '{skill.required_renderer}' renderer "
+                f"but none was provided to DesignEngine."
             )
             raise SkillModeError(msg)
 
@@ -141,7 +193,7 @@ class DesignEngine:
         """Build a DesignProject from completed discovery responses.
 
         Pipeline:
-          1. Resolve skill + design system; check compatibility and image_gen
+          1. Resolve skill + design system; check compatibility, image_gen, and renderers
           2. Contaminate context with skill + system + discovery trust tiers
           3. Scan discovery responses through banish list and Warden
           4. Validate required discovery fields
@@ -159,6 +211,7 @@ class DesignEngine:
 
         self._check_compatibility(skill, discovery.design_system_slug)
         self._check_image_gen(skill)
+        self._check_renderer_available(skill)
 
         self._contaminate(skill.trust_tier)
         self._contaminate(system.trust_tier)
@@ -168,11 +221,8 @@ class DesignEngine:
         self._validate_required_fields(skill, discovery)
 
         prompt_stack = self._build_prompt_stack(skill, system, discovery)
-        output = DesignOutput(
-            format=OutputFormat.MARKDOWN,
-            content=prompt_stack,
-            trust_tier=self._context_trust_tier,
-        )
+        output = _build_output(prompt_stack, self._context_trust_tier)
+        _scan_output_or_raise(output, self._banish_list)
 
         canvas_id: str | None = None
         if self._canvas_store is not None and skill.mode in (SkillMode.IMAGE, SkillMode.TEMPLATE):
