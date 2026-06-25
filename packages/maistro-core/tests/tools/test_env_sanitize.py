@@ -95,6 +95,12 @@ class TestBlockedNames:
         assert is_blocked_name("api_key")
         assert is_blocked_name("Api_Key")
 
+    def test_unblocked_name_returns_false(self) -> None:
+        assert is_blocked_name("PATH") is False
+
+    def test_exact_blocked_name(self) -> None:
+        assert is_blocked_name("HOME") is True
+
 
 class TestLooksLikeSecret:
     @pytest.mark.parametrize(

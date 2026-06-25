@@ -12,8 +12,13 @@ from maistro.builders.graph import PipelineGraph, PipelineNode, RunContext
 from maistro.builders.graph_executor import (
     DispatchResult,
     GraphPipelineExecutor,
+    _build_prompt,
 )
 from maistro.graph.node import IterationBudget
+
+
+def test_build_prompt_falls_back_to_raw_template_on_malformed_format_spec() -> None:
+    assert _build_prompt("{0!Z}", {}) == "{0!Z}"
 
 
 @dataclass

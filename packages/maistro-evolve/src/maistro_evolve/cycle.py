@@ -4,7 +4,7 @@ import random
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .crossover import crossover_and_mutate
 from .diversity import emergency_spawn, population_diversity
@@ -16,19 +16,32 @@ from .reflect import reflective_improve
 from .tournament import EloTournament
 from .types import PipelineGenome
 
+# Hard, non-overridable ceilings on per-cycle resource/compute consumption.
+# These are RSI safety bounds (not tuning knobs): an evolution loop with no
+# enforced upper limit on eval batch size, population size, or self-improve
+# fan-out can be pointed at an unboundedly large config and consume
+# unboundedly large compute/cost in a single run_cycle() call. Pydantic's
+# Field(le=...) rejects out-of-range values at construction time — there is
+# no way to build an EvolutionConfig that exceeds these caps.
+MAX_EVAL_BATCH_SIZE = 50
+MAX_POPULATION_SIZE = 200
+MAX_TOURNAMENT_SIZE = 20
+MAX_SELF_IMPROVE_TOP_N = 10
+MAX_SELF_IMPROVE_CANDIDATES = 10
+
 
 class EvolutionConfig(BaseModel):
-    population_size: int = 20
+    population_size: int = Field(default=20, gt=0, le=MAX_POPULATION_SIZE)
     mutation_rate: float = 0.3
     cull_pct: float = 0.3
     breed_pct: float = 0.2
-    eval_batch_size: int = 5
+    eval_batch_size: int = Field(default=5, ge=0, le=MAX_EVAL_BATCH_SIZE)
     target_benchmarks: list[str] = ["ifeval", "bfcl", "swebench", "tau_bench"]
     diversity_threshold: float = 1.0
-    tournament_size: int = 3
+    tournament_size: int = Field(default=3, gt=0, le=MAX_TOURNAMENT_SIZE)
     self_improve: bool = True
-    self_improve_top_n: int = 3
-    self_improve_candidates: int = 2
+    self_improve_top_n: int = Field(default=3, ge=0, le=MAX_SELF_IMPROVE_TOP_N)
+    self_improve_candidates: int = Field(default=2, ge=0, le=MAX_SELF_IMPROVE_CANDIDATES)
     self_improve_accept_margin: float = 0.0
 
 

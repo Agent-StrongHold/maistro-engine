@@ -99,6 +99,19 @@ def test_advance_stage_to_terminal_states_sets_status() -> None:
         orch.advance_stage("run-1", "issue_analyzed")
 
 
+def test_advance_stage_to_failed_sets_failed_status() -> None:
+    orch = BuildersOrchestrator()
+    _new_run(orch)
+    orch.advance_stage("run-1", "issue_analyzed")
+    orch.advance_stage("run-1", "acceptance_defined")
+    orch.advance_stage("run-1", "tests_written")
+    orch.advance_stage("run-1", "implementation_started")
+    run = orch.advance_stage("run-1", "failed")
+
+    assert run.current_stage == "failed"
+    assert run.status is RunStatus.FAILED
+
+
 def test_advance_stage_changes_worker_when_requested() -> None:
     orch = BuildersOrchestrator()
     _new_run(orch)

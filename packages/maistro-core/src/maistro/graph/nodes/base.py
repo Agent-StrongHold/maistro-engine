@@ -15,9 +15,12 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
-from typing import Any, ClassVar, Literal, Protocol, runtime_checkable
+from typing import Any, ClassVar, Generic, Literal, Protocol, TypeVar, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
+
+InputT = TypeVar("InputT", bound=BaseModel)
+OutputT = TypeVar("OutputT", bound=BaseModel)
 
 # Categorical taxonomy. The optimizer + UI reason about category, not just
 # kind. e.g. "wait" + "hitl" categories trigger durable run-state checkpoints;
@@ -106,7 +109,7 @@ class Node(Protocol):
     async def run(self, inputs: BaseModel, ctx: NodeContext) -> NodeResult: ...
 
 
-class BaseNode[InputT: BaseModel, OutputT: BaseModel]:
+class BaseNode(Generic[InputT, OutputT]):
     """Concrete base class for node kinds — handles the boilerplate of
     timing, schema enforcement, and result envelope construction so subclasses
     only define :meth:`_execute`.

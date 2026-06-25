@@ -91,6 +91,60 @@ class PopulationStore:
             return None
         return max(scored, key=_fitness_key)
 
+    def promote(self, genome_id: str) -> PipelineGenome:
+        """Promote a tournament-winning genome to live traffic.
+
+        Fail closed: a genome that has not been explicitly marked
+        ``approved_for_promotion`` (a human-approval gate — see
+        ``human.approve_draft``/``human.delegate_to_role`` graph nodes,
+        which the caller is responsible for routing through before calling
+        this) is never promoted, no matter how high its fitness/tournament
+        score. Winning sandbox evaluation is necessary but not sufficient.
+        """
+        genome = self.get(genome_id)
+        if genome is None:
+            raise ValueError(f"unknown genome_id: {genome_id}")
+        if not genome.approved_for_promotion:
+            raise PermissionError(
+                f"genome {genome_id} has not been approved for promotion "
+                "(approved_for_promotion=False) — tournament/fitness wins "
+                "only qualify a genome for sandbox evaluation, not live traffic"
+            )
+        previous = self.get_active()
+        if previous is not None and previous.id != genome_id:
+            previous.is_active = False
+            self.add(previous)
+        genome.is_active = True
+        genome.rollback_target_id = previous.id if previous is not None else None
+        self.add(genome)
+        return genome
+
+    def get_active(self) -> PipelineGenome | None:
+        for g in self.list_all():
+            if g.is_active:
+                return g
+        return None
+
+    def rollback(self) -> PipelineGenome | None:
+        """Roll back the currently active (promoted) genome to its predecessor.
+
+        Returns the genome that is active after rollback (the previous
+        promotion target), or ``None`` if there was nothing to roll back to.
+        The regressing genome is deactivated but not deleted, so it remains
+        inspectable.
+        """
+        active = self.get_active()
+        if active is None or active.rollback_target_id is None:
+            return None
+        target = self.get(active.rollback_target_id)
+        if target is None:
+            return None
+        active.is_active = False
+        self.add(active)
+        target.is_active = True
+        self.add(target)
+        return target
+
     def get_lineage(self, genome_id: str) -> list[PipelineGenome]:
         chain: list[PipelineGenome] = []
         current = self.get(genome_id)

@@ -44,8 +44,12 @@ builders = [
     "anthropic>=0.28",
     "maistro-bootstrap[builders]",
 ]
+# Homelab/single-instance persistence backend (no Postgres server required).
+sqlite = [
+    "aiosqlite>=0.20",
+]
 all = [
-    "maistro-core[llm,sandbox,observability,tui,builders]",
+    "maistro-core[llm,sandbox,observability,tui,builders,sqlite]",
 ]
 dev = [
     "pytest>=8.3",
