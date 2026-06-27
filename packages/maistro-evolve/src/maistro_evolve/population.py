@@ -147,34 +147,59 @@ class PopulationStore:
         return target
 
     async def promote_audited(self, genome_id: str, audit: GenomeAuditTrail) -> PipelineGenome:
-        """Promote, with a mandatory audit record preceding the state change.
+        """Promote, with a mandatory audit record preceding and confirming
+        the state change.
 
-        The audit entry is recorded for the *attempt* before ``promote()``
-        runs, and a second entry confirms the *commit* after it succeeds. If
-        the audit sink itself fails (e.g. the formal-conformance adversarial
-        case), the exception propagates before any state mutation happens —
-        fail-closed, mirroring ``promote()``'s own approval-gate posture.
-        There is no other entrypoint that can flip ``is_active``/promote a
-        genome without going through this method or ``promote()`` directly
-        (which callers are expected to route through this wrapper for any
-        promotion that must be auditable).
+        The "attempt" entry is recorded before ``promote()`` runs, so a
+        failing sink there blocks the mutation entirely (fail-closed,
+        mirroring ``promote()``'s own approval-gate posture). The mutation
+        itself can still complete before the "committed" entry is recorded
+        — if logging *that* fails, the promotion is compensated (reverted
+        to whichever genome was active before) and the exception re-raised,
+        so the active genome can never observably change without a matching
+        committed audit entry. There is no other entrypoint that can flip
+        ``is_active``/promote a genome with an audit guarantee — callers
+        must route every auditable promotion through this method, not
+        ``promote()`` directly.
         """
         await audit.record("promotion_attempt", genome_id)
+        previous = self.get_active()
         genome = self.promote(genome_id)
-        await audit.record("promotion_committed", genome_id)
+        try:
+            await audit.record("promotion_committed", genome_id)
+        except Exception:
+            if previous is not None:
+                self.promote(previous.id)
+            else:
+                genome.is_active = False
+                self.add(genome)
+            raise
         return genome
 
     async def rollback_audited(self, audit: GenomeAuditTrail) -> PipelineGenome | None:
-        """Roll back, with a mandatory audit record preceding the state change.
+        """Roll back, with a mandatory audit record preceding and confirming
+        the state change.
 
         Logs the attempt (tagged with the currently-active genome, if any)
-        before mutating state, then logs the commit (tagged with the
-        restored genome, or "none" if there was nothing to roll back to).
+        before mutating state, then the commit (tagged with the restored
+        genome, or "" if there was nothing to roll back to). If the commit
+        log fails, the rollback is compensated (the regressing genome is
+        reactivated, the would-be-restored genome deactivated) before
+        re-raising — same no-silent-state-drift guarantee as
+        ``promote_audited``.
         """
         before = self.get_active()
         await audit.record("rollback_attempt", before.id if before is not None else "")
         target = self.rollback()
-        await audit.record("rollback_committed", target.id if target is not None else "")
+        try:
+            await audit.record("rollback_committed", target.id if target is not None else "")
+        except Exception:
+            if before is not None and target is not None:
+                target.is_active = False
+                self.add(target)
+                before.is_active = True
+                self.add(before)
+            raise
         return target
 
     def get_lineage(self, genome_id: str) -> list[PipelineGenome]:

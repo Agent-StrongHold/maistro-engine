@@ -52,6 +52,17 @@ class _FailingSink:
         raise RuntimeError("sink unavailable")
 
 
+class _FailOnNthCallSink:
+    def __init__(self, fail_on: int) -> None:
+        self.fail_on = fail_on
+        self.calls = 0
+
+    async def log_delegation(self, peer_name: str, agent_id: str, detail: str) -> None:
+        self.calls += 1
+        if self.calls == self.fail_on:
+            raise RuntimeError("sink failed on commit")
+
+
 class TestPromoteAudited:
     @pytest.mark.asyncio
     async def test_promote_audited_logs_attempt_then_commit(self):
@@ -90,6 +101,35 @@ class TestPromoteAudited:
 
         assert store.get_active() is None
         assert trail.entries == []
+
+    @pytest.mark.asyncio
+    async def test_promote_audited_failing_commit_log_compensates_to_no_active(self):
+        store = PopulationStore()
+        store.add(_genome("a"))
+        trail = GenomeAuditTrail(_FailOnNthCallSink(fail_on=2))
+
+        with pytest.raises(RuntimeError, match="sink failed on commit"):
+            await store.promote_audited("g-a", trail)
+
+        assert store.get_active() is None
+        assert store.get("g-a").is_active is False
+
+    @pytest.mark.asyncio
+    async def test_promote_audited_failing_commit_log_compensates_to_prior_active(self):
+        store = PopulationStore()
+        store.add(_genome("a"))
+        store.add(_genome("b"))
+        good_trail = GenomeAuditTrail(_RecordingSink())
+        await store.promote_audited("g-a", good_trail)
+
+        bad_trail = GenomeAuditTrail(_FailOnNthCallSink(fail_on=2))
+        with pytest.raises(RuntimeError, match="sink failed on commit"):
+            await store.promote_audited("g-b", bad_trail)
+
+        active = store.get_active()
+        assert active is not None
+        assert active.id == "g-a"
+        assert store.get("g-b").is_active is False
 
 
 class TestRollbackAudited:
@@ -139,3 +179,21 @@ class TestRollbackAudited:
         active = store.get_active()
         assert active is not None
         assert active.id == "g-b"
+
+    @pytest.mark.asyncio
+    async def test_rollback_audited_failing_commit_log_compensates_active_genome(self):
+        store = PopulationStore()
+        good_trail = GenomeAuditTrail(_RecordingSink())
+        store.add(_genome("a"))
+        store.add(_genome("b"))
+        await store.promote_audited("g-a", good_trail)
+        await store.promote_audited("g-b", good_trail)
+
+        bad_trail = GenomeAuditTrail(_FailOnNthCallSink(fail_on=2))
+        with pytest.raises(RuntimeError, match="sink failed on commit"):
+            await store.rollback_audited(bad_trail)
+
+        active = store.get_active()
+        assert active is not None
+        assert active.id == "g-b"
+        assert store.get("g-a").is_active is False
