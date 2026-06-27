@@ -1137,6 +1137,194 @@ class TestReactTsxOutputFormat:
         assert project.canvas_id == "canvas-123"
 
 
+# ─── Multi-format skills: Deck + Design-System (Tier A Polish) ────────────────
+
+
+class TestDeckSkillsMultiFormat:
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_pitch_deck_declares_multi_format(self):
+        """pitch-deck declares HTML, MARKDOWN, REACT_TSX, PPTX, PDF output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("pitch-deck")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.MARKDOWN in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PPTX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_pitch_deck_includes_format_guidance(self):
+        """pitch-deck system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("pitch-deck")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+        assert "React" in skill.system_prompt or "REACT_TSX" in skill.system_prompt.upper()
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_product_demo_deck_declares_multi_format(self):
+        """product-demo-deck declares HTML, MARKDOWN, REACT_TSX, PPTX, PDF output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("product-demo-deck")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.MARKDOWN in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PPTX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_product_demo_deck_includes_format_guidance(self):
+        """product-demo-deck system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("product-demo-deck")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+
+
+class TestDesignSystemSkillsMultiFormat:
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_brand_guidelines_declares_multi_format(self):
+        """brand-guidelines declares HTML, MARKDOWN, REACT_TSX, PDF, DOCX, PNG output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("brand-guidelines")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.MARKDOWN in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+        assert OutputFormat.DOCX in skill.output_formats
+        assert OutputFormat.PNG in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_brand_guidelines_includes_format_guidance(self):
+        """brand-guidelines system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("brand-guidelines")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+        assert "PDF" in skill.system_prompt or "DOCX" in skill.system_prompt
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_design_token_sheet_declares_multi_format(self):
+        """design-token-sheet declares CSS, JSON, REACT_TSX, PDF, PNG output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("design-token-sheet")
+        assert skill is not None
+        assert OutputFormat.CSS in skill.output_formats
+        assert OutputFormat.JSON in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+        assert OutputFormat.PNG in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_design_token_sheet_includes_format_guidance(self):
+        """design-token-sheet system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("design-token-sheet")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+        assert "JSON" in skill.system_prompt or "React" in skill.system_prompt
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_deck_skills_trust_tier_inheritance(self, skill_registry, system_registry):
+        """Deck skills with multi-format output inherit trust tier correctly."""
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="pitch-deck",
+            design_system_slug="default",
+            responses={
+                "company_name": "TestCo",
+                "one_liner": "Test service",
+                "stage": "Seed",
+                "slide_count": "12",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+        assert project.outputs[0].trust_tier == TrustTier.T3
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_design_system_skills_trust_tier_inheritance(
+        self, skill_registry, system_registry
+    ):
+        """Design-system skills with multi-format output inherit trust tier correctly."""
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="brand-guidelines",
+            design_system_slug="default",
+            responses={
+                "brand_name": "TestBrand",
+                "brand_values": "Innovative, Trustworthy",
+                "sections": "Logo, Colors",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+        assert project.outputs[0].trust_tier == TrustTier.T3
+
+
 # ─── Protocol compliance ──────────────────────────────────────────────────────
 
 

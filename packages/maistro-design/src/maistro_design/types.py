@@ -30,6 +30,7 @@ class OutputFormat(StrEnum):
     PDF = "pdf"
     CSS = "css"
     JSON = "json"
+    DOCX = "docx"
     REACT_TSX = "react_tsx"
 
 

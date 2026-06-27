@@ -82,7 +82,24 @@ Build a realistic browser interface that supports this workflow.
         mode=SkillMode.DECK,
         description="Investor-ready pitch deck with structured slides.",
         featured=True,
-        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        output_formats=[
+            OutputFormat.HTML,
+            OutputFormat.MARKDOWN,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PPTX,
+            OutputFormat.PDF,
+        ],
+        system_prompt=f"""You are designing an investor-ready pitch deck.
+
+Structure each slide clearly with:
+- Strong headline (one key idea per slide)
+- Supporting visuals or data
+- Consistent visual hierarchy across all slides
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate a self-contained React component that renders slides with useState-based navigation.
+For PPTX/PDF: Structure as slide metadata and content suitable for conversion.""",
         tags=["pitch", "investor", "startup"],
         discovery_form=[
             DiscoveryField(
@@ -120,7 +137,25 @@ Build a realistic browser interface that supports this workflow.
         name="Product Demo Deck",
         mode=SkillMode.DECK,
         description="Feature walkthrough deck for customer demos and sales.",
-        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        output_formats=[
+            OutputFormat.HTML,
+            OutputFormat.MARKDOWN,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PPTX,
+            OutputFormat.PDF,
+        ],
+        system_prompt=f"""You are designing a product demo walkthrough deck.
+
+Each slide should:
+- Focus on one feature or capability
+- Include clear call-to-action for next steps
+- Use real product screenshots or mockups where appropriate
+- Build toward purchase decision
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate a self-contained React component with slide navigation and interactive elements.
+For PPTX/PDF: Structure for easy conversion to presentation format.""",
         tags=["demo", "sales", "product"],
         discovery_form=[
             DiscoveryField(
@@ -233,7 +268,30 @@ Email constraints:
         mode=SkillMode.DESIGN_SYSTEM,
         description="Generate a brand guidelines document from a design system.",
         featured=True,
-        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        output_formats=[
+            OutputFormat.HTML,
+            OutputFormat.MARKDOWN,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PDF,
+            OutputFormat.DOCX,
+            OutputFormat.PNG,
+        ],
+        system_prompt=f"""You are creating comprehensive brand guidelines documentation.
+
+Cover:
+- Brand purpose and mission
+- Visual identity (logo, color palette, typography)
+- Voice and tone guidelines
+- Component library overview
+- Usage dos and don'ts
+- Real-world application examples
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate an interactive brand showcase component with color swatches, typography samples, and component gallery.
+For PDF: Create a printable guidelines document with clear sections and consistent formatting.
+For DOCX: Generate an editable Word document suitable for distribution to stakeholders.
+For PNG: Render visual style guide assets (color palette, typography scale).""",
         tags=["brand", "guidelines", "identity"],
         discovery_form=[
             DiscoveryField(
@@ -264,7 +322,31 @@ Email constraints:
         name="Design Token Sheet",
         mode=SkillMode.DESIGN_SYSTEM,
         description="Generate CSS custom properties and JSON token export for a design system.",
-        output_formats=[OutputFormat.CSS, OutputFormat.JSON],
+        output_formats=[
+            OutputFormat.CSS,
+            OutputFormat.JSON,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PDF,
+            OutputFormat.PNG,
+        ],
+        system_prompt=f"""You are generating a comprehensive design token reference sheet.
+
+Include:
+- Color tokens (with contrast ratios for accessibility)
+- Typography tokens (font families, sizes, weights, line heights)
+- Spacing tokens (margins, padding, gaps)
+- Border radius tokens
+- Shadow/elevation tokens
+- Motion/animation tokens
+- Z-index scale
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate an interactive token browser component with searchable token list, live preview, and copy-to-clipboard functionality.
+For CSS: Output CSS custom properties (variables) ready for production use.
+For JSON: Export token definitions in standardized format (Design Tokens Community Group format).
+For PDF: Create a visual token reference guide with swatches and specifications.
+For PNG: Render visual token scale assets (color palette, typography samples, spacing grid).""",
         tags=["tokens", "css", "design-system"],
         discovery_form=[
             DiscoveryField(
