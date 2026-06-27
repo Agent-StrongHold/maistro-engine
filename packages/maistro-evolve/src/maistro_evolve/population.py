@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from .audit import GenomeAuditTrail
 from .types import PipelineGenome
 
 
@@ -143,6 +144,37 @@ class PopulationStore:
         self.add(active)
         target.is_active = True
         self.add(target)
+        return target
+
+    async def promote_audited(self, genome_id: str, audit: GenomeAuditTrail) -> PipelineGenome:
+        """Promote, with a mandatory audit record preceding the state change.
+
+        The audit entry is recorded for the *attempt* before ``promote()``
+        runs, and a second entry confirms the *commit* after it succeeds. If
+        the audit sink itself fails (e.g. the formal-conformance adversarial
+        case), the exception propagates before any state mutation happens —
+        fail-closed, mirroring ``promote()``'s own approval-gate posture.
+        There is no other entrypoint that can flip ``is_active``/promote a
+        genome without going through this method or ``promote()`` directly
+        (which callers are expected to route through this wrapper for any
+        promotion that must be auditable).
+        """
+        await audit.record("promotion_attempt", genome_id)
+        genome = self.promote(genome_id)
+        await audit.record("promotion_committed", genome_id)
+        return genome
+
+    async def rollback_audited(self, audit: GenomeAuditTrail) -> PipelineGenome | None:
+        """Roll back, with a mandatory audit record preceding the state change.
+
+        Logs the attempt (tagged with the currently-active genome, if any)
+        before mutating state, then logs the commit (tagged with the
+        restored genome, or "none" if there was nothing to roll back to).
+        """
+        before = self.get_active()
+        await audit.record("rollback_attempt", before.id if before is not None else "")
+        target = self.rollback()
+        await audit.record("rollback_committed", target.id if target is not None else "")
         return target
 
     def get_lineage(self, genome_id: str) -> list[PipelineGenome]:
