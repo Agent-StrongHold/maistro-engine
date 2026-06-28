@@ -540,8 +540,8 @@ async def test_iter_task_events_returns_when_task_disappears() -> None:
     from services.engine import EngineService
 
     async def _events(tid: str) -> AsyncIterator[dict[str, Any]]:
-        return
-        yield  # pragma: no cover - makes this an async generator
+        for event in ():
+            yield event
 
     class _B:
         def iter_events(self, tid: str) -> Any:

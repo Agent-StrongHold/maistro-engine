@@ -26,7 +26,7 @@ owners:
 
 ## Finding addressed
 
-`NodeRun._execute_single` and `NodeRun._execute_beam` combine retry limits, circuit/budget checks, cancellation, LLM timeout handling, parser failures, candidate scoring, and final accounting. Beam parse-failure edge cases now have exact tests and the all-parse-failed path now terminates as failed instead of returning while still running; remaining work is the single-attempt retry/timeout/cancellation state table.
+`NodeRun._execute_single` and `NodeRun._execute_beam` combine retry limits, circuit/budget checks, cancellation, LLM timeout handling, parser failures, candidate scoring, and final accounting. The reviewed retry, timeout, cancellation, circuit, budget, parse-failure, provider-error, and scorer-failure paths now have exact tests and terminal-state assertions.
 
 ## Design
 
@@ -38,9 +38,9 @@ owners:
 
 ## Acceptance criteria
 
-- [ ] Single execution tests cover success, timeout, parse failure, provider exception, cancellation, circuit-open, and budget-exhausted paths.
-- [ ] Retry count and final error message are asserted exactly for each failure family.
+- [x] Single execution tests cover success, timeout, parse failure, provider exception, cancellation, circuit-open, and budget-exhausted paths.
+- [x] Retry count and final error message are asserted exactly for each failure family.
 - [x] Beam tests cover all-success, all-parse-fail, and mixed parse-failure/success paths.
-- [ ] Beam tests cover all-provider-error, empty candidate list, and scorer failure.
-- [ ] No graph execution test depends on a real LLM provider or wall-clock sleep.
-- [ ] Any intentional centralized complexity is linked to this spec with a reason.
+- [x] Beam tests cover all-provider-error and scorer failure; an empty beam candidate list is not reachable through public `execute` because `beam_width <= 1` uses the single path.
+- [x] No graph execution test depends on a real LLM provider or wall-clock sleep.
+- [x] Any intentional centralized complexity is linked to this spec with a reason.

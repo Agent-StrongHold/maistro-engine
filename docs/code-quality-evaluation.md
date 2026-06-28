@@ -49,7 +49,6 @@ Use `./scripts/run-quality-scans.sh` for the current consolidated local scan. If
 - [2026-06-21 initial code quality scan](code-quality-initial-scan-2026-06-21.md)
 - [2026-06-21 code quality deep dive](code-quality-deep-dive-2026-06-21.md)
 - [2026-06-21 code quality second pass](code-quality-second-pass-2026-06-21.md)
-- [2026-06-28 code quality third pass](code-quality-third-pass-2026-06-28.md)
 
 ## Minimal PR quality gate
 

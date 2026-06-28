@@ -827,7 +827,6 @@ def _get_confluence_pat(user_id: str) -> str | None:
         return resolver.first_secret(ToolCallContext(user_id), CONFLUENCE_PROVIDER_IDS)
     except Exception:
         return None
-    return None
 
 
 async def _tool_search_confluence(
