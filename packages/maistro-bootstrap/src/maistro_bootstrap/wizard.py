@@ -13,6 +13,7 @@ from maistro_bootstrap.platform_detect import (
     deployment_hint,
     deployment_tier_gate_message,
     detect_container_runtime,
+    environment_report,
     uname_summary,
 )
 from maistro_bootstrap.resolver import COMPOSE_ADDONS, FEATURES, PRODUCTS
@@ -99,7 +100,10 @@ def collect_answers_interactive() -> InstallAnswersV1:
         )
     )
     det, hint = detect_container_runtime()
-    console.print(f"[dim]Container runtime:[/dim] {det} — {hint}\n")
+    env = environment_report()
+    console.print(f"[dim]Container runtime:[/dim] {det} — {hint}")
+    console.print(f"[dim]Admin:[/dim] {env['admin_hint']}")
+    console.print(f"[dim]Virtualization:[/dim] {', '.join(env['virtualization'])}\n")
 
     stack_bringup = _stack_bringup()
     features = _feature_set()
@@ -144,6 +148,22 @@ def collect_answers_interactive() -> InstallAnswersV1:
         "User / tenancy intent:",
         ["skip", "bootstrap_admin", "sso_later"],
     )
+    delivery_mode = _select_str(
+        "Install delivery (same runtime behavior; source build takes longer):",
+        ["image_pull", "source_build"],
+    )
+    sandbox = _select_str(
+        "Sandbox profile (safe is default; unsupported options require building from source):",
+        ["safe", "developer"],
+    )
+    crypto_profile = _select_str(
+        "Crypto / identity profile:",
+        ["distributed_identity_root", "no_crypto", "full_all_crypto"],
+    )
+    admin_user = questionary.text("Admin user name:", default="maistro-admin").ask()
+    daily_user = questionary.text("Daily driver user 1:", default="maistro-user").ask()
+    if admin_user is None or daily_user is None:
+        _abort()
 
     raw: dict[str, Any] = {
         "schema_version": "1",
@@ -159,5 +179,12 @@ def collect_answers_interactive() -> InstallAnswersV1:
         "users_intent": users_i,
         "stack_bringup": stack_bringup,
         "provider_accounts": {"openai": oa, "anthropic": an},
+        "install_surface": "curl",
+        "delivery_mode": delivery_mode,
+        "sandbox_profile": sandbox,
+        "crypto_profile": crypto_profile,
+        "admin_user": admin_user,
+        "daily_driver_user": daily_user,
+        "reactor_enabled": True,
     }
     return parse_answers_dict(raw)
