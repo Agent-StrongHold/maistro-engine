@@ -1100,6 +1100,170 @@ class TestDesignEngineGenerate:
         assert output.content == output.root.value
 
 
+# ─── build_multimodal_output / persist_blobs ─────────────────────────────────
+
+
+class TestBuildMultimodalOutput:
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_single_string_content_produces_file_root(self):
+        """
+        Given a single {HTML: "<h1>hi</h1>"} content entry
+        When build_multimodal_output() is called
+        Then output.root.kind == FILE and output.content carries the html.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output(
+            {OutputFormat.HTML: "<h1>hi</h1>"}, trust_tier=TrustTier.T3
+        )
+        assert output.root.kind is ArtifactKind.FILE
+        assert output.format is OutputFormat.HTML
+        assert output.content == "<h1>hi</h1>"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_single_bytes_content_produces_blob_root(self):
+        """
+        Given a single {PNG: b"\\x89PNG"} content entry
+        When build_multimodal_output() is called
+        Then output.root.kind == BLOB and value is the raw bytes.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output({OutputFormat.PNG: b"\x89PNG"}, trust_tier=TrustTier.T3)
+        assert output.root.kind is ArtifactKind.BLOB
+        assert output.root.format is OutputFormat.PNG
+        assert output.root.value == b"\x89PNG"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_multi_format_content_produces_container_root(self):
+        """
+        Given {HTML: ..., CSS: ..., JS: ...} content
+        When build_multimodal_output() is called
+        Then output.root.kind == CONTAINER with one FILE child per format,
+        keyed by OutputFormat.value.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output(
+            {
+                OutputFormat.HTML: "<html></html>",
+                OutputFormat.CSS: "body { color: red; }",
+                OutputFormat.JS: "console.log('hi')",
+            },
+            trust_tier=TrustTier.T3,
+        )
+        assert output.root.kind is ArtifactKind.CONTAINER
+        assert set(output.root.children) == {"html", "css", "js"}
+        assert output.root.children["html"].kind is ArtifactKind.FILE
+        assert output.root.children["html"].value == "<html></html>"
+        assert output.root.children["css"].format is OutputFormat.CSS
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_empty_contents_raises_value_error(self):
+        """
+        Given an empty content dict
+        When build_multimodal_output() is called
+        Then ValueError is raised.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+
+        with pytest.raises(ValueError, match="at least one"):
+            build_multimodal_output({}, trust_tier=TrustTier.T3)
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_script_injection_raises_trust_banned_error(self):
+        """
+        Given a format whose content contains a <script> tag
+        When build_multimodal_output() is called
+        Then TrustBannedError is raised by the same scan generate() uses.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import OutputFormat, TrustBannedError
+
+        with pytest.raises(TrustBannedError):
+            build_multimodal_output(
+                {OutputFormat.HTML: "<script>alert(1)</script>"}, trust_tier=TrustTier.T3
+            )
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_byte_encoded_text_format_produces_file_root_with_decoded_value(self):
+        """
+        Given a text format (SVG) passed as UTF-8-encoded bytes
+        When build_multimodal_output() is called
+        Then output.root.kind == FILE and value is the decoded str, not raw bytes.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output(
+            {OutputFormat.SVG: b"<svg></svg>"}, trust_tier=TrustTier.T3
+        )
+        assert output.root.kind is ArtifactKind.FILE
+        assert output.root.value == "<svg></svg>"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_byte_encoded_text_format_is_still_scanned(self):
+        """
+        Given a text format (SVG) passed as UTF-8-encoded bytes containing a
+        <script> tag
+        When build_multimodal_output() is called
+        Then TrustBannedError is raised — byte encoding must not let a text
+        artifact bypass the Warden scan by masquerading as a BLOB.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import OutputFormat, TrustBannedError
+
+        with pytest.raises(TrustBannedError):
+            build_multimodal_output(
+                {OutputFormat.SVG: b"<svg><script>alert(1)</script></svg>"},
+                trust_tier=TrustTier.T3,
+            )
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_persist_blobs_calls_store_blob_for_each_blob_leaf(self):
+        """
+        Given a multi-format output with one PNG blob entry
+        When persist_blobs(output, canvas_store) is called
+        Then canvas_store.store_blob() is awaited once with the blob's bytes/format
+        And the returned mapping has one entry keyed by the blob's dotted address.
+        """
+        from unittest.mock import AsyncMock
+
+        from maistro_design.engine import build_multimodal_output, persist_blobs
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import OutputFormat
+
+        output = build_multimodal_output(
+            {OutputFormat.HTML: "<html></html>", OutputFormat.PNG: b"\x89PNG"},
+            trust_tier=TrustTier.T3,
+        )
+        canvas_store = AsyncMock()
+        canvas_store.store_blob.return_value = "asset-123"
+
+        stored = await persist_blobs(output, canvas_store)
+
+        canvas_store.store_blob.assert_awaited_once_with(b"\x89PNG", format="png", metadata={})
+        assert stored == {"output.png": "asset-123"}
+
+
 # ─── Protocol compliance ──────────────────────────────────────────────────────
 
 

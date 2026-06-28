@@ -151,13 +151,43 @@ skill's `system_prompt` or a design system's `design_md`/`tokens_css`).
 `Protocol`), each with one `async` render method (`render`/`render_text`)
 returning `bytes`.
 
-Today the engine only ever constructs a single `FILE`-kind root (one prompt
-stack, format `MARKDOWN`); the renderer protocols and multi-artifact container
-shape exist on the type/contract level for callers and future skills to use,
-but `DesignEngine.generate()` does not yet itself produce multi-file or blob
-outputs. `DesignOrchestrateNode` (`nodes.py`) is unaffected: it reads
-`project.outputs[0].content`, which continues to resolve through the new
+`DesignEngine.generate()` itself only ever constructs a single `FILE`-kind
+root (one prompt stack, format `MARKDOWN`) — it does not call an LLM or an
+image-generation backend (ADR-061), so it has no real per-format content to
+split into a multi-file tree and no `model_id`/pixel-dimension config to
+drive `ImageGenClient`. `DesignOrchestrateNode` (`nodes.py`) is unaffected: it
+reads `project.outputs[0].content`, which continues to resolve through the
 `DesignOutput.content` property unchanged.
+
+Two public, caller-facing functions in `engine.py` close the gap for callers
+that *have* already produced real per-format content (post-LLM, post-image-gen):
+
+```python
+def build_multimodal_output(
+    contents: dict[OutputFormat, str | bytes],
+    *,
+    trust_tier: TrustTier,
+    banish_list: InMemoryTrustBanishList | None = None,
+) -> DesignOutput: ...
+    # One entry -> root.kind=FILE (str) or BLOB (bytes), matching generate()'s
+    # single-artifact shape. Multiple entries -> root.kind=CONTAINER with one
+    # FILE/BLOB child per format, keyed by OutputFormat.value ("html", "css",
+    # "png", ...) since no real filenames exist pre-render. Always runs
+    # scan_design_output() before returning; raises TrustBannedError on a
+    # blocking finding. Reuses _scan_output_or_raise — no new scan logic.
+
+async def persist_blobs(output: DesignOutput, canvas_store: CanvasStore) -> dict[str, str]: ...
+    # Walks output.root.walk(), calls canvas_store.store_blob(node.value,
+    # format=..., metadata=node.metadata) for every BLOB leaf, and returns
+    # {dotted_address: stored_id}. Does not mutate output (outputs are
+    # immutable once created — see Non-goals).
+```
+
+`packages/maistro-canvas/src/maistro_canvas/protocols.py`'s `CanvasStore`
+protocol gained `store_blob(self, data: bytes, *, format: str, metadata:
+dict[str, Any] | None = None) -> str` — purely additive (it's a `Protocol`;
+no concrete class is forced to implement it unless something does
+`isinstance(x, CanvasStore)`, which nothing in the codebase does).
 
 ## Acceptance criteria
 
@@ -173,6 +203,15 @@ outputs. `DesignOrchestrateNode` (`nodes.py`) is unaffected: it reads
 - [x] `SkillModeError` raised if a skill's `required_renderer` has no matching
       renderer injected into `DesignEngine`
 - [x] `generate()` succeeds when the required renderer is provided
+- [x] `build_multimodal_output()` with a single `str`/`bytes` entry produces a
+      `FILE`/`BLOB` root, matching `generate()`'s single-artifact shape
+- [x] `build_multimodal_output()` with multiple entries produces a
+      `CONTAINER` root with one `FILE`/`BLOB` child per format, keyed by
+      `OutputFormat.value`
+- [x] `build_multimodal_output()` raises `TrustBannedError` on blocking scan
+      findings, same as `generate()`
+- [x] `persist_blobs()` calls `canvas_store.store_blob()` once per `BLOB` leaf
+      and returns one entry per leaf keyed by its dotted address
 
 ## Testing
 
@@ -189,6 +228,11 @@ outputs. `DesignOrchestrateNode` (`nodes.py`) is unaffected: it reads
 - `TestDesignEngineGenerate::test_generate_output_is_a_file_artifact`
 - `TestDesignEngineGenerate::test_generate_raises_skill_mode_error_for_missing_renderer`
 - `TestDesignEngineGenerate::test_generate_succeeds_when_required_renderer_is_provided`
+- `TestBuildMultimodalOutput::test_single_string_content_produces_file_root`
+- `TestBuildMultimodalOutput::test_single_bytes_content_produces_blob_root`
+- `TestBuildMultimodalOutput::test_multi_format_content_produces_container_root`
+- `TestBuildMultimodalOutput::test_script_injection_raises_trust_banned_error`
+- `TestBuildMultimodalOutput::test_persist_blobs_calls_store_blob_for_each_blob_leaf`
 
 `packages/maistro-design/tests/test_scan.py` (`TestScanDesignOutput`):
 - `test_clean_output_passes`
@@ -202,11 +246,17 @@ outputs. `DesignOrchestrateNode` (`nodes.py`) is unaffected: it reads
 
 ## Open questions
 
-- `DesignEngine.generate()` itself never builds a multi-file `container` root or
-  a `blob` root yet — no skill in `skills/builtins.py` currently sets
-  `output_formats` to more than one format or `required_renderer` to a real
-  value. Wiring an actual multi-file/rasterized skill through a renderer is
-  follow-up work, not blocked by anything in this SPEC.
+- `DesignEngine.generate()` itself never builds a multi-file `container` root
+  or a `blob` root, and that's intentional, not a gap: several builtin skills
+  already set multi-format `output_formats` (`pitch-deck`, `product-demo-deck`,
+  `landing-page`, `brand-guidelines`, `design-token-sheet` all declare 2
+  formats), but `generate()` runs before any LLM/image-gen call, so it never
+  has real per-format content to split — see `build_multimodal_output()`
+  above for the caller-facing function that assembles real content into a
+  multi-file/blob `DesignOutput` after that content exists. No skill currently
+  sets `required_renderer` to a real value; wiring an actual rasterized skill
+  through a renderer remains follow-up work, not blocked by anything in this
+  SPEC.
 - `packages/maistro-design/src` is not part of CI's `mypy --strict` package list
   (pre-existing gap, unrelated to this change); the 7 pre-existing strict errors
   in this package are unchanged by this work.
@@ -217,6 +267,7 @@ outputs. `DesignOrchestrateNode` (`nodes.py`) is unaffected: it reads
 - `packages/maistro-design/src/maistro_design/scan.py`
 - `packages/maistro-design/src/maistro_design/engine.py`
 - `packages/maistro-design/src/maistro_design/protocols.py`
+- `packages/maistro-canvas/src/maistro_canvas/protocols.py`
 - `packages/maistro-design/src/maistro_design/systems/importer.py`
 - `packages/maistro-design/tests/test_design.py`
 - `packages/maistro-design/tests/test_scan.py`
