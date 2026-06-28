@@ -38,6 +38,7 @@ from maistro_design.types import (
 if TYPE_CHECKING:
     from maistro_canvas.protocols import CanvasStore, ImageGenClient
     from maistro_design.protocols import (
+        DesignProjectStore,
         DesignSkillRegistry,
         DesignSystemRegistry,
         HTMLRenderer,
@@ -164,6 +165,7 @@ class DesignEngine:
         html_renderer: HTMLRenderer | None = None,
         svg_renderer: SVGRenderer | None = None,
         typography_renderer: TypographyRenderer | None = None,
+        project_store: DesignProjectStore | None = None,
     ) -> None:
         self._skills = skill_registry
         self._systems = system_registry
@@ -176,6 +178,7 @@ class DesignEngine:
         self._html_renderer = html_renderer
         self._svg_renderer = svg_renderer
         self._typography_renderer = typography_renderer
+        self._project_store = project_store
         self._context_trust_tier: TrustTier = TrustTier.T0
 
     @property
@@ -184,6 +187,13 @@ class DesignEngine:
 
     def _contaminate(self, tier: TrustTier) -> None:
         self._context_trust_tier = self._context_trust_tier.min(tier)
+
+    def reset_context(self) -> None:
+        """Reset trust context to T0 (trusted).
+
+        Call before each generate() to prevent trust contamination across requests.
+        """
+        self._context_trust_tier = TrustTier.T0
 
     def _check_compatibility(self, skill: Any, design_system_slug: str) -> None:
         if (
@@ -264,16 +274,21 @@ class DesignEngine:
             raise SkillNotFoundError(msg)
         return [f.to_dict() for f in skill.discovery_form]
 
-    async def generate(self, discovery: DiscoveryResult) -> DesignProject:
+    async def generate(
+        self, discovery: DiscoveryResult, org_id: str = "default-org", team_id: str | None = None
+    ) -> DesignProject:
         """Build a DesignProject from completed discovery responses.
 
         Pipeline:
-          1. Resolve skill + design system; check compatibility, image_gen, and renderers
-          2. Contaminate context with skill + system + discovery trust tiers
-          3. Scan discovery responses through banish list and Warden
-          4. Validate required discovery fields
-          5. Assemble prompt stack and optionally create a CanvasRecord
+          1. Reset trust context to T0 (prevent cross-request contamination)
+          2. Resolve skill + design system; check compatibility, image_gen, and renderers
+          3. Contaminate context with skill + system + discovery trust tiers
+          4. Scan discovery responses through banish list and Warden
+          5. Validate required discovery fields
+          6. Assemble prompt stack and optionally create a CanvasRecord
+          7. Persist project via project_store if available
         """
+        self.reset_context()
         skill = self._skills.get(discovery.skill_slug)
         if skill is None:
             msg = f"Design skill '{discovery.skill_slug}' not found"
@@ -309,13 +324,20 @@ class DesignEngine:
             canvas_id = canvas_record.id
 
         project_id = str(uuid.uuid4())
-        return DesignProject(
+        project = DesignProject(
             id=project_id,
             name=f"{skill.name} ({system.name})",
             skill_slug=skill.slug,
             design_system_slug=system.slug,
+            org_id=org_id,
+            team_id=team_id,
             trust_tier=self._context_trust_tier,
             canvas_id=canvas_id,
             outputs=[output],
             discovery=discovery,
         )
+
+        if self._project_store is not None:
+            project = await self._project_store.create(project)
+
+        return project
