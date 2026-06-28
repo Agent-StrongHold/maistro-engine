@@ -60,15 +60,15 @@ async def create_design_project(request: Request, discovery: DiscoveryResult) ->
         project = await engine.generate(discovery, org_id=org_id, team_id=None)
         return project.to_dict()
     except SkillNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except DesignSystemNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except DiscoveryIncompleteError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from None
     except DesignError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from None
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Generation failed: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Generation failed: {e!s}") from None
 
 
 @router.get("/projects/{project_id}")
@@ -96,7 +96,7 @@ async def get_design_project(project_id: str) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
 
 
 @router.get("/projects")
@@ -125,7 +125,7 @@ async def list_design_projects(
 
         return [p.to_dict() for p in projects]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
 
 
 @router.get("/skills")
@@ -152,7 +152,7 @@ async def list_design_skills() -> list[dict[str, Any]]:
             for s in skills
         ]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
 
 
 @router.get("/skills/{skill_slug}/discovery")
@@ -169,9 +169,9 @@ async def get_skill_discovery_form(skill_slug: str) -> list[dict[str, Any]]:
         form = await engine.run_discovery(skill_slug)
         return form
     except SkillNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
 
 
 @router.post("/projects/{project_id}/render")
@@ -207,7 +207,7 @@ async def create_render_job(project_id: str, format: str = "pdf") -> dict[str, A
             raise HTTPException(
                 status_code=400,
                 detail=f"Unsupported format: {format}. Allowed: pdf, pptx, docx, png",
-            )
+            ) from None
 
         # Create render job
         job = preview_svc.create_render_job(project_id, output_format)
@@ -220,7 +220,7 @@ async def create_render_job(project_id: str, format: str = "pdf") -> dict[str, A
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Render job creation failed: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Render job creation failed: {e!s}") from None
 
 
 @router.get("/projects/{project_id}/render/{job_id}")
@@ -250,4 +250,4 @@ async def get_render_job_status(project_id: str, job_id: str) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from None
