@@ -41,7 +41,11 @@ def _init_engine() -> None:
     cred_svc.init_credential_store(tempfile.mkdtemp(prefix="hive-cred-test-"))
 
     # Initialize design services for tests
+    import services.design_preview as preview_mod
     import services.design_render as render_mod
+
+    if preview_mod._singleton is None:
+        preview_mod._singleton = preview_mod.DesignPreviewService()
 
     if render_mod._singleton is None:
         render_mod._singleton = render_mod.DesignRenderService()
