@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -277,6 +278,34 @@ async def test_reason_sentinel_post_call_sanitizes_result() -> None:
 
     assert result.tool_history[0]["result"] == "sanitized:ran with {'path': 'a.py'}"
     assert sentinel.post_calls == [("read_file", "ran with {'path': 'a.py'}")]
+
+
+async def test_reason_pii_filter_import_error_passes_through_unredacted() -> None:
+    """If the pii_filter module is unavailable, the tool result is left unredacted."""
+    provider = FauxProvider()
+    provider.seed_tool_call("read_file", {"path": "a.py"})
+    provider.seed(FauxResponse(content="ok"))
+    strategy = ReactStrategy(max_rounds=2)
+    tools = _tools_for("read_file")
+
+    async def _pii_executor(_name: str, _args: dict[str, Any]) -> str:
+        return "Contact me at someone@example.com please"
+
+    modname = "maistro.security.sentinel.pii_filter"
+    sys.modules.pop(modname, None)
+    sys.modules[modname] = None  # type: ignore[assignment]
+    try:
+        result = await strategy.reason(
+            [{"role": "user", "content": "x"}],
+            "m",
+            provider,
+            tools=tools,
+            tool_executor=_pii_executor,
+        )
+    finally:
+        del sys.modules[modname]
+
+    assert result.tool_history[0]["result"] == "Contact me at someone@example.com please"
 
 
 async def test_reason_warden_blocks_tool_result_without_sentinel() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -169,3 +170,22 @@ async def test_reason_redacts_pii_in_content(messages: list[dict[str, Any]]) -> 
 
     assert result.response is not None
     assert "someone@example.com" not in result.response
+
+
+async def test_reason_pii_filter_import_error_passes_through_unredacted(
+    messages: list[dict[str, Any]],
+) -> None:
+    """If the pii_filter module is unavailable, content is returned as-is instead of raising."""
+    provider = FauxProvider(
+        default_response=FauxResponse(content="Contact me at someone@example.com please")
+    )
+    strategy = DirectStrategy()
+    modname = "maistro.security.sentinel.pii_filter"
+    sys.modules.pop(modname, None)
+    sys.modules[modname] = None  # type: ignore[assignment]
+    try:
+        result = await strategy.reason(messages, "test-model", provider)
+    finally:
+        del sys.modules[modname]
+
+    assert result.response == "Contact me at someone@example.com please"
