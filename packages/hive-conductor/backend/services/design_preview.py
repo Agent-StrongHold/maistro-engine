@@ -69,21 +69,21 @@ class RenderJob:
 class DesignPreviewService:
     """Server-side rendering and validation for design outputs."""
 
-    # Whitelist of allowed React/Node imports
-    ALLOWED_IMPORTS = {
-        "react",
-        "react-dom",
-        "react/jsx-runtime",
-        "classnames",
-        "clsx",
-        "@headlessui/react",
-        "@radix-ui/react-*",
-        "tailwindcss",
-        "framer-motion",
-    }
+    ALLOWED_IMPORTS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "react",
+            "react-dom",
+            "react/jsx-runtime",
+            "classnames",
+            "clsx",
+            "@headlessui/react",
+            "@radix-ui/react-*",
+            "tailwindcss",
+            "framer-motion",
+        }
+    )
 
-    # Allowed Tailwind utility patterns (simplified)
-    ALLOWED_TAILWIND_CLASSES = re.compile(
+    ALLOWED_TAILWIND_CLASSES: ClassVar[re.Pattern[str]] = re.compile(
         r"^(w-|h-|p-|m-|text-|bg-|border-|rounded-|shadow-|flex|grid|"
         r"absolute|relative|fixed|block|inline|flex-col|flex-row|justify-|items-|"
         r"gap-|space-|opacity-|transition|duration-|ease-|hover:|focus:|active:|)"
@@ -92,6 +92,38 @@ class DesignPreviewService:
     def __init__(self) -> None:
         """Initialize the preview service."""
         self._render_jobs: dict[str, RenderJob] = {}
+
+    def _check_line_imports(self, line: str, result: dict[str, Any], trust_tier: TrustTier) -> int:
+        """Check import line; return 1 if import, 0 otherwise."""
+        if not (line.strip().startswith("import ") or line.strip().startswith("from ")):
+            return 0
+        if self._is_import_whitelisted(line):
+            return 1
+        if trust_tier == TrustTier.T3:
+            result["errors"].append(f"Non-whitelisted import: {line.strip()[:60]}")
+            result["valid"] = False
+        return 1
+
+    def _check_line_dangerous_patterns(self, line: str, result: dict[str, Any]) -> None:
+        """Check for dangerous code patterns."""
+        if any(
+            pattern in line.lower()
+            for pattern in ["eval(", "exec(", "__import__", "subprocess", "os.system"]
+        ):
+            result["errors"].append(f"Dangerous pattern detected: {line.strip()[:60]}")
+            result["valid"] = False
+
+    def _check_line_tailwind(
+        self, line: str, result: dict[str, Any], trust_tier: TrustTier
+    ) -> None:
+        """Check Tailwind classes in line."""
+        if "className" not in line and "class=" not in line:
+            return
+        classes = re.findall(r'["\']([^"\']*(?:w-|h-|p-|m-|text-|bg-)[^\'"]*)["\']', line)
+        for cls_str in classes:
+            for cls in cls_str.split():
+                if not self.ALLOWED_TAILWIND_CLASSES.match(cls) and trust_tier == TrustTier.T3:
+                    result["warnings"].append(f"Unusual Tailwind class: {cls}")
 
     def validate_react_code(self, code: str, trust_tier: TrustTier) -> dict[str, Any]:
         """Validate generated React/TSX code.
@@ -115,38 +147,14 @@ class DesignPreviewService:
             },
         }
 
-        # For now, basic checks. Full AST parsing would be in Phase 2.
         try:
             lines = code.splitlines()
             import_count = 0
 
             for line in lines:
-                # Count imports
-                if line.strip().startswith("import ") or line.strip().startswith("from "):
-                    import_count += 1
-                    if not self._is_import_whitelisted(line):
-                        if trust_tier == TrustTier.T3:
-                            result["errors"].append(f"Non-whitelisted import: {line.strip()[:60]}")
-                            result["valid"] = False
-
-                # Check for dangerous patterns (eval, exec, etc.)
-                if any(
-                    pattern in line.lower()
-                    for pattern in ["eval(", "exec(", "__import__", "subprocess", "os.system"]
-                ):
-                    result["errors"].append(f"Dangerous pattern detected: {line.strip()[:60]}")
-                    result["valid"] = False
-
-                # Count Tailwind classes (if present)
-                if "className" in line or "class=" in line:
-                    classes = re.findall(
-                        r'["\']([^"\']*(?:w-|h-|p-|m-|text-|bg-)[^\'"]*)["\']', line
-                    )
-                    for cls_str in classes:
-                        for cls in cls_str.split():
-                            if not self.ALLOWED_TAILWIND_CLASSES.match(cls):
-                                if trust_tier == TrustTier.T3:
-                                    result["warnings"].append(f"Unusual Tailwind class: {cls}")
+                import_count += self._check_line_imports(line, result, trust_tier)
+                self._check_line_dangerous_patterns(line, result)
+                self._check_line_tailwind(line, result, trust_tier)
 
             result["stats"]["import_count"] = import_count
 
