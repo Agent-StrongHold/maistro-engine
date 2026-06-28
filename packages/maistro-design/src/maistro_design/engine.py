@@ -72,9 +72,22 @@ def _build_output(prompt_stack: str, trust_tier: TrustTier) -> DesignOutput:
     )
 
 
+_BINARY_FORMATS = frozenset({OutputFormat.PNG, OutputFormat.PDF, OutputFormat.PPTX})
+
+
 def _artifact_leaf(fmt: OutputFormat, content: str | bytes) -> ArtifactNode:
-    kind = ArtifactKind.BLOB if isinstance(content, bytes) else ArtifactKind.FILE
-    return ArtifactNode(key=fmt.value, kind=kind, format=fmt, value=content)
+    """Classify by format, not by content's Python type.
+
+    A text format (HTML/CSS/JS/SVG/JSON/MARKDOWN) handed to us as UTF-8 bytes
+    must still become a FILE leaf — scan_design_output() skips BLOB leaves
+    entirely, so classifying by isinstance(content, bytes) would let a
+    byte-encoded <script> payload bypass the Warden scan build_multimodal_output()
+    otherwise guarantees.
+    """
+    if fmt in _BINARY_FORMATS:
+        return ArtifactNode(key=fmt.value, kind=ArtifactKind.BLOB, format=fmt, value=content)
+    text_value = content.decode("utf-8") if isinstance(content, bytes) else content
+    return ArtifactNode(key=fmt.value, kind=ArtifactKind.FILE, format=fmt, value=text_value)
 
 
 def build_multimodal_output(

@@ -151,11 +151,17 @@ processing (store, serve, convert formats, etc.).
 ## Acceptance criteria
 
 ```gherkin
-Scenario: Single-file HTML output is a file artifact
+Scenario: Single-file output is a file artifact
   Given a skill with mode=PROTOTYPE, output_formats=[HTML]
   When generate() is called
   Then output.root.kind == "file"
-  And output.root.format == HTML
+  And output.root.format == MARKDOWN
+  Note: generate() always wraps the assembled prompt stack as Markdown
+  (_build_output() hardcodes format=OutputFormat.MARKDOWN) — it never
+  branches on a skill's declared output_formats, since it has not called
+  an LLM and so has no real HTML/CSS/JS content to format as. A skill's
+  output_formats only constrains what a caller may later assemble via
+  build_multimodal_output() once it has real per-format content.
 
 Scenario: Multi-file landing page (HTML+CSS+JS)
   Given a caller has already produced separate HTML/CSS/JS content (e.g. from

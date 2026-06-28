@@ -1199,6 +1199,44 @@ class TestBuildMultimodalOutput:
             )
 
     @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_byte_encoded_text_format_produces_file_root_with_decoded_value(self):
+        """
+        Given a text format (SVG) passed as UTF-8-encoded bytes
+        When build_multimodal_output() is called
+        Then output.root.kind == FILE and value is the decoded str, not raw bytes.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output(
+            {OutputFormat.SVG: b"<svg></svg>"}, trust_tier=TrustTier.T3
+        )
+        assert output.root.kind is ArtifactKind.FILE
+        assert output.root.value == "<svg></svg>"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_byte_encoded_text_format_is_still_scanned(self):
+        """
+        Given a text format (SVG) passed as UTF-8-encoded bytes containing a
+        <script> tag
+        When build_multimodal_output() is called
+        Then TrustBannedError is raised — byte encoding must not let a text
+        artifact bypass the Warden scan by masquerading as a BLOB.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import OutputFormat, TrustBannedError
+
+        with pytest.raises(TrustBannedError):
+            build_multimodal_output(
+                {OutputFormat.SVG: b"<svg><script>alert(1)</script></svg>"},
+                trust_tier=TrustTier.T3,
+            )
+
+    @pytest.mark.contract("behavioral")
     @pytest.mark.scope("integration")
     async def test_persist_blobs_calls_store_blob_for_each_blob_leaf(self):
         """
