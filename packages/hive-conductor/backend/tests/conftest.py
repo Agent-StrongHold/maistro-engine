@@ -40,27 +40,6 @@ def _init_engine() -> None:
 
     cred_svc.init_credential_store(tempfile.mkdtemp(prefix="hive-cred-test-"))
 
-    # Initialize design services for tests
-    try:
-        import services.design_preview as preview_mod
-
-        if preview_mod._singleton is None:
-            preview_mod._singleton = preview_mod.DesignPreviewService()
-    except Exception as e:
-        import logging
-
-        logging.getLogger("conftest").warning("Failed to initialize DesignPreviewService: %s", e)
-
-    try:
-        import services.design_render as render_mod
-
-        if render_mod._singleton is None:
-            render_mod._singleton = render_mod.DesignRenderService()
-    except Exception as e:
-        import logging
-
-        logging.getLogger("conftest").warning("Failed to initialize DesignRenderService: %s", e)
-
 
 @pytest.fixture(autouse=True)
 def _isolate_dashboard_layouts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
