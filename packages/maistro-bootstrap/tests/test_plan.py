@@ -87,3 +87,54 @@ def test_stub_manifest_preview_for_llm_proxy() -> None:
     plan = build_install_plan(answers, repo_root=None)
     joined = " ".join(plan["preview_notes"])
     assert "litellm" in joined.lower() or "preview" in joined.lower()
+
+
+def test_golden_plan_root_full_without_repo_root_has_no_apply_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("maistro_bootstrap.plan.find_maistro_engine_root", lambda: None)
+    plan = build_install_plan(
+        parse_answers_dict({"schema_version": "1", "stack_bringup": "root_full"})
+    )
+
+    assert plan["repo_root"] is None
+    assert plan["apply_spec"] is None
+    assert plan["shell_commands"] == [
+        "# === maistro-install plan (default: print only) ===",
+        "# stack_bringup=root_full: [preview] Repo root not found — set MAISTRO_REPO_ROOT "
+        "or run from inside maistro-engine; apply will not run.",
+    ]
+    assert plan["preview_notes"] == [
+        "stack_bringup=root_full: [preview] Repo root not found — set MAISTRO_REPO_ROOT "
+        "or run from inside maistro-engine; apply will not run."
+    ]
+
+
+def test_golden_plan_observability_and_gateway_preview_notes() -> None:
+    plan = build_install_plan(
+        parse_answers_dict(
+            {
+                "schema_version": "1",
+                "features": ["observability"],
+                "llm_gateway": "other",
+                "observability_backend": "langfuse_v3",
+                "stack_bringup": "none",
+            }
+        ),
+        repo_root=Path("/tmp/maistro-root"),
+    )
+
+    assert plan["preview_notes"] == [
+        "[preview] Root compose includes `langfuse`; choosing Arize or Langfuse v2/v3 in answers "
+        "is a manifest hint until matching services are added to compose.",
+        "observability=langfuse_v3: [preview] Stack includes `langfuse` service; "
+        "image major version pinning is a separate compose change.",
+        "llm_gateway=other: [preview] No alternate gateway merged in Tier 0; "
+        "use direct SDK calls or add a compose profile later.",
+    ]
+    assert plan["compose_profile_hints"] == [
+        "# Compose profile stub (root docker-compose.yml is always-on today):",
+        "# When profiles land: COMPOSE_PROFILES=llm,observability docker compose up -d",
+        "# See docs/install/compose-slices.example.yml",
+        "# [preview] feature observability → future profile `observability` toggles Langfuse slice.",
+    ]

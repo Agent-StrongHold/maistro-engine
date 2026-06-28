@@ -304,6 +304,46 @@ class TestNodeRun:
         assert nr.parsed_output.summary == "strong"
 
     @pytest.mark.asyncio
+    async def test_beam_all_parse_failures_finishes_failed(self):
+        llm = _RecordingLlm(["not json", "still not json", "also not json"])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=3,
+        )
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.FAILED
+        assert nr.parse_error == "all beam candidates failed to parse"
+        assert len(nr.beam_candidates) == 3
+        assert all(candidate.parse_error == "failed to parse" for candidate in nr.beam_candidates)
+        assert nr.to_result().success is False
+
+    @pytest.mark.asyncio
+    async def test_beam_mixed_parse_failures_selects_best_valid_candidate(self):
+        llm = _RecordingLlm(["not json", _make_plan_json("strong", 5), _make_plan_json("weak", 1)])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=3,
+        )
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.SUCCEEDED
+        assert nr.beam_selected == 1
+        assert isinstance(nr.parsed_output, PlanOutput)
+        assert nr.parsed_output.summary == "strong"
+        assert nr.beam_candidates[0].parse_error == "failed to parse"
+
+    @pytest.mark.asyncio
     async def test_iteration_budget_consumed(self):
         llm = _RecordingLlm([_make_plan_json()])
         budget = IterationBudget(10)

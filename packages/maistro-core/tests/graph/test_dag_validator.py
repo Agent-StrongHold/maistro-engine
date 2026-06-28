@@ -322,3 +322,43 @@ def test_alias_keys_in_edges_get_used_for_cycle_detection() -> None:
     report = validate_dag(dag)
     assert not report.is_valid
     assert any(f.code == "cycle" for f in report.findings)
+
+
+def test_self_cycle_reports_exact_cycle_finding() -> None:
+    dag = {
+        "nodes": [{"id": "a", "kind": "test.validator_a"}],
+        "edges": [{"from_node": "a", "to_node": "a"}],
+        "entry_node": "a",
+    }
+
+    report = validate_dag(dag)
+
+    cycles = [f for f in report.findings if f.code == "cycle"]
+    assert len(cycles) == 1
+    assert cycles[0].severity == "error"
+    assert cycles[0].node_id == "a"
+    assert "a" in cycles[0].message
+
+
+def test_multiple_failures_have_stable_finding_codes_and_locations() -> None:
+    dag = {
+        "nodes": [
+            {"id": "a", "kind": "test.validator_a"},
+            {"id": "c", "kind": "test.validator_c"},
+            {"id": "ghost-kind", "kind": "missing.kind"},
+        ],
+        "edges": [
+            {"from_node": "a", "to_node": "c"},
+            {"from_node": "a", "to_node": "missing-node"},
+        ],
+        "entry_node": "a",
+    }
+
+    report = validate_dag(dag)
+
+    observed = [(f.code, f.node_id, f.edge_index, f.field_path) for f in report.findings]
+    assert observed == [
+        ("edge_missing_endpoint", None, 1, None),
+        ("unknown_kind", "ghost-kind", None, None),
+        ("schema_mismatch", "c", 0, "requires_a_field_a_doesnt_have"),
+    ]

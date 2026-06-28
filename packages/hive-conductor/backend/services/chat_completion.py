@@ -16,18 +16,17 @@ from config import get_settings
 from models.schemas import ChatCompletionRequest
 from protocols.llm import LLMPort
 
+from services.airtable_cache import get_airtable_base_tables_json, get_airtable_records_json
 from services.secrets import litellm_api_key as _resolve_litellm_api_key
+from services.tool_primitives import (
+    AIRTABLE_PROVIDER_IDS,
+    CONFLUENCE_PROVIDER_IDS,
+    JIRA_PROVIDER_IDS,
+    ToolCallContext,
+    ToolCredentialResolver,
+)
 
 logger = logging.getLogger("hive.chat")
-
-
-# Credential access goes through this helper; the audit test allowlists its lambda.
-def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
-    """Single allowlisted callsite for use_secret — lambda is centralised here."""
-    try:
-        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
-    except Exception:
-        return None
 
 
 def build_llm_port() -> LLMPort:
@@ -73,14 +72,8 @@ def _get_jira_pat(user_id: str) -> str | None:
         store = cred_svc.get_credential_store()
         if store is None:
             return None
-        # Try provider IDs in order — server (on-prem), then cloud, then generic
-        for provider_id in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
-            try:
-                if store.has_secret(user_id, provider_id):
-                    return _use_secret(store, user_id, provider_id)
-            except Exception:
-                continue
-        return None
+        resolver = ToolCredentialResolver(store)
+        return resolver.first_secret(ToolCallContext(user_id), JIRA_PROVIDER_IDS)
     except Exception:
         return None
 
@@ -101,20 +94,14 @@ def _get_airtable_creds(user_id: str) -> tuple[str | None, str | None]:  # noqa:
         store = cred_svc.get_credential_store()
         if store is None:
             return None, None
-        # Try the passed user_id first, then fallback to "user" (single-user dev mode)
-        token = None
-        for uid in (user_id, "user"):
-            try:
-                if store.has_secret(uid, "airtable"):
-                    token = _use_secret(store, uid, "airtable")
-                    break
-            except Exception:
-                continue
+        context = ToolCallContext(user_id)
+        resolver = ToolCredentialResolver(store)
+        token = resolver.first_secret(context, AIRTABLE_PROVIDER_IDS, include_dev_fallback=True)
         if not token:
             return None, None
         # base_id is in user_provider_config — try multiple user_id patterns
         base_id = ""
-        for uid in (user_id, "user"):
+        for uid in context.candidate_user_ids(include_dev_fallback=True):
             config_raw = stores.user_provider_config.get(f"{uid}:airtable")
             if isinstance(config_raw, dict) and config_raw.get("base_id"):
                 base_id = config_raw["base_id"]
@@ -836,12 +823,8 @@ def _get_confluence_pat(user_id: str) -> str | None:
         store = cred_svc.get_credential_store()
         if not store:
             return None
-        for pid in ("atlassian_server_confluence", "confluence"):
-            try:
-                if store.has_secret(user_id, pid):
-                    return _use_secret(store, user_id, pid)
-            except Exception:
-                continue
+        resolver = ToolCredentialResolver(store)
+        return resolver.first_secret(ToolCallContext(user_id), CONFLUENCE_PROVIDER_IDS)
     except Exception:
         return None
     return None
@@ -1015,8 +998,6 @@ async def _tool_airtable_query(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
     """Query Airtable using stored credentials."""
-    import httpx
-
     token, base_id = _get_airtable_creds(user_id)
     if not token:
         return {"error": "Airtable not configured. Go to Credentials and add your Airtable PAT."}
@@ -1026,21 +1007,18 @@ async def _tool_airtable_query(
     table = args.get("table_name", "")
     formula = args.get("filter_formula", "")
     max_rec = args.get("max_records", 10)
+    refresh = bool(args.get("refresh", False))
 
-    url = f"https://api.airtable.com/v0/{base_id}/{table}"
     params: dict[str, str] = {"maxRecords": str(max_rec)}
     if formula:
         params["filterByFormula"] = formula
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(url, headers={"Authorization": f"Bearer {token}"}, params=params)
-            r.raise_for_status()
-            data = r.json()
-            records = [
-                {"id": rec["id"], **rec.get("fields", {})} for rec in data.get("records", [])
-            ]
-            return {"records": records, "count": len(records), "table": table}
+        data = await get_airtable_records_json(
+            token=token, base_id=base_id, table=table, params=params, force_refresh=refresh
+        )
+        records = [{"id": rec["id"], **rec.get("fields", {})} for rec in data.get("records", [])]
+        return {"records": records, "count": len(records), "table": table}
     except Exception as e:
         return {"error": f"Airtable request failed: {str(e)[:100]}"}
 
@@ -1049,26 +1027,21 @@ async def _tool_airtable_describe(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
     """Introspect Airtable base schema — tables and fields."""
-    import httpx
-
     token, base_id = _get_airtable_creds(user_id)
     if not token:
         return {"error": "Airtable not configured."}
     if not base_id:
         return {"error": "Airtable base_id not configured."}
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(
-                f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            r.raise_for_status()
-            tables = r.json().get("tables", [])
-            schema = []
-            for t in tables:
-                fields = [{"name": f["name"], "type": f["type"]} for f in t.get("fields", [])]
-                schema.append({"table": t["name"], "id": t["id"], "fields": fields})
-            return {"base_id": base_id, "tables": schema}
+        data = await get_airtable_base_tables_json(
+            token=token, base_id=base_id, force_refresh=bool(args.get("refresh", False))
+        )
+        tables = data.get("tables", [])
+        schema = []
+        for t in tables:
+            fields = [{"name": f["name"], "type": f["type"]} for f in t.get("fields", [])]
+            schema.append({"table": t["name"], "id": t["id"], "fields": fields})
+        return {"base_id": base_id, "tables": schema}
     except Exception as e:
         return {"error": f"Airtable metadata request failed: {str(e)[:100]}"}
 
