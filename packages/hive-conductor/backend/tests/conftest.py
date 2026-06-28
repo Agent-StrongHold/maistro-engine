@@ -40,6 +40,14 @@ def _init_engine() -> None:
 
     cred_svc.init_credential_store(tempfile.mkdtemp(prefix="hive-cred-test-"))
 
+    # Initialize design render service for tests that need it
+    try:
+        from services.design_render import init_design_render_service
+
+        init_design_render_service()
+    except Exception:
+        pass  # Service may not be available in all test environments
+
 
 @pytest.fixture(autouse=True)
 def _isolate_dashboard_layouts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

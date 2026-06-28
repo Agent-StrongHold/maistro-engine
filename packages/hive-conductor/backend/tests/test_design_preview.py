@@ -177,22 +177,28 @@ class TestRenderJobs:
 
 
 class TestRenderStubs:
-    """Test server-side render method stubs (Phase 2)."""
+    """Test server-side render method stubs (Phase 2).
+
+    Requires optional render packages: weasyprint, python-pptx, python-docx.
+    """
 
     @pytest.mark.asyncio
     async def test_render_to_pdf_stub(self, preview_service: DesignPreviewService) -> None:
         """Test PDF render stub returns URL."""
+        pytest.importorskip("weasyprint")
         url = await preview_service.render_to_pdf("<html>Test</html>", {})
         assert url.endswith(".pdf")
 
     @pytest.mark.asyncio
     async def test_render_to_pptx_stub(self, preview_service: DesignPreviewService) -> None:
         """Test PPTX render stub returns URL."""
+        pytest.importorskip("pptx")
         url = await preview_service.render_to_pptx("<slides>Test</slides>", {})
         assert url.endswith(".pptx")
 
     @pytest.mark.asyncio
     async def test_render_to_docx_stub(self, preview_service: DesignPreviewService) -> None:
         """Test DOCX render stub returns URL."""
+        pytest.importorskip("docx")
         url = await preview_service.render_to_docx("<doc>Test</doc>", {})
         assert url.endswith(".docx")
