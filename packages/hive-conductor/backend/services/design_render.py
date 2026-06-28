@@ -9,6 +9,7 @@ Phase 2B.2: Background job queue + S3 storage
 
 from __future__ import annotations
 
+import html
 import json
 import logging
 from io import BytesIO
@@ -58,12 +59,14 @@ class DesignRenderService:
 
             # Wrap content in minimal HTML structure if not already HTML
             if not content.strip().startswith("<"):
+                escaped_content = html.escape(content)
+                escaped_title = html.escape(metadata.get("title", "Document"))
                 html_content = f"""
                 <!DOCTYPE html>
                 <html>
                 <head>
                     <meta charset="utf-8">
-                    <title>{metadata.get("title", "Document")}</title>
+                    <title>{escaped_title}</title>
                     <style>
                         body {{
                             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -73,7 +76,7 @@ class DesignRenderService:
                     </style>
                 </head>
                 <body>
-                    {content}
+                    {escaped_content}
                 </body>
                 </html>
                 """
