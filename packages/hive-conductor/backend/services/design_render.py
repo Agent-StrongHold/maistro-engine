@@ -65,7 +65,10 @@ class DesignRenderService:
                     <meta charset="utf-8">
                     <title>{metadata.get("title", "Document")}</title>
                     <style>
-                        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2cm; }}
+                        body {{
+                            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                            margin: 2cm;
+                        }}
                         h1, h2, h3 {{ color: #333; }}
                     </style>
                 </head>
