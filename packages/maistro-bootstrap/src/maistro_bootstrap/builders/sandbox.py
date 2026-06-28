@@ -147,6 +147,18 @@ class SandboxedShell:
         the caller constructs the argv directly and no user-controlled string
         ever reaches the shell.
         """
+        if not argv:
+            raise BlockedCommandError("Empty argv is not allowed")
+        for arg in argv:
+            if _INJECTION_CHARS.search(arg):
+                raise BlockedCommandError(
+                    f"Shell metacharacters not allowed in sandbox argv: {arg!r}"
+                )
+        cmd_lower = " ".join(argv).lower()
+        for pattern in _BLOCKED_PATTERNS:
+            if pattern in cmd_lower:
+                raise BlockedCommandError(f"Blocked command: {pattern!r} in {argv!r}")
+        self._check_paths(argv[1:])
         try:
             result = subprocess.run(  # nosec B603 — shell=False, argv from trusted caller
                 argv,
@@ -326,12 +338,20 @@ class LocalWorktreeSandbox:
 
     def search(self, pattern: str, *, glob: str = "**/*.py") -> list[str]:
         root = self._ws.path if self._ws else self._repo_root
+        root = root.resolve()
+        glob_path = Path(glob)
+        if glob_path.is_absolute() or ".." in glob_path.parts:
+            raise SandboxEscapeError(f"Glob escape detected: {glob!r} escapes sandbox root")
         matches = []
         for p in root.glob(glob):
             try:
-                text = p.read_text(encoding="utf-8", errors="ignore")
+                resolved = p.resolve()
+                resolved.relative_to(root)
+                if not resolved.is_file():
+                    continue
+                text = resolved.read_text(encoding="utf-8", errors="ignore")
                 if pattern in text:
-                    matches.append(str(p.relative_to(root)))
-            except OSError:
+                    matches.append(str(resolved.relative_to(root)))
+            except (OSError, ValueError):
                 pass
         return matches

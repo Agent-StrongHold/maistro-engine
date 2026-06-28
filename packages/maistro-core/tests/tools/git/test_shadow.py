@@ -5,6 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from maistro.tools.git.shadow import create_shadow_workspace
 
 
@@ -25,6 +27,11 @@ class TestCreateWorkspace:
     def test_diff_against_base_empty_before_edits(self, tmp_path: Path) -> None:
         ws = create_shadow_workspace(tmp_path, "task-1")
         assert ws.diff_against_base() == ""
+
+    @pytest.mark.parametrize("task_id", ["../escape", "/tmp/escape", "bad/id", "", "x" * 101])
+    def test_rejects_task_ids_that_escape_shadow_root(self, tmp_path: Path, task_id: str) -> None:
+        with pytest.raises(ValueError):
+            create_shadow_workspace(tmp_path, task_id)
 
 
 class TestCommitEdit:
@@ -48,6 +55,16 @@ class TestCommitEdit:
         ws = create_shadow_workspace(tmp_path, "task-1")
         ws.commit_edit({"a.txt": "hello"}, "add a.txt")
         assert "a.txt" in ws.diff_against_base()
+
+    @pytest.mark.parametrize("rel_path", ["../escape.txt", "../../escape.txt", "/tmp/escape.txt"])
+    def test_commit_edit_rejects_paths_outside_shadow_workspace(
+        self, tmp_path: Path, rel_path: str
+    ) -> None:
+        ws = create_shadow_workspace(tmp_path, "task-1")
+        outside = tmp_path / "escape.txt"
+        with pytest.raises(ValueError):
+            ws.commit_edit({rel_path: "owned"}, "attempt escape")
+        assert not outside.exists()
 
 
 class TestProducePrCandidate:
@@ -90,3 +107,12 @@ class TestDiscard:
         ws = create_shadow_workspace(tmp_path, "task-1")
         ws.discard()
         ws.discard()  # must not raise
+
+    def test_discard_refuses_workspace_outside_shadow_root(self, tmp_path: Path) -> None:
+        ws = create_shadow_workspace(tmp_path / "shadow-root", "task-1")
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        ws.workspace_ref = outside
+        with pytest.raises(ValueError, match="outside shadow root"):
+            ws.discard()
+        assert outside.exists()
