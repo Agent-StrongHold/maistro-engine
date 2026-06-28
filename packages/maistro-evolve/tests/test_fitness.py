@@ -165,3 +165,20 @@ class TestComputeFitness:
         f_no = compute_fitness(g_no_elo, [g_no_elo])
         f_yes = compute_fitness(g_with_elo, [g_with_elo])
         assert f_yes.total > f_no.total
+
+    def test_diversity_bonus_zero_when_population_has_no_other_genomes(self):
+        # population length is >= 2 but every entry shares the genome's own
+        # id, so the "other.id != genome.id" filter leaves distances empty.
+        scores = dict.fromkeys(_HARD_GATE_THRESHOLDS, 0.8)
+        g = _genome(eval_scores=scores)
+        fitness = compute_fitness(g, [g, g])
+        assert fitness.diversity_bonus == 0.0
+
+    def test_diversity_bonus_positive_when_population_has_a_distinct_genome(self):
+        scores = dict.fromkeys(_HARD_GATE_THRESHOLDS, 0.8)
+        g = _genome(eval_scores=scores)
+        other = _genome(eval_scores=scores)
+        other.id = "test-g2"
+        other.topology.nodes[0].temperature = 0.9
+        fitness = compute_fitness(g, [g, other])
+        assert fitness.diversity_bonus > 0.0

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from maistro_design.types import (
@@ -10,6 +10,7 @@ if TYPE_CHECKING:
         DesignSkill,
         DesignSystem,
         DiscoveryResult,
+        TypographyToken,
     )
 
 
@@ -45,3 +46,24 @@ class DesignProjectStore(Protocol):
 class DesignEngineProtocol(Protocol):
     async def run_discovery(self, skill_slug: str) -> list[dict]: ...
     async def generate(self, discovery: DiscoveryResult) -> DesignProject: ...
+
+
+@runtime_checkable
+class HTMLRenderer(Protocol):
+    """Rasterizes assembled HTML(+CSS) into a binary image/document format."""
+
+    async def render(self, html: str, *, css: str = "", fmt: Literal["png", "pdf"]) -> bytes: ...
+
+
+@runtime_checkable
+class SVGRenderer(Protocol):
+    """Rasterizes SVG markup into a binary image/document format."""
+
+    async def render(self, svg: str, *, fmt: Literal["png", "pdf"]) -> bytes: ...
+
+
+@runtime_checkable
+class TypographyRenderer(Protocol):
+    """Renders a run of text in a given typeface to a binary raster."""
+
+    async def render_text(self, text: str, *, token: TypographyToken) -> bytes: ...

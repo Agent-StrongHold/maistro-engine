@@ -29,6 +29,7 @@ class ViolationCategory(StrEnum):
     DI_VIOLATION = "di_violation"
     MISSING_FAKES = "missing_fakes"
     SPEC_COVERAGE_GAP = "spec_coverage_gap"
+    CIRCULAR_IMPORT = "circular_import"
 
 
 class Severity(StrEnum):
@@ -38,6 +39,61 @@ class Severity(StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+class ClaimProvenance(StrEnum):
+    """Where a claim or finding came from, and how much to trust it.
+
+    Distinct from ``maistro.types.security.Provenance`` (agent/skill origin) —
+    this tags the *evidence* behind a single claim/finding, not an actor.
+    """
+
+    EXTRACTED = "extracted"
+    """Deterministic — produced by a parser/checker. Ground truth."""
+
+    INFERRED = "inferred"
+    """An LLM judgment call. Requires a confidence score."""
+
+    AMBIGUOUS = "ambiguous"
+    """Could not be classified confidently."""
+
+
+_INFERRED_CONFIDENCE_STEPS: tuple[float, ...] = (0.55, 0.65, 0.75, 0.85, 0.95)
+
+
+def _resolve_confidence(provenance: ClaimProvenance, confidence: float | None) -> float | None:
+    """Apply the confidence rubric.
+
+    INFERRED must end up with a confidence on the discrete rubric — an
+    omitted (``None``) confidence defaults to the lowest rung rather than
+    erroring, so unannotated callers stay valid. Any other provenance must
+    have no confidence at all.
+    """
+    if provenance is ClaimProvenance.INFERRED:
+        if confidence is None:
+            return _INFERRED_CONFIDENCE_STEPS[0]
+        if confidence not in _INFERRED_CONFIDENCE_STEPS:
+            raise ValueError(
+                f"INFERRED provenance requires confidence in {_INFERRED_CONFIDENCE_STEPS}, "
+                f"got {confidence!r}"
+            )
+        return confidence
+    if confidence is not None:
+        raise ValueError(f"{provenance} provenance must not set confidence, got {confidence!r}")
+    return None
+
+
+@dataclass(frozen=True)
+class Claim:
+    """A single claim made about a PR, tagged with its evidentiary provenance."""
+
+    text: str
+    provenance: ClaimProvenance = ClaimProvenance.INFERRED
+    confidence: float | None = None
+
+    def __post_init__(self) -> None:
+        resolved = _resolve_confidence(self.provenance, self.confidence)
+        object.__setattr__(self, "confidence", resolved)
 
 
 @dataclass(frozen=True)
@@ -50,6 +106,12 @@ class ReviewFinding:
     description: str
     suggestion: str
     line_number: int = 0
+    provenance: ClaimProvenance = ClaimProvenance.INFERRED
+    confidence: float | None = None
+
+    def __post_init__(self) -> None:
+        resolved = _resolve_confidence(self.provenance, self.confidence)
+        object.__setattr__(self, "confidence", resolved)
 
 
 @dataclass(frozen=True)

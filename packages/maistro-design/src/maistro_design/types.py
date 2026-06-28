@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from maistro.types.errors import AgentError
 from maistro_design.trust import TrustTier
+
+RendererKind = Literal["html", "svg", "typography"]
 
 
 class SkillMode(StrEnum):
@@ -30,8 +33,54 @@ class OutputFormat(StrEnum):
     PDF = "pdf"
     CSS = "css"
     JSON = "json"
+    JS = "js"
     DOCX = "docx"
     REACT_TSX = "react_tsx"
+
+
+class ArtifactKind(StrEnum):
+    """Shape of a single ArtifactNode — leaf text, leaf binary, or a nested container."""
+
+    FILE = "file"  # text content (HTML, CSS, JS, SVG markup, Markdown, ...)
+    BLOB = "blob"  # binary content (PNG, PDF, ...)
+    CONTAINER = "container"  # holds named children, no content of its own
+
+
+@dataclass
+class ArtifactNode:
+    """One node in a hierarchical design-output tree (ADR-062326-702b).
+
+    A `FILE`/`BLOB` node carries `value`; a `CONTAINER` node carries `children` keyed
+    by kebab-case slug, e.g. root.children["characters"].children["joe-smith"] for an
+    address of "characters.joe-smith". `format` is the leaf's `OutputFormat`; containers
+    may leave it `None` (the modality is implied by their children).
+    """
+
+    key: str
+    kind: ArtifactKind
+    format: OutputFormat | None = None
+    value: str | bytes | None = None
+    children: dict[str, ArtifactNode] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def get(self, address: str) -> ArtifactNode | None:
+        """Resolve a dotted address (e.g. "characters.joe-smith") against this node's children."""
+        node = self
+        for part in address.split("."):
+            child = node.children.get(part)
+            if child is None:
+                return None
+            node = child
+        return node
+
+    def walk(self, _prefix: str = "") -> Iterator[tuple[str, ArtifactNode]]:
+        """Yield (dotted_address, node) for every FILE/BLOB leaf beneath this node."""
+        address = f"{_prefix}.{self.key}" if _prefix else self.key
+        if self.kind is ArtifactKind.CONTAINER:
+            for child in self.children.values():
+                yield from child.walk(_prefix=address)
+        else:
+            yield address, self
 
 
 @dataclass(frozen=True)
@@ -77,6 +126,7 @@ class DesignSkill:
     trust_tier: TrustTier = TrustTier.T0
     output_formats: list[OutputFormat] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    required_renderer: RendererKind | None = None
 
 
 @dataclass(frozen=True)
@@ -142,13 +192,34 @@ class DiscoveryResult:
 
 @dataclass
 class DesignOutput:
-    """A generated design artifact."""
+    """A generated design artifact — a hierarchical tree of named ArtifactNodes.
 
-    format: OutputFormat
-    content: str
+    Single-file text outputs (the only shape the engine emits today) have
+    root.kind == FILE; multi-file and binary outputs nest under a CONTAINER root.
+    `.content`/`.format` are convenience accessors for the single-file case.
+    """
+
+    root: ArtifactNode
     url: str | None = None
     trust_tier: TrustTier = TrustTier.T3
     metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def format(self) -> OutputFormat | None:
+        return self.root.format
+
+    @property
+    def content(self) -> str:
+        """Text content of a single-file output. Raises for hierarchical/binary outputs."""
+        if self.root.kind is not ArtifactKind.FILE or not isinstance(self.root.value, str):
+            msg = (
+                "DesignOutput.content is only valid for single-file text outputs "
+                "(root.kind == ArtifactKind.FILE); use .root to traverse hierarchical "
+                "or binary outputs"
+            )
+            raise DesignOutputShapeError(msg)
+        return self.root.value
 
 
 @dataclass
@@ -205,6 +276,12 @@ class DiscoveryIncompleteError(DesignError):
 
 class SkillModeError(DesignError):
     code = "SKILL_MODE_ERROR"
+
+
+class DesignOutputShapeError(DesignError):
+    """Raised when a single-file accessor (.content/.format) is used on a multi-artifact output."""
+
+    code = "DESIGN_OUTPUT_SHAPE_ERROR"
 
 
 class DesignProjectNotFoundError(DesignError):

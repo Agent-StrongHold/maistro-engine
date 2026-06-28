@@ -212,6 +212,79 @@ def test_run_dag_missing_dag_returns_404(authed_client: Any) -> None:
     assert r.status_code == 404
 
 
+def test_run_dag_records_node_events_and_metrics(
+    authed_client: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Evidence: when execute_dag returns node_results, the run wrapper must
+    append a dag-run-store event per node (success -> pm_node_completed,
+    failure -> pm_node_failed) and record a NodeObservation in the node
+    metrics store for each. This also exercises the dag_run_store.start_run /
+    append_event integration (lines 268-283) and the node-metrics recording
+    block (lines 285-307)."""
+    import services.graph_runner as gr
+    import services.node_metrics_store as nms
+
+    async def _ok(dag_data: Any, **kwargs: Any) -> Any:
+        return {
+            "cycles": 2,
+            "node_results": {
+                "n1": {"role": "worker", "success": True, "response": "did the thing"},
+                "n2": {"role": "queen", "success": False, "response": "oops"},
+            },
+        }
+
+    monkeypatch.setattr(gr, "execute_dag", _ok)
+
+    metrics_store = nms.NodeMetricsStore()
+    monkeypatch.setattr(nms, "_store", metrics_store)
+
+    dag_id = _seed(authed_client)
+    r = authed_client.post(f"/v1/dags/{dag_id}/run")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "completed"
+    assert body["result"]["node_results"]["n1"]["success"] is True
+
+    # Node metrics store recorded one observation per node.
+    assert len(metrics_store) == 2
+
+    from services.dag_run_store import get_dag_run_store
+
+    run_store = get_dag_run_store()
+    run_record = run_store.get_run(body["execution_id"])
+    assert run_record is not None
+    assert run_record["event_count"] == 2
+
+
+def test_run_dag_node_metrics_failure_is_swallowed(
+    authed_client: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Evidence: the node-metrics recording block is wrapped in a bare
+    try/except Exception: pass, so a broken metrics store must not affect
+    the run response at all."""
+    import services.graph_runner as gr
+    import services.node_metrics_store as nms
+
+    async def _ok(dag_data: Any, **kwargs: Any) -> Any:
+        return {
+            "cycles": 1,
+            "node_results": {"n1": {"role": "worker", "success": True, "response": "ok"}},
+        }
+
+    monkeypatch.setattr(gr, "execute_dag", _ok)
+
+    def _boom() -> Any:
+        raise RuntimeError("metrics store unavailable")
+
+    monkeypatch.setattr(nms, "get_store", _boom)
+
+    dag_id = _seed(authed_client)
+    r = authed_client.post(f"/v1/dags/{dag_id}/run")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "completed"
+
+
 # --- POST /run-champion (success + failure) -------------------------------
 
 

@@ -3,11 +3,14 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 from maistro.credentials.pool import CredentialPool
 from maistro.credentials.types import CredentialRecord, PoolExhaustedError
 from maistro.resilience.backoff import BackoffConfig, jittered_backoff
 from maistro.resilience.classifier import ClassifiedError, classify_error
+
+T = TypeVar("T")
 
 _DEFAULT_RATE_LIMIT_COOLDOWN = 60.0
 _DEFAULT_BILLING_COOLDOWN = 3600.0
@@ -15,7 +18,7 @@ _DEFAULT_MAX_RETRIES = 3
 
 
 @dataclass
-class RotationResult[T]:
+class RotationResult(Generic[T]):
     value: T
     key_id: str
     attempts: int = 1
@@ -42,7 +45,7 @@ def _resolve_cooldown(
     return 0.0, False
 
 
-async def execute_with_pool[T](
+async def execute_with_pool(
     pool: CredentialPool,
     call_fn: Callable[[CredentialRecord], Awaitable[T]],
     *,

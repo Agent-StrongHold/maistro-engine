@@ -9,12 +9,15 @@ from maistro_design.protocols import (
     DesignProjectStore,
     DesignSkillRegistry,
     DesignSystemRegistry,
+    HTMLRenderer,
+    SVGRenderer,
+    TypographyRenderer,
 )
+from maistro_design.scan import ScanReport, scan_design_output
 from maistro_design.skills.builtins import load_builtins
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry
 from maistro_design.stores import PgDesignProjectStore
 from maistro_design.systems.importer import (
-    ScanReport,
     import_from_catalog,
     import_open_design_system,
     load_bundled,
@@ -30,9 +33,12 @@ from maistro_design.trust import (
     TrustTier,
 )
 from maistro_design.types import (
+    ArtifactKind,
+    ArtifactNode,
     ColorToken,
     DesignError,
     DesignOutput,
+    DesignOutputShapeError,
     DesignProject,
     DesignSkill,
     DesignSystem,
@@ -52,11 +58,14 @@ from maistro_design.types import (
 )
 
 __all__ = [
+    "ArtifactKind",
+    "ArtifactNode",
     "ColorToken",
     "DesignEngine",
     "DesignEngineProtocol",
     "DesignError",
     "DesignOutput",
+    "DesignOutputShapeError",
     "DesignProject",
     "DesignProjectStore",
     "DesignSkill",
@@ -68,6 +77,7 @@ __all__ = [
     "DiscoveryField",
     "DiscoveryIncompleteError",
     "DiscoveryResult",
+    "HTMLRenderer",
     "InMemoryDesignSkillRegistry",
     "InMemoryDesignSystemRegistry",
     "InMemoryTrustBanishList",
@@ -75,6 +85,7 @@ __all__ = [
     "IncompatibleDesignSystemError",
     "OutputFormat",
     "PgDesignProjectStore",
+    "SVGRenderer",
     "ScanReport",
     "SkillMode",
     "SkillModeError",
@@ -84,11 +95,13 @@ __all__ = [
     "TrustReviewRecord",
     "TrustTier",
     "TrustUpgradeRequiredError",
+    "TypographyRenderer",
     "TypographyToken",
     "import_from_catalog",
     "import_open_design_system",
     "load_builtins",
     "load_bundled",
     "load_catalog",
+    "scan_design_output",
     "scan_design_system_content",
 ]

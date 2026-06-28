@@ -128,6 +128,12 @@ def test_ancestors_and_descendants() -> None:
     assert graph.descendants("c") == frozenset()
 
 
+def test_ancestors_skips_dependency_not_present_in_graph() -> None:
+    graph = PipelineGraph([_node("a"), _node("b", ("a", "missing"))])
+
+    assert graph.ancestors("b") == frozenset({"a"})
+
+
 def test_dunder_protocol() -> None:
     nodes = [_node("a"), _node("b", ("a",))]
     graph = PipelineGraph(nodes)
