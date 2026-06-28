@@ -23,7 +23,7 @@ from maistro_design.types import (
 
 def _coerce_design_project(row: Any, outputs: list[DesignOutput] | None = None) -> DesignProject:
     """Coerce database row to DesignProject dataclass."""
-    d = dict(row)
+    d = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
     discovery_data = d.get("discovery_json")
     discovery: DiscoveryResult | None = None
     if discovery_data:
@@ -102,7 +102,7 @@ class PgDesignProjectStore:
                     (id, name, skill_slug, design_system_slug, org_id, team_id,
                      trust_tier, canvas_id, discovery_json, created_at, updated_at)
                     VALUES (:id, :name, :skill_slug, :design_system_slug, :org_id,
-                            :team_id, :trust_tier, :canvas_id, :discovery_json,
+                            :team_id, :trust_tier, :canvas_id, :discovery_json::jsonb,
                             :created_at, :updated_at)
                 """),
                 {
@@ -126,7 +126,7 @@ class PgDesignProjectStore:
                     text("""
                         INSERT INTO design_outputs
                         (project_id, format, content, url, trust_tier, metadata_json, created_at)
-                        VALUES (:project_id, :format, :content, :url, :trust_tier, :metadata_json, :created_at)
+                        VALUES (:project_id, :format, :content, :url, :trust_tier, :metadata_json::jsonb, :created_at)
                     """),
                     {
                         "project_id": project_id,
@@ -233,7 +233,7 @@ class PgDesignProjectStore:
                 text("""
                     UPDATE design_projects
                     SET name = :name, trust_tier = :trust_tier,
-                        canvas_id = :canvas_id, discovery_json = :discovery_json,
+                        canvas_id = :canvas_id, discovery_json = :discovery_json::jsonb,
                         updated_at = :updated_at
                     WHERE id = :id
                 """),

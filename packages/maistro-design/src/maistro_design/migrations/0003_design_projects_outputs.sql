@@ -12,15 +12,16 @@ CREATE TABLE IF NOT EXISTS design_projects (
     trust_tier TEXT NOT NULL DEFAULT 't3',
     canvas_id UUID,
     discovery_json JSONB,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     FOREIGN KEY (org_id) REFERENCES orgs(id) ON DELETE CASCADE,
-    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL,
-    INDEX idx_org_id (org_id),
-    INDEX idx_org_skill (org_id, skill_slug),
-    INDEX idx_skill_slug (skill_slug),
-    INDEX idx_created_at (created_at DESC)
+    FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_design_projects_org_id ON design_projects(org_id);
+CREATE INDEX IF NOT EXISTS idx_design_projects_org_skill ON design_projects(org_id, skill_slug);
+CREATE INDEX IF NOT EXISTS idx_design_projects_skill_slug ON design_projects(skill_slug);
+CREATE INDEX IF NOT EXISTS idx_design_projects_created_at ON design_projects(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS design_outputs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -30,12 +31,13 @@ CREATE TABLE IF NOT EXISTS design_outputs (
     url TEXT,
     trust_tier TEXT NOT NULL DEFAULT 't3',
     metadata_json JSONB,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    FOREIGN KEY (project_id) REFERENCES design_projects(id) ON DELETE CASCADE,
-    INDEX idx_project_id (project_id),
-    INDEX idx_format (format),
-    INDEX idx_created_at (created_at DESC)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    FOREIGN KEY (project_id) REFERENCES design_projects(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_design_outputs_project_id ON design_outputs(project_id);
+CREATE INDEX IF NOT EXISTS idx_design_outputs_format ON design_outputs(format);
+CREATE INDEX IF NOT EXISTS idx_design_outputs_created_at ON design_outputs(created_at DESC);
 
 -- Ensure orgs and teams tables exist (from maistro-core)
 -- If running in isolation, create minimal tables for testing:

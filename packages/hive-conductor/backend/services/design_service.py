@@ -94,17 +94,23 @@ async def start_design_service(settings: Settings) -> None:
         load_builtins(skill_registry)
         logger.info("Design skill registry initialized")
 
-        # Initialize system registry with default system
+        # Initialize system registry with bundled systems
         system_registry = InMemoryDesignSystemRegistry()
-        system_registry.register(
-            DesignSystem(
-                slug="default",
-                name="Default",
-                description="Neutral default design system",
-                trust_tier=TrustTier.T0,
+        try:
+            from maistro_design.systems.builtins import load_builtins as load_system_builtins
+
+            load_system_builtins(system_registry)
+            logger.info("Design system registry initialized with bundled systems")
+        except Exception as exc:
+            logger.warning("Failed to load bundled design systems, using default: %s", exc)
+            system_registry.register(
+                DesignSystem(
+                    slug="default",
+                    name="Default",
+                    description="Neutral default design system",
+                    trust_tier=TrustTier.T0,
+                )
             )
-        )
-        logger.info("Design system registry initialized")
 
         # Initialize project store if database is available
         project_store: Any | None = None

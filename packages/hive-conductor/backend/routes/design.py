@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from services.design_service import get_design_engine, get_design_store
 
 from maistro_design.types import (
@@ -25,8 +25,20 @@ from maistro_design.types import (
 router = APIRouter(prefix="/design", tags=["design"])
 
 
+def _get_org_id(request: Request) -> str:
+    """Extract org_id from request context.
+
+    Returns the org_id from authenticated request state, or "default-org" for fallback.
+    TODO: Once auth context is wired, extract from request.state.user or request.state.org_id.
+    """
+    # Phase 2: Extract from request.state.user or similar auth context
+    if hasattr(request, "state") and hasattr(request.state, "org_id"):
+        return request.state.org_id
+    return "default-org"
+
+
 @router.post("/projects")
-async def create_design_project(discovery: DiscoveryResult) -> dict[str, Any]:
+async def create_design_project(request: Request, discovery: DiscoveryResult) -> dict[str, Any]:
     """Generate a design project from discovery responses.
 
     Pipeline:
@@ -44,8 +56,7 @@ async def create_design_project(discovery: DiscoveryResult) -> dict[str, Any]:
     """
     try:
         engine = get_design_engine()
-        # TODO: extract org_id from request auth context
-        org_id = "default-org"
+        org_id = _get_org_id(request)
         project = await engine.generate(discovery, org_id=org_id, team_id=None)
         return project.to_dict()
     except SkillNotFoundError as e:
@@ -70,16 +81,28 @@ async def get_design_project(project_id: str) -> dict[str, Any]:
     """
     try:
         store = get_design_store()
+        if store is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Design persistence not configured (DATABASE_URL not set)",
+            )
         project = await store.get(project_id)
         if not project:
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
-        return project.to_dict()
+        # Include outputs in response
+        project_dict = project.to_dict()
+        project_dict["outputs"] = [o.to_dict() for o in project.outputs]
+        return project_dict
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/projects")
-async def list_design_projects(skill_slug: str | None = None) -> list[dict[str, Any]]:
+async def list_design_projects(
+    request: Request, skill_slug: str | None = None
+) -> list[dict[str, Any]]:
     """List design projects for an org, optionally filtered by skill.
 
     Query params:
@@ -90,8 +113,10 @@ async def list_design_projects(skill_slug: str | None = None) -> list[dict[str, 
     """
     try:
         store = get_design_store()
-        # TODO: extract org_id from request auth context
-        org_id = "default-org"
+        if store is None:
+            return []  # Graceful degradation: return empty list if persistence disabled
+
+        org_id = _get_org_id(request)
 
         if skill_slug:
             projects = await store.list_by_skill(skill_slug, org_id)

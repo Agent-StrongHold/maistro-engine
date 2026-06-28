@@ -25,6 +25,7 @@ from routes import (
     dag_runs,
     dags,
     dashboard_layout,
+    design,
     eval_judge,
     feedback,
     health,

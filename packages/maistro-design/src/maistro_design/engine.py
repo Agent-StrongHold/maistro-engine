@@ -74,6 +74,13 @@ class DesignEngine:
     def _contaminate(self, tier: TrustTier) -> None:
         self._context_trust_tier = self._context_trust_tier.min(tier)
 
+    def reset_context(self) -> None:
+        """Reset trust context to T0 (trusted).
+
+        Call before each generate() to prevent trust contamination across requests.
+        """
+        self._context_trust_tier = TrustTier.T0
+
     def _check_compatibility(self, skill: Any, design_system_slug: str) -> None:
         if (
             skill.compatible_design_systems
@@ -143,18 +150,20 @@ class DesignEngine:
         return [f.to_dict() for f in skill.discovery_form]
 
     async def generate(
-        self, discovery: DiscoveryResult, org_id: str, team_id: str | None = None
+        self, discovery: DiscoveryResult, org_id: str = "default-org", team_id: str | None = None
     ) -> DesignProject:
         """Build a DesignProject from completed discovery responses.
 
         Pipeline:
-          1. Resolve skill + design system; check compatibility and image_gen
-          2. Contaminate context with skill + system + discovery trust tiers
-          3. Scan discovery responses through banish list and Warden
-          4. Validate required discovery fields
-          5. Assemble prompt stack and optionally create a CanvasRecord
-          6. Persist project via project_store if available
+          1. Reset trust context to T0 (prevent cross-request contamination)
+          2. Resolve skill + design system; check compatibility and image_gen
+          3. Contaminate context with skill + system + discovery trust tiers
+          4. Scan discovery responses through banish list and Warden
+          5. Validate required discovery fields
+          6. Assemble prompt stack and optionally create a CanvasRecord
+          7. Persist project via project_store if available
         """
+        self.reset_context()
         skill = self._skills.get(discovery.skill_slug)
         if skill is None:
             msg = f"Design skill '{discovery.skill_slug}' not found"
