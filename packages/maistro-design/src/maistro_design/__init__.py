@@ -16,20 +16,6 @@ from maistro_design.protocols import (
 from maistro_design.scan import ScanReport, scan_design_output
 from maistro_design.skills.builtins import load_builtins
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry
-
-# PgDesignProjectStore is lazy-loaded to avoid requiring sqlalchemy at module import time
-_lazy_imports = {"PgDesignProjectStore"}
-
-
-def __getattr__(name: str):
-    if name in _lazy_imports:
-        if name == "PgDesignProjectStore":
-            from maistro_design.stores import PgDesignProjectStore
-
-            return PgDesignProjectStore
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 from maistro_design.systems.importer import (
     import_from_catalog,
     import_open_design_system,
@@ -118,3 +104,12 @@ __all__ = [
     "scan_design_output",
     "scan_design_system_content",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy-load PgDesignProjectStore to avoid requiring sqlalchemy at import time."""
+    if name == "PgDesignProjectStore":
+        from maistro_design.stores import PgDesignProjectStore
+
+        return PgDesignProjectStore
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
