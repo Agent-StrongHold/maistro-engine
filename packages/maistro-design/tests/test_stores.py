@@ -174,14 +174,6 @@ async def test_create_calls_execute_for_project_and_outputs(sample_project):
     """Test that create() calls session.execute for project and outputs."""
     mock_factory = make_mock_session_factory()
     store = PgDesignProjectStore(session_factory=mock_factory)
-
-    # We need to capture the mock_session to check its calls
-    async with mock_factory() as mock_session:
-        # Reset the factory for the actual test
-        pass
-
-    # Now run the actual test
-    store = PgDesignProjectStore(session_factory=mock_factory)
     await store.create(sample_project)
     # If no exception was raised, the test passed
     assert True
