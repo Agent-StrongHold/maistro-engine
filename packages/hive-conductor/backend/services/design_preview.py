@@ -86,7 +86,7 @@ class DesignPreviewService:
     ALLOWED_TAILWIND_CLASSES: ClassVar[re.Pattern[str]] = re.compile(
         r"^(w-|h-|p-|m-|text-|bg-|border-|rounded-|shadow-|flex|grid|"
         r"absolute|relative|fixed|block|inline|flex-col|flex-row|justify-|items-|"
-        r"gap-|space-|opacity-|transition|duration-|ease-|hover:|focus:|active:|)"
+        r"gap-|space-|opacity-|transition|duration-|ease-|hover|focus|active)"
     )
 
     def __init__(self) -> None:
@@ -104,8 +104,12 @@ class DesignPreviewService:
             result["valid"] = False
         return 1
 
-    def _check_line_dangerous_patterns(self, line: str, result: dict[str, Any]) -> None:
-        """Check for dangerous code patterns."""
+    def _check_line_dangerous_patterns(
+        self, line: str, result: dict[str, Any], trust_tier: TrustTier
+    ) -> None:
+        """Check for dangerous code patterns (T3 untrusted code only)."""
+        if trust_tier != TrustTier.T3:
+            return
         if any(
             pattern in line.lower()
             for pattern in ["eval(", "exec(", "__import__", "subprocess", "os.system"]
@@ -153,7 +157,7 @@ class DesignPreviewService:
 
             for line in lines:
                 import_count += self._check_line_imports(line, result, trust_tier)
-                self._check_line_dangerous_patterns(line, result)
+                self._check_line_dangerous_patterns(line, result, trust_tier)
                 self._check_line_tailwind(line, result, trust_tier)
 
             result["stats"]["import_count"] = import_count
@@ -161,9 +165,6 @@ class DesignPreviewService:
         except Exception as exc:
             result["errors"].append(f"Parse error: {exc}")
             result["valid"] = False
-
-        if result["errors"] and trust_tier == TrustTier.T3:
-            raise CodeValidationError(f"Code validation failed: {'; '.join(result['errors'])}")
 
         return result
 

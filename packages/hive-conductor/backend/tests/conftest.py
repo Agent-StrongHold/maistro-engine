@@ -40,6 +40,12 @@ def _init_engine() -> None:
 
     cred_svc.init_credential_store(tempfile.mkdtemp(prefix="hive-cred-test-"))
 
+    # Initialize design services for tests
+    import services.design_render as render_mod
+
+    if render_mod._singleton is None:
+        render_mod._singleton = render_mod.DesignRenderService()
+
 
 @pytest.fixture(autouse=True)
 def _isolate_dashboard_layouts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
