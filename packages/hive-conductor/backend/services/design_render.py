@@ -26,6 +26,23 @@ class DesignRenderService:
         """Initialize render service."""
         self._render_cache: dict[str, bytes] = {}
 
+    def _parse_markdown_lines(self, doc: Any, content: str) -> None:
+        """Parse markdown-like content and add to document.
+
+        Supports basic markdown: headings (# ## ###), bullet lists (-), paragraphs.
+        """
+        for line in content.split("\n"):
+            if line.startswith("# "):
+                doc.add_heading(line[2:], 1)
+            elif line.startswith("## "):
+                doc.add_heading(line[3:], 2)
+            elif line.startswith("### "):
+                doc.add_heading(line[4:], 3)
+            elif line.startswith("- "):
+                doc.add_paragraph(line[2:], style="List Bullet")
+            elif line.strip():
+                doc.add_paragraph(line)
+
     async def render_to_pdf(self, content: str, metadata: dict[str, Any]) -> bytes:
         """Render HTML/React to PDF via weasyprint.
 
@@ -67,7 +84,7 @@ class DesignRenderService:
 
         except ImportError:
             logger.error("weasyprint not installed - PDF rendering unavailable")
-            raise RuntimeError("PDF rendering requires weasyprint package")
+            raise RuntimeError("PDF rendering requires weasyprint package") from None
         except Exception as exc:
             logger.error("PDF render failed: %s", exc)
             raise
@@ -142,7 +159,7 @@ class DesignRenderService:
 
         except ImportError:
             logger.error("python-pptx not installed - PPTX rendering unavailable")
-            raise RuntimeError("PPTX rendering requires python-pptx package")
+            raise RuntimeError("PPTX rendering requires python-pptx package") from None
         except Exception as exc:
             logger.error("PPTX render failed: %s", exc)
             raise
@@ -162,7 +179,6 @@ class DesignRenderService:
         try:
             from docx import Document
             from docx.enum.text import WD_ALIGN_PARAGRAPH
-            from docx.shared import Pt, RGBColor
 
             doc = Document()
 
@@ -179,19 +195,8 @@ class DesignRenderService:
 
             doc.add_paragraph()  # Spacing
 
-            # Add content
-            # Simple markdown-like parsing (Phase 2B.3: full markdown support)
-            for line in content.split("\n"):
-                if line.startswith("# "):
-                    doc.add_heading(line[2:], 1)
-                elif line.startswith("## "):
-                    doc.add_heading(line[3:], 2)
-                elif line.startswith("### "):
-                    doc.add_heading(line[4:], 3)
-                elif line.startswith("- "):
-                    doc.add_paragraph(line[2:], style="List Bullet")
-                elif line.strip():
-                    doc.add_paragraph(line)
+            # Add content via markdown-like parsing (Phase 2B.3: full markdown support)
+            self._parse_markdown_lines(doc, content)
 
             # Write to bytes
             output = BytesIO()
@@ -202,7 +207,7 @@ class DesignRenderService:
 
         except ImportError:
             logger.error("python-docx not installed - DOCX rendering unavailable")
-            raise RuntimeError("DOCX rendering requires python-docx package")
+            raise RuntimeError("DOCX rendering requires python-docx package") from None
         except Exception as exc:
             logger.error("DOCX render failed: %s", exc)
             raise
