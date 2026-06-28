@@ -46,16 +46,20 @@ def _init_engine() -> None:
 
         if preview_mod._singleton is None:
             preview_mod._singleton = preview_mod.DesignPreviewService()
-    except ImportError:
-        pass  # maistro-design may not be available in test environment
+    except Exception as e:
+        import logging
+
+        logging.getLogger("conftest").warning("Failed to initialize DesignPreviewService: %s", e)
 
     try:
         import services.design_render as render_mod
 
         if render_mod._singleton is None:
             render_mod._singleton = render_mod.DesignRenderService()
-    except ImportError:
-        pass  # maistro-design may not be available in test environment
+    except Exception as e:
+        import logging
+
+        logging.getLogger("conftest").warning("Failed to initialize DesignRenderService: %s", e)
 
 
 @pytest.fixture(autouse=True)
