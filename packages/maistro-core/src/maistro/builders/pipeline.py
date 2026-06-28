@@ -159,8 +159,20 @@ def _review_skip_if(ctx: RunContext) -> bool:
 
 
 def _review_gate(ctx: RunContext) -> bool:
-    """Verifiable acceptance: the reviewer signed off."""
+    """Verifiable acceptance: the reviewer signed off, with no unwaived structural violation."""
+    if _has_critical_extracted_finding(ctx):
+        return False
     return _is_clean(str(ctx.get("review", "")))
+
+
+def _has_critical_extracted_finding(ctx: RunContext) -> bool:
+    from maistro.types.feedback import ClaimProvenance, Severity
+
+    findings = ctx.get("structural_findings", [])
+    return any(
+        f.provenance is ClaimProvenance.EXTRACTED and f.severity is Severity.CRITICAL
+        for f in findings
+    )
 
 
 def _cleanup_skip_if(ctx: RunContext) -> bool:
@@ -196,6 +208,32 @@ async def _scaffold_on_complete(run: PipelineRun, output: str) -> None:
     run.context["_spec"] = enriched
     run.context["spec"] = enriched.to_dict()
     run.context["spec_summary"] = build_spec_summary(enriched)
+
+
+async def _review_on_complete(run: PipelineRun, output: str) -> None:
+    """Build a structural snapshot of the implemented code and check it for violations.
+
+    Runs on ``review`` (not ``scaffold``) because the index must reflect the
+    *implemented* code. A no-op (empty findings) when no ``code_index`` is
+    configured or no ``workspace_path`` was given — this is what keeps the
+    hard-fail gate backward-compatible with callers who opt out.
+    """
+    code_index = run.context.get("_code_index")
+    workspace_path = run.context.get("workspace_path", "")
+    if code_index is None or not workspace_path:
+        run.context["structural_findings"] = []
+        return
+
+    from maistro.codebase.violations import check_structural_violations
+
+    report = await code_index.build(workspace_path)
+    run.context["_code_structure_report"] = report
+    findings = check_structural_violations(report)
+    run.context["structural_findings"] = findings
+    if findings:
+        run.context["structural_findings_summary"] = "\n".join(
+            f"- [{f.category}] {f.description}: {f.suggestion}" for f in findings
+        )
 
 
 # ── Default pipeline nodes ───────────────────────────────────────────────────
@@ -252,6 +290,9 @@ BUILDER_PIPELINE: list[PipelineNode] = [
             "Scaffold from previous stage:\n{scaffold}\n\n"
             "Reviewer feedback from a prior pass (fix everything listed, if any):\n"
             "{review_feedback}\n\n"
+            "Structural violations found by the code-structure index "
+            "(fix everything listed, if any):\n"
+            "{structural_findings_summary}\n\n"
             "Create a focused PR with your changes."
         ),
     ),
@@ -260,6 +301,7 @@ BUILDER_PIPELINE: list[PipelineNode] = [
         agent_name="auditor",
         depends_on=("implement",),
         skip_if=_review_skip_if,
+        on_complete=_review_on_complete,
         gate=_review_gate,
         revise_target="implement",
         max_revisions=2,
@@ -376,11 +418,13 @@ class BuilderPipeline:
         *,
         spec_store: Any | None = None,
         spec_verifier: Any | None = None,
+        code_index: Any | None = None,
         nodes: list[PipelineNode] | None = None,
     ) -> None:
         self._dispatcher = dispatcher
         self._spec_store = spec_store
         self._spec_verifier = spec_verifier
+        self._code_index = code_index
         self._nodes = list(nodes) if nodes is not None else list(BUILDER_PIPELINE)
         self._runs: dict[str, PipelineRun] = {}
 
@@ -391,6 +435,7 @@ class BuilderPipeline:
         title: str,
         repo: str,
         skip_decompose: bool = True,
+        workspace_path: str = "",
     ) -> PipelineRun:
         """Run the full pipeline for an issue."""
         run_id = f"pipeline-{issue_number}"
@@ -420,6 +465,8 @@ class BuilderPipeline:
                 "repo": repo,
                 "_spec_store": self._spec_store,
                 "_spec_verifier": self._spec_verifier,
+                "workspace_path": workspace_path,
+                "_code_index": self._code_index,
             }
         )
 
