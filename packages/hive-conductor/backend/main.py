@@ -108,9 +108,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         await start_design_service(get_settings())
         from services.design_preview import init_design_preview_service
+        from services.design_render import init_design_render_service
 
         init_design_preview_service()
-        _lifespan_log.info("Design preview service initialized")
+        init_design_render_service()
+        _lifespan_log.info("Design preview and render services initialized")
     except Exception as exc:
         _lifespan_log.warning("design_service_start_failed: %s", exc, exc_info=True)
     try:

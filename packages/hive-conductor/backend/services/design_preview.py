@@ -207,31 +207,49 @@ class DesignPreviewService:
         return job
 
     async def render_to_pdf(self, content: str, metadata: dict[str, Any]) -> str:
-        """Render HTML/React to PDF (stub for Phase 2).
+        """Render HTML/React to PDF via weasyprint (Phase 2B)."""
+        try:
+            from services.design_render import get_design_render_service
 
-        Phase 2: Use weasyprint or similar.
-        Returns download URL.
-        """
-        logger.info("PDF render stub called (Phase 2 implementation)")
-        return f"/v1/design/renders/{uuid4()!s}/output.pdf"
+            render_svc = get_design_render_service()
+            pdf_bytes = await render_svc.render_to_pdf(content, metadata)
+            # Phase 2B.2: Store in S3, return signed URL
+            render_id = str(uuid4())
+            logger.info("PDF rendered successfully (%d bytes)", len(pdf_bytes))
+            return f"/v1/design/renders/{render_id}/output.pdf"
+        except Exception as exc:
+            logger.error("PDF render failed: %s", exc)
+            raise
 
     async def render_to_pptx(self, content: str, metadata: dict[str, Any]) -> str:
-        """Render to PPTX (stub for Phase 2).
+        """Render to PPTX via python-pptx (Phase 2B)."""
+        try:
+            from services.design_render import get_design_render_service
 
-        Phase 2: Use python-pptx.
-        Returns download URL.
-        """
-        logger.info("PPTX render stub called (Phase 2 implementation)")
-        return f"/v1/design/renders/{uuid4()!s}/output.pptx"
+            render_svc = get_design_render_service()
+            pptx_bytes = await render_svc.render_to_pptx(content, metadata)
+            # Phase 2B.2: Store in S3, return signed URL
+            render_id = str(uuid4())
+            logger.info("PPTX rendered successfully (%d bytes)", len(pptx_bytes))
+            return f"/v1/design/renders/{render_id}/output.pptx"
+        except Exception as exc:
+            logger.error("PPTX render failed: %s", exc)
+            raise
 
     async def render_to_docx(self, content: str, metadata: dict[str, Any]) -> str:
-        """Render to DOCX (stub for Phase 2).
+        """Render to DOCX via python-docx (Phase 2B)."""
+        try:
+            from services.design_render import get_design_render_service
 
-        Phase 2: Use python-docx.
-        Returns download URL.
-        """
-        logger.info("DOCX render stub called (Phase 2 implementation)")
-        return f"/v1/design/renders/{uuid4()!s}/output.docx"
+            render_svc = get_design_render_service()
+            docx_bytes = await render_svc.render_to_docx(content, metadata)
+            # Phase 2B.2: Store in S3, return signed URL
+            render_id = str(uuid4())
+            logger.info("DOCX rendered successfully (%d bytes)", len(docx_bytes))
+            return f"/v1/design/renders/{render_id}/output.docx"
+        except Exception as exc:
+            logger.error("DOCX render failed: %s", exc)
+            raise
 
 
 # Singleton instance
