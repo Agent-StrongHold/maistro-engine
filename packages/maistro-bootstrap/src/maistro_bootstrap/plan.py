@@ -8,7 +8,7 @@ from typing import Any
 
 import yaml
 
-from maistro_bootstrap.platform_detect import deployment_tier_gate_message
+from maistro_bootstrap.platform_detect import deployment_tier_gate_message, environment_report
 from maistro_bootstrap.repo_root import find_maistro_engine_root
 from maistro_bootstrap.resolver import (
     commands_for,
@@ -19,6 +19,10 @@ from maistro_bootstrap.resolver import (
     should_print_podman_preface,
 )
 from maistro_bootstrap.schema import InstallAnswersV1
+
+DEFAULT_CURL_INSTALL_URL = (
+    "https://gist.githubusercontent.com/maistro-ai/maistro-install/main/install.sh"
+)
 
 
 def effective_runtime(answers: InstallAnswersV1) -> str:
@@ -87,6 +91,123 @@ def _compose_profile_hints(answers: InstallAnswersV1) -> list[str]:
     return lines
 
 
+def _safety_notes(answers: InstallAnswersV1) -> list[str]:
+    notes: list[str] = []
+    if answers.install_surface == "curl":
+        notes.append(
+            "install_surface=curl: fetcher should only identify the environment, verify prerequisites, "
+            "then run the pinned maistro-install payload; keep secrets out of shell history."
+        )
+    if answers.delivery_mode == "image_pull":
+        notes.append(
+            "delivery_mode=image_pull: default fast path pulls signed/pinned images and passes the same "
+            "answers as runtime parameters."
+        )
+    else:
+        notes.append(
+            "delivery_mode=source_build: pulls source and builds locally with the same answers; expected "
+            "runtime behavior should match image_pull, but install takes longer."
+        )
+    if answers.sandbox_profile == "safe":
+        notes.append(
+            "sandbox_profile=safe: default denies docker.sock mounts and host-privileged containers; "
+            "use explicit warnings before enabling broader agent execution."
+        )
+    else:
+        notes.append(
+            "sandbox_profile=developer: allows local iteration while retaining installer security posture: "
+            "no privileged containers, no docker.sock, no-new-privileges, and dropped capabilities. "
+            "Build from source if you need unsupported options."
+        )
+    if answers.crypto_profile == "distributed_identity_root":
+        notes.append(
+            "crypto_profile=distributed_identity_root: default installs a distributed identity/trust root "
+            "for agent specs, audit logs, approvals, and federation; wallet/spending plugins stay disabled."
+        )
+    elif answers.crypto_profile == "no_crypto":
+        notes.append(
+            "crypto_profile=no_crypto: removes the distributed identity root and crypto-backed signing; "
+            "use only for offline demos or environments that provide identity externally."
+        )
+    else:
+        notes.append(
+            "crypto_profile=full_all_crypto: enables the full crypto intent surface for downstream "
+            "installers, including DID/VC and wallet-capable components with explicit policy gates."
+        )
+    return notes
+
+
+def _generated_artifacts(answers: InstallAnswersV1) -> dict[str, Any]:
+    users = [answers.admin_user, answers.daily_driver_user, *answers.additional_users]
+    compose = {
+        "services": {
+            "maistro-reactor": {
+                "profiles": ["reactor"],
+                "environment": {
+                    "MAISTRO_DELIVERY_MODE": answers.delivery_mode,
+                    "MAISTRO_SANDBOX_PROFILE": answers.sandbox_profile,
+                    "MAISTRO_CRYPTO_PROFILE": answers.crypto_profile,
+                    "MAISTRO_FIRST_AGENTS": ",".join(answers.first_agents),
+                },
+                "security_opt": ["no-new-privileges:true"],
+                "cap_drop": ["ALL"],
+                "pids_limit": 512,
+                "tmpfs": ["/tmp:rw,noexec,nosuid,size=256m"],
+                "read_only": answers.sandbox_profile == "safe",
+            }
+        }
+    }
+    return {
+        "curl_entrypoint_url": DEFAULT_CURL_INSTALL_URL,
+        "curl_entrypoint": f"curl -fsSL {DEFAULT_CURL_INSTALL_URL} | bash -s -- --answers-file install-answers.yaml",
+        "install_script_phases": [
+            "preflight: detect OS/arch, admin ability, Docker/Podman, Hyper-V/WSL, KVM, LXC/VM hints",
+            "answers: walk operator through safe defaults and warnings for incompatible choices",
+            "render: write answers, compose override, sandbox policy, users, first agents, tutorial todo",
+            "apply: install prerequisites only with confirmation, build/pull selected compose, start reactor",
+        ],
+        "compose_override_preview": compose,
+        "bootstrap_users": users,
+        "delivery": {
+            "mode": answers.delivery_mode,
+            "behavior_contract": "image_pull and source_build consume the same answers and runtime parameters",
+            "expected_difference": "source_build takes longer; image_pull is faster",
+            "source": {
+                "enabled": answers.delivery_mode == "source_build",
+                "commands": ["git clone <maistro-engine-url>", "uv sync --extra bootstrap"],
+            },
+            "images": {
+                "enabled": answers.delivery_mode == "image_pull",
+                "parameters": answers.model_dump(mode="json"),
+            },
+        },
+        "sandbox_policy": {
+            "profile": answers.sandbox_profile,
+            "host_privileged": False,
+            "docker_socket_mount": False,
+            "no_new_privileges": True,
+            "capabilities_dropped": "ALL",
+        },
+        "unsupported_options": {
+            "installer_policy": "unsupported options are intentionally omitted from the installer",
+            "handoff": "build from source for unsupported host-privileged or experimental options",
+        },
+        "identity_root": {
+            "default": answers.crypto_profile == "distributed_identity_root",
+            "profile": answers.crypto_profile,
+            "materialize": answers.crypto_profile != "no_crypto",
+        },
+        "reactor": {"enabled": answers.reactor_enabled, "first_agents": answers.first_agents},
+        "tutorial_todo": [
+            f"Confirm admin profile for {answers.admin_user} and store recovery codes",
+            f"Complete daily-driver onboarding for {answers.daily_driver_user}",
+            "Choose provider accounts and add API keys through the secrets UI/env, not answers YAML",
+            "Run first safe sandbox task, review audit log, then unlock developer profile if needed",
+            "Record enough setup decisions to level up admin and user profiles from tutorial to operator",
+        ],
+    }
+
+
 def build_install_plan(
     answers: InstallAnswersV1,
     *,
@@ -106,6 +227,7 @@ def build_install_plan(
     shell_lines.extend(commands_for_compose_addons_run_podman(compose_addons))
 
     preview_notes = [
+        *_safety_notes(answers),
         *_stub_preview_lines(answers),
         *_preview_for_observability(answers),
         *_preview_for_gateway(answers),
@@ -156,6 +278,8 @@ def build_install_plan(
         "preview_notes": preview_notes,
         "apply_spec": apply_spec,
         "copier_command": copier_line,
+        "environment": environment_report(),
+        "generated_artifacts": _generated_artifacts(answers),
     }
 
 
