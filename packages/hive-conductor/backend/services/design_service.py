@@ -137,3 +137,10 @@ async def stop_design_service() -> None:
     _store_singleton = None
     _get_async_engine.cache_clear()
     _get_async_session_factory.cache_clear()
+    try:
+        from services.design_preview import _singleton as preview_singleton
+
+        if preview_singleton is not None:
+            logger.info("DesignPreviewService stopped")
+    except Exception:
+        pass

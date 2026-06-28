@@ -147,3 +147,82 @@ async def get_skill_discovery_form(skill_slug: str) -> list[dict[str, Any]]:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/projects/{project_id}/render")
+async def create_render_job(project_id: str, format: str = "pdf") -> dict[str, Any]:
+    """Request server-side rendering of a project output.
+
+    Validates code (for T3 artifacts), creates async render job.
+    Returns immediately with job_id for polling.
+
+    Query params:
+      format: output format (pdf, pptx, docx, png)
+
+    Returns:
+      {job_id, status, created_at}
+    """
+    try:
+        from services.design_preview import get_design_preview_service
+
+        from maistro_design.types import OutputFormat
+
+        store = get_design_store()
+        preview_svc = get_design_preview_service()
+
+        # Fetch project
+        project = await store.get(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+        # Validate format
+        try:
+            output_format = OutputFormat(format)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported format: {format}. Allowed: pdf, pptx, docx, png",
+            )
+
+        # Create render job
+        job = preview_svc.create_render_job(project_id, output_format)
+        return {
+            "job_id": job.job_id,
+            "status": job.status,
+            "format": output_format,
+            "created_at": job.created_at.isoformat(),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Render job creation failed: {e!s}")
+
+
+@router.get("/projects/{project_id}/render/{job_id}")
+async def get_render_job_status(project_id: str, job_id: str) -> dict[str, Any]:
+    """Poll render job status and get download URL when ready.
+
+    Returns:
+      {job_id, status, url, error, created_at, updated_at}
+
+    Status: pending | rendering | completed | failed
+    """
+    try:
+        from services.design_preview import get_design_preview_service
+
+        preview_svc = get_design_preview_service()
+        job = preview_svc.get_render_job(job_id)
+
+        if not job:
+            raise HTTPException(status_code=404, detail=f"Render job {job_id} not found")
+
+        if job.project_id != project_id:
+            raise HTTPException(
+                status_code=403, detail="Render job does not belong to this project"
+            )
+
+        return job.to_dict()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
