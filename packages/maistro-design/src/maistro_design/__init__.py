@@ -12,6 +12,7 @@ from maistro_design.protocols import (
 )
 from maistro_design.skills.builtins import load_builtins
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+from maistro_design.stores import PgDesignProjectStore
 from maistro_design.systems.importer import (
     ScanReport,
     import_from_catalog,
@@ -73,6 +74,7 @@ __all__ = [
     "InMemoryTrustReviewQueue",
     "IncompatibleDesignSystemError",
     "OutputFormat",
+    "PgDesignProjectStore",
     "ScanReport",
     "SkillMode",
     "SkillModeError",

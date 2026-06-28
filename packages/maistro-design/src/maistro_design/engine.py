@@ -34,7 +34,10 @@ from maistro_design.types import (
 
 if TYPE_CHECKING:
     from maistro_canvas.protocols import CanvasStore, ImageGenClient
-    from maistro_design.protocols import DesignSkillRegistry, DesignSystemRegistry
+    from maistro_design.protocols import (
+        DesignSkillRegistry,
+        DesignSystemRegistry,
+    )
 
 
 class DesignEngine:
@@ -51,6 +54,7 @@ class DesignEngine:
         trust_review_queue: InMemoryTrustReviewQueue | None = None,
         canvas_store: CanvasStore | None = None,
         image_gen: ImageGenClient | None = None,
+        project_store: DesignProjectStore | None = None,
     ) -> None:
         self._skills = skill_registry
         self._systems = system_registry
@@ -60,6 +64,7 @@ class DesignEngine:
         )
         self._canvas_store = canvas_store
         self._image_gen = image_gen
+        self._project_store = project_store
         self._context_trust_tier: TrustTier = TrustTier.T0
 
     @property
@@ -137,7 +142,9 @@ class DesignEngine:
             raise SkillNotFoundError(msg)
         return [f.to_dict() for f in skill.discovery_form]
 
-    async def generate(self, discovery: DiscoveryResult) -> DesignProject:
+    async def generate(
+        self, discovery: DiscoveryResult, org_id: str, team_id: str | None = None
+    ) -> DesignProject:
         """Build a DesignProject from completed discovery responses.
 
         Pipeline:
@@ -146,6 +153,7 @@ class DesignEngine:
           3. Scan discovery responses through banish list and Warden
           4. Validate required discovery fields
           5. Assemble prompt stack and optionally create a CanvasRecord
+          6. Persist project via project_store if available
         """
         skill = self._skills.get(discovery.skill_slug)
         if skill is None:
@@ -184,13 +192,20 @@ class DesignEngine:
             canvas_id = canvas_record.id
 
         project_id = str(uuid.uuid4())
-        return DesignProject(
+        project = DesignProject(
             id=project_id,
             name=f"{skill.name} ({system.name})",
             skill_slug=skill.slug,
             design_system_slug=system.slug,
+            org_id=org_id,
+            team_id=team_id,
             trust_tier=self._context_trust_tier,
             canvas_id=canvas_id,
             outputs=[output],
             discovery=discovery,
         )
+
+        if self._project_store is not None:
+            project = await self._project_store.create(project)
+
+        return project
