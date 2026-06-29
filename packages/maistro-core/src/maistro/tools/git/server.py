@@ -17,6 +17,7 @@ from pydantic import Field
 
 from maistro.tools.git.github import create_pr, get_pr, list_issues
 from maistro.tools.result import fail, ok
+from maistro.tools.sandbox.workspace import validate_workspace_path
 
 mcp = FastMCP("git", instructions="Git and GitHub operations")
 
@@ -31,6 +32,21 @@ _PR_CACHE_TTL_S = 300
 _pr_cache: dict[str, dict[str, Any]] = {}
 
 
+def _validate_git_workspace(workspace: str) -> str:
+    try:
+        return str(validate_workspace_path(workspace))
+    except ValueError as exc:
+        raise ValueError(f"Git workspace path is not allowed: {workspace}") from exc
+
+
+def _blocked_workspace_result(workspace: str) -> dict[str, Any]:
+    return fail(
+        stdout=f"Blocked: git workspace path is not allowed: {workspace}",
+        error_code="blocked_workspace",
+        suggested_action="Use a workspace under /tmp/maistro-workspace or /repos.",
+    )
+
+
 def _pr_cache_key(repo: str, branch: str, title: str, body: str, base: str) -> str:
     raw = "\n".join((repo, branch, title, body, base))
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -38,6 +54,10 @@ def _pr_cache_key(repo: str, branch: str, title: str, body: str, base: str) -> s
 
 async def _git(workspace: str, *args: str, timeout: int = 60) -> dict[str, Any]:
     """Run a git command in the given workspace. Returns structured result."""
+    try:
+        workspace = _validate_git_workspace(workspace)
+    except ValueError:
+        return _blocked_workspace_result(workspace)
     try:
         proc = await asyncio.create_subprocess_exec(
             "git",
@@ -90,6 +110,10 @@ async def git_clone(
     url: str, dest: str, timeout: Annotated[int, Field(ge=1, le=900)] = GIT_CLONE_TIMEOUT
 ) -> dict[str, Any]:
     """Clone a git repository (shallow, depth=1)."""
+    try:
+        dest = _validate_git_workspace(dest)
+    except ValueError:
+        return _blocked_workspace_result(dest)
     try:
         proc = await asyncio.create_subprocess_exec(
             "git",

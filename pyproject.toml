@@ -99,6 +99,7 @@ ignore = ["E501"]
 max-complexity = 10
 
 [tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
 testpaths = [
     "packages/maistro-core/tests",
     "packages/maistro-server/tests",
