@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -13,6 +14,8 @@ _GIT_ENV = {
     "GIT_COMMITTER_NAME": "maistro-shadow",
     "GIT_COMMITTER_EMAIL": "shadow@maistro.local",
 }
+
+_TASK_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
 
 def _run(args: list[str], cwd: Path) -> str:
@@ -37,13 +40,28 @@ class PrCandidate:
 class ShadowGitWorkspace:
     workspace_ref: Path
     base_sha: str
+    shadow_root: Path
+
+    def _resolve_file(self, rel_path: str) -> Path:
+        if Path(rel_path).is_absolute():
+            raise ValueError(f"Shadow edit path must be relative: {rel_path!r}")
+        root = self.workspace_ref.resolve()
+        target = (root / rel_path).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            raise ValueError(f"Shadow edit path escapes workspace: {rel_path!r}") from None
+        return target
 
     def commit_edit(self, files: dict[str, str], message: str) -> str:
         for rel_path, content in files.items():
-            full_path = self.workspace_ref / rel_path
+            full_path = self._resolve_file(rel_path)
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_text(content)
-            _run(["add", rel_path], cwd=self.workspace_ref)
+            _run(
+                ["add", "--", str(full_path.relative_to(self.workspace_ref.resolve()))],
+                cwd=self.workspace_ref,
+            )
         _run(["commit", "-m", message], cwd=self.workspace_ref)
         return _run(["rev-parse", "HEAD"], cwd=self.workspace_ref).strip()
 
@@ -60,13 +78,30 @@ class ShadowGitWorkspace:
         )
 
     def discard(self) -> None:
+        root = self.shadow_root.resolve()
+        target = self.workspace_ref.resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            raise ValueError(
+                f"Refusing to discard workspace outside shadow root: {target}"
+            ) from None
         shutil.rmtree(self.workspace_ref, ignore_errors=True)
 
 
 def create_shadow_workspace(root: Path, task_id: str) -> ShadowGitWorkspace:
-    workspace_ref = root / task_id
+    if not _TASK_ID_RE.fullmatch(task_id):
+        raise ValueError(
+            "task_id must be 1-100 characters of letters, digits, dot, underscore, or dash"
+        )
+    root = root.resolve()
+    workspace_ref = (root / task_id).resolve()
+    try:
+        workspace_ref.relative_to(root)
+    except ValueError:
+        raise ValueError(f"Shadow workspace escapes root: {workspace_ref}") from None
     workspace_ref.mkdir(parents=True, exist_ok=True)
     _run(["init"], cwd=workspace_ref)
     _run(["commit", "--allow-empty", "-m", "shadow workspace base"], cwd=workspace_ref)
     base_sha = _run(["rev-parse", "HEAD"], cwd=workspace_ref).strip()
-    return ShadowGitWorkspace(workspace_ref=workspace_ref, base_sha=base_sha)
+    return ShadowGitWorkspace(workspace_ref=workspace_ref, base_sha=base_sha, shadow_root=root)

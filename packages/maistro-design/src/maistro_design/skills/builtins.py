@@ -2,6 +2,20 @@
 
 from maistro_design.types import DesignSkill, DiscoveryField, OutputFormat, SkillMode
 
+_CODE_OUTPUT_INSTRUCTIONS = """## Code Output Instructions
+
+When the user requests React/TSX output:
+
+1. Generate a single, self-contained `.tsx` file that exports a default React component.
+2. Use functional components and React hooks (useState, useEffect). No class components.
+3. Style exclusively with Tailwind utility classes. No CSS-in-JS, no CSS modules, no inline styles.
+4. Import only:
+   - `react` (React, useState, useEffect, etc.)
+   - Tailwind CSS (already available in the rendering environment)
+5. Do not make external API calls. Use local state for all interactivity.
+6. Include a JSDoc comment at the top with the component's purpose and discovery response summary.
+7. Ensure the component is accessible (ARIA labels, semantic HTML, keyboard navigation)."""
+
 BUILTINS: list[DesignSkill] = [
     # ── Prototype ────────────────────────────────────────────────────────────
     DesignSkill(
@@ -10,8 +24,14 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.PROTOTYPE,
         description="Interactive login/auth flow prototype with form states and error handling.",
         featured=True,
-        output_formats=[OutputFormat.HTML],
+        output_formats=[OutputFormat.HTML, OutputFormat.REACT_TSX],
         tags=["auth", "forms", "ux"],
+        system_prompt=f"""You are designing an interactive login/authentication flow prototype.
+
+The user has provided a design system with colors, typography, and spacing tokens.
+Follow the design guidelines strictly to ensure visual consistency.
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         discovery_form=[
             DiscoveryField(
                 key="auth_methods",
@@ -37,8 +57,14 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.PROTOTYPE,
         description="Browser-like UI shell for agentic web browsing workflows.",
         featured=True,
-        output_formats=[OutputFormat.HTML],
+        output_formats=[OutputFormat.HTML, OutputFormat.REACT_TSX],
         tags=["agent", "browser", "automation"],
+        system_prompt=f"""You are designing a browser-like UI shell for agentic web automation.
+
+The user has specified the primary action the agent will perform.
+Build a realistic browser interface that supports this workflow.
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         discovery_form=[
             DiscoveryField(
                 key="primary_action",
@@ -56,7 +82,24 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.DECK,
         description="Investor-ready pitch deck with structured slides.",
         featured=True,
-        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        output_formats=[
+            OutputFormat.HTML,
+            OutputFormat.MARKDOWN,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PPTX,
+            OutputFormat.PDF,
+        ],
+        system_prompt=f"""You are designing an investor-ready pitch deck.
+
+Structure each slide clearly with:
+- Strong headline (one key idea per slide)
+- Supporting visuals or data
+- Consistent visual hierarchy across all slides
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate a self-contained React component that renders slides with useState-based navigation.
+For PPTX/PDF: Structure as slide metadata and content suitable for conversion.""",
         tags=["pitch", "investor", "startup"],
         discovery_form=[
             DiscoveryField(
@@ -94,7 +137,25 @@ BUILTINS: list[DesignSkill] = [
         name="Product Demo Deck",
         mode=SkillMode.DECK,
         description="Feature walkthrough deck for customer demos and sales.",
-        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        output_formats=[
+            OutputFormat.HTML,
+            OutputFormat.MARKDOWN,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PPTX,
+            OutputFormat.PDF,
+        ],
+        system_prompt=f"""You are designing a product demo walkthrough deck.
+
+Each slide should:
+- Focus on one feature or capability
+- Include clear call-to-action for next steps
+- Use real product screenshots or mockups where appropriate
+- Build toward purchase decision
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate a self-contained React component with slide navigation and interactive elements.
+For PPTX/PDF: Structure for easy conversion to presentation format.""",
         tags=["demo", "sales", "product"],
         discovery_form=[
             DiscoveryField(
@@ -126,7 +187,16 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.TEMPLATE,
         description="Conversion-optimised landing page with hero, features, and CTA sections.",
         featured=True,
-        output_formats=[OutputFormat.HTML, OutputFormat.CSS],
+        output_formats=[OutputFormat.HTML, OutputFormat.CSS, OutputFormat.REACT_TSX],
+        system_prompt=f"""You are designing a conversion-optimized landing page.
+
+Use the provided design system strictly. Follow best practices for:
+- Clear hierarchy and visual flow
+- Compelling headlines and value propositions
+- Strong call-to-action placement
+- Responsive layout across device sizes
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         tags=["landing", "marketing", "conversion"],
         discovery_form=[
             DiscoveryField(
@@ -163,8 +233,17 @@ BUILTINS: list[DesignSkill] = [
         name="Email Template",
         mode=SkillMode.TEMPLATE,
         description="Responsive HTML email template for transactional or marketing sends.",
-        output_formats=[OutputFormat.HTML],
+        output_formats=[OutputFormat.HTML, OutputFormat.REACT_TSX],
         tags=["email", "marketing", "responsive"],
+        system_prompt=f"""You are designing a responsive email template.
+
+Email constraints:
+- Use inline styles (CSS will be inlined by mail clients)
+- Support dark mode where possible
+- Test on major email clients (Gmail, Outlook, Apple Mail)
+- Clear single-column layout for mobile
+
+{_CODE_OUTPUT_INSTRUCTIONS}""",
         discovery_form=[
             DiscoveryField(
                 key="email_type",
@@ -189,7 +268,30 @@ BUILTINS: list[DesignSkill] = [
         mode=SkillMode.DESIGN_SYSTEM,
         description="Generate a brand guidelines document from a design system.",
         featured=True,
-        output_formats=[OutputFormat.HTML, OutputFormat.MARKDOWN],
+        output_formats=[
+            OutputFormat.HTML,
+            OutputFormat.MARKDOWN,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PDF,
+            OutputFormat.DOCX,
+            OutputFormat.PNG,
+        ],
+        system_prompt=f"""You are creating comprehensive brand guidelines documentation.
+
+Cover:
+- Brand purpose and mission
+- Visual identity (logo, color palette, typography)
+- Voice and tone guidelines
+- Component library overview
+- Usage dos and don'ts
+- Real-world application examples
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate an interactive brand showcase component with color swatches, typography samples, and component gallery.
+For PDF: Create a printable guidelines document with clear sections and consistent formatting.
+For DOCX: Generate an editable Word document suitable for distribution to stakeholders.
+For PNG: Render visual style guide assets (color palette, typography scale).""",
         tags=["brand", "guidelines", "identity"],
         discovery_form=[
             DiscoveryField(
@@ -220,7 +322,31 @@ BUILTINS: list[DesignSkill] = [
         name="Design Token Sheet",
         mode=SkillMode.DESIGN_SYSTEM,
         description="Generate CSS custom properties and JSON token export for a design system.",
-        output_formats=[OutputFormat.CSS, OutputFormat.JSON],
+        output_formats=[
+            OutputFormat.CSS,
+            OutputFormat.JSON,
+            OutputFormat.REACT_TSX,
+            OutputFormat.PDF,
+            OutputFormat.PNG,
+        ],
+        system_prompt=f"""You are generating a comprehensive design token reference sheet.
+
+Include:
+- Color tokens (with contrast ratios for accessibility)
+- Typography tokens (font families, sizes, weights, line heights)
+- Spacing tokens (margins, padding, gaps)
+- Border radius tokens
+- Shadow/elevation tokens
+- Motion/animation tokens
+- Z-index scale
+
+{_CODE_OUTPUT_INSTRUCTIONS}
+
+For REACT_TSX: Generate an interactive token browser component with searchable token list, live preview, and copy-to-clipboard functionality.
+For CSS: Output CSS custom properties (variables) ready for production use.
+For JSON: Export token definitions in standardized format (Design Tokens Community Group format).
+For PDF: Create a visual token reference guide with swatches and specifications.
+For PNG: Render visual token scale assets (color palette, typography samples, spacing grid).""",
         tags=["tokens", "css", "design-system"],
         discovery_form=[
             DiscoveryField(

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
+    import asyncpg
 
 
 def cycle_key(billing_cycle: str) -> str:

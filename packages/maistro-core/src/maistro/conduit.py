@@ -54,7 +54,7 @@ def _apply_intent_hint(intent: Intent, intent_hint: str) -> Intent:
     from maistro.types.intent import TIER_ORDER
 
     for task_type in TIER_ORDER:
-        if task_type == intent_hint.upper():
+        if task_type.upper() == intent_hint.upper():
             return dataclasses.replace(intent, task_type=task_type)
     return intent
 

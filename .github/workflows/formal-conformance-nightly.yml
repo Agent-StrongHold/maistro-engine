@@ -26,7 +26,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e formal/ && pip install -e packages/maistro-core
+        run: pip install -e formal/ && pip install -e packages/maistro-core && pip install -e packages/maistro-evolve
 
       - name: Extract constants from source
         run: python -m formal.extractors.extract_security_constants

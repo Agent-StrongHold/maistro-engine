@@ -12,7 +12,7 @@ S = TypeVar("S")
 E = TypeVar("E")
 
 
-async def repertoire_run(  # noqa: UP047 (PEP 695 generics require py3.12; this package supports 3.11)
+async def repertoire_run(
     rep: Repertoire[InputT, S, E], inp: InputT, *, stakes: float, gate: PerformGate
 ) -> S:
     """Recall -> gate -> improvise -> rehearse -> compose, returning the resulting solution."""

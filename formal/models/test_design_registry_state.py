@@ -26,7 +26,7 @@ from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, ru
 from maistro_design.skills.builtins import load_builtins  # noqa: E402
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry  # noqa: E402
 from maistro_design.trust import TrustTier  # noqa: E402
-from maistro_design.types import DesignSkill, SkillMode  # noqa: E402
+from maistro_design.types import DesignSkill, OutputFormat, SkillMode  # noqa: E402
 
 _MODES = [m.value for m in SkillMode]
 _TIERS = [TrustTier.T0, TrustTier.T1, TrustTier.T2, TrustTier.T3]
@@ -96,6 +96,34 @@ class DesignRegistryMachine(RuleBasedStateMachine):
             by_mode = self.registry.list_by_mode(mode)
             for s in by_mode:
                 assert id(s) in all_skills
+
+    @invariant()
+    def react_tsx_output_requires_code_instructions(self) -> None:
+        """Per SPEC-062326-e9c6: skills declaring REACT_TSX must include 'Code Output Instructions' in system_prompt."""
+        for skill in self.registry.list_all():
+            if OutputFormat.REACT_TSX in skill.output_formats:
+                assert "Code Output Instructions" in skill.system_prompt, (
+                    f"Skill '{skill.slug}' declares REACT_TSX but system_prompt lacks 'Code Output Instructions'"
+                )
+
+    @invariant()
+    def multi_format_skills_include_guidance(self) -> None:
+        """Skills declaring PPTX, PDF, DOCX, PNG should include format-specific guidance in system_prompt."""
+        for skill in self.registry.list_all():
+            if OutputFormat.PPTX in skill.output_formats or OutputFormat.PDF in skill.output_formats:
+                assert (
+                    "PDF" in skill.system_prompt
+                    or "PPTX" in skill.system_prompt
+                    or "presentation" in skill.system_prompt.lower()
+                    or "slide" in skill.system_prompt.lower()
+                ), f"Skill '{skill.slug}' declares PDF/PPTX but lacks format guidance in system_prompt"
+
+    @invariant()
+    def registry_size_never_negative(self) -> None:
+        """Registry size is always non-negative and consistent."""
+        all_skills = self.registry.list_all()
+        assert len(all_skills) >= 0
+        assert all(skill is not None for skill in all_skills)
 
 
 TestDesignRegistryMachine = DesignRegistryMachine.TestCase

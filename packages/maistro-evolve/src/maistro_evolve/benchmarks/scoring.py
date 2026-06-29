@@ -50,31 +50,58 @@ def json_field_match(response: str, field: str, expected: Any) -> float:
         return 0.0
 
 
+def _try_parse_json(text: str) -> dict[str, Any] | list[Any] | None:
+    try:
+        loaded: Any = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+    return loaded if isinstance(loaded, (dict, list)) else None
+
+
+def _extract_balanced_json(text: str) -> str | None:
+    """Find the first balanced {...} or [...] substring, honoring nesting.
+
+    Whichever bracket opens first in the text wins, so an unfenced JSON
+    array of multiple objects is captured whole (not just its first
+    element) and a nested object's outer braces aren't cut short.
+    """
+    brace_idx = text.find("{")
+    bracket_idx = text.find("[")
+    if brace_idx == -1 and bracket_idx == -1:
+        return None
+    if bracket_idx == -1 or (brace_idx != -1 and brace_idx < bracket_idx):
+        start, open_ch, close_ch = brace_idx, "{", "}"
+    else:
+        start, open_ch, close_ch = bracket_idx, "[", "]"
+
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == open_ch:
+            depth += 1
+        elif text[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def extract_json_from_response(
     response: str,
 ) -> dict[str, Any] | list[Any] | None:
-    patterns = [
-        r"```json\s*(.*?)\s*```",
-        r"```\s*(.*?)\s*```",
-        r"(\{[^{}]*\})",
-        r"(\[[^\[\]]*\])",
-    ]
-    for pat in patterns:
+    for pat in (r"```json\s*(.*?)\s*```", r"```\s*(.*?)\s*```"):
         match = re.search(pat, response, re.DOTALL)
         if match:
-            try:
-                parsed: Any = json.loads(match.group(1))
-            except (json.JSONDecodeError, ValueError):
-                continue
-            if isinstance(parsed, (dict, list)):
+            parsed = _try_parse_json(match.group(1))
+            if parsed is not None:
                 return parsed
-    try:
-        loaded: Any = json.loads(response.strip())
-    except (json.JSONDecodeError, ValueError):
-        return None
-    if isinstance(loaded, (dict, list)):
-        return loaded
-    return None
+
+    balanced = _extract_balanced_json(response)
+    if balanced is not None:
+        parsed = _try_parse_json(balanced)
+        if parsed is not None:
+            return parsed
+
+    return _try_parse_json(response.strip())
 
 
 def function_call_match(

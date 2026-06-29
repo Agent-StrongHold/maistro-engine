@@ -279,20 +279,14 @@ async def test_gated_capability_generates_draft_without_raising(monkeypatch):
     """v0: gated capabilities produce drafts in pm_runner (with
     draft_status='needs_confirm' embedded in the LLM output). The actual
     write gate lives in Hive's confirm handler, not here."""
-    monkeypatch.setattr(
-        pm_runner,
-        "maistro_llm_call",
-        # `create_jira_ticket` is in _NO_DATA_WITHOUT_TOOLS so it short-circuits
-        # before LLM in v0; we test create_initiative instead since it's gated
-        # but not in the no-data set.
-        _ := __import__("asyncio").coroutine(
-            lambda *a, **kw: (
-                '{"capability":"create_initiative","summary":"x","result":{"draft_status":"needs_confirm"},"source":"llm"}'
-            )
-        )
-        if False
-        else (lambda *args, **kwargs: __import__("asyncio").sleep(0)),
-    )
+
+    async def _unused_llm_call(*args, **kwargs):
+        return '{"capability":"create_initiative","summary":"x","result":{"draft_status":"needs_confirm"},"source":"llm"}'
+
+    # `create_jira_ticket` is in _NO_DATA_WITHOUT_TOOLS so it short-circuits
+    # before LLM in v0; we test create_initiative instead since it's gated
+    # but not in the no-data set.
+    monkeypatch.setattr(pm_runner, "maistro_llm_call", _unused_llm_call)
 
     # Use a proper async stub via monkeypatch + an actual async fn:
     async def fake_llm_call(*args, **kwargs):

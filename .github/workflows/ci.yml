@@ -66,6 +66,10 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
+      - run: uv run pytest packages/maistro-turing/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
