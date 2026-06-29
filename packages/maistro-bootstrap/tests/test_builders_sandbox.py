@@ -114,6 +114,24 @@ def test_env_does_not_contain_os_environ(
     assert "super-secret-value" not in out
 
 
+def test_run_argv_blocks_absolute_path_escape(shell: SandboxedShell) -> None:
+    with pytest.raises(SandboxEscapeError):
+        shell.run_argv(["cat", "/etc/passwd"])
+
+
+def test_run_argv_blocks_dotdot_path_escape(tmp_root: Path) -> None:
+    sub = tmp_root / "sub"
+    sub.mkdir()
+    locked = SandboxedShell(sub)
+    with pytest.raises(SandboxEscapeError):
+        locked.run_argv(["cat", "../secret.txt"])
+
+
+def test_run_argv_blocks_dangerous_command(shell: SandboxedShell) -> None:
+    with pytest.raises(BlockedCommandError, match="git push"):
+        shell.run_argv(["git", "push", "origin", "main"])
+
+
 # ---------------------------------------------------------------------------
 # LocalWorktreeSandbox — file operations
 # ---------------------------------------------------------------------------
@@ -170,6 +188,17 @@ def test_search_glob_filters(sandbox: LocalWorktreeSandbox) -> None:
     assert "a.py" in py_matches
     assert "b.txt" not in py_matches
     assert "b.txt" in txt_matches
+
+
+@pytest.mark.parametrize("glob", ["../*.py", "../../**/*.py", "/tmp/*.py"])
+def test_search_glob_cannot_read_outside_sandbox(tmp_root: Path, glob: str) -> None:
+    root = tmp_root / "root"
+    root.mkdir()
+    (tmp_root / "secret.py").write_text("needle", encoding="utf-8")
+    sandbox = LocalWorktreeSandbox(root)
+
+    with pytest.raises(SandboxEscapeError):
+        sandbox.search("needle", glob=glob)
 
 
 # ---------------------------------------------------------------------------

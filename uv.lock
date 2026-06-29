@@ -1872,6 +1872,25 @@ scheduling = [
     { name = "apscheduler" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "aiosqlite" },
+    { name = "bip-utils" },
+    { name = "cosmic-ray" },
+    { name = "hypothesis" },
+    { name = "mypy" },
+    { name = "pillow" },
+    { name = "pynacl" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "questionary" },
+    { name = "regex" },
+    { name = "ruff" },
+    { name = "types-pyyaml" },
+    { name = "types-regex" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", marker = "extra == 'dev'", specifier = ">=0.20" },
@@ -1913,6 +1932,25 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.14" },
 ]
 provides-extras = ["dev", "browser", "scheduling", "bootstrap"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "bip-utils", specifier = ">=2.9" },
+    { name = "cosmic-ray", specifier = ">=8.0.0" },
+    { name = "hypothesis", specifier = ">=6.0" },
+    { name = "mypy", specifier = ">=1.14" },
+    { name = "pillow", specifier = ">=11.0" },
+    { name = "pynacl", specifier = ">=1.5" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "pytest-asyncio", specifier = ">=0.25" },
+    { name = "pytest-cov", specifier = ">=6.0" },
+    { name = "questionary", specifier = ">=2.0" },
+    { name = "regex", specifier = ">=2024.5.15" },
+    { name = "ruff", specifier = ">=0.9" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
+    { name = "types-regex", specifier = ">=2024.5.15" },
+]
 
 [[package]]
 name = "mako"

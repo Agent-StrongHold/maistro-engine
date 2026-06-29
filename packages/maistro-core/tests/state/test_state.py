@@ -177,6 +177,9 @@ class TestEncryptedBackups:
 
         from maistro.state import State
 
+        if not _has_age():
+            pytest.skip("age and age-keygen are required for encrypted backup tests")
+
         state = State(db_path=str(db_path))
         w = state.open_writer()
         w.execute("CREATE TABLE test (id INTEGER)")
@@ -217,6 +220,9 @@ class TestEncryptedBackups:
         import subprocess
 
         from maistro.state import State
+
+        if not _has_age():
+            pytest.skip("age and age-keygen are required for encrypted backup tests")
 
         state = State(db_path=str(db_path))
         state.open_writer()

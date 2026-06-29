@@ -4,15 +4,26 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from maistro.tasks.models import TaskCreate, TaskResponse, TaskResult
 from maistro.tasks.queue import TaskQueue, get_task_queue
+from maistro.tools.sandbox.workspace import validate_workspace_path
 from maistro_server.api.auth import RequireAuth
 from maistro_server.api.principal import AuthenticatedPrincipal
 from maistro_server.api.schemas import PaginatedTasks, TaskCancelledResponse, TaskCreatedResponse
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+def _validate_task_workspace(workspace: str) -> None:
+    try:
+        validate_workspace_path(workspace)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Workspace path is not allowed",
+        ) from exc
 
 
 def _owner_id(auth: AuthenticatedPrincipal | None) -> str:
@@ -28,6 +39,7 @@ async def create_task(
     auth: RequireAuth,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
 ) -> TaskCreatedResponse:
+    _validate_task_workspace(request.workspace)
     uid = _owner_id(auth)
     task = await queue.submit(request, user_id=uid)
     response.headers["Location"] = f"/tasks/{task.task_id}"
@@ -84,7 +96,7 @@ async def cancel_task(
 async def list_tasks(
     auth: RequireAuth,
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
 ) -> PaginatedTasks:
     items, next_cursor = queue.list_tasks(limit=limit, cursor=cursor, user_id=_owner_id(auth))

@@ -116,6 +116,21 @@ def test_block_ssrf_raises_for_literal_private_ip() -> None:
         _block_ssrf("http://127.0.0.1/skill.md")
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "gopher://example.com/skill.md",
+        "ftp://example.com/skill.md",
+        "//example.com/skill.md",
+        "not-a-url",
+    ],
+)
+def test_block_ssrf_rejects_unsupported_or_schemeless_urls(url: str) -> None:
+    with pytest.raises(ValueError, match="unsupported marketplace URL"):
+        _block_ssrf(url)
+
+
 def test_block_ssrf_allows_literal_public_ip_url() -> None:
     _block_ssrf("https://8.8.8.8/skill.md")
 
@@ -257,6 +272,23 @@ def test_uninstall_raises_when_skill_not_found(
     mp = SkillMarketplace(http_client=client, skills_dir=tmp_path, registry=registry)
     with pytest.raises(ValueError, match="not found"):
         mp.uninstall("ghost")
+
+
+@pytest.mark.parametrize("name", ["../victim", "/tmp/victim", "bad-name", "", "a" * 52])
+def test_uninstall_rejects_path_like_or_invalid_skill_names(
+    tmp_path: Path, registry: InMemorySkillRegistry, name: str
+) -> None:
+    community = tmp_path / "community"
+    community.mkdir()
+    victim = tmp_path / "victim.md"
+    victim.write_text("do not delete", encoding="utf-8")
+
+    client = _FakeHttpClient()
+    mp = SkillMarketplace(http_client=client, skills_dir=tmp_path, registry=registry)
+
+    with pytest.raises(ValueError, match="Invalid community skill name"):
+        mp.uninstall(name)
+    assert victim.read_text(encoding="utf-8") == "do not delete"
 
 
 async def test_uninstall_removes_file_and_deletes_from_registry(
