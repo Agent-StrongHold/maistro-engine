@@ -211,6 +211,26 @@ Maintained per [`engine#ADR-030`](https://github.com/BlakeMatthews-dev/maistro-e
 - TODO: run the skill-creator **description-optimizer** to tune triggering (generate ~20 trigger-eval queries → `run_loop`)
 - Native home / substrate: `engine#SPEC-189` (lossless rolling context assembly)
 
+### Discovered gaps (engine — found via exploratory/adversarial testing, June 2026)
+
+**[engine-110] `ServiceKeyRegistry` stale-key mapping + unguarded YAML parsing — Implemented**
+- Found while adversarially fuzzing `auth/registry.py` for `engine#SPEC-062826-1924`: re-registering a
+  service with a rotated key left the old key live in `_key_to_name`; malformed YAML / a non-mapping
+  `services` value raised uncaught instead of degrading like `discover_into`
+- Fixed in the same change (`_register_key()` helper; `isinstance` guards + `try/except yaml.YAMLError`
+  in `load_yaml`); regression-locked by `formal/models/test_auth_registry.py`
+- Session log: `docs/exploratory-sessions/2026-06-28-service-key-registry-backfill.md`
+
+**[engine-111] `AuthMiddleware` sibling-prefix bypass + substring permission carve-out — Implemented**
+- Found while building the adversarial path-matching suite for `hive-conductor/backend/middleware/auth.py`
+  (`engine#SPEC-062826-1924`): `_PUBLIC_PREFIXES`'s unguarded `startswith` let a sibling of
+  `/v1/auth/login`/`/v1/auth/register` bypass auth entirely; `_required_permission`'s `"/invoke" in path`
+  was a fail-open substring-anywhere check instead of a trailing-segment check
+- Fixed in the same change (`_matches_public_prefix()` boundary helper + `_PUBLIC_EXACT` move;
+  `path.endswith("/invoke")`); regression-locked by
+  `packages/hive-conductor/backend/tests/test_auth_middleware.py`
+- Session log: `docs/exploratory-sessions/2026-06-28-auth-middleware-backfill.md`
+
 ---
 
 ## `Project_mAIstro` items
