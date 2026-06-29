@@ -1,5 +1,5 @@
 ---
-id: SPEC-261
+id: SPEC-062126-7853
 title: "Skill fixer rule pipeline and public API ownership"
 repo: maistro-engine
 kind: spec
@@ -20,7 +20,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-261: Skill Fixer Rule Pipeline
+# SPEC-062126-7853: Skill Fixer Rule Pipeline
 
 ## Finding addressed
 

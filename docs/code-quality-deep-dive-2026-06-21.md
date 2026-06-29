@@ -316,16 +316,16 @@ Potential improvements:
 
 Each negative finding now has an owning spec so follow-up work can land in focused, reviewable slices:
 
-- Canvas dispatcher/upload/reference ownership: [SPEC-259](specs/SPEC-259-canvas-tool-action-contracts.md)
-- Shared widget/chat tool-call protocol and Airtable cache: [SPEC-260](specs/SPEC-260-shared-tool-call-cache.md)
-- Skill fixer rule pipeline: [SPEC-261](specs/SPEC-261-skill-fixer-rule-pipeline.md)
+- Canvas dispatcher/upload/reference ownership: [SPEC-062126-757a](specs/SPEC-062126-757a-canvas-tool-action-contracts.md)
+- Shared widget/chat tool-call protocol and Airtable cache: [SPEC-062126-971d](specs/SPEC-062126-971d-shared-tool-call-cache.md)
+- Skill fixer rule pipeline: [SPEC-062126-7853](specs/SPEC-062126-7853-skill-fixer-rule-pipeline.md)
 - Memory scope truth table: [SPEC-262](specs/SPEC-262-memory-scope-policy-truth-table.md)
 - Graph optimizer prompt rendering contracts: [SPEC-263](specs/SPEC-263-graph-optimizer-prompt-rendering-contracts.md)
 - Vulture/radon scanner baselines: [SPEC-264](specs/SPEC-264-quality-scanner-baselines.md)
 
 ## Scope caveat: these specs are a triage map, not a proof of perfection
 
-Completing SPEC-259 through SPEC-264 would close the negative findings identified in this manual deep dive, but it would not prove the implemented code is globally optimal or "perfect." The report is a representative, high-signal investigation over the files surfaced by radon/vulture and manual review on 2026-06-21. It does not exhaustively prove every package, every runtime path, every integration, or every future regression.
+Completing SPEC-062126-757a, SPEC-062126-971d, SPEC-062126-7853, SPEC-262, SPEC-263, and SPEC-264 would close the negative findings identified in this manual deep dive, but it would not prove the implemented code is globally optimal or "perfect." The report is a representative, high-signal investigation over the files surfaced by radon/vulture and manual review on 2026-06-21. It does not exhaustively prove every package, every runtime path, every integration, or every future regression.
 
 After SPEC-264 is complete, the expected state is:
 
