@@ -53,7 +53,7 @@ _SECRET_PATTERN = re.compile(
     r"ghp_[a-zA-Z0-9]{36}|"  # GitHub PATs
     r"ghs_[a-zA-Z0-9]{36}|"  # GitHub App tokens
     r"Bearer\s+[a-zA-Z0-9._-]{20,}|"  # Bearer tokens
-    r"[a-f0-9]{64}|"  # 256-bit hex keys
+    r"[a-fA-F0-9]{64}|"  # 256-bit hex keys (case-insensitive — hex secrets aren't always lowercase)
     r"eyJ[a-zA-Z0-9._-]{20,})$"  # JWTs
 )
 

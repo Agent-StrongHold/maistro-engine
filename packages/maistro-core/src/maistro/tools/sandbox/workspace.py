@@ -20,6 +20,18 @@ ALLOWED_HOST_PREFIXES = (
 )
 
 
+def _is_within_prefix(path_str: str, prefix: str) -> bool:
+    """True if path_str is the prefix dir itself or a path under it.
+
+    Plain str.startswith() would also match sibling directories that merely
+    share the prefix as a string (e.g. "/tmp/maistro-workspace-evil" starts
+    with "/tmp/maistro-workspace"). Normalizing away any trailing slash and
+    requiring the next character to be a path separator closes that gap.
+    """
+    prefix_norm = prefix.rstrip("/")
+    return path_str == prefix_norm or path_str.startswith(prefix_norm + "/")
+
+
 def validate_workspace_path(path: str) -> Path:
     """Validate and resolve a workspace path.
 
@@ -29,7 +41,7 @@ def validate_workspace_path(path: str) -> Path:
     resolved = Path(path).resolve()
     path_str = str(resolved)
 
-    if not any(path_str.startswith(prefix) for prefix in ALLOWED_HOST_PREFIXES):
+    if not any(_is_within_prefix(path_str, prefix) for prefix in ALLOWED_HOST_PREFIXES):
         raise ValueError(
             f"Workspace path {path} is not in an allowed location. "
             f"Allowed prefixes: {ALLOWED_HOST_PREFIXES}"
