@@ -91,7 +91,7 @@ jobs:
         env:
           XENON_BASELINE: 77
         run: |
-          uv run xenon --max-absolute B --max-modules B --max-average A packages/maistro-core/src > xenon.log 2>&1
+          uv run xenon --max-absolute B --max-modules B --max-average A packages/maistro-core/src > xenon.log 2>&1 || true
           count=$(grep -c '^ERROR:xenon:block' xenon.log || true)
           cat xenon.log
           echo "xenon violation count: $count (baseline: $XENON_BASELINE)"
@@ -109,7 +109,7 @@ jobs:
         env:
           VULTURE_BASELINE: 1052
         run: |
-          uv run vulture packages/maistro-core/src --min-confidence 60 > vulture.log 2>&1
+          uv run vulture packages/maistro-core/src --min-confidence 60 > vulture.log 2>&1 || true
           count=$(wc -l < vulture.log | tr -d ' ')
           cat vulture.log
           echo "vulture finding count: $count (baseline: $VULTURE_BASELINE)"
