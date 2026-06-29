@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from bip_utils import (  # type: ignore[import-untyped]  # bip_utils ships no py.typed marker
+from bip_utils import (
     Base58Encoder,
     Bip32Slip10Ed25519,
     Bip32Slip10Secp256k1,

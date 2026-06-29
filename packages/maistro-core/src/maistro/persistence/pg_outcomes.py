@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from maistro.types.memory import Outcome
 
 if TYPE_CHECKING:
-    import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
+    import asyncpg
 
 
 class PgOutcomeStore:
@@ -196,6 +196,7 @@ class PgOutcomeStore:
         tool_name: str = "",
         limit: int = 5,
         org_id: str = "",
+        project_id: str = "",
     ) -> str:
         """Get recent failure patterns as a prompt section."""
         cutoff = datetime.now(UTC) - timedelta(days=7)

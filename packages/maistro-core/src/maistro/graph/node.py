@@ -490,6 +490,9 @@ class NodeRun:
             first_error = next((c.error for c in candidates if c.error), None)
             if first_error:
                 await self._finish_failure(first_error)
+            else:
+                self.parse_error = "all beam candidates failed to parse"
+                await self._finish_failure(LLMProviderError(self.parse_error))
             return
 
         best = max(scored, key=lambda c: c.score)

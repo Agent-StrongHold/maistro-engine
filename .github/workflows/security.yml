@@ -171,7 +171,7 @@ jobs:
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
           grype hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }} \
-            --fail-on high --output table
+            --fail-on high --only-fixed --output table
 
       - name: SBOM (syft CycloneDX-JSON)
         run: |

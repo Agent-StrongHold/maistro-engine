@@ -288,7 +288,7 @@ async def run_dag(dag_id: str) -> dict:
 
             metrics = get_metrics()
             for nid, nr in result.get("node_results", {}).items():
-                metrics.record(
+                metrics.append(
                     NodeObservation(
                         run_id=exec_id,
                         node_id=nid,
@@ -307,10 +307,6 @@ async def run_dag(dag_id: str) -> dict:
             pass
         return {"status": "completed", "execution_id": exec_id, "result": result}
     except Exception as exc:
-        import logging
-
-        logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)
-        return {"status": "failed", "execution_id": exec_id, "error": str(exc)}
         import logging
 
         logging.getLogger("hive.dags").warning("Graph execution failed: %s", exc)

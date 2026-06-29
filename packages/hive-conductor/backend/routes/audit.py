@@ -55,12 +55,18 @@ def list_entries(
     action: str | None = None, severity: str | None = None, actor: str | None = None
 ) -> list[dict]:
     entries = list(stores.audit_log.values())
+
+    def _field(e: object, name: str) -> str:
+        if isinstance(e, dict):
+            return e.get(name, "")
+        return getattr(e, name, "")
+
     if action is not None:
-        entries = [e for e in entries if getattr(e, "action", "") == action]
+        entries = [e for e in entries if _field(e, "action") == action]
     if severity is not None:
-        entries = [e for e in entries if getattr(e, "severity", "") == severity]
+        entries = [e for e in entries if _field(e, "severity") == severity]
     if actor is not None:
-        entries = [e for e in entries if getattr(e, "actor", "") == actor]
+        entries = [e for e in entries if _field(e, "actor") == actor]
     return [e.model_dump(mode="json") if hasattr(e, "model_dump") else e for e in entries]
 
 

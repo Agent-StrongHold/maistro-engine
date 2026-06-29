@@ -10,12 +10,23 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from maistro.tasks.queue import get_task_queue
+from maistro_server.api.tasks import _owner_id
 from maistro_server.main import app
 
 
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)
+
+
+class TestOwnerId:
+    """Evidence: _owner_id falls back to the "dev" user when auth is disabled
+    (RequireAuth yields None only in that path) and otherwise echoes the
+    authenticated principal's user_id."""
+
+    def test_none_auth_returns_dev(self) -> None:
+        assert _owner_id(None) == "dev"
 
 
 class TestCreateTask:
@@ -71,6 +82,51 @@ class TestGetTask:
         assert response.status_code == 404
 
 
+class TestGetTaskResult:
+    """Evidence: GET /tasks/{id}/result returns only the result section,
+    404 if the task doesn't exist, and 404 (distinct detail) if the task
+    exists but has not produced a result yet."""
+
+    def test_nonexistent_task_returns_404(self, client: TestClient) -> None:
+        response = client.get("/tasks/does-not-exist/result")
+        assert response.status_code == 404
+        assert response.json()["error"]["message"] == "Task not found"
+
+    def test_task_without_result_returns_404(self, client: TestClient) -> None:
+        create_resp = client.post(
+            "/tasks",
+            json={
+                "description": "No result yet",
+                "workspace": "/tmp/maistro-workspace/test",
+            },
+        )
+        task_id = create_resp.json()["task_id"]
+
+        response = client.get(f"/tasks/{task_id}/result")
+        assert response.status_code == 404
+        assert response.json()["error"]["message"] == "Task has no result yet"
+
+    def test_task_with_result_returns_result_body(self, client: TestClient) -> None:
+        from maistro.tasks.models import TaskResult
+
+        create_resp = client.post(
+            "/tasks",
+            json={
+                "description": "Has result",
+                "workspace": "/tmp/maistro-workspace/test",
+            },
+        )
+        task_id = create_resp.json()["task_id"]
+        queue = get_task_queue()
+        queue.set_result(task_id, TaskResult(files_changed=["a.py"], tests_passed=3))
+
+        response = client.get(f"/tasks/{task_id}/result")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["files_changed"] == ["a.py"]
+        assert data["tests_passed"] == 3
+
+
 class TestCancelTask:
     def test_cancel_queued_task(self, client: TestClient) -> None:
         create_resp = client.post(
@@ -89,6 +145,32 @@ class TestCancelTask:
         # Verify status changed
         get_resp = client.get(f"/tasks/{task_id}")
         assert get_resp.json()["status"] == "cancelled"
+
+    def test_cancel_nonexistent_task_returns_404(self, client: TestClient) -> None:
+        response = client.delete("/tasks/does-not-exist")
+        assert response.status_code == 404
+        assert response.json()["error"]["message"] == "Task not found"
+
+    def test_cancel_already_terminal_task_returns_400(self, client: TestClient) -> None:
+        """Evidence: cancel() returns False once a task is already in a
+        terminal state, which the route must map to 400, not 200."""
+        create_resp = client.post(
+            "/tasks",
+            json={
+                "description": "Already done",
+                "workspace": "/tmp/maistro-workspace/test",
+            },
+        )
+        task_id = create_resp.json()["task_id"]
+
+        # First cancel succeeds (queued -> cancelled is a valid transition).
+        first = client.delete(f"/tasks/{task_id}")
+        assert first.status_code == 200
+
+        # Second cancel on an already-terminal task must fail with 400.
+        second = client.delete(f"/tasks/{task_id}")
+        assert second.status_code == 400
+        assert second.json()["error"]["message"] == "Cannot cancel task in current state"
 
 
 class TestListTasks:
