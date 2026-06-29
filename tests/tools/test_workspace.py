@@ -31,6 +31,21 @@ class TestWorkspaceValidation:
         path = validate_workspace_path("/repos/my-org/my-repo")
         assert str(path).startswith("/repos")
 
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/tmp/maistro-workspace-evil",
+            "/tmp/maistro-workspace_evil/repo",
+            "/private/tmp/maistro-workspace-evil",
+            "/repos_evil/project",
+            "/repos2/project",
+        ],
+    )
+    def test_blocked_prefix_sibling_path(self, path: str) -> None:
+        """Prefix lookalikes must not pass the workspace allowlist."""
+        with pytest.raises(ValueError, match="not in an allowed location"):
+            validate_workspace_path(path)
+
     def test_blocked_etc(self) -> None:
         with pytest.raises(ValueError, match="not in an allowed location"):
             validate_workspace_path("/etc")
