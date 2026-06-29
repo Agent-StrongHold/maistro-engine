@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from maistro.types.feedback import ReviewFinding, Severity, ViolationCategory
+from maistro.types.feedback import ClaimProvenance, ReviewFinding, Severity, ViolationCategory
 
 if TYPE_CHECKING:
     from maistro.types.spec import Spec
@@ -31,6 +31,7 @@ def check_spec_coverage(spec: Spec | None) -> list[ReviewFinding]:
                 file_path="",
                 description=f"Invariant '{name}' has no property test: {inv.description}",
                 suggestion=f"Add a property test covering invariant '{name}'",
+                provenance=ClaimProvenance.EXTRACTED,
             )
         )
     return findings

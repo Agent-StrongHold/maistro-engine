@@ -23,6 +23,21 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+class _FakeLoop:
+    """Minimal event-loop stand-in for lifespan signal registration tests.
+
+    structlog's async logger also calls ``get_running_loop().run_in_executor``;
+    this fake preserves that awaitable contract while letting the tests assert
+    signal handler registration does not raise.
+    """
+
+    def __init__(self) -> None:
+        self.add_signal_handler = MagicMock()
+
+    async def run_in_executor(self, _executor, func):
+        return func()
+
+
 class TestValidateStartup:
     """CRIT-02 — duplicated here for completeness; primary coverage in test_startup.py."""
 
@@ -104,10 +119,11 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=None),
             patch("maistro.memory.store.reset_engine_cache"),
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", return_value=mock_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
-            mock_loop.return_value.add_signal_handler = MagicMock()
+            mock_loop.return_value = _FakeLoop()
             async with lifespan(test_app):
                 assert main_module._runner is mock_runner
                 mock_runner.start.assert_awaited_once()
@@ -131,10 +147,11 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=None),
             patch("maistro.memory.store.reset_engine_cache"),
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", return_value=mock_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
-            mock_loop.return_value.add_signal_handler = MagicMock()
+            mock_loop.return_value = _FakeLoop()
             async with lifespan(test_app):
                 pass
 
@@ -161,10 +178,11 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=None),
             patch("maistro.memory.store.reset_engine_cache"),
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", side_effect=_capture_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
-            mock_loop.return_value.add_signal_handler = MagicMock()
+            mock_loop.return_value = _FakeLoop()
             async with lifespan(test_app):
                 pass
 
@@ -186,10 +204,11 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=mock_engine),
             patch("maistro.memory.store.reset_engine_cache") as mock_reset,
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", return_value=mock_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
-            mock_loop.return_value.add_signal_handler = MagicMock()
+            mock_loop.return_value = _FakeLoop()
             async with lifespan(test_app):
                 pass
 

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import pytest
-from bip_utils import Base58Decoder
 
-from maistro.identity import PATHS, ConductorSeed
+bip_utils = pytest.importorskip("bip_utils")
+Base58Decoder = bip_utils.Base58Decoder
+
+from maistro.identity import PATHS, ConductorSeed  # noqa: E402
 
 
 def test_generate_24_words() -> None:

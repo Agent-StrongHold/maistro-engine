@@ -9,6 +9,7 @@ Uses an injectable HTTP client protocol for testability.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -24,6 +25,7 @@ _BLOCKED_HOSTNAME_PREFIXES = (
     "metadata.",
     "localhost",
 )
+_VALID_SKILL_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,50}$")
 
 
 def _is_blocked_ip(addr: object) -> bool:
@@ -94,6 +96,9 @@ def _block_ssrf(url: str) -> None:
         raise ValueError(msg) from None
 
     hostname = parsed.hostname or ""
+    if parsed.scheme not in {"http", "https"} or not hostname:
+        msg = f"Blocked: unsupported marketplace URL: {url}"
+        raise ValueError(msg)
 
     for prefix in _BLOCKED_HOSTNAME_PREFIXES:
         if hostname.startswith(prefix) or hostname == prefix:
@@ -201,7 +206,16 @@ class SkillMarketplace:
 
     def uninstall(self, name: str) -> None:
         """Uninstall a community skill by name."""
-        filepath = self._skills_dir / f"{name}.md"
+        if not _VALID_SKILL_NAME_RE.fullmatch(name):
+            msg = f"Invalid community skill name: {name!r}"
+            raise ValueError(msg)
+        root = self._skills_dir.resolve()
+        filepath = (root / f"{name}.md").resolve()
+        try:
+            filepath.relative_to(root)
+        except ValueError:
+            msg = f"Invalid community skill path for name: {name!r}"
+            raise ValueError(msg) from None
         if not filepath.exists():
             msg = f"Community skill '{name}' not found"
             raise ValueError(msg)

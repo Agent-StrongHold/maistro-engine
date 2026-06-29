@@ -10,6 +10,7 @@ import typer
 import yaml
 from rich.console import Console
 
+from maistro_bootstrap.materialize import materialize_install_artifacts
 from maistro_bootstrap.plan import build_install_plan, run_apply_spec
 from maistro_bootstrap.repo_root import find_maistro_engine_root
 from maistro_bootstrap.schema import InstallAnswersV1, parse_answers_dict
@@ -128,11 +129,24 @@ def main(
             help="Destination path for printed copier copy command.",
         ),
     ] = "../my-product",
+    materialize_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--materialize-dir",
+            help="Write install artifacts to this directory without starting services.",
+            file_okay=False,
+            dir_okay=True,
+        ),
+    ] = None,
 ) -> None:
     """Resolve install answers into a plan; optionally run compose build (apply)."""
     answers = _resolve_answers(answers_file)
     rr = maistro_root if maistro_root is not None else find_maistro_engine_root()
     plan = build_install_plan(answers, repo_root=rr, copier_dest=copier_dest)
+
+    if materialize_dir is not None:
+        written = materialize_install_artifacts(plan, materialize_dir)
+        console.print(f"[green]Wrote {len(written)} install artifacts to {materialize_dir}[/green]")
 
     if json_out:
         console.print_json(data=plan)
@@ -143,6 +157,8 @@ def main(
         return
 
     _print_human_plan(plan, answers, plan.get("repo_root"))
+    if materialize_dir is not None:
+        console.print(f"\n[bold]Materialized artifacts[/bold]: {materialize_dir}")
 
     if apply_flag:
         if dry_run:

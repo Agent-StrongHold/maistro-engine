@@ -56,6 +56,27 @@ class TestCreateTask:
         )
         assert response.status_code == 202
 
+    @pytest.mark.parametrize(
+        "workspace",
+        [
+            "/etc",
+            "/root/.ssh",
+            "/tmp/maistro-workspace-evil/repo",
+            "/repos_evil/project",
+            "../../etc/passwd",
+        ],
+    )
+    def test_create_rejects_disallowed_workspace(self, client: TestClient, workspace: str) -> None:
+        response = client.post(
+            "/tasks",
+            json={
+                "description": "Attempt hostile workspace",
+                "workspace": workspace,
+            },
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["message"] == "Workspace path is not allowed"
+
 
 class TestGetTask:
     def test_get_existing_task(self, client: TestClient) -> None:
@@ -181,6 +202,11 @@ class TestListTasks:
         assert "items" in data
         assert "count" in data
         assert isinstance(data["items"], list)
+
+    @pytest.mark.parametrize("limit", [0, -1, 201])
+    def test_list_rejects_out_of_range_limits(self, client: TestClient, limit: int) -> None:
+        response = client.get(f"/tasks?limit={limit}")
+        assert response.status_code == 422
 
 
 class TestModelsEndpoint:

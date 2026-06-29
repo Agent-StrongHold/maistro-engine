@@ -64,14 +64,22 @@ async def cleanup_all_containers() -> None:
     logger.info("all_sandboxes_cleaned_up", count=count)
 
 
+def _blocked_path_result(path: str) -> dict[str, Any]:
+    return fail(
+        stdout=f"Blocked: access to '{path}' is not allowed",
+        error_code="blocked_path",
+        suggested_action="Choose a relative workspace path outside blocked locations, traversal, or secrets.",
+    )
+
+
 def _check_path(path: str) -> dict[str, Any] | None:
     """Return a fail result if path is blocked, else None."""
     if is_blocked_path(path):
-        return fail(
-            stdout=f"Blocked: access to '{path}' is not allowed",
-            error_code="blocked_path",
-            suggested_action="Choose a path outside the blocked list (e.g. not .env, .git/, or other secret paths).",
-        )
+        return _blocked_path_result(path)
+    try:
+        SandboxContainer._safe_path("/workspace", path)
+    except ValueError:
+        return _blocked_path_result(path)
     return None
 
 
@@ -173,7 +181,7 @@ async def sandbox_glob(workspace: str, pattern: str) -> dict[str, Any]:
     if err := _check_path(pattern):
         return err
     container = await _get_or_create(workspace)
-    safe_pattern = shlex.quote(f"/workspace/{pattern}")
+    safe_pattern = shlex.quote(SandboxContainer._safe_path("/workspace", pattern))
     _exit_code, output = await container.exec(
         f"find /workspace -path {safe_pattern} -type f 2>/dev/null | head -100"
     )
@@ -193,7 +201,7 @@ async def sandbox_grep(workspace: str, pattern: str, path: str = ".") -> dict[st
         return err
     container = await _get_or_create(workspace)
     safe_pattern = shlex.quote(pattern)
-    safe_path = shlex.quote(f"/workspace/{path}")
+    safe_path = shlex.quote(SandboxContainer._safe_path("/workspace", path))
     _exit_code, output = await container.exec(
         f"grep -rn -- {safe_pattern} {safe_path} 2>/dev/null | head -50"
     )

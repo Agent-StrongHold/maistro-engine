@@ -5,6 +5,7 @@ from __future__ import annotations
 from maistro.protocols.agents import AgentStore
 from maistro.protocols.auth import AuthProvider
 from maistro.protocols.classifier import IntentClassifier
+from maistro.protocols.codebase import CodeStructureIndex
 from maistro.protocols.embeddings import EmbeddingClient
 from maistro.protocols.feedback import FeedbackExtractor, ViolationStore
 from maistro.protocols.llm import LLMClient
@@ -33,6 +34,7 @@ __all__ = [
     "AgentStore",
     "AuditLog",
     "AuthProvider",
+    "CodeStructureIndex",
     "EmbeddingClient",
     "EpisodicStore",
     "FeedbackExtractor",
