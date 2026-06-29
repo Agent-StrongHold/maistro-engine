@@ -32,8 +32,7 @@ def validate_workspace_path(path: str) -> Path:
     if not any(resolved == root or root in resolved.parents for root in allowed_roots):
         allowed = tuple(str(root) for root in allowed_roots)
         raise ValueError(
-            f"Workspace path {path} is not in an allowed location. "
-            f"Allowed roots: {allowed}"
+            f"Workspace path {path} is not in an allowed location. Allowed roots: {allowed}"
         )
 
     return resolved

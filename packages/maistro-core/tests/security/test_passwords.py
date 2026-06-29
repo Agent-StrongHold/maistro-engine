@@ -21,3 +21,19 @@ def test_bcrypt_legacy_still_verifies() -> None:
 def test_needs_rehash_for_argon2_is_false() -> None:
     stored = hash_password("fresh")
     assert not needs_rehash(stored)
+
+
+def test_unrecognized_hash_format_does_not_verify() -> None:
+    assert not verify_password("anything", "plaintext-not-a-hash")
+
+
+def test_malformed_bcrypt_hash_returns_false() -> None:
+    assert not verify_password("testpass", "$2b$not-a-valid-hash")
+
+
+def test_needs_rehash_for_unrecognized_format_is_true() -> None:
+    assert needs_rehash("plaintext-not-a-hash")
+
+
+def test_needs_rehash_for_malformed_argon2_hash_is_true() -> None:
+    assert needs_rehash("$argon2id$garbage")

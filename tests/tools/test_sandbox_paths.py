@@ -40,7 +40,9 @@ class TestSafePathResolution:
 
 
 @pytest.mark.parametrize("path", ["../../etc/passwd", "/etc/passwd", "src/../../etc/passwd"])
-def test_sandbox_grep_rejects_path_traversal_before_container(monkeypatch: pytest.MonkeyPatch, path: str) -> None:
+def test_sandbox_grep_rejects_path_traversal_before_container(
+    monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
     from maistro.tools.sandbox import server as sandbox_server
 
     async def fail_get_or_create(workspace: str):  # pragma: no cover - must not be called
@@ -56,7 +58,9 @@ def test_sandbox_grep_rejects_path_traversal_before_container(monkeypatch: pytes
 
 
 @pytest.mark.parametrize("pattern", ["../../*.py", "/etc/*", "src/../../*.py"])
-def test_sandbox_glob_rejects_path_traversal_before_container(monkeypatch: pytest.MonkeyPatch, pattern: str) -> None:
+def test_sandbox_glob_rejects_path_traversal_before_container(
+    monkeypatch: pytest.MonkeyPatch, pattern: str
+) -> None:
     from maistro.tools.sandbox import server as sandbox_server
 
     async def fail_get_or_create(workspace: str):  # pragma: no cover - must not be called

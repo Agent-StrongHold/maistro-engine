@@ -32,6 +32,9 @@ jobs:
       - name: Install maistro-core
         run: pip install -e packages/maistro-core
 
+      - name: Install maistro-evolve
+        run: pip install -e packages/maistro-evolve
+
       - name: Extract constants from source
         run: python -m formal.extractors.extract_security_constants
 

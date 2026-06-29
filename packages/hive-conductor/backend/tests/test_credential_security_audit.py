@@ -217,7 +217,7 @@ def test_no_new_lambda_s_s_in_critical_callsites() -> None:
         "hive-conductor/backend/routes/daily_report_v2.py:18",
         "hive-conductor/backend/routes/agents.py:26",
         "hive-conductor/backend/services/program_hyperagent.py:25",
-        "hive-conductor/backend/services/tool_primitives.py:63",
+        "hive-conductor/backend/services/tool_primitives.py:66",
     }
     new = [h for h in hits if h not in ALLOWLIST]
     assert not new, (

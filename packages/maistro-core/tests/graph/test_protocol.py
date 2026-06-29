@@ -344,7 +344,6 @@ class TestNodeRun:
         assert nr.parsed_output.summary == "strong"
         assert nr.beam_candidates[0].parse_error == "failed to parse"
 
-
     @pytest.mark.asyncio
     async def test_beam_all_provider_errors_finishes_failed_with_candidate_errors(self):
         llm = _FailingLlm(ConnectionError("beam provider down"))
@@ -401,7 +400,6 @@ class TestNodeRun:
         )
         await nr.execute(llm, iteration_budget=budget)
         assert budget.consumed >= 1
-
 
     @pytest.mark.asyncio
     async def test_single_budget_exhausted_fails_without_calling_llm(self):

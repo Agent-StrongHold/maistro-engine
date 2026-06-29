@@ -34,9 +34,7 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
 
     fixture_names = pyfuncitem._fixtureinfo.argnames
     testargs: dict[str, Any] = {
-        name: pyfuncitem.funcargs[name]
-        for name in fixture_names
-        if name in pyfuncitem.funcargs
+        name: pyfuncitem.funcargs[name] for name in fixture_names if name in pyfuncitem.funcargs
     }
     asyncio.run(testfunction(**testargs))
     return True

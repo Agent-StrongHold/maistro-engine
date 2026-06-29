@@ -58,7 +58,10 @@ class ShadowGitWorkspace:
             full_path = self._resolve_file(rel_path)
             full_path.parent.mkdir(parents=True, exist_ok=True)
             full_path.write_text(content)
-            _run(["add", "--", str(full_path.relative_to(self.workspace_ref.resolve()))], cwd=self.workspace_ref)
+            _run(
+                ["add", "--", str(full_path.relative_to(self.workspace_ref.resolve()))],
+                cwd=self.workspace_ref,
+            )
         _run(["commit", "-m", message], cwd=self.workspace_ref)
         return _run(["rev-parse", "HEAD"], cwd=self.workspace_ref).strip()
 
@@ -80,13 +83,17 @@ class ShadowGitWorkspace:
         try:
             target.relative_to(root)
         except ValueError:
-            raise ValueError(f"Refusing to discard workspace outside shadow root: {target}") from None
+            raise ValueError(
+                f"Refusing to discard workspace outside shadow root: {target}"
+            ) from None
         shutil.rmtree(self.workspace_ref, ignore_errors=True)
 
 
 def create_shadow_workspace(root: Path, task_id: str) -> ShadowGitWorkspace:
     if not _TASK_ID_RE.fullmatch(task_id):
-        raise ValueError("task_id must be 1-100 characters of letters, digits, dot, underscore, or dash")
+        raise ValueError(
+            "task_id must be 1-100 characters of letters, digits, dot, underscore, or dash"
+        )
     root = root.resolve()
     workspace_ref = (root / task_id).resolve()
     try:
