@@ -41,6 +41,11 @@ jobs:
       - name: uv sync (full dev deps)
         run: uv sync --all-extras
 
+      # formal/ imports maistro_evolve (RSI conformance suites); not a uv
+      # workspace member, so `uv sync` alone doesn't install it.
+      - name: install maistro-evolve
+        run: uv pip install -e packages/maistro-evolve
+
       # age/age-keygen are required by the vault + state encryption tests
       # (SPEC-011 / SPEC-010). apt's `age` package omits age-keygen on some
       # runners, so fall back to the upstream release tarball.
