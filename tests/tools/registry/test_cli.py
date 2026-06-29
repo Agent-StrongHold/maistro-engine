@@ -85,3 +85,32 @@ class TestStrictFlag:
         )
         (repo_root / "docs" / "specs" / "SPEC-098-bad-layer.md").write_text(bad)
         assert main(["walk", str(repo_root)]) == 1
+
+
+class TestSharedCommandPipeline:
+    def test_lint_and_generate_share_missing_root_error(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        missing = tmp_path / "missing"
+        assert main(["lint", str(missing)]) == 2
+        lint_err = capsys.readouterr().err
+        assert f"error: {missing} is not a directory" in lint_err
+
+        assert main(["generate", str(missing)]) == 2
+        generate_err = capsys.readouterr().err
+        assert generate_err == lint_err
+
+    def test_generate_refuses_errored_files_with_exact_message(
+        self, repo_root: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        bad = _VALID_SPEC.replace("layer: Foundation", "layer: NotALayer").replace(
+            "SPEC-001", "SPEC-098"
+        )
+        (repo_root / "docs" / "specs" / "SPEC-098-bad-layer.md").write_text(bad)
+
+        assert main(["generate", str(repo_root), "--output", str(tmp_path / "registry")]) == 1
+        err = capsys.readouterr().err
+        assert (
+            "error: refusing to generate registry with 1 errored files; "
+            "pass --allow-errors to skip them and generate anyway"
+        ) in err

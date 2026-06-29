@@ -147,3 +147,11 @@ under-specified "weight x word-overlap" retrieval.
 - The contradiction-detection and semantic-similarity algorithms themselves.
 - The on-disk schema of the memory store and the consent-task queue.
 - Multi-tenant memory partitioning — Stronghold (ADR-019).
+
+## Follow-up
+
+maistro-engine#SPEC-260 resolves the decay curve as a pluggable `DecayStrategy` protocol
+(default: exponential half-life), and resolves contradiction review as LLM-mediated
+auto-resolution gated by a confidence threshold that starts unreachable and decays toward
+a tunable `median(resolution_confidence) + admin_offset` asymptote — the same cold-start
+shape already used by RLPHD's theta schedule (maistro-engine#SPEC-248).

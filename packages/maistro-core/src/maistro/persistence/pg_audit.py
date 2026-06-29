@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from maistro.types.security import AuditEntry
 
 if TYPE_CHECKING:
-    import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
+    import asyncpg
 
 
 _ALLOWED_FILTER_COLUMNS: frozenset[str] = frozenset(

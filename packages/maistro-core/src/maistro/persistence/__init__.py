@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
+import asyncpg
 
 logger = logging.getLogger("maistro.persistence")
 

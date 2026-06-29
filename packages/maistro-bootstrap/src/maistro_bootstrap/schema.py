@@ -15,6 +15,10 @@ DeploymentTier = Literal["local_docker", "local_podman", "vm", "lxc", "proxmox",
 ContainerRuntime = Literal["docker", "podman", "auto"]
 UsersIntent = Literal["bootstrap_admin", "sso_later", "skip"]
 StackBringup = Literal["none", "root_full"]
+SandboxProfile = Literal["safe", "developer"]
+InstallSurface = Literal["curl", "checkout"]
+CryptoProfile = Literal["distributed_identity_root", "no_crypto", "full_all_crypto"]
+DeliveryMode = Literal["image_pull", "source_build"]
 
 
 class InstallAnswersV1(BaseModel):
@@ -32,12 +36,23 @@ class InstallAnswersV1(BaseModel):
     container_runtime: ContainerRuntime = "auto"
     users_intent: UsersIntent = "skip"
     stack_bringup: StackBringup = "none"
+    install_surface: InstallSurface = "curl"
+    delivery_mode: DeliveryMode = "image_pull"
+    sandbox_profile: SandboxProfile = "safe"
+    crypto_profile: CryptoProfile = "distributed_identity_root"
+    admin_user: str = "maistro-admin"
+    daily_driver_user: str = "maistro-user"
+    additional_users: list[str] = Field(default_factory=list)
+    first_agents: list[str] = Field(default_factory=lambda: ["guide", "operator", "builder"])
+    reactor_enabled: bool = True
     provider_accounts: dict[str, bool] = Field(
         default_factory=dict,
         description="Which cloud accounts the operator intends to use (no secrets).",
     )
 
-    @field_validator("features", "compose_addons", mode="before")
+    @field_validator(
+        "features", "compose_addons", "additional_users", "first_agents", mode="before"
+    )
     @classmethod
     def _coerce_str_lists(cls, v: object) -> list[str]:
         if v is None:

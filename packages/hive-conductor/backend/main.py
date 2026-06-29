@@ -25,6 +25,7 @@ from routes import (
     dag_runs,
     dags,
     dashboard_layout,
+    design,
     eval_judge,
     feedback,
     health,
@@ -103,6 +104,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         _lifespan_log.warning("engine_start_failed: %s", exc, exc_info=True)
     try:
+        from services.design_service import start_design_service
+
+        await start_design_service(get_settings())
+        from services.design_preview import init_design_preview_service
+        from services.design_render import init_design_render_service
+
+        init_design_preview_service()
+        init_design_render_service()
+        _lifespan_log.info("Design preview and render services initialized")
+    except Exception as exc:
+        _lifespan_log.warning("design_service_start_failed: %s", exc, exc_info=True)
+    try:
         # Day 8 — wire pm_runner's event bus into the DAG-run store so
         # /v1/dag-runs/{id}/events SSE streams pick up live pm_node_*
         # events from PM-fleet invocations. No-op if pm_runner isn't
@@ -125,6 +138,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         _lifespan_log.warning("evolution_start_failed: %s", exc, exc_info=True)
     yield
+    try:
+        from services.design_service import stop_design_service
+
+        await stop_design_service()
+    except Exception as exc:
+        _lifespan_log.warning("design_service_stop_failed: %s", exc)
     try:
         from services.evolution import stop_evolution
 
@@ -203,6 +222,7 @@ def create_app() -> FastAPI:
     app.include_router(audit.router, prefix="/v1/audit")
     app.include_router(quotas.router, prefix="/v1/quotas")
     app.include_router(_confirms_router, prefix="/v1/confirms")
+    app.include_router(design.router, prefix="/v1")
 
     # Phase 6 — Canvas/Davinci DAG
     try:

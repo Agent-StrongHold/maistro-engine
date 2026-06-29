@@ -35,7 +35,7 @@ class DetailedHealthResponse(BaseModel):
 async def _check_postgres(settings: Settings) -> ProbeResult:
     """Check PostgreSQL connectivity."""
     try:
-        import asyncpg  # type: ignore[import-untyped]
+        import asyncpg
 
         conn = await asyncio.wait_for(
             asyncpg.connect(

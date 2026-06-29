@@ -7,12 +7,20 @@ is implemented.
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 import threading
 from pathlib import Path
 from typing import Any
 
 import pytest
+
+
+def _has_age() -> bool:
+    return shutil.which("age") is not None and shutil.which("age-keygen") is not None
+
+
+age_required = pytest.mark.skipif(not _has_age(), reason="age not installed")
 
 
 @pytest.fixture()
@@ -160,6 +168,7 @@ class TestWALAndCheckpoint:
         state.close()
 
 
+@age_required
 class TestEncryptedBackups:
     """AC: State DB backups are encrypted with admin keypair before writing to disk."""
 
@@ -167,6 +176,9 @@ class TestEncryptedBackups:
         import subprocess
 
         from maistro.state import State
+
+        if not _has_age():
+            pytest.skip("age and age-keygen are required for encrypted backup tests")
 
         state = State(db_path=str(db_path))
         w = state.open_writer()
@@ -208,6 +220,9 @@ class TestEncryptedBackups:
         import subprocess
 
         from maistro.state import State
+
+        if not _has_age():
+            pytest.skip("age and age-keygen are required for encrypted backup tests")
 
         state = State(db_path=str(db_path))
         state.open_writer()

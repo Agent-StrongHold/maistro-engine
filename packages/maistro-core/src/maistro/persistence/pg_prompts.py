@@ -6,7 +6,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    import asyncpg  # type: ignore[import-untyped]  # asyncpg ships no py.typed marker
+    import asyncpg
 
 
 class PgPromptManager:
