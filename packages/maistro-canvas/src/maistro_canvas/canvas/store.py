@@ -659,3 +659,32 @@ class PgCanvasStore:
             )
             row = result.mappings().first()
             return _coerce_composite(row) if row else None
+
+    # ── Blobs ─────────────────────────────────────────────────────────
+
+    async def store_blob(
+        self,
+        data: bytes,
+        *,
+        format: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        blob_id = str(uuid.uuid4())
+        async with AsyncSession(self._engine) as session:
+            await session.execute(
+                text("""
+                    INSERT INTO canvas_blobs
+                        (id, data, format, metadata, created_at)
+                    VALUES
+                        (:id, :data, :format, :metadata::jsonb, :now)
+                """),
+                {
+                    "id": blob_id,
+                    "data": data,
+                    "format": format,
+                    "metadata": json.dumps(metadata or {}),
+                    "now": datetime.now(UTC),
+                },
+            )
+            await session.commit()
+        return blob_id

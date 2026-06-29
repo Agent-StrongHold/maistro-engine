@@ -40,7 +40,6 @@ def __getattr__(name: str) -> object:
 __all__ = [
     "Scope",
     "ScopeCategory",
-    "ServiceChecker",
     "ServiceIdentity",
     "ServiceKeyAuthProvider",
     "ServiceKeyChecker",

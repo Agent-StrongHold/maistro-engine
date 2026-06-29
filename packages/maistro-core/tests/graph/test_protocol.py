@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -304,6 +305,89 @@ class TestNodeRun:
         assert nr.parsed_output.summary == "strong"
 
     @pytest.mark.asyncio
+    async def test_beam_all_parse_failures_finishes_failed(self):
+        llm = _RecordingLlm(["not json", "still not json", "also not json"])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=3,
+        )
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.FAILED
+        assert nr.parse_error == "all beam candidates failed to parse"
+        assert len(nr.beam_candidates) == 3
+        assert all(candidate.parse_error == "failed to parse" for candidate in nr.beam_candidates)
+        assert nr.to_result().success is False
+
+    @pytest.mark.asyncio
+    async def test_beam_mixed_parse_failures_selects_best_valid_candidate(self):
+        llm = _RecordingLlm(["not json", _make_plan_json("strong", 5), _make_plan_json("weak", 1)])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=3,
+        )
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.SUCCEEDED
+        assert nr.beam_selected == 1
+        assert isinstance(nr.parsed_output, PlanOutput)
+        assert nr.parsed_output.summary == "strong"
+        assert nr.beam_candidates[0].parse_error == "failed to parse"
+
+    @pytest.mark.asyncio
+    async def test_beam_all_provider_errors_finishes_failed_with_candidate_errors(self):
+        llm = _FailingLlm(ConnectionError("beam provider down"))
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=3,
+        )
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.FAILED
+        assert llm.call_count == 3
+        assert len(nr.beam_candidates) == 3
+        assert all(candidate.error is not None for candidate in nr.beam_candidates)
+        assert "beam provider down" in nr.to_result().output
+
+    @pytest.mark.asyncio
+    async def test_beam_scorer_failure_finishes_failed_with_candidate_errors(self):
+        class _ScoringBoomPlanner(PlannerStrategy):
+            def score_output(self, output: Any) -> float:
+                raise RuntimeError("score blew up")
+
+        llm = _RecordingLlm([_make_plan_json("a"), _make_plan_json("b")])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=_ScoringBoomPlanner(),
+            system_prompt="sys",
+            user_prompt="usr",
+            beam_width=2,
+        )
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.FAILED
+        assert len(nr.beam_candidates) == 2
+        assert all(candidate.error is not None for candidate in nr.beam_candidates)
+        assert "score blew up" in nr.to_result().output
+
+    @pytest.mark.asyncio
     async def test_iteration_budget_consumed(self):
         llm = _RecordingLlm([_make_plan_json()])
         budget = IterationBudget(10)
@@ -316,6 +400,111 @@ class TestNodeRun:
         )
         await nr.execute(llm, iteration_budget=budget)
         assert budget.consumed >= 1
+
+    @pytest.mark.asyncio
+    async def test_single_budget_exhausted_fails_without_calling_llm(self):
+        llm = _RecordingLlm([_make_plan_json("should-not-run")])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+        )
+
+        await nr.execute(llm, iteration_budget=IterationBudget(0))
+
+        assert nr.phase == NodePhase.FAILED
+        assert llm.call_count == 0
+        assert nr.to_result().success is False
+        assert "Iteration budget exhausted" in nr.to_result().output
+
+    @pytest.mark.asyncio
+    async def test_single_open_circuit_fails_without_calling_llm(self):
+        from maistro.agents.circuit_breaker import CircuitBreaker
+
+        llm = _RecordingLlm([_make_plan_json("should-not-run")])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+        )
+        nr.circuit = CircuitBreaker(failure_threshold=1, recovery_timeout=999.0, name="unit")
+        nr.circuit.record_failure()
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.FAILED
+        assert llm.call_count == 0
+        assert "Circuit breaker open for node" in nr.to_result().output
+
+    @pytest.mark.asyncio
+    async def test_single_cancellation_before_attempt_is_terminal_cancelled(self):
+        llm = _RecordingLlm([_make_plan_json("should-not-run")])
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+        )
+        nr.cancel()
+
+        await nr.execute(llm)
+
+        assert nr.phase == NodePhase.CANCELLED
+        assert llm.call_count == 0
+        assert nr.completed_at is not None
+        assert nr.duration_s is not None
+
+    @pytest.mark.asyncio
+    async def test_single_timeout_fails_with_timeout_classification(self):
+        from maistro.resilience.classifier import ErrorCategory
+
+        never_finishes = asyncio.Event()
+
+        async def _slow(messages: list[dict], **kwargs: Any) -> str:
+            await never_finishes.wait()
+            return _make_plan_json("too-late")
+
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            max_retries=1,
+        )
+
+        await nr.execute(_slow, timeout=0.001)
+
+        assert nr.phase == NodePhase.FAILED
+        assert nr.classified_error is not None
+        assert nr.classified_error.category == ErrorCategory.TIMEOUT
+        assert nr.retry_count == 0
+
+    @pytest.mark.asyncio
+    async def test_single_retryable_provider_failure_attempt_accounting(self):
+        from maistro.resilience.backoff import BackoffConfig
+
+        llm = _FailingLlm(ConnectionError("Connection reset by peer"))
+        nr = NodeRun(
+            run_id="r1",
+            role=AgentRole.PLANNER,
+            strategy=PlannerStrategy(),
+            system_prompt="sys",
+            user_prompt="usr",
+            max_retries=2,
+        )
+
+        await nr.execute(llm, backoff_config=BackoffConfig(base_delay=0.0, max_delay=0.0))
+
+        assert nr.phase == NodePhase.FAILED
+        assert llm.call_count == 2
+        assert nr.retry_count == 1
+        assert len(nr.error_classifications) == 2
 
     @pytest.mark.asyncio
     async def test_to_result_success(self):

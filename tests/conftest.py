@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Iterator
 
 import pytest
@@ -30,10 +31,10 @@ def _reset_singletons() -> Iterator[None]:
 
     queue_module._queue = None
 
-    # Sandbox containers
-    import maistro.tools.sandbox.server as sandbox_server
-
-    sandbox_server._containers.clear()
+    # Sandbox containers: only clear when a test imported the sandbox server.
+    sandbox_server = sys.modules.get("maistro.tools.sandbox.server")
+    if sandbox_server is not None:
+        sandbox_server._containers.clear()
 
     # Langfuse tracing
     import maistro.observability.tracing as tracing_module
@@ -41,10 +42,10 @@ def _reset_singletons() -> Iterator[None]:
     tracing_module._langfuse = None
     tracing_module._langfuse_checked = False
 
-    # Task runner
-    import maistro_server.main as main_module
-
-    main_module._runner = None
+    # Task runner: only reset when a test imported the server app.
+    main_module = sys.modules.get("maistro_server.main")
+    if main_module is not None:
+        main_module._runner = None
 
 
 @pytest.fixture(autouse=True)

@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 import platform
 import re
+import shutil
+import subprocess
 from pathlib import Path
+from typing import Any
 
 
 def uname_summary() -> str:
@@ -55,12 +58,16 @@ def deployment_hint() -> str:
 
 
 def has_command(name: str) -> bool:
-    path = os.environ.get("PATH", "")
-    for p in path.split(os.pathsep):
-        exe = Path(p) / name
-        if exe.is_file() and os.access(exe, os.X_OK):
-            return True
-    return False
+    return shutil.which(name) is not None
+
+
+def _run_probe(argv: list[str], timeout: float = 2.0) -> tuple[bool, str]:
+    try:
+        proc = subprocess.run(argv, text=True, capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, str(exc)
+    out = (proc.stdout or proc.stderr).strip().splitlines()
+    return proc.returncode == 0, out[0] if out else f"exit {proc.returncode}"
 
 
 def deployment_tier_gate_message(tier: str) -> str | None:
@@ -93,3 +100,47 @@ def detect_container_runtime() -> tuple[str, str]:
     if p:
         return "podman", "podman is on PATH (no docker)."
     return "none", "No docker/podman on PATH — install a container runtime first."
+
+
+def environment_report() -> dict[str, Any]:
+    """Best-effort installer preflight; no mutations and no secrets."""
+    sys = platform.system().lower()
+    docker_ok, docker_msg = _run_probe(["docker", "info", "--format", "{{.ServerVersion}}"])
+    podman_ok, podman_msg = _run_probe(
+        ["podman", "info", "--format", "{{.Host.Os}}/{{.Host.Arch}}"]
+    )
+    kvm = Path("/dev/kvm").exists()
+    hyperv = has_command("powershell.exe") and "microsoft" in platform.release().lower()
+    admin = False
+    admin_hint = "not root/admin; installer will prefer user-scoped setup and print sudo steps"
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        admin = True
+        admin_hint = "running as root; safe defaults still avoid host-wide changes unless confirmed"
+    elif sys == "windows":
+        ok, _msg = _run_probe(["net", "session"])
+        admin = ok
+        admin_hint = "Windows admin available" if ok else "Windows admin not detected"
+
+    runtime, runtime_hint = detect_container_runtime()
+    virtualization: list[str] = []
+    if kvm:
+        virtualization.append("kvm")
+    if hyperv:
+        virtualization.append("hyperv/wsl")
+    if is_wsl():
+        virtualization.append("wsl2")
+
+    return {
+        "os": uname_summary(),
+        "distro": linux_distro_guess(),
+        "is_wsl": is_wsl(),
+        "admin_available": admin,
+        "admin_hint": admin_hint,
+        "container_runtime": runtime,
+        "container_runtime_hint": runtime_hint,
+        "docker_daemon": {"ok": docker_ok, "message": docker_msg},
+        "podman_machine": {"ok": podman_ok, "message": podman_msg},
+        "virtualization": virtualization or ["none-detected"],
+        "kvm_device": kvm,
+        "hyperv_hint": hyperv,
+    }

@@ -34,6 +34,8 @@ class OutputFormat(StrEnum):
     CSS = "css"
     JSON = "json"
     JS = "js"
+    DOCX = "docx"
+    REACT_TSX = "react_tsx"
 
 
 class ArtifactKind(StrEnum):
@@ -228,7 +230,9 @@ class DesignProject:
     name: str
     skill_slug: str
     design_system_slug: str
+    org_id: str
     trust_tier: TrustTier = TrustTier.T3
+    team_id: str | None = None
     canvas_id: str | None = None
     outputs: list[DesignOutput] = field(default_factory=list)
     discovery: DiscoveryResult | None = None
@@ -241,6 +245,8 @@ class DesignProject:
             "name": self.name,
             "skill_slug": self.skill_slug,
             "design_system_slug": self.design_system_slug,
+            "org_id": self.org_id,
+            "team_id": self.team_id,
             "trust_tier": self.trust_tier,
             "canvas_id": self.canvas_id,
             "output_count": len(self.outputs),

@@ -28,7 +28,9 @@ class PodmanRuntime(DockerRuntime):
         os.environ["DOCKER_HOST"] = f"unix://{sock}"
         try:
             return super().is_available()
-        except Exception:
+        except (
+            Exception
+        ):  # pragma: no cover — DockerRuntime.is_available() already swallows all exceptions
             return False
 
     @staticmethod

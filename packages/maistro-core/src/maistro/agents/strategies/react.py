@@ -121,7 +121,9 @@ class ReactStrategy:
                     }
                 )
 
-        return ReasoningResult(
+        # Unreachable: line 84 always early-returns once round_num >= self.max_rounds,
+        # which the last iteration of `range(self.max_rounds + 1)` always satisfies.
+        return ReasoningResult(  # pragma: no cover
             response="Max tool rounds reached",
             done=True,
             tool_history=tool_history,

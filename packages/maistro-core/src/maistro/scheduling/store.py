@@ -42,7 +42,9 @@ def _validate_cron_field(value: str, field_min: int, field_max: int) -> bool:
         return field_min <= lo <= field_max and field_min <= hi <= field_max and lo <= hi
     if _LIST_RE.match(value):
         return all(field_min <= int(v) <= field_max for v in value.split(","))
-    if value.isdigit():
+    if (
+        value.isdigit()
+    ):  # pragma: no cover — unreachable: _LIST_RE already matches any pure-digit string
         n = int(value)
         return field_min <= n <= field_max
     return False

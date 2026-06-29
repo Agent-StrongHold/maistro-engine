@@ -1100,6 +1100,668 @@ class TestDesignEngineGenerate:
         assert output.content == output.root.value
 
 
+# ─── build_multimodal_output / persist_blobs ─────────────────────────────────
+
+
+class TestBuildMultimodalOutput:
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_single_string_content_produces_file_root(self):
+        """
+        Given a single {HTML: "<h1>hi</h1>"} content entry
+        When build_multimodal_output() is called
+        Then output.root.kind == FILE and output.content carries the html.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output(
+            {OutputFormat.HTML: "<h1>hi</h1>"}, trust_tier=TrustTier.T3
+        )
+        assert output.root.kind is ArtifactKind.FILE
+        assert output.format is OutputFormat.HTML
+        assert output.content == "<h1>hi</h1>"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_single_bytes_content_produces_blob_root(self):
+        """
+        Given a single {PNG: b"\\x89PNG"} content entry
+        When build_multimodal_output() is called
+        Then output.root.kind == BLOB and value is the raw bytes.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output({OutputFormat.PNG: b"\x89PNG"}, trust_tier=TrustTier.T3)
+        assert output.root.kind is ArtifactKind.BLOB
+        assert output.root.format is OutputFormat.PNG
+        assert output.root.value == b"\x89PNG"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_multi_format_content_produces_container_root(self):
+        """
+        Given {HTML: ..., CSS: ..., JS: ...} content
+        When build_multimodal_output() is called
+        Then output.root.kind == CONTAINER with one FILE child per format,
+        keyed by OutputFormat.value.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output(
+            {
+                OutputFormat.HTML: "<html></html>",
+                OutputFormat.CSS: "body { color: red; }",
+                OutputFormat.JS: "console.log('hi')",
+            },
+            trust_tier=TrustTier.T3,
+        )
+        assert output.root.kind is ArtifactKind.CONTAINER
+        assert set(output.root.children) == {"html", "css", "js"}
+        assert output.root.children["html"].kind is ArtifactKind.FILE
+        assert output.root.children["html"].value == "<html></html>"
+        assert output.root.children["css"].format is OutputFormat.CSS
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_empty_contents_raises_value_error(self):
+        """
+        Given an empty content dict
+        When build_multimodal_output() is called
+        Then ValueError is raised.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+
+        with pytest.raises(ValueError, match="at least one"):
+            build_multimodal_output({}, trust_tier=TrustTier.T3)
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_script_injection_raises_trust_banned_error(self):
+        """
+        Given a format whose content contains a <script> tag
+        When build_multimodal_output() is called
+        Then TrustBannedError is raised by the same scan generate() uses.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import OutputFormat, TrustBannedError
+
+        with pytest.raises(TrustBannedError):
+            build_multimodal_output(
+                {OutputFormat.HTML: "<script>alert(1)</script>"}, trust_tier=TrustTier.T3
+            )
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_byte_encoded_text_format_produces_file_root_with_decoded_value(self):
+        """
+        Given a text format (SVG) passed as UTF-8-encoded bytes
+        When build_multimodal_output() is called
+        Then output.root.kind == FILE and value is the decoded str, not raw bytes.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import ArtifactKind, OutputFormat
+
+        output = build_multimodal_output(
+            {OutputFormat.SVG: b"<svg></svg>"}, trust_tier=TrustTier.T3
+        )
+        assert output.root.kind is ArtifactKind.FILE
+        assert output.root.value == "<svg></svg>"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_byte_encoded_text_format_is_still_scanned(self):
+        """
+        Given a text format (SVG) passed as UTF-8-encoded bytes containing a
+        <script> tag
+        When build_multimodal_output() is called
+        Then TrustBannedError is raised — byte encoding must not let a text
+        artifact bypass the Warden scan by masquerading as a BLOB.
+        """
+        from maistro_design.engine import build_multimodal_output
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import OutputFormat, TrustBannedError
+
+        with pytest.raises(TrustBannedError):
+            build_multimodal_output(
+                {OutputFormat.SVG: b"<svg><script>alert(1)</script></svg>"},
+                trust_tier=TrustTier.T3,
+            )
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_persist_blobs_calls_store_blob_for_each_blob_leaf(self):
+        """
+        Given a multi-format output with one PNG blob entry
+        When persist_blobs(output, canvas_store) is called
+        Then canvas_store.store_blob() is awaited once with the blob's bytes/format
+        And the returned mapping has one entry keyed by the blob's dotted address.
+        """
+        from unittest.mock import AsyncMock
+
+        from maistro_design.engine import build_multimodal_output, persist_blobs
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import OutputFormat
+
+        output = build_multimodal_output(
+            {OutputFormat.HTML: "<html></html>", OutputFormat.PNG: b"\x89PNG"},
+            trust_tier=TrustTier.T3,
+        )
+        canvas_store = AsyncMock()
+        canvas_store.store_blob.return_value = "asset-123"
+
+        stored = await persist_blobs(output, canvas_store)
+
+        canvas_store.store_blob.assert_awaited_once_with(b"\x89PNG", format="png", metadata={})
+        assert stored == {"output.png": "asset-123"}
+
+
+# ─── REACT_TSX output format (SPEC-062326-e9c6) ──────────────────────────────
+
+
+class TestReactTsxOutputFormat:
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_react_tsx_in_output_format_enum(self):
+        """
+        Scenario: REACT_TSX value exists in OutputFormat
+          When OutputFormat.REACT_TSX is accessed
+          Then its value is "react_tsx"
+        """
+        from maistro_design.types import OutputFormat
+
+        assert OutputFormat.REACT_TSX == "react_tsx"
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_login_flow_declares_react_tsx(self):
+        """
+        Scenario: login-flow declares HTML and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("login-flow") is called
+          Then skill.output_formats contains OutputFormat.HTML
+          And skill.output_formats contains OutputFormat.REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("login-flow")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_agent_browser_declares_react_tsx(self):
+        """
+        Scenario: agent-browser declares HTML and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("agent-browser") is called
+          Then skill.output_formats contains OutputFormat.HTML
+          And skill.output_formats contains OutputFormat.REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("agent-browser")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_landing_page_declares_react_tsx(self):
+        """
+        Scenario: landing-page declares HTML, CSS, and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("landing-page") is called
+          Then skill.output_formats contains OutputFormat.HTML, CSS, and REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("landing-page")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.CSS in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_email_template_declares_react_tsx(self):
+        """
+        Scenario: email-template declares HTML and REACT_TSX output
+          Given an InMemoryDesignSkillRegistry with load_builtins() called
+          When registry.get("email-template") is called
+          Then skill.output_formats contains OutputFormat.HTML and REACT_TSX
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("email-template")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_prototype_skills_include_code_instructions(self):
+        """
+        Scenario: Prototype skills include "Code Output Instructions" in system_prompt
+          When registry.get("login-flow").system_prompt is examined
+          Then it contains "Code Output Instructions"
+          And functional component guidance is present
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("login-flow")
+        assert skill is not None
+        prompt = skill.system_prompt
+        assert "Code Output Instructions" in prompt
+        assert "functional" in prompt.lower() or "tsx" in prompt.lower()
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_template_skills_include_code_instructions(self):
+        """
+        Scenario: Template skills include "Code Output Instructions" in system_prompt
+          When registry.get("landing-page").system_prompt is examined
+          Then it contains "Code Output Instructions"
+        """
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("landing-page")
+        assert skill is not None
+        prompt = skill.system_prompt
+        assert "Code Output Instructions" in prompt
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_react_tsx_output_inherits_trust_tier(self, skill_registry, system_registry):
+        """
+        Scenario: REACT_TSX output inherits project trust tier
+          Given a DesignEngine and a DiscoveryResult with trust_tier=T3
+          When generate() is called for "login-flow"
+          Then project.trust_tier == T3
+          And project.outputs[0].trust_tier == T3
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="login-flow",
+            design_system_slug="default",
+            responses={
+                "auth_methods": "Email/Password",
+                "brand_tone": "Professional",
+            },
+            trust_tier=TrustTier.T3,
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+        assert project.outputs[0].trust_tier == TrustTier.T3
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_code_output_does_not_auto_upgrade_trust(self, skill_registry, system_registry):
+        """
+        Scenario: Code output does not auto-upgrade trust
+          Given T3 discovery responses
+          When generate() is called
+          Then project.trust_tier == T3 (the minimum, not upgraded)
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="login-flow",
+            design_system_slug="default",
+            responses={"auth_methods": "Email/Password", "brand_tone": "Professional"},
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("integration")
+    async def test_prototype_mode_no_canvas_auto_create(self, skill_registry, system_registry):
+        """
+        Scenario: PROTOTYPE mode does not auto-create canvas
+          Given a DesignEngine with canvas_store provided
+          And a DiscoveryResult for "login-flow" (PROTOTYPE mode)
+          When generate() is called
+          Then project.canvas_id is None
+        """
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DiscoveryResult
+
+        class MockCanvasStore:
+            async def create_canvas(self, name: str, width: int, height: int):
+                raise AssertionError("create_canvas should not be called for PROTOTYPE")
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+            canvas_store=MockCanvasStore(),  # type: ignore
+        )
+        discovery = DiscoveryResult(
+            skill_slug="login-flow",
+            design_system_slug="default",
+            responses={"auth_methods": "Email/Password", "brand_tone": "Professional"},
+        )
+        project = await eng.generate(discovery)
+        assert project.canvas_id is None
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("integration")
+    async def test_template_mode_canvas_creation_is_mode_driven(
+        self, skill_registry, system_registry
+    ):
+        """
+        Scenario: TEMPLATE mode auto-creates canvas (canvas creation is mode-driven)
+          Given a DesignEngine with canvas_store provided
+          And a DiscoveryResult for "landing-page" (TEMPLATE mode)
+          When generate() is called
+          Then project.canvas_id is not None (canvas auto-created by mode)
+
+        Note: Per ADR-062326-616c, code output does not change canvas behavior.
+        The engine's canvas creation is mode-driven (IMAGE/TEMPLATE always create if store available).
+        Downstream callers decide whether to use canvas for code artifacts or store separately.
+        """
+        from maistro_canvas.types import CanvasRecord
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DiscoveryResult
+
+        class MockCanvasStore:
+            async def create_canvas(self, name: str, width: int, height: int):
+                return CanvasRecord(
+                    id="canvas-landing",
+                    name=name,
+                    width=width,
+                    height=height,
+                )
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+            canvas_store=MockCanvasStore(),  # type: ignore
+        )
+        discovery = DiscoveryResult(
+            skill_slug="landing-page",
+            design_system_slug="default",
+            responses={
+                "product_name": "MyApp",
+                "headline": "The best app",
+                "cta_text": "Get started",
+                "section_count": "4",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.canvas_id == "canvas-landing"
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("integration")
+    async def test_image_mode_still_auto_creates_canvas(self, skill_registry, system_registry):
+        """
+        Scenario: IMAGE mode still auto-creates canvas (unchanged behavior)
+          Given a DesignEngine with canvas_store and image_gen provided
+          And a DiscoveryResult for "hero-image" (IMAGE mode)
+          When generate() is called
+          Then project.canvas_id is not None
+        """
+        from maistro_canvas.types import CanvasRecord
+        from maistro_design.engine import DesignEngine
+        from maistro_design.types import DiscoveryResult
+
+        class MockCanvasStore:
+            async def create_canvas(self, name: str, width: int, height: int):
+                return CanvasRecord(id="canvas-123", name=name, width=width, height=height)
+
+        class MockImageGen:
+            pass
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+            canvas_store=MockCanvasStore(),  # type: ignore
+            image_gen=MockImageGen(),  # type: ignore
+        )
+        discovery = DiscoveryResult(
+            skill_slug="hero-image",
+            design_system_slug="default",
+            responses={
+                "subject": "A beautiful landscape",
+                "style": "Photorealistic",
+                "aspect_ratio": "16:9",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.canvas_id == "canvas-123"
+
+
+# ─── Multi-format skills: Deck + Design-System (Tier A Polish) ────────────────
+
+
+class TestDeckSkillsMultiFormat:
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_pitch_deck_declares_multi_format(self):
+        """pitch-deck declares HTML, MARKDOWN, REACT_TSX, PPTX, PDF output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("pitch-deck")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.MARKDOWN in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PPTX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_pitch_deck_includes_format_guidance(self):
+        """pitch-deck system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("pitch-deck")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+        assert "React" in skill.system_prompt or "REACT_TSX" in skill.system_prompt.upper()
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_product_demo_deck_declares_multi_format(self):
+        """product-demo-deck declares HTML, MARKDOWN, REACT_TSX, PPTX, PDF output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("product-demo-deck")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.MARKDOWN in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PPTX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_product_demo_deck_includes_format_guidance(self):
+        """product-demo-deck system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("product-demo-deck")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+
+
+class TestDesignSystemSkillsMultiFormat:
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_brand_guidelines_declares_multi_format(self):
+        """brand-guidelines declares HTML, MARKDOWN, REACT_TSX, PDF, DOCX, PNG output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("brand-guidelines")
+        assert skill is not None
+        assert OutputFormat.HTML in skill.output_formats
+        assert OutputFormat.MARKDOWN in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+        assert OutputFormat.DOCX in skill.output_formats
+        assert OutputFormat.PNG in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_brand_guidelines_includes_format_guidance(self):
+        """brand-guidelines system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("brand-guidelines")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+        assert "PDF" in skill.system_prompt or "DOCX" in skill.system_prompt
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_design_token_sheet_declares_multi_format(self):
+        """design-token-sheet declares CSS, JSON, REACT_TSX, PDF, PNG output."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+        from maistro_design.types import OutputFormat
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("design-token-sheet")
+        assert skill is not None
+        assert OutputFormat.CSS in skill.output_formats
+        assert OutputFormat.JSON in skill.output_formats
+        assert OutputFormat.REACT_TSX in skill.output_formats
+        assert OutputFormat.PDF in skill.output_formats
+        assert OutputFormat.PNG in skill.output_formats
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_design_token_sheet_includes_format_guidance(self):
+        """design-token-sheet system_prompt includes Code Output Instructions and format guidance."""
+        from maistro_design.skills.builtins import load_builtins
+        from maistro_design.skills.registry import InMemoryDesignSkillRegistry
+
+        registry = InMemoryDesignSkillRegistry()
+        load_builtins(registry)
+        skill = registry.get("design-token-sheet")
+        assert skill is not None
+        assert "Code Output Instructions" in skill.system_prompt
+        assert "JSON" in skill.system_prompt or "React" in skill.system_prompt
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_deck_skills_trust_tier_inheritance(self, skill_registry, system_registry):
+        """Deck skills with multi-format output inherit trust tier correctly."""
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="pitch-deck",
+            design_system_slug="default",
+            responses={
+                "company_name": "TestCo",
+                "one_liner": "Test service",
+                "stage": "Seed",
+                "slide_count": "12",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+        assert project.outputs[0].trust_tier == TrustTier.T3
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("integration")
+    async def test_design_system_skills_trust_tier_inheritance(
+        self, skill_registry, system_registry
+    ):
+        """Design-system skills with multi-format output inherit trust tier correctly."""
+        from maistro_design.engine import DesignEngine
+        from maistro_design.trust import TrustTier
+        from maistro_design.types import DiscoveryResult
+
+        eng = DesignEngine(
+            skill_registry=skill_registry,
+            system_registry=system_registry,
+        )
+        discovery = DiscoveryResult(
+            skill_slug="brand-guidelines",
+            design_system_slug="default",
+            responses={
+                "brand_name": "TestBrand",
+                "brand_values": "Innovative, Trustworthy",
+                "sections": "Logo, Colors",
+            },
+        )
+        project = await eng.generate(discovery)
+        assert project.trust_tier == TrustTier.T3
+        assert project.outputs[0].trust_tier == TrustTier.T3
+
+
 # ─── Protocol compliance ──────────────────────────────────────────────────────
 
 

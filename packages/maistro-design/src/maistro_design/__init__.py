@@ -83,6 +83,7 @@ __all__ = [
     "InMemoryTrustReviewQueue",
     "IncompatibleDesignSystemError",
     "OutputFormat",
+    "PgDesignProjectStore",
     "SVGRenderer",
     "ScanReport",
     "SkillMode",
@@ -103,3 +104,12 @@ __all__ = [
     "scan_design_output",
     "scan_design_system_content",
 ]
+
+
+def __getattr__(name: str):
+    """Lazy-load PgDesignProjectStore to avoid requiring sqlalchemy at import time."""
+    if name == "PgDesignProjectStore":
+        from maistro_design.stores import PgDesignProjectStore
+
+        return PgDesignProjectStore
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

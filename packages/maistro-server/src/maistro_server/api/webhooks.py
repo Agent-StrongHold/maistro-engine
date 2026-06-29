@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
+import re
 from typing import Annotated
 
 import structlog
@@ -19,6 +21,8 @@ from maistro_server.api.schemas import CIWebhookIgnored, WebhookAccepted, Webhoo
 
 logger = structlog.get_logger()
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+
+_REPO_FULL_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
 def _verify_github_signature(payload: bytes, signature: str, secret: str) -> bool:
@@ -39,13 +43,45 @@ def _sanitize(text: str) -> str:
 
 
 def _check_body_size(request: Request, settings: Settings) -> None:
-    """Raise 413 if Content-Length exceeds the configured limit."""
+    """Raise if Content-Length is malformed or exceeds the configured limit."""
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > settings.max_webhook_body_bytes:
+    if not content_length:
+        return
+    try:
+        size = int(content_length)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid Content-Length header",
+        ) from exc
+    if size > settings.max_webhook_body_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Request body too large (max {settings.max_webhook_body_bytes} bytes)",
         )
+
+
+def _check_actual_body_size(body: bytes, settings: Settings) -> None:
+    if len(body) > settings.max_webhook_body_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Request body too large (max {settings.max_webhook_body_bytes} bytes)",
+        )
+
+
+def _repo_workspace(repository: str) -> str:
+    if not _REPO_FULL_NAME_RE.fullmatch(repository):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Repository must be in owner/name form",
+        )
+    owner, name = repository.split("/", 1)
+    if owner in {".", ".."} or name in {".", ".."}:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Repository must be in owner/name form",
+        )
+    return f"/repos/{repository}"
 
 
 @router.post("/github")
@@ -58,6 +94,7 @@ async def github_webhook(
 ) -> WebhookAccepted | WebhookIgnored:
     _check_body_size(request, settings)
     body = await request.body()
+    _check_actual_body_size(body, settings)
 
     # Verify GitHub webhook signature
     if settings.github_webhook_secret:
@@ -77,7 +114,7 @@ async def github_webhook(
             msg="GITHUB_WEBHOOK_SECRET not set — signature verification skipped",
         )
 
-    payload = await request.json()
+    payload = json.loads(body)
     event = x_github_event or "unknown"
     action = payload.get("action", "")
 
@@ -102,7 +139,7 @@ async def github_webhook(
 
         task = TaskCreate(
             description=wrapped,
-            workspace=f"/repos/{repo}",
+            workspace=_repo_workspace(repo),
         )
         result = await queue.submit(task)
         return WebhookAccepted(task_id=result.task_id, action="pr_review_queued")
@@ -127,7 +164,7 @@ async def github_webhook(
 
         task = TaskCreate(
             description=wrapped,
-            workspace=f"/repos/{repo}",
+            workspace=_repo_workspace(repo),
         )
         result = await queue.submit(task)
         return WebhookAccepted(task_id=result.task_id, action="issue_task_queued")
@@ -177,7 +214,7 @@ async def ci_webhook(
 
         task = TaskCreate(
             description=wrapped,
-            workspace=f"/repos/{payload.repository}",
+            workspace=_repo_workspace(payload.repository),
             branch=payload.branch,
         )
         result = await queue.submit(task)

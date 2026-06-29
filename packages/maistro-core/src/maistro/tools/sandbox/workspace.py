@@ -13,23 +13,11 @@ CONTAINER_WORKSPACE = "/workspace"
 
 # Allowed host paths that can be mounted into containers.
 # Include `/private/tmp/...` because macOS resolves `/tmp` → `/private/tmp`.
-ALLOWED_HOST_PREFIXES = (
-    "/tmp/maistro-workspace",  # nosec B108 — security allowlist, not a write target
-    "/private/tmp/maistro-workspace",  # nosec B108 — macOS symlink target of /tmp
-    "/repos/",
+ALLOWED_HOST_ROOTS = (
+    Path("/tmp/maistro-workspace"),  # nosec B108 — security allowlist, not a write target
+    Path("/private/tmp/maistro-workspace"),  # nosec B108 — macOS symlink target of /tmp
+    Path("/repos"),
 )
-
-
-def _is_within_prefix(path_str: str, prefix: str) -> bool:
-    """True if path_str is the prefix dir itself or a path under it.
-
-    Plain str.startswith() would also match sibling directories that merely
-    share the prefix as a string (e.g. "/tmp/maistro-workspace-evil" starts
-    with "/tmp/maistro-workspace"). Normalizing away any trailing slash and
-    requiring the next character to be a path separator closes that gap.
-    """
-    prefix_norm = prefix.rstrip("/")
-    return path_str == prefix_norm or path_str.startswith(prefix_norm + "/")
 
 
 def validate_workspace_path(path: str) -> Path:
@@ -39,12 +27,12 @@ def validate_workspace_path(path: str) -> Path:
     arbitrary filesystem access via container mounts.
     """
     resolved = Path(path).resolve()
-    path_str = str(resolved)
+    allowed_roots = tuple(root.resolve() for root in ALLOWED_HOST_ROOTS)
 
-    if not any(_is_within_prefix(path_str, prefix) for prefix in ALLOWED_HOST_PREFIXES):
+    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+        allowed = tuple(str(root) for root in allowed_roots)
         raise ValueError(
-            f"Workspace path {path} is not in an allowed location. "
-            f"Allowed prefixes: {ALLOWED_HOST_PREFIXES}"
+            f"Workspace path {path} is not in an allowed location. Allowed roots: {allowed}"
         )
 
     return resolved

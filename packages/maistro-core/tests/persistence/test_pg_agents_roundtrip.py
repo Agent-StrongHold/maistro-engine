@@ -15,7 +15,12 @@ code reads and writes.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
+
+pytest.importorskip("aiosqlite")
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -51,12 +56,16 @@ CREATE TABLE agents (
 
 
 @pytest.fixture
-async def engine():
+def engine():
     eng = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with eng.begin() as conn:
-        await conn.execute(text(_CREATE_AGENTS_TABLE))
+
+    async def initialize() -> None:
+        async with eng.begin() as conn:
+            await conn.execute(text(_CREATE_AGENTS_TABLE))
+
+    asyncio.run(initialize())
     yield eng
-    await eng.dispose()
+    asyncio.run(eng.dispose())
 
 
 @pytest.fixture

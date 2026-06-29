@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 import pytest
@@ -129,13 +130,12 @@ class TestVerifyAlways:
 
 
 @given(stakes=st.floats(min_value=0.0, max_value=1.0))
-@pytest.mark.asyncio
-async def test_improvise_called_iff_recall_miss_or_gate_rejects(stakes: float) -> None:
+def test_improvise_called_iff_recall_miss_or_gate_rejects(stakes: float) -> None:
     threshold = 0.5
     rep = FakeRepertoire(entries={"cls1": FakeEntry(input_class="cls1", value="cached")})
     gate = ThresholdGate(threshold)
 
-    await repertoire_run(rep, "cls1", stakes=stakes, gate=gate)
+    asyncio.run(repertoire_run(rep, "cls1", stakes=stakes, gate=gate))
 
     expected_improvise = stakes >= threshold
     assert (rep.improvise_calls == 1) == expected_improvise

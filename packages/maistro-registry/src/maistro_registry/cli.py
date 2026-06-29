@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from maistro_registry.dag import Cycle, DuplicateId, find_cycles, find_duplicate_ids
@@ -28,6 +29,7 @@ from maistro_registry.linker import (
     LinkResult,
     check_links,
 )
+from maistro_registry.schema import FrontMatter
 from maistro_registry.validator import ValidationResult, validate_file
 
 # Walked file patterns. Order is for determinism, not precedence.
@@ -56,6 +58,39 @@ def _walk(root: Path) -> Iterable[Path]:
             if p.suffix == ".md" and p.is_file() and p not in seen:
                 seen.add(p)
                 yield p
+
+
+@dataclass(frozen=True)
+class WalkValidation:
+    """Shared CLI input pipeline for commands that operate on a repository root."""
+
+    results: list[ValidationResult]
+
+    @property
+    def valid_front_matter(self) -> list[FrontMatter]:
+        return [r.front_matter for r in self.results if r.front_matter is not None]
+
+    @property
+    def error_count(self) -> int:
+        return sum(1 for r in self.results if r.errors)
+
+
+def _load_walk_validation(root: Path) -> WalkValidation | int:
+    """Resolve a root, discover candidate files, and validate them once.
+
+    Returns an exit status for command-level input errors so `lint` and
+    `generate` cannot drift on missing-root or empty-root behavior.
+    """
+    if not root.is_dir():
+        print(f"error: {root} is not a directory", file=sys.stderr)
+        return 2
+
+    files = list(_walk(root))
+    if not files:
+        print(f"no candidate files found under {root}", file=sys.stderr)
+        return 0
+
+    return WalkValidation(results=[validate_file(f) for f in files])
 
 
 def _print_result(result: ValidationResult, *, quiet_ok: bool) -> None:
@@ -126,18 +161,11 @@ def cmd_walk(args: argparse.Namespace) -> int:
 def cmd_lint(args: argparse.Namespace) -> int:
     """Walk + validate + DAG check + local link check."""
     root = Path(args.root)
-    if not root.is_dir():
-        print(f"error: {root} is not a directory", file=sys.stderr)
-        return 2
+    loaded = _load_walk_validation(root)
+    if isinstance(loaded, int):
+        return loaded
 
-    files = list(_walk(root))
-    if not files:
-        print(f"no candidate files found under {root}", file=sys.stderr)
-        return 0
-
-    results = [validate_file(f) for f in files]
-    valid_fms = [r.front_matter for r in results if r.front_matter is not None]
-
+    valid_fms = loaded.valid_front_matter
     cycles: list[Cycle] = find_cycles(valid_fms, "supersedes") + find_cycles(valid_fms, "blocks")
     for c in cycles:
         print(f"  CYCLE: {c.render()}")
@@ -148,12 +176,12 @@ def cmd_lint(args: argparse.Namespace) -> int:
     for lr in dangling:
         print(f"  DANGLING: {lr.render()}")
 
-    duplicates: list[DuplicateId] = find_duplicate_ids(results)
+    duplicates: list[DuplicateId] = find_duplicate_ids(loaded.results)
     for d in duplicates:
         print(f"  DUPLICATE: {d.render()}")
 
     extra = len(cycles) + len(dangling) + len(duplicates)
-    return _exit_status(results, strict=args.strict, quiet_ok=args.quiet, extra_errors=extra)
+    return _exit_status(loaded.results, strict=args.strict, quiet_ok=args.quiet, extra_errors=extra)
 
 
 def cmd_generate(args: argparse.Namespace) -> int:
@@ -165,28 +193,19 @@ def cmd_generate(args: argparse.Namespace) -> int:
     body).
     """
     root = Path(args.root)
-    if not root.is_dir():
-        print(f"error: {root} is not a directory", file=sys.stderr)
-        return 2
+    loaded = _load_walk_validation(root)
+    if isinstance(loaded, int):
+        return loaded
 
-    files = list(_walk(root))
-    if not files:
-        print(f"no candidate files found under {root}", file=sys.stderr)
-        return 0
-
-    results = [validate_file(f) for f in files]
-    valid_fms = [r.front_matter for r in results if r.front_matter is not None]
-    n_errors = sum(1 for r in results if r.errors)
-
-    if n_errors and not args.allow_errors:
+    if loaded.error_count and not args.allow_errors:
         print(
-            f"error: refusing to generate registry with {n_errors} errored files; "
+            f"error: refusing to generate registry with {loaded.error_count} errored files; "
             "pass --allow-errors to skip them and generate anyway",
             file=sys.stderr,
         )
         return 1
 
-    registry = build_registry(valid_fms)
+    registry = build_registry(loaded.valid_front_matter)
     out_dir = Path(args.output) if args.output else (root / "registry")
     json_path, md_path = write_registry(registry, out_dir)
 

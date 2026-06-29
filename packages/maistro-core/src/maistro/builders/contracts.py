@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from maistro.types.feedback import Claim
+
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
@@ -67,7 +69,7 @@ class RunResult(BaseModel):
     status: RunStatus
     summary: str
     artifacts: list[ArtifactRef] = Field(default_factory=list)
-    claims: list[str] = Field(default_factory=list)
+    claims: list[Claim] = Field(default_factory=list)
     logs: list[str] = Field(default_factory=list)
 
 
