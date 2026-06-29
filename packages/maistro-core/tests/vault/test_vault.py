@@ -6,6 +6,7 @@ All tests should FAIL until the vault module is implemented.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -21,6 +22,8 @@ def tmp_vault_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def age_keypair(tmp_vault_dir: Path) -> dict[str, str]:
+    if not _has_age():
+        pytest.skip("age and age-keygen are required for encrypted vault tests")
     result = subprocess.run(
         ["age-keygen"],
         capture_output=True,
@@ -38,10 +41,13 @@ def age_keypair(tmp_vault_dir: Path) -> dict[str, str]:
 
 
 def _has_age() -> bool:
+    if shutil.which("age") is None or shutil.which("age-keygen") is None:
+        return False
     try:
         subprocess.run(["age", "--version"], capture_output=True, check=True)
+        subprocess.run(["age-keygen"], capture_output=True, check=True)
         return True
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except subprocess.CalledProcessError:
         return False
 
 

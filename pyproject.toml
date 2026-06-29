@@ -59,6 +59,27 @@ bootstrap = [
     "maistro-bootstrap",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "pytest-cov>=6.0",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "types-PyYAML>=6.0",
+    # Third-party libs imported by package source (identity, warden, canvas) but
+    # not pulled by the root runtime dependencies in every package-specific path.
+    "bip-utils>=2.9",
+    "pynacl>=1.5",
+    "regex>=2024.5.15",
+    "types-regex>=2024.5.15",
+    "pillow>=11.0",
+    "questionary>=2.0",
+    "aiosqlite>=0.20",
+    "hypothesis>=6.0",
+    "cosmic-ray>=8.0.0",
+]
+
 [project.scripts]
 maistro-registry = "maistro_registry.cli:main"
 
@@ -99,6 +120,7 @@ ignore = ["E501"]
 max-complexity = 10
 
 [tool.pytest.ini_options]
+addopts = "--import-mode=importlib"
 testpaths = [
     "packages/maistro-core/tests",
     "packages/maistro-server/tests",

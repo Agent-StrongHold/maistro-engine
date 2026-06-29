@@ -165,8 +165,50 @@ class TestGitHubWebhookFunctionality:
         assert response.status_code == 200
         assert response.json()["status"] == "ignored"
 
+    @pytest.mark.parametrize(
+        "repo",
+        [
+            "",
+            "org",
+            "org/repo/extra",
+            "../repo",
+            "org/../repo",
+            "https://github.com/org/repo",
+        ],
+    )
+    def test_task_creating_events_reject_invalid_repository_names(self, repo: str) -> None:
+        client = _client()
+        response = client.post(
+            "/webhooks/github",
+            json={
+                "action": "opened",
+                "pull_request": {"title": "Add auth", "number": 42},
+                "repository": {"full_name": repo},
+            },
+            headers={"X-GitHub-Event": "pull_request"},
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["message"] == "Repository must be in owner/name form"
+
 
 class TestCIWebhookFunctionality:
+    @pytest.mark.parametrize(
+        "repository",
+        ["", "org", "org/repo/extra", "../repo", "org/../repo", "https://example.com/org/repo"],
+    )
+    def test_failure_rejects_invalid_repository_names(self, repository: str) -> None:
+        client = _client()
+        response = client.post(
+            "/webhooks/ci",
+            json={
+                "status": "failure",
+                "repository": repository,
+                "branch": "main",
+            },
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["message"] == "Repository must be in owner/name form"
+
     def test_failure_creates_fix_task(self) -> None:
         client = _client()
         response = client.post(
@@ -198,3 +240,38 @@ class TestCIWebhookFunctionality:
         )
         assert response.status_code == 200
         assert response.json()["status"] == "ignored"
+
+
+class TestWebhookBodyLimits:
+    def test_github_rejects_oversized_actual_body_without_content_length(self) -> None:
+        settings = Settings(require_auth=False, max_webhook_body_bytes=10)
+        app.dependency_overrides[get_settings] = lambda: settings
+        try:
+            client = _client()
+            response = client.post(
+                "/webhooks/github",
+                content=b'{"action":"closed"}',
+                headers={"X-GitHub-Event": "pull_request", "Content-Type": "application/json"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert response.status_code == 413
+
+    def test_github_rejects_malformed_content_length(self) -> None:
+        settings = Settings(require_auth=False, max_webhook_body_bytes=1000)
+        app.dependency_overrides[get_settings] = lambda: settings
+        try:
+            client = _client()
+            response = client.post(
+                "/webhooks/github",
+                content=b'{"action":"closed"}',
+                headers={
+                    "X-GitHub-Event": "pull_request",
+                    "Content-Type": "application/json",
+                    "Content-Length": "not-a-number",
+                },
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert response.status_code == 400
+        assert response.json()["error"]["message"] == "Invalid Content-Length header"
