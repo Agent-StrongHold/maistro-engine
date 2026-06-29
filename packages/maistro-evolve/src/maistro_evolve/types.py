@@ -56,6 +56,14 @@ class PipelineGenome(BaseModel):
     parent_b_id: str | None = None
     created_at: str
     updated_at: str
+    # RSI safety: promotion to live traffic requires an explicit human
+    # approval gate (set externally, e.g. via human.approve_draft) — winning
+    # tournament/fitness evaluation alone never sets this. Defaults closed.
+    approved_for_promotion: bool = False
+    # Set by PopulationStore.promote(); tracks which genome is currently
+    # serving live traffic, and what to roll back to if it regresses.
+    is_active: bool = False
+    rollback_target_id: str | None = None
 
 
 class EvalResult(BaseModel):

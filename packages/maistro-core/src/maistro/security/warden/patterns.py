@@ -6,12 +6,12 @@ Uses `regex` library instead of `re` for built-in timeout support (ReDoS-safe).
 
 from __future__ import annotations
 
-try:
-    import regex
-except ImportError:  # pragma: no cover - fallback when the `regex` lib is absent
-    import re as regex  # type: ignore[no-redef]
+from importlib import import_module, util
+from typing import Any
 
-REJECT_PATTERNS: list[tuple[regex.Pattern[str], str]] = [
+regex: Any = import_module("regex") if util.find_spec("regex") else import_module("re")
+
+REJECT_PATTERNS: list[tuple[Any, str]] = [
     (
         regex.compile(
             r"ignore\s+(all\s+)?previous\s+(instructions|prompts|rules)",

@@ -88,6 +88,14 @@ class CanvasStore(Protocol):
 
     async def latest_composite(self, canvas_id: str) -> CompositeResult | None: ...
 
+    async def store_blob(
+        self,
+        data: bytes,
+        *,
+        format: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> str: ...
+
 
 @runtime_checkable
 class ImageGenClient(Protocol):

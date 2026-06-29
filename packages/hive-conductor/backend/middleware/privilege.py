@@ -13,5 +13,12 @@ _ADMIN_PREFIXES = ("/v1/settings",)
 
 
 class PrivilegeMiddleware(BaseHTTPMiddleware):
+    """Placeholder middleware boundary for future path-level privilege checks.
+
+    The class remains installed as an adapter seam even while the current policy
+    table is empty, so future settings/admin restrictions can be added without
+    changing FastAPI application wiring.
+    """
+
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         return await call_next(request)

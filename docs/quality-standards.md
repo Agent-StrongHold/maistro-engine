@@ -24,6 +24,10 @@ The codebase has critical gaps in error handling that would cause silent failure
 
 ---
 
+## Evaluation Framework
+
+For the canonical review rubric covering assertion strength, assertion soundness, unit/integration/e2e expectations, complexity, maintainability, docstring coverage, vulture, radon, dependency hygiene scanners, duplicate-code scanners, mutation testing, and two LLM-as-judge review prompts, see [Code Quality Evaluation Framework](code-quality-evaluation.md).
+
 ## Current State Scorecard
 
 | Domain | Score | Justification |

@@ -109,10 +109,20 @@ async def create_container(config: AgentConfig) -> Container:
 
     warden = Warden()
     learning_extractor = ToolCorrectionExtractor()
-    quota_tracker = InMemoryQuotaTracker()
-    learning_store = InMemoryLearningStore()
-    outcome_store = InMemoryOutcomeStore()
-    session_store = InMemorySessionStore()
+    db_pool: Any = None
+    if config.database_url.startswith("sqlite:"):
+        (
+            db_pool,
+            quota_tracker,
+            learning_store,
+            outcome_store,
+            session_store,
+        ) = await _wire_sqlite_backend(config.database_url)
+    else:
+        quota_tracker = InMemoryQuotaTracker()
+        learning_store = InMemoryLearningStore()
+        outcome_store = InMemoryOutcomeStore()
+        session_store = InMemorySessionStore()
     episodic_store = InMemoryEpisodicStore()
     project_store = InMemoryProjectStore()
     context_assembly_policy = DefaultContextAssemblyPolicy(
@@ -162,7 +172,51 @@ async def create_container(config: AgentConfig) -> Container:
         project_store=project_store,
         context_assembly_policy=context_assembly_policy,
         audit_log=audit_log,
+        db_pool=db_pool,
     )
 
-    logger.info("Container wired (InMemory stores, no database)")
+    backend = "SQLite" if db_pool is not None else "InMemory"
+    logger.info("Container wired (%s stores)", backend)
     return container
+
+
+async def _wire_sqlite_backend(
+    database_url: str,
+) -> tuple[
+    Any,
+    QuotaTracker,
+    LearningStore,
+    OutcomeStore,
+    SessionStore,
+]:
+    """Open a SQLite connection and wire the homelab/single-instance stores.
+
+    ``database_url`` of the form ``sqlite:///path/to/file.db`` (or
+    ``sqlite://`` for an in-memory DB) selects this backend instead of the
+    default in-memory stores — no Postgres server required.
+    """
+    import aiosqlite
+
+    from maistro.persistence.sqlite_learnings import SqliteLearningStore
+    from maistro.persistence.sqlite_outcomes import SqliteOutcomeStore
+    from maistro.persistence.sqlite_quota import SqliteQuotaTracker
+    from maistro.persistence.sqlite_sessions import SqliteSessionStore
+
+    path = database_url.removeprefix("sqlite:///").removeprefix("sqlite://") or ":memory:"
+    conn = await aiosqlite.connect(path)
+
+    sqlite_quota_tracker = SqliteQuotaTracker(conn)
+    sqlite_learning_store = SqliteLearningStore(conn)
+    sqlite_outcome_store = SqliteOutcomeStore(conn)
+    sqlite_session_store = SqliteSessionStore(conn)
+    await sqlite_quota_tracker.ensure_schema()
+    await sqlite_learning_store.ensure_schema()
+    await sqlite_outcome_store.ensure_schema()
+    await sqlite_session_store.ensure_schema()
+
+    quota_tracker: QuotaTracker = sqlite_quota_tracker
+    learning_store: LearningStore = sqlite_learning_store
+    outcome_store: OutcomeStore = sqlite_outcome_store
+    session_store: SessionStore = sqlite_session_store
+
+    return conn, quota_tracker, learning_store, outcome_store, session_store

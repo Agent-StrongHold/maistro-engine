@@ -9,11 +9,29 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maistro.orchestrator.master import MasterOrchestrator, WorkItem
+from maistro.orchestrator.validation import (
+    PlanValidationFinding,
+    PlanValidationReport,
+    validate_plan,
+)
+
+if TYPE_CHECKING:
+    from maistro.security.sentinel.authz_types import Principal
+    from maistro.security.sentinel.policy import Sentinel
 
 logger = logging.getLogger("maistro.orchestrator.planner")
+
+
+class PlanValidationError(Exception):
+    """Raised when a plan fails pre-execution validation (SPEC-259)."""
+
+    def __init__(self, report: PlanValidationReport) -> None:
+        self.report = report
+        messages = "; ".join(f.message for f in report.findings if f.severity == "error")
+        super().__init__(f"Plan validation failed: {messages}")
 
 
 @dataclass
@@ -265,6 +283,42 @@ class SuperPlanner:
             max_retries=max_retries,
         )
         orchestrator.load_plan(self.plan())
+        return orchestrator
+
+    async def build_validated_orchestrator(
+        self,
+        *,
+        max_concurrent: int = 5,
+        max_retries: int = 2,
+        max_total_cost: float | None = None,
+        principal: Principal | None = None,
+        sentinel: Sentinel | None = None,
+    ) -> MasterOrchestrator:
+        """Validate the plan (SPEC-259) before building a MasterOrchestrator.
+
+        Raises PlanValidationError if the plan fails validation (cycle, over-budget,
+        or authority-exceeded) — refuses to hand back an orchestrator for an invalid plan.
+        """
+        try:
+            waves = self.plan()
+        except ValueError as exc:
+            finding = PlanValidationFinding(code="cycle", severity="error", message=str(exc))
+            raise PlanValidationError(PlanValidationReport(findings=(finding,))) from exc
+
+        report = await validate_plan(
+            waves,
+            max_total_cost=max_total_cost,
+            principal=principal,
+            sentinel=sentinel,
+        )
+        if not report.is_valid:
+            raise PlanValidationError(report)
+
+        orchestrator = MasterOrchestrator(
+            max_concurrent_per_wave=max_concurrent,
+            max_retries=max_retries,
+        )
+        orchestrator.load_plan(waves)
         return orchestrator
 
     def summary(self) -> dict[str, Any]:

@@ -7,7 +7,6 @@ import random
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import httpx
@@ -134,25 +133,9 @@ def build():
 
 
 def restart():
-    return  # Server already running externally
-    subprocess.run(["pkill", "-f", f"uvicorn.*--port {PORT}"], capture_output=True)
-    time.sleep(1)
-    with open("/tmp/hive-climb.log", "a") as log:
-        subprocess.Popen(
-            [
-                str(ROOT / "../../.venv/bin/uvicorn"),
-                "main:app",
-                "--host",
-                "0.0.0.0",
-                "--port",
-                PORT,
-            ],
-            cwd=str(ROOT / "backend"),
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            env={**os.environ, "PYTHONPATH": f"{ROOT}/backend:{ROOT}/../maistro-core/src:{ROOT}"},
-        )
-    time.sleep(3)
+    """No-op when the UI server is managed outside this hill-climb script."""
+    return None
+
 
 
 # Load corpus
