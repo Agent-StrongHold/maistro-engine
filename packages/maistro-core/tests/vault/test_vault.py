@@ -23,7 +23,8 @@ def tmp_vault_dir(tmp_path: Path) -> Path:
 @pytest.fixture()
 def age_keypair(tmp_vault_dir: Path) -> dict[str, str]:
     if not _has_age():
-        pytest.skip("age and age-keygen are required for encrypted vault tests")
+        pytest.skip("age not installed")
+
     result = subprocess.run(
         ["age-keygen"],
         capture_output=True,
@@ -41,14 +42,7 @@ def age_keypair(tmp_vault_dir: Path) -> dict[str, str]:
 
 
 def _has_age() -> bool:
-    if shutil.which("age") is None or shutil.which("age-keygen") is None:
-        return False
-    try:
-        subprocess.run(["age", "--version"], capture_output=True, check=True)
-        subprocess.run(["age-keygen"], capture_output=True, check=True)
-        return True
-    except subprocess.CalledProcessError:
-        return False
+    return shutil.which("age") is not None and shutil.which("age-keygen") is not None
 
 
 age_required = pytest.mark.skipif(not _has_age(), reason="age not installed")

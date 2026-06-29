@@ -20,6 +20,9 @@ def _has_age() -> bool:
     return shutil.which("age") is not None and shutil.which("age-keygen") is not None
 
 
+age_required = pytest.mark.skipif(not _has_age(), reason="age not installed")
+
+
 @pytest.fixture()
 def db_path(tmp_path: Path) -> Path:
     return tmp_path / "state.db"
@@ -165,6 +168,7 @@ class TestWALAndCheckpoint:
         state.close()
 
 
+@age_required
 class TestEncryptedBackups:
     """AC: State DB backups are encrypted with admin keypair before writing to disk."""
 

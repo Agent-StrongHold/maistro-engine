@@ -11,6 +11,17 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, Query, Request
+from services.airtable_cache import (
+    get_airtable_base_tables_json,
+    get_airtable_bases_json,
+    get_airtable_records_json,
+)
+from services.tool_primitives import (
+    AIRTABLE_PROVIDER_IDS,
+    JIRA_PROVIDER_IDS,
+    ToolCallContext,
+    ToolCredentialResolver,
+)
 
 router = APIRouter(tags=["widgets"])
 logger = logging.getLogger("hive.widgets")
@@ -22,17 +33,12 @@ def _jira_headers(pat: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {pat}", "Accept": "application/json"}
 
 
+def _tool_context(request: Request) -> ToolCallContext:
+    return ToolCallContext.from_request_state(getattr(request.state, "user", None))
+
+
 def _user_id(request: Request) -> str:
-    user = getattr(request.state, "user", None) or {}
-    return str(user.get("id") or user.get("username") or "dev")
-
-
-def _use_secret(store: object, user_id: str, provider_id: str) -> str | None:
-    """Single allowlisted callsite for use_secret — lambda is centralised here."""
-    try:
-        return store.use_secret(user_id, provider_id, lambda s: s)  # type: ignore[union-attr]
-    except Exception:
-        return None
+    return _tool_context(request).user_id
 
 
 def _jira_pat(request: Request) -> str | None:
@@ -43,13 +49,8 @@ def _jira_pat(request: Request) -> str | None:
         store = cred_svc.get_credential_store()
         if store is None:
             return None
-        for provider_id in ("atlassian_server_jira", "jira", "atlassian_rovo_mcp"):
-            try:
-                if store.has_secret(uid, provider_id):
-                    return _use_secret(store, uid, provider_id)
-            except Exception:
-                continue
-        return None
+        resolver = ToolCredentialResolver(store)
+        return resolver.first_secret(ToolCallContext(uid), JIRA_PROVIDER_IDS)
     except Exception:
         return None
 
@@ -178,6 +179,7 @@ async def widget_airtable(  # noqa: C901  branchy per-display-mode rendering
     max_records: int = 20,
     group_by: str | None = None,
     display_field: str | None = None,
+    refresh: bool = False,
 ) -> dict[str, Any]:
     """Query Airtable deterministically. Use group_by for breakdowns, display_field for lists."""
     uid = _user_id(request)
@@ -189,14 +191,10 @@ async def widget_airtable(  # noqa: C901  branchy per-display-mode rendering
         if not store:
             return {"error": "Credential store not available.", "records": []}
         # Find token — try user_id then fallback to "user"
-        token = None
-        for try_uid in (uid, "user"):
-            try:
-                if store.has_secret(try_uid, "airtable"):
-                    token = _use_secret(store, try_uid, "airtable")
-                    break
-            except Exception:
-                continue
+        resolver = ToolCredentialResolver(store)
+        token = resolver.first_secret(
+            ToolCallContext(uid), AIRTABLE_PROVIDER_IDS, include_dev_fallback=True
+        )
         if not token:
             return {"error": "Airtable not configured.", "records": []}
         # Find base_id from config store
@@ -218,78 +216,73 @@ async def widget_airtable(  # noqa: C901  branchy per-display-mode rendering
         params["filterByFormula"] = filter_formula
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(
-                f"https://api.airtable.com/v0/{base_id}/{table}",
-                headers={"Authorization": f"Bearer {token}"},
-                params=params,
-            )
-            r.raise_for_status()
-            data = r.json()
-            records_raw = data.get("records", [])
-            records = []
-            for rec in records_raw:
-                flat = {"id": rec["id"]}
-                for k, v in rec.get("fields", {}).items():
-                    # Flatten single-element arrays (linked record lookups)
-                    if isinstance(v, list) and len(v) == 1:
-                        flat[k] = v[0]
-                    elif isinstance(v, list):
-                        flat[k] = ", ".join(str(x) for x in v[:3])
-                    elif isinstance(v, dict) and "name" in v:
-                        flat[k] = v["name"]
-                    elif isinstance(v, dict) and "email" in v:
-                        flat[k] = v.get("name", v["email"])
-                    else:
-                        flat[k] = v
-                records.append(flat)
+        data = await get_airtable_records_json(
+            token=token, base_id=base_id, table=table, params=params, force_refresh=refresh
+        )
+        records_raw = data.get("records", [])
+        records = []
+        for rec in records_raw:
+            flat = {"id": rec["id"]}
+            for k, v in rec.get("fields", {}).items():
+                # Flatten single-element arrays (linked record lookups)
+                if isinstance(v, list) and len(v) == 1:
+                    flat[k] = v[0]
+                elif isinstance(v, list):
+                    flat[k] = ", ".join(str(x) for x in v[:3])
+                elif isinstance(v, dict) and "name" in v:
+                    flat[k] = v["name"]
+                elif isinstance(v, dict) and "email" in v:
+                    flat[k] = v.get("name", v["email"])
+                else:
+                    flat[k] = v
+            records.append(flat)
 
-            # If group_by is specified, return a breakdown (counts per value)
-            if group_by:
-                counts: dict[str, int] = {}
-                for rec in records:
-                    val = rec.get(group_by, "(unset)")
-                    if isinstance(val, list):
-                        val = ", ".join(str(v) for v in val) if val else "(unset)"
-                    elif not val:
-                        val = "(unset)"
-                    counts[str(val)] = counts.get(str(val), 0) + 1
-                return {
-                    "breakdown": counts,
-                    "total": len(records),
-                    "field": group_by,
-                    "table": table,
-                }
+        # If group_by is specified, return a breakdown (counts per value)
+        if group_by:
+            counts: dict[str, int] = {}
+            for rec in records:
+                val = rec.get(group_by, "(unset)")
+                if isinstance(val, list):
+                    val = ", ".join(str(v) for v in val) if val else "(unset)"
+                elif not val:
+                    val = "(unset)"
+                counts[str(val)] = counts.get(str(val), 0) + 1
+            return {
+                "breakdown": counts,
+                "total": len(records),
+                "field": group_by,
+                "table": table,
+            }
 
-            # If display_field is specified, return simplified records
-            if display_field:
-                simple = []
-                for rec in records:
-                    name = rec.get(display_field, rec.get("Name", rec.get("id", "")))
-                    simple.append({"name": str(name), "id": rec.get("id", "")})
-                return {"records": simple, "count": len(simple), "table": table}
+        # If display_field is specified, return simplified records
+        if display_field:
+            simple = []
+            for rec in records:
+                name = rec.get(display_field, rec.get("Name", rec.get("id", "")))
+                simple.append({"name": str(name), "id": rec.get("id", "")})
+            return {"records": simple, "count": len(simple), "table": table}
 
-            # Table mode: return all fields as columns for rich table display
-            if not group_by and not display_field:
-                # Return full records with all fields (for table/pivot view)
-                # Skip internal fields
-                skip = {"id", "Auto_Id_DO_NOT_TOUCH", "Created"}
-                table_records = []
-                all_columns: set[str] = set()
-                for rec in records:
-                    row = {}
-                    for k, v in rec.items():
-                        if k in skip:
-                            continue
-                        all_columns.add(k)
-                        row[k] = str(v) if v else ""
-                    table_records.append(row)
-                return {
-                    "table_data": table_records,
-                    "columns": sorted(all_columns),
-                    "count": len(table_records),
-                    "table": table,
-                }
+        # Table mode: return all fields as columns for rich table display
+        if not group_by and not display_field:
+            # Return full records with all fields (for table/pivot view)
+            # Skip internal fields
+            skip = {"id", "Auto_Id_DO_NOT_TOUCH", "Created"}
+            table_records = []
+            all_columns: set[str] = set()
+            for rec in records:
+                row = {}
+                for k, v in rec.items():
+                    if k in skip:
+                        continue
+                    all_columns.add(k)
+                    row[k] = str(v) if v else ""
+                table_records.append(row)
+            return {
+                "table_data": table_records,
+                "columns": sorted(all_columns),
+                "count": len(table_records),
+                "table": table,
+            }
     except Exception as e:
         return {"error": str(e)[:200], "records": []}
 
@@ -320,9 +313,10 @@ async def widget_metrics(
 
 
 @router.get("/airtable/fields")
-async def widget_airtable_fields(  # noqa: C901  branchy per-display-mode rendering
+async def widget_airtable_fields(
     request: Request,
     table: str = Query(...),
+    refresh: bool = False,
 ) -> dict[str, Any]:
     """Return field names for a given Airtable table (by sampling records)."""
     uid = _user_id(request)
@@ -333,14 +327,10 @@ async def widget_airtable_fields(  # noqa: C901  branchy per-display-mode render
         store = cred_svc.get_credential_store()
         if not store:
             return {"fields": []}
-        token = None
-        for try_uid in (uid, "user"):
-            try:
-                if store.has_secret(try_uid, "airtable"):
-                    token = _use_secret(store, try_uid, "airtable")
-                    break
-            except Exception:
-                continue
+        resolver = ToolCredentialResolver(store)
+        token = resolver.first_secret(
+            ToolCallContext(uid), AIRTABLE_PROVIDER_IDS, include_dev_fallback=True
+        )
         if not token:
             return {"fields": []}
         base_id = ""
@@ -356,25 +346,24 @@ async def widget_airtable_fields(  # noqa: C901  branchy per-display-mode render
         return {"fields": []}
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(
-                f"https://api.airtable.com/v0/{base_id}/{table}",
-                headers={"Authorization": f"Bearer {token}"},
-                params={"maxRecords": "20"},
-            )
-            r.raise_for_status()
-            data = r.json()
-            # Collect all field names across sampled records
-            field_set: set[str] = set()
-            for rec in data.get("records", []):
-                field_set.update(rec.get("fields", {}).keys())
-            return {"fields": sorted(field_set), "table": table}
+        data = await get_airtable_records_json(
+            token=token,
+            base_id=base_id,
+            table=table,
+            params={"maxRecords": "20"},
+            force_refresh=refresh,
+        )
+        # Collect all field names across sampled records
+        field_set: set[str] = set()
+        for rec in data.get("records", []):
+            field_set.update(rec.get("fields", {}).keys())
+        return {"fields": sorted(field_set), "table": table}
     except Exception:
         return {"fields": []}
 
 
 @router.get("/airtable/bases")
-async def widget_airtable_bases(request: Request) -> dict[str, Any]:  # noqa: C901  branchy per-display-mode rendering
+async def widget_airtable_bases(request: Request, refresh: bool = False) -> dict[str, Any]:  # noqa: C901  branchy per-display-mode rendering
     """Return configured Airtable bases for the current user."""
     uid = _user_id(request)
     try:
@@ -393,25 +382,16 @@ async def widget_airtable_bases(request: Request) -> dict[str, Any]:  # noqa: C9
                     bid = val["base_id"].split("/")[0]
                     bases.append({"id": bid, "name": val.get("name", bid)})
         # Also check token
-        token = None
-        for try_uid in (uid, "user"):
-            try:
-                if store.has_secret(try_uid, "airtable"):
-                    token = _use_secret(store, try_uid, "airtable")
-                    break
-            except Exception:
-                continue
+        resolver = ToolCredentialResolver(store)
+        token = resolver.first_secret(
+            ToolCallContext(uid), AIRTABLE_PROVIDER_IDS, include_dev_fallback=True
+        )
         if not bases and token:
             # Try to get bases from metadata API
             try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    r = await client.get(
-                        "https://api.airtable.com/v0/meta/bases",
-                        headers={"Authorization": f"Bearer {token}"},
-                    )
-                    if r.status_code == 200:
-                        for b in r.json().get("bases", []):
-                            bases.append({"id": b["id"], "name": b.get("name", b["id"])})
+                data = await get_airtable_bases_json(token=token, force_refresh=refresh)
+                for b in data.get("bases", []):
+                    bases.append({"id": b["id"], "name": b.get("name", b["id"])})
             except Exception:
                 pass
         # Fallback: return the known base from config
@@ -427,7 +407,9 @@ async def widget_airtable_bases(request: Request) -> dict[str, Any]:  # noqa: C9
 
 
 @router.get("/airtable/tables")
-async def widget_airtable_tables(request: Request, base_id: str = Query(...)) -> dict[str, Any]:
+async def widget_airtable_tables(
+    request: Request, base_id: str = Query(...), refresh: bool = False
+) -> dict[str, Any]:
     """Return tables for a specific Airtable base."""
     uid = _user_id(request)
     try:
@@ -436,27 +418,18 @@ async def widget_airtable_tables(request: Request, base_id: str = Query(...)) ->
         store = cred_svc.get_credential_store()
         if not store:
             return {"tables": []}
-        token = None
-        for try_uid in (uid, "user"):
-            try:
-                if store.has_secret(try_uid, "airtable"):
-                    token = _use_secret(store, try_uid, "airtable")
-                    break
-            except Exception:
-                continue
+        resolver = ToolCredentialResolver(store)
+        token = resolver.first_secret(
+            ToolCallContext(uid), AIRTABLE_PROVIDER_IDS, include_dev_fallback=True
+        )
         if not token:
             return {"tables": []}
 
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(
-                f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            if r.status_code == 200:
-                tables = [{"id": t["id"], "name": t["name"]} for t in r.json().get("tables", [])]
-                return {"tables": tables, "base_id": base_id}
-            # Fallback: try listing records from known tables
-            return {"tables": [], "error": f"HTTP {r.status_code}"}
+        data = await get_airtable_base_tables_json(
+            token=token, base_id=base_id, force_refresh=refresh
+        )
+        tables = [{"id": t["id"], "name": t["name"]} for t in data.get("tables", [])]
+        return {"tables": tables, "base_id": base_id}
     except Exception as e:
         return {"tables": [], "error": str(e)[:100]}
 

@@ -90,6 +90,57 @@ def test_stub_manifest_preview_for_llm_proxy() -> None:
     assert "litellm" in joined.lower() or "preview" in joined.lower()
 
 
+def test_golden_plan_root_full_without_repo_root_has_no_apply_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("maistro_bootstrap.plan.find_maistro_engine_root", lambda: None)
+    plan = build_install_plan(
+        parse_answers_dict({"schema_version": "1", "stack_bringup": "root_full"})
+    )
+
+    assert plan["repo_root"] is None
+    assert plan["apply_spec"] is None
+    missing_root_note = (
+        "stack_bringup=root_full: [preview] Repo root not found — set MAISTRO_REPO_ROOT "
+        "or run from inside maistro-engine; apply will not run."
+    )
+    assert plan["shell_commands"][0] == "# === maistro-install plan (default: print only) ==="
+    assert f"# {missing_root_note}" in plan["shell_commands"]
+    assert missing_root_note in plan["preview_notes"]
+
+
+def test_golden_plan_observability_and_gateway_preview_notes() -> None:
+    plan = build_install_plan(
+        parse_answers_dict(
+            {
+                "schema_version": "1",
+                "features": ["observability"],
+                "llm_gateway": "other",
+                "observability_backend": "langfuse_v3",
+                "stack_bringup": "none",
+            }
+        ),
+        repo_root=Path("/tmp/maistro-root"),
+    )
+
+    assert [
+        note for note in plan["preview_notes"] if "langfuse" in note or "llm_gateway=other" in note
+    ] == [
+        "[preview] Root compose includes `langfuse`; choosing Arize or Langfuse v2/v3 in answers "
+        "is a manifest hint until matching services are added to compose.",
+        "observability=langfuse_v3: [preview] Stack includes `langfuse` service; "
+        "image major version pinning is a separate compose change.",
+        "llm_gateway=other: [preview] No alternate gateway merged in Tier 0; "
+        "use direct SDK calls or add a compose profile later.",
+    ]
+    assert plan["compose_profile_hints"] == [
+        "# Compose profile stub (root docker-compose.yml is always-on today):",
+        "# When profiles land: COMPOSE_PROFILES=llm,observability docker compose up -d",
+        "# See docs/install/compose-slices.example.yml",
+        "# [preview] feature observability → future profile `observability` toggles Langfuse slice.",
+    ]
+
+
 def test_plan_includes_environment_and_generated_artifacts() -> None:
     raw = {
         "schema_version": "1",

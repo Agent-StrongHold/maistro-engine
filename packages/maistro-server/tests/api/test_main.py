@@ -119,6 +119,7 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=None),
             patch("maistro.memory.store.reset_engine_cache"),
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", return_value=mock_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
@@ -146,6 +147,7 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=None),
             patch("maistro.memory.store.reset_engine_cache"),
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", return_value=mock_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
@@ -176,6 +178,7 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=None),
             patch("maistro.memory.store.reset_engine_cache"),
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", side_effect=_capture_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
@@ -201,6 +204,7 @@ class TestLifespan:
             patch("maistro.memory.store.get_engine", return_value=mock_engine),
             patch("maistro.memory.store.reset_engine_cache") as mock_reset,
             patch("maistro.tools.sandbox.server.cleanup_all_containers", AsyncMock()),
+            patch("maistro_server.main.logger", MagicMock(ainfo=AsyncMock())),
             patch("maistro_server.main.TaskRunner", return_value=mock_runner),
             patch("asyncio.get_running_loop") as mock_loop,
         ):

@@ -35,6 +35,8 @@ dev = [
     "pytest-cov>=6.0",
     "ruff>=0.9",
     "mypy>=1.14",
+    "radon>=6.0",
+    "vulture>=2.14",
     "types-PyYAML>=6.0",
     # Third-party libs imported by package source (identity, warden, canvas) but
     # not pulled by the root `uv sync` — needed so `uv run mypy`/`uv run pytest`
@@ -159,6 +161,11 @@ plugins = ["pydantic.mypy"]
 # for the package type-check); treat its imports as missing rather than erroring.
 [[tool.mypy.overrides]]
 module = ["maistro.models.*"]
+ignore_missing_imports = true
+
+# Optional/runtime integrations may be absent in minimal scan environments.
+[[tool.mypy.overrides]]
+module = ["yaml", "regex", "asyncpg", "bip_utils", "nacl.*", "PIL", "PIL.*"]
 ignore_missing_imports = true
 
 [tool.uv.sources]

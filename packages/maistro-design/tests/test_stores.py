@@ -16,6 +16,8 @@ from maistro_design.stores import (
 )
 from maistro_design.trust import TrustTier
 from maistro_design.types import (
+    ArtifactKind,
+    ArtifactNode,
     DesignOutput,
     DesignProject,
     DiscoveryResult,
@@ -44,8 +46,12 @@ def sample_project():
         trust_tier=TrustTier.T3,
     )
     output = DesignOutput(
-        format=OutputFormat.REACT_TSX,
-        content="export default function LoginFlow() { ... }",
+        root=ArtifactNode(
+            key="root",
+            kind=ArtifactKind.FILE,
+            format=OutputFormat.REACT_TSX,
+            value="export default function LoginFlow() { ... }",
+        ),
         trust_tier=TrustTier.T3,
         metadata={"generated_at": "2026-06-28T00:00:00Z"},
     )

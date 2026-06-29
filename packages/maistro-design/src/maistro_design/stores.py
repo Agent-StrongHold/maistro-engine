@@ -14,6 +14,8 @@ from sqlalchemy import text
 
 from maistro_design.trust import TrustTier
 from maistro_design.types import (
+    ArtifactKind,
+    ArtifactNode,
     DesignOutput,
     DesignProject,
     DiscoveryResult,
@@ -63,8 +65,12 @@ def _coerce_design_output(row: Any) -> DesignOutput:
         metadata = json.loads(metadata)
 
     return DesignOutput(
-        format=OutputFormat(d["format"]),
-        content=d["content"],
+        root=ArtifactNode(
+            key="root",
+            kind=ArtifactKind.FILE,
+            format=OutputFormat(d["format"]),
+            value=d["content"],
+        ),
         url=d.get("url"),
         trust_tier=TrustTier(d.get("trust_tier", "t3")),
         metadata=metadata,
