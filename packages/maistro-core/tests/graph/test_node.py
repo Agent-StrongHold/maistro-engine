@@ -538,9 +538,9 @@ class TestExecuteBeam:
             return "not valid json"
 
         await node.execute(llm_call)
-        # All candidates parse-failed with no exception, so beam has no scored
-        # candidate and no recorded error -> node never transitions out of RUNNING.
-        assert node.phase == NodePhase.RUNNING
+        # All candidates parse-failed with no exception, so the node fails
+        # with a synthesized LLMProviderError rather than hanging in RUNNING.
+        assert node.phase == NodePhase.FAILED
         assert all(c.parse_error for c in node.beam_candidates)
 
     async def test_beam_completed_event_includes_beam_metadata(self) -> None:

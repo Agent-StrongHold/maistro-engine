@@ -59,7 +59,7 @@ class TestGitHelper:
             "maistro.tools.git.server.asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=_FakeProc(stdout=b"clean\n", returncode=0)),
         ):
-            result = await _git("/ws", "status")
+            result = await _git("/repos/ws", "status")
         assert result["success"] is True
         assert result["stdout"] == "clean\n"
 
@@ -69,7 +69,7 @@ class TestGitHelper:
             "maistro.tools.git.server.asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=_FakeProc(stdout=b"err", returncode=1)),
         ):
-            result = await _git("/ws", "status")
+            result = await _git("/repos/ws", "status")
         assert result["success"] is False
         assert result["error_code"] == "git_command_failed"
 
@@ -79,7 +79,7 @@ class TestGitHelper:
             "maistro.tools.git.server.asyncio.create_subprocess_exec",
             new=AsyncMock(side_effect=FileNotFoundError),
         ):
-            result = await _git("/ws", "status")
+            result = await _git("/repos/ws", "status")
         assert result["error_code"] == "git_not_found"
 
     @pytest.mark.asyncio
@@ -94,7 +94,7 @@ class TestGitHelper:
                 new=AsyncMock(side_effect=TimeoutError),
             ),
         ):
-            result = await _git("/ws", "status", timeout=5)
+            result = await _git("/repos/ws", "status", timeout=5)
         assert result["error_code"] == "git_timeout"
         assert result["exit_code"] == 124
 
@@ -119,7 +119,7 @@ class TestGitClone:
             "maistro.tools.git.server.asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=_FakeProc(stdout=b"Cloned\n", returncode=0)),
         ):
-            result = await git_clone("https://example.com/r.git", "/dest")
+            result = await git_clone("https://example.com/r.git", "/repos/dest")
         assert result["success"] is True
 
     @pytest.mark.asyncio
@@ -128,7 +128,7 @@ class TestGitClone:
             "maistro.tools.git.server.asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=_FakeProc(stdout=b"fatal", returncode=128)),
         ):
-            result = await git_clone("https://example.com/r.git", "/dest")
+            result = await git_clone("https://example.com/r.git", "/repos/dest")
         assert result["error_code"] == "git_clone_failed"
 
     @pytest.mark.asyncio
@@ -137,7 +137,7 @@ class TestGitClone:
             "maistro.tools.git.server.asyncio.create_subprocess_exec",
             new=AsyncMock(return_value=_FakeProc(stdout=b"", returncode=0)),
         ):
-            result = await git_clone("https://example.com/r.git", "/dest")
+            result = await git_clone("https://example.com/r.git", "/repos/dest")
         assert result["stdout"] == "Cloned"
 
     @pytest.mark.asyncio
@@ -146,7 +146,7 @@ class TestGitClone:
             "maistro.tools.git.server.asyncio.create_subprocess_exec",
             new=AsyncMock(side_effect=FileNotFoundError),
         ):
-            result = await git_clone("https://example.com/r.git", "/dest")
+            result = await git_clone("https://example.com/r.git", "/repos/dest")
         assert result["error_code"] == "git_not_found"
 
     @pytest.mark.asyncio
@@ -161,7 +161,7 @@ class TestGitClone:
                 new=AsyncMock(side_effect=TimeoutError),
             ),
         ):
-            result = await git_clone("https://example.com/r.git", "/dest", timeout=5)
+            result = await git_clone("https://example.com/r.git", "/repos/dest", timeout=5)
         assert result["error_code"] == "git_clone_timeout"
 
 
@@ -171,16 +171,16 @@ class TestGitBranch:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_branch("/ws", "feature", checkout=True)
-        mock_git.assert_awaited_with("/ws", "checkout", "-b", "feature")
+            await git_branch("/repos/ws", "feature", checkout=True)
+        mock_git.assert_awaited_with("/repos/ws", "checkout", "-b", "feature")
 
     @pytest.mark.asyncio
     async def test_checkout_false_uses_branch(self) -> None:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_branch("/ws", "feature", checkout=False)
-        mock_git.assert_awaited_with("/ws", "branch", "feature")
+            await git_branch("/repos/ws", "feature", checkout=False)
+        mock_git.assert_awaited_with("/repos/ws", "branch", "feature")
 
 
 class TestGitCommit:
@@ -189,11 +189,11 @@ class TestGitCommit:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_commit("/ws", "msg", add_all=True)
+            await git_commit("/repos/ws", "msg", add_all=True)
         calls = mock_git.await_args_list
-        assert calls[0].args == ("/ws", "add", "-A")
-        assert calls[1].args == ("/ws", "reset", "HEAD", "--", ".env")
-        assert calls[-1].args == ("/ws", "commit", "-m", "msg")
+        assert calls[0].args == ("/repos/ws", "add", "-A")
+        assert calls[1].args == ("/repos/ws", "reset", "HEAD", "--", ".env")
+        assert calls[-1].args == ("/repos/ws", "commit", "-m", "msg")
         assert len(calls) == 1 + len(server._SENSITIVE_PATTERNS) + 1
 
     @pytest.mark.asyncio
@@ -201,8 +201,8 @@ class TestGitCommit:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_commit("/ws", "msg", add_all=False)
-        mock_git.assert_awaited_once_with("/ws", "commit", "-m", "msg")
+            await git_commit("/repos/ws", "msg", add_all=False)
+        mock_git.assert_awaited_once_with("/repos/ws", "commit", "-m", "msg")
 
 
 class TestGitPush:
@@ -211,16 +211,16 @@ class TestGitPush:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_push("/ws", branch="main", set_upstream=True)
-        mock_git.assert_awaited_with("/ws", "push", "-u", "origin", "main")
+            await git_push("/repos/ws", branch="main", set_upstream=True)
+        mock_git.assert_awaited_with("/repos/ws", "push", "-u", "origin", "main")
 
     @pytest.mark.asyncio
     async def test_no_upstream_no_branch(self) -> None:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_push("/ws", branch=None, set_upstream=False)
-        mock_git.assert_awaited_with("/ws", "push")
+            await git_push("/repos/ws", branch=None, set_upstream=False)
+        mock_git.assert_awaited_with("/repos/ws", "push")
 
 
 class TestGitDiff:
@@ -229,16 +229,16 @@ class TestGitDiff:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_diff("/ws", staged=True)
-        mock_git.assert_awaited_with("/ws", "diff", "--staged")
+            await git_diff("/repos/ws", staged=True)
+        mock_git.assert_awaited_with("/repos/ws", "diff", "--staged")
 
     @pytest.mark.asyncio
     async def test_staged_false(self) -> None:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_diff("/ws", staged=False)
-        mock_git.assert_awaited_with("/ws", "diff")
+            await git_diff("/repos/ws", staged=False)
+        mock_git.assert_awaited_with("/repos/ws", "diff")
 
 
 class TestGitStatus:
@@ -247,8 +247,8 @@ class TestGitStatus:
         with patch(
             "maistro.tools.git.server._git", new=AsyncMock(return_value={"success": True})
         ) as mock_git:
-            await git_status("/ws")
-        mock_git.assert_awaited_with("/ws", "status", "--short")
+            await git_status("/repos/ws")
+        mock_git.assert_awaited_with("/repos/ws", "status", "--short")
 
 
 class TestGitLog:
@@ -258,7 +258,7 @@ class TestGitLog:
             "maistro.tools.git.server._git",
             new=AsyncMock(return_value={"success": True, "stdout": "abc msg"}),
         ):
-            result = await git_log("/ws", limit=5)
+            result = await git_log("/repos/ws", limit=5)
         assert result["commits"] == [{"sha": "abc", "message": "msg"}]
 
     @pytest.mark.asyncio
@@ -267,7 +267,7 @@ class TestGitLog:
             "maistro.tools.git.server._git",
             new=AsyncMock(return_value={"success": False, "stdout": ""}),
         ):
-            result = await git_log("/ws")
+            result = await git_log("/repos/ws")
         assert "commits" not in result
 
 
