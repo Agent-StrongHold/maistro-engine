@@ -14,11 +14,17 @@
 
 name: quality
 
+# Progressive enforcement ladder (Phase 19):
+#   feat/* pushes                       -> in scope, but lighter weight (no PR-target backstop)
+#   PR/push -> develop/integration/main -> same gate everywhere: ruff/radon/mypy hard;
+#                                          xenon + vulture hard-fail on REGRESSION only (ratchet
+#                                          vs. the recorded baseline below — see those steps);
+#                                          pyright stays advisory pending a separate triage PR.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, integration, develop]
   push:
-    branches: [main, feat/*]
+    branches: [main, integration, develop, feat/*]
 
 jobs:
   quality-gate:
@@ -75,21 +81,56 @@ jobs:
       - name: radon CC (no function rated C+ allowed; baseline tolerates legacy until touched)
         run: uv run radon cc packages/maistro-core/src --min B --total-average
 
-      - name: xenon (per-function ≤ B; per-module ≤ B; project avg ≤ A)
-        run: uv run xenon --max-absolute B --max-modules B --max-average A packages/maistro-core/src || echo "::warning::xenon failing — refactor touched complex blocks per Boy Scout Rule"
+      # Ratchet, not a 0-baseline: full backlog (77 ERROR blocks measured
+      # 2026-06-29) is too large to clear in one PR (Phase 18 code-health
+      # sweep). Hard-fails on REGRESSION (new violations beyond the
+      # recorded baseline) on every branch; raise the floor as the backlog
+      # is worked down, and drop the ratchet for a strict 0-baseline once
+      # XENON_BASELINE reaches 0.
+      - name: xenon (per-function ≤ B; per-module ≤ B; project avg ≤ A — ratchet)
+        env:
+          XENON_BASELINE: 77
+        run: |
+          uv run xenon --max-absolute B --max-modules B --max-average A packages/maistro-core/src > xenon.log 2>&1 || true
+          count=$(grep -c '^ERROR:xenon:block' xenon.log || true)
+          cat xenon.log
+          echo "xenon violation count: $count (baseline: $XENON_BASELINE)"
+          if [ "$count" -gt "$XENON_BASELINE" ]; then
+            echo "::error::xenon regression — $count violations exceeds baseline of $XENON_BASELINE; refactor the new complex blocks (Boy Scout Rule)"
+            exit 1
+          fi
 
-      - name: vulture (dead-code; confidence ≥ 60)
-        run: uv run vulture packages/maistro-core/src --min-confidence 60 || echo "::warning::vulture findings — KEEP/DEPRECATE/DELETE inventory per Phase 9"
+      # Ratchet, not a 0-baseline: full backlog (1052 findings measured
+      # 2026-06-29, mostly public-API methods vulture can't see called via
+      # protocol-driven DI) is tracked for the Phase 9 KEEP/DEPRECATE/DELETE
+      # inventory, not a one-PR fix. Hard-fails on regression on every
+      # branch.
+      - name: vulture (dead-code; confidence ≥ 60 — ratchet)
+        env:
+          VULTURE_BASELINE: 1052
+        run: |
+          uv run vulture packages/maistro-core/src --min-confidence 60 > vulture.log 2>&1 || true
+          count=$(wc -l < vulture.log | tr -d ' ')
+          cat vulture.log
+          echo "vulture finding count: $count (baseline: $VULTURE_BASELINE)"
+          if [ "$count" -gt "$VULTURE_BASELINE" ]; then
+            echo "::error::vulture regression — $count findings exceeds baseline of $VULTURE_BASELINE; KEEP/DEPRECATE/DELETE inventory per Phase 9"
+            exit 1
+          fi
 
       # ----- Pillar 4: types -----
       - name: mypy --strict
         run: uv run mypy --strict packages/maistro-core/src
 
-      # Advisory until the 17 pre-existing pyright-only findings are triaged
-      # (mypy --strict above is the hard type gate; several pyright findings
-      # are real bugs tracked for a dedicated fix PR — unawaited coroutines in
-      # cli/_builders_tui.py, possibly-unbound tool_result in artificer, a
-      # dead import in agents/factory.py).
+      # Advisory everywhere, INCLUDING main, until the 17 pre-existing
+      # pyright-only findings are triaged (mypy --strict above is the hard
+      # type gate; several pyright findings are real bugs tracked for a
+      # dedicated fix PR — unawaited coroutines in cli/_builders_tui.py,
+      # possibly-unbound tool_result in artificer, a dead import in
+      # agents/factory.py). Deliberately NOT escalated by the draconian
+      # gate below — escalating now would block every PR into main on a
+      # pre-existing backlog unrelated to the PR's own changes. Escalate
+      # once that backlog is triaged to zero.
       - name: pyright (cross-check)
         run: uv run pyright packages/maistro-core/src || echo "::warning::pyright cross-check failing — tracked for triage"
 
