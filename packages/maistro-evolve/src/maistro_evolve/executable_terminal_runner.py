@@ -96,7 +96,9 @@ def _build_feedback(summary: dict[str, object]) -> str:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run executable terminal eval with a model provider.")
+    parser = argparse.ArgumentParser(
+        description="Run executable terminal eval with a model provider."
+    )
     parser.add_argument(
         "--ledger",
         type=Path,

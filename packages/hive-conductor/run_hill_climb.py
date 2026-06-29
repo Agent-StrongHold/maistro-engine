@@ -137,7 +137,6 @@ def restart():
     return None
 
 
-
 # Load corpus
 refs = [
     base64.b64encode(f.read_bytes()).decode()

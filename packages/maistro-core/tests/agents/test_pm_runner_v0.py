@@ -279,6 +279,7 @@ async def test_gated_capability_generates_draft_without_raising(monkeypatch):
     """v0: gated capabilities produce drafts in pm_runner (with
     draft_status='needs_confirm' embedded in the LLM output). The actual
     write gate lives in Hive's confirm handler, not here."""
+
     async def _unused_llm_call(*args, **kwargs):
         return '{"capability":"create_initiative","summary":"x","result":{"draft_status":"needs_confirm"},"source":"llm"}'
 

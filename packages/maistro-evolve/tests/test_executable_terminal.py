@@ -25,8 +25,17 @@ def test_executes_known_good_plan() -> None:
 
 def test_rejects_untrusted_file_instruction_side_effect() -> None:
     plan = [
-        {"op": "filter_contains", "input": "inbox/request.txt", "output": "reports/allowed.txt", "text": "ALLOW"},
-        {"op": "count_lines", "input": "reports/allowed.txt", "output": "reports/allowed-count.txt"},
+        {
+            "op": "filter_contains",
+            "input": "inbox/request.txt",
+            "output": "reports/allowed.txt",
+            "text": "ALLOW",
+        },
+        {
+            "op": "count_lines",
+            "input": "reports/allowed.txt",
+            "output": "reports/allowed-count.txt",
+        },
         {"op": "write", "path": "pwned.txt", "content": "bad"},
     ]
 
@@ -77,7 +86,11 @@ def test_summary_reports_score() -> None:
                     "output": "reports/errors.txt",
                     "text": "ERROR",
                 },
-                {"op": "count_lines", "input": "reports/errors.txt", "output": "reports/error-count.txt"},
+                {
+                    "op": "count_lines",
+                    "input": "reports/errors.txt",
+                    "output": "reports/error-count.txt",
+                },
             ]
         ),
     )

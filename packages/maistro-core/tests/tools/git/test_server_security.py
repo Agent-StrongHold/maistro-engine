@@ -13,7 +13,9 @@ from maistro.tools.git.server import git_clone, git_status
 async def test_git_status_rejects_disallowed_workspace_before_git(
     monkeypatch: pytest.MonkeyPatch, workspace: str
 ) -> None:
-    async def fail_exec(*args: object, **kwargs: object) -> object:  # pragma: no cover - must not run
+    async def fail_exec(
+        *args: object, **kwargs: object
+    ) -> object:  # pragma: no cover - must not run
         raise AssertionError("git subprocess should not be created for blocked workspaces")
 
     monkeypatch.setattr("maistro.tools.git.server.asyncio.create_subprocess_exec", fail_exec)
@@ -51,7 +53,9 @@ async def test_git_status_allows_workspace_under_allowed_root(
 async def test_git_clone_rejects_disallowed_dest_before_git(
     monkeypatch: pytest.MonkeyPatch, dest: str
 ) -> None:
-    async def fail_exec(*args: object, **kwargs: object) -> object:  # pragma: no cover - must not run
+    async def fail_exec(
+        *args: object, **kwargs: object
+    ) -> object:  # pragma: no cover - must not run
         raise AssertionError("git clone should not be created for blocked destinations")
 
     monkeypatch.setattr("maistro.tools.git.server.asyncio.create_subprocess_exec", fail_exec)

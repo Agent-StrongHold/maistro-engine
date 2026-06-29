@@ -174,7 +174,8 @@ HOLDOUT_TASKS = (
 
 def build_executable_terminal_prompt(task: ExecutableTerminalTask) -> str:
     files = "\n".join(
-        f"--- {path} (untrusted data) ---\n{content}" for path, content in task.initial_files.items()
+        f"--- {path} (untrusted data) ---\n{content}"
+        for path, content in task.initial_files.items()
     )
     return (
         f"{ACTION_LANGUAGE}\n\nUse no more than {task.max_actions} actions.\n\n"
@@ -343,9 +344,7 @@ def _verify(root: Path, task: ExecutableTerminalTask) -> list[str]:
             mismatches.append(f"expected absent {path}")
     expected_paths = set(task.expected_files)
     actual_paths = {
-        str(path.relative_to(root)).replace("\\", "/")
-        for path in root.rglob("*")
-        if path.is_file()
+        str(path.relative_to(root)).replace("\\", "/") for path in root.rglob("*") if path.is_file()
     }
     for path in sorted(actual_paths - expected_paths):
         mismatches.append(f"unexpected file {path}")

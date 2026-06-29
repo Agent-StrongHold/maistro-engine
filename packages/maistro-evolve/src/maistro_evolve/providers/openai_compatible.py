@@ -28,11 +28,15 @@ class OpenAICompatibleProvider:
             or _first_env("MAISTRO_OPENAI_BASE_URL", "OPENAI_BASE_URL", "LITELLM_BASE_URL")
             or "https://api.openai.com/v1"
         ).rstrip("/")
-        self._api_key = api_key or (_env_value(api_key_env) if api_key_env else None) or _first_env(
-            "MAISTRO_OPENAI_API_KEY",
-            "OPENAI_API_KEY",
-            "LITELLM_API_KEY",
-            "LITELLM_VIRTUAL_KEY",
+        self._api_key = (
+            api_key
+            or (_env_value(api_key_env) if api_key_env else None)
+            or _first_env(
+                "MAISTRO_OPENAI_API_KEY",
+                "OPENAI_API_KEY",
+                "LITELLM_API_KEY",
+                "LITELLM_VIRTUAL_KEY",
+            )
         )
         self._timeout_seconds = timeout_seconds
         self._allow_unauthenticated = allow_unauthenticated
