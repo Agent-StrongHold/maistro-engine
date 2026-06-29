@@ -14,11 +14,13 @@
 
 name: quality
 
-# Progressive enforcement ladder (Phase 19):
+# Progressive enforcement ladder (Phase 19, vulture reclassified Phase 20 — SPEC-264):
 #   feat/* pushes                       -> in scope, but lighter weight (no PR-target backstop)
 #   PR/push -> develop/integration/main -> same gate everywhere: ruff/radon/mypy hard;
-#                                          xenon + vulture hard-fail on REGRESSION only (ratchet
-#                                          vs. the recorded baseline below — see those steps);
+#                                          xenon hard-fails on REGRESSION only (ratchet vs.
+#                                          the recorded baseline below); vulture hard-fails
+#                                          on any finding unmatched by quality/vulture-baseline.json
+#                                          (classification ratchet, not a count ratchet);
 #                                          pyright stays advisory pending a separate triage PR.
 on:
   pull_request:
@@ -100,23 +102,15 @@ jobs:
             exit 1
           fi
 
-      # Ratchet, not a 0-baseline: full backlog (1052 findings measured
-      # 2026-06-29, mostly public-API methods vulture can't see called via
-      # protocol-driven DI) is tracked for the Phase 9 KEEP/DEPRECATE/DELETE
-      # inventory, not a one-PR fix. Hard-fails on regression on every
-      # branch.
-      - name: vulture (dead-code; confidence ≥ 60 — ratchet)
-        env:
-          VULTURE_BASELINE: 1052
-        run: |
-          uv run vulture packages/maistro-core/src --min-confidence 60 > vulture.log 2>&1 || true
-          count=$(wc -l < vulture.log | tr -d ' ')
-          cat vulture.log
-          echo "vulture finding count: $count (baseline: $VULTURE_BASELINE)"
-          if [ "$count" -gt "$VULTURE_BASELINE" ]; then
-            echo "::error::vulture regression — $count findings exceeds baseline of $VULTURE_BASELINE; KEEP/DEPRECATE/DELETE inventory per Phase 9"
-            exit 1
-          fi
+      # Ratchet by classification, not by raw count (SPEC-264): every
+      # finding must match a reviewed rule in quality/vulture-baseline.json.
+      # Hard-fails only on a finding that matches no rule, or on
+      # unreachable code (never allowlisted) — not on the size of the
+      # already-classified backlog (~1012 findings repo-wide, mostly
+      # public-API/framework-dispatch surface vulture can't see through
+      # protocol-driven DI and decorator registration).
+      - name: vulture (dead-code; classification ratchet — SPEC-264)
+        run: uv run python scripts/check-vulture-baseline.py packages tests --exclude "*/.venv/*"
 
       # ----- Pillar 4: types -----
       - name: mypy --strict

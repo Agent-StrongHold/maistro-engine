@@ -52,9 +52,9 @@ SPEC-264 is successful when the current baseline is classified and future regres
 
 ## Acceptance criteria
 
-- [ ] Vulture allowlist exists and every entry has an owner/rationale.
-- [ ] Current vulture findings are classified into the four buckets.
-- [ ] New unclassified vulture findings fail CI.
+- [x] Vulture allowlist exists and every entry has an owner/rationale (`quality/vulture-baseline.json`).
+- [x] Current vulture findings are classified (every one of the 1012 repo-wide findings matches a reviewed rule; 0 unclassified, 0 unreachable-code).
+- [x] New unclassified vulture findings fail CI (`scripts/check-vulture-baseline.py` wired into `.github/workflows/quality.yml`, Phase 20).
 - [ ] Radon baseline exists for current C/D/E findings.
 - [ ] New radon regressions fail CI or require spec-linked justification.
 - [ ] Scanner report links each negative finding to a spec or explicit non-action.
