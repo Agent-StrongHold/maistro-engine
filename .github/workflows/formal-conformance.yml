@@ -3,7 +3,7 @@ name: Formal Conformance
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, integration, develop]
 
 concurrency:
   group: formal-conformance-${{ github.event.pull_request.number || github.ref }}

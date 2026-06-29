@@ -1,5 +1,5 @@
 ---
-id: SPEC-260
+id: SPEC-062126-971d
 title: "Shared widget/chat tool-call protocol and cached Airtable data plane"
 repo: maistro-engine
 kind: spec
@@ -23,7 +23,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-260: Shared Tool-Call Protocol and Cached Airtable Data Plane
+# SPEC-062126-971d: Shared Tool-Call Protocol and Cached Airtable Data Plane
 
 ## Finding addressed
 

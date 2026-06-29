@@ -14,11 +14,22 @@
 
 name: quality
 
+# Progressive enforcement ladder (Phase 19; vulture and radon reclassified
+# Phase 20 — SPEC-264):
+#   feat/* pushes                       -> in scope, but lighter weight (no PR-target backstop)
+#   PR/push -> develop/integration/main -> same gate everywhere: ruff/mypy hard; radon CC and
+#                                          vulture hard-fail on any finding unmatched by their
+#                                          respective baseline (quality/radon-baseline.json,
+#                                          quality/vulture-baseline.json — classification
+#                                          ratchets, not count ratchets); xenon hard-fails on
+#                                          module/project-average REGRESSION only (count
+#                                          ratchet vs. the recorded baseline below);
+#                                          pyright stays advisory pending a separate triage PR.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, integration, develop]
   push:
-    branches: [main, feat/*]
+    branches: [main, integration, develop, feat/*]
 
 jobs:
   quality-gate:
@@ -72,24 +83,59 @@ jobs:
       - name: ruff format check
         run: uv run ruff format --check .
 
-      - name: radon CC (no function rated C+ allowed; baseline tolerates legacy until touched)
-        run: uv run radon cc packages/maistro-core/src --min B --total-average
+      # Ratchet by classification, not by raw count (SPEC-264): every C/D/E/F
+      # block (function, method, or class) must match a recorded entry in
+      # quality/radon-baseline.json by qualified name. Hard-fails only on a
+      # block with no baseline entry, or on a baselined block whose
+      # complexity score increases — not on the size of the already-recorded
+      # backlog (77 blocks as of 2026-06-29, two of which are linked to
+      # remediation specs: SPEC-263 for graph/optimizer.py::_propose_prompt,
+      # SPEC-262 for memory/scopes.py::matches_scope).
+      - name: radon CC (per-function/class complexity; classification ratchet — SPEC-264)
+        run: uv run python scripts/check-radon-baseline.py packages/maistro-core/src
 
-      - name: xenon (per-function ≤ B; per-module ≤ B; project avg ≤ A)
-        run: uv run xenon --max-absolute B --max-modules B --max-average A packages/maistro-core/src || echo "::warning::xenon failing — refactor touched complex blocks per Boy Scout Rule"
+      # Module-average and project-average complexity aren't covered by the
+      # per-block baseline above (radon's -j output has no notion of a
+      # module's aggregate rank); xenon computes those separately. Ratchet,
+      # not a 0-baseline: 3 modules measured 2026-06-29 (skills/fixer.py,
+      # agents/strategies/direct.py, memory/scopes.py) are tracked here until
+      # the functions inside them are refactored down.
+      - name: xenon (per-module ≤ B; project avg ≤ A — ratchet)
+        env:
+          XENON_BASELINE: 3
+        run: |
+          uv run xenon --max-modules B --max-average A packages/maistro-core/src > xenon.log 2>&1 || true
+          count=$(grep -c '^ERROR:xenon:module' xenon.log || true)
+          cat xenon.log
+          echo "xenon module violation count: $count (baseline: $XENON_BASELINE)"
+          if [ "$count" -gt "$XENON_BASELINE" ]; then
+            echo "::error::xenon regression — $count module violations exceeds baseline of $XENON_BASELINE; refactor the new complex modules (Boy Scout Rule)"
+            exit 1
+          fi
 
-      - name: vulture (dead-code; confidence ≥ 60)
-        run: uv run vulture packages/maistro-core/src --min-confidence 60 || echo "::warning::vulture findings — KEEP/DEPRECATE/DELETE inventory per Phase 9"
+      # Ratchet by classification, not by raw count (SPEC-264): every
+      # finding must match a reviewed rule in quality/vulture-baseline.json.
+      # Hard-fails only on a finding that matches no rule, or on
+      # unreachable code (never allowlisted) — not on the size of the
+      # already-classified backlog (~1012 findings repo-wide, mostly
+      # public-API/framework-dispatch surface vulture can't see through
+      # protocol-driven DI and decorator registration).
+      - name: vulture (dead-code; classification ratchet — SPEC-264)
+        run: uv run python scripts/check-vulture-baseline.py packages tests --exclude "*/.venv/*"
 
       # ----- Pillar 4: types -----
       - name: mypy --strict
         run: uv run mypy --strict packages/maistro-core/src
 
-      # Advisory until the 17 pre-existing pyright-only findings are triaged
-      # (mypy --strict above is the hard type gate; several pyright findings
-      # are real bugs tracked for a dedicated fix PR — unawaited coroutines in
-      # cli/_builders_tui.py, possibly-unbound tool_result in artificer, a
-      # dead import in agents/factory.py).
+      # Advisory everywhere, INCLUDING main, until the 17 pre-existing
+      # pyright-only findings are triaged (mypy --strict above is the hard
+      # type gate; several pyright findings are real bugs tracked for a
+      # dedicated fix PR — unawaited coroutines in cli/_builders_tui.py,
+      # possibly-unbound tool_result in artificer, a dead import in
+      # agents/factory.py). Deliberately NOT escalated by the draconian
+      # gate below — escalating now would block every PR into main on a
+      # pre-existing backlog unrelated to the PR's own changes. Escalate
+      # once that backlog is triaged to zero.
       - name: pyright (cross-check)
         run: uv run pyright packages/maistro-core/src || echo "::warning::pyright cross-check failing — tracked for triage"
 

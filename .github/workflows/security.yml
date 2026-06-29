@@ -7,9 +7,9 @@ name: security
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, integration, develop]
   push:
-    branches: [main, feat/*]
+    branches: [main, integration, develop, feat/*]
   schedule:
     # Nightly full SBOM + DAST + image scan.
     - cron: "30 7 * * *"
@@ -141,11 +141,13 @@ jobs:
         run: uv run safety check --json || echo "::warning::safety cross-check found issues (advisory)"
 
   # ----- Container scan + SBOM + signing (PR-to-main + nightly only) -----
+  # Heavy bag stays scoped to main: PRs targeting develop/integration only run
+  # the fast SAST + supply-chain jobs above (Phase 19 progressive ladder).
   containers:
     name: Container scan + SBOM + cosign
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
 
@@ -212,11 +214,13 @@ jobs:
           cosign sign --yes maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }}
 
   # ----- DAST: OWASP ZAP against running stack (heavy; nightly + PR-to-main) -----
+  # Same scoping as containers above: only main-targeted PRs (or nightly) boot
+  # the live stack; develop/integration PRs stay on the fast jobs.
   dast:
     name: DAST (OWASP ZAP baseline)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'schedule'
     steps:
       - uses: actions/checkout@v4
       - name: Check for deployment compose file
