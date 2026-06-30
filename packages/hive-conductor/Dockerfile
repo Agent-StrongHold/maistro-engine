@@ -45,9 +45,11 @@ RUN pip install --no-cache-dir \
     /packages/maistro-evolve
 COPY packages/hive-conductor/backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
-# Conductor state dir (SQLite/vault/state); copied into the runtime image below
-# with --chown so a mounted named volume inherits writable nonroot ownership.
-RUN mkdir -p /data
+# Seed dir for conductor state (SQLite/vault/state). Created under the writable
+# /app workdir because the -dev base runs as nonroot and cannot write to /. The
+# runtime stage COPY --chown's it to /data so a mounted named volume inherits
+# writable nonroot ownership.
+RUN mkdir -p /app/state_seed
 
 # ---- thin Wolfi runtime: near-0-CVE base, nonroot, no shell/pip ----
 FROM cgr.dev/chainguard/python:latest
@@ -63,7 +65,7 @@ COPY packages/hive-conductor/eval/ /app/eval/
 COPY packages/hive-conductor/dags/ /app/dags/
 COPY --from=frontend /build/dist /app/frontend/dist
 # Persistent conductor state dir, pre-owned by the nonroot uid (see pybuild).
-COPY --from=pybuild --chown=65532:65532 /data /data
+COPY --from=pybuild --chown=65532:65532 /app/state_seed /data
 EXPOSE 8101
 WORKDIR /app/backend
 # Chainguard runs as nonroot (uid 65532) by default; make it explicit so the
