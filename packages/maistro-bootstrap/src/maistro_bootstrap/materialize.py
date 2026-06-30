@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 from typing import Any
@@ -34,7 +35,20 @@ def _write_entrypoint(path: Path) -> None:
         "echo 'Next: docker compose -f compose.override.yml config'\n",
         encoding="utf-8",
     )
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    if os.name != "nt":
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _write_powershell_entrypoint(path: Path) -> None:
+    path.write_text(
+        "Set-StrictMode -Version Latest\n"
+        '$ErrorActionPreference = "Stop"\n'
+        "Set-Location $PSScriptRoot\n"
+        'Write-Host "Maistro install artifacts are materialized in: $PWD"\n'
+        'Write-Host "Review install-answers.yaml and compose.override.yml before starting services."\n'
+        'Write-Host "Next: docker compose -f compose.override.yml config"\n',
+        encoding="utf-8",
+    )
 
 
 def materialize_install_artifacts(plan: dict[str, Any], target_dir: Path) -> list[Path]:
@@ -81,5 +95,9 @@ def materialize_install_artifacts(plan: dict[str, Any], target_dir: Path) -> lis
     entrypoint = target_dir / "install.sh"
     _write_entrypoint(entrypoint)
     written.append(entrypoint)
+
+    powershell_entrypoint = target_dir / "install.ps1"
+    _write_powershell_entrypoint(powershell_entrypoint)
+    written.append(powershell_entrypoint)
 
     return written
