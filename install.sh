@@ -17,6 +17,9 @@ PLAN_DIR="${MAISTRO_INSTALL_PLAN_DIR:-.maistro-install}"
 ANSWERS_FILE="${MAISTRO_INSTALL_ANSWERS:-}"
 SKIP_WIZARD="${MAISTRO_SKIP_WIZARD:-0}"
 START_STACK="${MAISTRO_START_STACK:-1}"
+AUTO_INSTALL_DEPS="${MAISTRO_AUTO_INSTALL_DEPS:-0}"
+
+OS_NAME="$(uname -s)"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,6 +37,30 @@ ok() { echo -e "${GREEN}[ok]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 fail() { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 
+is_macos() { [[ "$OS_NAME" == "Darwin" ]]; }
+
+# Ask a yes/no question. Returns 0 for yes. Honours MAISTRO_AUTO_INSTALL_DEPS=1
+# for non-interactive runs; refuses (returns 1) when there is no terminal.
+confirm() {
+    local prompt="$1"
+    if [[ "$AUTO_INSTALL_DEPS" == "1" || "$AUTO_INSTALL_DEPS" == "true" ]]; then
+        info "$prompt -> auto-confirmed (MAISTRO_AUTO_INSTALL_DEPS)"
+        return 0
+    fi
+
+    local reply
+    if [[ -t 0 ]]; then
+        read -r -p "$prompt [y/N] " reply
+    elif [[ -r /dev/tty ]]; then
+        read -r -p "$prompt [y/N] " reply < /dev/tty
+    else
+        warn "No interactive terminal to confirm: $prompt"
+        warn "Re-run with MAISTRO_AUTO_INSTALL_DEPS=1 to allow automatic installation."
+        return 1
+    fi
+    [[ "$reply" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
 usage() {
     cat <<EOF
 Usage: ./install.sh [options]
@@ -47,7 +74,13 @@ Options:
 
 Environment:
   MAISTRO_DIR, MAISTRO_PORT, MAISTRO_BIND_HOST, MAISTRO_INSTALL_ANSWERS,
-  MAISTRO_SKIP_WIZARD, MAISTRO_START_STACK, MAISTRO_COMPOSE_FILE.
+  MAISTRO_SKIP_WIZARD, MAISTRO_START_STACK, MAISTRO_COMPOSE_FILE,
+  MAISTRO_AUTO_INSTALL_DEPS (1 = install Homebrew/Colima on macOS without prompting).
+
+macOS:
+  When no container runtime is found, the installer offers to install Homebrew,
+  then Colima + the Docker CLI, and starts the Colima VM. Existing Docker
+  Desktop / Colima installs are detected and started instead of reinstalling.
 EOF
 }
 
@@ -331,29 +364,139 @@ sync_env_file() {
     fi
 }
 
-ensure_compose_runtime() {
+# Locate a compose front-end and set COMPOSE_CMD. Returns 1 if none is present.
+# This only checks the CLI; daemon readiness is verified separately.
+detect_compose_cmd() {
     if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
         COMPOSE_CMD=(docker compose)
-        ok "Compose runtime: docker compose"
-        return
+        return 0
     fi
 
     if command -v docker-compose >/dev/null 2>&1; then
         COMPOSE_CMD=(docker-compose)
-        ok "Compose runtime: docker-compose"
-        return
+        return 0
     fi
 
     if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
         COMPOSE_CMD=(podman compose)
-        ok "Compose runtime: podman compose"
-        return
+        return 0
     fi
 
     if command -v podman-compose >/dev/null 2>&1; then
         COMPOSE_CMD=(podman-compose)
-        ok "Compose runtime: podman-compose"
+        return 0
+    fi
+
+    return 1
+}
+
+# True when the docker CLI exists and the daemon answers.
+docker_daemon_ready() {
+    command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+ensure_homebrew() {
+    if command -v brew >/dev/null 2>&1; then
+        ok "Homebrew found: $(brew --version | head -n 1)"
         return
+    fi
+
+    if ! confirm "Homebrew is not installed but is needed to install a container runtime. Install Homebrew now?"; then
+        fail "Homebrew is required. Install it from https://brew.sh/ and re-run ./install.sh."
+    fi
+
+    info "Installing Homebrew (you may be prompted for your password)..."
+    NONINTERACTIVE=1 /bin/bash -c \
+        "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    # Put brew on PATH for this session (Apple Silicon and Intel locations).
+    local brew_bin
+    for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [[ -x "$brew_bin" ]]; then
+            eval "$("$brew_bin" shellenv)"
+            break
+        fi
+    done
+
+    command -v brew >/dev/null 2>&1 \
+        || fail "Homebrew installed but 'brew' is not on PATH. Open a new shell and re-run ./install.sh."
+    ok "Homebrew installed: $(brew --version | head -n 1)"
+}
+
+wait_for_docker_daemon() {
+    info "Waiting for the Docker daemon to become ready..."
+    local attempts=0
+    until docker info >/dev/null 2>&1; do
+        attempts=$((attempts + 1))
+        if [[ $attempts -gt 60 ]]; then
+            return 1
+        fi
+        sleep 2
+    done
+    ok "Docker daemon is ready."
+}
+
+start_colima() {
+    info "Starting the Colima container VM (first run can take a minute)..."
+    if ! colima start; then
+        warn "colima start failed. Check 'colima status' and retry."
+        return 1
+    fi
+    wait_for_docker_daemon
+}
+
+# Bring a Docker daemon up on macOS, installing one via Homebrew + Colima when
+# nothing is present. Prefers an already-installed runtime before installing.
+bootstrap_macos_runtime() {
+    # Docker CLI is present but the daemon is down — try to start what's installed.
+    if command -v docker >/dev/null 2>&1; then
+        warn "The docker CLI is installed but the daemon is not responding."
+        if command -v colima >/dev/null 2>&1; then
+            start_colima
+            return
+        fi
+        if [[ -d "/Applications/Docker.app" ]]; then
+            info "Starting Docker Desktop..."
+            open -a Docker >/dev/null 2>&1 || warn "Could not launch Docker Desktop."
+            wait_for_docker_daemon \
+                || warn "Docker Desktop did not finish starting. Open it manually, then re-run."
+            return
+        fi
+        warn "Could not determine how to start the Docker daemon. Start Docker Desktop or run 'colima start', then re-run."
+        return
+    fi
+
+    # Nothing installed — offer the Homebrew + Colima path.
+    info "No container runtime detected on this Mac."
+    if ! confirm "Install a container runtime now (Homebrew + Colima + Docker CLI)?"; then
+        warn "Skipping container runtime install."
+        warn "Install Docker Desktop (https://docker.com/products/docker-desktop) or Colima, then re-run ./install.sh."
+        return
+    fi
+
+    ensure_homebrew
+    info "Installing Colima and the Docker CLI via Homebrew..."
+    brew install colima docker docker-compose
+    ok "Colima and Docker CLI installed."
+    start_colima
+}
+
+ensure_compose_runtime() {
+    if detect_compose_cmd; then
+        # On macOS a docker CLI can exist with the daemon stopped; bring it up.
+        if is_macos && [[ "${COMPOSE_CMD[0]}" == "docker" ]] && ! docker_daemon_ready; then
+            bootstrap_macos_runtime
+        fi
+        ok "Compose runtime: ${COMPOSE_CMD[*]}"
+        return
+    fi
+
+    if is_macos; then
+        bootstrap_macos_runtime
+        if detect_compose_cmd; then
+            ok "Compose runtime: ${COMPOSE_CMD[*]}"
+            return
+        fi
     fi
 
     fail "No compose runtime found. Install Docker Desktop, Docker Engine with compose, or Podman, then retry."
