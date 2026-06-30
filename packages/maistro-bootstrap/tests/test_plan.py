@@ -236,9 +236,7 @@ def test_materialize_install_artifacts_writes_reviewable_files(tmp_path: Path) -
         encoding="utf-8"
     )
     assert "Maistro first-run setup" in (tmp_path / "tutorial-todo.md").read_text(encoding="utf-8")
-    assert "Set-Location $PSScriptRoot" in (tmp_path / "install.ps1").read_text(
-        encoding="utf-8"
-    )
+    assert "Set-Location $PSScriptRoot" in (tmp_path / "install.ps1").read_text(encoding="utf-8")
     if os.name != "nt":
         assert (tmp_path / "install.sh").stat().st_mode & 0o100
 
