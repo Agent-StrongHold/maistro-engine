@@ -20,8 +20,10 @@ START_STACK="${MAISTRO_START_STACK:-1}"
 AUTO_INSTALL_DEPS="${MAISTRO_AUTO_INSTALL_DEPS:-0}"
 MACOS_RUNTIME="${MAISTRO_MACOS_RUNTIME:-}"
 INSTALL_CLI="${MAISTRO_INSTALL_CLI:-1}"
+OPEN_BROWSER="${MAISTRO_OPEN_BROWSER:-1}"
 
 OS_NAME="$(uname -s)"
+ARCH="$(uname -m)"
 CHOSEN_RUNTIME=""
 
 RED='\033[0;31m'
@@ -73,6 +75,7 @@ Options:
   --skip-wizard       Skip the feature/deployment questionnaire.
   --no-start          Generate/repair files but do not start compose.
   --no-cli            Do not install the host 'maistro' CLI (builders TUI).
+  --no-open           Do not open the Conductor UI in a browser when ready.
   --plan-dir PATH     Directory for materialized install plan artifacts.
   -h, --help          Show this help.
 
@@ -81,7 +84,8 @@ Environment:
   MAISTRO_SKIP_WIZARD, MAISTRO_START_STACK, MAISTRO_COMPOSE_FILE,
   MAISTRO_AUTO_INSTALL_DEPS (1 = install deps on macOS without prompting),
   MAISTRO_MACOS_RUNTIME (colima | docker-desktop = preselect, skip the prompt),
-  MAISTRO_INSTALL_CLI (0 = do not install the host 'maistro' CLI).
+  MAISTRO_INSTALL_CLI (0 = do not install the host 'maistro' CLI),
+  MAISTRO_OPEN_BROWSER (0 = do not open the Conductor UI when ready).
 
 macOS:
   When no container runtime is found, the installer asks whether to install
@@ -107,6 +111,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-cli)
             INSTALL_CLI=0
+            shift
+            ;;
+        --no-open)
+            OPEN_BROWSER=0
             shift
             ;;
         --plan-dir)
@@ -683,6 +691,33 @@ record_docker_sock() {
     fi
 }
 
+# On ARM64 (Apple Silicon), best-effort check that the pinned third-party images
+# publish arm64 manifests. Locally-built images (engine, conductor) are native.
+# Advisory only — missing manifests just mean QEMU emulation, never a hard stop.
+report_arch() {
+    case "$ARCH" in
+        arm64 | aarch64) ;;
+        *) return 0 ;;
+    esac
+    command -v docker >/dev/null 2>&1 || return 0
+
+    info "ARM64 host detected; checking base images for native arm64 builds..."
+    local img missing=0
+    for img in \
+        "pgvector/pgvector:pg17" \
+        "ghcr.io/berriai/litellm:main-latest" \
+        "langfuse/langfuse:2"
+    do
+        if docker manifest inspect "$img" 2>/dev/null | grep -q "arm64"; then
+            ok "arm64 image available: $img"
+        else
+            warn "No confirmed arm64 manifest for $img — Docker may emulate it (slower)."
+            missing=$((missing + 1))
+        fi
+    done
+    [[ $missing -eq 0 ]] || warn "Emulated images run via QEMU; functional but slower on Apple Silicon."
+}
+
 start_engine() {
     if [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]]; then
         warn "Skipping compose start because --no-start or MAISTRO_START_STACK=0 was set."
@@ -691,6 +726,7 @@ start_engine() {
 
     ensure_compose_runtime
     record_docker_sock
+    report_arch
     compose_files
     info "Starting maistro-engine from source..."
     "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" up -d --build
@@ -772,6 +808,22 @@ print_success() {
     echo ""
 }
 
+# Open the Conductor UI once the stack is up. macOS uses `open`; Linux uses
+# `xdg-open` when a display is present. Skipped with --no-open / MAISTRO_OPEN_BROWSER=0.
+open_browser() {
+    [[ "$OPEN_BROWSER" == "0" || "$OPEN_BROWSER" == "false" ]] && return 0
+    [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]] && return 0
+
+    local url="http://${BIND_HOST}:${HIVE_PORT:-8101}"
+    if is_macos && command -v open >/dev/null 2>&1; then
+        info "Opening the Conductor UI: $url"
+        open "$url" >/dev/null 2>&1 || true
+    elif command -v xdg-open >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+        info "Opening the Conductor UI: $url"
+        xdg-open "$url" >/dev/null 2>&1 || true
+    fi
+}
+
 main() {
     echo ""
     echo "maistro-engine installer"
@@ -784,6 +836,7 @@ main() {
     start_engine
     install_cli
     print_success
+    open_browser
 }
 
 main

@@ -146,10 +146,12 @@ services:
       - LANGFUSE_BASE_URL=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
-      # Foundation state. /tmp is writable by the nonroot (uid 65532) runtime user;
-      # see follow-up note about a persistent, correctly-owned data volume.
-      - CONDUCTOR_DATA_DIR=/tmp/conductor
+      # Foundation state (SQLite/vault/state) on a persistent volume. /data is
+      # pre-owned by the nonroot uid 65532 in the image so the volume is writable.
+      - CONDUCTOR_DATA_DIR=/data
       - HARDWARE_PRESET=${HARDWARE_PRESET:-laptop}
+    volumes:
+      - conductor-data:/data
     depends_on:
       litellm:
         condition: service_started
@@ -165,3 +167,4 @@ services:
 volumes:
   pgdata:
   workspace-data:
+  conductor-data:
