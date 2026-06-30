@@ -211,6 +211,34 @@ append_env_once() {
     fi
 }
 
+# Insert or replace a key in $ENV_FILE. Unlike append_env_once this keeps the
+# value current across runs (e.g. the docker socket path can change when the
+# user switches between Colima and Docker Desktop).
+upsert_env() {
+    local key="$1"
+    local value="$2"
+    ensure_python
+    "${PYTHON_CMD[@]}" - "$ENV_FILE" "$key" "$value" <<'PY'
+import pathlib
+import sys
+
+path, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+p = pathlib.Path(path)
+lines = p.read_text().splitlines() if p.exists() else []
+prefix = key + "="
+out, replaced = [], False
+for line in lines:
+    if line.startswith(prefix):
+        out.append(prefix + value)
+        replaced = True
+    else:
+        out.append(line)
+if not replaced:
+    out.append(prefix + value)
+p.write_text("\n".join(out) + "\n")
+PY
+}
+
 append_provider_placeholders() {
     local key
     for key in \
@@ -622,6 +650,32 @@ compose_files() {
     fi
 }
 
+# Record the host Docker socket path so the builder mount works regardless of
+# runtime. Docker Desktop uses /var/run/docker.sock; Colima exposes it under
+# ~/.colima/<profile>/docker.sock. Only meaningful for docker (not podman).
+record_docker_sock() {
+    command -v docker >/dev/null 2>&1 || return 0
+
+    local host path
+    host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+    [[ -n "$host" ]] || host="${DOCKER_HOST:-}"
+
+    case "$host" in
+        unix://*) path="${host#unix://}" ;;
+        "") path="/var/run/docker.sock" ;;
+        *)
+            warn "Docker endpoint '$host' is not a unix socket; the builder docker.sock mount may not apply."
+            warn "Set MAISTRO_DOCKER_SOCK in $ENV_FILE manually if the builder sandbox needs it."
+            return 0
+            ;;
+    esac
+
+    if [[ "$path" != "/var/run/docker.sock" ]]; then
+        info "Detected non-default Docker socket at $path; recording MAISTRO_DOCKER_SOCK."
+        upsert_env MAISTRO_DOCKER_SOCK "$path"
+    fi
+}
+
 start_engine() {
     if [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]]; then
         warn "Skipping compose start because --no-start or MAISTRO_START_STACK=0 was set."
@@ -629,6 +683,7 @@ start_engine() {
     fi
 
     ensure_compose_runtime
+    record_docker_sock
     compose_files
     info "Starting maistro-engine from source..."
     "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" up -d --build
@@ -651,8 +706,9 @@ print_success() {
 
     echo ""
     echo "maistro-engine is ready"
-    echo "  URL:        http://${BIND_HOST}:${PORT}"
-    echo "  Token:      ${token}"
+    echo "  Engine API:  http://${BIND_HOST}:${PORT}"
+    echo "  Conductor:   http://${BIND_HOST}:${HIVE_PORT:-8101}  (chat, DAGs, deck builder)"
+    echo "  Token:       ${token}"
     echo "  Install dir: $PWD"
     echo "  Plan dir:    $PLAN_DIR"
     echo ""

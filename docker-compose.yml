@@ -36,7 +36,9 @@ services:
       # Security warning: mounting the host Docker socket grants container control
       # of the host Docker daemon. Replace with an isolated builder substrate
       # before claiming production-grade sandbox isolation.
-      - /var/run/docker.sock:/var/run/docker.sock
+      # MAISTRO_DOCKER_SOCK is detected by install.sh: Docker Desktop uses
+      # /var/run/docker.sock, but Colima exposes it under ~/.colima/.../docker.sock.
+      - ${MAISTRO_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
       - workspace-data:/repos
     depends_on:
       postgres:
@@ -118,6 +120,47 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+
+  # Agent Conductor app: chat UI, DAG views, and deck builder (React SPA + FastAPI).
+  # Wired to the same LiteLLM gateway and engine so the curl install brings up the
+  # full UI, not just the headless API. Frontend is built inside its Dockerfile.
+  hive-conductor:
+    build:
+      context: .
+      dockerfile: packages/hive-conductor/Dockerfile
+    container_name: maistro-hive-conductor
+    ports:
+      - "${MAISTRO_BIND_HOST:-127.0.0.1}:${HIVE_PORT:-8101}:8101"
+    environment:
+      - PYTHONUNBUFFERED=1
+      # OpenAI-compatible gateway (must end in /v1).
+      - LITELLM_API_BASE=http://litellm:4000/v1
+      - LITELLM_API_KEY=${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in .env}
+      - LITELLM_PROXY_URL=http://litellm:4000
+      - LITELLM_PROXY_KEY=${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in .env}
+      - CHAT_DEFAULT_MODEL=${CHAT_DEFAULT_MODEL:-${DEFAULT_MODEL:-gemini/gemini-2.5-flash}}
+      # Engine router for DAG execution (REQUIRE_AUTH=true expects the access token).
+      - CONDUCTOR_ROUTER_URL=http://maistro-engine:8000
+      - ROUTER_API_KEY=${MAISTRO_ACCESS_TOKEN:-}
+      # Telemetry (optional; blank keys disable it).
+      - LANGFUSE_BASE_URL=http://langfuse:3000
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      # Foundation state. /tmp is writable by the nonroot (uid 65532) runtime user;
+      # see follow-up note about a persistent, correctly-owned data volume.
+      - CONDUCTOR_DATA_DIR=/tmp/conductor
+      - HARDWARE_PRESET=${HARDWARE_PRESET:-laptop}
+    depends_on:
+      litellm:
+        condition: service_started
+      maistro-engine:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8101/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
 volumes:
   pgdata:
