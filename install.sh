@@ -19,6 +19,7 @@ SKIP_WIZARD="${MAISTRO_SKIP_WIZARD:-0}"
 START_STACK="${MAISTRO_START_STACK:-1}"
 AUTO_INSTALL_DEPS="${MAISTRO_AUTO_INSTALL_DEPS:-0}"
 MACOS_RUNTIME="${MAISTRO_MACOS_RUNTIME:-}"
+INSTALL_CLI="${MAISTRO_INSTALL_CLI:-1}"
 
 OS_NAME="$(uname -s)"
 CHOSEN_RUNTIME=""
@@ -71,6 +72,7 @@ Options:
   --answers-file PATH  Use a maistro-install answers YAML file instead of prompts.
   --skip-wizard       Skip the feature/deployment questionnaire.
   --no-start          Generate/repair files but do not start compose.
+  --no-cli            Do not install the host 'maistro' CLI (builders TUI).
   --plan-dir PATH     Directory for materialized install plan artifacts.
   -h, --help          Show this help.
 
@@ -78,7 +80,8 @@ Environment:
   MAISTRO_DIR, MAISTRO_PORT, MAISTRO_BIND_HOST, MAISTRO_INSTALL_ANSWERS,
   MAISTRO_SKIP_WIZARD, MAISTRO_START_STACK, MAISTRO_COMPOSE_FILE,
   MAISTRO_AUTO_INSTALL_DEPS (1 = install deps on macOS without prompting),
-  MAISTRO_MACOS_RUNTIME (colima | docker-desktop = preselect, skip the prompt).
+  MAISTRO_MACOS_RUNTIME (colima | docker-desktop = preselect, skip the prompt),
+  MAISTRO_INSTALL_CLI (0 = do not install the host 'maistro' CLI).
 
 macOS:
   When no container runtime is found, the installer asks whether to install
@@ -100,6 +103,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-start)
             START_STACK=0
+            shift
+            ;;
+        --no-cli)
+            INSTALL_CLI=0
             shift
             ;;
         --plan-dir)
@@ -700,6 +707,43 @@ start_engine() {
     ok "Engine healthy."
 }
 
+# Install the host-side `maistro` CLI so `maistro builders` (the interactive
+# coding TUI) works after a curl install. Installs from the checked-out source:
+# maistro-core (the CLI + entrypoint) plus maistro-bootstrap (builders agent
+# loop/session/sandbox, and the typer/rich the CLI imports), with textual +
+# anthropic for the TUI. This sidesteps the maistro-core[builders] extra, which
+# would try to resolve maistro-bootstrap from PyPI.
+install_cli() {
+    if [[ "$INSTALL_CLI" == "0" || "$INSTALL_CLI" == "false" ]]; then
+        warn "Skipping host CLI install (--no-cli or MAISTRO_INSTALL_CLI=0)."
+        return
+    fi
+
+    local core="$PWD/packages/maistro-core"
+    local bootstrap="$PWD/packages/maistro-bootstrap"
+    if [[ ! -d "$core" || ! -d "$bootstrap" ]]; then
+        warn "Cannot find maistro-core/maistro-bootstrap sources; skipping CLI install."
+        return
+    fi
+
+    ensure_uv
+    info "Installing the 'maistro' CLI on the host (enables the 'maistro builders' TUI)..."
+    # The package to install commands from is the positional argument (a path is
+    # accepted); --with adds the extra requirements the CLI/TUI need at runtime.
+    if "${UV_CMD[@]}" tool install --force \
+        --with "$bootstrap" \
+        --with "textual>=0.61" \
+        --with "anthropic>=0.28" \
+        "$core"; then
+        ok "Installed the 'maistro' CLI."
+        # Ensure the uv tool bin dir (e.g. ~/.local/bin) is on PATH for new shells.
+        "${UV_CMD[@]}" tool update-shell >/dev/null 2>&1 || true
+    else
+        warn "Could not install the 'maistro' CLI. Retry later from the repo root with:"
+        warn "  uv tool install --with packages/maistro-bootstrap --with textual --with anthropic packages/maistro-core"
+    fi
+}
+
 print_success() {
     local token
     token="$(env_get MAISTRO_ACCESS_TOKEN)"
@@ -716,6 +760,13 @@ print_success() {
     echo "  Logs:  ${COMPOSE_CMD[*]:-docker compose} ${COMPOSE_FILES[*]:--f $COMPOSE_FILE} logs -f maistro-engine"
     echo "  Stop:  ${COMPOSE_CMD[*]:-docker compose} ${COMPOSE_FILES[*]:--f $COMPOSE_FILE} down"
     echo ""
+    if [[ "$INSTALL_CLI" != "0" && "$INSTALL_CLI" != "false" ]]; then
+        echo "Local CLI:"
+        echo "  maistro builders   Interactive coding TUI (export ANTHROPIC_API_KEY first)"
+        echo "  maistro --help     All commands"
+        echo "  (If 'maistro' is not found, run 'uv tool update-shell' and open a new shell.)"
+        echo ""
+    fi
     echo "Security note: services are bound to localhost by default. Do not set"
     echo "MAISTRO_BIND_HOST=0.0.0.0 until auth, network, and sandbox exposure have been reviewed."
     echo ""
@@ -731,6 +782,7 @@ main() {
     run_feature_wizard
     sync_env_file
     start_engine
+    install_cli
     print_success
 }
 
