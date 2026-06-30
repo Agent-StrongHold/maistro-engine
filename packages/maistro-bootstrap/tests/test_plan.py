@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -228,13 +229,16 @@ def test_materialize_install_artifacts_writes_reviewable_files(tmp_path: Path) -
     assert "unsupported-options.json" in names
     assert "tutorial-todo.md" in names
     assert "install.sh" in names
+    assert "install.ps1" in names
     assert "driver" in (tmp_path / "bootstrap-users.json").read_text(encoding="utf-8")
     assert "image_pull" in (tmp_path / "delivery.json").read_text(encoding="utf-8")
     assert "MAISTRO_CRYPTO_PROFILE" in (tmp_path / "compose.override.yml").read_text(
         encoding="utf-8"
     )
     assert "Maistro first-run setup" in (tmp_path / "tutorial-todo.md").read_text(encoding="utf-8")
-    assert (tmp_path / "install.sh").stat().st_mode & 0o100
+    assert "Set-Location $PSScriptRoot" in (tmp_path / "install.ps1").read_text(encoding="utf-8")
+    if os.name != "nt":
+        assert (tmp_path / "install.sh").stat().st_mode & 0o100
 
 
 def test_source_build_delivery_has_same_behavior_contract() -> None:

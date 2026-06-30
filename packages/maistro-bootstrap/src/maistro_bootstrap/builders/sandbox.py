@@ -340,7 +340,7 @@ class LocalWorktreeSandbox:
         root = self._ws.path if self._ws else self._repo_root
         root = root.resolve()
         glob_path = Path(glob)
-        if glob_path.is_absolute() or ".." in glob_path.parts:
+        if glob_path.is_absolute() or glob.startswith(("/", "\\")) or ".." in glob_path.parts:
             raise SandboxEscapeError(f"Glob escape detected: {glob!r} escapes sandbox root")
         matches = []
         for p in root.glob(glob):
