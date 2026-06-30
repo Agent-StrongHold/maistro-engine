@@ -17,9 +17,12 @@ set -euo pipefail
 
 REPO="${MAISTRO_REPO:-BlakeMatthews-dev/maistro-engine}"
 BRANCH="${MAISTRO_BRANCH:-main}"
-INSTALL_DIR="${MAISTRO_DIR:-$HOME/.maistro/maistro-engine}"
+LEGACY_DIR="$HOME/.maistro"
+DEFAULT_INSTALL_DIR="$HOME/.maistro/maistro-engine"
+INSTALL_DIR="${MAISTRO_DIR:-$DEFAULT_INSTALL_DIR}"
 REPO_URL="https://github.com/${REPO}.git"
 ARCHIVE_URL="https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz"
+ARCHIVE_MARKER=".maistro-archive-install"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -51,23 +54,46 @@ download_with_git() {
 }
 
 download_with_archive() {
-    if [[ -e "$INSTALL_DIR" ]]; then
-        fail "$INSTALL_DIR exists and git is unavailable. Move it aside or set MAISTRO_DIR."
+    if [[ -e "$INSTALL_DIR" && ! -e "$INSTALL_DIR/$ARCHIVE_MARKER" ]]; then
+        fail "$INSTALL_DIR exists but was not created by this installer. Move it aside or set MAISTRO_DIR."
     fi
     command -v curl >/dev/null 2>&1 || fail "curl is required when git is unavailable."
     command -v tar >/dev/null 2>&1 || fail "tar is required when git is unavailable."
 
+    if [[ -e "$INSTALL_DIR/$ARCHIVE_MARKER" ]]; then
+        info "Updating existing maistro-engine archive checkout at $INSTALL_DIR..."
+    else
+        info "Downloading maistro-engine ${BRANCH} archive..."
+    fi
+
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/maistro.XXXXXX")"
-    info "Downloading maistro-engine ${BRANCH} archive..."
     mkdir -p "$INSTALL_DIR"
     curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$tmp" --strip-components=1
     cp -R "$tmp"/. "$INSTALL_DIR"/
     rm -rf "$tmp"
-    ok "Downloaded source archive."
+    touch "$INSTALL_DIR/$ARCHIVE_MARKER"
+    ok "Source archive is up to date."
+}
+
+migrate_legacy_install() {
+    # The previous public installer wrote .env directly into ~/.maistro.
+    # The new default is the nested ~/.maistro/maistro-engine checkout. If
+    # we're on the default path and the old .env exists without a new one,
+    # copy it over so existing users keep their tokens and provider keys.
+    [[ "$INSTALL_DIR" == "$DEFAULT_INSTALL_DIR" ]] || return 0
+    [[ -f "$LEGACY_DIR/.env" ]] || return 0
+    [[ -f "$INSTALL_DIR/.env" ]] && return 0
+
+    warn "Found legacy install at $LEGACY_DIR — migrating .env to $INSTALL_DIR."
+    mkdir -p "$INSTALL_DIR"
+    cp "$LEGACY_DIR/.env" "$INSTALL_DIR/.env"
+    chmod 600 "$INSTALL_DIR/.env" 2>/dev/null || true
+    ok "Migrated .env. Old copy left at $LEGACY_DIR/.env — remove it once verified."
 }
 
 bootstrap_source() {
+    migrate_legacy_install
     if command -v git >/dev/null 2>&1; then
         download_with_git
     else
@@ -76,7 +102,32 @@ bootstrap_source() {
     fi
 }
 
+resolve_args_paths() {
+    # Rewrite relative --answers-file paths to absolute while cwd is still
+    # the caller's, before run_installer cd's into INSTALL_DIR.
+    local args=() arg prev=""
+    for arg in "$@"; do
+        if [[ "$prev" == "--answers-file" && "$arg" != /* ]]; then
+            arg="$(cd "$(dirname "$arg")" && pwd)/$(basename "$arg")"
+        elif [[ "$arg" == --answers-file=* && "${arg#--answers-file=}" != /* ]]; then
+            local rel="${arg#--answers-file=}"
+            arg="--answers-file=$(cd "$(dirname "$rel")" && pwd)/$(basename "$rel")"
+        fi
+        args+=("$arg")
+        prev="$arg"
+    done
+    printf '%s\0' "${args[@]}"
+}
+
 run_installer() {
+    local resolved=()
+    if [[ $# -gt 0 ]]; then
+        while IFS= read -r -d '' item; do
+            resolved+=("$item")
+        done < <(resolve_args_paths "$@")
+        set -- "${resolved[@]}"
+    fi
+
     cd "$INSTALL_DIR"
     chmod +x ./install.sh 2>/dev/null || true
 
