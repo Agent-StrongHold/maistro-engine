@@ -27,6 +27,7 @@ NC='\033[0m'
 PYTHON_CMD=()
 UV_CMD=()
 COMPOSE_CMD=()
+COMPOSE_FILES=()
 
 info() { echo -e "${BLUE}[maistro]${NC} $*"; }
 ok() { echo -e "${GREEN}[ok]${NC} $*"; }
@@ -403,6 +404,14 @@ except Exception:
 PY
 }
 
+compose_files() {
+    COMPOSE_FILES=(-f "$COMPOSE_FILE")
+    local override="$PLAN_DIR/compose.override.yml"
+    if [[ -f "$override" ]]; then
+        COMPOSE_FILES+=(-f "$override")
+    fi
+}
+
 start_engine() {
     if [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]]; then
         warn "Skipping compose start because --no-start or MAISTRO_START_STACK=0 was set."
@@ -410,15 +419,16 @@ start_engine() {
     fi
 
     ensure_compose_runtime
+    compose_files
     info "Starting maistro-engine from source..."
-    "${COMPOSE_CMD[@]}" -f "$COMPOSE_FILE" up -d --build
+    "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" up -d --build
 
     info "Waiting for engine health..."
     local attempts=0
     until http_ok "http://${BIND_HOST}:${PORT}/health/live" || http_ok "http://${BIND_HOST}:${PORT}/health"; do
         attempts=$((attempts + 1))
         if [[ $attempts -gt 60 ]]; then
-            fail "Engine did not become healthy. Check: ${COMPOSE_CMD[*]} -f $COMPOSE_FILE logs maistro-engine"
+            fail "Engine did not become healthy. Check: ${COMPOSE_CMD[*]} ${COMPOSE_FILES[*]} logs maistro-engine"
         fi
         sleep 2
     done
@@ -437,8 +447,8 @@ print_success() {
     echo "  Plan dir:    $PLAN_DIR"
     echo ""
     echo "Commands:"
-    echo "  Logs:  ${COMPOSE_CMD[*]:-docker compose} -f $COMPOSE_FILE logs -f maistro-engine"
-    echo "  Stop:  ${COMPOSE_CMD[*]:-docker compose} -f $COMPOSE_FILE down"
+    echo "  Logs:  ${COMPOSE_CMD[*]:-docker compose} ${COMPOSE_FILES[*]:--f $COMPOSE_FILE} logs -f maistro-engine"
+    echo "  Stop:  ${COMPOSE_CMD[*]:-docker compose} ${COMPOSE_FILES[*]:--f $COMPOSE_FILE} down"
     echo ""
     echo "Security note: services are bound to localhost by default. Do not set"
     echo "MAISTRO_BIND_HOST=0.0.0.0 until auth, network, and sandbox exposure have been reviewed."
