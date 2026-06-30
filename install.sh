@@ -17,6 +17,14 @@ PLAN_DIR="${MAISTRO_INSTALL_PLAN_DIR:-.maistro-install}"
 ANSWERS_FILE="${MAISTRO_INSTALL_ANSWERS:-}"
 SKIP_WIZARD="${MAISTRO_SKIP_WIZARD:-0}"
 START_STACK="${MAISTRO_START_STACK:-1}"
+AUTO_INSTALL_DEPS="${MAISTRO_AUTO_INSTALL_DEPS:-0}"
+MACOS_RUNTIME="${MAISTRO_MACOS_RUNTIME:-}"
+INSTALL_CLI="${MAISTRO_INSTALL_CLI:-1}"
+OPEN_BROWSER="${MAISTRO_OPEN_BROWSER:-1}"
+
+OS_NAME="$(uname -s)"
+ARCH="$(uname -m)"
+CHOSEN_RUNTIME=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,6 +42,30 @@ ok() { echo -e "${GREEN}[ok]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 fail() { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 
+is_macos() { [[ "$OS_NAME" == "Darwin" ]]; }
+
+# Ask a yes/no question. Returns 0 for yes. Honours MAISTRO_AUTO_INSTALL_DEPS=1
+# for non-interactive runs; refuses (returns 1) when there is no terminal.
+confirm() {
+    local prompt="$1"
+    if [[ "$AUTO_INSTALL_DEPS" == "1" || "$AUTO_INSTALL_DEPS" == "true" ]]; then
+        info "$prompt -> auto-confirmed (MAISTRO_AUTO_INSTALL_DEPS)"
+        return 0
+    fi
+
+    local reply
+    if [[ -t 0 ]]; then
+        read -r -p "$prompt [y/N] " reply
+    elif [[ -r /dev/tty ]]; then
+        read -r -p "$prompt [y/N] " reply < /dev/tty
+    else
+        warn "No interactive terminal to confirm: $prompt"
+        warn "Re-run with MAISTRO_AUTO_INSTALL_DEPS=1 to allow automatic installation."
+        return 1
+    fi
+    [[ "$reply" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
 usage() {
     cat <<EOF
 Usage: ./install.sh [options]
@@ -42,12 +74,23 @@ Options:
   --answers-file PATH  Use a maistro-install answers YAML file instead of prompts.
   --skip-wizard       Skip the feature/deployment questionnaire.
   --no-start          Generate/repair files but do not start compose.
+  --no-cli            Do not install the host 'maistro' CLI (builders TUI).
+  --no-open           Do not open the Conductor UI in a browser when ready.
   --plan-dir PATH     Directory for materialized install plan artifacts.
   -h, --help          Show this help.
 
 Environment:
   MAISTRO_DIR, MAISTRO_PORT, MAISTRO_BIND_HOST, MAISTRO_INSTALL_ANSWERS,
-  MAISTRO_SKIP_WIZARD, MAISTRO_START_STACK, MAISTRO_COMPOSE_FILE.
+  MAISTRO_SKIP_WIZARD, MAISTRO_START_STACK, MAISTRO_COMPOSE_FILE,
+  MAISTRO_AUTO_INSTALL_DEPS (1 = install deps on macOS without prompting),
+  MAISTRO_MACOS_RUNTIME (colima | docker-desktop = preselect, skip the prompt),
+  MAISTRO_INSTALL_CLI (0 = do not install the host 'maistro' CLI),
+  MAISTRO_OPEN_BROWSER (0 = do not open the Conductor UI when ready).
+
+macOS:
+  When no container runtime is found, the installer asks whether to install
+  Docker Desktop or Colima (via Homebrew) and starts it. Existing Docker
+  Desktop / Colima installs are detected and started instead of reinstalling.
 EOF
 }
 
@@ -64,6 +107,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --no-start)
             START_STACK=0
+            shift
+            ;;
+        --no-cli)
+            INSTALL_CLI=0
+            shift
+            ;;
+        --no-open)
+            OPEN_BROWSER=0
             shift
             ;;
         --plan-dir)
@@ -173,6 +224,34 @@ append_env_once() {
     if ! env_has "$key"; then
         printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
     fi
+}
+
+# Insert or replace a key in $ENV_FILE. Unlike append_env_once this keeps the
+# value current across runs (e.g. the docker socket path can change when the
+# user switches between Colima and Docker Desktop).
+upsert_env() {
+    local key="$1"
+    local value="$2"
+    ensure_python
+    "${PYTHON_CMD[@]}" - "$ENV_FILE" "$key" "$value" <<'PY'
+import pathlib
+import sys
+
+path, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+p = pathlib.Path(path)
+lines = p.read_text().splitlines() if p.exists() else []
+prefix = key + "="
+out, replaced = [], False
+for line in lines:
+    if line.startswith(prefix):
+        out.append(prefix + value)
+        replaced = True
+    else:
+        out.append(line)
+if not replaced:
+    out.append(prefix + value)
+p.write_text("\n".join(out) + "\n")
+PY
 }
 
 append_provider_placeholders() {
@@ -331,29 +410,203 @@ sync_env_file() {
     fi
 }
 
-ensure_compose_runtime() {
+# Locate a compose front-end and set COMPOSE_CMD. Returns 1 if none is present.
+# This only checks the CLI; daemon readiness is verified separately.
+detect_compose_cmd() {
     if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
         COMPOSE_CMD=(docker compose)
-        ok "Compose runtime: docker compose"
-        return
+        return 0
     fi
 
     if command -v docker-compose >/dev/null 2>&1; then
         COMPOSE_CMD=(docker-compose)
-        ok "Compose runtime: docker-compose"
-        return
+        return 0
     fi
 
     if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
         COMPOSE_CMD=(podman compose)
-        ok "Compose runtime: podman compose"
-        return
+        return 0
     fi
 
     if command -v podman-compose >/dev/null 2>&1; then
         COMPOSE_CMD=(podman-compose)
-        ok "Compose runtime: podman-compose"
+        return 0
+    fi
+
+    return 1
+}
+
+# True when the docker CLI exists and the daemon answers.
+docker_daemon_ready() {
+    command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+ensure_homebrew() {
+    if command -v brew >/dev/null 2>&1; then
+        ok "Homebrew found: $(brew --version | head -n 1)"
         return
+    fi
+
+    if ! confirm "Homebrew is not installed but is needed to install a container runtime. Install Homebrew now?"; then
+        fail "Homebrew is required. Install it from https://brew.sh/ and re-run ./install.sh."
+    fi
+
+    info "Installing Homebrew (you may be prompted for your password)..."
+    NONINTERACTIVE=1 /bin/bash -c \
+        "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    # Put brew on PATH for this session (Apple Silicon and Intel locations).
+    local brew_bin
+    for brew_bin in /opt/homebrew/bin/brew /usr/local/bin/brew; do
+        if [[ -x "$brew_bin" ]]; then
+            eval "$("$brew_bin" shellenv)"
+            break
+        fi
+    done
+
+    command -v brew >/dev/null 2>&1 \
+        || fail "Homebrew installed but 'brew' is not on PATH. Open a new shell and re-run ./install.sh."
+    ok "Homebrew installed: $(brew --version | head -n 1)"
+}
+
+wait_for_docker_daemon() {
+    info "Waiting for the Docker daemon to become ready..."
+    local attempts=0
+    until docker info >/dev/null 2>&1; do
+        attempts=$((attempts + 1))
+        if [[ $attempts -gt 60 ]]; then
+            return 1
+        fi
+        sleep 2
+    done
+    ok "Docker daemon is ready."
+}
+
+start_colima() {
+    info "Starting the Colima container VM (first run can take a minute)..."
+    if ! colima start; then
+        warn "colima start failed. Check 'colima status' and retry."
+        return 1
+    fi
+    wait_for_docker_daemon
+}
+
+# Set CHOSEN_RUNTIME to "colima" or "docker-desktop". Honours
+# MAISTRO_MACOS_RUNTIME, asks interactively, and defaults to Colima when
+# non-interactive (headless and license-free).
+choose_macos_runtime() {
+    CHOSEN_RUNTIME=""
+    case "$MACOS_RUNTIME" in
+        colima | docker-desktop)
+            CHOSEN_RUNTIME="$MACOS_RUNTIME"
+            return 0
+            ;;
+        "") ;;
+        *)
+            warn "Ignoring unknown MAISTRO_MACOS_RUNTIME='$MACOS_RUNTIME' (use 'colima' or 'docker-desktop')."
+            ;;
+    esac
+
+    if [[ "$AUTO_INSTALL_DEPS" == "1" || "$AUTO_INSTALL_DEPS" == "true" ]]; then
+        info "Non-interactive run: defaulting to Colima (headless)."
+        CHOSEN_RUNTIME="colima"
+        return 0
+    fi
+
+    local reply
+    if [[ -t 0 || -r /dev/tty ]]; then
+        echo ""
+        echo "Which container runtime should I install?"
+        echo "  1) Colima         - free, headless, scriptable (recommended)"
+        echo "  2) Docker Desktop - GUI app; may require a paid license for larger orgs"
+        if [[ -t 0 ]]; then
+            read -r -p "Choose [1/2] (default 1): " reply
+        else
+            read -r -p "Choose [1/2] (default 1): " reply < /dev/tty
+        fi
+    else
+        info "No interactive terminal: defaulting to Colima."
+        CHOSEN_RUNTIME="colima"
+        return 0
+    fi
+
+    case "$reply" in
+        2 | docker* | desktop | D | d) CHOSEN_RUNTIME="docker-desktop" ;;
+        *) CHOSEN_RUNTIME="colima" ;;
+    esac
+}
+
+install_colima_stack() {
+    ensure_homebrew
+    info "Installing Colima and the Docker CLI via Homebrew..."
+    brew install colima docker docker-compose
+    ok "Colima and Docker CLI installed."
+    start_colima
+}
+
+install_docker_desktop() {
+    ensure_homebrew
+    info "Installing Docker Desktop via Homebrew (large download)..."
+    brew install --cask docker
+    ok "Docker Desktop installed."
+    info "Launching Docker Desktop; accept any permission/license prompts it shows..."
+    open -a Docker >/dev/null 2>&1 || warn "Could not launch Docker Desktop automatically."
+    wait_for_docker_daemon \
+        || warn "Docker Desktop did not finish starting. Complete its first-run setup, then re-run ./install.sh."
+}
+
+# Bring a Docker daemon up on macOS, installing one via Homebrew + Colima when
+# nothing is present. Prefers an already-installed runtime before installing.
+bootstrap_macos_runtime() {
+    # Docker CLI is present but the daemon is down — try to start what's installed.
+    if command -v docker >/dev/null 2>&1; then
+        warn "The docker CLI is installed but the daemon is not responding."
+        if command -v colima >/dev/null 2>&1; then
+            start_colima
+            return
+        fi
+        if [[ -d "/Applications/Docker.app" ]]; then
+            info "Starting Docker Desktop..."
+            open -a Docker >/dev/null 2>&1 || warn "Could not launch Docker Desktop."
+            wait_for_docker_daemon \
+                || warn "Docker Desktop did not finish starting. Open it manually, then re-run."
+            return
+        fi
+        warn "Could not determine how to start the Docker daemon. Start Docker Desktop or run 'colima start', then re-run."
+        return
+    fi
+
+    # Nothing installed — let the user pick a runtime, then install it.
+    info "No container runtime detected on this Mac."
+    if ! confirm "Install a container runtime now?"; then
+        warn "Skipping container runtime install."
+        warn "Install Docker Desktop (https://docker.com/products/docker-desktop) or Colima, then re-run ./install.sh."
+        return
+    fi
+
+    choose_macos_runtime
+    case "$CHOSEN_RUNTIME" in
+        docker-desktop) install_docker_desktop ;;
+        *) install_colima_stack ;;
+    esac
+}
+
+ensure_compose_runtime() {
+    if detect_compose_cmd; then
+        # On macOS a docker CLI can exist with the daemon stopped; bring it up.
+        if is_macos && [[ "${COMPOSE_CMD[0]}" == "docker" ]] && ! docker_daemon_ready; then
+            bootstrap_macos_runtime
+        fi
+        ok "Compose runtime: ${COMPOSE_CMD[*]}"
+        return
+    fi
+
+    if is_macos; then
+        bootstrap_macos_runtime
+        if detect_compose_cmd; then
+            ok "Compose runtime: ${COMPOSE_CMD[*]}"
+            return
+        fi
     fi
 
     fail "No compose runtime found. Install Docker Desktop, Docker Engine with compose, or Podman, then retry."
@@ -412,6 +665,59 @@ compose_files() {
     fi
 }
 
+# Record the host Docker socket path so the builder mount works regardless of
+# runtime. Docker Desktop uses /var/run/docker.sock; Colima exposes it under
+# ~/.colima/<profile>/docker.sock. Only meaningful for docker (not podman).
+record_docker_sock() {
+    command -v docker >/dev/null 2>&1 || return 0
+
+    local host path
+    host="$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)"
+    [[ -n "$host" ]] || host="${DOCKER_HOST:-}"
+
+    case "$host" in
+        unix://*) path="${host#unix://}" ;;
+        "") path="/var/run/docker.sock" ;;
+        *)
+            warn "Docker endpoint '$host' is not a unix socket; the builder docker.sock mount may not apply."
+            warn "Set MAISTRO_DOCKER_SOCK in $ENV_FILE manually if the builder sandbox needs it."
+            return 0
+            ;;
+    esac
+
+    if [[ "$path" != "/var/run/docker.sock" ]]; then
+        info "Detected non-default Docker socket at $path; recording MAISTRO_DOCKER_SOCK."
+        upsert_env MAISTRO_DOCKER_SOCK "$path"
+    fi
+}
+
+# On ARM64 (Apple Silicon), best-effort check that the pinned third-party images
+# publish arm64 manifests. Locally-built images (engine, conductor) are native.
+# Advisory only — missing manifests just mean QEMU emulation, never a hard stop.
+report_arch() {
+    case "$ARCH" in
+        arm64 | aarch64) ;;
+        *) return 0 ;;
+    esac
+    command -v docker >/dev/null 2>&1 || return 0
+
+    info "ARM64 host detected; checking base images for native arm64 builds..."
+    local img missing=0
+    for img in \
+        "pgvector/pgvector:pg17" \
+        "ghcr.io/berriai/litellm:main-latest" \
+        "langfuse/langfuse:2"
+    do
+        if docker manifest inspect "$img" 2>/dev/null | grep -q "arm64"; then
+            ok "arm64 image available: $img"
+        else
+            warn "No confirmed arm64 manifest for $img — Docker may emulate it (slower)."
+            missing=$((missing + 1))
+        fi
+    done
+    [[ $missing -eq 0 ]] || warn "Emulated images run via QEMU; functional but slower on Apple Silicon."
+}
+
 start_engine() {
     if [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]]; then
         warn "Skipping compose start because --no-start or MAISTRO_START_STACK=0 was set."
@@ -419,6 +725,8 @@ start_engine() {
     fi
 
     ensure_compose_runtime
+    record_docker_sock
+    report_arch
     compose_files
     info "Starting maistro-engine from source..."
     "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" up -d --build
@@ -435,14 +743,52 @@ start_engine() {
     ok "Engine healthy."
 }
 
+# Install the host-side `maistro` CLI so `maistro builders` (the interactive
+# coding TUI) works after a curl install. Installs from the checked-out source:
+# maistro-core (the CLI + entrypoint) plus maistro-bootstrap (builders agent
+# loop/session/sandbox, and the typer/rich the CLI imports), with textual +
+# anthropic for the TUI. This sidesteps the maistro-core[builders] extra, which
+# would try to resolve maistro-bootstrap from PyPI.
+install_cli() {
+    if [[ "$INSTALL_CLI" == "0" || "$INSTALL_CLI" == "false" ]]; then
+        warn "Skipping host CLI install (--no-cli or MAISTRO_INSTALL_CLI=0)."
+        return
+    fi
+
+    local core="$PWD/packages/maistro-core"
+    local bootstrap="$PWD/packages/maistro-bootstrap"
+    if [[ ! -d "$core" || ! -d "$bootstrap" ]]; then
+        warn "Cannot find maistro-core/maistro-bootstrap sources; skipping CLI install."
+        return
+    fi
+
+    ensure_uv
+    info "Installing the 'maistro' CLI on the host (enables the 'maistro builders' TUI)..."
+    # The package to install commands from is the positional argument (a path is
+    # accepted); --with adds the extra requirements the CLI/TUI need at runtime.
+    if "${UV_CMD[@]}" tool install --force \
+        --with "$bootstrap" \
+        --with "textual>=0.61" \
+        --with "anthropic>=0.28" \
+        "$core"; then
+        ok "Installed the 'maistro' CLI."
+        # Ensure the uv tool bin dir (e.g. ~/.local/bin) is on PATH for new shells.
+        "${UV_CMD[@]}" tool update-shell >/dev/null 2>&1 || true
+    else
+        warn "Could not install the 'maistro' CLI. Retry later from the repo root with:"
+        warn "  uv tool install --with packages/maistro-bootstrap --with textual --with anthropic packages/maistro-core"
+    fi
+}
+
 print_success() {
     local token
     token="$(env_get MAISTRO_ACCESS_TOKEN)"
 
     echo ""
     echo "maistro-engine is ready"
-    echo "  URL:        http://${BIND_HOST}:${PORT}"
-    echo "  Token:      ${token}"
+    echo "  Engine API:  http://${BIND_HOST}:${PORT}"
+    echo "  Conductor:   http://${BIND_HOST}:${HIVE_PORT:-8101}  (chat, DAGs, deck builder)"
+    echo "  Token:       ${token}"
     echo "  Install dir: $PWD"
     echo "  Plan dir:    $PLAN_DIR"
     echo ""
@@ -450,9 +796,32 @@ print_success() {
     echo "  Logs:  ${COMPOSE_CMD[*]:-docker compose} ${COMPOSE_FILES[*]:--f $COMPOSE_FILE} logs -f maistro-engine"
     echo "  Stop:  ${COMPOSE_CMD[*]:-docker compose} ${COMPOSE_FILES[*]:--f $COMPOSE_FILE} down"
     echo ""
+    if [[ "$INSTALL_CLI" != "0" && "$INSTALL_CLI" != "false" ]]; then
+        echo "Local CLI:"
+        echo "  maistro builders   Interactive coding TUI (export ANTHROPIC_API_KEY first)"
+        echo "  maistro --help     All commands"
+        echo "  (If 'maistro' is not found, run 'uv tool update-shell' and open a new shell.)"
+        echo ""
+    fi
     echo "Security note: services are bound to localhost by default. Do not set"
     echo "MAISTRO_BIND_HOST=0.0.0.0 until auth, network, and sandbox exposure have been reviewed."
     echo ""
+}
+
+# Open the Conductor UI once the stack is up. macOS uses `open`; Linux uses
+# `xdg-open` when a display is present. Skipped with --no-open / MAISTRO_OPEN_BROWSER=0.
+open_browser() {
+    [[ "$OPEN_BROWSER" == "0" || "$OPEN_BROWSER" == "false" ]] && return 0
+    [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]] && return 0
+
+    local url="http://${BIND_HOST}:${HIVE_PORT:-8101}"
+    if is_macos && command -v open >/dev/null 2>&1; then
+        info "Opening the Conductor UI: $url"
+        open "$url" >/dev/null 2>&1 || true
+    elif command -v xdg-open >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+        info "Opening the Conductor UI: $url"
+        xdg-open "$url" >/dev/null 2>&1 || true
+    fi
 }
 
 main() {
@@ -465,7 +834,9 @@ main() {
     run_feature_wizard
     sync_env_file
     start_engine
+    install_cli
     print_success
+    open_browser
 }
 
 main
