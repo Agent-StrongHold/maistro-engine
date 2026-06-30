@@ -44,6 +44,13 @@ fail() { echo -e "${RED}[error]${NC} $*" >&2; exit 1; }
 
 is_macos() { [[ "$OS_NAME" == "Darwin" ]]; }
 
+# True inside a WSL2 (or WSL1) distro. WSL sets WSL_DISTRO_NAME/WSL_INTEROP;
+# /proc/version also names the Microsoft-patched kernel on every WSL release.
+is_wsl() {
+    [[ -n "${WSL_DISTRO_NAME:-}" || -n "${WSL_INTEROP:-}" ]] && return 0
+    grep -qi "microsoft" /proc/version 2>/dev/null
+}
+
 # Ask a yes/no question. Returns 0 for yes. Honours MAISTRO_AUTO_INSTALL_DEPS=1
 # for non-interactive runs; refuses (returns 1) when there is no terminal.
 confirm() {
@@ -91,6 +98,11 @@ macOS:
   When no container runtime is found, the installer asks whether to install
   Docker Desktop or Colima (via Homebrew) and starts it. Existing Docker
   Desktop / Colima installs are detected and started instead of reinstalling.
+
+Windows:
+  There is no native Windows path for this script — it needs bash. Run
+  get.ps1 from PowerShell first; it sets up WSL2 + Ubuntu (handling the
+  required reboot) and then runs this installer inside the distro.
 EOF
 }
 
@@ -591,11 +603,59 @@ bootstrap_macos_runtime() {
     esac
 }
 
+# Start dockerd directly when there's no init system managing it — the common
+# case inside a fresh WSL2 distro, which usually boots without systemd unless
+# the user opted in via /etc/wsl.conf. Falls back through service/systemctl
+# first since those are the supervised, restart-safe path when available.
+start_dockerd_unsupervised() {
+    if command -v service >/dev/null 2>&1 && service docker start >/dev/null 2>&1; then
+        :
+    elif command -v systemctl >/dev/null 2>&1 && systemctl start docker >/dev/null 2>&1; then
+        :
+    elif command -v dockerd >/dev/null 2>&1; then
+        info "No init system managing dockerd (typical under WSL2); starting it directly."
+        nohup dockerd >/var/log/dockerd.log 2>&1 &
+        disown
+    fi
+    wait_for_docker_daemon
+}
+
+# Install Docker Engine via apt when nothing is present. This is the free,
+# headless equivalent of the macOS Homebrew+Colima path — and is exactly what
+# a fresh WSL2 Ubuntu distro needs, since it ships with no container runtime
+# at all. Scoped to apt-based distros; other package managers fall through to
+# the generic failure message in ensure_compose_runtime.
+bootstrap_apt_docker_runtime() {
+    if command -v docker >/dev/null 2>&1; then
+        warn "The docker CLI is installed but the daemon is not responding."
+        start_dockerd_unsupervised \
+            || warn "Could not start the Docker daemon. Start it manually (e.g. 'sudo service docker start'), then re-run."
+        return
+    fi
+
+    command -v apt-get >/dev/null 2>&1 || return 0
+
+    info "No container runtime detected."
+    if ! confirm "Install Docker Engine now via apt?"; then
+        warn "Skipping container runtime install."
+        warn "Install Docker Engine (https://docs.docker.com/engine/install/) or Podman, then re-run ./install.sh."
+        return
+    fi
+
+    info "Installing Docker Engine via apt (you may be prompted for your password)..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq docker.io docker-compose-plugin
+    ok "Docker Engine installed."
+    start_dockerd_unsupervised
+}
+
 ensure_compose_runtime() {
     if detect_compose_cmd; then
         # On macOS a docker CLI can exist with the daemon stopped; bring it up.
         if is_macos && [[ "${COMPOSE_CMD[0]}" == "docker" ]] && ! docker_daemon_ready; then
             bootstrap_macos_runtime
+        elif [[ "${COMPOSE_CMD[0]}" == "docker" ]] && ! is_macos && ! docker_daemon_ready; then
+            bootstrap_apt_docker_runtime
         fi
         ok "Compose runtime: ${COMPOSE_CMD[*]}"
         return
@@ -603,10 +663,12 @@ ensure_compose_runtime() {
 
     if is_macos; then
         bootstrap_macos_runtime
-        if detect_compose_cmd; then
-            ok "Compose runtime: ${COMPOSE_CMD[*]}"
-            return
-        fi
+    else
+        bootstrap_apt_docker_runtime
+    fi
+    if detect_compose_cmd; then
+        ok "Compose runtime: ${COMPOSE_CMD[*]}"
+        return
     fi
 
     fail "No compose runtime found. Install Docker Desktop, Docker Engine with compose, or Podman, then retry."
@@ -808,8 +870,10 @@ print_success() {
     echo ""
 }
 
-# Open the Conductor UI once the stack is up. macOS uses `open`; Linux uses
-# `xdg-open` when a display is present. Skipped with --no-open / MAISTRO_OPEN_BROWSER=0.
+# Open the Conductor UI once the stack is up. macOS uses `open`; under WSL
+# there's no X server, so hand off to the Windows side (explorer.exe/cmd.exe);
+# plain Linux uses `xdg-open` when a display is present. Skipped with
+# --no-open / MAISTRO_OPEN_BROWSER=0.
 open_browser() {
     [[ "$OPEN_BROWSER" == "0" || "$OPEN_BROWSER" == "false" ]] && return 0
     [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]] && return 0
@@ -818,6 +882,13 @@ open_browser() {
     if is_macos && command -v open >/dev/null 2>&1; then
         info "Opening the Conductor UI: $url"
         open "$url" >/dev/null 2>&1 || true
+    elif is_wsl; then
+        info "Opening the Conductor UI on the Windows side: $url"
+        if command -v explorer.exe >/dev/null 2>&1; then
+            explorer.exe "$url" >/dev/null 2>&1 || true
+        elif command -v cmd.exe >/dev/null 2>&1; then
+            cmd.exe /c start "$url" >/dev/null 2>&1 || true
+        fi
     elif command -v xdg-open >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
         info "Opening the Conductor UI: $url"
         xdg-open "$url" >/dev/null 2>&1 || true
