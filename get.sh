@@ -7,6 +7,11 @@ set -euo pipefail
 #   curl -fsSL https://get.hiveconductor.dev | bash
 #   curl -fsSL https://raw.githubusercontent.com/BlakeMatthews-dev/maistro-engine/main/get.sh | bash
 #
+# This script needs bash and is the entrypoint for macOS, Linux, and WSL2.
+# On native Windows (no bash), use get.ps1 instead — from PowerShell:
+#   irm https://raw.githubusercontent.com/BlakeMatthews-dev/maistro-engine/main/get.ps1 | iex
+# get.ps1 sets up WSL2 + Ubuntu, then runs this same script inside it.
+#
 # This script installs/updates the maistro-engine source tree, then delegates to
 # ./install.sh so the same interactive feature/deployment flow is used everywhere.
 
