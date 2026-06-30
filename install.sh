@@ -18,8 +18,10 @@ ANSWERS_FILE="${MAISTRO_INSTALL_ANSWERS:-}"
 SKIP_WIZARD="${MAISTRO_SKIP_WIZARD:-0}"
 START_STACK="${MAISTRO_START_STACK:-1}"
 AUTO_INSTALL_DEPS="${MAISTRO_AUTO_INSTALL_DEPS:-0}"
+MACOS_RUNTIME="${MAISTRO_MACOS_RUNTIME:-}"
 
 OS_NAME="$(uname -s)"
+CHOSEN_RUNTIME=""
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -75,11 +77,12 @@ Options:
 Environment:
   MAISTRO_DIR, MAISTRO_PORT, MAISTRO_BIND_HOST, MAISTRO_INSTALL_ANSWERS,
   MAISTRO_SKIP_WIZARD, MAISTRO_START_STACK, MAISTRO_COMPOSE_FILE,
-  MAISTRO_AUTO_INSTALL_DEPS (1 = install Homebrew/Colima on macOS without prompting).
+  MAISTRO_AUTO_INSTALL_DEPS (1 = install deps on macOS without prompting),
+  MAISTRO_MACOS_RUNTIME (colima | docker-desktop = preselect, skip the prompt).
 
 macOS:
-  When no container runtime is found, the installer offers to install Homebrew,
-  then Colima + the Docker CLI, and starts the Colima VM. Existing Docker
+  When no container runtime is found, the installer asks whether to install
+  Docker Desktop or Colima (via Homebrew) and starts it. Existing Docker
   Desktop / Colima installs are detected and started instead of reinstalling.
 EOF
 }
@@ -445,6 +448,70 @@ start_colima() {
     wait_for_docker_daemon
 }
 
+# Set CHOSEN_RUNTIME to "colima" or "docker-desktop". Honours
+# MAISTRO_MACOS_RUNTIME, asks interactively, and defaults to Colima when
+# non-interactive (headless and license-free).
+choose_macos_runtime() {
+    CHOSEN_RUNTIME=""
+    case "$MACOS_RUNTIME" in
+        colima | docker-desktop)
+            CHOSEN_RUNTIME="$MACOS_RUNTIME"
+            return 0
+            ;;
+        "") ;;
+        *)
+            warn "Ignoring unknown MAISTRO_MACOS_RUNTIME='$MACOS_RUNTIME' (use 'colima' or 'docker-desktop')."
+            ;;
+    esac
+
+    if [[ "$AUTO_INSTALL_DEPS" == "1" || "$AUTO_INSTALL_DEPS" == "true" ]]; then
+        info "Non-interactive run: defaulting to Colima (headless)."
+        CHOSEN_RUNTIME="colima"
+        return 0
+    fi
+
+    local reply
+    if [[ -t 0 || -r /dev/tty ]]; then
+        echo ""
+        echo "Which container runtime should I install?"
+        echo "  1) Colima         - free, headless, scriptable (recommended)"
+        echo "  2) Docker Desktop - GUI app; may require a paid license for larger orgs"
+        if [[ -t 0 ]]; then
+            read -r -p "Choose [1/2] (default 1): " reply
+        else
+            read -r -p "Choose [1/2] (default 1): " reply < /dev/tty
+        fi
+    else
+        info "No interactive terminal: defaulting to Colima."
+        CHOSEN_RUNTIME="colima"
+        return 0
+    fi
+
+    case "$reply" in
+        2 | docker* | desktop | D | d) CHOSEN_RUNTIME="docker-desktop" ;;
+        *) CHOSEN_RUNTIME="colima" ;;
+    esac
+}
+
+install_colima_stack() {
+    ensure_homebrew
+    info "Installing Colima and the Docker CLI via Homebrew..."
+    brew install colima docker docker-compose
+    ok "Colima and Docker CLI installed."
+    start_colima
+}
+
+install_docker_desktop() {
+    ensure_homebrew
+    info "Installing Docker Desktop via Homebrew (large download)..."
+    brew install --cask docker
+    ok "Docker Desktop installed."
+    info "Launching Docker Desktop; accept any permission/license prompts it shows..."
+    open -a Docker >/dev/null 2>&1 || warn "Could not launch Docker Desktop automatically."
+    wait_for_docker_daemon \
+        || warn "Docker Desktop did not finish starting. Complete its first-run setup, then re-run ./install.sh."
+}
+
 # Bring a Docker daemon up on macOS, installing one via Homebrew + Colima when
 # nothing is present. Prefers an already-installed runtime before installing.
 bootstrap_macos_runtime() {
@@ -466,19 +533,19 @@ bootstrap_macos_runtime() {
         return
     fi
 
-    # Nothing installed — offer the Homebrew + Colima path.
+    # Nothing installed — let the user pick a runtime, then install it.
     info "No container runtime detected on this Mac."
-    if ! confirm "Install a container runtime now (Homebrew + Colima + Docker CLI)?"; then
+    if ! confirm "Install a container runtime now?"; then
         warn "Skipping container runtime install."
         warn "Install Docker Desktop (https://docker.com/products/docker-desktop) or Colima, then re-run ./install.sh."
         return
     fi
 
-    ensure_homebrew
-    info "Installing Colima and the Docker CLI via Homebrew..."
-    brew install colima docker docker-compose
-    ok "Colima and Docker CLI installed."
-    start_colima
+    choose_macos_runtime
+    case "$CHOSEN_RUNTIME" in
+        docker-desktop) install_docker_desktop ;;
+        *) install_colima_stack ;;
+    esac
 }
 
 ensure_compose_runtime() {
