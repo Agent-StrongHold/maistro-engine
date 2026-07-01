@@ -916,10 +916,35 @@ install_cli() {
         ok "Installed the 'maistro' CLI."
         # Ensure the uv tool bin dir (e.g. ~/.local/bin) is on PATH for new shells.
         "${UV_CMD[@]}" tool update-shell >/dev/null 2>&1 || true
+        persist_repo_root
     else
         warn "Could not install the 'maistro' CLI. Retry later from the repo root with:"
         warn "  uv tool install --with packages/maistro-bootstrap --with textual --with anthropic packages/maistro-core"
     fi
+}
+
+# `maistro builders` runs on the bare host, not in a container, so it needs to
+# know where this checkout (and its .env / LiteLLM gateway) lives even when
+# run from some other project directory later. Persist MAISTRO_REPO_ROOT so
+# new shells pick it up without the user exporting it manually every time.
+persist_repo_root() {
+    local root="$PWD"
+    if command -v setx >/dev/null 2>&1; then
+        # Windows (including Git Bash/MSYS) — persists via the registry,
+        # picked up by shells opened after this one.
+        setx MAISTRO_REPO_ROOT "$root" >/dev/null 2>&1 || true
+    fi
+    local rc line="export MAISTRO_REPO_ROOT=\"$root\""
+    for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.profile"; do
+        [[ -f "$rc" ]] || continue
+        grep -q "MAISTRO_REPO_ROOT=" "$rc" 2>/dev/null && continue
+        {
+            echo ""
+            echo "# maistro-engine install.sh — lets 'maistro builders' find this checkout from any directory."
+            echo "$line"
+        } >> "$rc"
+    done
+    ok "Set MAISTRO_REPO_ROOT=$root for new shells (open a new terminal for it to take effect)."
 }
 
 print_success() {
@@ -940,7 +965,7 @@ print_success() {
     echo ""
     if [[ "$INSTALL_CLI" != "0" && "$INSTALL_CLI" != "false" ]]; then
         echo "Local CLI:"
-        echo "  maistro builders   Interactive coding TUI (export ANTHROPIC_API_KEY first)"
+        echo "  maistro builders   Interactive coding TUI (open a new terminal first — picks up the LiteLLM gateway automatically)"
         echo "  maistro --help     All commands"
         echo "  (If 'maistro' is not found, run 'uv tool update-shell' and open a new shell.)"
         echo ""
