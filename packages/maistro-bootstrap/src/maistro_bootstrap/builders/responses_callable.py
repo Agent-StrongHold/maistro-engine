@@ -77,9 +77,11 @@ def _ensure_env_loaded() -> None:
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return
 
-    if any(os.environ.get(k) for k in ("LITELLM_URL", "LITELLM_BASE_URL", "LITELLM_PROXY_URL")):
-        return
-
+    # Don't early-return just because a URL is exported: a user may have
+    # LITELLM_URL in their shell but keep the key/model only in the engine .env.
+    # We still parse .env below and fill *only* the keys that aren't already set
+    # (the `not os.environ.get(key)` guard), so an exported value is never
+    # overridden — this just stops a lone URL from starving the key/model.
     from maistro_bootstrap.repo_root import find_maistro_engine_root
 
     # find_maistro_engine_root() already checks MAISTRO_REPO_ROOT first,

@@ -56,12 +56,9 @@ class ContainerBuilderSandbox:
     `sync_to_host()` — the agent itself never touches it.
     """
 
-    def __init__(
-        self, repo_root: Path, *, image: str = DEFAULT_IMAGE, base_ref: str = "HEAD"
-    ) -> None:
+    def __init__(self, repo_root: Path, *, image: str = DEFAULT_IMAGE) -> None:
         self._repo_root = Path(repo_root).resolve()
         self._image = image
-        self._base_ref = base_ref  # accepted for parity with LocalWorktreeSandbox
         self._cid: str | None = None
 
     # -- lifecycle -----------------------------------------------------------
@@ -81,9 +78,46 @@ class ContainerBuilderSandbox:
             self._cid = None
 
     def sync_to_host(self, dest: Path | None = None) -> None:
-        """Copy the container workspace back to the host (for commit/inspection)."""
+        """Copy the container workspace back to the host, EXCLUDING ``.git``.
+
+        The agent has shell access inside the container, so a plain ``docker cp``
+        of the whole workspace would let it corrupt refs/config/hooks that the
+        caller then runs host-side git against — defeating the isolation. Stream a
+        tar that excludes ``.git`` so only source edits return; the host worktree
+        keeps its own git metadata.
+        """
         target = Path(dest) if dest is not None else self._repo_root
-        _docker(["cp", f"{self._require_cid()}:{_WORKDIR}/.", str(target)])
+        target.mkdir(parents=True, exist_ok=True)
+        archive = subprocess.run(
+            [
+                "docker",
+                "exec",
+                self._require_cid(),
+                "tar",
+                "cf",
+                "-",
+                "--exclude=./.git",
+                "-C",
+                _WORKDIR,
+                ".",
+            ],
+            capture_output=True,
+            timeout=_DEFAULT_TIMEOUT,
+        )
+        if archive.returncode != 0:
+            raise RuntimeError(
+                f"container tar failed: {archive.stderr.decode(errors='replace')[:300]}"
+            )
+        extract = subprocess.run(
+            ["tar", "xf", "-", "-C", str(target)],
+            input=archive.stdout,
+            capture_output=True,
+            timeout=_DEFAULT_TIMEOUT,
+        )
+        if extract.returncode != 0:
+            raise RuntimeError(
+                f"host tar extract failed: {extract.stderr.decode(errors='replace')[:300]}"
+            )
 
     # -- helpers -------------------------------------------------------------
 

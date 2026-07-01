@@ -189,7 +189,7 @@ def create_app() -> FastAPI:
     app.include_router(cli.router, prefix="/v1/cli")
     app.include_router(containers.router, prefix="/v1/containers")
     app.include_router(memory.router, prefix="/v1/memory")
-    app.include_router(profile.router, prefix="/api/v1/profile")
+    app.include_router(profile.router, prefix="/v1/profile")
     app.include_router(settings_r.router, prefix="/v1/settings")
     app.include_router(capabilities.router, prefix="/v1/capabilities")
     app.include_router(voice.router, prefix="/v1/voice")

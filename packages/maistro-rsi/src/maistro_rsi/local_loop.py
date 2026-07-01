@@ -136,7 +136,7 @@ class LocalSandbox:
             # (e.g. "pytest -q && ruff check"), not agent-controlled input.
             proc = subprocess.run(
                 command,
-                shell=True,  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true -- operator-supplied test/health config, not agent input
+                shell=True,  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test/health config, not agent input
                 cwd=str(self._workspace),
                 capture_output=True,
                 text=True,
@@ -159,6 +159,7 @@ class LocalSandbox:
         await asyncio.to_thread(_write)
 
     async def snapshot(self, label: str) -> str:
+        del label  # bookkeeping only (microVM-backend parity); the id is the sha
         proc = await asyncio.to_thread(_git, self._workspace, "rev-parse", "HEAD")
         return proc.stdout.strip()
 
@@ -501,7 +502,7 @@ class LocalRsiLoop:
         # shell=True: the test command is operator-supplied config, not agent input.
         proc = subprocess.run(
             self._config.test_command,
-            shell=True,  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true -- operator-supplied test command from config, not agent input
+            shell=True,  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test command from config, not agent input
             cwd=str(cycle_dir),
             capture_output=True,
             text=True,

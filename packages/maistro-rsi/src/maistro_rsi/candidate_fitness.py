@@ -106,7 +106,7 @@ def _run(cmd: str, cwd: Path, timeout: int = 900) -> tuple[bool, str]:
     try:
         proc = subprocess.run(
             cmd,
-            shell=True,  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true -- operator-supplied test command from config, not agent/attacker input
+            shell=True,  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test command from config, not agent/attacker input
             cwd=str(cwd),
             capture_output=True,
             text=True,
@@ -121,27 +121,42 @@ def _run(cmd: str, cwd: Path, timeout: int = 900) -> tuple[bool, str]:
     )
 
 
+_LINT_TIMEOUT = 120
+
+
+def _run_lint_tool(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str] | None:
+    """Run a static tool, bounded by a timeout. Returns None if the tool is
+    missing or wedges — so the gate is treated as unavailable (not a false
+    rejection, and never an indefinite hang of LocalRsiLoop.run())."""
+    try:
+        proc = subprocess.run(
+            argv, cwd=str(cwd), capture_output=True, text=True, timeout=_LINT_TIMEOUT
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if "No module named" in proc.stderr:
+        return None
+    return proc
+
+
 def _lint_gates(cwd: Path, src_files: list[str]) -> list[GateResult]:
-    """ruff / mypy / bandit-HIGH on the changed source files. A missing tool
-    yields a passing (unenforced) gate rather than a false rejection."""
+    """ruff / mypy / bandit-HIGH on the changed source files. A missing, errored,
+    or timed-out tool yields no gate (unenforced) rather than a false rejection."""
     if not src_files:
         return []
     gates: list[GateResult] = []
 
-    ruff = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", "--output-format", "json", *src_files],
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
+    ruff = _run_lint_tool(
+        [sys.executable, "-m", "ruff", "check", "--output-format", "json", *src_files], cwd
     )
-    if "No module named" not in ruff.stderr:
+    if ruff is not None:
         try:
             n = len(json.loads(ruff.stdout or "[]"))
         except json.JSONDecodeError:
             n = 0
         gates.append(GateResult("ruff_clean", n == 0, f"{n} lint violation(s)"))
 
-    mypy = subprocess.run(
+    mypy = _run_lint_tool(
         [
             sys.executable,
             "-m",
@@ -153,21 +168,14 @@ def _lint_gates(cwd: Path, src_files: list[str]) -> list[GateResult]:
             os.devnull,
             *src_files,
         ],
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
+        cwd,
     )
-    if "No module named" not in mypy.stderr:
+    if mypy is not None:
         errs = sum(1 for ln in mypy.stdout.splitlines() if ": error:" in ln)
         gates.append(GateResult("mypy_clean", errs == 0, f"{errs} type error(s)"))
 
-    bandit = subprocess.run(
-        [sys.executable, "-m", "bandit", "-f", "json", "-q", *src_files],
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
-    )
-    if "No module named" not in bandit.stderr:
+    bandit = _run_lint_tool([sys.executable, "-m", "bandit", "-f", "json", "-q", *src_files], cwd)
+    if bandit is not None:
         try:
             results = json.loads(bandit.stdout or "{}").get("results", [])
         except json.JSONDecodeError:

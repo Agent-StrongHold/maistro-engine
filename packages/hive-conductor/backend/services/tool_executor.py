@@ -60,8 +60,46 @@ async def web_search(query: str, max_results: int = 5) -> dict[str, Any]:
     return await _gemini_grounded_search(query, max_results)
 
 
+def _ssrf_blocked(url: str) -> str | None:
+    """Return a reason if ``url`` is unsafe to fetch (SSRF), else None.
+
+    Blocks non-http(s) schemes and any host that resolves to a non-public
+    address — loopback, private ranges, link-local (incl. the 169.254.169.254
+    cloud-metadata endpoint), and reserved space — so `browse_url`, exposed to
+    chat users, can't be turned into a request forgery against internal services.
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return "unparseable URL"
+    if parsed.scheme not in ("http", "https"):
+        return f"scheme {parsed.scheme!r} not allowed (http/https only)"
+    host = parsed.hostname
+    if not host:
+        return "URL has no host"
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return f"cannot resolve host {host!r}"
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if not ip.is_global or ip.is_reserved:
+            return f"host {host!r} resolves to non-public address {ip}"
+    return None
+
+
 async def browse_url(url: str, task: str = "Extract key facts and quotes") -> dict[str, Any]:
     """Fetch and summarize a real URL."""
+    blocked = _ssrf_blocked(url)
+    if blocked:
+        return {"url": url, "error": f"blocked (SSRF protection): {blocked}"}
     try:
         from maistro.tools.browser import BrowserClient
 
