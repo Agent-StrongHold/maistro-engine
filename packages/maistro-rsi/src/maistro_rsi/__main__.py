@@ -66,6 +66,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Container image for --isolation container (default: maistro-builders:latest).",
     )
     run.add_argument(
+        "--fitness",
+        action="store_true",
+        help="Decide promotion with the full multi-signal Scorecard (gates + weighted "
+        "scores) instead of the bare test command; logs an auditable breakdown per cycle.",
+    )
+    run.add_argument(
+        "--coverage-source",
+        default=".",
+        help="Path passed to coverage --source when --fitness is on (default: .).",
+    )
+    run.add_argument(
         "--work-root",
         default=None,
         help="Where to put throwaway clones/worktrees (default: a temp dir).",
@@ -95,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
             agent_turns_per_cycle=args.agent_turns,
             isolation=args.isolation,
             sandbox_image=args.image,
+            use_fitness=args.fitness,
+            coverage_source=args.coverage_source,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"

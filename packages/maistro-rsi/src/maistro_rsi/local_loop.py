@@ -282,6 +282,12 @@ class LocalRsiConfig:
     sandbox_image: str = "maistro-builders:latest"
     baseline_branch: str = "rsi-baseline"
     test_timeout: int = 900
+    # When True, promotion is decided by the full multi-signal Scorecard
+    # (gates + weighted scores) instead of the bare test_command, and each
+    # decision is logged via scorecard.explain(). Requires the quality tools
+    # (ruff/mypy/bandit/coverage/…) to be importable in the run environment.
+    use_fitness: bool = False
+    coverage_source: str = "."
 
 
 @dataclass
@@ -293,6 +299,7 @@ class CycleOutcome:
     files_touched: int = 0
     target: str = ""
     note: str = ""
+    composite: float = 0.0
 
 
 @dataclass
@@ -331,6 +338,18 @@ class LocalRsiLoop:
         self._config = config
         self._injected_apply = apply_patch
         self._baseline = Path(config.work_root) / "baseline"
+        self._baseline_cov: float | None = None  # cached; invalidated on promote
+
+    def _baseline_coverage(self) -> float | None:
+        if not self._config.use_fitness:
+            return None
+        if self._baseline_cov is None:
+            from maistro_evolve.coverage_gate import measure_coverage
+
+            self._baseline_cov = measure_coverage(
+                self._baseline, source=self._config.coverage_source
+            )
+        return self._baseline_cov
 
     def _target_for_cycle(self, index: int) -> str:
         if self._config.targets:
@@ -398,36 +417,88 @@ class LocalRsiLoop:
                     note="agent made no change",
                 )
 
-            files_touched = len([ln for ln in status.stdout.splitlines() if ln.strip()])
+            status_lines = [ln for ln in status.stdout.splitlines() if ln.strip()]
+            files_touched = len(status_lines)
+            changed_files = [ln[3:].strip() for ln in status_lines]
             commit_subject = f"RSI cycle {index}: {(target or self._config.objective)[:60]}"
             _git(cycle_dir, "commit", "-q", "-m", commit_subject)
 
-            tests_passed = self._run_tests(cycle_dir)
-            if not tests_passed:
+            # Promotion decision: the full multi-signal Scorecard (gates +
+            # weighted scores) when use_fitness, else the bare test command.
+            if self._config.use_fitness:
+                accepted, composite, note, tests_passed = self._fitness_decision(
+                    index, cycle_dir, changed_files
+                )
+            else:
+                tests_passed = self._run_tests(cycle_dir)
+                accepted, composite = tests_passed, 0.0
+                note = "" if tests_passed else "test command failed"
+
+            if not accepted:
                 return CycleOutcome(
                     index,
                     changed=True,
-                    tests_passed=False,
+                    tests_passed=tests_passed,
                     promoted=False,
                     files_touched=files_touched,
                     target=target,
-                    note="test command failed",
+                    note=note or "rejected by fitness",
+                    composite=composite,
                 )
 
             # Promote: fast-forward the baseline branch to include this cycle.
             _git(self._baseline, "merge", "--ff-only", cycle_branch)
-            logger.info("rsi_local_cycle_promoted", index=index, files=files_touched, target=target)
+            self._baseline_cov = None  # baseline advanced — recompute coverage next cycle
+            logger.info(
+                "rsi_local_cycle_promoted",
+                index=index,
+                files=files_touched,
+                target=target,
+                composite=composite,
+            )
             return CycleOutcome(
                 index,
                 changed=True,
-                tests_passed=True,
+                tests_passed=tests_passed,
                 promoted=True,
                 files_touched=files_touched,
                 target=target,
+                composite=composite,
+                note=(f"composite={composite}" if self._config.use_fitness else ""),
             )
         finally:
             _git(self._baseline, "worktree", "remove", "--force", str(cycle_dir), check=False)
             _git(self._baseline, "branch", "-D", cycle_branch, check=False)
+
+    def _fitness_decision(
+        self, index: int, cycle_dir: Path, changed_files: list[str]
+    ) -> tuple[bool, float, str, bool]:
+        """Build the multi-signal Scorecard for the candidate and return
+        (accepted, composite, reject_reason, tests_passed). Logs explain()."""
+        from maistro_rsi.candidate_fitness import evaluate_candidate
+
+        scorecard = evaluate_candidate(
+            cycle_dir,
+            changed_files,
+            test_command=self._config.test_command,
+            coverage_source=self._config.coverage_source,
+            baseline_coverage=self._baseline_coverage(),
+            timeout=self._config.test_timeout,
+        )
+        logger.info(
+            "rsi_local_scorecard",
+            index=index,
+            accepted=scorecard.accepted,
+            composite=scorecard.composite,
+            explain="\n" + scorecard.explain(),
+        )
+        tests_passed = next(
+            (g.passed for g in scorecard.gates if g.name == "tests_pass"), False
+        )
+        reason = next(
+            (f"{g.name}: {g.reason}" for g in scorecard.gates if not g.passed), ""
+        )
+        return scorecard.accepted, scorecard.composite, reason, tests_passed
 
     def _run_tests(self, cycle_dir: Path) -> bool:
         # shell=True: the test command is operator-supplied config, not agent input.
