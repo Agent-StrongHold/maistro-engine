@@ -1,22 +1,20 @@
-"""TDD gate: verify a self-modification was test-driven, not rubber-stamped.
+"""Red→green as a *signal*, not a gate — because the real gate is coverage.
 
-The self-improvement process is expected to be TDD, in one of three shapes:
+Red→green (a changed test fails on baseline, passes on candidate) is a nice
+positive marker that a change was test-first. But it must NOT be a veto: two
+perfectly valid moves are green-on-baseline and would be wrongly rejected by a
+red→green gate —
 
-  1. **test proposed then code** — a new test, red on baseline, green on candidate.
-  2. **new code for an existing test** — a pre-existing *failing* test goes green.
-  3. **improved test + improved code** — a strengthened test, red on baseline,
-     green on candidate.
+  - **refactor** — green→green, no test change (improve maintainability/DRY/CC
+    while behaviour is preserved); rewarded by the code-quality delta.
+  - **characterization test** — add a test to already-correct code. It passes on
+    baseline (not red→green) but raises coverage — valuable, not vacuous.
 
-The unifying, un-gameable check is **red→green**: a candidate's changed tests
-must *fail on the baseline code* and *pass on the candidate code*. A changed test
-that already passes on baseline tests nothing new (vacuous); a code change with
-no test change — and no previously-failing test now fixed — isn't test-driven.
-Coverage-not-dropped (see coverage_gate) catches gross test deletion; this gate
-catches the subtler "code first, rubber-stamp test" and "vacuous test" cases.
-
-The predicate `tdd_gate()` is pure and takes a `TddEvidence` the loop fills in by
-running the changed tests against each code state; `run_test_selection()` is the
-subprocess helper that produces that evidence.
+What red→green was really guarding against — untested code sneaking in — is
+already caught by **coverage not dropping** (see `coverage_gate`), which is the
+universal gate together with "tests pass". So this module offers red→green only
+as a small positive `SignalScore` (reward test-first behaviour; never punish the
+absence of it). `run_test_selection()` produces the `TddEvidence` the loop fills.
 """
 
 from __future__ import annotations
@@ -26,7 +24,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from maistro_evolve.scorecard import GateResult
+from maistro_evolve.scorecard import MeasureKind, SignalScore
 
 _TEST_HINTS = ("test_", "_test.py", "/tests/", "conftest.py")
 
@@ -47,35 +45,37 @@ class TddEvidence:
     candidate_suite_failures: int = 0
 
 
-def tdd_gate(evidence: TddEvidence) -> GateResult:
-    """Pass iff the change is genuinely test-driven (one of the three modes)."""
+def red_green_signal(evidence: TddEvidence, weight: float = 0.05) -> SignalScore:
+    """A small positive reward for demonstrably test-first change — never a veto.
+
+    - 1.0: a changed test was red on baseline and green on candidate (test-first,
+      bug-fix, or strengthened-assertion), OR a previously-failing test went green.
+    - 0.5: green→green (refactor) or a characterization test — valid, just not
+      test-first; not punished (its reward comes from code-quality/coverage).
+    The safety gate is coverage-not-dropped + tests-pass, elsewhere; this only
+    nudges the fitness toward genuine TDD when several candidates are otherwise
+    comparable.
+    """
     ev = evidence
-    if ev.changed_tests:
-        if ev.baseline_changed_rc == 0:
-            return GateResult(
-                "tdd_red_green",
-                False,
-                "changed tests already pass on baseline — vacuous, not test-first",
-            )
-        if ev.candidate_changed_rc != 0:
-            return GateResult(
-                "tdd_red_green", False, "changed tests do not pass on the candidate"
-            )
-        return GateResult(
-            "tdd_red_green",
-            True,
-            f"{len(ev.changed_tests)} changed test(s): red on baseline, green on candidate",
-        )
-    # No test change: only test-driven if it turned a previously-failing test green.
-    if ev.candidate_suite_failures < ev.baseline_suite_failures:
-        fixed = ev.baseline_suite_failures - ev.candidate_suite_failures
-        return GateResult(
-            "tdd_red_green", True, f"no new tests, but fixed {fixed} pre-existing failing test(s)"
-        )
-    return GateResult(
-        "tdd_red_green",
-        False,
-        "code change with no test change and no previously-failing test fixed — not TDD",
+    test_first = (
+        ev.changed_tests
+        and ev.baseline_changed_rc not in (None, 0)
+        and ev.candidate_changed_rc == 0
+    )
+    fixed_failing = ev.candidate_suite_failures < ev.baseline_suite_failures
+    if test_first:
+        score, why = 1.0, f"{len(ev.changed_tests)} changed test(s): red on baseline → green"
+    elif fixed_failing:
+        n = ev.baseline_suite_failures - ev.candidate_suite_failures
+        score, why = 1.0, f"turned {n} previously-failing test(s) green"
+    else:
+        score, why = 0.5, "not test-first (refactor / characterization) — valid, not penalised"
+    return SignalScore(
+        name="red_green",
+        kind=MeasureKind.CALCULATED,
+        score=score,
+        weight=weight,
+        rationale=why,
     )
 
 
