@@ -899,6 +899,8 @@ install_cli() {
 
     local core="$PWD/packages/maistro-core"
     local bootstrap="$PWD/packages/maistro-bootstrap"
+    local rsi="$PWD/packages/maistro-rsi"
+    local evolve="$PWD/packages/maistro-evolve"
     if [[ ! -d "$core" || ! -d "$bootstrap" ]]; then
         warn "Cannot find maistro-core/maistro-bootstrap sources; skipping CLI install."
         return
@@ -908,12 +910,23 @@ install_cli() {
     info "Installing the 'maistro' CLI on the host (enables the 'maistro builders' TUI)..."
     # The package to install commands from is the positional argument (a path is
     # accepted); --with adds the extra requirements the CLI/TUI need at runtime.
-    if "${UV_CMD[@]}" tool install --force \
-        --with "$bootstrap" \
-        --with "textual>=0.61" \
-        --with "anthropic>=0.28" \
-        "$core"; then
-        ok "Installed the 'maistro' CLI."
+    local -a with_args=(
+        --with "$bootstrap"
+        --with "textual>=0.61"
+        --with "anthropic>=0.28"
+    )
+    # Add the RSI self-improvement stack + its objective code-quality toolchain so
+    # `python -m maistro_rsi run --fitness` can score candidates (ruff/mypy/bandit/
+    # radon/pylint/interrogate/complexipy/vulture/coverage must be importable, or
+    # the fitness gates silently degrade to "unenforced").
+    [[ -d "$rsi" ]] && with_args+=(--with "$rsi")
+    [[ -d "$evolve" ]] && with_args+=(--with "$evolve")
+    local qtool
+    for qtool in ruff mypy bandit radon pylint interrogate complexipy vulture coverage; do
+        with_args+=(--with "$qtool")
+    done
+    if "${UV_CMD[@]}" tool install --force "${with_args[@]}" "$core"; then
+        ok "Installed the 'maistro' CLI (+ RSI fitness toolchain)."
         # Ensure the uv tool bin dir (e.g. ~/.local/bin) is on PATH for new shells.
         "${UV_CMD[@]}" tool update-shell >/dev/null 2>&1 || true
         persist_repo_root

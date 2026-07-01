@@ -30,7 +30,12 @@ from maistro_evolve.scorecard import (
     architecture_fit_signal,
     capability_signal,
 )
-from maistro_evolve.tdd_gate import TddEvidence, changed_test_paths, red_green_signal
+from maistro_evolve.tdd_gate import (
+    TddEvidence,
+    changed_test_paths,
+    red_green_signal,
+    run_test_selection,
+)
 
 _TEST_HINTS = ("test_", "_test.py", "/tests/", "conftest.py")
 
@@ -169,6 +174,31 @@ def _mean_assertion(cwd: Path, test_files: list[str]) -> tuple[float | None, str
     return round(mean, 4), f"mean assertion strength over {len(scores)} changed test file(s)"
 
 
+def _red_green_evidence(
+    cwd: Path, baseline_ref: str, src: list[str], tests: list[str], timeout: int
+) -> TddEvidence:
+    """Fill TddEvidence by running the candidate's changed tests against the
+    baseline source: revert the changed source files to ``baseline_ref`` in the
+    worktree (keeping the candidate's tests), run those tests (expect RED), then
+    restore the candidate source. Green-on-candidate is the plain run.
+    """
+    if not tests:
+        return TddEvidence()
+    cand_rc, _ = run_test_selection(cwd, tests, timeout=timeout)
+    base_rc: int | None = None
+    if src:
+        try:
+            subprocess.run(["git", "checkout", baseline_ref, "--", *src], cwd=str(cwd), check=True,
+                           capture_output=True, text=True)
+            base_rc, _ = run_test_selection(cwd, tests, timeout=timeout)
+        except (OSError, subprocess.CalledProcessError):
+            base_rc = None
+        finally:
+            subprocess.run(["git", "checkout", "HEAD", "--", *src], cwd=str(cwd),
+                           capture_output=True, text=True)
+    return TddEvidence(changed_tests=tests, baseline_changed_rc=base_rc, candidate_changed_rc=cand_rc)
+
+
 def evaluate_candidate(
     candidate_dir: str | Path,
     changed_files: list[str],
@@ -177,6 +207,7 @@ def evaluate_candidate(
     coverage_source: str = ".",
     coverage_pytest_args: str = "",
     baseline_coverage: float | None = None,
+    baseline_ref: str | None = None,
     weights: FitnessWeights | None = None,
     tdd: TddEvidence | None = None,
     capability: tuple[float, float] | None = None,
@@ -192,6 +223,12 @@ def evaluate_candidate(
     cand_cov = measure_coverage(cwd, source=coverage_source, pytest_args=coverage_pytest_args)
     cq, cq_detail = _mean_quality(cwd, src)
     astr, astr_detail = _mean_assertion(cwd, tests)
+    if tdd is None:
+        tdd = (
+            _red_green_evidence(cwd, baseline_ref, src, tests, timeout)
+            if baseline_ref
+            else TddEvidence(changed_tests=tests)
+        )
 
     inputs = FitnessInputs(
         tests_passed=tests_passed,
@@ -202,7 +239,7 @@ def evaluate_candidate(
         code_quality_detail=cq_detail,
         assertion_score=astr,
         assertion_detail=astr_detail,
-        tdd=tdd or TddEvidence(changed_tests=tests),
+        tdd=tdd,
         lint_gates=_lint_gates(cwd, src),
         capability=capability,
         architecture_fit=architecture_fit,

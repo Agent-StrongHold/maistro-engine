@@ -483,6 +483,7 @@ class LocalRsiLoop:
             test_command=self._config.test_command,
             coverage_source=self._config.coverage_source,
             baseline_coverage=self._baseline_coverage(),
+            baseline_ref=self._config.baseline_branch,
             timeout=self._config.test_timeout,
         )
         logger.info(

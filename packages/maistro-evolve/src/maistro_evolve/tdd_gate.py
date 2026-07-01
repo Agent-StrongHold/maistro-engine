@@ -19,6 +19,7 @@ absence of it). `run_test_selection()` produces the `TddEvidence` the loop fills
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -87,13 +88,19 @@ def run_test_selection(
     Used by the loop to build TddEvidence: run the candidate's changed tests
     against a baseline checkout (expect non-zero) and the candidate (expect zero).
     """
+    # PYTHONDONTWRITEBYTECODE: red->green reverts a source file between two runs,
+    # often within the same second — a cached .pyc would make the baseline run
+    # reuse the candidate's bytecode and wrongly pass. -p no:cacheprovider drops
+    # pytest's own cache too.
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     try:
         proc = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", *selectors],
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *selectors],
             cwd=str(repo_dir),
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
     except (OSError, subprocess.TimeoutExpired):
         return 1, "test run failed to execute"
