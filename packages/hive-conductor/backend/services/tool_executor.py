@@ -114,7 +114,7 @@ async def clarify(questions: list[str], context: dict[str, Any]) -> dict[str, st
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
-                    "model": os.environ.get("CHAT_DEFAULT_MODEL", "claude-opus-4-6"),
+                    "model": os.environ.get("CHAT_DEFAULT_MODEL", "chat"),
                     "messages": [{"role": "user", "content": prompt}],
                     "response_format": {"type": "json_object"},
                 },
@@ -182,7 +182,7 @@ async def _gemini_grounded_search(query: str, max_results: int) -> dict[str, Any
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
                 json={
-                    "model": "claude-opus-4-6",
+                    "model": os.environ.get("CHAT_DEFAULT_MODEL", "chat"),
                     "messages": [
                         {
                             "role": "system",

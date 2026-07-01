@@ -109,7 +109,7 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
     setLoading(true);
     try {
       const deckContext = slides.map((s, i) => `Slide ${i + 1}: ${s.html.replace(/<[^>]+>/g, " ").slice(0, 100)}`).join("\n");
-      const contextPrefix = `[DECK CONTEXT: ${slides.length} slides, active=#${activeIdx + 1}. I want stunning presentation slides with gradients, big numbers, SVG charts. Wrap each slide in <slide> tags. Use dark backgrounds, color:#a78bfa accents. Data context: 152 active use cases, Automations 58%, Human Enhancement 28%, Data Analysis 14%, v2 migration 24 in pipeline.]\n\n`;
+      const contextPrefix = `[DECK CONTEXT: ${slides.length} slides, active=#${activeIdx + 1}. I want stunning presentation slides with gradients, big numbers, SVG charts where relevant to the topic. Wrap each slide in <slide> tags. Use dark backgrounds, color:#a78bfa accents.]\n\n`;
       const r = await fetch("/v1/chat/complete", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },

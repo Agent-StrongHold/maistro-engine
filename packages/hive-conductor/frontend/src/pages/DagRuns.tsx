@@ -177,10 +177,12 @@ export default function DagRuns() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h2 style={{ marginTop: 0 }}>PM Fleet — Live DAG Runs</h2>
+      <h2 style={{ marginTop: 0 }}>Live DAG Runs</h2>
       <p style={{ color: "#6b7280", marginTop: -6 }}>
-        Live view of the PM hyperagent DAG. Each node = one (role, capability)
-        invocation. States stream over SSE from /v1/dag-runs/{`{id}`}/events.
+        Live view of the bundled demo pipeline (intake → research → delivery → reporting). Each node = one
+        (role, capability) invocation. States stream over SSE from /v1/dag-runs/{`{id}`}/events. This view
+        shows that fixed pipeline only — workflows you create yourself (via Chat or the DAG Builder) run, but
+        aren't visualized here yet.
       </p>
 
       {error && (
@@ -192,7 +194,7 @@ export default function DagRuns() {
       <div style={{ display: "flex", gap: 16, marginTop: 12 }}>
         <aside style={{ width: 220, flexShrink: 0 }}>
           <h3 style={{ marginTop: 0, fontSize: 14 }}>Recent runs</h3>
-          {runs.length === 0 && <div style={{ color: "#9ca3af" }}>No runs yet. Trigger a Fleet pulse to start.</div>}
+          {runs.length === 0 && <div style={{ color: "#9ca3af" }}>No runs yet. Trigger the demo pipeline to start.</div>}
           <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
             {runs.map((r) => (
               <li key={r.id}>
