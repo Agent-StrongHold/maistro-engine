@@ -64,7 +64,7 @@ class DockerMicroVmSandbox:
     async def __aenter__(self) -> DockerMicroVmSandbox:
         return self
 
-    async def __aexit__(self, *exc_info: object) -> None:
+    async def __aexit__(self, *_: object) -> None:
         await self.destroy()
 
 
