@@ -271,9 +271,7 @@ class TestRsiCycleRun:
         assert all(c is not None for c in harness.received_llm_calls)
 
     @pytest.mark.asyncio
-    async def test_no_model_leaves_scoring_heuristic(
-        self, patched_sandbox, patched_self_branch
-    ):
+    async def test_no_model_leaves_scoring_heuristic(self, patched_sandbox, patched_self_branch):
         """If the scheduler yields no model, llm_call stays None (explicit heuristic fallback)."""
         harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
         cycle = RsiCycle(

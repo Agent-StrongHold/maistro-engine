@@ -63,7 +63,7 @@ def _assert_strength(node: ast.Assert) -> float:
     return _WEAK
 
 
-def _is_raises_with(node: ast.With) -> bool:
+def _is_raises_with(node: ast.With | ast.AsyncWith) -> bool:
     for item in node.items:
         call = item.context_expr
         if isinstance(call, ast.Call):

@@ -8,6 +8,8 @@ and vice versa. Also best-effort mirrors to PostgREST when configured
 
 from __future__ import annotations
 
+import contextlib
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
@@ -39,8 +41,6 @@ async def put_profile(body: ProfileBody, request: Request) -> dict:
 
     user_id = _user_id(request)
     _PROFILE_CACHE[user_id] = body.preferences
-    try:
+    with contextlib.suppress(Exception):
         await pg_upsert("user_profiles", {"id": user_id, "preferences": body.preferences})
-    except Exception:
-        pass
     return {"preferences": _PROFILE_CACHE[user_id]}

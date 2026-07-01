@@ -29,7 +29,11 @@ _DEFAULT_TIMEOUT = 120
 
 
 def _docker(
-    args: list[str], *, stdin: str | None = None, check: bool = True, timeout: int = _DEFAULT_TIMEOUT
+    args: list[str],
+    *,
+    stdin: str | None = None,
+    check: bool = True,
+    timeout: int = _DEFAULT_TIMEOUT,
 ) -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(
         ["docker", *args],

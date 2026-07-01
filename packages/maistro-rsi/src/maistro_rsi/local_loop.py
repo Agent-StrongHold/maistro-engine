@@ -493,12 +493,8 @@ class LocalRsiLoop:
             composite=scorecard.composite,
             explain="\n" + scorecard.explain(),
         )
-        tests_passed = next(
-            (g.passed for g in scorecard.gates if g.name == "tests_pass"), False
-        )
-        reason = next(
-            (f"{g.name}: {g.reason}" for g in scorecard.gates if not g.passed), ""
-        )
+        tests_passed = next((g.passed for g in scorecard.gates if g.name == "tests_pass"), False)
+        reason = next((f"{g.name}: {g.reason}" for g in scorecard.gates if not g.passed), "")
         return scorecard.accepted, scorecard.composite, reason, tests_passed
 
     def _run_tests(self, cycle_dir: Path) -> bool:

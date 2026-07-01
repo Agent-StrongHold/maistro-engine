@@ -39,8 +39,16 @@ def measure_coverage(
     cwd = str(repo_dir)
     try:
         subprocess.run(
-            [sys.executable, "-m", "coverage", "run", f"--source={source}", "-m", "pytest",
-             *shlex.split(pytest_args)],
+            [
+                sys.executable,
+                "-m",
+                "coverage",
+                "run",
+                f"--source={source}",
+                "-m",
+                "pytest",
+                *shlex.split(pytest_args),
+            ],
             cwd=cwd,
             capture_output=True,
             text=True,

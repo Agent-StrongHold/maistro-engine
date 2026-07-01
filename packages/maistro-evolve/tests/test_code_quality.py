@@ -79,7 +79,12 @@ def test_graded_metrics_spread_between_good_and_great(monkeypatch, tmp_path: Pat
     # which is the whole point: the score doesn't saturate at 1.0 for clean code.
     f = tmp_path / "x.py"
     f.write_text("x = 1\n")
-    clean = {"ruff": (1.0, 0), "bandit": (1.0, 0), "mypy": (1.0, 0), "radon": (1.0, 1.0, 1.0, 100.0)}
+    clean = {
+        "ruff": (1.0, 0),
+        "bandit": (1.0, 0),
+        "mypy": (1.0, 0),
+        "radon": (1.0, 1.0, 1.0, 100.0),
+    }
     _stub(monkeypatch, **clean, pylint=(1.0, 10.0), docstrings=(1.0, 100.0), halstead=(1.0, 1.0))
     great = cq.score_path(f).composite
     _stub(monkeypatch, **clean, pylint=(0.85, 8.5), docstrings=(0.4, 40.0), halstead=(0.7, 6.0))

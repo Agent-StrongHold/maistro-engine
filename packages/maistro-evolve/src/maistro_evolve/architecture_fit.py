@@ -180,7 +180,9 @@ async def judge_architecture_fit(
     )
     data = _extract_json(resp)
     if not isinstance(data, dict):
-        return ArchFitVerdict(winner="tie", cited=[], rationale=f"unparseable: {resp[:200]}", confidence=0.0)
+        return ArchFitVerdict(
+            winner="tie", cited=[], rationale=f"unparseable: {resp[:200]}", confidence=0.0
+        )
     cited = data.get("cited") or []
     return ArchFitVerdict(
         winner=str(data.get("winner", "tie")),

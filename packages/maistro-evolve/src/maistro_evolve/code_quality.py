@@ -181,7 +181,9 @@ def _pylint(path: Path) -> tuple[float | None, float]:
     # pylint's global rating is continuous (0..10) and folds in dozens of checks,
     # so it spreads clean code that ruff/bandit call "perfect". Disable import
     # resolution noise so a snippet isn't scored on unresolved deps.
-    out, ok = _run_tool(["pylint", str(path), "--score=y", "--disable=import-error,no-name-in-module"])
+    out, ok = _run_tool(
+        ["pylint", str(path), "--score=y", "--disable=import-error,no-name-in-module"]
+    )
     if not ok:
         return None, 0.0
     m = re.search(r"rated at (-?[\d.]+)/10", out)
@@ -283,7 +285,7 @@ def _cognitive(path: Path) -> tuple[float | None, float]:
     # complexipy's cognitive complexity weights nesting (unlike CC), so it tracks
     # "hard to understand" better. Imported (no `-m` entry point); missing → None.
     try:
-        import complexipy
+        import complexipy  # type: ignore[import-not-found]
 
         result = complexipy.file_complexity(str(path))
         fns = getattr(result, "functions", [])

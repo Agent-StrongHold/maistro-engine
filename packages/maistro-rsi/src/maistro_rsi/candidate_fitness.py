@@ -64,7 +64,11 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
     """Pure: assemble gates + priority-weighted scores into a Scorecard."""
     w = weights or FitnessWeights()
     gates = [
-        GateResult("tests_pass", inp.tests_passed, inp.test_reason or ("ok" if inp.tests_passed else "failed")),
+        GateResult(
+            "tests_pass",
+            inp.tests_passed,
+            inp.test_reason or ("ok" if inp.tests_passed else "failed"),
+        ),
         coverage_gate(inp.baseline_coverage, inp.candidate_coverage),
         *inp.lint_gates,
     ]
@@ -106,7 +110,10 @@ def _run(cmd: str, cwd: Path, timeout: int = 900) -> tuple[bool, str]:
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"test command errored: {exc}"
     tail = (proc.stdout + proc.stderr).strip()[-200:]
-    return proc.returncode == 0, f"exit {proc.returncode}: {tail}" if tail else f"exit {proc.returncode}"
+    return (
+        proc.returncode == 0,
+        f"exit {proc.returncode}: {tail}" if tail else f"exit {proc.returncode}",
+    )
 
 
 def _lint_gates(cwd: Path, src_files: list[str]) -> list[GateResult]:
@@ -118,7 +125,9 @@ def _lint_gates(cwd: Path, src_files: list[str]) -> list[GateResult]:
 
     ruff = subprocess.run(
         [sys.executable, "-m", "ruff", "check", "--output-format", "json", *src_files],
-        cwd=str(cwd), capture_output=True, text=True,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
     )
     if "No module named" not in ruff.stderr:
         try:
@@ -128,9 +137,20 @@ def _lint_gates(cwd: Path, src_files: list[str]) -> list[GateResult]:
         gates.append(GateResult("ruff_clean", n == 0, f"{n} lint violation(s)"))
 
     mypy = subprocess.run(
-        [sys.executable, "-m", "mypy", "--ignore-missing-imports", "--no-error-summary",
-         "--no-color-output", "--config-file", os.devnull, *src_files],
-        cwd=str(cwd), capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "mypy",
+            "--ignore-missing-imports",
+            "--no-error-summary",
+            "--no-color-output",
+            "--config-file",
+            os.devnull,
+            *src_files,
+        ],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
     )
     if "No module named" not in mypy.stderr:
         errs = sum(1 for ln in mypy.stdout.splitlines() if ": error:" in ln)
@@ -138,7 +158,9 @@ def _lint_gates(cwd: Path, src_files: list[str]) -> list[GateResult]:
 
     bandit = subprocess.run(
         [sys.executable, "-m", "bandit", "-f", "json", "-q", *src_files],
-        cwd=str(cwd), capture_output=True, text=True,
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
     )
     if "No module named" not in bandit.stderr:
         try:
@@ -146,7 +168,9 @@ def _lint_gates(cwd: Path, src_files: list[str]) -> list[GateResult]:
         except json.JSONDecodeError:
             results = []
         high = [r for r in results if r.get("issue_severity") == "HIGH"]
-        gates.append(GateResult("no_bandit_high", len(high) == 0, f"{len(high)} HIGH-severity finding(s)"))
+        gates.append(
+            GateResult("no_bandit_high", len(high) == 0, f"{len(high)} HIGH-severity finding(s)")
+        )
     return gates
 
 
@@ -188,15 +212,26 @@ def _red_green_evidence(
     base_rc: int | None = None
     if src:
         try:
-            subprocess.run(["git", "checkout", baseline_ref, "--", *src], cwd=str(cwd), check=True,
-                           capture_output=True, text=True)
+            subprocess.run(
+                ["git", "checkout", baseline_ref, "--", *src],
+                cwd=str(cwd),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
             base_rc, _ = run_test_selection(cwd, tests, timeout=timeout)
         except (OSError, subprocess.CalledProcessError):
             base_rc = None
         finally:
-            subprocess.run(["git", "checkout", "HEAD", "--", *src], cwd=str(cwd),
-                           capture_output=True, text=True)
-    return TddEvidence(changed_tests=tests, baseline_changed_rc=base_rc, candidate_changed_rc=cand_rc)
+            subprocess.run(
+                ["git", "checkout", "HEAD", "--", *src],
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+            )
+    return TddEvidence(
+        changed_tests=tests, baseline_changed_rc=base_rc, candidate_changed_rc=cand_rc
+    )
 
 
 def evaluate_candidate(

@@ -144,7 +144,9 @@ def code_quality_signal(cq: object, weight: float) -> SignalScore:
     )
 
 
-def architecture_fit_signal(verdict: object, weight: float, *, candidate_side: str = "B") -> SignalScore:
+def architecture_fit_signal(
+    verdict: object, weight: float, *, candidate_side: str = "B"
+) -> SignalScore:
     """Wrap an architecture_fit.ArchFitVerdict (a *judge* measure).
 
     The candidate scores 1.0 if the judge picks its side, 0.5 on a tie, else 0.0.
