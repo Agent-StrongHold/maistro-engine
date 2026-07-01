@@ -136,7 +136,7 @@ class LocalSandbox:
             # (e.g. "pytest -q && ruff check"), not agent-controlled input.
             proc = subprocess.run(  # nosemgrep
                 command,
-                shell=True,
+                shell=True,  # nosemgrep
                 cwd=str(self._workspace),
                 capture_output=True,
                 text=True,
@@ -502,7 +502,7 @@ class LocalRsiLoop:
         # shell=True: the test command is operator-supplied config, not agent input.
         proc = subprocess.run(  # nosemgrep
             self._config.test_command,
-            shell=True,
+            shell=True,  # nosemgrep
             cwd=str(cycle_dir),
             capture_output=True,
             text=True,

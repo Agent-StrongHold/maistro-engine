@@ -107,7 +107,7 @@ def _run(cmd: str, cwd: Path, timeout: int = 900) -> tuple[bool, str]:
         # shell=True: `cmd` is operator-supplied test config, not agent/attacker input.
         proc = subprocess.run(  # nosemgrep
             cmd,
-            shell=True,
+            shell=True,  # nosemgrep
             cwd=str(cwd),
             capture_output=True,
             text=True,
