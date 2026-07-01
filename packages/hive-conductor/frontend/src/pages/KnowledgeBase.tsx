@@ -50,7 +50,7 @@ export default function KnowledgeBase() {
       setNamespaces(ns); setEntries(ents);
     } catch { /* */ }
     try {
-      const p = await fetch("/api/v1/profile", { credentials: "same-origin" }).then(r => r.json());
+      const p = await fetch("/v1/profile", { credentials: "same-origin" }).then(r => r.json());
       setProfile(p?.preferences || {});
       if (p?.preferences?.prompts) setPrompts(p.preferences.prompts);
     } catch { /* */ }
@@ -66,7 +66,7 @@ export default function KnowledgeBase() {
   const savePrompt = async (section: string, field: "user", value: string) => {
     const updated = { ...prompts, [section]: { ...prompts[section], [field]: value } };
     setPrompts(updated);
-    await fetch("/api/v1/profile", { method: "PUT", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    await fetch("/v1/profile", { method: "PUT", credentials: "same-origin", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ preferences: { ...profile, prompts: updated } }) }).catch(() => {});
   };
 

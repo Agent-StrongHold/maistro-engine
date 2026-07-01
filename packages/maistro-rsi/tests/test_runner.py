@@ -60,8 +60,10 @@ class FakeHarness:
 
     def __init__(self, scores: dict[str, dict[str, float]]) -> None:
         self._scores = scores
+        self.received_llm_calls: list[object] = []
 
     async def evaluate_genome(self, genome, benchmarks=None, llm_call=None):
+        self.received_llm_calls.append(llm_call)
         per_benchmark = self._scores[genome.id]
         return [
             EvalResult(benchmark=name, score=score)
@@ -228,6 +230,59 @@ class TestRsiCycleRun:
             _genome("baseline"), _genome("candidate"), ["openai/gpt-5"]
         )
         assert result_failed_tests.improved is False
+
+    @pytest.mark.asyncio
+    async def test_injected_llm_call_reaches_both_genome_evals(
+        self, patched_sandbox, patched_self_branch
+    ):
+        """A caller-supplied llm_call is threaded to evaluate_genome for both genomes."""
+        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+
+        async def injected(messages, *, temperature=0.2, max_tokens=2048):
+            return "x"
+
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler(),
+            _noop_patch,
+            llm_call=injected,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), ["m"])
+        assert harness.received_llm_calls == [injected, injected]
+
+    @pytest.mark.asyncio
+    async def test_gateway_llm_call_built_when_model_available(
+        self, patched_sandbox, patched_self_branch
+    ):
+        """No injected llm_call + a scheduler model -> a real (non-None) call is built and used,
+        instead of the heuristic (near-noise) fallback the runner used before."""
+        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler("chat"),
+            _noop_patch,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), ["chat"])
+        assert len(harness.received_llm_calls) == 2
+        assert all(c is not None for c in harness.received_llm_calls)
+
+    @pytest.mark.asyncio
+    async def test_no_model_leaves_scoring_heuristic(self, patched_sandbox, patched_self_branch):
+        """If the scheduler yields no model, llm_call stays None (explicit heuristic fallback)."""
+        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler(None),
+            _noop_patch,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), [])
+        assert harness.received_llm_calls == [None, None]
 
     @pytest.mark.asyncio
     async def test_sandbox_destroyed_even_when_apply_patch_raises(

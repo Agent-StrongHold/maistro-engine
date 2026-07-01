@@ -68,8 +68,13 @@ download_with_archive() {
 
     local tmp
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/maistro.XXXXXX")"
-    mkdir -p "$INSTALL_DIR"
     curl -fsSL "$ARCHIVE_URL" | tar -xz -C "$tmp" --strip-components=1
+    if [[ -e "$INSTALL_DIR/$ARCHIVE_MARKER" ]]; then
+        # Updating in place: drop the old tree (keep .env) before laying down the
+        # fresh archive, so files removed/renamed upstream don't linger as stale.
+        find "$INSTALL_DIR" -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +
+    fi
+    mkdir -p "$INSTALL_DIR"
     cp -R "$tmp"/. "$INSTALL_DIR"/
     rm -rf "$tmp"
     touch "$INSTALL_DIR/$ARCHIVE_MARKER"
@@ -93,13 +98,18 @@ migrate_legacy_install() {
 }
 
 bootstrap_source() {
-    migrate_legacy_install
+    # Download FIRST — migrate_legacy_install would otherwise create $INSTALL_DIR
+    # (with a copied .env), which trips the "exists but not a checkout" guard in
+    # download_with_git and the missing-marker guard in download_with_archive,
+    # blocking legacy users from installing/updating. Copy the .env afterward,
+    # once the checkout exists.
     if command -v git >/dev/null 2>&1; then
         download_with_git
     else
         warn "git not found; falling back to source archive download."
         download_with_archive
     fi
+    migrate_legacy_install
 }
 
 resolve_args_paths() {

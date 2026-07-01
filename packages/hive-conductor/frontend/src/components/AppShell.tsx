@@ -12,23 +12,39 @@ import {
   PM_PRODUCT_NAME,
 } from "../lib/pmBranding";
 
-const fullNav = [
-  { to: "/chat", icon: "💬", label: "Chat" },
-  { to: "/dashboard", icon: "📊", label: "Dashboard" },
-  { to: "/dags", icon: "🔀", label: "DAG Builder" },
-  { to: "/dag-runs", icon: "▶️", label: "DAG Runs" },
-  { to: "/agents", icon: "🤖", label: "Agents" },
-  { to: "/topology", icon: "🗺️", label: "Topology" },
-  { to: "/optimizer", icon: "⚡", label: "Optimizer" },
-  { to: "/knowledge", icon: "📚", label: "Inner Temple" },
-  { to: "/decks", icon: "🎴", label: "Decks" },
-  { to: "/tools-lab", icon: "🧪", label: "Tools Lab" },
-  { to: "/mcp", icon: "🔌", label: "Integrations" },
-  { to: "/credentials", icon: "🔑", label: "Credentials" },
-  { to: "/settings", icon: "⚙", label: "Settings" },
-];
+import {
+  MessageCircle,
+  LayoutDashboard,
+  Brain,
+  Hexagon,
+  Target,
+  Plug,
+  KeyRound,
+  Settings,
+  Presentation,
+  Workflow,
+  PlayCircle,
+  Bot,
+  Network,
+  Zap,
+  FlaskConical,
+} from "lucide-react";
 
-import { MessageCircle, LayoutDashboard, Brain, Hexagon, Target, Plug, KeyRound, Settings, Presentation } from "lucide-react";
+const fullNav = [
+  { to: "/chat", icon: MessageCircle, label: "Chat" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/dags", icon: Workflow, label: "DAG Builder" },
+  { to: "/dag-runs", icon: PlayCircle, label: "DAG Runs" },
+  { to: "/agents", icon: Bot, label: "Agents" },
+  { to: "/topology", icon: Network, label: "Topology" },
+  { to: "/optimizer", icon: Zap, label: "Optimizer" },
+  { to: "/knowledge", icon: Brain, label: "Inner Temple" },
+  { to: "/decks", icon: Presentation, label: "Decks" },
+  { to: "/tools-lab", icon: FlaskConical, label: "Tools Lab" },
+  { to: "/mcp", icon: Plug, label: "Integrations" },
+  { to: "/credentials", icon: KeyRound, label: "Credentials" },
+  { to: "/settings", icon: Settings, label: "Settings" },
+];
 
 const pocNav = [
   { to: "/chat", icon: MessageCircle, label: "Chat" },
@@ -57,8 +73,8 @@ export function AppShell({ children }: { children?: ReactNode }) {
   const user = useUser();
   const pmPoc = usePmPoc();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const nav = pocNav;
-  const shellTitle = PM_PRODUCT_NAME;
+  const nav = pmPoc ? pocNav : fullNav;
+  const shellTitle = pmPoc ? PM_PRODUCT_NAME : "Hive Conductor";
 
   return (
     <div className="app-shell">

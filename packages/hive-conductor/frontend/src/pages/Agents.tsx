@@ -588,7 +588,7 @@ export default function Agents() {
               {scanning ? "Scanning..." : "\uD83D\uDEE1\uFE0F Scan"}
             </button>
             <button onClick={() => setDeleteId(selected.id)} style={{ ...btn, background: "var(--paper)", color: "#c4452a", borderColor: "#c4452a" }}>
-              \uD83D\uDDD1\uFE0F Delete
+              {"\uD83D\uDDD1\uFE0F Delete"}
             </button>
           </div>
         </div>
