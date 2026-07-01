@@ -105,9 +105,16 @@ jobs:
       # protocol-driven DI) is tracked for the Phase 9 KEEP/DEPRECATE/DELETE
       # inventory, not a one-PR fix. Hard-fails on regression on every
       # branch.
+      # 1053 (2026-07-01): the builders TUI was rewired to operate on a local
+      # checkout and no longer calls _container/lifecycle.py's SessionLifecycle,
+      # so vulture (src-only) now flags that class + create_session. It's a
+      # deliberate KEEP — the class stays fully covered by test_cli_unified.py
+      # and cli/_container/test_lifecycle.py as scaffolding for the future
+      # sandboxed-container path — so record the new baseline rather than delete
+      # tested code.
       - name: vulture (dead-code; confidence ≥ 60 — ratchet)
         env:
-          VULTURE_BASELINE: 1052
+          VULTURE_BASELINE: 1053
         run: |
           uv run vulture packages/maistro-core/src --min-confidence 60 > vulture.log 2>&1 || true
           count=$(wc -l < vulture.log | tr -d ' ')
