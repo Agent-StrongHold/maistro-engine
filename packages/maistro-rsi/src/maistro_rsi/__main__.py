@@ -77,6 +77,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path passed to coverage --source when --fitness is on (default: .).",
     )
     run.add_argument(
+        "--coverage-pytest-args",
+        default="",
+        help="pytest args for the coverage run when --fitness is on (e.g. a scoped "
+        "test path). Default: bare pytest, which runs every testpath in the repo.",
+    )
+    run.add_argument(
         "--work-root",
         default=None,
         help="Where to put throwaway clones/worktrees (default: a temp dir).",
@@ -108,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             sandbox_image=args.image,
             use_fitness=args.fitness,
             coverage_source=args.coverage_source,
+            coverage_pytest_args=args.coverage_pytest_args,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"

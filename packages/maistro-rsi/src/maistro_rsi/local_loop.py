@@ -289,6 +289,10 @@ class LocalRsiConfig:
     # (ruff/mypy/bandit/coverage/…) to be importable in the run environment.
     use_fitness: bool = False
     coverage_source: str = "."
+    # pytest args for the coverage run (e.g. a scoped test path). Empty means a
+    # bare `pytest` — which, in a monorepo with many testpaths, runs the whole
+    # suite every cycle; scope it to keep a fitness run tractable.
+    coverage_pytest_args: str = ""
 
 
 @dataclass
@@ -348,7 +352,9 @@ class LocalRsiLoop:
             from maistro_evolve.coverage_gate import measure_coverage
 
             self._baseline_cov = measure_coverage(
-                self._baseline, source=self._config.coverage_source
+                self._baseline,
+                source=self._config.coverage_source,
+                pytest_args=self._config.coverage_pytest_args,
             )
         return self._baseline_cov
 
@@ -483,6 +489,7 @@ class LocalRsiLoop:
             changed_files,
             test_command=self._config.test_command,
             coverage_source=self._config.coverage_source,
+            coverage_pytest_args=self._config.coverage_pytest_args,
             baseline_coverage=self._baseline_coverage(),
             baseline_ref=self._config.baseline_branch,
             timeout=self._config.test_timeout,
