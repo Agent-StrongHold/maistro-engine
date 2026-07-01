@@ -112,10 +112,14 @@ def code_quality_signal(cq: object, weight: float) -> SignalScore:
     parts = []
     for name, val, raw in (
         ("pylint", getattr(cq, "pylint", None), getattr(cq, "pylint_rating", 0)),
+        ("type_cov", getattr(cq, "type_coverage", None), getattr(cq, "type_coverage_pct", 0)),
+        ("cognitive", getattr(cq, "cognitive", None), getattr(cq, "cognitive_avg", 0)),
+        ("duplication", getattr(cq, "duplication", None), getattr(cq, "duplication_pct", 0)),
         ("docstrings", getattr(cq, "docstrings", None), getattr(cq, "docstring_pct", 0)),
         ("halstead", getattr(cq, "halstead", None), getattr(cq, "halstead_difficulty", 0)),
         ("radon_mi", getattr(cq, "radon_mi", None), getattr(cq, "maintainability", 0)),
         ("radon_cc", getattr(cq, "radon_cc", None), getattr(cq, "avg_complexity", 0)),
+        ("dead_code", getattr(cq, "dead_code", None), getattr(cq, "dead_code_count", 0)),
         ("ruff", getattr(cq, "ruff", None), getattr(cq, "ruff_violations", 0)),
         ("bandit", getattr(cq, "bandit", None), getattr(cq, "bandit_issues", 0)),
         ("mypy", getattr(cq, "mypy", None), getattr(cq, "mypy_errors", 0)),

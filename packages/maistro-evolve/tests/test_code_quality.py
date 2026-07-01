@@ -22,6 +22,11 @@ def _stub(
     pylint=(1.0, 10.0),
     docstrings=(1.0, 100.0),
     halstead=(1.0, 0.0),
+    type_coverage=(1.0, 100.0),
+    duplication=(1.0, 0.0),
+    dead_code=(1.0, 0),
+    cognitive=(1.0, 1.0),
+    semgrep=(None, 0),
 ):
     monkeypatch.setattr(cq, "_ruff", lambda p: ruff)
     monkeypatch.setattr(cq, "_bandit", lambda p: bandit)
@@ -29,6 +34,11 @@ def _stub(
     monkeypatch.setattr(cq, "_pylint", lambda p: pylint)
     monkeypatch.setattr(cq, "_docstring_coverage", lambda p: docstrings)
     monkeypatch.setattr(cq, "_halstead", lambda p: halstead)
+    monkeypatch.setattr(cq, "_type_coverage", lambda p: type_coverage)
+    monkeypatch.setattr(cq, "_duplication", lambda p: duplication)
+    monkeypatch.setattr(cq, "_dead_code", lambda p: dead_code)
+    monkeypatch.setattr(cq, "_cognitive", lambda p: cognitive)
+    monkeypatch.setattr(cq, "_semgrep", lambda p: semgrep)
     monkeypatch.setattr(cq, "_radon", lambda p: radon)
 
 
@@ -51,6 +61,10 @@ def test_bad_code_scores_low(monkeypatch, tmp_path: Path) -> None:
         pylint=(0.4, 4.0),
         docstrings=(0.2, 20.0),
         halstead=(0.5, 15.0),
+        type_coverage=(0.3, 30.0),
+        duplication=(0.6, 40.0),
+        dead_code=(0.5, 1),
+        cognitive=(0.4, 20.0),
     )
     s = cq.score_path(f)
     assert s.composite < 0.6
@@ -97,9 +111,15 @@ def test_all_tools_missing_scores_zero(monkeypatch, tmp_path: Path) -> None:
         pylint=(None, 0.0),
         docstrings=(None, 0.0),
         halstead=(None, 0.0),
+        type_coverage=(None, 0.0),
+        duplication=(None, 0.0),
+        dead_code=(None, 0),
+        cognitive=(None, 0.0),
+        semgrep=(None, 0),
     )
     s = cq.score_path(f)
     assert s.composite == 0.0
+    # semgrep has weight 0, so a missing semgrep is not reported.
     assert set(s.tools_missing) == {
         "ruff",
         "bandit",
@@ -107,6 +127,10 @@ def test_all_tools_missing_scores_zero(monkeypatch, tmp_path: Path) -> None:
         "pylint",
         "docstrings",
         "halstead",
+        "type_coverage",
+        "duplication",
+        "dead_code",
+        "cognitive",
         "radon_cc",
         "radon_mi",
     }
