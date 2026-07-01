@@ -134,9 +134,9 @@ class LocalSandbox:
         def _run() -> tuple[int, str]:
             # shell=True: `command` is operator-supplied test/health config
             # (e.g. "pytest -q && ruff check"), not agent-controlled input.
-            proc = subprocess.run(
+            proc = subprocess.run(  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test/health config, not agent input
                 command,
-                shell=True,  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test/health config, not agent input
+                shell=True,
                 cwd=str(self._workspace),
                 capture_output=True,
                 text=True,
@@ -500,9 +500,9 @@ class LocalRsiLoop:
 
     def _run_tests(self, cycle_dir: Path) -> bool:
         # shell=True: the test command is operator-supplied config, not agent input.
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test command from config, not agent input
             self._config.test_command,
-            shell=True,  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test command from config, not agent input
+            shell=True,
             cwd=str(cycle_dir),
             capture_output=True,
             text=True,
