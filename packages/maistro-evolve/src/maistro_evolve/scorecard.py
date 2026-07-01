@@ -52,13 +52,20 @@ class GateResult:
 
 @dataclass
 class FitnessWeights:
-    """Score weights (capability-dominant). Tunable — the intent is to learn
-    these from revealed preference (what the user keeps vs. edits/rejects)."""
+    """Score weights. Capability is the dominant overall axis; among the
+    improvement-move signals the priority is (highest→lowest):
+    assertion_strength > red_green > new-test(coverage) > refactor(code_quality
+    with no capability gain, the lowest of the four). Tunable — the intent is to
+    learn these from revealed preference (what the user keeps vs. edits/rejects).
+    """
 
-    capability: float = 0.40
-    code_quality: float = 0.25
-    architecture_fit: float = 0.20
-    personalized_judge: float = 0.15
+    capability: float = 0.28
+    assertion_strength: float = 0.20  # biggest among the improvement moves
+    red_green: float = 0.14  # 2nd — test-first / bug-fix that drives code
+    coverage: float = 0.10  # 3rd — a new (characterization) test raises coverage
+    architecture_fit: float = 0.10
+    personalized_judge: float = 0.10
+    code_quality: float = 0.08  # lowest — refactor with no capability gain
 
 
 @dataclass
@@ -155,6 +162,21 @@ def architecture_fit_signal(verdict: object, weight: float, *, candidate_side: s
         weight=weight,
         rationale=rationale,
         detail={"winner": winner, "cited": list(cited)},
+    )
+
+
+def assertion_strength_signal(strength: object, weight: float) -> SignalScore:
+    """Wrap an assertion_strength.AssertionStrength (a *calculated* AST measure)."""
+    score = getattr(strength, "score", None)
+    return SignalScore(
+        name="assertion_strength",
+        kind=MeasureKind.CALCULATED,
+        score=float(score) if score is not None else 0.0,
+        weight=weight,
+        rationale=(
+            f"{getattr(strength, 'n_tests', 0)} tests, "
+            f"{getattr(strength, 'strong', 0)} strong / {getattr(strength, 'weak', 0)} weak checks"
+        ),
     )
 
 
