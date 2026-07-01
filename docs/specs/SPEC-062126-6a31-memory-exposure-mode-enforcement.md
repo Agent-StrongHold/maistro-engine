@@ -1,5 +1,5 @@
 ---
-id: SPEC-261
+id: SPEC-062126-6a31
 title: "Memory exposure mode: mandatory declaration, write/promote enforcement (ADR-057)"
 repo: maistro-engine
 kind: spec

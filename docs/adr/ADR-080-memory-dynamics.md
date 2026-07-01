@@ -150,7 +150,7 @@ under-specified "weight x word-overlap" retrieval.
 
 ## Follow-up
 
-maistro-engine#SPEC-260 resolves the decay curve as a pluggable `DecayStrategy` protocol
+maistro-engine#SPEC-062126-5d56 resolves the decay curve as a pluggable `DecayStrategy` protocol
 (default: exponential half-life), and resolves contradiction review as LLM-mediated
 auto-resolution gated by a confidence threshold that starts unreachable and decays toward
 a tunable `median(resolution_confidence) + admin_offset` asymptote — the same cold-start
