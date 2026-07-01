@@ -111,11 +111,14 @@ def code_quality_signal(cq: object, weight: float) -> SignalScore:
     """Wrap a maistro_evolve.code_quality.CodeQualityScore (a *derived* measure)."""
     parts = []
     for name, val, raw in (
+        ("pylint", getattr(cq, "pylint", None), getattr(cq, "pylint_rating", 0)),
+        ("docstrings", getattr(cq, "docstrings", None), getattr(cq, "docstring_pct", 0)),
+        ("halstead", getattr(cq, "halstead", None), getattr(cq, "halstead_difficulty", 0)),
+        ("radon_mi", getattr(cq, "radon_mi", None), getattr(cq, "maintainability", 0)),
+        ("radon_cc", getattr(cq, "radon_cc", None), getattr(cq, "avg_complexity", 0)),
         ("ruff", getattr(cq, "ruff", None), getattr(cq, "ruff_violations", 0)),
         ("bandit", getattr(cq, "bandit", None), getattr(cq, "bandit_issues", 0)),
         ("mypy", getattr(cq, "mypy", None), getattr(cq, "mypy_errors", 0)),
-        ("radon_cc", getattr(cq, "radon_cc", None), getattr(cq, "avg_complexity", 0)),
-        ("radon_mi", getattr(cq, "radon_mi", None), getattr(cq, "maintainability", 0)),
     ):
         if val is not None:
             parts.append(f"{name}={val:.2f}(raw {raw})")

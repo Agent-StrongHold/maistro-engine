@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import statistics
 import subprocess
 import sys
@@ -30,11 +31,18 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class QualityWeights:
-    ruff: float = 0.25
-    bandit: float = 0.25
-    mypy: float = 0.20
-    radon_cc: float = 0.15
+    # Continuous, graded measures (pylint/mi/docstrings/halstead) carry most of
+    # the weight — they spread across the clean-to-excellent range. The defect
+    # floors (ruff/bandit/mypy) saturate at 1.0 for clean code, so they matter
+    # more as gates than as score, and are weighted lightly here.
+    pylint: float = 0.22
     radon_mi: float = 0.15
+    docstrings: float = 0.13
+    halstead: float = 0.10
+    bandit: float = 0.13
+    ruff: float = 0.10
+    mypy: float = 0.09
+    radon_cc: float = 0.08
 
 
 @dataclass
@@ -43,11 +51,17 @@ class CodeQualityScore:
     ruff: float | None = None
     bandit: float | None = None
     mypy: float | None = None
+    pylint: float | None = None
+    docstrings: float | None = None
+    halstead: float | None = None
     radon_cc: float | None = None
     radon_mi: float | None = None
     ruff_violations: int = 0
     bandit_issues: int = 0
     mypy_errors: int = 0
+    pylint_rating: float = 0.0
+    docstring_pct: float = 0.0
+    halstead_difficulty: float = 0.0
     avg_complexity: float = 0.0
     maintainability: float = 0.0
     tools_missing: list[str] = field(default_factory=list)
@@ -144,6 +158,50 @@ def _radon(path: Path) -> tuple[float | None, float | None, float, float]:
     return cc_score, mi_score, round(avg_cc, 2), round(mi_raw, 2)
 
 
+def _pylint(path: Path) -> tuple[float | None, float]:
+    # pylint's global rating is continuous (0..10) and folds in dozens of checks,
+    # so it spreads clean code that ruff/bandit call "perfect". Disable import
+    # resolution noise so a snippet isn't scored on unresolved deps.
+    out, ok = _run_tool(["pylint", str(path), "--score=y", "--disable=import-error,no-name-in-module"])
+    if not ok:
+        return None, 0.0
+    m = re.search(r"rated at (-?[\d.]+)/10", out)
+    if not m:
+        return None, 0.0
+    rating = float(m.group(1))
+    return max(0.0, rating / 10.0), rating
+
+
+def _docstring_coverage(path: Path) -> tuple[float | None, float]:
+    out, ok = _run_tool(["interrogate", str(path)])
+    if not ok:
+        return None, 0.0
+    m = re.search(r"actual: ([\d.]+)%", out)
+    if not m:
+        return None, 0.0
+    pct = float(m.group(1))
+    return pct / 100.0, pct
+
+
+def _halstead(path: Path) -> tuple[float | None, float]:
+    # Halstead Difficulty (D = h1/2 * N2/h2): how hard the code is to understand
+    # from its operator/operand structure. Lower is better; continuous.
+    out, ok = _run_tool(["radon", "hal", str(path), "-j"])
+    if not ok:
+        return None, 0.0
+    try:
+        data = json.loads(out or "{}")
+        diffs = [
+            v["total"]["difficulty"]
+            for v in data.values()
+            if isinstance(v, dict) and isinstance(v.get("total"), dict)
+        ]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None, 0.0
+    difficulty = statistics.mean(diffs) if diffs else 0.0
+    return 1.0 / (1.0 + difficulty / 15.0), round(difficulty, 1)
+
+
 def score_path(path: str | Path, weights: QualityWeights | None = None) -> CodeQualityScore:
     """Score one file (or a directory tree) for code quality in 0..1."""
     weights = weights or QualityWeights()
@@ -151,6 +209,9 @@ def score_path(path: str | Path, weights: QualityWeights | None = None) -> CodeQ
     ruff_s, ruff_v = _ruff(p)
     bandit_s, bandit_n = _bandit(p)
     mypy_s, mypy_e = _mypy(p)
+    pylint_s, pylint_r = _pylint(p)
+    doc_s, doc_pct = _docstring_coverage(p)
+    hal_s, hal_d = _halstead(p)
     cc_s, mi_s, avg_cc, mi_raw = _radon(p)
 
     parts: list[tuple[float, float]] = []  # (score, weight)
@@ -159,6 +220,9 @@ def score_path(path: str | Path, weights: QualityWeights | None = None) -> CodeQ
         ("ruff", ruff_s, weights.ruff),
         ("bandit", bandit_s, weights.bandit),
         ("mypy", mypy_s, weights.mypy),
+        ("pylint", pylint_s, weights.pylint),
+        ("docstrings", doc_s, weights.docstrings),
+        ("halstead", hal_s, weights.halstead),
         ("radon_cc", cc_s, weights.radon_cc),
         ("radon_mi", mi_s, weights.radon_mi),
     ):
@@ -178,11 +242,17 @@ def score_path(path: str | Path, weights: QualityWeights | None = None) -> CodeQ
         ruff=ruff_s,
         bandit=bandit_s,
         mypy=mypy_s,
+        pylint=pylint_s,
+        docstrings=doc_s,
+        halstead=hal_s,
         radon_cc=cc_s,
         radon_mi=mi_s,
         ruff_violations=ruff_v,
         bandit_issues=bandit_n,
         mypy_errors=mypy_e,
+        pylint_rating=pylint_r,
+        docstring_pct=doc_pct,
+        halstead_difficulty=hal_d,
         avg_complexity=avg_cc,
         maintainability=mi_raw,
         tools_missing=missing,
