@@ -52,6 +52,25 @@ _DEFAULT_OBJECTIVE = (
 )
 
 
+def _targeted_objective(path: str) -> str:
+    """Build a per-cycle objective that names one explicit file to improve.
+
+    Naming the file removes the discovery step that weak models fail at (they
+    can't reliably search for a target), so each cycle is a concrete, bounded
+    edit of a known file.
+    """
+    return (
+        f"Improve the file `{path}` in this repository. Make one small, safe, "
+        f"self-contained improvement: clarify or add a module- or function-level "
+        f"docstring, tighten a type hint, or fix an obvious minor issue. First read "
+        f"`{path}` with the read_file tool, then make the change with the edit_file "
+        f"tool (a targeted exact-string replacement) — do NOT rewrite the whole file "
+        f"with write_file, and do not reformat or touch lines unrelated to your change. "
+        f"Keep the edit minimal and do not alter runtime behavior. Use only read_file "
+        f"and edit_file — do not run git or shell commands."
+    )
+
+
 # ---------------------------------------------------------------------------
 # git plumbing (sync, shell=False — argv lists, no interpolation)
 # ---------------------------------------------------------------------------
@@ -233,6 +252,11 @@ class LocalRsiConfig:
     work_root: str
     max_cycles: int = 3
     objective: str = _DEFAULT_OBJECTIVE
+    # Explicit files to improve, one per cycle (rotated). When set, each cycle
+    # gets a targeted objective naming its file instead of the generic
+    # `objective` — capable models edit a named file reliably, where weak ones
+    # fail to discover a target by searching.
+    targets: list[str] = field(default_factory=list)
     model: str | None = None
     agent_turns_per_cycle: int = 6
     baseline_branch: str = "rsi-baseline"
@@ -246,6 +270,7 @@ class CycleOutcome:
     tests_passed: bool
     promoted: bool
     files_touched: int = 0
+    target: str = ""
     note: str = ""
 
 
@@ -265,8 +290,9 @@ class LocalRsiResult:
                 "[promoted]" if c.promoted else ("[no change]" if not c.changed else "[rejected]")
             )
             detail = f"tests={'pass' if c.tests_passed else 'fail'} files={c.files_touched}"
+            tgt = f" {c.target}" if c.target else ""
             note = f" - {c.note}" if c.note else ""
-            lines.append(f"  cycle {c.index}: {mark}  ({detail}){note}")
+            lines.append(f"  cycle {c.index}:{tgt} {mark}  ({detail}){note}")
         lines.append(f"  baseline: {self.baseline_dir} (branch {self.promotions} promotions deep)")
         return "\n".join(lines)
 
@@ -282,12 +308,28 @@ class LocalRsiLoop:
 
     def __init__(self, config: LocalRsiConfig, apply_patch: ApplyPatchFn | None = None) -> None:
         self._config = config
-        self._apply_patch = apply_patch or make_builders_apply_patch(
-            config.objective,
-            model=config.model,
-            max_agent_turns=config.agent_turns_per_cycle,
-        )
+        self._injected_apply = apply_patch
         self._baseline = Path(config.work_root) / "baseline"
+
+    def _target_for_cycle(self, index: int) -> str:
+        if self._config.targets:
+            return self._config.targets[(index - 1) % len(self._config.targets)]
+        return ""
+
+    def _objective_for_cycle(self, index: int) -> str:
+        target = self._target_for_cycle(index)
+        return _targeted_objective(target) if target else self._config.objective
+
+    def _apply_for_cycle(self, index: int) -> ApplyPatchFn:
+        # An injected callable (tests) wins; otherwise build a fresh builders
+        # provider carrying this cycle's (possibly targeted) objective.
+        if self._injected_apply is not None:
+            return self._injected_apply
+        return make_builders_apply_patch(
+            self._objective_for_cycle(index),
+            model=self._config.model,
+            max_agent_turns=self._config.agent_turns_per_cycle,
+        )
 
     def _setup_baseline(self) -> None:
         work_root = Path(self._config.work_root)
@@ -316,8 +358,9 @@ class LocalRsiLoop:
             str(cycle_dir),
             self._config.baseline_branch,
         )
+        target = self._target_for_cycle(index)
         try:
-            asyncio.run(self._apply_patch(LocalSandbox(cycle_dir), str(cycle_dir)))
+            asyncio.run(self._apply_for_cycle(index)(LocalSandbox(cycle_dir), str(cycle_dir)))
 
             _git(cycle_dir, "add", "-A")
             status = _git(cycle_dir, "status", "--porcelain")
@@ -328,13 +371,13 @@ class LocalRsiLoop:
                     changed=False,
                     tests_passed=False,
                     promoted=False,
+                    target=target,
                     note="agent made no change",
                 )
 
             files_touched = len([ln for ln in status.stdout.splitlines() if ln.strip()])
-            _git(
-                cycle_dir, "commit", "-q", "-m", f"RSI cycle {index}: {self._config.objective[:60]}"
-            )
+            commit_subject = f"RSI cycle {index}: {(target or self._config.objective)[:60]}"
+            _git(cycle_dir, "commit", "-q", "-m", commit_subject)
 
             tests_passed = self._run_tests(cycle_dir)
             if not tests_passed:
@@ -344,14 +387,20 @@ class LocalRsiLoop:
                     tests_passed=False,
                     promoted=False,
                     files_touched=files_touched,
+                    target=target,
                     note="test command failed",
                 )
 
             # Promote: fast-forward the baseline branch to include this cycle.
             _git(self._baseline, "merge", "--ff-only", cycle_branch)
-            logger.info("rsi_local_cycle_promoted", index=index, files=files_touched)
+            logger.info("rsi_local_cycle_promoted", index=index, files=files_touched, target=target)
             return CycleOutcome(
-                index, changed=True, tests_passed=True, promoted=True, files_touched=files_touched
+                index,
+                changed=True,
+                tests_passed=True,
+                promoted=True,
+                files_touched=files_touched,
+                target=target,
             )
         finally:
             _git(self._baseline, "worktree", "remove", "--force", str(cycle_dir), check=False)

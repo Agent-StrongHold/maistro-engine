@@ -40,6 +40,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--objective", default=None, help="Override the improvement objective handed to the agent."
     )
     run.add_argument(
+        "--targets",
+        default=None,
+        help="Comma-separated file paths to improve, one per cycle (rotated). "
+        "Each cycle gets a targeted objective naming its file (overrides --objective).",
+    )
+    run.add_argument(
         "--model",
         default=None,
         help="LiteLLM model alias (default: MAISTRO_BUILDERS_MODEL / DEFAULT_MODEL).",
@@ -60,16 +66,19 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         repo = Path(args.repo).expanduser()
-        if not (repo / ".git").is_dir():
+        # `.git` is a dir in a normal checkout, a file in a linked worktree.
+        if not (repo / ".git").exists():
             print(f"error: {repo} is not a git repository", file=sys.stderr)
             return 2
         work_root = args.work_root or tempfile.mkdtemp(prefix="maistro-rsi-")
+        targets = [t.strip() for t in args.targets.split(",") if t.strip()] if args.targets else []
         config = LocalRsiConfig(
             repo_path=str(repo),
             test_command=args.test_cmd,
             work_root=work_root,
             max_cycles=args.cycles,
             objective=args.objective or LocalRsiConfig.__dataclass_fields__["objective"].default,
+            targets=targets,
             model=args.model,
             agent_turns_per_cycle=args.agent_turns,
         )
