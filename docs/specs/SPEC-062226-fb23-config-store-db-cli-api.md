@@ -3,7 +3,7 @@ id: SPEC-062226-fb23
 title: "ConfigStore: DB table model, caching, CLI commands, and admin API endpoints (ADR-078)"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-22
 substrate:
   - maistro-engine#ADR-068

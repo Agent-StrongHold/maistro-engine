@@ -3,7 +3,7 @@ id: SPEC-261
 title: "Memory exposure mode: mandatory declaration, write/promote enforcement (ADR-057)"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-21
 substrate:
   - maistro-engine#ADR-011
