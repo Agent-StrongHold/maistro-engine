@@ -19,6 +19,9 @@ import os
 from collections.abc import Awaitable, Callable
 
 import httpx
+import structlog
+
+logger = structlog.get_logger()
 
 # What the evolve benchmark runners expect: given a chat-message list (and
 # optional sampling params), return the model's text response.
@@ -70,6 +73,33 @@ def make_gateway_llm_call(model: str, *, timeout: float = 60.0) -> LlmCall:
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"].get("content") or ""
+            content = data["choices"][0]["message"].get("content") or ""
+
+            # Reasoning models bill reasoning + output against the SAME budget,
+            # so a tight max_tokens can leave zero visible output. Surface the
+            # split (available in usage.completion_tokens_details) so that
+            # failure is diagnosable — and feeds accurate reasoning-vs-output
+            # cost into the latency/tokens signal — instead of a silent "".
+            usage = data.get("usage") or {}
+            details = usage.get("completion_tokens_details") or {}
+            reasoning = int(details.get("reasoning_tokens") or 0)
+            completion = int(usage.get("completion_tokens") or 0)
+            if reasoning and not content.strip():
+                await logger.awarning(
+                    "gateway_output_starved_by_reasoning",
+                    model=model,
+                    reasoning_tokens=reasoning,
+                    completion_tokens=completion,
+                    max_tokens=max_tokens,
+                    hint="raise max_tokens or lower reasoning_effort",
+                )
+            elif reasoning:
+                await logger.adebug(
+                    "gateway_token_split",
+                    model=model,
+                    reasoning_tokens=reasoning,
+                    output_tokens=completion - reasoning,
+                )
+            return content
 
     return llm_call
