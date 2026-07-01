@@ -105,7 +105,12 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
 def _run(cmd: str, cwd: Path, timeout: int = 900) -> tuple[bool, str]:
     try:
         proc = subprocess.run(
-            cmd, shell=True, cwd=str(cwd), capture_output=True, text=True, timeout=timeout
+            cmd,
+            shell=True,  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true -- operator-supplied test command from config, not agent/attacker input
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"test command errored: {exc}"
