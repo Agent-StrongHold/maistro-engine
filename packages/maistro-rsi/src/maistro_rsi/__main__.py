@@ -54,6 +54,18 @@ def _build_parser() -> argparse.ArgumentParser:
         "--agent-turns", type=int, default=6, help="Max agent turns per cycle (default: 6)."
     )
     run.add_argument(
+        "--isolation",
+        choices=("local", "container"),
+        default="local",
+        help="Where the agent runs: 'local' (host worktree) or 'container' "
+        "(ADR-093 Docker isolation). Default: local.",
+    )
+    run.add_argument(
+        "--image",
+        default="maistro-builders:latest",
+        help="Container image for --isolation container (default: maistro-builders:latest).",
+    )
+    run.add_argument(
         "--work-root",
         default=None,
         help="Where to put throwaway clones/worktrees (default: a temp dir).",
@@ -81,6 +93,8 @@ def main(argv: list[str] | None = None) -> int:
             targets=targets,
             model=args.model,
             agent_turns_per_cycle=args.agent_turns,
+            isolation=args.isolation,
+            sandbox_image=args.image,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"

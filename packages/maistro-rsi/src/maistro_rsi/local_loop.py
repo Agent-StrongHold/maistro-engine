@@ -186,33 +186,32 @@ def make_builders_apply_patch(
     *,
     model: str | None = None,
     max_agent_turns: int = 6,
+    isolation: str = "local",
+    image: str = "maistro-builders:latest",
 ) -> ApplyPatchFn:
     """Build an `ApplyPatchFn` that drives the native builders agent loop.
 
     Returns an async callable ``apply(sandbox, workspace)`` that points the
-    builders coding agent (the same `TurnRunner`/`LocalWorktreeSandbox` engine
-    behind `maistro builders`) at ``workspace`` and asks it to carry out
-    ``objective``. The agent's tool calls (read_file/write_file/run_tests/…)
-    operate on the worktree; when it stops requesting tools the turn ends. Up to
-    ``max_agent_turns`` turns are run so a single cycle can do multi-step work.
+    builders coding agent (the same `TurnRunner` engine behind `maistro
+    builders`) at ``workspace`` and asks it to carry out ``objective``. Up to
+    ``max_agent_turns`` turns run so a single cycle can do multi-step work.
+
+    ``isolation`` selects the BuilderSandbox:
+      - ``"local"``    — `LocalWorktreeSandbox`, edits run on the host (fast).
+      - ``"container"``— `ContainerBuilderSandbox`, the agent's edits and commands
+        run inside an ephemeral Docker container (ADR-093), then sync back to the
+        worktree for the loop to commit. Requires ``image`` to be built.
 
     Model resolution is left to `ResponsesAPICallable` (``model=None`` →
-    ``MAISTRO_BUILDERS_MODEL``/``DEFAULT_MODEL`` from the loaded ``.env``), so
-    the loop honours the same gateway config as the interactive TUI.
+    ``MAISTRO_BUILDERS_MODEL``/``DEFAULT_MODEL`` from the loaded ``.env``).
     """
 
-    async def apply(sandbox: MicroVmSandbox, workspace: str) -> None:
-        # Imported lazily so the package stays importable without the builders
-        # extras installed (mirrors _builders_tui.py's own lazy import).
+    async def _run_turns(session: object) -> None:
         from maistro_bootstrap.builders.agent_loop import AgentLoopConfig, TurnRunner
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
-        from maistro_bootstrap.builders.sandbox import LocalWorktreeSandbox
-        from maistro_bootstrap.builders.session import BuilderSession
 
-        work_path = Path(workspace)
-        session = BuilderSession(sandbox=LocalWorktreeSandbox(work_path))
         config = AgentLoopConfig(model=model) if model else AgentLoopConfig()
-        runner = TurnRunner(session=session, config=config)
+        runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
         runner.set_llm(ResponsesAPICallable(model=model))  # type: ignore[arg-type]
 
         messages: list[dict[str, object]] = [
@@ -234,6 +233,25 @@ def make_builders_apply_patch(
                 break
             messages.append({"role": "assistant", "content": content})
             messages.append({"role": "user", "content": "Continue if useful, otherwise stop."})
+
+    async def apply(sandbox: MicroVmSandbox, workspace: str) -> None:
+        # Imported lazily so the package stays importable without the builders
+        # extras installed (mirrors _builders_tui.py's own lazy import).
+        from maistro_bootstrap.builders.session import BuilderSession
+
+        work_path = Path(workspace)
+        if isolation == "container":
+            from maistro_bootstrap.builders.container_sandbox import ContainerBuilderSandbox
+
+            with ContainerBuilderSandbox(work_path, image=image) as csbx:
+                await _run_turns(BuilderSession(sandbox=csbx))
+                # Agent ran isolated in the container; bring its edits back to the
+                # host worktree so the loop can stage/commit/test them.
+                csbx.sync_to_host()
+        else:
+            from maistro_bootstrap.builders.sandbox import LocalWorktreeSandbox
+
+            await _run_turns(BuilderSession(sandbox=LocalWorktreeSandbox(work_path)))
 
     return apply
 
@@ -259,6 +277,9 @@ class LocalRsiConfig:
     targets: list[str] = field(default_factory=list)
     model: str | None = None
     agent_turns_per_cycle: int = 6
+    # "local" (host worktree) or "container" (ADR-093 Docker isolation).
+    isolation: str = "local"
+    sandbox_image: str = "maistro-builders:latest"
     baseline_branch: str = "rsi-baseline"
     test_timeout: int = 900
 
@@ -329,6 +350,8 @@ class LocalRsiLoop:
             self._objective_for_cycle(index),
             model=self._config.model,
             max_agent_turns=self._config.agent_turns_per_cycle,
+            isolation=self._config.isolation,
+            image=self._config.sandbox_image,
         )
 
     def _setup_baseline(self) -> None:
