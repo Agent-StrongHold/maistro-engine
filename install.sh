@@ -238,6 +238,73 @@ append_env_once() {
     fi
 }
 
+# Like append_env_once but also replaces an existing blank value in place.
+# Use for secrets that compose requires non-empty; a prior install may have
+# written the key with an empty value as a placeholder.
+fill_env_value() {
+    local key="$1"
+    local value="$2"
+    ensure_python
+    "${PYTHON_CMD[@]}" - "$ENV_FILE" "$key" "$value" <<'PY'
+import sys
+from pathlib import Path
+
+path, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+p = Path(path)
+lines = p.read_text(encoding="utf-8").splitlines() if p.exists() else []
+prefix = key + "="
+found = False
+for i, line in enumerate(lines):
+    if line.startswith(prefix):
+        found = True
+        if line[len(prefix):].strip() == "":
+            lines[i] = prefix + value
+        break
+if not found:
+    lines.append(prefix + value)
+p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+}
+
+# Ensure API_KEYS (a JSON array) contains token. Preserves other existing
+# keys. Uses append_env_once semantics only as a final fallback.
+ensure_api_keys_contains() {
+    local token="$1"
+    ensure_python
+    "${PYTHON_CMD[@]}" - "$ENV_FILE" "$token" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path, token = sys.argv[1], sys.argv[2]
+p = Path(path)
+lines = p.read_text(encoding="utf-8").splitlines() if p.exists() else []
+prefix = "API_KEYS="
+found_idx = None
+keys: list[str] = []
+for i, line in enumerate(lines):
+    if line.startswith(prefix):
+        found_idx = i
+        raw = line[len(prefix):].strip()
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    keys = [str(x) for x in parsed]
+            except json.JSONDecodeError:
+                keys = []
+        break
+if token not in keys:
+    keys.append(token)
+new_line = prefix + json.dumps(keys)
+if found_idx is not None:
+    lines[found_idx] = new_line
+else:
+    lines.append(new_line)
+p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+}
+
 # Insert or replace a key in $ENV_FILE. Unlike append_env_once this keeps the
 # value current across runs (e.g. the docker socket path can change when the
 # user switches between Colima and Docker Desktop).
@@ -370,7 +437,7 @@ repair_existing_env() {
     token="$(env_get MAISTRO_ACCESS_TOKEN)"
     if [[ -z "$token" ]]; then
         token="$(random_secret "" 32)"
-        append_env_once MAISTRO_ACCESS_TOKEN "$token"
+        fill_env_value MAISTRO_ACCESS_TOKEN "$token"
     fi
 
     db_pass="$(env_get DB_PASSWORD)"
@@ -386,31 +453,33 @@ repair_existing_env() {
         litellm_key="$(random_secret "sk-" 32)"
     fi
 
-    append_env_once API_KEYS "[\"${token}\"]"
+    # API_KEYS is the server's actual auth list; ensure our token is in it
+    # even if the key already existed (blank or with other entries).
+    ensure_api_keys_contains "$token"
     append_env_once REQUIRE_AUTH "true"
     append_env_once MAISTRO_BIND_HOST "$BIND_HOST"
     append_env_once MAISTRO_PORT "$PORT"
     append_env_once POSTGRES_PASSWORD "$db_pass"
-    append_env_once DB_PASSWORD "$db_pass"
+    fill_env_value DB_PASSWORD "$db_pass"
     append_env_once DATABASE_URL "postgresql://maistro:${db_pass}@postgres:5432/maistro"
-    append_env_once LITELLM_MASTER_KEY "$litellm_key"
+    fill_env_value LITELLM_MASTER_KEY "$litellm_key"
     append_env_once LITELLM_URL "http://litellm:4000"
     append_env_once LITELLM_BASE_URL "http://litellm:4000"
     append_env_once LITELLM_PROXY_URL "http://litellm:4000"
     append_env_once LITELLM_API_BASE "http://litellm:4000/v1"
-    append_env_once LITELLM_API_KEY "$litellm_key"
-    append_env_once LITELLM_PROXY_KEY "$litellm_key"
+    fill_env_value LITELLM_API_KEY "$litellm_key"
+    fill_env_value LITELLM_PROXY_KEY "$litellm_key"
     append_env_once DEFAULT_MODEL "gemini/gemini-2.5-flash"
     append_env_once CHAT_DEFAULT_MODEL "gemini/gemini-2.5-flash"
     append_env_once MAISTRO_BUILDERS_MODEL "gemini/gemini-2.5-flash"
-    append_env_once LANGFUSE_NEXTAUTH_SECRET "$(random_secret "" 32)"
-    append_env_once LANGFUSE_SALT "$(random_secret "" 24)"
+    fill_env_value LANGFUSE_NEXTAUTH_SECRET "$(random_secret "" 32)"
+    fill_env_value LANGFUSE_SALT "$(random_secret "" 24)"
     append_env_once LANGFUSE_PUBLIC_KEY ""
     append_env_once LANGFUSE_SECRET_KEY ""
     append_env_once BENCHMARK_FIDELITY "proxy"
     append_provider_placeholders
     chmod_env_file
-    ok "Repaired missing installer keys in $ENV_FILE."
+    ok "Repaired missing/blank installer keys in $ENV_FILE."
 }
 
 sync_env_file() {
@@ -803,6 +872,17 @@ start_engine() {
         sleep 2
     done
     ok "Engine healthy."
+
+    info "Waiting for Conductor UI health..."
+    attempts=0
+    until http_ok "http://${BIND_HOST}:${HIVE_PORT:-8101}/health/ready"; do
+        attempts=$((attempts + 1))
+        if [[ $attempts -gt 60 ]]; then
+            fail "Conductor did not become ready. Check: ${COMPOSE_CMD[*]} ${COMPOSE_FILES[*]} logs hive-conductor"
+        fi
+        sleep 2
+    done
+    ok "Conductor healthy."
 }
 
 # Install the host-side `maistro` CLI so `maistro builders` (the interactive

@@ -140,8 +140,11 @@ services:
       - LITELLM_PROXY_KEY=${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in .env}
       - CHAT_DEFAULT_MODEL=${CHAT_DEFAULT_MODEL:-${DEFAULT_MODEL:-gemini/gemini-2.5-flash}}
       # Engine router for DAG execution (REQUIRE_AUTH=true expects the access token).
-      - CONDUCTOR_ROUTER_URL=http://maistro-engine:8000
-      - ROUTER_API_KEY=${MAISTRO_ACCESS_TOKEN:-}
+      # Settings.maistro_base_url / maistro_router_api_key (config.py) read these
+      # MAISTRO_* names directly; CONDUCTOR_ROUTER_URL/ROUTER_API_KEY are not bound
+      # to any field, so task dispatch silently fell back to localhost with no auth.
+      - MAISTRO_BASE_URL=http://maistro-engine:8000
+      - MAISTRO_ROUTER_API_KEY=${MAISTRO_ACCESS_TOKEN:-}
       # Telemetry (optional; blank keys disable it).
       - LANGFUSE_BASE_URL=http://langfuse:3000
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
