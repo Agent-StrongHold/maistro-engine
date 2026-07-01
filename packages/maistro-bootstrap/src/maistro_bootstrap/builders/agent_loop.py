@@ -113,8 +113,33 @@ def _make_sandbox_tools(session: BuilderSession) -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "edit_file",
+            "description": (
+                "PREFERRED for changing an existing file: replace one exact string. "
+                "`old_string` must match the file byte-for-byte (including indentation) "
+                "and appear EXACTLY ONCE — include enough surrounding lines to be unique. "
+                "`new_string` replaces it. Use this instead of write_file for edits so you "
+                "don't rewrite (or accidentally reformat) the rest of the file."
+            ),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string"},
+                    "old_string": {
+                        "type": "string",
+                        "description": "Exact text to replace; must be unique in the file.",
+                    },
+                    "new_string": {"type": "string", "description": "Replacement text."},
+                },
+                "required": ["path", "old_string", "new_string"],
+            },
+        },
+        {
             "name": "write_file",
-            "description": "Write content to a file in the sandbox workspace.",
+            "description": (
+                "Write a whole file. Use only for NEW files or full rewrites; prefer "
+                "edit_file for changes to an existing file."
+            ),
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -198,6 +223,8 @@ def _dispatch_safe_tool(sandbox: Any, name: str, inputs: dict[str, Any]) -> str 
     if name == "write_file":
         sandbox.write_file(inputs["path"], inputs["content"])
         return f"wrote {inputs['path']}"
+    if name == "edit_file":
+        return str(sandbox.edit_file(inputs["path"], inputs["old_string"], inputs["new_string"]))
     if name == "run_tests":
         argv = ["python", "-m", "pytest"]
         extra = inputs.get("args", "").strip()

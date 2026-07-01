@@ -144,6 +144,30 @@ def test_write_and_read_file(sandbox: LocalWorktreeSandbox) -> None:
     assert sandbox.read_file("hello.txt") == "world"
 
 
+def test_edit_file_replaces_unique_string(sandbox: LocalWorktreeSandbox) -> None:
+    sandbox.write_file("m.py", "a = 1\nb = 2\nc = 3\n")
+    out = sandbox.edit_file("m.py", "b = 2", "b = 22")
+    assert "1 replacement" in out
+    assert sandbox.read_file("m.py") == "a = 1\nb = 22\nc = 3\n"
+
+
+def test_edit_file_missing_string_raises(sandbox: LocalWorktreeSandbox) -> None:
+    sandbox.write_file("m.py", "a = 1\n")
+    with pytest.raises(ValueError, match="not found"):
+        sandbox.edit_file("m.py", "z = 9", "z = 10")
+
+
+def test_edit_file_ambiguous_string_raises(sandbox: LocalWorktreeSandbox) -> None:
+    sandbox.write_file("m.py", "x = 1\nx = 1\n")
+    with pytest.raises(ValueError, match="appears 2 times"):
+        sandbox.edit_file("m.py", "x = 1", "x = 2")
+
+
+def test_edit_file_escape_blocked(sandbox: LocalWorktreeSandbox) -> None:
+    with pytest.raises(SandboxEscapeError):
+        sandbox.edit_file("../escape.txt", "a", "b")
+
+
 def test_write_creates_parent_dirs(sandbox: LocalWorktreeSandbox) -> None:
     sandbox.write_file("a/b/c.txt", "nested")
     assert sandbox.read_file("a/b/c.txt") == "nested"
