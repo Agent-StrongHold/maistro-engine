@@ -104,7 +104,8 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
 
 def _run(cmd: str, cwd: Path, timeout: int = 900) -> tuple[bool, str]:
     try:
-        proc = subprocess.run(  # nosemgrep: tools.semgrep.maistro-subprocess-shell-true -- operator-supplied test command from config, not agent/attacker input
+        # shell=True: `cmd` is operator-supplied test config, not agent/attacker input.
+        proc = subprocess.run(  # nosemgrep
             cmd,
             shell=True,
             cwd=str(cwd),
