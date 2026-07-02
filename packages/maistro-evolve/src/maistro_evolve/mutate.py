@@ -210,6 +210,21 @@ def mutate_eval_weights(genome: PipelineGenome, rate: float) -> PipelineGenome:
 
 
 def mutate_all(genome: PipelineGenome, rate: float) -> PipelineGenome:
+    """
+    Apply all mutation operators to the genome in sequence.
+
+    This function sequentially applies topology, node, prompt, and evaluation weight
+    mutations to the input genome, each with the given mutation rate. The resulting
+    genome is a mutated version of the input, with a new name indicating that all
+    mutation types were applied.
+
+    Args:
+        genome: The input pipeline genome to mutate.
+        rate: The mutation rate (probability) for each individual mutation step.
+
+    Returns:
+        A new PipelineGenome with all mutations applied.
+    """
     current = mutate_topology(genome, rate)
     current = mutate_node(current, rate)
     current = mutate_prompt(current, rate)
