@@ -122,10 +122,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--export-dir", required=True, help="Directory written by `run --export-patches`."
     )
     harvest.add_argument(
-        "--repo-dir", required=True, help="Local checkout to build the PR branches in."
+        "--repo-dir",
+        default=None,
+        help="Existing checkout to build the PR branches in (local runs).",
     )
     harvest.add_argument(
-        "--base", default=None, help="Branch to base the PR branches on (default: current branch)."
+        "--clone-url",
+        default=None,
+        help="Clone this repo URL fresh (LF, no host dependency) instead of --repo-dir. "
+        "This is the cloud path: a trusted runner clones, applies, and pushes with GH_TOKEN. "
+        "Auth for push/PR comes from GH_TOKEN via `gh auth setup-git`.",
+    )
+    harvest.add_argument(
+        "--base",
+        default=None,
+        help="Branch to base the PR branches on (default: current branch, or the "
+        "cloned branch when --clone-url is used).",
     )
     harvest.add_argument(
         "--pr-base", default="main", help="Target branch for the PRs (default: main)."
@@ -143,6 +155,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _harvest(args: argparse.Namespace) -> int:
     import subprocess
+    import tempfile
     from datetime import UTC, datetime
 
     from maistro_rsi.harvest import branch_slug, group_by_file, load_manifest, pr_body, pr_title
@@ -156,8 +169,36 @@ def _harvest(args: argparse.Namespace) -> int:
     if not groups:
         print("no promotions to harvest")
         return 0
-    repo = str(Path(args.repo_dir).resolve())
+    if not (args.repo_dir or args.clone_url):
+        print("error: pass --repo-dir (local) or --clone-url (cloud)", file=sys.stderr)
+        return 2
     session = args.session or datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+
+    base = args.base
+    if args.clone_url:
+        # Cloud path: clone fresh with LF working tree (no CRLF host artifacts),
+        # and let gh wire the GH_TOKEN into git so pushes need no host creds.
+        repo = tempfile.mkdtemp(prefix="rsi-harvest-")
+        clone_base = base or "main"
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "core.autocrlf=false",
+                "clone",
+                "--single-branch",
+                "--branch",
+                clone_base,
+                args.clone_url,
+                repo,
+            ],
+            check=True,
+        )
+        base = clone_base
+        if args.push:
+            subprocess.run(["gh", "auth", "setup-git"], check=True)
+    else:
+        repo = str(Path(args.repo_dir).resolve())
 
     # Identity flags so `git am` can commit in a clone with no configured user
     # (the RSI commits are bot commits); --3way lets am fall back to a blob-level
@@ -169,7 +210,8 @@ def _harvest(args: argparse.Namespace) -> int:
             ["git", *ident, "-C", repo, *a], check=check, capture_output=True, text=True
         )
 
-    base = args.base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    # base is set above for --clone-url; for --repo-dir default to its current branch.
+    base = base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     opened = 0
     for file, group in groups.items():
         branch = branch_slug(file, session)

@@ -25,7 +25,14 @@ COPY . /workspace
 
 # The build context is a linked git worktree (its .git is a file pointing
 # outside the context), so bake a fresh, self-contained repo the loop can clone.
-RUN rm -rf .git \
+# Normalise text files to LF first: the build context is copied from a Windows
+# checkout (CRLF), but the in-container agent writes LF — without this every
+# agent edit diffs as a whole-file CRLF->LF rewrite, which defeats the
+# complementary-merge (patches can't cleanly apply) and inflates every diff.
+RUN find . -type f \( -name '*.py' -o -name '*.md' -o -name '*.txt' -o -name '*.toml' \
+        -o -name '*.yaml' -o -name '*.yml' -o -name '*.cfg' -o -name '*.ini' \) \
+        -print0 | xargs -0 -r sed -i 's/\r$//' \
+    && rm -rf .git \
     && git init -q \
     && git add -A \
     && git -c user.email=rsi@maistro.local -c user.name=RSI commit -qm "rsi baseline snapshot"
