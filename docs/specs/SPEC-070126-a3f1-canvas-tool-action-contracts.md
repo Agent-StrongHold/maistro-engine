@@ -1,5 +1,5 @@
 ---
-id: SPEC-259
+id: SPEC-070126-a3f1
 title: "Canvas tool action contracts, upload correctness, and reference persistence ownership"
 repo: maistro-engine
 kind: spec
