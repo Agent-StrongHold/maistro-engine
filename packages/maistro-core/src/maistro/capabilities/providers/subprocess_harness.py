@@ -23,6 +23,11 @@ from typing import Any, Protocol, runtime_checkable
 from maistro.agents.spec.agent_spec import AgentSpec
 from maistro.capabilities.slots.harness_runner import SLOT_NAME
 from maistro.capabilities.types import ProviderHealth
+from maistro.tools.sandbox.workspace import ALLOWED_HOST_ROOTS
+
+# Default healthcheck probe location: the sandbox's own first allowlisted root
+# (single source of truth; avoids a hardcoded /tmp literal here).
+_DEFAULT_HEALTHCHECK_WORKSPACE = str(ALLOWED_HOST_ROOTS[0])
 
 
 @runtime_checkable
@@ -63,7 +68,7 @@ class SubprocessHarnessRunner:
         binary: str | None = None,
         timeout: int = 120,
         trust_tier: str = "t2",
-        healthcheck_workspace: str = "/tmp/maistro-workspace",
+        healthcheck_workspace: str = _DEFAULT_HEALTHCHECK_WORKSPACE,
     ) -> None:
         self._name = name
         self._command = command
