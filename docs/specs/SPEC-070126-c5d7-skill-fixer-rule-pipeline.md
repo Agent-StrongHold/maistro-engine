@@ -1,5 +1,5 @@
 ---
-id: SPEC-261
+id: SPEC-070126-c5d7
 title: "Skill fixer rule pipeline and public API ownership"
 repo: maistro-engine
 kind: spec

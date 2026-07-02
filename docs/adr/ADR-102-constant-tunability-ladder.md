@@ -10,7 +10,7 @@ substrate:
 related:
   - maistro-engine#SPEC-240
   - maistro-engine#SPEC-248
-  - maistro-engine#SPEC-260
+  - maistro-engine#SPEC-062126-5d56
 supersedes: []
 blocks: []
 blocked-by: []
@@ -93,5 +93,5 @@ target to migrate toward as their own follow-up SPECs land.
 
 ### Neutral
 - Existing hardcoded constants are not required to migrate by this ADR alone; each subsystem's
-  own follow-up SPEC (e.g. SPEC-260 for memory decay/feedback constants) decides whether and
+  own follow-up SPEC (e.g. SPEC-062126-5d56 for memory decay/feedback constants) decides whether and
   when to adopt the ladder for its own constants.
