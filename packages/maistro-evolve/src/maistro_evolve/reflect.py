@@ -206,6 +206,33 @@ def _target_node(genome: PipelineGenome) -> NodeGenome:
     return genome.topology.nodes[0]
 
 
+async def _attribute_failure_to_node(
+    genome: PipelineGenome,
+    failure_traces: str,
+    llm_call: Any,
+) -> str | None:
+    """TextGrad-style attribution: ask the LLM which node is responsible.
+
+    Returns the attributed node id when the LLM response exactly matches a
+    node id in the genome, or None to trigger entry-node fallback.
+    """
+    node_list = "\n".join(f"- {n.id}: {n.role}/{n.strategy}" for n in genome.topology.nodes)
+    prompt = (
+        "You are diagnosing a multi-node AI pipeline failure.\n\n"
+        f"Pipeline nodes:\n{node_list}\n\n"
+        f"Failure traces:\n{failure_traces}\n\n"
+        "Which node id is most responsible for these failures? "
+        "Reply with ONLY the node id, nothing else."
+    )
+    try:
+        raw = await llm_call(prompt)
+    except Exception:
+        return None
+    node_id = str(raw).strip()
+    valid_ids = {n.id for n in genome.topology.nodes}
+    return node_id if node_id in valid_ids else None
+
+
 def _weakest_benchmark(genome: PipelineGenome, benchmarks: list[str] | None) -> str | None:
     scores = {
         bench: score
@@ -226,6 +253,7 @@ async def reflective_improve(
     num_candidates: int = 2,
     accept_margin: float = 0.0,
     prompt_history: Sequence[tuple[str, float]] = (),
+    node_attribution: bool = True,
 ) -> ReflectionOutcome | None:
     if llm_call is None or not genome.topology.nodes:
         return None
@@ -233,7 +261,6 @@ async def reflective_improve(
     weakest = _weakest_benchmark(genome, benchmarks)
     if weakest is None:
         return None
-    node = _target_node(genome)
 
     # Fresh rollout on the weakest benchmark: gives an up-to-date baseline
     # score plus the per-sample failure traces the reflection feeds on.
@@ -241,6 +268,9 @@ async def reflective_improve(
     if not baseline_results:
         return None
     baseline = baseline_results[0]
+
+    # Default target: entry node (SPEC-207 §1).
+    node = _target_node(genome)
 
     if baseline.metadata.get("stub"):
         return ReflectionOutcome(
@@ -251,6 +281,16 @@ async def reflective_improve(
         )
 
     feedback = summarize_failures(baseline.metadata)
+
+    # TextGrad-style attribution: for multi-node pipelines with failure traces,
+    # ask the LLM which node is responsible rather than always blaming the entry node.
+    if node_attribution and len(genome.topology.nodes) > 1 and feedback:
+        attributed_id = await _attribute_failure_to_node(genome, feedback, llm_call)
+        if attributed_id is not None:
+            for n in genome.topology.nodes:
+                if n.id == attributed_id:
+                    node = n
+                    break
     candidates = await propose_candidates(
         genome,
         node,

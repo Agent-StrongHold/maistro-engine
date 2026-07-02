@@ -10,6 +10,7 @@ from maistro_evolve.cycle import EvolutionConfig, EvolutionCycle
 from maistro_evolve.harness import EvalHarness
 from maistro_evolve.population import PopulationStore
 from maistro_evolve.reflect import (
+    _attribute_failure_to_node,
     build_reflection_prompt,
     reflective_improve,
     spawn_challenger,
@@ -381,3 +382,154 @@ class TestOproHistory:
         assert surviving is not None
         history = surviving.harness_params.get("reflection_history", [])
         assert len(history) <= 5
+
+
+def _two_node_genome(entry_prompt: str = "entry prompt") -> PipelineGenome:
+    """Two-node genome: entry node 'n1' + downstream node 'n2'."""
+    return PipelineGenome(
+        id="g-multi",
+        name="multi",
+        topology=DAGTopology(
+            nodes=[
+                NodeGenome(
+                    id="n1",
+                    role="planner",
+                    strategy="react",
+                    model="gpt-4",
+                    temperature=0.3,
+                    max_tokens=4096,
+                    system_prompt=entry_prompt,
+                    max_tool_rounds=5,
+                ),
+                NodeGenome(
+                    id="n2",
+                    role="executor",
+                    strategy="chain",
+                    model="gpt-4",
+                    temperature=0.3,
+                    max_tokens=4096,
+                    system_prompt="downstream prompt",
+                    max_tool_rounds=5,
+                ),
+            ],
+            edges=[],
+            entry_node="n1",
+            max_cycles=3,
+            beam_width=1,
+            use_scout=False,
+        ),
+        eval_weights=EvalWeights(),
+        created_at=datetime.now(UTC).isoformat(),
+        updated_at=datetime.now(UTC).isoformat(),
+    )
+
+
+class TestTextGradAttribution:
+    @pytest.mark.asyncio
+    async def test_attribution_targets_downstream_node_from_traces(self):
+        """When LLM names the downstream node, the challenger mutates that node."""
+        g = _two_node_genome()
+        g.eval_scores = {"ifeval": 0.4}
+
+        # LLM: attribution returns "n2" (downstream), proposal returns improved text.
+        call_log: list[str] = []
+
+        async def llm(prompt: Any, **_: Any) -> str:
+            call_log.append(str(prompt))
+            # First call (attribution) — returns downstream node id.
+            if "most responsible" in str(prompt):
+                return "n2"
+            # Subsequent calls (proposal candidates) — return improved prompt.
+            return "improved downstream prompt"
+
+        outcome = await reflective_improve(
+            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=True
+        )
+        assert outcome is not None
+        assert outcome.target_node_id == "n2"
+        # Challenger's downstream node prompt was rewritten; entry node unchanged.
+        if outcome.challenger is not None:
+            challenger_nodes = {n.id: n for n in outcome.challenger.topology.nodes}
+            assert "improved" in challenger_nodes["n2"].system_prompt
+            assert challenger_nodes["n1"].system_prompt == "entry prompt"
+
+    @pytest.mark.asyncio
+    async def test_attribution_falls_back_on_unrecognised_response(self):
+        """Unrecognised node id from attribution → entry node used, no error."""
+        g = _two_node_genome()
+        g.eval_scores = {"ifeval": 0.4}
+
+        async def llm(prompt: Any, **_: Any) -> str:
+            if "most responsible" in str(prompt):
+                return "n-nonexistent"
+            return "improved prompt"
+
+        outcome = await reflective_improve(
+            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=True
+        )
+        assert outcome is not None
+        assert outcome.target_node_id == "n1"  # fallback to entry node
+
+    @pytest.mark.asyncio
+    async def test_attribution_skipped_when_disabled(self):
+        """node_attribution=False → attribution LLM call never made."""
+        g = _two_node_genome()
+        g.eval_scores = {"ifeval": 0.4}
+        attribution_called = False
+
+        async def llm(prompt: Any, **_: Any) -> str:
+            nonlocal attribution_called
+            if "most responsible" in str(prompt):
+                attribution_called = True
+                return "n2"
+            return "improved prompt"
+
+        outcome = await reflective_improve(
+            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=False
+        )
+        assert outcome is not None
+        assert not attribution_called
+        assert outcome.target_node_id == "n1"  # always entry node when disabled
+
+    @pytest.mark.asyncio
+    async def test_attribution_skipped_for_single_node_genome(self):
+        """Single-node pipeline → attribution skipped; entry node used."""
+        g = _genome()
+        g.eval_scores = {"ifeval": 0.4}
+        attribution_called = False
+
+        async def llm(prompt: Any, **_: Any) -> str:
+            nonlocal attribution_called
+            if "most responsible" in str(prompt):
+                attribution_called = True
+                return "q1"
+            return "improved prompt"
+
+        outcome = await reflective_improve(
+            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=True
+        )
+        assert outcome is not None
+        assert not attribution_called
+        assert outcome.target_node_id == "q1"
+
+    @pytest.mark.asyncio
+    async def test_attribute_failure_to_node_returns_none_on_bad_response(self):
+        """_attribute_failure_to_node returns None when LLM returns unknown id."""
+        g = _two_node_genome()
+
+        async def llm(prompt: Any, **_: Any) -> str:
+            return "bogus-id"
+
+        result = await _attribute_failure_to_node(g, "some failure trace", llm)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_attribute_failure_to_node_returns_valid_id(self):
+        """_attribute_failure_to_node returns the node id when LLM is correct."""
+        g = _two_node_genome()
+
+        async def llm(prompt: Any, **_: Any) -> str:
+            return "n2"
+
+        result = await _attribute_failure_to_node(g, "some failure trace", llm)
+        assert result == "n2"

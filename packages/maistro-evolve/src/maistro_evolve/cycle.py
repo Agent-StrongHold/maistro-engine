@@ -44,6 +44,7 @@ class EvolutionConfig(BaseModel):
     self_improve_candidates: int = Field(default=2, ge=0, le=MAX_SELF_IMPROVE_CANDIDATES)
     self_improve_accept_margin: float = 0.0
     reflect_history_window: int = Field(default=5, ge=0)
+    node_attribution: bool = True
 
 
 class EvolutionCycle:
@@ -183,6 +184,7 @@ class EvolutionCycle:
                 num_candidates=config.self_improve_candidates,
                 accept_margin=config.self_improve_accept_margin,
                 prompt_history=prompt_history,
+                node_attribution=config.node_attribution,
             )
             if outcome is not None and outcome.accepted and outcome.challenger is not None:
                 population.add(outcome.challenger)
