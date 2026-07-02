@@ -136,7 +136,7 @@ class PgDesignProjectStore:
                     """),
                     {
                         "project_id": project_id,
-                        "format": output.format.value,
+                        "format": output.format.value if output.format is not None else None,
                         "content": output.content,
                         "url": output.url,
                         "trust_tier": output.trust_tier.value,

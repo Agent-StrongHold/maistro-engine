@@ -19,6 +19,8 @@ most idle free-tier headroom so unused allowances get exercised.
 
 from __future__ import annotations
 
+from typing import Any
+
 from maistro_rsi.coordinator import (
     CoordinatorResult,
     ExecutionReport,
@@ -56,7 +58,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy-load runner exports to avoid pulling in sandbox chain for
     coordinator-only imports."""
     if name in ("RsiCycle", "RsiCycleConfig", "RsiCycleResult"):

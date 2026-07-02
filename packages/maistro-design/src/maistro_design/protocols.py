@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from maistro_design.types import (
@@ -44,7 +44,7 @@ class DesignProjectStore(Protocol):
 
 @runtime_checkable
 class DesignEngineProtocol(Protocol):
-    async def run_discovery(self, skill_slug: str) -> list[dict]: ...
+    async def run_discovery(self, skill_slug: str) -> list[dict[str, Any]]: ...
     async def generate(self, discovery: DiscoveryResult) -> DesignProject: ...
 
 

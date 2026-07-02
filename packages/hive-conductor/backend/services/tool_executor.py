@@ -95,32 +95,63 @@ def _ssrf_blocked(url: str) -> str | None:
     return None
 
 
+async def _resolve_safe_url(url: str, *, max_redirects: int = 5) -> str:
+    """Follow redirects manually, re-running the SSRF check at EVERY hop, and
+    return the final (non-redirecting) URL.
+
+    Checking only the initial URL is not enough: a public URL can 30x-redirect to
+    an internal or cloud-metadata host, and following that redirect would be the
+    forged request. Raises PermissionError if any hop — including redirect targets
+    — resolves to a non-public address.
+    """
+    from urllib.parse import urljoin
+
+    current = url
+    for _ in range(max_redirects + 1):
+        blocked = _ssrf_blocked(current)
+        if blocked:
+            raise PermissionError(blocked)
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as c:
+            resp = await c.get(current)
+        location = resp.headers.get("location")
+        if resp.is_redirect and location:
+            current = urljoin(current, location)
+            continue
+        return current
+    raise PermissionError("too many redirects")
+
+
 async def browse_url(url: str, task: str = "Extract key facts and quotes") -> dict[str, Any]:
     """Fetch and summarize a real URL."""
-    blocked = _ssrf_blocked(url)
-    if blocked:
-        return {"url": url, "error": f"blocked (SSRF protection): {blocked}"}
+    try:
+        # Validate the whole redirect chain up front; both fetch paths below then
+        # use this final, already-validated URL with redirects disabled.
+        safe_url = await _resolve_safe_url(url)
+    except PermissionError as e:
+        return {"url": url, "error": f"blocked (SSRF protection): {e}"}
+    except Exception as e:
+        return {"url": url, "error": f"could not resolve URL safely: {e}"}
     try:
         from maistro.tools.browser import BrowserClient
 
         client = BrowserClient()
-        result = await client.browse(url, task)
+        result = await client.browse(safe_url, task)
         await client.aclose()
         return {
-            "url": url,
+            "url": safe_url,
             "title": result.title,
             "text": result.text,
             "duration_ms": result.duration_ms,
         }
     except Exception:
-        # Fallback: simple HTTP fetch
+        # Fallback: simple HTTP fetch (redirects disabled — safe_url is final).
         try:
-            async with httpx.AsyncClient(timeout=15.0) as c:
-                r = await c.get(url, follow_redirects=True)
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as c:
+                r = await c.get(safe_url)
                 text = r.text[:5000]
-                return {"url": url, "title": url, "text": text, "duration_ms": 0}
+                return {"url": safe_url, "title": safe_url, "text": text, "duration_ms": 0}
         except Exception as e2:
-            return {"url": url, "error": str(e2)}
+            return {"url": safe_url, "error": str(e2)}
 
 
 async def clarify(questions: list[str], context: dict[str, Any]) -> dict[str, str]:

@@ -29,6 +29,7 @@ native provider built here drops straight into `RsiCycle` later.
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 import uuid
 from dataclasses import dataclass, field
@@ -36,6 +37,8 @@ from pathlib import Path
 
 import structlog
 
+from maistro_rsi.competitors import Competitor
+from maistro_rsi.merge import greedy_merge
 from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
 
 logger = structlog.get_logger()
@@ -106,6 +109,36 @@ def _git(
     if check and proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed in {cwd}: {proc.stderr.strip()}")
     return proc
+
+
+def _git_apply(cwd: Path, patch: str) -> bool:
+    """Apply ``patch`` onto the worktree at ``cwd``; return whether it landed.
+
+    A non-zero exit (a conflict with what's already applied) is the *signal*
+    the greedy merge uses to drop a competing candidate — so this must not raise.
+    """
+    proc = subprocess.run(
+        ["git", *_GIT_CONFIG, "apply", "--whitespace=nowarn", "-"],
+        cwd=str(cwd),
+        input=patch,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    return proc.returncode == 0
+
+
+def _scouted_objective(path: str, instruction: str) -> str:
+    """Wrap a scout's concrete instruction in the agent's tool-use guidance so
+    every competitor implements the *same* identified improvement."""
+    return (
+        f"Improve the file `{path}`. A reviewer identified this specific improvement:\n"
+        f"  {instruction}\n"
+        f"Implement exactly that. First read `{path}` with the read_file tool, then make the "
+        f"change with the edit_file tool (a targeted exact-string replacement) — do NOT rewrite "
+        f"the whole file, do not reformat unrelated lines, and do not alter runtime behavior. "
+        f"Use only read_file and edit_file — do not run git or shell commands."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +219,7 @@ def make_builders_apply_patch(
     objective: str = _DEFAULT_OBJECTIVE,
     *,
     model: str | None = None,
+    temperature: float | None = None,
     max_agent_turns: int = 6,
     isolation: str = "local",
     image: str = "maistro-builders:latest",
@@ -213,7 +247,7 @@ def make_builders_apply_patch(
 
         config = AgentLoopConfig(model=model) if model else AgentLoopConfig()
         runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
-        runner.set_llm(ResponsesAPICallable(model=model))  # type: ignore[arg-type]
+        runner.set_llm(ResponsesAPICallable(model=model, temperature=temperature))
 
         messages: list[dict[str, object]] = [
             {"role": "system", "content": config.system_prompt},
@@ -289,6 +323,41 @@ class LocalRsiConfig:
     # (ruff/mypy/bandit/coverage/…) to be importable in the run environment.
     use_fitness: bool = False
     coverage_source: str = "."
+    # pytest args for the coverage run (e.g. a scoped test path). Empty means a
+    # bare `pytest` — which, in a monorepo with many testpaths, runs the whole
+    # suite every cycle; scope it to keep a fitness run tractable.
+    coverage_pytest_args: str = ""
+    # Tournament (ADR-070126-6386 / SPEC-070126-9d37). Each cycle runs every
+    # competitor (a fixer config = evolve NodeGenome projection) on the same
+    # target, scores them, and combines the results: same-region → highest
+    # composite wins; disjoint regions → both kept. Empty ⇒ a single attempt
+    # with `model` (the classic one-shot cycle).
+    competitors: list[Competitor] = field(default_factory=list)
+    # When set, one model reads the file and names the shared improvement all
+    # competitors implement (a fairer head-to-head than each inventing its own).
+    scout: bool = False
+    scout_model: str | None = None
+    # Stage 4 (ADR-070126-6386): when set, after the run each promotion is
+    # exported here as a git-am-able patch plus a manifest.json, for the harvester
+    # to open PRs grouped by file. This is the durable output of an isolated run.
+    export_patches: str | None = None
+
+
+@dataclass
+class _VariantResult:
+    """One competitor's attempt: its worktree/branch, whether it passed the
+    gates, and its composite — the raw material the cycle ranks and merges."""
+
+    branch: str
+    cycle_dir: Path
+    label: str = ""
+    changed: bool = False
+    accepted: bool = False
+    composite: float = 0.0
+    tests_passed: bool = False
+    files_touched: int = 0
+    changed_files: list[str] = field(default_factory=list)
+    note: str = ""
 
 
 @dataclass
@@ -340,6 +409,7 @@ class LocalRsiLoop:
         self._injected_apply = apply_patch
         self._baseline = Path(config.work_root) / "baseline"
         self._baseline_cov: float | None = None  # cached; invalidated on promote
+        self._start_ref: str | None = None  # baseline sha before any promotion
 
     def _baseline_coverage(self) -> float | None:
         if not self._config.use_fitness:
@@ -348,7 +418,9 @@ class LocalRsiLoop:
             from maistro_evolve.coverage_gate import measure_coverage
 
             self._baseline_cov = measure_coverage(
-                self._baseline, source=self._config.coverage_source
+                self._baseline,
+                source=self._config.coverage_source,
+                pytest_args=self._config.coverage_pytest_args,
             )
         return self._baseline_cov
 
@@ -361,18 +433,53 @@ class LocalRsiLoop:
         target = self._target_for_cycle(index)
         return _targeted_objective(target) if target else self._config.objective
 
-    def _apply_for_cycle(self, index: int) -> ApplyPatchFn:
-        # An injected callable (tests) wins; otherwise build a fresh builders
-        # provider carrying this cycle's (possibly targeted) objective.
+    def _shared_objective(self, index: int) -> str:
+        """The objective every competitor implements this cycle.
+
+        With ``scout`` on, one model reads the target file and names a concrete
+        improvement, so the head-to-head is fair (competitors differ in *how*
+        they fix it, not *what*). Otherwise the standard targeted/generic
+        objective is used. A silent scout falls back to that objective.
+        """
+        target = self._target_for_cycle(index)
+        base = self._objective_for_cycle(index)
+        if not (self._config.scout and target):
+            return base
+        try:
+            source = (self._baseline / target).read_text(encoding="utf-8")
+        except OSError:
+            return base
+        from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
+        from maistro_rsi.scout import scout_objective
+
+        llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
+        instruction = scout_objective(source, llm, fallback="")
+        if not instruction:
+            return base
+        logger.info("rsi_local_scout", index=index, target=target, instruction=instruction[:200])
+        return _scouted_objective(target, instruction)
+
+    def _competitors(self) -> list[Competitor]:
+        # Empty roster ⇒ a single attempt with the configured model (classic cycle).
+        return self._config.competitors or [Competitor(model=self._config.model or "")]
+
+    def _apply_for_competitor(self, competitor: Competitor, objective: str) -> ApplyPatchFn:
+        # An injected callable (tests) wins; otherwise build a builders provider
+        # carrying this competitor's model + temperature and the shared objective.
         if self._injected_apply is not None:
             return self._injected_apply
         return make_builders_apply_patch(
-            self._objective_for_cycle(index),
-            model=self._config.model,
+            objective,
+            model=competitor.model or self._config.model,
+            temperature=competitor.temperature,
             max_agent_turns=self._config.agent_turns_per_cycle,
             isolation=self._config.isolation,
             image=self._config.sandbox_image,
         )
+
+    def _changed_files(self, cwd: Path) -> list[str]:
+        status = _git(cwd, "status", "--porcelain")
+        return [ln[3:].strip() for ln in status.stdout.splitlines() if ln.strip()]
 
     def _setup_baseline(self) -> None:
         work_root = Path(self._config.work_root)
@@ -382,94 +489,214 @@ class LocalRsiLoop:
         # Local clone — never touches the source repo's branches or working tree.
         _git(work_root, "clone", "--quiet", str(Path(self._config.repo_path).resolve()), "baseline")
         _git(self._baseline, "checkout", "-q", "-B", self._config.baseline_branch)
+        # Remember where the baseline started so we can export exactly the
+        # promotion commits (start_ref..baseline), not the repo's whole history.
+        self._start_ref = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
         logger.info(
             "rsi_local_baseline_ready",
             baseline=str(self._baseline),
             branch=self._config.baseline_branch,
         )
 
-    def _run_cycle(self, index: int) -> CycleOutcome:
-        cycle_branch = f"rsi/cycle-{index}-{uuid.uuid4().hex[:6]}"
-        cycle_dir = Path(self._config.work_root) / f"cycle-{index}"
+    def _run_variant(
+        self, index: int, seq: int, competitor: Competitor, objective: str
+    ) -> _VariantResult:
+        """Run one competitor in its own worktree off the baseline and score it.
+
+        Leaves the committed worktree/branch in place for the cycle to merge and
+        clean up. Never raises — an agent/LLM error becomes a non-accepted result
+        so one bad competitor can't sink the whole cycle.
+        """
+        branch = f"rsi/cycle-{index}-v{seq}-{uuid.uuid4().hex[:6]}"
+        cdir = Path(self._config.work_root) / f"cycle-{index}-v{seq}"
         _git(
             self._baseline,
             "worktree",
             "add",
             "-q",
             "-b",
-            cycle_branch,
-            str(cycle_dir),
+            branch,
+            str(cdir),
             self._config.baseline_branch,
         )
-        target = self._target_for_cycle(index)
+        r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label)
         try:
-            asyncio.run(self._apply_for_cycle(index)(LocalSandbox(cycle_dir), str(cycle_dir)))
-
-            _git(cycle_dir, "add", "-A")
-            status = _git(cycle_dir, "status", "--porcelain")
-            changed = bool(status.stdout.strip())
-            if not changed:
-                return CycleOutcome(
-                    index,
-                    changed=False,
-                    tests_passed=False,
-                    promoted=False,
-                    target=target,
-                    note="agent made no change",
-                )
-
-            status_lines = [ln for ln in status.stdout.splitlines() if ln.strip()]
-            files_touched = len(status_lines)
-            changed_files = [ln[3:].strip() for ln in status_lines]
-            commit_subject = f"RSI cycle {index}: {(target or self._config.objective)[:60]}"
-            _git(cycle_dir, "commit", "-q", "-m", commit_subject)
-
-            # Promotion decision: the full multi-signal Scorecard (gates +
-            # weighted scores) when use_fitness, else the bare test command.
+            apply_fn = self._apply_for_competitor(competitor, objective)
+            asyncio.run(apply_fn(LocalSandbox(cdir), str(cdir)))
+            _git(cdir, "add", "-A")
+            r.changed_files = self._changed_files(cdir)
+            if not r.changed_files:
+                r.note = "no change"
+                return r
+            r.changed = True
+            r.files_touched = len(r.changed_files)
+            _git(
+                cdir,
+                "commit",
+                "-q",
+                "-m",
+                f"RSI cycle {index} [{competitor.label}]: {objective[:50]}",
+            )
             if self._config.use_fitness:
-                accepted, composite, note, tests_passed = self._fitness_decision(
-                    index, cycle_dir, changed_files
+                r.accepted, r.composite, r.note, r.tests_passed = self._fitness_decision(
+                    index, cdir, r.changed_files
                 )
             else:
-                tests_passed = self._run_tests(cycle_dir)
-                accepted, composite = tests_passed, 0.0
-                note = "" if tests_passed else "test command failed"
+                r.tests_passed = self._run_tests(cdir)
+                r.accepted = r.tests_passed
+                r.note = "" if r.tests_passed else "test command failed"
+        except Exception as exc:
+            r.note = f"variant errored: {exc}"
+        logger.info(
+            "rsi_local_variant",
+            index=index,
+            competitor=competitor.label,
+            accepted=r.accepted,
+            composite=r.composite,
+            changed=r.changed,
+        )
+        return r
 
+    def _apply_to_merge(self, merge_dir: Path, variant: _VariantResult) -> bool:
+        patch = _git(
+            self._baseline, "diff", f"{self._config.baseline_branch}..{variant.branch}"
+        ).stdout
+        applied = bool(patch.strip()) and _git_apply(merge_dir, patch)
+        logger.info(
+            "rsi_local_merge_apply",
+            variant=variant.label,
+            applied=applied,
+            patch_lines=len(patch.splitlines()),
+        )
+        return applied
+
+    def _run_cycle(self, index: int) -> CycleOutcome:
+        target = self._target_for_cycle(index)
+        objective = self._shared_objective(index)
+        competitors = self._competitors()
+        variants: list[_VariantResult] = []
+        created: list[tuple[str, Path]] = []
+        try:
+            for seq, comp in enumerate(competitors, 1):
+                r = self._run_variant(index, seq, comp, objective)
+                variants.append(r)
+                created.append((r.branch, r.cycle_dir))
+
+            accepted = sorted(
+                (r for r in variants if r.accepted), key=lambda r: r.composite, reverse=True
+            )
             if not accepted:
+                changed_any = any(r.changed for r in variants)
+                note = next(
+                    (r.note for r in variants if r.changed and r.note),
+                    "agent made no change" if not changed_any else "rejected by fitness",
+                )
                 return CycleOutcome(
                     index,
-                    changed=True,
-                    tests_passed=tests_passed,
+                    changed=changed_any,
+                    tests_passed=any(r.tests_passed for r in variants),
                     promoted=False,
-                    files_touched=files_touched,
+                    files_touched=(variants[0].files_touched if variants else 0),
                     target=target,
-                    note=note or "rejected by fitness",
-                    composite=composite,
+                    note=note,
                 )
 
-            # Promote: fast-forward the baseline branch to include this cycle.
-            _git(self._baseline, "merge", "--ff-only", cycle_branch)
+            promote_branch, composite, files, kept_n = self._select_and_merge(
+                index, target, accepted, created
+            )
+            _git(self._baseline, "merge", "--ff-only", promote_branch)
             self._baseline_cov = None  # baseline advanced — recompute coverage next cycle
+            note = (
+                f"tournament: {len(competitors)} competitor(s), {len(accepted)} passed, "
+                f"kept {kept_n} (composite={composite})"
+            )
             logger.info(
                 "rsi_local_cycle_promoted",
                 index=index,
-                files=files_touched,
                 target=target,
+                competitors=len(competitors),
+                passed=len(accepted),
+                kept=kept_n,
                 composite=composite,
             )
             return CycleOutcome(
                 index,
                 changed=True,
-                tests_passed=tests_passed,
+                tests_passed=True,
                 promoted=True,
-                files_touched=files_touched,
+                files_touched=files,
                 target=target,
                 composite=composite,
-                note=(f"composite={composite}" if self._config.use_fitness else ""),
+                note=note,
             )
         finally:
-            _git(self._baseline, "worktree", "remove", "--force", str(cycle_dir), check=False)
-            _git(self._baseline, "branch", "-D", cycle_branch, check=False)
+            for branch, worktree_dir in created:
+                _git(
+                    self._baseline, "worktree", "remove", "--force", str(worktree_dir), check=False
+                )
+                _git(self._baseline, "branch", "-D", branch, check=False)
+
+    def _select_and_merge(
+        self,
+        index: int,
+        target: str,
+        accepted: list[_VariantResult],
+        created: list[tuple[str, Path]],
+    ) -> tuple[str, float, int, int]:
+        """Combine passing candidates (highest-composite first). Returns
+        ``(promote_branch, composite, files_touched, kept_count)``.
+
+        One winner promotes its branch directly (identical to the classic cycle).
+        A 2+ combination keeps only non-conflicting diffs (complementary), is
+        re-scored, and falls back to the single top candidate if it regresses.
+        """
+        if len(accepted) == 1:
+            top = accepted[0]
+            return top.branch, top.composite, top.files_touched, 1
+
+        merge_branch = f"rsi/cycle-{index}-m-{uuid.uuid4().hex[:6]}"
+        merge_dir = Path(self._config.work_root) / f"cycle-{index}-m"
+        _git(
+            self._baseline,
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            merge_branch,
+            str(merge_dir),
+            self._config.baseline_branch,
+        )
+        created.append((merge_branch, merge_dir))
+        kept = greedy_merge(accepted, lambda r: self._apply_to_merge(merge_dir, r))
+        if len(kept) <= 1:
+            # 1 kept: every candidate collided into one region — the top-scored
+            # one won. 0 kept: nothing applied cleanly onto the merge worktree —
+            # fall back to the top candidate, which is committed and validated.
+            top = kept[0] if kept else accepted[0]
+            return top.branch, top.composite, top.files_touched, 1
+        changed_files = self._changed_files(merge_dir)
+        _git(merge_dir, "add", "-A")
+        _git(
+            merge_dir,
+            "commit",
+            "-q",
+            "-m",
+            f"RSI cycle {index}: merged {len(kept)} complementary fix(es) of {target}",
+        )
+        if self._config.use_fitness:
+            m_ok, m_comp, reason, _tp = self._fitness_decision(index, merge_dir, changed_files)
+            if not m_ok:
+                logger.info("rsi_local_merge_regressed", index=index, reason=reason)
+                return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
+            return merge_branch, m_comp, len(changed_files), len(kept)
+        # No fitness: each kept candidate passed its own tests in isolation, but
+        # the COMBINATION was never tested — two non-conflicting patches can still
+        # interact and break the suite. Retest the merged worktree; fall back to
+        # the top candidate (known-good on its own) if the combination regresses.
+        if self._run_tests(merge_dir):
+            return merge_branch, kept[0].composite, len(changed_files), len(kept)
+        logger.info("rsi_local_merge_untested_regressed", index=index)
+        return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
 
     def _fitness_decision(
         self, index: int, cycle_dir: Path, changed_files: list[str]
@@ -483,6 +710,7 @@ class LocalRsiLoop:
             changed_files,
             test_command=self._config.test_command,
             coverage_source=self._config.coverage_source,
+            coverage_pytest_args=self._config.coverage_pytest_args,
             baseline_coverage=self._baseline_coverage(),
             baseline_ref=self._config.baseline_branch,
             timeout=self._config.test_timeout,
@@ -528,4 +756,32 @@ class LocalRsiLoop:
         logger.info(
             "rsi_local_loop_complete", promotions=result.promotions, cycles=len(result.cycles)
         )
+        if self._config.export_patches and result.promotions:
+            n = self.export_promotions(Path(self._config.export_patches))
+            logger.info("rsi_local_exported", patches=n, dest=self._config.export_patches)
         return result
+
+    def export_promotions(self, dest: Path) -> int:
+        """Export each promotion commit (start_ref..baseline) as a git-am-able
+        patch plus a manifest.json mapping patch -> edited file, for the harvester
+        to open PRs grouped by file. Returns the number of patches written."""
+        dest.mkdir(parents=True, exist_ok=True)
+        rng = f"{self._start_ref}..{self._config.baseline_branch}"
+        revs = _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
+        manifest: list[dict[str, str]] = []
+        for i, sha in enumerate(revs, 1):
+            names = [
+                ln.strip()
+                for ln in _git(
+                    self._baseline, "show", "--name-only", "--pretty=format:", sha
+                ).stdout.splitlines()
+                if ln.strip()
+            ]
+            subject = _git(self._baseline, "show", "-s", "--pretty=format:%s", sha).stdout.strip()
+            patch_name = f"{i:04d}-{sha[:8]}.patch"
+            patch = _git(self._baseline, "format-patch", "-1", "--stdout", sha).stdout
+            (dest / patch_name).write_text(patch, encoding="utf-8")
+            src = next((n for n in names if n.endswith(".py")), names[0] if names else "")
+            manifest.append({"patch_file": patch_name, "file": src, "subject": subject})
+        (dest / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        return len(manifest)

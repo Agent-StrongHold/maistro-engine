@@ -1,0 +1,83 @@
+"""Stage 3 (ADR-070126-6386): code_rsi drives EvolutionCycle.
+
+The tournament's competitors stop being a fixed roster and become an evolving
+genome population: a genome is scored by the code fix its config produces
+(the code_rsi benchmark), and EvolutionCycle culls/breeds toward the configs
+that fix code best. These tests pin the bridge + the evolution wiring with a
+fast injected fix-and-score (no real agents/network).
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from maistro_evolve.diversity import _random_genome
+from maistro_evolve.types import EvalResult
+from maistro_rsi.evolve_bridge import (
+    genome_to_competitor,
+    make_code_rsi_runner,
+    run_evolution,
+    seed_population,
+)
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
+def test_genome_to_competitor_uses_entry_node() -> None:
+    g = _random_genome()
+    entry = next(n for n in g.topology.nodes if n.id == g.topology.entry_node)
+    comp = genome_to_competitor(g)
+    assert comp.model == entry.model
+    assert comp.temperature == entry.temperature
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
+async def test_code_rsi_runner_scores_genome_by_its_fix() -> None:
+    async def fake_fix_and_score(comp, target):  # type: ignore[no-untyped-def]
+        return (True, 0.7, False)  # accepted, composite, is_stub
+
+    runner = make_code_rsi_runner(fake_fix_and_score, "pkg/x.py")
+    res = await runner(_random_genome(), None)
+    assert isinstance(res, EvalResult)
+    assert res.benchmark == "code_rsi"
+    assert res.score == 0.7
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
+async def test_runner_honours_gate_veto_and_stub() -> None:
+    async def vetoed(comp, target):  # type: ignore[no-untyped-def]
+        return (False, 0.9, False)
+
+    async def stubbed(comp, target):  # type: ignore[no-untyped-def]
+        return (True, 0.9, True)
+
+    assert (await make_code_rsi_runner(vetoed, "x.py")(_random_genome(), None)).score == 0.0
+    assert (await make_code_rsi_runner(stubbed, "x.py")(_random_genome(), None)).score == 0.0
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
+async def test_population_evolves_under_code_rsi(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from maistro_evolve.cycle import EvolutionConfig
+    from maistro_evolve.harness import EvalHarness
+    from maistro_evolve.population import PopulationStore
+
+    store = PopulationStore(db_path=tmp_path / "pop.db")
+    seed_population(store, 6)
+
+    async def fix_and_score(comp, target):  # type: ignore[no-untyped-def]
+        # A fake preference: genomes whose fixer model name contains a digit
+        # score higher, so evolution has a gradient to climb.
+        strong = any(c.isdigit() for c in comp.model)
+        return (True, 0.9 if strong else 0.3, False)
+
+    harness = EvalHarness(use_real_benchmarks=False)
+    harness.register_benchmark("code_rsi", make_code_rsi_runner(fix_and_score, "x.py"))
+    cfg = EvolutionConfig(
+        target_benchmarks=["code_rsi"], population_size=6, eval_batch_size=6, tournament_size=2
+    )
+    await run_evolution(store, harness, cycles=3, config=cfg)
+
+    genomes = store.list_all()
+    # The population was actually evaluated on code_rsi and bred (a real cycle ran).
+    assert any(g.eval_scores.get("code_rsi") is not None for g in genomes)
+    assert any(g.generation > 0 for g in genomes)  # offspring were created
+    assert store.get_champion() is not None
