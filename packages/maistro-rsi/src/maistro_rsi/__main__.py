@@ -176,8 +176,11 @@ def _harvest(args: argparse.Namespace) -> int:
 
     base = args.base
     if args.clone_url:
-        # Cloud path: clone fresh with LF working tree (no CRLF host artifacts),
-        # and let gh wire the GH_TOKEN into git so pushes need no host creds.
+        # Cloud path: wire GH_TOKEN into git FIRST (so a private clone + the push
+        # both authenticate), then clone fresh with an LF working tree (no CRLF
+        # host artifacts). The credential lives only in this trusted step.
+        if args.push:
+            subprocess.run(["gh", "auth", "setup-git"], check=True)
         repo = tempfile.mkdtemp(prefix="rsi-harvest-")
         clone_base = base or "main"
         subprocess.run(
@@ -195,8 +198,6 @@ def _harvest(args: argparse.Namespace) -> int:
             check=True,
         )
         base = clone_base
-        if args.push:
-            subprocess.run(["gh", "auth", "setup-git"], check=True)
     else:
         repo = str(Path(args.repo_dir).resolve())
 
