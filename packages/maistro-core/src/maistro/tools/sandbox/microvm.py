@@ -20,6 +20,8 @@ from typing import Literal, Protocol, runtime_checkable
 
 from maistro.config.settings import SandboxSettings
 from maistro.security.dangerous_tools import is_dangerous_command
+from maistro.tools.sandbox.env_sanitize import sanitize_env
+from maistro.tools.sandbox.workspace import ensure_workspace
 
 NetworkMode = Literal["none", "restricted"]
 
@@ -48,8 +50,12 @@ class MicroVMConfig:
 
     @classmethod
     def from_settings(cls, settings: SandboxSettings) -> MicroVMConfig:
+        # Use the VM-specific kernel/rootfs, NOT settings.image (a Docker/OCI
+        # ref) — Firecracker & Cloud-Hypervisor boot a kernel + ext4 rootfs and
+        # can't boot from an image reference.
         return cls(
-            rootfs_image=settings.image,
+            kernel_image=settings.vm_kernel_image,
+            rootfs_image=settings.vm_rootfs_image,
             vcpus=settings.cpu_count,
             memory_mib=_parse_mib(settings.memory_limit),
             network="none" if settings.network_disabled else "restricted",
@@ -106,12 +112,21 @@ class MicroVMSandbox:
         dangers = is_dangerous_command(command)
         if dangers:
             return _BLOCKED_EXIT_CODE, f"blocked dangerous command: {', '.join(dangers)}"
+        # Validate/translate the (untrusted) workspace and allowlist-sanitize the
+        # env BEFORE handing them to a real VMM — same host-path-escape and
+        # secret-leak guarantees the container backend enforces (docker.py). A
+        # caller-supplied path like "/" or "/etc" is refused here, not mounted;
+        # ambient secrets (API keys) never cross into the guest.
+        try:
+            workspace = str(ensure_workspace(self._workspace))
+        except ValueError as exc:
+            return _BLOCKED_EXIT_CODE, f"blocked: workspace not permitted: {exc}"
         spec = MicroVMRunSpec(
             command=command,
-            workspace=self._workspace,
+            workspace=workspace,
             timeout=min(timeout, self._config.timeout),
             config=self._config,
-            env=dict(self._env),
+            env=sanitize_env(self._env),
         )
         if isinstance(self._launcher, VMMLauncher):
             return await self._launcher.run(spec)
