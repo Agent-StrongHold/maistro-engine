@@ -150,7 +150,97 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Push branches and open PRs via gh (default: dry-run — build branches locally only).",
     )
+
+    evolve = sub.add_parser(
+        "evolve",
+        help="Evolve the fixer genome population against a target via the code_rsi benchmark.",
+    )
+    evolve.add_argument("--repo", required=True, help="Repo to improve (cloned, not touched).")
+    evolve.add_argument("--test-cmd", required=True, help="Health test command (exit 0 = healthy).")
+    evolve.add_argument("--target", required=True, help="File the genomes compete to improve.")
+    evolve.add_argument("--cycles", type=int, default=1, help="Evolution cycles (default: 1).")
+    evolve.add_argument("--population", type=int, default=4, help="Population size (default: 4).")
+    evolve.add_argument(
+        "--models",
+        default=None,
+        help="Comma-separated gateway aliases to seed genomes with (e.g. "
+        "'devstral-medium,codestral,mistral-medium'). Required for a live run — "
+        "evolve's own model names are not routable.",
+    )
+    evolve.add_argument("--coverage-source", default=".")
+    evolve.add_argument("--coverage-pytest-args", default="")
+    evolve.add_argument("--agent-turns", type=int, default=6)
+    evolve.add_argument("--isolation", choices=("local", "container"), default="local")
+    evolve.add_argument(
+        "--db", default=None, help="PopulationStore path (persists lineage; default: in-memory)."
+    )
+    evolve.add_argument("--work-root", default=None)
     return parser
+
+
+def _evolve(args: argparse.Namespace) -> int:
+    import asyncio
+    import tempfile
+
+    from maistro_evolve.cycle import EvolutionConfig
+    from maistro_evolve.harness import EvalHarness
+    from maistro_rsi.code_fixer import LiveCodeFixer
+    from maistro_rsi.evolve_bridge import (
+        make_code_rsi_runner,
+        open_population,
+        run_evolution,
+        seed_population,
+    )
+    from maistro_rsi.local_loop import _git
+
+    repo = Path(args.repo).expanduser()
+    if not (repo / ".git").exists():
+        print(f"error: {repo} is not a git repository", file=sys.stderr)
+        return 2
+    work_root = Path(args.work_root or tempfile.mkdtemp(prefix="maistro-rsi-evo-"))
+    work_root.mkdir(parents=True, exist_ok=True)
+    baseline = work_root / "baseline"
+    _git(work_root, "clone", "--quiet", str(repo.resolve()), "baseline")
+    _git(baseline, "checkout", "-q", "-B", "rsi-baseline")
+
+    fixer = LiveCodeFixer(
+        baseline,
+        args.test_cmd,
+        coverage_source=args.coverage_source,
+        coverage_pytest_args=args.coverage_pytest_args,
+        agent_turns=args.agent_turns,
+        isolation=args.isolation,
+    )
+    harness = EvalHarness(use_real_benchmarks=False)
+    harness.register_benchmark("code_rsi", make_code_rsi_runner(fixer.fix_and_score, args.target))
+    store = open_population(args.db)
+    models = [m.strip() for m in args.models.split(",") if m.strip()] if args.models else None
+    seed_population(store, args.population, models=models)
+    cfg = EvolutionConfig(
+        target_benchmarks=["code_rsi"],
+        population_size=args.population,
+        eval_batch_size=args.population,
+        tournament_size=2,
+    )
+    print(
+        f"RSI evolve -> {args.population} genomes x {args.cycles} cycle(s) on {args.target} "
+        f"(models={models or 'evolve defaults (not routable!)'})"
+    )
+    asyncio.run(run_evolution(store, harness, args.cycles, config=cfg))
+
+    genomes = store.list_all()
+    print(f"\nEvolution complete: {len(genomes)} genomes")
+    for g in sorted(genomes, key=lambda x: x.fitness_score or -1.0, reverse=True)[:12]:
+        nodes = g.topology.nodes
+        entry = next((n for n in nodes if n.id == g.topology.entry_node), nodes[0])
+        print(
+            f"  {g.name} gen{g.generation} model={entry.model} "
+            f"code_rsi={g.eval_scores.get('code_rsi')} fitness={g.fitness_score}"
+        )
+    champ = store.get_champion()
+    if champ is not None:
+        print(f"champion: {champ.name} (fitness={champ.fitness_score})")
+    return 0
 
 
 def _harvest(args: argparse.Namespace) -> int:
@@ -286,6 +376,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "harvest":
         return _harvest(args)
+
+    if args.command == "evolve":
+        return _evolve(args)
 
     return 1
 

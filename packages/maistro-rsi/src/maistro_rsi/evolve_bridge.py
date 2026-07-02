@@ -56,12 +56,24 @@ def make_code_rsi_runner(fix_and_score: FixAndScore, target: str) -> BenchmarkRu
     return runner
 
 
-def seed_population(store: PopulationStore, n: int) -> None:
-    """Seed the store with `n` random fixer genomes (varied model/temp/prompt)."""
+def seed_population(store: PopulationStore, n: int, models: list[str] | None = None) -> None:
+    """Seed the store with `n` random fixer genomes (varied model/temp/prompt).
+
+    Pass ``models`` (gateway aliases like the `code` group) to pin each genome's
+    entry-node model to a real, routable alias — evolve's own MODEL_REGISTRY names
+    aren't LiteLLM aliases, so a live run must seed with servable models.
+    """
     from maistro_evolve.diversity import _random_genome
 
-    for _ in range(n):
-        store.add(_random_genome())
+    for i in range(n):
+        genome = _random_genome()
+        if models:
+            nodes = genome.topology.nodes
+            entry = next(
+                (node for node in nodes if node.id == genome.topology.entry_node), nodes[0]
+            )
+            entry.model = models[i % len(models)]
+        store.add(genome)
 
 
 async def run_evolution(
