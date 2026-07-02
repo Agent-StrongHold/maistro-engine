@@ -113,7 +113,7 @@ def build_reflection_prompt(
     score: float,
     failure_feedback: str,
     tip: str,
-    prompt_history: list[tuple[str, float]] = (),
+    prompt_history: Sequence[tuple[str, float]] = (),
 ) -> str:
     bench_summary = BENCHMARK_SUMMARIES.get(benchmark, benchmark)
     parts = [
@@ -146,7 +146,7 @@ async def propose_candidates(
     failure_feedback: str,
     llm_call: Any,
     num_candidates: int,
-    prompt_history: list[tuple[str, float]] = (),
+    prompt_history: Sequence[tuple[str, float]] = (),
 ) -> list[str]:
     if num_candidates <= len(PROPOSAL_TIPS):
         tips = random.sample(PROPOSAL_TIPS, num_candidates)
@@ -224,7 +224,7 @@ async def reflective_improve(
     benchmarks: list[str] | None = None,
     num_candidates: int = 2,
     accept_margin: float = 0.0,
-    prompt_history: list[tuple[str, float]] = (),
+    prompt_history: Sequence[tuple[str, float]] = (),
 ) -> ReflectionOutcome | None:
     if llm_call is None or not genome.topology.nodes:
         return None
