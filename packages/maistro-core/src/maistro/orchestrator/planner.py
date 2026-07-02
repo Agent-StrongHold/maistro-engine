@@ -17,6 +17,17 @@ from maistro.orchestrator.validation import (
     PlanValidationReport,
     validate_plan,
 )
+from maistro.orchestrator.waves.ensemble import (
+    CheckpointStore,
+    EmitFn,
+    ResultComparator,
+    SuperPlannerConfig,
+    WaveExpander,
+    WaveOrchestrator,
+    WaveResult,
+    WaveRunner,
+    WaveTask,
+)
 
 if TYPE_CHECKING:
     from maistro.security.sentinel.authz_types import Principal
@@ -26,7 +37,7 @@ logger = logging.getLogger("maistro.orchestrator.planner")
 
 
 class PlanValidationError(Exception):
-    """Raised when a plan fails pre-execution validation (SPEC-259)."""
+    """Raised when a plan fails pre-execution validation (SPEC-062126-a05f)."""
 
     def __init__(self, report: PlanValidationReport) -> None:
         self.report = report
@@ -294,7 +305,7 @@ class SuperPlanner:
         principal: Principal | None = None,
         sentinel: Sentinel | None = None,
     ) -> MasterOrchestrator:
-        """Validate the plan (SPEC-259) before building a MasterOrchestrator.
+        """Validate the plan (SPEC-062126-a05f) before building a MasterOrchestrator.
 
         Raises PlanValidationError if the plan fails validation (cycle, over-budget,
         or authority-exceeded) — refuses to hand back an orchestrator for an invalid plan.
@@ -320,6 +331,53 @@ class SuperPlanner:
         )
         orchestrator.load_plan(waves)
         return orchestrator
+
+    def build_wave_orchestrator(
+        self,
+        runner: WaveRunner,
+        *,
+        expander: WaveExpander | None = None,
+        comparator: ResultComparator | None = None,
+        checkpoint_store: CheckpointStore | None = None,
+        config: SuperPlannerConfig | None = None,
+        emit: EmitFn | None = None,
+    ) -> WaveOrchestrator:
+        """Create a wave-ensemble orchestrator (SPEC-070226-b624 / ADR-071)."""
+        return WaveOrchestrator(
+            runner,
+            expander=expander,
+            comparator=comparator,
+            checkpoint_store=checkpoint_store,
+            config=config,
+            emit=emit,
+        )
+
+    async def execute_ensemble(
+        self,
+        task: WaveTask,
+        runner: WaveRunner,
+        *,
+        expander: WaveExpander | None = None,
+        comparator: ResultComparator | None = None,
+        checkpoint_store: CheckpointStore | None = None,
+        config: SuperPlannerConfig | None = None,
+        emit: EmitFn | None = None,
+    ) -> WaveResult:
+        """Execute ``task`` as a Repertoire wave ensemble; return the best result.
+
+        Expands the task into parallel isolated waves, runs them concurrently
+        with per-wave timeouts, checkpoints before/after (ADR-056), and picks
+        one winner via the comparator (ADR-070/071).
+        """
+        orchestrator = self.build_wave_orchestrator(
+            runner,
+            expander=expander,
+            comparator=comparator,
+            checkpoint_store=checkpoint_store,
+            config=config,
+            emit=emit,
+        )
+        return await orchestrator.execute(task)
 
     def summary(self) -> dict[str, Any]:
         """Return a summary of the plan without executing it."""

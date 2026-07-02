@@ -1,9 +1,9 @@
 ---
-id: ADR-102
+id: ADR-062226-674b
 title: "Constant tunability ladder — config-backed defaults that mature toward locked constants"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-06-22
 substrate:
   - maistro-engine#ADR-078
@@ -22,7 +22,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# ADR-102: Constant tunability ladder
+# ADR-062226-674b: Constant tunability ladder
 
 ## Context
 

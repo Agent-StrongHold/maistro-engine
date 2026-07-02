@@ -3,7 +3,7 @@ id: ADR-057
 title: Memory exposure mode — configurable system-managed vs agent-managed
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-011

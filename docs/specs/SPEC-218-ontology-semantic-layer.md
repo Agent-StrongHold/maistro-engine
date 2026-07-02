@@ -3,7 +3,7 @@ id: SPEC-218
 title: "Ontology v1.0: Semantic facet types, registry, and InMemoryOntology"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-20
 substrate:
   - maistro-engine#ADR-005

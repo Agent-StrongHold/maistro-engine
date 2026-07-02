@@ -3,7 +3,7 @@ id: SPEC-208
 title: Foreign harness adapter — HarnessRunner slot and agent/skill format adapters
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-06-15
 substrate:
   - maistro-engine#ADR-061526-f383
@@ -21,7 +21,11 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/harness/test_harness_slot.py
+  - packages/maistro-core/tests/harness/test_harness_guard.py
+  - packages/maistro-core/tests/harness/test_importers.py
+  - packages/maistro-core/tests/harness/test_export.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -167,22 +171,40 @@ existing `Conduit.route_request()` (`conduit.py:68`) — the remote orchestrator
 `agent.handle` pipeline. Auth uses the existing B2B service-key scopes (`maistro.auth`); a
 dedicated scope (`harness:session`) gates this route.
 
+## Implementation status (2026-07-02)
+
+**Core slice implemented** in maistro-core: `harness_runner` slot (`capabilities/bootstrap.py`),
+`HarnessRunner` protocol (`capabilities/protocols.py`), mandatory Warden/Sentinel-shaped wrapper +
+SAFE_NOOP resolution (`capabilities/slots/harness.py::GuardedHarnessRunner` /
+`resolve_harness_runner`), subprocess-free reference provider
+(`capabilities/providers/harness_stub.py`), importers (`agents/importers/` — Pi;
+`skills/importers/` — Claude Code SKILL.md; `ImporterRegistry`), `export_agent()`
+(`agents/export.py`, pinned `MCP_MANIFEST_SCHEMA_VERSION`), and
+`SkillMetadata.import_format` (`types/skill.py`). Notes: importers return
+`maistro.types.agent.AgentIdentity` (the per-agent spec type; `maistro.types.AgentConfig` is the
+root config object — the method name `to_agent_config` is kept); the harness binding is carried in
+`AgentIdentity.model_constraints["harness_runner"]` pending a dedicated field.
+**Follow-up (not yet built):** real sandboxed-subprocess providers (pi/openclaw/claude_code/codex),
+`HarnessNodeStrategy` graph node (§5 outbound), `POST /v1/harness/sessions` routes (§5 inbound),
+container wiring, and the formal/ property test.
+
 ## Acceptance criteria
 
-- [ ] `harness_runner` `SlotSpec` defined with `FallbackPolicy.SAFE_NOOP`; `HarnessRunner` Protocol
+- [x] `harness_runner` `SlotSpec` defined with `FallbackPolicy.SAFE_NOOP`; `HarnessRunner` Protocol
       added to `capabilities/protocols.py`, `mypy --strict` clean.
 - [ ] At least one real `HarnessRunner` provider (e.g. `pi` or `openclaw`) implements
       `start_session`/`send`/`stream`/`stop` over a sandboxed subprocess; `healthcheck()` reflects
       binary presence + sandbox reachability.
-- [ ] Every `send()` call passes its `messages` through Warden before reaching the subprocess, and
+- [x] Every `send()` call passes its `messages` through Warden before reaching the subprocess, and
       every action in the harness's response passes through Sentinel before being surfaced —
       asserted via a fake harness that emits a flagged payload and a flagged action.
-- [ ] A crashed/unhealthy `HarnessRunner` provider degrades the slot to `SAFE_NOOP`
+      (Implemented as injected scanner/policy callables enforced by `GuardedHarnessRunner`.)
+- [x] A crashed/unhealthy `HarnessRunner` provider degrades the slot to `SAFE_NOOP`
       (`Unavailable`); the calling agent/graph node receives the typed result, never an exception.
-- [ ] At least two `AgentImporter`/`SkillImporter` implementations exist (one agent format, one
+- [x] At least two `AgentImporter`/`SkillImporter` implementations exist (one agent format, one
       skill format — e.g. Claude Code `SKILL.md` and one of Pi/OpenClaw/Codex), each with
       `detect()` + `to_agent_config()`/`to_skill_definitions()` round-tripped in a unit test.
-- [ ] `export_agent()` produces a valid MCP server manifest (validated against the MCP schema) and
+- [x] `export_agent()` produces a valid MCP server manifest (validated against the MCP schema) and
       a `SKILL.md` whose frontmatter `skills/parser.py` can re-parse — for an agent that was
       itself imported via one of the new importers (proves the import→export round trip through
       the internal representation).
@@ -209,14 +231,15 @@ dedicated scope (`harness:session`) gates this route.
 
 ## Open questions
 
-- Per-harness session lifecycle limits (idle timeout, max concurrent sessions per host) —
-  resource-management policy, likely belongs with the follow-up stateful policy engine
-  (ADR-061526-f383, Follow-ups) rather than this spec.
-- Whether `HarnessNodeStrategy` needs its own `priority_tier` interaction with
-  `determine_execution_tier` (`conduit.py:24-33`) when a foreign harness reports its own
-  cost/latency profile.
-- Exact MCP manifest versioning/compatibility story as the MCP spec evolves — `export_agent()`
-  should target a pinned MCP schema version with a documented upgrade path.
+- **Per-harness session lifecycle limits** (DEFERRED to Phase 2): idle timeout, max concurrent
+  sessions per host — resource-management policy belongs with the follow-up stateful policy engine
+  (ADR-061526-f383 follow-ups).
+- **HarnessNodeStrategy priority tier interaction** (DEFERRED to implementation): whether it needs
+  its own `priority_tier` interaction with `determine_execution_tier` when a foreign harness
+  reports its own cost/latency profile — likely emerges during wiring.
+- **MCP manifest versioning** (DEFERRED with pinned baseline): `export_agent()` targets a pinned
+  MCP schema version with a documented upgrade path; exact compatibility story as MCP spec evolves
+  is a follow-up.
 
 ## References
 

@@ -24,7 +24,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-259: SuperPlanner + MasterOrchestrator pre-execution validation gate
+# SPEC-062126-a05f: SuperPlanner + MasterOrchestrator pre-execution validation gate
 
 ## Context
 

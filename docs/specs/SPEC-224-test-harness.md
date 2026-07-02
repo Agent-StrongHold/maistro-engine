@@ -3,7 +3,7 @@ id: SPEC-224
 title: "Test harness: create_test_environment factory and HarnessEnvironment"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-20
 substrate:
   - maistro-engine#ADR-065
