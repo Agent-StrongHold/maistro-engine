@@ -44,6 +44,7 @@ class GenomeBattle:
         score_b: Score achieved by the second genome.
         timestamp: Time when the battle was recorded.
     """
+
     id: int = 0
     benchmark: str = ""
     genome_a_id: str = ""
