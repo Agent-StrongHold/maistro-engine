@@ -53,19 +53,28 @@ class GateResult:
 @dataclass
 class FitnessWeights:
     """Score weights. Capability is the dominant overall axis; among the
-    improvement-move signals the priority is (highest→lowest):
-    assertion_strength > red_green > new-test(coverage) > refactor(code_quality
-    with no capability gain, the lowest of the four). Tunable — the intent is to
-    learn these from revealed preference (what the user keeps vs. edits/rejects).
+    improvement-move signals the priority favours *substantive* work — adding a
+    real test and strengthening assertions — over docstring/style churn.
+
+    ``composite`` renormalises over the signals actually *present* on a candidate,
+    so a signal's weight is only its pull *relative to the others that fired*. That
+    is the lever behind ``new_test``: it is present (and large) only when a
+    genuinely new, green, coverage-raising test was added, so its presence pulls a
+    test-adding cycle's composite well above a docstring-only cycle (which lacks
+    it). Tunable — the intent is to learn these from revealed preference (what the
+    user keeps vs. edits/rejects). Weights need not sum to 1.
     """
 
-    capability: float = 0.28
-    assertion_strength: float = 0.20  # biggest among the improvement moves
-    red_green: float = 0.14  # 2nd — test-first / bug-fix that drives code
-    coverage: float = 0.10  # 3rd — a new (characterization) test raises coverage
+    new_test: float = 0.30  # biggest — a genuinely new, green, coverage-raising test
+    capability: float = 0.28  # benchmark skill gain (present only with a benchmark)
+    assertion_strength: float = 0.20  # strengthened test assertions
+    red_green: float = 0.14  # test-first / bug-fix that drives code
+    feature_judge: float = 0.14  # LLM impact judge for FEATURE (v2.0) work
+    coverage: float = 0.10  # coverage delta (a new test raises it)
     architecture_fit: float = 0.10
     personalized_judge: float = 0.10
-    code_quality: float = 0.08  # lowest — refactor with no capability gain
+    perf: float = 0.10  # measured speedup (present only with a timing signal)
+    code_quality: float = 0.04  # lowest — docstring/style; presence, not substance
 
 
 @dataclass
@@ -203,9 +212,33 @@ def capability_signal(
 
 
 def judge_signal(name: str, score: float, weight: float, rationale: str) -> SignalScore:
-    """A generic LLM-as-judge score (e.g. the personalized prefs/goals judge)."""
+    """A generic LLM-as-judge score (e.g. the personalized prefs/goals judge, or
+    the ``feature_judge`` impact score for a FEATURE / v2.0 change)."""
     return SignalScore(
         name=name, kind=MeasureKind.JUDGE, score=score, weight=weight, rationale=rationale
+    )
+
+
+def perf_signal(baseline_seconds: float, candidate_seconds: float, weight: float) -> SignalScore:
+    """Measured speedup (a *derived* measure) for a PERF change.
+
+    Score is the fraction of total time the candidate saves: 0.5 at parity, →1.0
+    as the candidate approaches instant, <0.5 if it regresses. Present only when a
+    timing measurement is available, so it can't dilute non-perf candidates.
+    """
+    b = max(0.0, baseline_seconds)
+    c = max(0.0, candidate_seconds)
+    total = b + c
+    score = 0.5 if total == 0 else max(0.0, min(1.0, b / total))
+    delta = c - b
+    sign = "+" if delta >= 0 else ""
+    return SignalScore(
+        name="perf",
+        kind=MeasureKind.DERIVED,
+        score=score,
+        weight=weight,
+        rationale=f"candidate {c:.3f}s vs baseline {b:.3f}s ({sign}{delta:.3f}s)",
+        detail={"baseline_seconds": b, "candidate_seconds": c, "delta_seconds": delta},
     )
 
 

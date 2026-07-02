@@ -89,19 +89,32 @@ def coverage_gate(
     )
 
 
+# Coverage swing (percentage points) that maps a change to a full 0→1 score.
+# A +2pp gain scores 1.0, flat scores the 0.5 neutral, −2pp scores 0.0. Chosen so
+# even a modest single-test gain registers above neutral; the big reward for
+# *adding* a test is the presence-gated ``new_test`` signal, this just grades the
+# direction of the coverage move.
+_COVERAGE_SWING_PP = 2.0
+
+
 def coverage_signal(
     baseline_pct: float | None, candidate_pct: float | None, weight: float
 ) -> SignalScore:
-    """Absolute coverage as a graded score (0..1), with the delta in the rationale."""
+    """Coverage **delta** as a graded score (0..1): reward the direction of the
+    move, not the absolute level. Flat coverage is neutral (0.5), a gain trends to
+    1.0, a drop toward 0.0 — so a candidate that adds a covering test scores well
+    and one that merely restyles (flat) does not, where the old absolute score
+    made every candidate look identical at the suite's standing coverage."""
     cand = candidate_pct or 0.0
     base = baseline_pct if baseline_pct is not None else cand
     delta = cand - base
     sign = "+" if delta >= 0 else ""
+    score = max(0.0, min(1.0, 0.5 + delta / (2 * _COVERAGE_SWING_PP)))
     return SignalScore(
         name="coverage",
         kind=MeasureKind.DERIVED,
-        score=max(0.0, min(1.0, cand / 100.0)),
+        score=score,
         weight=weight,
-        rationale=f"line coverage {cand:.1f}% (baseline {base:.1f}%, {sign}{delta:.1f})",
+        rationale=f"coverage {sign}{delta:.1f}pp ({base:.1f}% → {cand:.1f}%)",
         detail={"baseline": base, "candidate": cand, "delta": delta},
     )
