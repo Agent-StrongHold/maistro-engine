@@ -24,6 +24,7 @@ from maistro.tasks.runner import TaskRunner
 from maistro.tools.sandbox.server import cleanup_all_containers
 from maistro_server.api import (
     agents,
+    canvas,
     chat_completions,
     health,
     metrics,
@@ -208,6 +209,12 @@ app.include_router(chat_completions.router, prefix=API_V1_PREFIX)
 app.include_router(models.router, prefix=API_V1_PREFIX)
 app.include_router(webhooks.router, prefix=API_V1_PREFIX)
 app.include_router(ws.router, prefix=API_V1_PREFIX)
+
+# API v2 — canvas ability boundary (ADR-045 / SPEC-070226-8239 Phase 1).
+# The router carries its own /v2/canvas prefix (ADR-042 mount). Deployments
+# must inject app.state.canvas_store (and optionally canvas_compositor,
+# canvas_events, canvas_asset_registry) — see maistro_server.api.canvas.
+app.include_router(canvas.router)
 
 # Backward compatibility — also mount at root (will be removed in v2)
 app.include_router(tasks.router)
