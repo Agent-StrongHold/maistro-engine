@@ -43,6 +43,7 @@ class EvolutionConfig(BaseModel):
     self_improve_top_n: int = Field(default=3, ge=0, le=MAX_SELF_IMPROVE_TOP_N)
     self_improve_candidates: int = Field(default=2, ge=0, le=MAX_SELF_IMPROVE_CANDIDATES)
     self_improve_accept_margin: float = 0.0
+    reflect_history_window: int = Field(default=5, ge=0)
 
 
 class EvolutionCycle:
@@ -165,6 +166,13 @@ class EvolutionCycle:
             eval_results = [EvalResult(benchmark=k, score=v) for k, v in genome.eval_scores.items()]
             signal = extract_signal(genome, eval_results)
 
+            # Assemble OPRO-style history from prior reflection cycles on this genome.
+            stored_history: list[tuple[str, float]] = genome.harness_params.get(
+                "reflection_history", []
+            )
+            window = config.reflect_history_window
+            prompt_history = stored_history[-window:] if window > 0 else []
+
             # Propose-then-verify (GEPA-style): the parent is never mutated in
             # place; an accepted challenger joins the pool as its child.
             outcome = await reflective_improve(
@@ -174,9 +182,23 @@ class EvolutionCycle:
                 benchmarks=config.target_benchmarks,
                 num_candidates=config.self_improve_candidates,
                 accept_margin=config.self_improve_accept_margin,
+                prompt_history=prompt_history,
             )
             if outcome is not None and outcome.accepted and outcome.challenger is not None:
                 population.add(outcome.challenger)
+
+            # Persist new excerpt + score so future cycles have a trajectory to learn from.
+            if (
+                outcome is not None
+                and outcome.best_candidate_prompt_excerpt is not None
+                and outcome.best_candidate_score is not None
+            ):
+                updated_history = stored_history + [
+                    (outcome.best_candidate_prompt_excerpt, outcome.best_candidate_score)
+                ]
+                if window > 0:
+                    updated_history = updated_history[-window:]
+                genome.harness_params["reflection_history"] = updated_history
 
             topo_signal = await optimize_topology(genome, signal, llm_call)
             genome.harness_params["last_optimization"] = {

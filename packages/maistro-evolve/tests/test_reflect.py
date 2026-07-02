@@ -248,3 +248,136 @@ class TestCycleIntegration:
         reflection = surviving_top.harness_params["last_optimization"]["reflection"]
         assert reflection["accepted"] is True
         assert reflection["benchmark"] == "ifeval"
+
+
+class TestOproHistory:
+    def test_history_section_present_when_outcomes_exist(self):
+        g = _genome(prompt="base prompt")
+        node = g.topology.nodes[0]
+        history = [("old prompt A", 0.3), ("old prompt B", 0.6)]
+        prompt = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.", history)
+        assert "## Prior attempts" in prompt
+        assert "score=0.300" in prompt
+        assert "score=0.600" in prompt
+        assert "old prompt A" in prompt
+        assert "old prompt B" in prompt
+
+    def test_history_absent_on_first_cycle(self):
+        g = _genome(prompt="base prompt")
+        node = g.topology.nodes[0]
+        prompt_no_hist = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.")
+        prompt_empty = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.", [])
+        assert "## Prior attempts" not in prompt_no_hist
+        assert "## Prior attempts" not in prompt_empty
+
+    def test_history_sorted_ascending_by_score(self):
+        g = _genome(prompt="base prompt")
+        node = g.topology.nodes[0]
+        # Provide history out of order — prompt must sort worst → best.
+        history = [("best", 0.9), ("worst", 0.1), ("mid", 0.5)]
+        prompt = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.", history)
+        idx_worst = prompt.index("score=0.100")
+        idx_mid = prompt.index("score=0.500")
+        idx_best = prompt.index("score=0.900")
+        assert idx_worst < idx_mid < idx_best
+
+    @pytest.mark.asyncio
+    async def test_excerpt_set_on_accepted_outcome(self):
+        g = _genome()
+        g.eval_scores = {"ifeval": 0.4}
+        outcome = await reflective_improve(g, _keyed_harness(), _llm_improved)
+        assert outcome is not None
+        assert outcome.accepted is True
+        assert outcome.best_candidate_prompt_excerpt is not None
+        assert "improved" in outcome.best_candidate_prompt_excerpt
+
+    @pytest.mark.asyncio
+    async def test_excerpt_set_even_when_rejected(self):
+        g = _genome()
+        g.eval_scores = {"ifeval": 0.4}
+        outcome = await reflective_improve(g, _keyed_harness(), _llm_worse)
+        assert outcome is not None
+        assert outcome.accepted is False
+        # Excerpt still populated so cycle can learn from failed attempts.
+        assert outcome.best_candidate_prompt_excerpt is not None
+
+    @pytest.mark.asyncio
+    async def test_history_persisted_to_harness_params_after_cycle(self):
+        population = PopulationStore()
+        top = _genome("top")
+        top.eval_scores = {
+            "ifeval": 0.4,
+            "bfcl": 0.6,
+            "swebench": 0.6,
+            "tau_bench": 0.6,
+            "gaia": 0.6,
+            "ragas": 0.6,
+            "terminalbench": 0.6,
+            "osworld": 0.6,
+        }
+        top.fitness_score = 60.0
+        population.add(top)
+        # Fill genomes (no eval_scores) fail the hard gate and score 0,
+        # keeping top from being the culling target.
+        for i in range(3):
+            population.add(_genome(f"fill{i}"))
+
+        config = EvolutionConfig(
+            population_size=5,
+            target_benchmarks=["ifeval"],
+            self_improve=True,
+            self_improve_top_n=1,
+            self_improve_candidates=1,
+            reflect_history_window=5,
+        )
+        cycle = EvolutionCycle(harness=_keyed_harness(), tournament=EloTournament())
+        await cycle.run_cycle(population, llm_call=_llm_improved, config=config)
+
+        surviving = population.get(top.id)
+        assert surviving is not None
+        history = surviving.harness_params.get("reflection_history", [])
+        assert len(history) == 1
+        excerpt, score = history[0]
+        assert isinstance(excerpt, str) and len(excerpt) <= 120
+        assert isinstance(score, float)
+
+    @pytest.mark.asyncio
+    async def test_history_capped_at_window_size(self):
+        population = PopulationStore()
+        top = _genome("top")
+        top.eval_scores = {
+            "ifeval": 0.4,
+            "bfcl": 0.6,
+            "swebench": 0.6,
+            "tau_bench": 0.6,
+            "gaia": 0.6,
+            "ragas": 0.6,
+            "terminalbench": 0.6,
+            "osworld": 0.6,
+        }
+        top.fitness_score = 60.0
+        # Pre-seed with 5 entries (at the window limit).
+        top.harness_params["reflection_history"] = [
+            (f"old prompt {i}", 0.3 + i * 0.01) for i in range(5)
+        ]
+        population.add(top)
+        # Fill genomes (no eval_scores) fail the hard gate and score 0,
+        # keeping top from being the culling target.
+        for i in range(3):
+            population.add(_genome(f"fill{i}"))
+
+        config = EvolutionConfig(
+            population_size=5,
+            target_benchmarks=["ifeval"],
+            self_improve=True,
+            self_improve_top_n=1,
+            self_improve_candidates=1,
+            reflect_history_window=5,
+        )
+        cycle = EvolutionCycle(harness=_keyed_harness(), tournament=EloTournament())
+        await cycle.run_cycle(population, llm_call=_llm_improved, config=config)
+
+        surviving = population.get(top.id)
+        assert surviving is not None
+        history = surviving.harness_params.get("reflection_history", [])
+        assert len(history) <= 5

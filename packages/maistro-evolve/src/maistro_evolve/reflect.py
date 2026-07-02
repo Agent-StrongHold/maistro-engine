@@ -61,12 +61,16 @@ PROPOSAL_TIPS: list[str] = [
 _MAX_FEEDBACK_ENTRIES = 5
 
 
+_PROMPT_EXCERPT_LENGTH = 120
+
+
 class ReflectionOutcome(BaseModel):
     benchmark: str
     target_node_id: str
     baseline_score: float
     candidate_count: int = 0
     best_candidate_score: float | None = None
+    best_candidate_prompt_excerpt: str | None = None
     accepted: bool = False
     challenger_id: str | None = None
     reason: str | None = None
@@ -109,6 +113,7 @@ def build_reflection_prompt(
     score: float,
     failure_feedback: str,
     tip: str,
+    prompt_history: list[tuple[str, float]] = (),
 ) -> str:
     bench_summary = BENCHMARK_SUMMARIES.get(benchmark, benchmark)
     parts = [
@@ -117,6 +122,11 @@ def build_reflection_prompt(
         f"Target node: {node.role}/{node.strategy} (model={node.model})",
         f"Weakest benchmark: {benchmark} ({bench_summary}). Current score: {score:.3f}.",
     ]
+    if prompt_history:
+        # OPRO-style: sorted worst → best so the LLM sees trajectory and avoids reversions.
+        sorted_history = sorted(prompt_history, key=lambda x: x[1])
+        lines = "\n".join(f'  score={s:.3f}  "{excerpt}"' for excerpt, s in sorted_history)
+        parts.append(f"## Prior attempts (worst → best)\n{lines}")
     if failure_feedback:
         parts.append(f"Observed failures on this benchmark:\n{failure_feedback}")
     parts.append(f"Current system prompt:\n{node.system_prompt}")
@@ -136,6 +146,7 @@ async def propose_candidates(
     failure_feedback: str,
     llm_call: Any,
     num_candidates: int,
+    prompt_history: list[tuple[str, float]] = (),
 ) -> list[str]:
     if num_candidates <= len(PROPOSAL_TIPS):
         tips = random.sample(PROPOSAL_TIPS, num_candidates)
@@ -146,7 +157,15 @@ async def propose_candidates(
 
     candidates: list[str] = []
     for tip in tips:
-        meta_prompt = build_reflection_prompt(genome, node, benchmark, score, failure_feedback, tip)
+        meta_prompt = build_reflection_prompt(
+            genome,
+            node,
+            benchmark,
+            score,
+            failure_feedback,
+            tip,
+            prompt_history=prompt_history,
+        )
         try:
             raw = await llm_call(meta_prompt)
         except Exception:
@@ -205,6 +224,7 @@ async def reflective_improve(
     benchmarks: list[str] | None = None,
     num_candidates: int = 2,
     accept_margin: float = 0.0,
+    prompt_history: list[tuple[str, float]] = (),
 ) -> ReflectionOutcome | None:
     if llm_call is None or not genome.topology.nodes:
         return None
@@ -231,11 +251,19 @@ async def reflective_improve(
 
     feedback = summarize_failures(baseline.metadata)
     candidates = await propose_candidates(
-        genome, node, weakest, baseline.score, feedback, llm_call, num_candidates
+        genome,
+        node,
+        weakest,
+        baseline.score,
+        feedback,
+        llm_call,
+        num_candidates,
+        prompt_history=prompt_history,
     )
 
     best_challenger: PipelineGenome | None = None
     best_score: float | None = None
+    best_prompt: str | None = None
     for text in candidates:
         challenger = spawn_challenger(genome, node.id, text)
         results = await harness.evaluate_genome(challenger, [weakest], llm_call)
@@ -247,18 +275,21 @@ async def reflective_improve(
         if best_score is None or score > best_score:
             best_score = score
             best_challenger = challenger
+            best_prompt = text
 
     accepted = (
         best_score is not None
         and best_challenger is not None
         and best_score > baseline.score + accept_margin
     )
+    excerpt = best_prompt[:_PROMPT_EXCERPT_LENGTH] if best_prompt else None
     return ReflectionOutcome(
         benchmark=weakest,
         target_node_id=node.id,
         baseline_score=baseline.score,
         candidate_count=len(candidates),
         best_candidate_score=best_score,
+        best_candidate_prompt_excerpt=excerpt,
         accepted=accepted,
         challenger_id=best_challenger.id if accepted and best_challenger else None,
         reason=None if accepted else "no_candidate_beat_baseline",
