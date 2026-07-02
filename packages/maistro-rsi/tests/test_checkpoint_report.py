@@ -93,6 +93,18 @@ def test_report_window_only_shows_recent() -> None:
     assert [c["index"] for c in data["recent"]] == [5, 6]
 
 
+def test_report_avg_composite_includes_zero() -> None:
+    # 0.0 is a valid promoted composite (non-fitness runs, or an accepted
+    # scorecard composing to 0.0) — it must count in the average, not be dropped.
+    cycles = [
+        _outcome(1, target="a.py", promoted=True, composite=1.0),
+        _outcome(2, target="b.py", promoted=True, composite=0.0),
+    ]
+    _md, data = build_checkpoint_report(cycles, total_planned=2, baseline_dir="/w", window=5)
+    assert data["promotions"] == 2
+    assert data["avg_composite"] == 0.5  # (1.0 + 0.0) / 2, not 1.0
+
+
 def test_report_empty_is_safe() -> None:
     md, data = build_checkpoint_report([], total_planned=10, baseline_dir="/w", window=5)
     assert data["cycles_run"] == 0

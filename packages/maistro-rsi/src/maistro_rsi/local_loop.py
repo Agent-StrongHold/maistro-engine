@@ -427,7 +427,10 @@ def build_checkpoint_report(
     done = len(cycles)
     promoted = [c for c in cycles if c.promoted]
     per_file = Counter(c.target for c in promoted if c.target)
-    composites = [c.composite for c in promoted if c.composite]
+    # Every promoted cycle counts — 0.0 is a valid promoted composite (a
+    # non-fitness run defaults to 0.0, and an accepted scorecard can compose to
+    # 0.0), so filtering truthy values would overstate the average.
+    composites = [c.composite for c in promoted]
     avg_composite = round(sum(composites) / len(composites), 3) if composites else 0.0
     recent = cycles[-window:] if window > 0 else cycles
     heading = label or (f"cycle {done}" if done else "start")
@@ -885,8 +888,9 @@ class LocalRsiLoop:
             )
             # Refresh a rolling, COMPLETE export of everything promoted so far, so
             # an interrupted long run stays harvestable from its last checkpoint.
-            if result.promotions:
-                self.export_promotions(report_dir / "export", clear=True)
+            # Always clear+rewrite — even at zero promotions — so a reused report
+            # dir can't leave stale patches/manifest that `harvest` would apply.
+            self.export_promotions(report_dir / "export", clear=True)
             logger.info(
                 "rsi_local_checkpoint",
                 label=label,

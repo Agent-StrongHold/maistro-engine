@@ -41,7 +41,18 @@ IMAGE="${MAISTRO_RSI_IMAGE:-maistro-rsi-runner:latest}"
 # purpose: the builders agent rewrites a `://litellm:` URL to 127.0.0.1 (a
 # bare-host convenience that would misfire in-container), and that pattern does
 # not match `://maistro-litellm:`.
-NETWORK="${MAISTRO_RSI_NETWORK:-maistro_default}"
+# Default to whatever network the gateway container is actually on. Compose names
+# the default network `<project>_default`, which varies by layout — `maistro_default`
+# for the C:\maistro install, `maistro-engine_default` for a repo-root `docker
+# compose up` — so hardcoding one breaks the other. The `maistro-litellm`
+# container_name is fixed across layouts, so inspect it; fall back if it's not up.
+NETWORK="${MAISTRO_RSI_NETWORK:-}"
+if [[ -z "$NETWORK" ]]; then
+    NETWORK="$(docker inspect maistro-litellm \
+        --format '{{range $k,$_ := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' \
+        2>/dev/null | head -1)"
+    NETWORK="${NETWORK:-maistro_default}"
+fi
 GATEWAY_URL="${MAISTRO_RSI_GATEWAY_URL:-http://maistro-litellm:4000}"
 
 # Default the reports dir to a timestamped host dir next to the repo, and make it
@@ -113,6 +124,10 @@ exec docker run --rm \
     "$IMAGE" \
     bash -lc "sed 's/\r\$//' /run/gateway.env > /tmp/gw.env; set -a; . /tmp/gw.env; set +a; \
         export LITELLM_URL='$GATEWAY_URL' LITELLM_BASE_URL='$GATEWAY_URL' LITELLM_PROXY_URL='$GATEWAY_URL'; \
+        unset DB_PASSWORD LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY LANGFUSE_NEXTAUTH_SECRET LANGFUSE_SALT \
+              API_KEYS MAISTRO_ACCESS_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY MISTRAL_API_KEY \
+              GROQ_API_KEY CEREBRAS_API_KEY COHERE_API_KEY NVIDIA_API_KEY OPENROUTER_API_KEY SAMBANOVA_API_KEY \
+              XAI_API_KEY DEEPSEEK_API_KEY TOGETHER_API_KEY FIREWORKS_API_KEY DEEPINFRA_API_KEY 2>/dev/null || true; \
         source /workspace/.venv/bin/activate && \
         python -m maistro_rsi run \
         --repo /workspace \
