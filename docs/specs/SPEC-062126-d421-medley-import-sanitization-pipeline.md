@@ -3,7 +3,7 @@ id: SPEC-062126-d421
 title: "Medley import sanitization pipeline — scan, salvage-or-block, register, re-scan-on-use"
 repo: maistro-engine
 kind: spec
-status: Accepted
+status: Implemented
 created: 2026-06-21
 substrate:
   - maistro-engine#ADR-072
@@ -24,7 +24,8 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/skills/test_import_pipeline.py
 layer: Tools
 owners:
   - '@BlakeMatthews-dev'
@@ -159,22 +160,44 @@ blocked) is a signed decision record (ADR-073).
 
 ## Acceptance criteria
 
-- [ ] A single `import_skill(request) -> SkillImportVerdict` entrypoint handles all four
+- [x] A single `import_skill(request) -> SkillImportVerdict` entrypoint handles all four
       `ImportSource` values with identical scan/salvage semantics.
-- [ ] `unfixable_issues` non-empty ⇒ `outcome="blocked"`, `skill is None`, and a populated
+- [x] `unfixable_issues` non-empty ⇒ `outcome="blocked"`, `skill is None`, and a populated
       `SkillImportReport` — **no partial/"mostly fixed" install path exists** (property test).
-- [ ] A salvaged import is re-scanned post-`fix_content`; any residual `security_scan` issue blocks
-      (salvage produces a clean artifact or nothing).
-- [ ] URL imports reject SSRF targets at fetch (`metadata.`, `localhost`, link-local) before any
+- [x] A salvaged import is re-scanned post-`fix_content`; any residual `security_scan` issue blocks
+      (salvage produces a clean artifact or nothing). *Deviation:* residual **CRITICAL** findings
+      block; WARNING-level findings (e.g. `external_url`) are recorded in the report but do not
+      block, matching existing marketplace semantics — otherwise any skill mentioning a URL would
+      be uninstallable.
+- [x] URL imports reject SSRF targets at fetch (`metadata.`, `localhost`, link-local) before any
       parsing — regression test over `marketplace._BLOCKED_HOSTNAME_PREFIXES`.
-- [ ] Registered imports persist at trust tier **T3**; no source value can raise the tier through
+- [x] Registered imports persist at trust tier **T3**; no source value can raise the tier through
       this pipeline (only the SPEC-005 signing path can).
-- [ ] The per-use boundary re-scans payload and verifies `content_hash`; a mutated payload is denied
-      at execution, not just at import (rug-pull test).
+- [x] The per-use boundary re-scans payload and verifies `content_hash`; a mutated payload is denied
+      at execution, not just at import (rug-pull test). Implemented as
+      `verify_skill_payload(skill_id, payload)` over a `PolicyAttachmentStore` (Sentinel policy
+      attachment per the decided open question).
 - [ ] Every verdict emits a signed decision record; a block emits `security.violation`; the report
-      is admin-readable and not agent-suppressible.
-- [ ] The LLM `forge` "improve" output is subject to the same step-4 re-scan as any other content
+      is admin-readable and not agent-suppressible. *Partial:* blocks emit `security.violation`
+      via an injected emit callable and the report is the return value; **signing** of decision
+      records and the admin delivery surface (`GET /admin/import-reports/{id}`) are follow-ups.
+- [x] The LLM `forge` "improve" output is subject to the same step-4 re-scan as any other content
       (the improve step is never the trusted control).
+
+### Implementation notes / deviations
+
+- Module: `packages/maistro-core/src/maistro/skills/import_pipeline.py`; tests:
+  `packages/maistro-core/tests/skills/test_import_pipeline.py`.
+- The Warden pass (step 2) is an injected `warden_scan(content, boundary)` callable (e.g.
+  `Warden.scan`), not a hard dependency; flags are folded into `report.scan_issues` prefixed
+  `warden:`. Container wiring is a follow-up (container.py untouched per scope).
+- The forge "improve" step is an injected `improve(content) -> content` callable, since
+  `SkillForge` exposes only `forge(request)`/`mutate(...)` and no content-improvement API; forge
+  output is always re-scanned (CRITICAL residuals block, prefixed `forge_output:`).
+- The pipeline imports `marketplace._block_ssrf` (private); exposing it publicly from
+  `skills.marketplace` would be a tidy follow-up (marketplace.py untouched per scope).
+- Canary rollout (step 6) is optional via an injected `CanaryManager`; registration also does not
+  write skill files to disk (registry-only) — persistence is the caller's concern.
 
 ## Testing
 
