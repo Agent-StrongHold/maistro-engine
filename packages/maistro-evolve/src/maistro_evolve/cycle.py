@@ -193,8 +193,9 @@ class EvolutionCycle:
                 and outcome.best_candidate_prompt_excerpt is not None
                 and outcome.best_candidate_score is not None
             ):
-                updated_history = stored_history + [
-                    (outcome.best_candidate_prompt_excerpt, outcome.best_candidate_score)
+                updated_history = [
+                    *stored_history,
+                    (outcome.best_candidate_prompt_excerpt, outcome.best_candidate_score),
                 ]
                 if window > 0:
                     updated_history = updated_history[-window:]
