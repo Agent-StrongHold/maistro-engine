@@ -28,6 +28,7 @@ MAX_POPULATION_SIZE = 200
 MAX_TOURNAMENT_SIZE = 20
 MAX_SELF_IMPROVE_TOP_N = 10
 MAX_SELF_IMPROVE_CANDIDATES = 10
+MAX_REFLECT_HISTORY_WINDOW = 20
 
 
 class EvolutionConfig(BaseModel):
@@ -43,7 +44,7 @@ class EvolutionConfig(BaseModel):
     self_improve_top_n: int = Field(default=3, ge=0, le=MAX_SELF_IMPROVE_TOP_N)
     self_improve_candidates: int = Field(default=2, ge=0, le=MAX_SELF_IMPROVE_CANDIDATES)
     self_improve_accept_margin: float = 0.0
-    reflect_history_window: int = Field(default=5, ge=0)
+    reflect_history_window: int = Field(default=5, ge=0, le=MAX_REFLECT_HISTORY_WINDOW)
     node_attribution: bool = True
 
 
@@ -167,12 +168,23 @@ class EvolutionCycle:
             eval_results = [EvalResult(benchmark=k, score=v) for k, v in genome.eval_scores.items()]
             signal = extract_signal(genome, eval_results)
 
-            # Assemble OPRO-style history from prior reflection cycles on this genome.
-            stored_history: list[tuple[str, float]] = genome.harness_params.get(
+            window = config.reflect_history_window
+            # History entries are (benchmark, excerpt, score); filter to the genome's
+            # current weakest benchmark so OPRO trajectory stays coherent across cycles
+            # where the target benchmark shifts (benchmark-specific, SPEC-070226-83bd).
+            stored_history: list[tuple[str, str, float]] = genome.harness_params.get(
                 "reflection_history", []
             )
-            window = config.reflect_history_window
-            prompt_history = stored_history[-window:] if window > 0 else []
+            target_set = set(config.target_benchmarks)
+            relevant = {b: s for b, s in genome.eval_scores.items() if b in target_set}
+            expected_bench = min(relevant, key=relevant.get) if relevant else None
+            if window > 0 and expected_bench is not None:
+                bench_entries = [
+                    (exc, sc) for bm, exc, sc in stored_history if bm == expected_bench
+                ]
+                prompt_history = bench_entries[-window:]
+            else:
+                prompt_history = []
 
             # Propose-then-verify (GEPA-style): the parent is never mutated in
             # place; an accepted challenger joins the pool as its child.
@@ -189,19 +201,24 @@ class EvolutionCycle:
             if outcome is not None and outcome.accepted and outcome.challenger is not None:
                 population.add(outcome.challenger)
 
-            # Persist new excerpt + score so future cycles have a trajectory to learn from.
+            # Persist new (benchmark, excerpt, score) entry so future cycles have a
+            # coherent per-benchmark trajectory (window=0 disables persistence entirely).
             if (
-                outcome is not None
+                window > 0
+                and outcome is not None
                 and outcome.best_candidate_prompt_excerpt is not None
                 and outcome.best_candidate_score is not None
             ):
-                updated_history = [
-                    *stored_history,
-                    (outcome.best_candidate_prompt_excerpt, outcome.best_candidate_score),
-                ]
-                if window > 0:
-                    updated_history = updated_history[-window:]
+                new_entry: tuple[str, str, float] = (
+                    outcome.benchmark,
+                    outcome.best_candidate_prompt_excerpt,
+                    outcome.best_candidate_score,
+                )
+                updated_history = [*stored_history, new_entry][-window:]
                 genome.harness_params["reflection_history"] = updated_history
+                # Propagate to accepted challenger so its next cycle sees the trajectory.
+                if outcome.accepted and outcome.challenger is not None:
+                    outcome.challenger.harness_params["reflection_history"] = updated_history
 
             topo_signal = await optimize_topology(genome, signal, llm_call)
             genome.harness_params["last_optimization"] = {

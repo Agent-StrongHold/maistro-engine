@@ -338,7 +338,8 @@ class TestOproHistory:
         assert surviving is not None
         history = surviving.harness_params.get("reflection_history", [])
         assert len(history) == 1
-        excerpt, score = history[0]
+        benchmark, excerpt, score = history[0]
+        assert isinstance(benchmark, str)
         assert isinstance(excerpt, str) and len(excerpt) <= 120
         assert isinstance(score, float)
 
@@ -357,9 +358,9 @@ class TestOproHistory:
             "osworld": 0.6,
         }
         top.fitness_score = 60.0
-        # Pre-seed with 5 entries (at the window limit).
+        # Pre-seed with 5 entries (at the window limit) in (benchmark, excerpt, score) format.
         top.harness_params["reflection_history"] = [
-            (f"old prompt {i}", 0.3 + i * 0.01) for i in range(5)
+            ("ifeval", f"old prompt {i}", 0.3 + i * 0.01) for i in range(5)
         ]
         population.add(top)
         # Fill genomes (no eval_scores) fail the hard gate and score 0,

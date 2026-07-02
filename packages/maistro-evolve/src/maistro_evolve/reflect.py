@@ -244,6 +244,50 @@ def _weakest_benchmark(genome: PipelineGenome, benchmarks: list[str] | None) -> 
     return min(scores.items(), key=lambda kv: kv[1])[0]
 
 
+async def _select_target_node(
+    genome: PipelineGenome,
+    feedback: str,
+    llm_call: Any,
+    node_attribution: bool,
+) -> NodeGenome:
+    """Return the node to optimize; uses TextGrad attribution for multi-node pipelines."""
+    node = _target_node(genome)
+    if node_attribution and len(genome.topology.nodes) > 1 and feedback:
+        attributed_id = await _attribute_failure_to_node(genome, feedback, llm_call)
+        if attributed_id is not None:
+            for n in genome.topology.nodes:
+                if n.id == attributed_id:
+                    return n
+    return node
+
+
+async def _evaluate_candidates(
+    candidates: list[str],
+    genome: PipelineGenome,
+    node: NodeGenome,
+    weakest: str,
+    harness: EvalHarness,
+    llm_call: Any,
+) -> tuple[PipelineGenome | None, float | None, str | None]:
+    """Evaluate candidate prompts; return (best_challenger, best_score, best_prompt)."""
+    best_challenger: PipelineGenome | None = None
+    best_score: float | None = None
+    best_prompt: str | None = None
+    for text in candidates:
+        challenger = spawn_challenger(genome, node.id, text)
+        results = await harness.evaluate_genome(challenger, [weakest], llm_call)
+        if not results:
+            continue
+        score = results[0].score
+        challenger.eval_scores[weakest] = score
+        challenger.harness_params["total_cost_usd"] = results[0].cost_usd
+        if best_score is None or score > best_score:
+            best_score = score
+            best_challenger = challenger
+            best_prompt = text
+    return best_challenger, best_score, best_prompt
+
+
 async def reflective_improve(
     genome: PipelineGenome,
     harness: EvalHarness,
@@ -262,35 +306,22 @@ async def reflective_improve(
     if weakest is None:
         return None
 
-    # Fresh rollout on the weakest benchmark: gives an up-to-date baseline
-    # score plus the per-sample failure traces the reflection feeds on.
     baseline_results = await harness.evaluate_genome(genome, [weakest], llm_call)
     if not baseline_results:
         return None
     baseline = baseline_results[0]
 
-    # Default target: entry node (SPEC-207 §1).
-    node = _target_node(genome)
-
+    default_node = _target_node(genome)
     if baseline.metadata.get("stub"):
         return ReflectionOutcome(
             benchmark=weakest,
-            target_node_id=node.id,
+            target_node_id=default_node.id,
             baseline_score=baseline.score,
             reason="stub_signal",
         )
 
     feedback = summarize_failures(baseline.metadata)
-
-    # TextGrad-style attribution: for multi-node pipelines with failure traces,
-    # ask the LLM which node is responsible rather than always blaming the entry node.
-    if node_attribution and len(genome.topology.nodes) > 1 and feedback:
-        attributed_id = await _attribute_failure_to_node(genome, feedback, llm_call)
-        if attributed_id is not None:
-            for n in genome.topology.nodes:
-                if n.id == attributed_id:
-                    node = n
-                    break
+    node = await _select_target_node(genome, feedback, llm_call, node_attribution)
     candidates = await propose_candidates(
         genome,
         node,
@@ -302,22 +333,9 @@ async def reflective_improve(
         prompt_history=prompt_history,
     )
 
-    best_challenger: PipelineGenome | None = None
-    best_score: float | None = None
-    best_prompt: str | None = None
-    for text in candidates:
-        challenger = spawn_challenger(genome, node.id, text)
-        results = await harness.evaluate_genome(challenger, [weakest], llm_call)
-        if not results:
-            continue
-        score = results[0].score
-        challenger.eval_scores[weakest] = score
-        challenger.harness_params["total_cost_usd"] = results[0].cost_usd
-        if best_score is None or score > best_score:
-            best_score = score
-            best_challenger = challenger
-            best_prompt = text
-
+    best_challenger, best_score, best_prompt = await _evaluate_candidates(
+        candidates, genome, node, weakest, harness, llm_call
+    )
     accepted = (
         best_score is not None
         and best_challenger is not None
