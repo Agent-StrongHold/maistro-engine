@@ -3,7 +3,7 @@ id: ADR-074
 title: "Policy ⇄ ADR Deconfliction — the governance dialectic (declared intent vs revealed preference)"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-30
 substrate:
   - maistro-engine#ADR-070

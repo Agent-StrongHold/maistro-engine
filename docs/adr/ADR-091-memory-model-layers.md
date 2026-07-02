@@ -3,7 +3,7 @@ id: ADR-091
 title: Memory model reconciliation — storage types vs context assembly layers
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-06-02
 accepted: null
 substrate:

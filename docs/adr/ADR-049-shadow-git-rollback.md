@@ -3,7 +3,7 @@ id: ADR-049
 title: Agent file-edit rollback via shadow git
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-018
