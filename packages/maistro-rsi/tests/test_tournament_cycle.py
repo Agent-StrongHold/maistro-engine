@@ -35,6 +35,7 @@ def _region_apply():
 @pytest.mark.ac("SPEC-070126-9d37/AC-6")
 def test_same_region_promotes_single_best() -> None:
     cands = [_Cand(0.9, "X"), _Cand(0.7, "X"), _Cand(0.5, "X")]
+
     # rescore must never be consulted when only one candidate survives.
     def rescore(_kept):  # pragma: no cover - must not run
         raise AssertionError("rescore called for a single-candidate result")
@@ -58,7 +59,9 @@ def test_complementary_pair_both_kept_when_merge_valid() -> None:
 def test_regressing_merge_falls_back_to_top() -> None:
     cands = [_Cand(0.8, "A"), _Cand(0.6, "B")]
     # The 2-way combination regresses a gate ⇒ keep only the top candidate.
-    res = select_with_fallback(cands, _region_apply(), lambda kept: False, key=lambda c: c.composite)
+    res = select_with_fallback(
+        cands, _region_apply(), lambda kept: False, key=lambda c: c.composite
+    )
     assert [c.composite for c in res.kept] == [0.8]
     assert res.fallback is True
 
