@@ -159,8 +159,15 @@ def _harvest(args: argparse.Namespace) -> int:
     repo = str(Path(args.repo_dir).resolve())
     session = args.session or datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
 
+    # Identity flags so `git am` can commit in a clone with no configured user
+    # (the RSI commits are bot commits); --3way lets am fall back to a blob-level
+    # 3-way merge when line-ending/context differs from the patch's base.
+    ident = ["-c", "user.email=rsi@maistro.local", "-c", "user.name=maistro-rsi"]
+
     def git(*a: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(["git", "-C", repo, *a], check=check, capture_output=True, text=True)
+        return subprocess.run(
+            ["git", *ident, "-C", repo, *a], check=check, capture_output=True, text=True
+        )
 
     base = args.base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
     opened = 0
@@ -168,7 +175,7 @@ def _harvest(args: argparse.Namespace) -> int:
         branch = branch_slug(file, session)
         git("checkout", "-B", branch, base)
         for patch in group:
-            git("am", str((export / patch.patch_file).resolve()))
+            git("am", "--3way", str((export / patch.patch_file).resolve()))
         action = "pushed + PR" if args.push else "built (dry-run)"
         print(f"[{action}] {branch}  <- {file}  ({len(group)} commit(s))")
         if args.push:
