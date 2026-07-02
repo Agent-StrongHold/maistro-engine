@@ -32,8 +32,11 @@ import asyncio
 import json
 import subprocess
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -341,6 +344,17 @@ class LocalRsiConfig:
     # exported here as a git-am-able patch plus a manifest.json, for the harvester
     # to open PRs grouped by file. This is the durable output of an isolated run.
     export_patches: str | None = None
+    # Checkpointing for long runs. Every ``report_every`` cycles (0 = only at the
+    # end), write a progress report (markdown + JSON) into ``report_dir`` and
+    # refresh a rolling, harvestable patch export of everything promoted so far.
+    # The baseline keeps ratcheting forward across the whole run — a checkpoint is
+    # an observation point, not a reset — so each report covers cumulative
+    # progress and the export always holds the complete promotion set to date
+    # (recoverable if a long run is interrupted). Point ``report_dir`` at a path
+    # OUTSIDE the edited workspace (e.g. a host-mounted dir) to get reports out of
+    # an isolated run without exposing them to the agent.
+    report_every: int = 0
+    report_dir: str | None = None
 
 
 @dataclass
@@ -393,6 +407,81 @@ class LocalRsiResult:
             lines.append(f"  cycle {c.index}:{tgt} {mark}  ({detail}){note}")
         lines.append(f"  baseline: {self.baseline_dir} (branch {self.promotions} promotions deep)")
         return "\n".join(lines)
+
+
+def build_checkpoint_report(
+    cycles: list[CycleOutcome],
+    *,
+    total_planned: int,
+    baseline_dir: str,
+    window: int,
+    label: str = "",
+) -> tuple[str, dict[str, Any]]:
+    """Render a progress report over ``cycles`` run so far — cumulative totals
+    plus a detail of the most recent ``window`` cycles. Pure: derived entirely
+    from the outcome list, so it's testable without git or an agent.
+
+    Returns ``(markdown, machine_json)``. ``label`` distinguishes an interim
+    checkpoint ("cycle 5") from the "final" report in headings.
+    """
+    done = len(cycles)
+    promoted = [c for c in cycles if c.promoted]
+    per_file = Counter(c.target for c in promoted if c.target)
+    # Every promoted cycle counts — 0.0 is a valid promoted composite (a
+    # non-fitness run defaults to 0.0, and an accepted scorecard can compose to
+    # 0.0), so filtering truthy values would overstate the average.
+    composites = [c.composite for c in promoted]
+    avg_composite = round(sum(composites) / len(composites), 3) if composites else 0.0
+    recent = cycles[-window:] if window > 0 else cycles
+    heading = label or (f"cycle {done}" if done else "start")
+
+    data: dict[str, Any] = {
+        "checkpoint": heading,
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "cycles_run": done,
+        "cycles_planned": total_planned,
+        "promotions": len(promoted),
+        "promotion_rate": round(len(promoted) / done, 3) if done else 0.0,
+        "avg_composite": avg_composite,
+        "files_improved": dict(per_file),
+        "baseline_dir": baseline_dir,
+        "recent": [
+            {
+                "index": c.index,
+                "target": c.target,
+                "promoted": c.promoted,
+                "changed": c.changed,
+                "tests_passed": c.tests_passed,
+                "files_touched": c.files_touched,
+                "composite": c.composite,
+                "note": c.note,
+            }
+            for c in recent
+        ],
+    }
+
+    lines = [
+        f"# RSI checkpoint — {heading} / {total_planned} planned",
+        "",
+        f"_generated {data['generated_at']}_",
+        "",
+        "## Cumulative",
+        f"- Cycles run: **{done} / {total_planned}**",
+        f"- Promotions: **{len(promoted)}** ({data['promotion_rate']:.0%} of cycles run)",
+        f"- Distinct files improved: **{len(per_file)}**",
+        f"- Avg composite (promoted): **{avg_composite}**",
+        f"- Baseline: `{baseline_dir}` — {len(promoted)} promotions deep",
+    ]
+    if per_file:
+        lines += ["", "## Per-file promotions"]
+        lines += [f"- `{f}`: {n}" for f, n in per_file.most_common()]
+    lines += ["", f"## Recent window (last {len(recent)} cycle(s))"]
+    for c in recent:
+        mark = "promoted" if c.promoted else ("no change" if not c.changed else "rejected")
+        detail = f"composite={c.composite}" if c.promoted else c.note or ""
+        tgt = f" {c.target}" if c.target else ""
+        lines.append(f"- cycle {c.index}:{tgt} — **{mark}** {detail}".rstrip())
+    return "\n".join(lines) + "\n", data
 
 
 class LocalRsiLoop:
@@ -753,19 +842,78 @@ class LocalRsiLoop:
                     index, changed=False, tests_passed=False, promoted=False, note=f"error: {exc}"
                 )
             result.cycles.append(outcome)
+            # Interim checkpoint every N cycles: a progress report + a refreshed
+            # export of everything promoted so far. The baseline is not touched —
+            # the loop keeps ratcheting from here.
+            if (
+                self._config.report_dir
+                and self._config.report_every
+                and index % self._config.report_every == 0
+                and index != self._config.max_cycles
+            ):
+                self._write_checkpoint(result, label=f"cycle {index}")
         logger.info(
             "rsi_local_loop_complete", promotions=result.promotions, cycles=len(result.cycles)
         )
+        # A final report always closes out a reported run (captures the last,
+        # possibly-partial window).
+        if self._config.report_dir:
+            self._write_checkpoint(result, label="final")
         if self._config.export_patches and result.promotions:
             n = self.export_promotions(Path(self._config.export_patches))
             logger.info("rsi_local_exported", patches=n, dest=self._config.export_patches)
         return result
 
-    def export_promotions(self, dest: Path) -> int:
+    def _write_checkpoint(self, result: LocalRsiResult, *, label: str) -> None:
+        """Write a progress report (markdown + JSON) and refresh the rolling,
+        complete patch export under ``report_dir``.
+
+        Never raises: a checkpoint is observability for a long run, so a reporting
+        hiccup must never abort the loop that is producing real promotions.
+        """
+        try:
+            report_dir = Path(self._config.report_dir or ".")
+            report_dir.mkdir(parents=True, exist_ok=True)
+            md, data = build_checkpoint_report(
+                result.cycles,
+                total_planned=self._config.max_cycles,
+                baseline_dir=str(self._baseline),
+                window=self._config.report_every or len(result.cycles),
+                label=label,
+            )
+            slug = label.replace(" ", "-")
+            (report_dir / f"checkpoint-{slug}.md").write_text(md, encoding="utf-8")
+            (report_dir / f"checkpoint-{slug}.json").write_text(
+                json.dumps(data, indent=2), encoding="utf-8"
+            )
+            # Refresh a rolling, COMPLETE export of everything promoted so far, so
+            # an interrupted long run stays harvestable from its last checkpoint.
+            # Always clear+rewrite — even at zero promotions — so a reused report
+            # dir can't leave stale patches/manifest that `harvest` would apply.
+            self.export_promotions(report_dir / "export", clear=True)
+            logger.info(
+                "rsi_local_checkpoint",
+                label=label,
+                cycles=len(result.cycles),
+                promotions=result.promotions,
+                dir=str(report_dir),
+            )
+        except Exception as exc:
+            logger.warning("rsi_local_checkpoint_error", label=label, error=str(exc))
+
+    def export_promotions(self, dest: Path, *, clear: bool = False) -> int:
         """Export each promotion commit (start_ref..baseline) as a git-am-able
         patch plus a manifest.json mapping patch -> edited file, for the harvester
-        to open PRs grouped by file. Returns the number of patches written."""
+        to open PRs grouped by file. Returns the number of patches written.
+
+        ``clear`` first removes any stale ``*.patch``/manifest from a prior write,
+        so a rolling checkpoint export always reflects exactly the current set.
+        """
         dest.mkdir(parents=True, exist_ok=True)
+        if clear:
+            for stale in dest.glob("*.patch"):
+                stale.unlink()
+            (dest / "manifest.json").unlink(missing_ok=True)
         rng = f"{self._start_ref}..{self._config.baseline_branch}"
         revs = _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
         manifest: list[dict[str, str]] = []

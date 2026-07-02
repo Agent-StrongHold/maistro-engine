@@ -109,6 +109,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "(the durable output of an isolated run; feed to `maistro_rsi harvest`).",
     )
     run.add_argument(
+        "--report-every",
+        type=int,
+        default=0,
+        help="Emit a progress report + refreshed patch export every N cycles "
+        "(0 = only a final report). The baseline keeps ratcheting — a checkpoint "
+        "is an observation point, not a reset.",
+    )
+    run.add_argument(
+        "--report-dir",
+        default=None,
+        help="Where to write checkpoint reports (checkpoint-*.md/.json) and the "
+        "rolling export/. Point this OUTSIDE the edited repo (e.g. a host-mounted "
+        "dir) to get reports out of an isolated run.",
+    )
+    run.add_argument(
         "--work-root",
         default=None,
         help="Where to put throwaway clones/worktrees (default: a temp dir).",
@@ -366,6 +381,8 @@ def main(argv: list[str] | None = None) -> int:
             scout=args.scout,
             scout_model=args.scout_model,
             export_patches=args.export_patches,
+            report_every=args.report_every,
+            report_dir=args.report_dir,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"
