@@ -1,10 +1,10 @@
-"""Pre-execution validation gate for SuperPlanner/MasterOrchestrator plans (SPEC-259, ADR-071).
+"""Pre-execution validation gate for SuperPlanner/MasterOrchestrator plans (SPEC-062126-a05f, ADR-071).
 
 Validates a plan's waves before MasterOrchestrator executes them: cycle detection,
 an opt-in budget ceiling, and an opt-in per-item authority check. Findings are
 aggregated into a structured report rather than raised, mirroring the shape of
 maistro.graph.dag_validator.ValidationReport (a different DAG domain — not reused
-by import, see SPEC-259 Context).
+by import, see SPEC-062126-a05f Context).
 """
 
 from __future__ import annotations

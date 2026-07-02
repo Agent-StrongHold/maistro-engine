@@ -1,5 +1,5 @@
 ---
-id: SPEC-260
+id: SPEC-062126-5d56
 title: "Memory dynamics follow-up: pluggable decay strategy and LLM-mediated contradiction resolution (ADR-080)"
 repo: maistro-engine
 kind: spec
@@ -30,7 +30,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-260: Memory dynamics follow-up — decay strategy and contradiction resolution
+# SPEC-062126-5d56: Memory dynamics follow-up — decay strategy and contradiction resolution
 
 ## Context
 

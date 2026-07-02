@@ -11,9 +11,10 @@ substrate:
   - maistro-engine#ADR-062226-674b
 implements:
   - maistro-engine#ADR-078
+  - maistro-engine#ADR-062226-674b
 related:
   - maistro-engine#ADR-073
-  - maistro-engine#SPEC-260
+  - maistro-engine#SPEC-062126-5d56
 tests:
   - packages/maistro-core/tests/config/test_config_store.py
   - packages/maistro-server/tests/test_config_routes.py
@@ -62,7 +63,7 @@ UI calls.
 - The admin UI's actual frontend implementation (React components, routing) — this SPEC fixes
   the API contract the UI calls; building the UI is separate follow-up work once this lands.
 - Migrating any specific existing hardcoded constant (e.g. memory decay rates, RLPHD theta) to
-  ConfigStore — each subsystem's own SPEC (e.g. SPEC-260) decides if/when to adopt it.
+  ConfigStore — each subsystem's own SPEC (e.g. SPEC-062126-5d56) decides if/when to adopt it.
 - The drift/conformance gate on policy changes (ADR-073/ADR-074) — unchanged, out of scope per
   ADR-078 itself.
 - Secret storage/rotation — secrets stay in Vault per ADR-078, never in this table.

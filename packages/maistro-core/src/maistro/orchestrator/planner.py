@@ -26,7 +26,7 @@ logger = logging.getLogger("maistro.orchestrator.planner")
 
 
 class PlanValidationError(Exception):
-    """Raised when a plan fails pre-execution validation (SPEC-259)."""
+    """Raised when a plan fails pre-execution validation (SPEC-062126-a05f)."""
 
     def __init__(self, report: PlanValidationReport) -> None:
         self.report = report
@@ -294,7 +294,7 @@ class SuperPlanner:
         principal: Principal | None = None,
         sentinel: Sentinel | None = None,
     ) -> MasterOrchestrator:
-        """Validate the plan (SPEC-259) before building a MasterOrchestrator.
+        """Validate the plan (SPEC-062126-a05f) before building a MasterOrchestrator.
 
         Raises PlanValidationError if the plan fails validation (cycle, over-budget,
         or authority-exceeded) — refuses to hand back an orchestrator for an invalid plan.

@@ -9,7 +9,6 @@ substrate:
   - maistro-engine#ADR-038
   - maistro-engine#ADR-062
   - maistro-engine#ADR-066
-  - maistro-engine#SPEC-038
 implements:
   - maistro-engine#ADR-066
 related:
@@ -35,7 +34,7 @@ retry attempts into one cohesive signal), and a control-scope enforcement mechan
 remediation choices (escalate vs. retry vs. fail-fast). ADR-038's reliability taxonomy provides
 the classification (Shallow, P1, P2, P3); this SPEC realizes the P1 enforcement.
 
-Primitives already exist (SPEC-038: depth/compaction/retry core types); this SPEC wires them into
+Primitives already exist (retry/backoff primitives in maistro.resilience); this SPEC wires them into
 the graph executor, conduit, and observability pipeline.
 
 ## Goals
@@ -249,6 +248,5 @@ Events are tagged with `source: "resilience.p1"` for filtering.
 
 - [ADR-066: P1 Resilience and Control](../adr/ADR-066-p1-resilience-control.md)
 - [ADR-038: Reliability Taxonomy](../adr/ADR-038-reliability-taxonomy.md)
-- [SPEC-038: Reliability primitives](SPEC-038-reliability-primitives.md)
 - [ADR-062: Graph Execution Protocol](../adr/ADR-062-graph-execution-protocol.md)
 - [ADR-037: Observability](../adr/ADR-037-observability.md)

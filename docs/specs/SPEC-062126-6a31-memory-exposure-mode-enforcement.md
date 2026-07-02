@@ -1,5 +1,5 @@
 ---
-id: SPEC-261
+id: SPEC-062126-6a31
 title: "Memory exposure mode: mandatory declaration, write/promote enforcement (ADR-057)"
 repo: maistro-engine
 kind: spec
@@ -16,7 +16,7 @@ related:
   - maistro-engine#ADR-019
   - maistro-engine#ADR-053
   - maistro-engine#SPEC-227
-  - maistro-engine#SPEC-260
+  - maistro-engine#SPEC-062126-5d56
 supersedes: []
 blocks: []
 blocked-by: []
@@ -30,7 +30,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-261: Memory exposure mode enforcement
+# SPEC-062126-6a31: Memory exposure mode enforcement
 
 ## Context
 
@@ -77,8 +77,8 @@ product declares `system_managed` explicitly — both correct, neither inferred.
 - Cross-tenant memory sharing (Stronghold concern, unchanged).
 - Gate-mediated agent-suggests-admin-approves promotion under `SYSTEM_MANAGED` (ADR-057's
   own out-of-scope, unchanged) — admin-only promotion stands for v0.
-- Decay/consolidation/cross-scope dynamics — covered by SPEC-260, orthogonal to exposure
-  mode (a memory can be `AGENT_MANAGED` and still decay/consolidate per SPEC-260; the two
+- Decay/consolidation/cross-scope dynamics — covered by SPEC-062126-5d56, orthogonal to exposure
+  mode (a memory can be `AGENT_MANAGED` and still decay/consolidate per SPEC-062126-5d56; the two
   SPECs don't interact).
 
 ## Decision
@@ -181,6 +181,6 @@ string literals in `maistro.memory.*`).
 ## References
 
 - [ADR-057: Memory exposure mode](../adr/ADR-057-memory-exposure-mode.md)
-- [SPEC-260: Memory dynamics](SPEC-260-memory-dynamics-decay-consolidation.md) — orthogonal,
+- [SPEC-062126-5d56: Memory dynamics](SPEC-062126-5d56-memory-dynamics-decay-consolidation.md) — orthogonal,
   decay/consolidation mechanics independent of exposure mode.
 - `packages/maistro-turing/src/maistro_turing/` — agent-managed precedent needing migration.

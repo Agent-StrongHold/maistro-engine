@@ -1,4 +1,4 @@
-"""Tests for the SuperPlanner/MasterOrchestrator pre-execution validation gate (SPEC-259)."""
+"""Tests for the SuperPlanner/MasterOrchestrator pre-execution validation gate (SPEC-062126-a05f)."""
 
 from __future__ import annotations
 

@@ -1,5 +1,5 @@
 ---
-id: SPEC-259
+id: SPEC-062126-a05f
 title: "SuperPlanner + MasterOrchestrator pre-execution validation gate (ADR-071)"
 repo: maistro-engine
 kind: spec
@@ -24,7 +24,7 @@ owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-259: SuperPlanner + MasterOrchestrator pre-execution validation gate
+# SPEC-062126-a05f: SuperPlanner + MasterOrchestrator pre-execution validation gate
 
 ## Context
 
