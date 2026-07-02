@@ -3,7 +3,7 @@ id: SPEC-070226-cb8d
 title: "LLM provider / model registry, routing, and embeddings"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-07-02
 substrate:
   - maistro-engine#ADR-079
@@ -20,7 +20,11 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/providers/test_registry.py
+  - packages/maistro-core/tests/providers/test_router.py
+  - packages/maistro-core/tests/providers/test_cost.py
+  - packages/maistro-core/tests/providers/test_config.py
 layer: Tools
 owners:
   - '@BlakeMatthews-dev'
@@ -52,46 +56,68 @@ based on task requirements (reasoning depth, latency budget, cost constraint).
 
 ### Provider registry structure
 
+Implemented in `packages/maistro-core/src/maistro/providers/`.
+
 ```python
-@dataclass
+@dataclass(frozen=True)
 class ModelMetadata:
     name: str  # "claude-3-opus", "gpt-4-turbo"
     provider: str  # "anthropic", "openai", "local"
-    tier: Literal["fast", "balanced", "powerful"] = "balanced"
     cost_per_1k_input: float  # cents
-    cost_per_1k_output: float
+    cost_per_1k_output: float  # cents
     latency_p50_ms: int
+    tier: Literal["fast", "balanced", "powerful"] = "balanced"
     reasoning_capable: bool = False
     max_tokens: int = 4096
-    fallback_to: list[str] = field(default_factory=list)  # ["gpt-4-turbo", ...]
+    fallback_to: tuple[str, ...] = ()  # ("gpt-4-turbo", ...) — immutable
 
-@dataclass
+@dataclass(frozen=True)
 class EmbeddingModelMetadata:
     name: str  # "text-embedding-ada-002"
     provider: str
     dimension: int
-    cost_per_1k_tokens: float
+    cost_per_1k_tokens: float  # cents
+    max_input_tokens: int = 8192
+
+@dataclass(frozen=True)
+class RouterBudget:
+    """Typed budget (replaces the untyped budget dict of the original draft)."""
+    max_cost_cents: float | None = None
+    max_latency_ms: int | None = None
+    reasoning: bool = False
+
+@dataclass(frozen=True)
+class RoutingTask:
+    """Minimal task descriptor (core has no plain Task dataclass)."""
+    task_type: str = "general"
+    description: str = ""
 
 class LLMProviderRegistry(Protocol):
-    async def list_models(self, filter_by: dict = None) -> list[ModelMetadata]:
-        """List available models, optionally filtered by provider/tier."""
-    
+    async def list_models(self, filter_by: dict[str, str] | None = None) -> list[ModelMetadata]:
+        """List available models, optionally filtered by provider/tier/name."""
+
     async def get_model(self, name: str) -> ModelMetadata:
-        """Fetch a specific model's metadata."""
-    
-    async def get_embedding_model(self, name: str) -> EmbeddingModelMetadata:
-        ...
+        """Fetch a specific model's metadata. Raises ModelNotFoundError."""
+
+    async def list_embedding_models(self) -> list[EmbeddingModelMetadata]: ...
+
+    async def get_embedding_model(self, name: str) -> EmbeddingModelMetadata: ...
+
+    def is_available(self, name: str) -> bool:
+        """Availability flag (set by circuit-breaking per ADR-038)."""
 
 class LLMRouter(Protocol):
-    async def select(self, task: Task, budget: dict = None) -> ModelMetadata:
-        """
-        Select the best model for the task.
-        budget: {"max_cost_cents": 10, "max_latency_ms": 5000, "reasoning": true}
-        """
-    
-    async def select_embedding(self, input_size_tokens: int) -> EmbeddingModelMetadata:
-        ...
+    async def select(self, task: RoutingTask, budget: RouterBudget | None = None) -> ModelMetadata:
+        """Select the best available model for the task under the budget."""
+
+    async def select_embedding(self, input_size_tokens: int) -> EmbeddingModelMetadata: ...
+
+    async def fallback_chain(self, name: str) -> list[ModelMetadata]:
+        """Ordered fallback chain starting at a model (inclusive); cycle-safe."""
 ```
+
+The concrete registry is `InMemoryProviderRegistry` (registration-order-preserving,
+re-registration replaces, `mark_unavailable`/`mark_available` for ADR-038 integration).
 
 ### Default config (INI-style or YAML)
 
@@ -124,33 +150,21 @@ embeddings:
 
 ### Router logic
 
-```python
-class CostAwareRouter(LLMRouter):
-    def __init__(self, registry: LLMProviderRegistry):
-        self.registry = registry
-    
-    async def select(self, task: Task, budget: dict = None) -> ModelMetadata:
-        budget = budget or {}
-        max_cost = budget.get("max_cost_cents", float('inf'))
-        max_latency = budget.get("max_latency_ms", float('inf'))
-        reasoning_required = budget.get("reasoning", False)
-        
-        models = await self.registry.list_models()
-        
-        # Filter by constraints
-        candidates = [
-            m for m in models
-            if m.cost_per_1k_input <= max_cost
-            and m.latency_p50_ms <= max_latency
-            and (not reasoning_required or m.reasoning_capable)
-        ]
-        
-        if not candidates:
-            raise NoEligibleModelError(budget)
-        
-        # Pick the fastest (or cheapest, or best-reasoning, depending on priority)
-        return min(candidates, key=lambda m: m.latency_p50_ms)
-```
+`CostAwareRouter` (in `maistro/providers/router.py`):
+
+1. Filter all registered models by the budget (cost per 1k input, latency p50,
+   reasoning requirement). If none match, raise `NoEligibleModelError`.
+2. Order candidates by latency (fastest first).
+3. For each candidate, walk its fallback chain (breadth-first over `fallback_to`,
+   cycle-safe, dangling names skipped) and return the first model that both
+   satisfies the budget and is currently available per the registry.
+4. If every eligible model is unavailable, raise `NoEligibleModelError`.
+
+`select_embedding(input_size_tokens)` picks the cheapest available embedding model
+whose `max_input_tokens` fits the input; raises `NoEligibleModelError` if none fits.
+
+Unknown model names (in `get_model`, `get_embedding_model`, `mark_unavailable`, or a
+`fallback_chain` root) raise `ModelNotFoundError` — never a silent fallback.
 
 ### Integration with quota tracking (ADR-085)
 
@@ -159,18 +173,22 @@ class CostAwareRouter(LLMRouter):
 model = await router.select(task, budget)
 response = await llm_client.call(model=model.name, ...)
 
-# Quota tracker logs this call with the model's cost metadata
+# Cost comes from the pure helper (no hardcoded pricing, quota package untouched):
+from maistro.providers import compute_cost_cents
+
+cost_cents = compute_cost_cents(model, response.input_tokens, response.output_tokens)
 quota_tracker.record_usage(
     provider=model.provider,
-    model=model.name,
+    billing_cycle=cycle,
     input_tokens=response.input_tokens,
     output_tokens=response.output_tokens,
-    cost_cents=(
-        response.input_tokens / 1000 * model.cost_per_1k_input +
-        response.output_tokens / 1000 * model.cost_per_1k_output
-    )
 )
 ```
+
+`compute_embedding_cost_cents(model, input_tokens)` is the embedding analogue.
+Config loading: `load_provider_config(path)` parses/validates the YAML above
+(raising `ProviderConfigError` on malformed input) and
+`load_provider_registry(path)` returns a populated `InMemoryProviderRegistry`.
 
 ## Acceptance criteria
 
