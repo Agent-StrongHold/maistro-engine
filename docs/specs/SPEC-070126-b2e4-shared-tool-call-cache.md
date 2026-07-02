@@ -1,5 +1,5 @@
 ---
-id: SPEC-260
+id: SPEC-070126-b2e4
 title: "Shared widget/chat tool-call protocol and cached Airtable data plane"
 repo: maistro-engine
 kind: spec

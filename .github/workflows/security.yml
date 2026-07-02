@@ -126,7 +126,13 @@ jobs:
           #              pin upgrades it. Tracked for next fastapi
           #              version-bump PR. Mitigated for now by the
           #              gateway-level Host whitelist in deployment.
-          allowed = {'pydantic-ai', 'py', 'starlette'}
+          # nltk         PYSEC-2026-597 (no fix as of 2026-07-01).
+          #              Transitive dep of `safety` (the audit tool
+          #              itself), NOT of any project runtime code.
+          #              grep across packages/ confirms we import
+          #              nothing from nltk. Risk surface is the CI
+          #              scan job only; no production exposure.
+          allowed = {'pydantic-ai', 'py', 'starlette', 'nltk'}
           new_vuln = [d for d in vuln if d['name'] not in allowed]
           if new_vuln:
               print('::error::pip-audit found new vulnerable deps:')

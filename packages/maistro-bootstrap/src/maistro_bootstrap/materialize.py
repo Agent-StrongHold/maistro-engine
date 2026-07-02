@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 from typing import Any
@@ -24,17 +25,36 @@ def _write_tutorial(path: Path, todos: list[str]) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _write_entrypoint(path: Path) -> None:
+def _next_compose_command(base_compose_path: str | None) -> str:
+    if base_compose_path is None:
+        return "docker compose -f <path-to-docker-compose.yml> -f compose.override.yml config"
+    return f"docker compose -f {base_compose_path} -f compose.override.yml config"
+
+
+def _write_entrypoint(path: Path, base_compose_path: str | None) -> None:
     path.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
         'cd "$(dirname "$0")"\n'
         "echo 'Maistro install artifacts are materialized in:' \"$PWD\"\n"
         "echo 'Review install-answers.yaml and compose.override.yml before starting services.'\n"
-        "echo 'Next: docker compose -f compose.override.yml config'\n",
+        f"echo 'Next: {_next_compose_command(base_compose_path)}'\n",
         encoding="utf-8",
     )
-    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+    if os.name != "nt":
+        path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _write_powershell_entrypoint(path: Path, base_compose_path: str | None) -> None:
+    path.write_text(
+        "Set-StrictMode -Version Latest\n"
+        '$ErrorActionPreference = "Stop"\n'
+        "Set-Location $PSScriptRoot\n"
+        'Write-Host "Maistro install artifacts are materialized in: $PWD"\n'
+        'Write-Host "Review install-answers.yaml and compose.override.yml before starting services."\n'
+        f'Write-Host "Next: {_next_compose_command(base_compose_path)}"\n',
+        encoding="utf-8",
+    )
 
 
 def materialize_install_artifacts(plan: dict[str, Any], target_dir: Path) -> list[Path]:
@@ -78,8 +98,27 @@ def materialize_install_artifacts(plan: dict[str, Any], target_dir: Path) -> lis
     _write_tutorial(tutorial, [str(todo) for todo in todos])
     written.append(tutorial)
 
+    base_compose_path = _relative_base_compose_path(plan.get("repo_root"), target_dir)
+
     entrypoint = target_dir / "install.sh"
-    _write_entrypoint(entrypoint)
+    _write_entrypoint(entrypoint, base_compose_path)
     written.append(entrypoint)
 
+    powershell_entrypoint = target_dir / "install.ps1"
+    _write_powershell_entrypoint(powershell_entrypoint, base_compose_path)
+    written.append(powershell_entrypoint)
+
     return written
+
+
+def _relative_base_compose_path(repo_root: Any, target_dir: Path) -> str | None:
+    if not repo_root:
+        return None
+    compose_path = Path(repo_root) / "docker-compose.yml"
+    if not compose_path.exists():
+        return None
+    try:
+        rel = os.path.relpath(compose_path.resolve(), target_dir.resolve())
+    except ValueError:
+        return compose_path.as_posix()
+    return rel.replace(os.sep, "/")

@@ -150,7 +150,7 @@ def _score_multi_file_fix(response: str, sample: dict[str, Any]) -> float:
 
     if max_score == 0:
         return 0.0
-    return min(1.0, score / max_score)
+    return float(min(1.0, score / max_score))
 
 
 async def _judge_cross_file_consistency(
@@ -265,4 +265,4 @@ def _heuristic_score(sample: dict[str, Any]) -> float:
 
     min_files = sample.get("min_files_touched", 1)
     base = 0.35 - (min_files * 0.04)
-    return max(0.05, min(0.6, base + random.uniform(-0.05, 0.1)))
+    return float(max(0.05, min(0.6, base + random.uniform(-0.05, 0.1))))

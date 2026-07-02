@@ -230,3 +230,97 @@ class PopulationStore:
         scored = [g for g in all_genomes if g.fitness_score is not None]
         scored.sort(key=_fitness_key, reverse=True)
         return scored[:top_n]
+
+
+class IslandPopulation:
+    """FunSearch-style island model: partitions genomes into semi-isolated islands.
+
+    Each island runs independent tournament selection. The best genome from each
+    island is periodically migrated to all other islands, providing gene flow
+    without collapsing diversity into a single selection pool.
+    """
+
+    def __init__(self, island_count: int = 3) -> None:
+        self._island_count = max(1, island_count)
+        # tournament pools (includes migrants after migration fires)
+        self._islands: dict[int, list[str]] = {i: [] for i in range(self._island_count)}
+        # primary island for each genome (determines child assignment)
+        self._primary: dict[str, int] = {}
+        self._rr: int = 0  # round-robin counter for seeds
+
+    @property
+    def island_count(self) -> int:
+        return self._island_count
+
+    def assign(self, genome: PipelineGenome) -> int:
+        """Assign a genome to its island; idempotent if already assigned."""
+        if genome.id in self._primary:
+            return self._primary[genome.id]
+        # Inherit parent's primary island so children stay with their lineage.
+        if genome.parent_a_id is not None and genome.parent_a_id in self._primary:
+            iid = self._primary[genome.parent_a_id]
+        else:
+            iid = self._rr % self._island_count
+            self._rr += 1
+        self._primary[genome.id] = iid
+        if genome.id not in self._islands[iid]:
+            self._islands[iid].append(genome.id)
+        return iid
+
+    def remove(self, genome_id: str) -> None:
+        self._primary.pop(genome_id, None)
+        for members in self._islands.values():
+            if genome_id in members:
+                members.remove(genome_id)
+
+    def get_members(self, island_id: int) -> list[str]:
+        return list(self._islands.get(island_id, []))
+
+    def all_islands(self) -> list[int]:
+        return list(self._islands.keys())
+
+    def home_island(self, genome_id: str) -> int | None:
+        return self._primary.get(genome_id)
+
+    def force_assign(self, genome_id: str, island_id: int) -> None:
+        """Place genome_id on island_id unconditionally, bypassing parent-inheritance.
+
+        Used when the caller already knows the target island (e.g. _breed_island
+        placing a child onto the island it was bred from), so that mutation
+        chains that rewrite parent_a_id don't cause round-robin fallback.
+        Idempotent: a genome already assigned is not moved.
+        """
+        if genome_id not in self._primary:
+            self._primary[genome_id] = island_id
+            if genome_id not in self._islands[island_id]:
+                self._islands[island_id].append(genome_id)
+
+
+def migrate_islands(island_pop: IslandPopulation, store: PopulationStore) -> None:
+    """Share the best genome from each island into every other island's tournament pool.
+
+    Bidirectional: best of island A → islands B, C, …; best of B → A, C, …
+    The genome is shared by id (not copied), so both islands reference the same object.
+    """
+    best_per_island: dict[int, str | None] = {}
+    for iid in island_pop.all_islands():
+        scored = [
+            g
+            for mid in island_pop.get_members(iid)
+            if (g := store.get(mid)) is not None and g.fitness_score is not None
+        ]
+        if scored:
+            best = max(scored, key=lambda g: g.fitness_score or 0.0)
+            best_per_island[iid] = best.id
+        else:
+            best_per_island[iid] = None
+
+    for src_iid, best_id in best_per_island.items():
+        if best_id is None:
+            continue
+        for dst_iid in island_pop.all_islands():
+            if dst_iid == src_iid:
+                continue
+            dst_members = island_pop._islands[dst_iid]
+            if best_id not in dst_members:
+                dst_members.append(best_id)

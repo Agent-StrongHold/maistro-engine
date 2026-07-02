@@ -22,28 +22,46 @@ _FITNESS_WEIGHTS = {
 }
 
 
+# Weight for a benchmark scored but outside the standard EvalWeights set (e.g.
+# the code_rsi RSI benchmark), so a subset run still yields a real fitness.
+_DEFAULT_BENCH_WEIGHT = 0.15
+
+
 def _check_hard_gate(genome: PipelineGenome) -> tuple[bool, list[str]]:
     failures: list[str] = []
     scores = genome.eval_scores
 
+    # A genome must have been evaluated on *something* to be gated meaningfully.
+    if not scores:
+        return False, ["no benchmarks evaluated"]
+
+    # Gate only the benchmarks this genome was actually evaluated on — a run need
+    # not cover all standard benchmarks (a code_rsi-only RSI run runs just one).
     for bench, threshold in _HARD_GATE_THRESHOLDS.items():
-        if bench not in scores:
-            failures.append(f"missing {bench} score")
-        elif scores[bench] < threshold:
+        if bench in scores and scores[bench] < threshold:
             failures.append(f"{bench} score {scores[bench]:.3f} below gate {threshold}")
 
     return len(failures) == 0, failures
 
 
 def _weighted_eval_score(genome: PipelineGenome) -> float:
-    if not genome.eval_scores:
+    scores = genome.eval_scores
+    if not scores:
         return 0.0
+    weights = genome.eval_weights
     total = 0.0
-    for field_name in genome.eval_weights.model_fields:
-        weight = getattr(genome.eval_weights, field_name)
-        score = genome.eval_scores.get(field_name, 0.0)
+    total_weight = 0.0
+    # Weight only the benchmarks that actually ran, renormalising over them, so a
+    # subset run isn't penalised for the benchmarks it deliberately skipped. A
+    # scored benchmark outside the standard EvalWeights set (code_rsi) gets a
+    # default weight so it drives fitness rather than being silently dropped.
+    for bench, score in scores.items():
+        weight = getattr(weights, bench, None)
+        if weight is None:
+            weight = _DEFAULT_BENCH_WEIGHT
         total += weight * score
-    return total
+        total_weight += weight
+    return total / total_weight if total_weight > 0 else 0.0
 
 
 def _cost_efficiency(genome: PipelineGenome) -> float:

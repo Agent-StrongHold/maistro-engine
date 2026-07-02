@@ -30,6 +30,10 @@ packages = []
 testpaths = ["models"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
+markers = [
+    "contract: ADR-032 contract axis (boundary | behavioral | cross_service)",
+    "scope: test scope axis (unit | integration | e2e | property)",
+]
 
 [tool.hypothesis]
 max_examples = 100

@@ -10,8 +10,8 @@ so swapping the backend later touches one factory function, not call sites.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import Protocol, runtime_checkable
+from collections.abc import Callable, Coroutine
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -52,4 +52,4 @@ class MicroVmSandbox(Protocol):
 # produce the actual code modification (typically by driving an agent).
 # Kept out of `selfbranch` so the git/sandbox plumbing stays testable
 # independent of any particular agent strategy.
-ApplyPatchFn = Callable[[MicroVmSandbox, str], Awaitable[None]]
+ApplyPatchFn = Callable[[MicroVmSandbox, str], Coroutine[Any, Any, None]]

@@ -24,6 +24,7 @@ from maistro_evolve.harness import EvalHarness
 from maistro_evolve.tournament import EloTournament, GenomeBattle
 from maistro_evolve.types import EvalResult, PipelineGenome
 from maistro_rsi.benchmarks import RSI_BENCHMARKS
+from maistro_rsi.gateway import LlmCall, make_gateway_llm_call
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quota_burn import QuotaBurnScheduler
 from maistro_rsi.sandbox.microvm import create_microvm_sandbox
@@ -81,12 +82,16 @@ class RsiCycle:
         tournament: EloTournament,
         scheduler: QuotaBurnScheduler,
         apply_patch: ApplyPatchFn,
+        llm_call: LlmCall | None = None,
     ) -> None:
         self._config = config
         self._harness = harness
         self._tournament = tournament
         self._scheduler = scheduler
         self._apply_patch = apply_patch
+        # When None, run() builds a gateway-backed llm_call from the
+        # scheduler-chosen model so benchmark scoring is real, not heuristic.
+        self._llm_call = llm_call
 
     async def run(
         self,
@@ -97,6 +102,16 @@ class RsiCycle:
         run_id = uuid.uuid4().hex[:10]
         workspace = f"{self._config.workspace_root}/{run_id}"
         model = await self._scheduler.next_model(available_models)
+
+        # Real benchmark scoring needs an llm_call. Prefer an injected one
+        # (tests); otherwise build a gateway-backed call routed to the
+        # scheduler-chosen model — which also makes that choice (idle-quota
+        # headroom) actually drive the eval instead of being decorative. If no
+        # model is available, leave it None and the benchmarks score
+        # heuristically (loudly non-real).
+        llm_call = self._llm_call
+        if llm_call is None and model:
+            llm_call = make_gateway_llm_call(model)
 
         sandbox = await create_microvm_sandbox(workspace)
         try:
@@ -116,10 +131,12 @@ class RsiCycle:
             baseline_results = await self._harness.evaluate_genome(
                 baseline,
                 benchmarks=self._config.benchmarks,
+                llm_call=llm_call,
             )
             candidate_results = await self._harness.evaluate_genome(
                 candidate,
                 benchmarks=self._config.benchmarks,
+                llm_call=llm_call,
             )
 
             battles = [

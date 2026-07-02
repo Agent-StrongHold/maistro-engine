@@ -68,6 +68,7 @@ class BuilderSandbox(Protocol):
 
     def read_file(self, path: str) -> str: ...
     def write_file(self, path: str, content: str) -> None: ...
+    def edit_file(self, path: str, old_string: str, new_string: str) -> str: ...
     def run_command(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str: ...
     def run_argv(self, argv: list[str], *, timeout: int = _DEFAULT_TIMEOUT) -> str: ...
     def diff(self) -> str: ...
@@ -319,6 +320,32 @@ class LocalWorktreeSandbox:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
 
+    def edit_file(self, path: str, old_string: str, new_string: str) -> str:
+        """Replace an exact, unique occurrence of ``old_string`` with ``new_string``.
+
+        A targeted alternative to rewriting the whole file: the model supplies
+        only the snippet it wants changed, so it can't mangle untouched lines and
+        doesn't burn its token budget re-emitting the entire file. ``old_string``
+        must match byte-for-byte and appear exactly once — otherwise raise with
+        guidance the agent can act on.
+        """
+        target = self._resolve(path)
+        text = target.read_text(encoding="utf-8")
+        count = text.count(old_string)
+        if count == 0:
+            raise ValueError(
+                f"old_string not found in {path!r} — it must match the file exactly, "
+                "including whitespace and indentation. Re-read the file and copy the "
+                "exact text you want to replace."
+            )
+        if count > 1:
+            raise ValueError(
+                f"old_string appears {count} times in {path!r} — include more "
+                "surrounding context so it matches exactly one location."
+            )
+        target.write_text(text.replace(old_string, new_string, 1), encoding="utf-8")
+        return f"edited {path} (1 replacement)"
+
     def run_command(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
         return self._require_shell().run(cmd, timeout=timeout)
 
@@ -340,7 +367,7 @@ class LocalWorktreeSandbox:
         root = self._ws.path if self._ws else self._repo_root
         root = root.resolve()
         glob_path = Path(glob)
-        if glob_path.is_absolute() or ".." in glob_path.parts:
+        if glob_path.is_absolute() or glob.startswith(("/", "\\")) or ".." in glob_path.parts:
             raise SandboxEscapeError(f"Glob escape detected: {glob!r} escapes sandbox root")
         matches = []
         for p in root.glob(glob):

@@ -100,16 +100,30 @@ jobs:
             exit 1
           fi
 
-      # Ratchet, not a 0-baseline: full backlog (1052 findings measured
-      # 2026-06-29, mostly public-API methods vulture can't see called via
-      # protocol-driven DI) is tracked for the Phase 9 KEEP/DEPRECATE/DELETE
-      # inventory, not a one-PR fix. Hard-fails on regression on every
-      # branch.
+      # Ratchet, not a 0-baseline: the full backlog is tracked for the Phase 9
+      # KEEP/DEPRECATE/DELETE inventory, not a one-PR fix. Hard-fails on
+      # regression on every branch.
+      #
+      # Scope: ALL packages/*/src (2026-07-01), not just maistro-core — a single
+      # invocation so cross-package reachability resolves public APIs consumed
+      # across packages (e.g. maistro-rsi -> maistro-evolve), which a per-package
+      # scan would false-positive. The `packages/*/src` glob auto-covers new
+      # packages; adding one spikes the count and forces a conscious baseline
+      # bump here (that IS the ratchet).
+      #
+      # Baseline history:
+      #   1052 (2026-06-29) maistro-core/src only — mostly public-API methods
+      #        vulture can't see called via protocol-driven DI.
+      #   1265 (2026-07-01) expanded to all packages/*/src. The +213 vs. core is
+      #        the same false-positive class (public API used only by tests,
+      #        dataclass fields, protocol methods) across the other 8 packages;
+      #        genuine dead code in the new RSI/evolve code was removed in this
+      #        PR rather than baselined.
       - name: vulture (dead-code; confidence ≥ 60 — ratchet)
         env:
-          VULTURE_BASELINE: 1052
+          VULTURE_BASELINE: 1266
         run: |
-          uv run vulture packages/maistro-core/src --min-confidence 60 > vulture.log 2>&1 || true
+          uv run vulture packages/*/src --min-confidence 60 > vulture.log 2>&1 || true
           count=$(wc -l < vulture.log | tr -d ' ')
           cat vulture.log
           echo "vulture finding count: $count (baseline: $VULTURE_BASELINE)"
