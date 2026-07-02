@@ -3,7 +3,7 @@ id: SPEC-070226-c4f8
 title: "Hierarchical orchestration: agent/skill portability across harnesses"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-07-02
 substrate:
   - maistro-engine#ADR-058
@@ -20,7 +20,8 @@ blocks: []
 blocked-by: []
 contracts:
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/orchestrator/test_hierarchy.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -52,84 +53,74 @@ aggregates results.
 
 ## Decision
 
+Implemented in `packages/maistro-core/src/maistro/orchestrator/hierarchy.py` (exported from
+`maistro.orchestrator`). Placement: `orchestrator/` rather than `a2a/` — this is
+result-aggregation over harness nodes (the Repertoire/wave pattern), not A2A task delegation
+between maistro peers.
+
 ### Harness registry and discovery
 
 ```python
-@dataclass
+@dataclass(frozen=True)
 class HarnessAdvertisement:
     harness_id: str  # "pi-0", "openclaw-1"
     endpoint: str  # "https://pi.local:8000"
-    capabilities: list[str]  # ["agent:run", "skill:import"]
-    agent_roster: list[str]  # agent names available on this harness
+    capabilities: tuple[str, ...] = ()  # ("agent:run", "skill:import")
+    agent_roster: tuple[str, ...] = ()  # agent names available on this harness
     cost_multiplier: float = 1.0  # relative cost vs. local
     latency_multiplier: float = 1.0
 
 class HarnessRegistry(Protocol):
     async def list_harnesses(self) -> list[HarnessAdvertisement]:
         """Discover all connected foreign harnesses."""
-    
+
     async def get_harness(self, harness_id: str) -> HarnessAdvertisement:
-        ...
+        """Raises HarnessUnavailableError if unknown."""
 ```
+
+`InMemoryHarnessRegistry` is the reference implementation (register/unregister/list/get).
 
 ### Hierarchical delegation
 
+`HierarchicalOrchestrator` is protocol-driven DI (per core convention) rather than doing HTTP
+inline: it takes a `HarnessRegistry`, a `HarnessTransport`, an `AgentSource` (resolves an agent
+name to the `AgentIdentity` + `SkillDefinition` list that SPEC-208's `export_agent` consumes),
+and an optional `HarnessResultComparator` (default: highest `metadata["quality_score"]`).
+
 ```python
 class HierarchicalOrchestrator:
-    """Parent harness orchestration."""
-    
+    async def export_agent(self, agent_name: str) -> ExportBundle:
+        """SPEC-208 export: MCP manifest + SKILL.md."""
+
     async def spawn_on_harness(
-        self,
-        agent_name: str,
-        harness_id: str,
-        task: Task
-    ) -> TaskResult:
-        """
-        Export agent, send to foreign harness, run, collect result.
-        """
-        # Get foreign harness
-        harness = await self.registry.get_harness(harness_id)
-        
-        # Export agent (MCP manifest or equivalent)
-        agent_def = await self.export_agent(agent_name)
-        
-        # POST to foreign harness
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{harness.endpoint}/v1/harness/sessions",
-                json={
-                    "agent": agent_def,
-                    "task": task.to_dict()
-                },
-                headers={"Authorization": f"Bearer {self.harness_token}"}
-            )
-        
-        return TaskResult.from_dict(response.json())
-    
+        self, agent_name: str, harness_id: str, task: HarnessTask
+    ) -> HarnessTaskResult:
+        """registry.get_harness -> export_agent -> transport.spawn.
+        A result envelope carrying an error raises ForeignHarnessError."""
+
     async def spawn_wave_across_harnesses(
-        self,
-        agents: list[str],
-        harnesses: list[str],
-        task: Task
-    ) -> TaskResult:
-        """
-        Parallel wave: spawn N agents on N harnesses, return best result.
-        """
-        results = await asyncio.gather(
-            *[
-                self.spawn_on_harness(agent, harness, task)
-                for agent, harness in zip(agents, harnesses)
-            ],
-            return_exceptions=True
-        )
-        
-        # Compare and return best
-        valid_results = [r for r in results if not isinstance(r, Exception)]
-        if not valid_results:
-            raise AllHarnessesFailedError(results)
-        
-        return max(valid_results, key=lambda r: r.quality_score)
+        self, agents: list[str], harnesses: list[str], task: HarnessTask
+    ) -> HarnessTaskResult:
+        """asyncio.gather(return_exceptions=True); comparator picks the best;
+        AllHarnessesFailedError (carrying the failures) when every spawn failed;
+        CancelledError propagates (same rule as waves/ensemble.py)."""
+
+    async def spawn_with_fallback(
+        self, agent_name: str, harnesses: list[str], task: HarnessTask
+    ) -> HarnessTaskResult:
+        """Ordered preference list; only HarnessUnavailableError advances to the
+        next harness — ForeignHarnessError propagates; NoAvailableHarnessError
+        when the whole list is down."""
 ```
+
+Transports (`HarnessTransport` protocol: `spawn(harness, bundle, task) -> HarnessTaskResult`):
+
+- `LoopbackHarnessTransport` — in-memory per-harness handlers (tests/dev); a disconnected
+  harness raises `HarnessUnavailableError`, mirroring a connection failure.
+- `HTTPHarnessTransport` — httpx `POST {endpoint}/v1/harness/sessions` with
+  `{"agent": {"mcp_manifest": ..., "skill_md": ...}, "task": task.to_dict()}` and a bearer
+  `harness_token`. Transport errors and 502/503/504 map to `HarnessUnavailableError`; other
+  non-2xx raise `ForeignHarnessError`.
 
 ### Agent portability via MCP manifest
 
@@ -151,40 +142,51 @@ Foreign harness imports and runs this like any native agent.
 
 ### Error handling and fallback
 
-```python
-async def spawn_with_fallback(
-    self,
-    agent_name: str,
-    harnesses: list[str],  # ordered by preference
-    task: Task
-) -> TaskResult:
-    """Try harnesses in order until one succeeds."""
-    for harness_id in harnesses:
-        try:
-            return await self.spawn_on_harness(agent_name, harness_id, task)
-        except HarnessUnavailableError:
-            continue  # try next
-    
-    raise NoAvailableHarnessError(harnesses)
-```
+`spawn_with_fallback` (above) retries only on `HarnessUnavailableError`; a harness that *ran* the
+task and failed propagates immediately (errors are never masked by fallback). Error hierarchy:
+`HierarchyError` base; `HarnessUnavailableError`, `ForeignHarnessError`, `AllHarnessesFailedError`
+(carries `failures: list[BaseException]`), `NoAvailableHarnessError` (carries `harness_ids`).
+
+### Deviations from the original draft
+
+- Types are named `HarnessTask` / `HarnessTaskResult` (no generic `Task`/`TaskResult` exists in
+  core); `HarnessAdvertisement` is frozen with tuple fields.
+- HTTP is behind the injected `HarnessTransport` protocol instead of inline `httpx` calls in the
+  orchestrator (core's protocol-driven-DI convention); `HTTPHarnessTransport` implements the
+  draft's exact wire shape.
+- A foreign error envelope raises `ForeignHarnessError` rather than returning an error result —
+  makes "propagated, not silent" structural.
+- The waves `ResultComparator` protocol is mirrored (`HarnessResultComparator`) rather than
+  imported: it is typed to `WaveResult` specifically, which fails mypy --strict for
+  `HarnessTaskResult`. Semantics (max `quality_score`, ties keep input order) are identical.
+- `AllHarnessesFailedError` receives only the exceptions (not raw gather results), and
+  `CancelledError` is re-raised, matching `waves/ensemble.py`.
 
 ## Acceptance criteria
 
-- [ ] Harness registry returns all connected foreign harnesses.
-- [ ] Agent export produces a valid MCP manifest + agent config.
-- [ ] Hierarchical spawn succeeds: parent sends agent to foreign harness, foreign harness runs it,
+- [x] Harness registry returns all connected foreign harnesses.
+- [x] Agent export produces a valid MCP manifest + agent config (SPEC-208 `export_agent`).
+- [x] Hierarchical spawn succeeds: parent sends agent to foreign harness, foreign harness runs it,
       parent receives result.
-- [ ] Wave across harnesses: multiple agents on multiple harnesses, best result returned.
-- [ ] Fallback: if harness A unavailable, try harness B (property: at least one succeeds if any
+- [x] Wave across harnesses: multiple agents on multiple harnesses, best result returned.
+- [x] Fallback: if harness A unavailable, try harness B (property: at least one succeeds if any
       harness is up).
-- [ ] Error from foreign harness is propagated (not silent failure).
+- [x] Error from foreign harness is propagated (not silent failure).
 
 ## Testing
 
-- Integration: parent harness spawns a real agent on a mock foreign harness.
-- Fallback: harness A fails, harness B succeeds, overall call succeeds.
-- Property: "hierarchical spawn always succeeds if at least one harness is available" (Hypothesis
-  over harness availability).
+`packages/maistro-core/tests/orchestrator/test_hierarchy.py` (22 tests):
+
+- Registry list/get/unregister; unknown harness raises `HarnessUnavailableError`.
+- Round-trip: exported agent reaches a fake (loopback) harness, result collected.
+- Wave across 3 fake harnesses returns the highest-quality result; survives partial failures;
+  all-failed raises `AllHarnessesFailedError` with the per-harness failures.
+- Fallback: dead harness skipped, all-dead raises `NoAvailableHarnessError`, foreign errors are
+  not masked.
+- Property (Hypothesis over availability masks): fallback spawn succeeds iff at least one harness
+  is available, and lands on the first available one.
+- `HTTPHarnessTransport` against `httpx.MockTransport`: wire shape, bearer auth, connect-error and
+  503 -> `HarnessUnavailableError`, 4xx -> `ForeignHarnessError`.
 
 ## References
 
