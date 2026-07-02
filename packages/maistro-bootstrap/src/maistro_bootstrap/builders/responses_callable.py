@@ -248,9 +248,13 @@ class LiteLLMCallable:
     gateway's tool-use flow without being tied to a single provider SDK.
     """
 
-    def __init__(self, model: str | None = None, timeout: float = 120.0) -> None:
+    def __init__(
+        self, model: str | None = None, timeout: float = 120.0, temperature: float | None = None
+    ) -> None:
         self.model = model or _default_model()
         self.timeout = timeout
+        # A competing genome's sampling temperature; None = provider default.
+        self.temperature = temperature
 
     def _is_configured(self) -> bool:
         return bool(_base_url() and _api_key())
@@ -278,6 +282,10 @@ class LiteLLMCallable:
             "messages": _to_openai_messages(messages),
             "max_tokens": max_tokens,
         }
+        # Only send temperature when set, so competing genome configs vary while
+        # the default (no-temperature) path stays byte-identical to before.
+        if self.temperature is not None:
+            body["temperature"] = self.temperature
         if tools:
             # LiteLLM forwards OpenAI-format tool definitions to every provider
             # that supports function-calling (Anthropic, OpenAI, Mistral, …).
