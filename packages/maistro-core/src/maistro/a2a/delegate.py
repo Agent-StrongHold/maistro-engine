@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -50,6 +50,7 @@ class A2ATask:
     result: str | None
     error: str | None
     delegation_mode: DelegationMode
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class A2ADelegator:
@@ -115,13 +116,14 @@ class A2ADelegator:
             result=None,
             error=None,
             delegation_mode=delegation_mode,
+            metadata=metadata or {},
         )
 
         self._tasks[task_id] = task_obj
         logger.info(
             "Task delegated: %s from %s to %s (mode=%s)",
-            from_agent,
             task_id,
+            from_agent,
             to_agent,
             delegation_mode,
         )

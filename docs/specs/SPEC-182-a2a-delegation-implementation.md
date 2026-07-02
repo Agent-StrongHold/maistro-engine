@@ -17,7 +17,10 @@ related:
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/a2a/test_public_surface.py
+  - packages/maistro-core/tests/a2a/test_broker.py
+  - packages/maistro-core/tests/a2a/test_budget_properties.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -29,6 +32,13 @@ history:
 # SPEC-182: A2A delegation broker — implementation
 
 Implements [ADR-058](../adr/ADR-058-a2a-delegation-protocol.md). Builds on the delegation execution-bridge fix in PR #39 (`fix/agents-delegation`).
+
+> **Implementation status (2026-07-02):** Phases 1-2 are implemented
+> (`a2a/__init__.py` export surface, lifecycle/log/metadata fixes,
+> `DelegationBudget` + `A2ABroker` + `LocalTransport` in `a2a/broker.py`,
+> tests in `packages/maistro-core/tests/a2a/`). Phase 3 (FederatedTransport,
+> SSRF hardening, circuit breaking) and Phase 4 (observability + audit VC)
+> are follow-up, as is the `Agent.handle()` → broker wiring (post-PR #39).
 
 ## Context
 
