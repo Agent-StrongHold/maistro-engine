@@ -29,6 +29,7 @@ native provider built here drops straight into `RsiCycle` later.
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 import uuid
 from dataclasses import dataclass, field
@@ -336,6 +337,10 @@ class LocalRsiConfig:
     # competitors implement (a fairer head-to-head than each inventing its own).
     scout: bool = False
     scout_model: str | None = None
+    # Stage 4 (ADR-070126-6386): when set, after the run each promotion is
+    # exported here as a git-am-able patch plus a manifest.json, for the harvester
+    # to open PRs grouped by file. This is the durable output of an isolated run.
+    export_patches: str | None = None
 
 
 @dataclass
@@ -404,6 +409,7 @@ class LocalRsiLoop:
         self._injected_apply = apply_patch
         self._baseline = Path(config.work_root) / "baseline"
         self._baseline_cov: float | None = None  # cached; invalidated on promote
+        self._start_ref: str | None = None  # baseline sha before any promotion
 
     def _baseline_coverage(self) -> float | None:
         if not self._config.use_fitness:
@@ -483,6 +489,9 @@ class LocalRsiLoop:
         # Local clone — never touches the source repo's branches or working tree.
         _git(work_root, "clone", "--quiet", str(Path(self._config.repo_path).resolve()), "baseline")
         _git(self._baseline, "checkout", "-q", "-B", self._config.baseline_branch)
+        # Remember where the baseline started so we can export exactly the
+        # promotion commits (start_ref..baseline), not the repo's whole history.
+        self._start_ref = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
         logger.info(
             "rsi_local_baseline_ready",
             baseline=str(self._baseline),
@@ -552,7 +561,14 @@ class LocalRsiLoop:
         patch = _git(
             self._baseline, "diff", f"{self._config.baseline_branch}..{variant.branch}"
         ).stdout
-        return bool(patch.strip()) and _git_apply(merge_dir, patch)
+        applied = bool(patch.strip()) and _git_apply(merge_dir, patch)
+        logger.info(
+            "rsi_local_merge_apply",
+            variant=variant.label,
+            applied=applied,
+            patch_lines=len(patch.splitlines()),
+        )
+        return applied
 
     def _run_cycle(self, index: int) -> CycleOutcome:
         target = self._target_for_cycle(index)
@@ -652,9 +668,12 @@ class LocalRsiLoop:
         )
         created.append((merge_branch, merge_dir))
         kept = greedy_merge(accepted, lambda r: self._apply_to_merge(merge_dir, r))
-        if len(kept) == 1:
-            # Every candidate collided into one region — the top-scored one won.
-            return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
+        if len(kept) <= 1:
+            # 1 kept: every candidate collided into one region — the top-scored
+            # one won. 0 kept: nothing applied cleanly onto the merge worktree —
+            # fall back to the top candidate, which is committed and validated.
+            top = kept[0] if kept else accepted[0]
+            return top.branch, top.composite, top.files_touched, 1
         changed_files = self._changed_files(merge_dir)
         _git(merge_dir, "add", "-A")
         _git(
@@ -731,4 +750,32 @@ class LocalRsiLoop:
         logger.info(
             "rsi_local_loop_complete", promotions=result.promotions, cycles=len(result.cycles)
         )
+        if self._config.export_patches and result.promotions:
+            n = self.export_promotions(Path(self._config.export_patches))
+            logger.info("rsi_local_exported", patches=n, dest=self._config.export_patches)
         return result
+
+    def export_promotions(self, dest: Path) -> int:
+        """Export each promotion commit (start_ref..baseline) as a git-am-able
+        patch plus a manifest.json mapping patch -> edited file, for the harvester
+        to open PRs grouped by file. Returns the number of patches written."""
+        dest.mkdir(parents=True, exist_ok=True)
+        rng = f"{self._start_ref}..{self._config.baseline_branch}"
+        revs = _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
+        manifest: list[dict[str, str]] = []
+        for i, sha in enumerate(revs, 1):
+            names = [
+                ln.strip()
+                for ln in _git(
+                    self._baseline, "show", "--name-only", "--pretty=format:", sha
+                ).stdout.splitlines()
+                if ln.strip()
+            ]
+            subject = _git(self._baseline, "show", "-s", "--pretty=format:%s", sha).stdout.strip()
+            patch_name = f"{i:04d}-{sha[:8]}.patch"
+            patch = _git(self._baseline, "format-patch", "-1", "--stdout", sha).stdout
+            (dest / patch_name).write_text(patch, encoding="utf-8")
+            src = next((n for n in names if n.endswith(".py")), names[0] if names else "")
+            manifest.append({"patch_file": patch_name, "file": src, "subject": subject})
+        (dest / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        return len(manifest)

@@ -103,11 +103,97 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Model alias for the scout (default: --model).",
     )
     run.add_argument(
+        "--export-patches",
+        default=None,
+        help="After the run, export each promotion as a patch + manifest.json here "
+        "(the durable output of an isolated run; feed to `maistro_rsi harvest`).",
+    )
+    run.add_argument(
         "--work-root",
         default=None,
         help="Where to put throwaway clones/worktrees (default: a temp dir).",
     )
+
+    harvest = sub.add_parser(
+        "harvest",
+        help="Open PRs from an exported run, grouped by the file each promotion edited.",
+    )
+    harvest.add_argument(
+        "--export-dir", required=True, help="Directory written by `run --export-patches`."
+    )
+    harvest.add_argument(
+        "--repo-dir", required=True, help="Local checkout to build the PR branches in."
+    )
+    harvest.add_argument(
+        "--base", default=None, help="Branch to base the PR branches on (default: current branch)."
+    )
+    harvest.add_argument(
+        "--pr-base", default="main", help="Target branch for the PRs (default: main)."
+    )
+    harvest.add_argument(
+        "--session", default=None, help="Session slug for branch names (default: a UTC timestamp)."
+    )
+    harvest.add_argument(
+        "--push",
+        action="store_true",
+        help="Push branches and open PRs via gh (default: dry-run — build branches locally only).",
+    )
     return parser
+
+
+def _harvest(args: argparse.Namespace) -> int:
+    import subprocess
+    from datetime import UTC, datetime
+
+    from maistro_rsi.harvest import branch_slug, group_by_file, load_manifest, pr_body, pr_title
+
+    export = Path(args.export_dir)
+    manifest = export / "manifest.json"
+    if not manifest.is_file():
+        print(f"error: no manifest.json in {export}", file=sys.stderr)
+        return 2
+    groups = group_by_file(load_manifest(manifest))
+    if not groups:
+        print("no promotions to harvest")
+        return 0
+    repo = str(Path(args.repo_dir).resolve())
+    session = args.session or datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+
+    def git(*a: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(["git", "-C", repo, *a], check=check, capture_output=True, text=True)
+
+    base = args.base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    opened = 0
+    for file, group in groups.items():
+        branch = branch_slug(file, session)
+        git("checkout", "-B", branch, base)
+        for patch in group:
+            git("am", str((export / patch.patch_file).resolve()))
+        action = "pushed + PR" if args.push else "built (dry-run)"
+        print(f"[{action}] {branch}  <- {file}  ({len(group)} commit(s))")
+        if args.push:
+            git("push", "-u", "origin", branch, "--force-with-lease")
+            subprocess.run(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--base",
+                    args.pr_base,
+                    "--head",
+                    branch,
+                    "--title",
+                    pr_title(file, group),
+                    "--body",
+                    pr_body(file, group),
+                ],
+                cwd=repo,
+                check=True,
+            )
+            opened += 1
+    git("checkout", base, check=False)
+    print(f"\nharvest: {len(groups)} file group(s), {opened} PR(s) opened")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -139,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
             competitors=parse_competitors(args.competitors),
             scout=args.scout,
             scout_model=args.scout_model,
+            export_patches=args.export_patches,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"
@@ -146,6 +233,9 @@ def main(argv: list[str] | None = None) -> int:
         result = LocalRsiLoop(config).run()
         print("\n" + result.summary())
         return 0
+
+    if args.command == "harvest":
+        return _harvest(args)
 
     return 1
 
