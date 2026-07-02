@@ -97,7 +97,7 @@ class SafeHarnessRunner:
         async for event in self._inner.stream(session_id):
             if (
                 isinstance(event, dict)
-                and event.get("type") == "action"
+                and event.get("type") in ("action", "tool_call")
                 and not await self._gate.allow(event)
             ):
                 continue
@@ -110,15 +110,36 @@ class SafeHarnessRunner:
     async def _scan_inbound(self, messages: list[dict[str, Any]]) -> None:
         for message in messages:
             verdict = await self._warden.scan(_message_text(message), "user_input")
-            if verdict.blocked:
+            # Match the native agent path (agents/base.py): any UNCLEAN verdict is
+            # refused, not just a hard `blocked` one — single-pattern injections
+            # come back clean=False/blocked=False and must not reach the harness.
+            if not verdict.clean:
                 raise HarnessInputBlocked(verdict.flags)
 
-    async def _filter_actions(self, response: dict[str, Any]) -> dict[str, Any]:
-        actions = response.get("actions")
-        if not isinstance(actions, list):
-            return response
+    async def _gate_list(self, items: list[Any]) -> list[Any]:
         allowed: list[Any] = []
-        for action in actions:
-            if isinstance(action, dict) and await self._gate.allow(action):
-                allowed.append(action)
-        return {**response, "actions": allowed}
+        for item in items:
+            if isinstance(item, dict) and await self._gate.allow(item):
+                allowed.append(item)
+        return allowed
+
+    async def _filter_actions(self, response: dict[str, Any]) -> dict[str, Any]:
+        result = response
+        # 1) A top-level `actions` list (maistro's native harness envelope).
+        actions = result.get("actions")
+        if isinstance(actions, list):
+            result = {**result, "actions": await self._gate_list(actions)}
+        # 2) OpenAI chat-completion tool calls under choices[].message.tool_calls
+        #    (the shape Codex/Claude-style harnesses return) — these are
+        #    executable and must be gated too (SPEC-208: gate every action).
+        choices = result.get("choices")
+        if isinstance(choices, list):
+            new_choices: list[Any] = []
+            for choice in choices:
+                message = choice.get("message") if isinstance(choice, dict) else None
+                if isinstance(message, dict) and isinstance(message.get("tool_calls"), list):
+                    gated = await self._gate_list(message["tool_calls"])
+                    choice = {**choice, "message": {**message, "tool_calls": gated}}
+                new_choices.append(choice)
+            result = {**result, "choices": new_choices}
+        return result
