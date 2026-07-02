@@ -3,7 +3,7 @@ id: SPEC-070226-af02
 title: "P1 Resilience: depth/compaction/retry enforcement with control-scope steering"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-07-02
 substrate:
   - maistro-engine#ADR-038
@@ -19,7 +19,8 @@ blocks: []
 blocked-by: []
 contracts:
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/resilience/test_p1.py
 layer: Reliability
 owners:
   - '@BlakeMatthews-dev'
@@ -53,124 +54,97 @@ the graph executor, conduit, and observability pipeline.
 - Auto-tuning resilience policy (operator-set, not learned in P1).
 - Circuit breaker (ADR-038 Shallow; separate from P1 control).
 
-## Decision
+## Decision (as implemented)
 
-### Depth enforcement in the graph executor
+All new policy/compaction code lives in `maistro/resilience/p1.py`, reusing the
+ADR-038 primitives (`maistro.resilience.classifier.classify_error`, deterministic
+backoff helpers). The executor integration lives in `maistro/graph/executor.py`
+as `execute_with_resilience`, which wraps any async operation (e.g. a
+`NodeRun.execute` call) rather than replacing `NodeRun`'s internal loop.
+
+### Error codes
+
+`classify_error_code(error: Exception) -> str` maps exceptions to the four P1
+codes via the ADR-038 classifier: `RATE_LIMIT → "rate_limit"`,
+`TIMEOUT → "timeout"`, `CONTENT_FILTER → "llm_refusal"`, everything else
+`"unknown"`.
+
+### Depth enforcement: RetryBudget + execute_with_resilience
 
 ```python
-# maistro/graph/executor.py
-
+# maistro/resilience/p1.py
 @dataclass
 class RetryBudget:
-    max_retries: int = 3
-    compaction_window_ms: int = 5000  # merge retries within this window
-    current_attempt: int = 0
-    attempts: list[NodeRunAttempt] = field(default_factory=list)  # history
+    max_retries: int = 3            # total failed attempts allowed (no off-by-one)
+    compaction_window_ms: int = 5000
+    attempts: list[RetryAttempt] = field(default_factory=list)
+    # properties: current_attempt, exhausted, remaining; record(error, ...)
 
-async def execute_node(node: NodeSpec, budget: RetryBudget) -> NodeRun:
-    """Execute a node with retry budget enforcement."""
-    while budget.current_attempt < budget.max_retries:
-        try:
-            result = await _execute_once(node)
-            emit("node.success", node=node.id, attempt=budget.current_attempt)
-            return result
-        except Exception as e:
-            budget.current_attempt += 1
-            budget.attempts.append(NodeRunAttempt(error=e, timestamp=now()))
-            
-            if budget.current_attempt >= budget.max_retries:
-                compacted = compact_attempts(budget.attempts, budget.compaction_window_ms)
-                emit("node.retry_exhausted", node=node.id, compacted=compacted)
-                raise
-            
-            # Check control scope policy
-            policy = resolve_policy(node, e)  # per-agent, per-layer, per-error
-            action = policy.decide(budget.current_attempt, e)  # escalate | retry | fail
-            
-            if action == "escalate":
-                emit("node.escalated", node=node.id, reason=str(e))
-                raise  # propagate to parent/orchestrator
-            elif action == "fail":
-                emit("node.retry_failed", node=node.id, reason=policy.reason)
-                raise
-            else:  # retry
-                emit("node.retry_attempted", node=node.id, attempt=budget.current_attempt, error=str(e))
-                await asyncio.sleep(backoff(budget.current_attempt))  # exponential backoff
+# maistro/graph/executor.py
+async def execute_with_resilience(
+    operation: Callable[[], Awaitable[T]],
+    *,
+    run_id: str = "", node_id: str = "", role: str = "",
+    agent_id: str = "*", layer: str = "*",
+    budget: RetryBudget | None = None,
+    policy_store: ResiliencePolicyStore | None = None,
+    emit: Callable[[GraphEvent], Awaitable[None]] | None = None,
+    sleep: Callable[[float], Awaitable[None]] | None = None,
+) -> T: ...
 ```
+
+The loop: on each failure it records the attempt on the budget, consults the
+policy store (every attempt), then either escalates (emit `node.escalated`,
+re-raise), retries (emit `node.retry_attempted`, sleep the policy's backoff),
+or stops (emit `node.retry_attempted` + `node.retry_exhausted` with the
+compacted history, re-raise). A node with `max_retries=3` executes exactly
+3 times.
 
 ### ResiliencePolicy and control-scope gating
 
 ```python
-@dataclass
+@dataclass(frozen=True)
 class ResiliencePolicy:
-    """Per-agent, per-layer, per-error-type policy."""
-    agent_id: str
-    layer: Layer  # Foundation, Orchestration, Agents, etc.
-    error_code: str  # e.g. "rate_limit", "timeout", "llm_refusal", "user_error"
+    agent_id: str = "*"
+    layer: str = "*"                 # Layer StrEnum values or free-form string
+    error_code: str = "*"
     max_p1_retries: int = 3
     backoff_strategy: Literal["exponential", "linear"] = "exponential"
-    escalate_on: set[str] = field(default_factory=set)  # error codes that trigger escalation
-    
-    def decide(self, attempt: int, error: Exception) -> Literal["retry", "escalate", "fail"]:
-        code = classify_error(error)
-        if code in self.escalate_on:
-            return "escalate"
-        if attempt >= self.max_p1_retries:
-            return "fail"
-        return "retry"
+    base_delay_s: float = 2.0
+    max_delay_s: float = 60.0
+    escalate_on: frozenset[str] = frozenset()
+
+    def decide(self, attempt: int, error: Exception | str) -> Literal["retry", "escalate", "fail"]: ...
+    def backoff_for(self, attempt: int) -> float: ...   # 2s, 4s, 8s… exponential
 
 class ResiliencePolicyStore(Protocol):
-    """Agent/layer/error → ResiliencePolicy lookup."""
-    async def get(self, agent_id: str, layer: Layer, error_code: str) -> ResiliencePolicy:
-        ...
-
-# Default policy: escalate on LLM refusals, user errors; retry on transient (rate limit, timeout)
-DEFAULT_POLICIES = {
-    ("*", "Agents", "llm_refusal"): ResiliencePolicy(
-        agent_id="*", layer=Layer.Agents, error_code="llm_refusal",
-        escalate_on={"llm_refusal"}
-    ),
-    ("*", "Tools", "rate_limit"): ResiliencePolicy(
-        agent_id="*", layer=Layer.Tools, error_code="rate_limit",
-        escalate_on=set(), max_p1_retries=5, backoff_strategy="exponential"
-    ),
-}
+    async def get(self, agent_id: str, layer: str, error_code: str) -> ResiliencePolicy: ...
 ```
+
+`InMemoryResiliencePolicyStore` resolves with wildcard fallback (exact →
+`(agent, layer, *)` → `(agent, *, code)` → `(*, layer, code)` → … →
+`(*, *, *)` → `DEFAULT_POLICY`). Operator defaults (`default_policies()`):
+escalate `llm_refusal` everywhere; tools-layer `rate_limit` retries up to 5.
 
 ### Compaction: merge similar retry attempts
 
 ```python
-@dataclass
+@dataclass(frozen=True)
 class CompactedRetry:
     error_code: str
-    count: int
+    count: int                # always >= 2
     first_timestamp: float
     last_timestamp: float
-    common_cause: str  # inferred or user-provided summary
+    common_cause: str         # first attempt's message (heuristic, no LLM in P1)
 
 def compact_attempts(
-    attempts: list[NodeRunAttempt],
-    window_ms: int
-) -> CompactedRetry:
-    """Group retry attempts by error code within time window."""
-    if not attempts:
-        return None
-    
-    # All attempts within window_ms of the first attempt are grouped
-    first_time = attempts[0].timestamp
-    grouped = [a for a in attempts if (a.timestamp - first_time) < window_ms / 1000]
-    
-    codes = [a.error_code for a in grouped]
-    code = codes[0]  # assume all same or pick most common
-    
-    return CompactedRetry(
-        error_code=code,
-        count=len(grouped),
-        first_timestamp=first_time,
-        last_timestamp=grouped[-1].timestamp,
-        common_cause=infer_cause(grouped)  # LLM or heuristic summary
-    )
+    attempts: list[RetryAttempt], window_ms: int
+) -> list[CompactedRetry | RetryAttempt]: ...
 ```
+
+Consecutive attempts with the same error code within `window_ms` of the
+group's first attempt merge into one `CompactedRetry`; groups of size 1 are
+returned as the original `RetryAttempt` (single attempts are never compacted).
 
 ### Observability (ADR-037)
 
@@ -200,27 +174,50 @@ Events are tagged with `source: "resilience.p1"` for filtering.
 
 ### Integration points
 
-- **Graph executor** (`maistro/graph/executor.py`): wrap `execute_node` with `RetryBudget` logic.
-- **Conduit** (`maistro/conduit.py`): pass resilience policy context down to route handlers.
-- **Container** (`maistro/container.py`): wire `ResiliencePolicyStore` (protocol + in-memory default).
-- **Observability** (`maistro/observability/`): emit retry events per ADR-037.
+- **Graph executor** (`maistro/graph/executor.py`): `execute_with_resilience(operation, ...)`
+  wraps any node-level async operation with `RetryBudget` + policy gating; events are delivered
+  through an injected `emit` callable (compatible with the executor's existing
+  `GraphEvent` callbacks). `NodeRun`'s existing ADR-038 retry loop is untouched.
+- **Conduit / Container**: deliberately NOT wired in this batch (see deviations); callers
+  construct an `InMemoryResiliencePolicyStore` (or their own store) and pass it in.
+- **Observability**: no direct dependency; events flow through the injected emit callable
+  and carry `detail.source = "resilience.p1"`.
+
+### Deviations from the original sketch
+
+- `compact_attempts` returns a **list** of `CompactedRetry | RetryAttempt` (grouped runs),
+  not a single optional `CompactedRetry` — this is what "singles are never compacted"
+  requires.
+- `ResiliencePolicy.decide` accepts `Exception | str` (a pre-classified code avoids
+  re-classifying on the hot path); `layer` is a plain string (values from the `Layer`
+  StrEnum) rather than a hard enum, to keep policies open to product-defined layers.
+- `node.retry_attempted` is emitted for **every** failed attempt (including the final one),
+  so 3 failed attempts produce 3 `retry_attempted` + 1 `retry_exhausted` = 4 events while
+  still executing exactly `max_retries` times. There is no separate `node.retry_failed`
+  event; a policy `"fail"` decision emits `node.retry_exhausted` with
+  `reason="policy_fail"`.
+- `common_cause` is the first attempt's error message (heuristic); no LLM summarization
+  in P1. No `retry.succeeded`/`retry.compacted` events — success is already covered by
+  the executor's `node_completed`, and compaction data rides on `node.retry_exhausted`.
+- Container/conduit wiring and the formal/ Hypothesis property + load tests are follow-up
+  work (container.py/conduit.py were out of scope for this batch).
 
 ## Acceptance criteria
 
-- [ ] A `NodeRun` with `max_retries=3` fails after exactly 3 failed attempts (property: no
+- [x] A `NodeRun` with `max_retries=3` fails after exactly 3 failed attempts (property: no
       off-by-one on retry count).
-- [ ] Two retries of the same error code within the compaction window (5s default) are merged into
+- [x] Two retries of the same error code within the compaction window (5s default) are merged into
       one `CompactedRetry` with `count=2`; retries after the window are separate.
-- [ ] `ResiliencePolicyStore.get(agent, layer, error_code)` returns a policy; unknown combinations
+- [x] `ResiliencePolicyStore.get(agent, layer, error_code)` returns a policy; unknown combinations
       fall back to a default policy (exponential backoff, no escalation).
-- [ ] On a rate-limit error with a retry policy that allows retries, the node pauses with
+- [x] On a rate-limit error with a retry policy that allows retries, the node pauses with
       exponential backoff (2s, 4s, 8s) and retries automatically.
-- [ ] On an LLM refusal error with an escalate policy, the node emits `node.escalated` and
+- [x] On an LLM refusal error with an escalate policy, the node emits `node.escalated` and
       propagates the exception to the parent/orchestrator (not retried locally).
-- [ ] Every retry attempt emits a `node.retry_attempted` event; exhaustion emits
+- [x] Every retry attempt emits a `node.retry_attempted` event; exhaustion emits
       `node.retry_exhausted` (property: exactly 4 events total for 3 retries + 1 exhaustion).
-- [ ] A compacted retry has `count >= 2`; single attempts are never compacted.
-- [ ] Control-scope policy is consulted for every retry decision (not just first/last attempt).
+- [x] A compacted retry has `count >= 2`; single attempts are never compacted.
+- [x] Control-scope policy is consulted for every retry decision (not just first/last attempt).
 
 ## Testing
 
