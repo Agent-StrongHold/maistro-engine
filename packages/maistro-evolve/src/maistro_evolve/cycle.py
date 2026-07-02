@@ -177,7 +177,7 @@ class EvolutionCycle:
             )
             target_set = set(config.target_benchmarks)
             relevant = {b: s for b, s in genome.eval_scores.items() if b in target_set}
-            expected_bench = min(relevant, key=relevant.get) if relevant else None
+            expected_bench = min(relevant, key=lambda b: relevant[b]) if relevant else None
             if window > 0 and expected_bench is not None:
                 bench_entries = [
                     (exc, sc) for bm, exc, sc in stored_history if bm == expected_bench
