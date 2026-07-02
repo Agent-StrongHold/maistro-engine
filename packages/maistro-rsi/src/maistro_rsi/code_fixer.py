@@ -102,6 +102,8 @@ class LiveCodeFixer:
                 self._objective_for(target),
                 model=competitor.model,
                 temperature=competitor.temperature,
+                reasoning_effort=competitor.reasoning_effort,
+                system_prompt=competitor.prompt,
                 max_agent_turns=self._agent_turns,
                 isolation=self._isolation,
                 image=self._image,

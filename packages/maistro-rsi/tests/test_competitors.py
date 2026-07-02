@@ -37,3 +37,10 @@ def test_bare_model_has_no_temperature() -> None:
 def test_label_defaults_to_model_and_temp() -> None:
     (c,) = parse_competitors("codestral@0.5")
     assert "codestral" in c.label and "0.5" in c.label
+
+
+def test_reasoning_effort_participates_in_equality_prompt_and_label_do_not() -> None:
+    base = Competitor(model="o3", reasoning_effort="high")
+    assert base == Competitor(model="o3", reasoning_effort="high")
+    assert base != Competitor(model="o3", reasoning_effort="low")
+    assert base == Competitor(model="o3", reasoning_effort="high", prompt="ignored", label="ignored")

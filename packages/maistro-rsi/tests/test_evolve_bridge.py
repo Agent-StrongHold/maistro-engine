@@ -27,7 +27,23 @@ def test_genome_to_competitor_uses_entry_node() -> None:
     entry = next(n for n in g.topology.nodes if n.id == g.topology.entry_node)
     comp = genome_to_competitor(g)
     assert comp.model == entry.model
+    # _random_genome() seeds a FixerGenome (ADR-070126-6386 v2) on every node, so
+    # the competitor's temperature comes from the fixer's own dial, not the bare
+    # node field — see test_genome_to_competitor_without_fixer_falls_back_to_node
+    # for the pre-genome legacy path.
+    assert comp.temperature == entry.fixer.temperature
+    assert comp.prompt is not None  # the fixer's slots are rendered into it
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
+def test_genome_to_competitor_without_fixer_falls_back_to_node() -> None:
+    g = _random_genome()
+    entry = next(n for n in g.topology.nodes if n.id == g.topology.entry_node)
+    entry.fixer = None  # legacy genome, predates the typed strategy layer
+    comp = genome_to_competitor(g)
+    assert comp.model == entry.model
     assert comp.temperature == entry.temperature
+    assert comp.prompt is None
 
 
 @pytest.mark.ac("ADR-070126-6386/stage3")

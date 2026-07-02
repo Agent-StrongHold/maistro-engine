@@ -261,6 +261,7 @@ def make_builders_apply_patch(
     *,
     model: str | None = None,
     temperature: float | None = None,
+    reasoning_effort: str | None = None,
     system_prompt: str | None = None,
     max_agent_turns: int = 6,
     isolation: str = "local",
@@ -289,7 +290,9 @@ def make_builders_apply_patch(
 
         config = AgentLoopConfig(model=model) if model else AgentLoopConfig()
         runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
-        runner.set_llm(ResponsesAPICallable(model=model, temperature=temperature))
+        runner.set_llm(
+            ResponsesAPICallable(model=model, temperature=temperature, reasoning_effort=reasoning_effort)
+        )
 
         # The genome's evolvable strategy prompt (when supplied) becomes the system
         # message; otherwise the builders default. The task (objective) is the user
@@ -624,6 +627,7 @@ class LocalRsiLoop:
             objective,
             model=competitor.model or self._config.model,
             temperature=competitor.temperature,
+            reasoning_effort=competitor.reasoning_effort,
             system_prompt=competitor.prompt,
             max_agent_turns=turns,
             isolation=self._config.isolation,

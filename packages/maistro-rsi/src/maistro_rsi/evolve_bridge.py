@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from maistro_evolve.code_rsi import evaluate_code_rsi
+from maistro_evolve.fixer_genome import render_system_prompt
 from maistro_evolve.harness import BenchmarkRunner, EvalHarness
 from maistro_evolve.population import PopulationStore
 from maistro_evolve.types import EvalResult, PipelineGenome
@@ -31,15 +32,28 @@ FixAndScore = Callable[[Competitor, str], Awaitable[tuple[bool, float, bool]]]
 def genome_to_competitor(genome: PipelineGenome) -> Competitor:
     """Project a genome's entry (fixer) node onto a `Competitor` config.
 
-    The entry node is the one the pipeline runs first — its model, temperature,
-    and prompt are what actually author the fix, so that's the competitor the
-    tournament runs and the population evolves.
+    The entry node is the one the pipeline runs first — its model and strategy
+    are what actually author the fix, so that's the competitor the tournament
+    runs and the population evolves. When the entry node carries a `FixerGenome`
+    (ADR-070126-6386 v2 — the typed, evolvable strategy layer), it supplies the
+    competitor's rendered system prompt and sampling knobs; otherwise the node's
+    own temperature is used and the competitor gets no system prompt override
+    (falls back to the builders default), matching the pre-genome behaviour.
     """
     nodes = genome.topology.nodes
     entry = next((n for n in nodes if n.id == genome.topology.entry_node), nodes[0])
+    fixer = entry.fixer
+    if fixer is None:
+        return Competitor(
+            model=entry.model,
+            temperature=entry.temperature,
+            label=f"{genome.name}:{entry.model}",
+        )
     return Competitor(
         model=entry.model,
-        temperature=entry.temperature,
+        temperature=fixer.temperature if fixer.reasoning_effort is None else None,
+        reasoning_effort=fixer.reasoning_effort.value if fixer.reasoning_effort else None,
+        prompt=render_system_prompt(fixer),
         label=f"{genome.name}:{entry.model}",
     )
 
