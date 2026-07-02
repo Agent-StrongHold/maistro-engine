@@ -31,6 +31,20 @@ class GenomeRating:
 
 @dataclass
 class GenomeBattle:
+    """
+    Represents a battle between two genomes in a benchmark.
+
+    Fields:
+        id: Unique identifier for the battle.
+        benchmark: Name of the benchmark used for the battle.
+        genome_a_id: Identifier for the first genome.
+        genome_b_id: Identifier for the second genome.
+        winner_id: Identifier for the winning genome, or "draw" if tied.
+        score_a: Score achieved by the first genome.
+        score_b: Score achieved by the second genome.
+        timestamp: Time when the battle was recorded.
+    """
+
     id: int = 0
     benchmark: str = ""
     genome_a_id: str = ""
