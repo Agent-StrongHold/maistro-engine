@@ -8,6 +8,14 @@ from .types import PipelineGenome
 
 
 def _fitness_key(genome: PipelineGenome) -> float:
+    """Extract the fitness score from a genome for sorting/comparison.
+
+    Used as a key function to rank genomes by their fitness score.
+    Assumes the genome has been scored (fitness_score is not None).
+
+    Returns:
+        float: The fitness score of the genome.
+    """
     score = genome.fitness_score
     assert score is not None
     return score
