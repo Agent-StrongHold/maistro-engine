@@ -40,6 +40,7 @@ from typing import Any
 
 import structlog
 
+from maistro_evolve.improvement import BudgetTier, ImprovementKind
 from maistro_rsi.competitors import Competitor
 from maistro_rsi.merge import greedy_merge
 from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
@@ -144,6 +145,43 @@ def _scouted_objective(path: str, instruction: str) -> str:
     )
 
 
+def _guess_test_path(target: str) -> str:
+    """Best-effort test file for a source path: ``.../pkg/src/mod.py`` →
+    ``.../pkg/tests/test_mod.py``. Used to show the scout the module's existing
+    tests so it can reason about weak assertions / missing cases."""
+    t = target.replace("\\", "/")
+    stem = t.rsplit("/", 1)[-1]
+    name = stem[:-3] if stem.endswith(".py") else stem
+    if "/src/" in t:
+        pkg_root = t.split("/src/", 1)[0]
+        return f"{pkg_root}/tests/test_{name}.py"
+    return f"tests/test_{name}.py"
+
+
+def _fixer_objective(path: str, kind: ImprovementKind, instruction: str) -> str:
+    """The tiered base-fixer scaffold: implement one scout item, with rules keyed
+    to its kind. FEATURE (v2.0) work is allowed to be ambitious and multi-file;
+    everything else is a bounded, test-first, single-module change. This is the
+    fixed task contract — the evolvable strategy layer is the genome's prompt."""
+    if kind is ImprovementKind.FEATURE:
+        return (
+            f"Implement this enhancement to the `{path}` module:\n  {instruction}\n"
+            "This is a substantial, ambitious change — design the improved capability or API and "
+            "implement it across the files it needs. Prove it with NEW tests written first that "
+            "specify the new behavior, and keep all existing tests green; preserve backward "
+            "compatibility unless the enhancement explicitly supersedes it. Use read_file, "
+            "edit_file and write_file across the files involved. Do not run git or shell commands."
+        )
+    return (
+        f"Implement this specific improvement to `{path}`:\n  {instruction}\n"
+        "Work test-first: add or extend the test for this module (create or extend its test file) "
+        "so it fails against the current code, then change the code until it passes. Keep the diff "
+        "minimal and focused on this one item — do not reformat or touch unrelated lines, and all "
+        "existing tests must stay green. Edit only this module and its test file, using read_file, "
+        "edit_file and write_file. Do not run git or shell commands."
+    )
+
+
 # ---------------------------------------------------------------------------
 # LocalSandbox — a host-backed MicroVmSandbox
 # ---------------------------------------------------------------------------
@@ -223,6 +261,7 @@ def make_builders_apply_patch(
     *,
     model: str | None = None,
     temperature: float | None = None,
+    system_prompt: str | None = None,
     max_agent_turns: int = 6,
     isolation: str = "local",
     image: str = "maistro-builders:latest",
@@ -252,8 +291,11 @@ def make_builders_apply_patch(
         runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
         runner.set_llm(ResponsesAPICallable(model=model, temperature=temperature))
 
+        # The genome's evolvable strategy prompt (when supplied) becomes the system
+        # message; otherwise the builders default. The task (objective) is the user
+        # message either way, so mutation tunes *approach*, not the task contract.
         messages: list[dict[str, object]] = [
-            {"role": "system", "content": config.system_prompt},
+            {"role": "system", "content": system_prompt or config.system_prompt},
             {"role": "user", "content": objective},
         ]
         for turn in range(max_agent_turns):
@@ -315,6 +357,9 @@ class LocalRsiConfig:
     targets: list[str] = field(default_factory=list)
     model: str | None = None
     agent_turns_per_cycle: int = 6
+    # Larger turn budget for a FEATURE (v2.0) slot — ambitious, multi-file work
+    # (ImprovementKind.FEATURE unlocks it; bounded kinds use agent_turns_per_cycle).
+    feature_agent_turns: int = 15
     # "local" (host worktree) or "container" (ADR-093 Docker isolation).
     isolation: str = "local"
     sandbox_image: str = "maistro-builders:latest"
@@ -522,46 +567,65 @@ class LocalRsiLoop:
         target = self._target_for_cycle(index)
         return _targeted_objective(target) if target else self._config.objective
 
-    def _shared_objective(self, index: int) -> str:
-        """The objective every competitor implements this cycle.
+    def _cycle_slots(self, index: int) -> list[tuple[str, BudgetTier]]:
+        """The (objective, budget) slots competitors fill this cycle.
 
-        With ``scout`` on, one model reads the target file and names a concrete
-        improvement, so the head-to-head is fair (competitors differ in *how*
-        they fix it, not *what*). Otherwise the standard targeted/generic
-        objective is used. A silent scout falls back to that objective.
+        With ``scout`` on, the scout reads the target's source + existing tests and
+        returns a ranked shortlist of typed improvements; each becomes a slot whose
+        objective is the tiered fixer scaffold and whose budget is set by its kind
+        (FEATURE unlocks the big budget). Competitors spread across the slots
+        (complementary) and, over runs, collide on hot ones (competitive). Without
+        scout — or on a silent/garbled scout — a single bounded slot carries the
+        classic targeted/generic objective so a cycle never stalls.
         """
         target = self._target_for_cycle(index)
-        base = self._objective_for_cycle(index)
+        fallback = [(self._objective_for_cycle(index), BudgetTier.BOUNDED)]
         if not (self._config.scout and target):
-            return base
+            return fallback
         try:
             source = (self._baseline / target).read_text(encoding="utf-8")
         except OSError:
-            return base
+            return fallback
+        try:
+            tests = (self._baseline / _guess_test_path(target)).read_text(encoding="utf-8")
+        except OSError:
+            tests = ""
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
-        from maistro_rsi.scout import scout_objective
+        from maistro_rsi.scout import scout_shortlist
 
         llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
-        instruction = scout_objective(source, llm, fallback="")
-        if not instruction:
-            return base
-        logger.info("rsi_local_scout", index=index, target=target, instruction=instruction[:200])
-        return _scouted_objective(target, instruction)
+        items = scout_shortlist(source, tests, "", llm, max_items=3)
+        if not items:
+            return fallback
+        logger.info(
+            "rsi_local_scout",
+            index=index,
+            target=target,
+            items=[{"kind": it.kind.value, "instruction": it.instruction[:120]} for it in items],
+        )
+        return [(_fixer_objective(target, it.kind, it.instruction), it.kind.budget) for it in items]
 
     def _competitors(self) -> list[Competitor]:
         # Empty roster ⇒ a single attempt with the configured model (classic cycle).
         return self._config.competitors or [Competitor(model=self._config.model or "")]
 
-    def _apply_for_competitor(self, competitor: Competitor, objective: str) -> ApplyPatchFn:
+    def _apply_for_competitor(
+        self, competitor: Competitor, objective: str, budget: BudgetTier = BudgetTier.BOUNDED
+    ) -> ApplyPatchFn:
         # An injected callable (tests) wins; otherwise build a builders provider
-        # carrying this competitor's model + temperature and the shared objective.
+        # carrying this competitor's model + temperature and the slot's objective.
+        # A FEATURE (v2.0) slot unlocks a larger turn budget for ambitious work.
         if self._injected_apply is not None:
             return self._injected_apply
+        turns = self._config.agent_turns_per_cycle
+        if budget is BudgetTier.UNLOCKED:
+            turns = max(turns, self._config.feature_agent_turns)
         return make_builders_apply_patch(
             objective,
             model=competitor.model or self._config.model,
             temperature=competitor.temperature,
-            max_agent_turns=self._config.agent_turns_per_cycle,
+            system_prompt=competitor.prompt,
+            max_agent_turns=turns,
             isolation=self._config.isolation,
             image=self._config.sandbox_image,
         )
@@ -588,7 +652,12 @@ class LocalRsiLoop:
         )
 
     def _run_variant(
-        self, index: int, seq: int, competitor: Competitor, objective: str
+        self,
+        index: int,
+        seq: int,
+        competitor: Competitor,
+        objective: str,
+        budget: BudgetTier = BudgetTier.BOUNDED,
     ) -> _VariantResult:
         """Run one competitor in its own worktree off the baseline and score it.
 
@@ -610,7 +679,7 @@ class LocalRsiLoop:
         )
         r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label)
         try:
-            apply_fn = self._apply_for_competitor(competitor, objective)
+            apply_fn = self._apply_for_competitor(competitor, objective, budget)
             asyncio.run(apply_fn(LocalSandbox(cdir), str(cdir)))
             _git(cdir, "add", "-A")
             r.changed_files = self._changed_files(cdir)
@@ -661,13 +730,16 @@ class LocalRsiLoop:
 
     def _run_cycle(self, index: int) -> CycleOutcome:
         target = self._target_for_cycle(index)
-        objective = self._shared_objective(index)
+        slots = self._cycle_slots(index)
         competitors = self._competitors()
         variants: list[_VariantResult] = []
         created: list[tuple[str, Path]] = []
         try:
             for seq, comp in enumerate(competitors, 1):
-                r = self._run_variant(index, seq, comp, objective)
+                # Spread competitors across the scout's shortlist slots; with more
+                # competitors than slots they double up (competitive on one item).
+                objective, budget = slots[(seq - 1) % len(slots)]
+                r = self._run_variant(index, seq, comp, objective, budget)
                 variants.append(r)
                 created.append((r.branch, r.cycle_dir))
 
