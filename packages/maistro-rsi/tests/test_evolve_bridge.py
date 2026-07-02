@@ -28,10 +28,17 @@ def test_genome_to_competitor_uses_entry_node() -> None:
     comp = genome_to_competitor(g)
     assert comp.model == entry.model
     # _random_genome() seeds a FixerGenome (ADR-070126-6386 v2) on every node, so
-    # the competitor's temperature comes from the fixer's own dial, not the bare
-    # node field — see test_genome_to_competitor_without_fixer_falls_back_to_node
-    # for the pre-genome legacy path.
-    assert comp.temperature == entry.fixer.temperature
+    # the competitor's sampling knobs come from the fixer's own dials, not the
+    # bare node field — see test_genome_to_competitor_without_fixer_falls_back_to_node
+    # for the pre-genome legacy path. reasoning_effort and temperature are mutually
+    # exclusive at the LLM callable (reasoning_effort wins), so the random fixer
+    # projects onto exactly one of them.
+    if entry.fixer.reasoning_effort is None:
+        assert comp.temperature == entry.fixer.temperature
+        assert comp.reasoning_effort is None
+    else:
+        assert comp.temperature is None
+        assert comp.reasoning_effort == entry.fixer.reasoning_effort.value
     assert comp.prompt is not None  # the fixer's slots are rendered into it
 
 
