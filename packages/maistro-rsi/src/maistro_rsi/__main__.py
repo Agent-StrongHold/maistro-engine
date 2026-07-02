@@ -19,6 +19,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from maistro_rsi.competitors import parse_competitors
 from maistro_rsi.local_loop import LocalRsiConfig, LocalRsiLoop
 
 
@@ -83,6 +84,25 @@ def _build_parser() -> argparse.ArgumentParser:
         "test path). Default: bare pytest, which runs every testpath in the repo.",
     )
     run.add_argument(
+        "--competitors",
+        default="",
+        help="Tournament roster: 'model@temp,model,...' (e.g. "
+        "'devstral-medium@0.2,codestral@0.7'). Each competes per target; the "
+        "highest-scoring fix wins, complementary fixes are both kept. Empty ⇒ a "
+        "single attempt with --model.",
+    )
+    run.add_argument(
+        "--scout",
+        action="store_true",
+        help="Before competing, one model reads the target file and names the "
+        "concrete improvement all competitors then implement (fairer head-to-head).",
+    )
+    run.add_argument(
+        "--scout-model",
+        default=None,
+        help="Model alias for the scout (default: --model).",
+    )
+    run.add_argument(
         "--work-root",
         default=None,
         help="Where to put throwaway clones/worktrees (default: a temp dir).",
@@ -106,7 +126,8 @@ def main(argv: list[str] | None = None) -> int:
             test_command=args.test_cmd,
             work_root=work_root,
             max_cycles=args.cycles,
-            objective=args.objective or LocalRsiConfig.__dataclass_fields__["objective"].default,
+            # Only override the config's own default objective when one is given.
+            **({"objective": args.objective} if args.objective else {}),
             targets=targets,
             model=args.model,
             agent_turns_per_cycle=args.agent_turns,
@@ -115,6 +136,9 @@ def main(argv: list[str] | None = None) -> int:
             use_fitness=args.fitness,
             coverage_source=args.coverage_source,
             coverage_pytest_args=args.coverage_pytest_args,
+            competitors=parse_competitors(args.competitors),
+            scout=args.scout,
+            scout_model=args.scout_model,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"

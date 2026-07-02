@@ -3,6 +3,8 @@
 Public API surface. Import from here for stable, ADR-061-governed access.
 """
 
+from typing import Any
+
 from maistro_design.engine import DesignEngine
 from maistro_design.protocols import (
     DesignEngineProtocol,
@@ -106,7 +108,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy-load PgDesignProjectStore to avoid requiring sqlalchemy at import time."""
     if name == "PgDesignProjectStore":
         from maistro_design.stores import PgDesignProjectStore
