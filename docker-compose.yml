@@ -76,7 +76,10 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: maistro-litellm
     ports:
-      - "127.0.0.1:4000:4000"
+      # Host interface the gateway binds to. Default 127.0.0.1 = loopback only
+      # (this machine). Set LITELLM_BIND_ADDR=0.0.0.0 in .env to expose it to your
+      # LAN. See .env.example for the trade-offs.
+      - "${LITELLM_BIND_ADDR:-127.0.0.1}:4000:4000"
     environment:
       - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY:?Set LITELLM_MASTER_KEY in .env}
       - DATABASE_URL=postgresql://maistro:${DB_PASSWORD:?Set DB_PASSWORD in .env}@postgres:5432/litellm
