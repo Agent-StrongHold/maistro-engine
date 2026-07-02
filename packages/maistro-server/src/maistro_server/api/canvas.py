@@ -328,5 +328,8 @@ async def list_assets(request: Request, auth: RequireAuth, kind: str | None = No
     assets: list[dict[str, Any]] = []
     for k in kinds:
         for definition in await registry.list_by_kind(k):
-            assets.append(asdict(definition) if is_dataclass(definition) else dict(definition))
+            if is_dataclass(definition) and not isinstance(definition, type):
+                assets.append(asdict(definition))
+            else:
+                assets.append(dict(definition))
     return _json(request, assets)

@@ -191,6 +191,113 @@ async def _fetch_content(
     return None, "Import request has no content (missing raw body or url)"
 
 
+async def _fetch_and_bound(
+    request: SkillImportRequest,
+    http_client: HTTPClient | None,
+    emit: Callable[[str, Mapping[str, Any]], None] | None,
+) -> tuple[str | None, SkillImportVerdict | None]:
+    """Step 1: fetch per source and enforce the body-length bound (fail-closed)."""
+    content, fetch_error = await _fetch_content(request, http_client)
+    if content is None or fetch_error is not None:
+        return None, _blocked(
+            request,
+            scan_issues=(),
+            fixes_applied=(),
+            unfixable_issues=(fetch_error or "no content",),
+            content_hash="",
+            emit=emit,
+        )
+    if len(content) > MAX_SKILL_BODY_LENGTH:
+        return None, _blocked(
+            request,
+            scan_issues=(),
+            fixes_applied=(),
+            unfixable_issues=(
+                f"Content exceeds MAX_SKILL_BODY_LENGTH ({len(content)} > {MAX_SKILL_BODY_LENGTH})",
+            ),
+            content_hash=_hash(content),
+            emit=emit,
+        )
+    return content, None
+
+
+async def _improve_and_rescan(
+    request: SkillImportRequest,
+    fixed: str,
+    improve: Callable[[str], Awaitable[str]] | None,
+    *,
+    scan_issues: tuple[str, ...],
+    fixes: tuple[str, ...],
+    emit: Callable[[str, Mapping[str, Any]], None] | None,
+) -> tuple[str, SkillImportVerdict | None]:
+    """Step 5: optional forge improve; its output is never trusted and is re-scanned."""
+    if improve is None:
+        return fixed, None
+    improved = await improve(fixed)
+    safe_improved, improved_findings = security_scan(improved)
+    if not safe_improved:
+        return fixed, _blocked(
+            request,
+            scan_issues=scan_issues,
+            fixes_applied=fixes,
+            unfixable_issues=tuple(
+                f"forge_output:{f}" for f in improved_findings if f.startswith("CRITICAL:")
+            ),
+            content_hash=_hash(improved),
+            emit=emit,
+        )
+    return improved, None
+
+
+async def _scan_and_salvage(
+    request: SkillImportRequest,
+    content: str,
+    warden_scan: Callable[[str, str], Awaitable[Any]] | None,
+    emit: Callable[[str, Mapping[str, Any]], None] | None,
+) -> tuple[str, tuple[str, ...], tuple[str, ...], SkillImportVerdict | None]:
+    """Steps 2-4: scan (parser + Warden), salvage-or-block, re-scan salvage output."""
+    _safe, findings = security_scan(content)
+    scan_issues = tuple(findings)
+    if warden_scan is not None:
+        verdict = await warden_scan(content, "skill_import")
+        flags = getattr(verdict, "flags", ())
+        scan_issues = scan_issues + tuple(f"warden:{f}" for f in flags)
+
+    fixed, fixes_list, unfixable = fix_content(content)
+    fixes = tuple(fixes_list)
+    if unfixable:
+        return (
+            fixed,
+            scan_issues,
+            fixes,
+            _blocked(
+                request,
+                scan_issues=scan_issues,
+                fixes_applied=fixes,
+                unfixable_issues=tuple(unfixable),
+                content_hash=_hash(content),
+                emit=emit,
+            ),
+        )
+
+    safe_after, residual = security_scan(fixed)
+    if not safe_after:
+        return (
+            fixed,
+            scan_issues,
+            fixes,
+            _blocked(
+                request,
+                scan_issues=scan_issues,
+                fixes_applied=fixes,
+                unfixable_issues=tuple(f for f in residual if f.startswith("CRITICAL:")),
+                content_hash=_hash(fixed),
+                emit=emit,
+            ),
+        )
+    return fixed, scan_issues, fixes, None
+
+
 async def import_skill(
     request: SkillImportRequest,
     *,
@@ -216,78 +323,24 @@ async def import_skill(
         emit: event emitter; blocked verdicts emit ``security.violation``.
     """
     # 1. Fetch + bound.
-    content, fetch_error = await _fetch_content(request, http_client)
-    if content is None or fetch_error is not None:
-        return _blocked(
-            request,
-            scan_issues=(),
-            fixes_applied=(),
-            unfixable_issues=(fetch_error or "no content",),
-            content_hash="",
-            emit=emit,
-        )
-    if len(content) > MAX_SKILL_BODY_LENGTH:
-        return _blocked(
-            request,
-            scan_issues=(),
-            fixes_applied=(),
-            unfixable_issues=(
-                f"Content exceeds MAX_SKILL_BODY_LENGTH ({len(content)} > {MAX_SKILL_BODY_LENGTH})",
-            ),
-            content_hash=_hash(content),
-            emit=emit,
-        )
+    content, blocked = await _fetch_and_bound(request, http_client, emit)
+    if blocked is not None:
+        return blocked
+    assert content is not None
 
-    # 2. Scan for malicious intent (do not short-circuit — salvage may clear).
-    _safe, findings = security_scan(content)
-    scan_issues = tuple(findings)
-    warden_flags: tuple[str, ...] = ()
-    if warden_scan is not None:
-        verdict = await warden_scan(content, "skill_import")
-        flags = getattr(verdict, "flags", ())
-        warden_flags = tuple(f"warden:{f}" for f in flags)
-        scan_issues = scan_issues + warden_flags
-
-    # 3. Sanitize / salvage. Unfixable -> BLOCK, no partial install.
-    fixed, fixes, unfixable = fix_content(content)
-    if unfixable:
-        return _blocked(
-            request,
-            scan_issues=scan_issues,
-            fixes_applied=tuple(fixes),
-            unfixable_issues=tuple(unfixable),
-            content_hash=_hash(content),
-            emit=emit,
-        )
-
-    # 4. Re-scan the salvaged content: any residual critical issue -> BLOCK.
-    safe_after, residual = security_scan(fixed)
-    if not safe_after:
-        return _blocked(
-            request,
-            scan_issues=scan_issues,
-            fixes_applied=tuple(fixes),
-            unfixable_issues=tuple(f for f in residual if f.startswith("CRITICAL:")),
-            content_hash=_hash(fixed),
-            emit=emit,
-        )
+    # 2-4. Scan, salvage-or-block, re-scan the salvaged content.
+    fixed, scan_issues, fixes, salvage_blocked = await _scan_and_salvage(
+        request, content, warden_scan, emit
+    )
+    if salvage_blocked is not None:
+        return salvage_blocked
 
     # 5. Optional improve (never trusted) + parse.
-    if improve is not None:
-        improved = await improve(fixed)
-        safe_improved, improved_findings = security_scan(improved)
-        if not safe_improved:
-            return _blocked(
-                request,
-                scan_issues=scan_issues,
-                fixes_applied=tuple(fixes),
-                unfixable_issues=tuple(
-                    f"forge_output:{f}" for f in improved_findings if f.startswith("CRITICAL:")
-                ),
-                content_hash=_hash(improved),
-                emit=emit,
-            )
-        fixed = improved
+    fixed, improve_blocked = await _improve_and_rescan(
+        request, fixed, improve, scan_issues=scan_issues, fixes=fixes, emit=emit
+    )
+    if improve_blocked is not None:
+        return improve_blocked
 
     source_ref = request.url or request.source.value
     parsed = parse_skill_file(fixed, source=source_ref)
@@ -295,7 +348,7 @@ async def import_skill(
         return _blocked(
             request,
             scan_issues=scan_issues,
-            fixes_applied=tuple(fixes),
+            fixes_applied=fixes,
             unfixable_issues=("Content failed to parse as a SkillDefinition",),
             content_hash=_hash(fixed),
             emit=emit,
@@ -324,7 +377,7 @@ async def import_skill(
     report = SkillImportReport(
         blocked=False,
         scan_issues=scan_issues,
-        fixes_applied=tuple(fixes),
+        fixes_applied=fixes,
         unfixable_issues=(),
         content_hash=content_hash,
         source=request.source,

@@ -365,7 +365,9 @@ class TestWaveEnsembleStrategy:
     def test_build_user_prompt_and_scoring(self) -> None:
         strategy = self._strategy()
         task = GraphTask(description="do the thing", workspace="/ws", constraints=["c1"])
-        prompt = strategy.build_user_prompt(task, GraphBlackboard(task_objective="obj", workspace="ws"), None, None, None)
+        prompt = strategy.build_user_prompt(
+            task, GraphBlackboard(task_objective="obj", workspace="ws"), None, None, None
+        )
         assert "do the thing" in prompt and "c1" in prompt
         output = WaveEnsembleOutput(winner_wave_id="wave_1", quality_score=0.75)
         assert strategy.score_output(output) == 0.75
@@ -374,7 +376,9 @@ class TestWaveEnsembleStrategy:
     def test_update_blackboard_annotates_winner(self) -> None:
         strategy = self._strategy()
         output = WaveEnsembleOutput(winner_wave_id="wave_1", quality_score=0.75)
-        board = strategy.update_blackboard(output, GraphBlackboard(task_objective="obj", workspace="ws"))
+        board = strategy.update_blackboard(
+            output, GraphBlackboard(task_objective="obj", workspace="ws")
+        )
         assert "wave_1" in board.node_annotations["wave_ensemble"]
 
     @pytest.mark.asyncio

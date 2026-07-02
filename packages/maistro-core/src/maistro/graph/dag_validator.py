@@ -202,18 +202,24 @@ def _validate_unknown_kinds(
             )
 
 
-def _validate_no_cycles(
-    dag: dict[str, Any],
-    nodes_by_id: dict[str, dict[str, Any]],
-    report: ValidationReport,
-) -> None:
-    """Phase 1 executor doesn't support cycles. Detect via DFS."""
+def _adjacency(dag: dict[str, Any], nodes_by_id: dict[str, dict[str, Any]]) -> dict[str, list[str]]:
+    """Build the node-id adjacency list from a DAG dict's edges."""
     adj: dict[str, list[str]] = {nid: [] for nid in nodes_by_id}
     for edge in dag.get("edges", []) or []:
         fn = str(edge.get("from_node") or edge.get("from_role") or "")
         tn = str(edge.get("to_node") or edge.get("to_role") or "")
         if fn in adj and tn in adj:
             adj[fn].append(tn)
+    return adj
+
+
+def _validate_no_cycles(
+    dag: dict[str, Any],
+    nodes_by_id: dict[str, dict[str, Any]],
+    report: ValidationReport,
+) -> None:
+    """Phase 1 executor doesn't support cycles. Detect via DFS."""
+    adj = _adjacency(dag, nodes_by_id)
 
     WHITE, GRAY, BLACK = 0, 1, 2
     color: dict[str, int] = dict.fromkeys(adj, WHITE)

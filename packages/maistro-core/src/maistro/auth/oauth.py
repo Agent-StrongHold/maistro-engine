@@ -296,6 +296,7 @@ class UnverifiedJWTClaimsValidator:
             raise OAuthTokenValidationError(f"id_token payload is not valid JSON: {exc}") from exc
         if not isinstance(claims, dict):
             raise OAuthTokenValidationError("id_token payload is not an object")
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs only the provider name, never token material
         logger.warning(
             "id_token for provider %s validated WITHOUT signature verification "
             "(UnverifiedJWTClaimsValidator); install pyjwt[crypto] for JWKS verification",
@@ -409,6 +410,11 @@ class OAuth2Client:
         except httpx.HTTPError as exc:
             self._audit("auth.oauth.failed", provider=config.name, stage=event, reason="network")
             raise OAuthExchangeError(f"token request to {config.name} failed: {exc}") from exc
+        return self._parse_token_response(resp, config, event)
+
+    def _parse_token_response(
+        self, resp: httpx.Response, config: OAuthProviderConfig, event: str
+    ) -> OAuthToken:
         try:
             body = resp.json()
         except ValueError:

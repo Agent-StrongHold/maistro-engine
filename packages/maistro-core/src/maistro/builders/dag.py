@@ -303,22 +303,8 @@ def to_pipeline_graph(dag: BuildersDAG) -> PipelineGraph:
     return PipelineGraph(nodes)
 
 
-def builders_dag_to_graph(dag: BuildersDAG) -> GraphSpec:
-    """Convert a :class:`BuildersDAG` into an ADR-062 ``GraphSpec``.
-
-    The ADR-062 executor (:class:`~maistro.graph.run.GraphRun`) dispatches
-    by :class:`AgentRole` strategy, so stages sharing a role are merged into
-    one node (e.g. test/implement/revise all lower onto CODER). Loop-back
-    edges are emitted for gates that declare a ``graph_condition``; the
-    bounded-iteration property maps onto ``max_cycles``.
-    """
-    roles: list[AgentRole] = []
-    role_of: dict[str, AgentRole] = {}
-    for stage in dag.stages:
-        role_of[stage.name] = stage.role
-        if stage.role not in roles:
-            roles.append(stage.role)
-
+def _lower_edges(dag: BuildersDAG, role_of: dict[str, AgentRole]) -> tuple[list[GraphEdge], int]:
+    """Lower forward edges + conditional gate loop-backs onto role-level edges."""
     edges: list[GraphEdge] = []
     seen: set[tuple[str, str, str | None]] = set()
 
@@ -336,6 +322,26 @@ def builders_dag_to_graph(dag: BuildersDAG) -> GraphSpec:
         target = dag.loop_targets.get(gated)
         if gate.graph_condition is not None and target is not None:
             _add(role_of[gated], role_of[target], gate.graph_condition)
+    return edges, max_gate_iterations
+
+
+def builders_dag_to_graph(dag: BuildersDAG) -> GraphSpec:
+    """Convert a :class:`BuildersDAG` into an ADR-062 ``GraphSpec``.
+
+    The ADR-062 executor (:class:`~maistro.graph.run.GraphRun`) dispatches
+    by :class:`AgentRole` strategy, so stages sharing a role are merged into
+    one node (e.g. test/implement/revise all lower onto CODER). Loop-back
+    edges are emitted for gates that declare a ``graph_condition``; the
+    bounded-iteration property maps onto ``max_cycles``.
+    """
+    roles: list[AgentRole] = []
+    role_of: dict[str, AgentRole] = {}
+    for stage in dag.stages:
+        role_of[stage.name] = stage.role
+        if stage.role not in roles:
+            roles.append(stage.role)
+
+    edges, max_gate_iterations = _lower_edges(dag, role_of)
 
     targets = {b for _, b in dag.edges}
     entry = next((s.name for s in dag.stages if s.name not in targets), dag.stages[0].name)
