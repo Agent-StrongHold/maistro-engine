@@ -17,10 +17,14 @@ logger = logging.getLogger("hive.auth_middleware")
 
 _PUBLIC_PREFIXES = (
     "/v1/setup/",
-    "/v1/auth/login",
-    "/v1/auth/register",
     "/v1/voice/",
     "/health",
+)
+
+# FastAPI's default docs/openapi paths don't end in "/" (the real route is
+# /openapi.json), so they can't use the boundary-safe prefix check below —
+# keep them on a plain startswith() match.
+_PUBLIC_PREFIXES_LOOSE = (
     "/docs",
     "/openapi",
     "/redoc",
@@ -71,11 +75,27 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
 }
 
 
+def _matches_public_prefix(path: str, prefix: str) -> bool:
+    """True if path is exactly prefix, or prefix followed by '/'.
+
+    Plain str.startswith() would also match unrelated sibling routes that
+    merely share the prefix as a string (e.g. "/healthcheck-internal"
+    starting with "/health"). Mirrors the boundary fix in
+    tools/sandbox/workspace.py's path-prefix allowlist.
+    """
+    stripped = prefix.rstrip("/")
+    return path == stripped or path.startswith(stripped + "/")
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
 
-        if path in _PUBLIC_EXACT or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+        if (
+            path in _PUBLIC_EXACT
+            or any(_matches_public_prefix(path, p) for p in _PUBLIC_PREFIXES)
+            or any(path.startswith(p) for p in _PUBLIC_PREFIXES_LOOSE)
+        ):
             return await call_next(request)
 
         if request.method == "OPTIONS":
@@ -131,8 +151,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def _required_permission(self, request: Request) -> str | None:
         method_perms = _PROTECTED_OPS.get(request.method, {})
         path = request.url.path
-        # Agent invoke is autonomous read — don't gate behind elevation
-        if "/invoke" in path:
+        # Agent invoke (POST /v1/agents/{id}/invoke) is autonomous read — don't
+        # gate behind elevation. Match the trailing segment, not a bare
+        # substring: "in path" would also exempt any future route that merely
+        # contains "/invoke" elsewhere (e.g. "/v1/agents/invoke-history").
+        if path.endswith("/invoke"):
             return None
         for prefix, perm in method_perms.items():
             if path.startswith(prefix):
