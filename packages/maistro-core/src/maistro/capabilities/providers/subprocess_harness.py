@@ -63,6 +63,7 @@ class SubprocessHarnessRunner:
         binary: str | None = None,
         timeout: int = 120,
         trust_tier: str = "t2",
+        healthcheck_workspace: str = "/tmp/maistro-workspace",
     ) -> None:
         self._name = name
         self._command = command
@@ -70,6 +71,10 @@ class SubprocessHarnessRunner:
         self._binary = binary if binary is not None else name
         self._timeout = timeout
         self._trust_tier = trust_tier
+        # The sandbox validator only permits its allowlisted workspace roots
+        # (tools/sandbox/workspace.py); probe from one of those, not the service
+        # CWD, so a healthy harness isn't false-flagged as SAFE_NOOP.
+        self._healthcheck_workspace = healthcheck_workspace
         self._sessions: dict[str, _Session] = {}
 
     # --- CapabilityProvider ---
@@ -91,7 +96,7 @@ class SubprocessHarnessRunner:
     async def healthcheck(self) -> ProviderHealth:
         """Reflect both binary presence and sandbox reachability (SPEC-208 §2)."""
         try:
-            sandbox = await self._sandbox_factory(".")
+            sandbox = await self._sandbox_factory(self._healthcheck_workspace)
             code, output = await sandbox.exec(f"command -v {shlex.quote(self._binary)}", 10)
         except Exception as exc:
             return ProviderHealth(healthy=False, detail=f"sandbox unreachable: {exc}")
@@ -117,9 +122,12 @@ class SubprocessHarnessRunner:
         session = self._require_session(session_id)
         command = self.build_command(session, messages)
         code, output = await session.sandbox.exec(command, self._timeout)
+        # OpenAI chat-completion envelope so harness-backed agents flow through
+        # Conduit.route_request and OpenAI-compatible callers (choices[0].message)
+        # unchanged. `actions` is retained for the native ActionGate path.
+        message = {"role": "assistant", "content": output}
         return {
-            "role": "assistant",
-            "content": output,
+            "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
             "exit_code": code,
             "actions": [],
         }
@@ -132,7 +140,14 @@ class SubprocessHarnessRunner:
         yield {"type": "status", "session_id": session_id, "state": "ready"}
 
     async def stop(self, session_id: str) -> None:
-        self._sessions.pop(session_id, None)
+        session = self._sessions.pop(session_id, None)
+        # Release the underlying sandbox (the real SandboxContainer exposes an
+        # async destroy(); a fake may not). Without this, stopped sessions leak
+        # containers until external cleanup.
+        if session is not None:
+            destroy = getattr(session.sandbox, "destroy", None)
+            if callable(destroy):
+                await destroy()
 
     # --- internals ---
     def _require_session(self, session_id: str) -> _Session:
