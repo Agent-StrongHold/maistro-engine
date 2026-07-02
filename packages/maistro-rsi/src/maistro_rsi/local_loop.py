@@ -689,8 +689,14 @@ class LocalRsiLoop:
                 logger.info("rsi_local_merge_regressed", index=index, reason=reason)
                 return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
             return merge_branch, m_comp, len(changed_files), len(kept)
-        # No fitness: each kept candidate already passed its own tests.
-        return merge_branch, kept[0].composite, len(changed_files), len(kept)
+        # No fitness: each kept candidate passed its own tests in isolation, but
+        # the COMBINATION was never tested — two non-conflicting patches can still
+        # interact and break the suite. Retest the merged worktree; fall back to
+        # the top candidate (known-good on its own) if the combination regresses.
+        if self._run_tests(merge_dir):
+            return merge_branch, kept[0].composite, len(changed_files), len(kept)
+        logger.info("rsi_local_merge_untested_regressed", index=index)
+        return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
 
     def _fitness_decision(
         self, index: int, cycle_dir: Path, changed_files: list[str]

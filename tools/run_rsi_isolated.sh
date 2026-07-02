@@ -48,20 +48,20 @@ $B/fitness.py,$B/cycle.py,$B/architecture_fit.py,$B/scorecard.py,$B/types.py"
 
 echo "RSI (full isolation) -> image=$IMAGE cycles=$CYCLES model=$MODEL gateway=$GATEWAY_URL"
 
-# Provide the gateway key by MOUNTING the .env (responses_callable loads it and
-# strips quotes correctly — unlike `docker --env-file`, which would pass quoted
-# values verbatim and break auth). Override LITELLM_URL via -e so it points at
-# the host gateway and is NOT rewritten to the in-container localhost.
+# Keep the gateway secret OUT of the editable workspace. Mount the .env OUTSIDE
+# /workspace (so the builders agent's workspace-rooted read_file/search can't
+# reach it), source it into THIS process's env only, then override the URL. The
+# agent's shell commands run with a curated _SAFE_ENV that doesn't inherit these
+# vars, and the clone the agent edits excludes the gitignored .env — so the key
+# reaches the LiteLLM call but not the agent's tools.
 exec docker run --rm \
     --add-host=host.docker.internal:host-gateway \
-    -v "$ENV_FILE":/workspace/.env:ro \
-    -e MAISTRO_REPO_ROOT=/workspace \
+    -v "$ENV_FILE":/run/gateway.env:ro \
     -e "PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistro-rsi/src:packages/maistro-bootstrap/src" \
-    -e "LITELLM_URL=$GATEWAY_URL" \
-    -e "LITELLM_BASE_URL=$GATEWAY_URL" \
-    -e "LITELLM_PROXY_URL=$GATEWAY_URL" \
     "$IMAGE" \
-    bash -lc "source /workspace/.venv/bin/activate && \
+    bash -lc "set -a; . /run/gateway.env; set +a; \
+        export LITELLM_URL='$GATEWAY_URL' LITELLM_BASE_URL='$GATEWAY_URL' LITELLM_PROXY_URL='$GATEWAY_URL'; \
+        source /workspace/.venv/bin/activate && \
         python -m maistro_rsi run \
         --repo /workspace \
         --test-cmd '$TEST_CMD' \

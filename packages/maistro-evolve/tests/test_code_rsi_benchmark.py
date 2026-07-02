@@ -51,3 +51,23 @@ def test_evaluate_stub_scores_zero() -> None:
     res = evaluate_code_rsi("g", "x.py", lambda g, t: (True, 0.7, True))
     assert res.score == 0.0
     assert res.metadata.get("stub") is True
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
+def test_code_rsi_only_genome_drives_fitness() -> None:
+    # A run need not cover all 8 standard benchmarks: a code_rsi-only genome must
+    # pass the hard gate and get a real, code_rsi-driven fitness (was 0.0 when the
+    # gate required every standard benchmark).
+    from maistro_evolve.diversity import _random_genome
+    from maistro_evolve.fitness import _check_hard_gate, _weighted_eval_score, compute_fitness
+
+    genome = _random_genome()
+    genome.eval_scores = {"code_rsi": 0.636}
+    passed, failures = _check_hard_gate(genome)
+    assert passed and not failures
+    assert _weighted_eval_score(genome) == pytest.approx(0.636)
+    assert compute_fitness(genome, [genome]).total > 0.0
+
+    # An empty evaluation still fails the gate (never breed an unscored genome).
+    genome.eval_scores = {}
+    assert _check_hard_gate(genome)[0] is False

@@ -9,6 +9,16 @@ PR text, manifest I/O); the git/gh orchestration is ``tools/harvest_rsi_prs.sh``
 The run exports, into a host-mounted dir, one ``git format-patch`` file per
 promotion plus a ``manifest.json`` mapping each patch to the source file it
 edits; the harvester reads that, groups, and opens the PRs.
+
+Assumption / limitation: each promotion is treated as a *self-contained* change
+to one file and is applied onto the base independently. This holds for the
+targeted single-file tournament (each cycle improves one named file with a
+minimal, behaviour-preserving edit). It does NOT hold if a later promotion in
+one file depends on an earlier promotion in another — the per-file PR branch
+would apply cleanly but fail tests, because it drops the prerequisite. For
+interdependent runs, either harvest a single combined branch or retest each
+branch before pushing (the rsi-harvest workflow runs on trusted infra where a
+retest step can be added). Tracked in ADR-070126-6386.
 """
 
 from __future__ import annotations
