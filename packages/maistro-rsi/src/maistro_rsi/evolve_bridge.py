@@ -21,7 +21,6 @@ from maistro_evolve.code_rsi import evaluate_code_rsi
 from maistro_evolve.harness import BenchmarkRunner, EvalHarness
 from maistro_evolve.population import PopulationStore
 from maistro_evolve.types import EvalResult, PipelineGenome
-
 from maistro_rsi.competitors import Competitor
 
 # Runs a genome's fixer config against a target file and returns the RSI
