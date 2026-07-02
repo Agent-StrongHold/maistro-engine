@@ -33,3 +33,6 @@ class SkillMetadata:
     source_type: str = ""
     tags: tuple[str, ...] = ()
     download_count: int = 0
+    # SPEC-208: explicit import-adapter format for this catalog entry
+    # (e.g. "claude_code_skill", "pi", "mcp_manifest"); None -> auto-detect.
+    import_format: str | None = None
