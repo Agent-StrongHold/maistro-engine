@@ -3,7 +3,7 @@ id: SPEC-070226-b624
 title: "General task planner & orchestration: SuperPlanner waves as Repertoire ensemble"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-07-02
 substrate:
   - maistro-engine#ADR-038
@@ -24,7 +24,8 @@ blocked-by: []
 contracts:
   - behavioral
   - boundary
-tests: []
+tests:
+  - packages/maistro-core/tests/orchestrator/waves/test_ensemble.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
