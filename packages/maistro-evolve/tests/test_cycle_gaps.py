@@ -70,15 +70,18 @@ async def test_run_tournament_battles_returns_early_with_fewer_than_two_scored_g
     assert cycle.tournament.get_stats()["total_battles"] == 0
 
 
-def test_tournament_select_parents_returns_empty_list_for_empty_population() -> None:
+def test_breed_island_does_nothing_for_empty_island() -> None:
+    from maistro_evolve.population import IslandPopulation
+
     population = PopulationStore()
     cycle = EvolutionCycle(
         harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
     )
+    island_pop = IslandPopulation(island_count=1)
 
-    parents = cycle._tournament_select_parents(population, EvolutionConfig(), count=3)
+    cycle._breed_island(island_pop, 0, population, EvolutionConfig(), cap=5)
 
-    assert parents == []
+    assert population.list_all() == []
 
 
 @pytest.mark.asyncio
@@ -118,7 +121,6 @@ async def test_run_cycle_uses_breeding_pool_path_when_tournament_has_few_rated_g
         eval_batch_size=0,
         target_benchmarks=["ifeval"],
         self_improve=False,
-        diversity_threshold=-1.0,
     )
 
     cycle = EvolutionCycle(harness=harness, tournament=tournament)
@@ -141,7 +143,6 @@ async def test_run_cycle_breeding_pool_fallback_with_fewer_than_two_candidates()
         eval_batch_size=0,
         target_benchmarks=["ifeval"],
         self_improve=False,
-        diversity_threshold=-1.0,
         cull_pct=1.0,
     )
 

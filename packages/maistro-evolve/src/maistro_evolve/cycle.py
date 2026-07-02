@@ -7,11 +7,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .crossover import crossover_and_mutate
-from .diversity import emergency_spawn, population_diversity
 from .fitness import compute_fitness
 from .harness import EvalHarness
 from .optimizer import extract_signal, optimize_topology
-from .population import PopulationStore
+from .population import IslandPopulation, PopulationStore, migrate_islands
 from .reflect import reflective_improve
 from .tournament import EloTournament
 from .types import PipelineGenome
@@ -28,6 +27,9 @@ MAX_POPULATION_SIZE = 200
 MAX_TOURNAMENT_SIZE = 20
 MAX_SELF_IMPROVE_TOP_N = 10
 MAX_SELF_IMPROVE_CANDIDATES = 10
+MAX_REFLECT_HISTORY_WINDOW = 20
+MAX_ISLAND_COUNT = 20
+MAX_MIGRATION_INTERVAL = 100
 
 
 class EvolutionConfig(BaseModel):
@@ -37,12 +39,17 @@ class EvolutionConfig(BaseModel):
     breed_pct: float = 0.2
     eval_batch_size: int = Field(default=5, ge=0, le=MAX_EVAL_BATCH_SIZE)
     target_benchmarks: list[str] = ["ifeval", "bfcl", "swebench", "tau_bench"]
-    diversity_threshold: float = 1.0
     tournament_size: int = Field(default=3, gt=0, le=MAX_TOURNAMENT_SIZE)
     self_improve: bool = True
     self_improve_top_n: int = Field(default=3, ge=0, le=MAX_SELF_IMPROVE_TOP_N)
     self_improve_candidates: int = Field(default=2, ge=0, le=MAX_SELF_IMPROVE_CANDIDATES)
     self_improve_accept_margin: float = 0.0
+    reflect_history_window: int = Field(default=5, ge=0, le=MAX_REFLECT_HISTORY_WINDOW)
+    node_attribution: bool = True
+    # Island model (FunSearch-style structural diversity, SPEC-070226-5ce3).
+    # island_count=1 degenerates to the pre-spec single-pool behavior.
+    island_count: int = Field(default=1, ge=1, le=MAX_ISLAND_COUNT)
+    migration_interval: int = Field(default=5, ge=1, le=MAX_MIGRATION_INTERVAL)
 
 
 class EvolutionCycle:
@@ -53,6 +60,8 @@ class EvolutionCycle:
     ) -> None:
         self.harness = harness or EvalHarness()
         self.tournament = tournament or EloTournament()
+        self._island_pop: IslandPopulation | None = None
+        self._cycle_count: int = 0
 
     async def _evaluate_unevaluated(
         self,
@@ -120,27 +129,61 @@ class EvolutionCycle:
             population.add(g)
         return population.list_all()
 
-    def _tournament_select_parents(
+    def _breed_island(
         self,
+        island_pop: IslandPopulation,
+        island_id: int,
         population: PopulationStore,
         config: EvolutionConfig,
-        count: int,
-    ) -> list[PipelineGenome]:
-        all_genomes = population.list_all()
-        if not all_genomes:
-            return []
+        cap: int,
+    ) -> None:
+        """Breed within a single island until it reaches `cap` members."""
+        members = island_pop.get_members(island_id)
+        needed = max(0, cap - len(members))
+        if needed == 0:
+            return
 
-        parent_ids: list[str] = []
-        for _ in range(count * 2):
-            selected = self.tournament.tournament_select(
-                [g.id for g in all_genomes],
-                tournament_size=config.tournament_size,
-            )
-            if selected:
-                parent_ids.append(selected)
+        genome_map = {g.id: g for g in population.list_all()}
 
-        genome_map = {g.id: g for g in all_genomes}
-        return [genome_map[pid] for pid in parent_ids if pid in genome_map]
+        if self.tournament.get_stats()["total_genomes_rated"] >= 2:
+            parent_ids: list[str] = []
+            for _ in range(needed * 2):
+                selected = self.tournament.tournament_select(
+                    members, tournament_size=config.tournament_size
+                )
+                if selected:
+                    parent_ids.append(selected)
+            for i in range(0, min(needed, len(parent_ids) - 1), 2):
+                a = genome_map.get(parent_ids[i])
+                b = genome_map.get(parent_ids[i + 1] if i + 1 < len(parent_ids) else parent_ids[0])
+                if a and b:
+                    child = crossover_and_mutate(a, b, config.mutation_rate)
+                    population.add(child)
+                    # Use force_assign: mutation chains rewrite parent_a_id, so
+                    # assign() would fall back to round-robin and place the child
+                    # on the wrong island.
+                    island_pop.force_assign(child.id, island_id)
+        else:
+            island_scored = [
+                g
+                for mid in members
+                if (g := genome_map.get(mid)) is not None and g.fitness_score is not None
+            ]
+            island_scored.sort(key=lambda g: g.fitness_score or 0.0, reverse=True)
+            pool_size = max(2, int(config.population_size * config.breed_pct))
+            breeding_pool = island_scored[:pool_size]
+            for _ in range(needed):
+                pa: PipelineGenome | None
+                pb: PipelineGenome | None
+                if len(breeding_pool) >= 2:
+                    pa, pb = random.sample(breeding_pool, 2)
+                else:
+                    pa = breeding_pool[0] if breeding_pool else None
+                    pb = None
+                if pa and pb:
+                    child = crossover_and_mutate(pa, pb, config.mutation_rate)
+                    population.add(child)
+                    island_pop.force_assign(child.id, island_id)
 
     async def _self_improve_top(
         self,
@@ -165,6 +208,24 @@ class EvolutionCycle:
             eval_results = [EvalResult(benchmark=k, score=v) for k, v in genome.eval_scores.items()]
             signal = extract_signal(genome, eval_results)
 
+            window = config.reflect_history_window
+            # History entries are (benchmark, excerpt, score); filter to the genome's
+            # current weakest benchmark so OPRO trajectory stays coherent across cycles
+            # where the target benchmark shifts (benchmark-specific, SPEC-070226-83bd).
+            stored_history: list[tuple[str, str, float]] = genome.harness_params.get(
+                "reflection_history", []
+            )
+            target_set = set(config.target_benchmarks)
+            relevant = {b: s for b, s in genome.eval_scores.items() if b in target_set}
+            expected_bench = min(relevant, key=lambda b: relevant[b]) if relevant else None
+            if window > 0 and expected_bench is not None:
+                bench_entries = [
+                    (exc, sc) for bm, exc, sc in stored_history if bm == expected_bench
+                ]
+                prompt_history = bench_entries[-window:]
+            else:
+                prompt_history = []
+
             # Propose-then-verify (GEPA-style): the parent is never mutated in
             # place; an accepted challenger joins the pool as its child.
             outcome = await reflective_improve(
@@ -174,9 +235,30 @@ class EvolutionCycle:
                 benchmarks=config.target_benchmarks,
                 num_candidates=config.self_improve_candidates,
                 accept_margin=config.self_improve_accept_margin,
+                prompt_history=prompt_history,
+                node_attribution=config.node_attribution,
             )
             if outcome is not None and outcome.accepted and outcome.challenger is not None:
                 population.add(outcome.challenger)
+
+            # Persist new (benchmark, excerpt, score) entry so future cycles have a
+            # coherent per-benchmark trajectory (window=0 disables persistence entirely).
+            if (
+                window > 0
+                and outcome is not None
+                and outcome.best_candidate_prompt_excerpt is not None
+                and outcome.best_candidate_score is not None
+            ):
+                new_entry: tuple[str, str, float] = (
+                    outcome.benchmark,
+                    outcome.best_candidate_prompt_excerpt,
+                    outcome.best_candidate_score,
+                )
+                updated_history = [*stored_history, new_entry][-window:]
+                genome.harness_params["reflection_history"] = updated_history
+                # Propagate to accepted challenger so its next cycle sees the trajectory.
+                if outcome.accepted and outcome.challenger is not None:
+                    outcome.challenger.harness_params["reflection_history"] = updated_history
 
             topo_signal = await optimize_topology(genome, signal, llm_call)
             genome.harness_params["last_optimization"] = {
@@ -205,41 +287,30 @@ class EvolutionCycle:
 
         population.cull_bottom(cfg.cull_pct)
 
-        if self.tournament.get_stats()["total_genomes_rated"] >= 2:
-            parents = self._tournament_select_parents(population, cfg, cfg.population_size)
-            current_count = len(population.list_all())
-            needed = max(0, cfg.population_size - current_count)
-            for i in range(0, min(needed, len(parents) - 1), 2):
-                a = parents[i]
-                b = parents[i + 1] if i + 1 < len(parents) else parents[0]
-                child = crossover_and_mutate(a, b, cfg.mutation_rate)
-                population.add(child)
-        else:
-            breeding_pool = population.get_breeding_pool(
-                max(2, int(cfg.population_size * cfg.breed_pct))
-            )
-            current_count = len(population.list_all())
-            needed = max(0, cfg.population_size - current_count)
-            for _ in range(needed):
-                pa: PipelineGenome | None
-                pb: PipelineGenome | None
-                if len(breeding_pool) >= 2:
-                    pa, pb = random.sample(breeding_pool, 2)
-                else:
-                    pa = breeding_pool[0] if breeding_pool else None
-                    pb = None
-                if pa and pb:
-                    child = crossover_and_mutate(pa, pb, cfg.mutation_rate)
-                    population.add(child)
+        # Initialize or reset island population when island_count changes.
+        if self._island_pop is None or self._island_pop.island_count != cfg.island_count:
+            self._island_pop = IslandPopulation(cfg.island_count)
+        island_pop = self._island_pop
 
+        # Assign all current genomes to islands (idempotent for known genomes).
+        for genome in population.list_all():
+            island_pop.assign(genome)
+
+        # Per-island breeding: each island fills to its size cap independently.
+        # With island_count=1, island 0 == the full population → identical to
+        # the pre-island single-pool behavior (regression guard, SPEC-070226-5ce3).
+        island_size_cap = max(1, cfg.population_size // cfg.island_count)
+        for iid in island_pop.all_islands():
+            self._breed_island(island_pop, iid, population, cfg, island_size_cap)
+
+        # Assign any children produced by self-improve to their parent's island.
         await self._self_improve_top(population, cfg, llm_call)
+        for genome in population.list_all():
+            island_pop.assign(genome)
 
-        current_genomes = population.list_all()
-        div = population_diversity(current_genomes)
-        if div < cfg.diversity_threshold:
-            spawn_count = max(2, cfg.population_size // 5)
-            spawned = emergency_spawn(current_genomes, spawn_count)
-            for g in spawned:
-                population.add(g)
+        # Migration: share the best genome from each island to all others.
+        self._cycle_count += 1
+        if self._cycle_count % cfg.migration_interval == 0:
+            migrate_islands(island_pop, population)
 
         return population
