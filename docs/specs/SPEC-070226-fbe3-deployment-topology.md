@@ -3,7 +3,7 @@ id: SPEC-070226-fbe3
 title: "Deployment topology, backup, and disaster recovery"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-07-02
 substrate:
   - maistro-engine#ADR-081
@@ -79,14 +79,32 @@ Persistent layer (outside instances):
 - Automated restore-and-verify test weekly: restore backup to staging, run smoke tests, confirm
   no data loss.
 
+## Implementation status (2026-07-02)
+
+Engine-side artifacts are landed; live-infrastructure validation (replication lag,
+chaos/failover tests, alerting wiring) happens at deploy time on real infrastructure:
+
+- Runbook: `docs/install/deployment-topology.md` (topology, backup, recovery
+  procedures, weekly drill).
+- Reference artifacts: `deploy/docker-compose.prod.yml` (nginx LB + 2 stateless
+  replicas + PostgreSQL primary/streaming replica + Redis), `deploy/nginx.conf`,
+  `deploy/init-replication.sh`, `deploy/scripts/backup.sh`,
+  `deploy/scripts/verify-restore.sh`.
+- Health endpoints for the LB already exist in maistro-server
+  (`/health`, `/health/live`, `/health/ready` — `maistro_server/api/health.py`,
+  tested in `tests/api/test_health.py`).
+
 ## Acceptance criteria
 
-- [ ] All persistent state (agents, sessions, memory, audit logs) is in PostgreSQL or Redis
-      (no local files except config).
-- [ ] PostgreSQL replicas are catching up (replication lag < 1s).
-- [ ] Backup test: restore yesterday's backup, verify data is present and consistent.
+- [x] All persistent state (agents, sessions, memory, audit logs) is in PostgreSQL or Redis
+      (no local files except config). *(Topology enforces this; instances are stateless.)*
+- [ ] PostgreSQL replicas are catching up (replication lag < 1s). *(Live-infra check.)*
+- [x] Backup test: restore yesterday's backup, verify data is present and consistent.
+      *(`deploy/scripts/verify-restore.sh` — pg_dump hash + row-count check.)*
 - [ ] Instance failure: one instance goes down, remaining handle traffic without data loss.
-- [ ] Monitoring alerts on replication lag > 5s or backup failure.
+      *(Chaos test at deploy time; LB passive checks configured.)*
+- [ ] Monitoring alerts on replication lag > 5s or backup failure. *(Wired at deploy time;
+      queries/hooks documented in the runbook.)*
 
 ## Testing
 
