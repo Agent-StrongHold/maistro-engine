@@ -90,7 +90,7 @@ def coverage_gate(
 
 
 # Coverage swing (percentage points) that maps a change to a full 0→1 score.
-# A +2pp gain scores 1.0, flat scores the 0.5 neutral, −2pp scores 0.0. Chosen so
+# A +2pp gain scores 1.0, flat scores the 0.5 neutral, -2pp scores 0.0. Chosen so
 # even a modest single-test gain registers above neutral; the big reward for
 # *adding* a test is the presence-gated ``new_test`` signal, this just grades the
 # direction of the coverage move.

@@ -103,7 +103,9 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
         scores.append(nt)
     if inp.feature_judge is not None:
         scores.append(
-            judge_signal("feature_judge", inp.feature_judge[0], w.feature_judge, inp.feature_judge[1])
+            judge_signal(
+                "feature_judge", inp.feature_judge[0], w.feature_judge, inp.feature_judge[1]
+            )
         )
     if inp.perf is not None:
         scores.append(perf_signal(inp.perf[0], inp.perf[1], w.perf))

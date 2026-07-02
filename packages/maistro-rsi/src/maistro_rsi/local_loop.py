@@ -291,7 +291,9 @@ def make_builders_apply_patch(
         config = AgentLoopConfig(model=model) if model else AgentLoopConfig()
         runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
         runner.set_llm(
-            ResponsesAPICallable(model=model, temperature=temperature, reasoning_effort=reasoning_effort)
+            ResponsesAPICallable(
+                model=model, temperature=temperature, reasoning_effort=reasoning_effort
+            )
         )
 
         # The genome's evolvable strategy prompt (when supplied) becomes the system

@@ -43,4 +43,6 @@ def test_reasoning_effort_participates_in_equality_prompt_and_label_do_not() -> 
     base = Competitor(model="o3", reasoning_effort="high")
     assert base == Competitor(model="o3", reasoning_effort="high")
     assert base != Competitor(model="o3", reasoning_effort="low")
-    assert base == Competitor(model="o3", reasoning_effort="high", prompt="ignored", label="ignored")
+    assert base == Competitor(
+        model="o3", reasoning_effort="high", prompt="ignored", label="ignored"
+    )

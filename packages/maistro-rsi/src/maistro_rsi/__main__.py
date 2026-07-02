@@ -197,6 +197,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--db", default=None, help="PopulationStore path (persists lineage; default: in-memory)."
     )
     evolve.add_argument("--work-root", default=None)
+    evolve.add_argument(
+        "--goal",
+        default="",
+        help="Operator goal threaded into the hyper-mutator's meta-prompt "
+        "(guides what the fixer population evolves toward).",
+    )
+    evolve.add_argument(
+        "--mutator-model",
+        default=None,
+        help="Gateway alias for the hyper-mutator's meta-prompts (default: the "
+        "first --models entry). Without a reachable gateway the hyper-mutator "
+        "simply proposes nothing.",
+    )
     return parser
 
 
@@ -243,12 +256,30 @@ def _evolve(args: argparse.Namespace) -> int:
         population_size=args.population,
         eval_batch_size=args.population,
         tournament_size=2,
+        goal=args.goal,
     )
+
+    # The hyper-mutator's meta-LLM: a plain async text->text callable over the
+    # gateway. Unconfigured gateway ⇒ stub text ⇒ proposals parse to nothing —
+    # evolution still runs, just without guided mutation.
+    llm_call = None
+    mutator_model = args.mutator_model or (models[0] if models else None)
+    if mutator_model:
+        from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
+
+        callable_ = ResponsesAPICallable(model=mutator_model)
+
+        async def llm_call(prompt: str) -> str:
+            result = await asyncio.to_thread(callable_, [{"role": "user", "content": prompt}])
+            content = result.get("content", "") if isinstance(result, dict) else result
+            return content if isinstance(content, str) else str(content)
+
     print(
         f"RSI evolve -> {args.population} genomes x {args.cycles} cycle(s) on {args.target} "
-        f"(models={models or 'evolve defaults (not routable!)'})"
+        f"(models={models or 'evolve defaults (not routable!)'}, "
+        f"hyper-mutator={mutator_model or 'off'})"
     )
-    asyncio.run(run_evolution(store, harness, args.cycles, config=cfg))
+    asyncio.run(run_evolution(store, harness, args.cycles, config=cfg, llm_call=llm_call))
 
     genomes = store.list_all()
     print(f"\nEvolution complete: {len(genomes)} genomes")
@@ -351,7 +382,9 @@ def _harvest(args: argparse.Namespace) -> int:  # noqa: C901  clone/repo setup +
                 continue
             kept_patches.append(patch)
         if not kept_patches:
-            print(f"[skipped] {branch}  <- {file}  (all {len(group)} promotion(s) were doc regressions)")
+            print(
+                f"[skipped] {branch}  <- {file}  (all {len(group)} promotion(s) were doc regressions)"
+            )
             continue
         action = "pushed + PR" if args.push else "built (dry-run)"
         print(f"[{action}] {branch}  <- {file}  ({len(kept_patches)} commit(s))")

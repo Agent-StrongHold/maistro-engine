@@ -138,7 +138,9 @@ def scout_shortlist(
     except Exception:
         return []
     content = result.get("content", "") if isinstance(result, dict) else result
-    return parse_shortlist(content if isinstance(content, str) else str(content), max_items=max_items)
+    return parse_shortlist(
+        content if isinstance(content, str) else str(content), max_items=max_items
+    )
 
 
 def scout_objective(source: str, llm_call: LlmCall, *, fallback: str) -> str:
