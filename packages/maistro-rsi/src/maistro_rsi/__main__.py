@@ -370,21 +370,27 @@ def _harvest(args: argparse.Namespace) -> int:  # noqa: C901  clone/repo setup +
 
     opened = 0
     skipped = 0
+    unappliable = 0
     for file, group in groups.items():
         branch = branch_slug(file, session)
         git("checkout", "-B", branch, base)
         kept_patches = []
         for patch in group:
-            git("am", "--3way", str((export / patch.patch_file).resolve()))
+            # A patch from an older run may no longer apply once the base has
+            # moved past it (even with --3way). Skip it and keep harvesting —
+            # one stale patch must not sink the rest of the run's promotions.
+            am = git("am", "--3way", str((export / patch.patch_file).resolve()), check=False)
+            if am.returncode != 0:
+                git("am", "--abort", check=False)
+                unappliable += 1
+                continue
             if args.skip_doc_regressions and _regresses_docs(file):
                 git("reset", "--hard", "HEAD~1")  # drop the doc-specificity regression
                 skipped += 1
                 continue
             kept_patches.append(patch)
         if not kept_patches:
-            print(
-                f"[skipped] {branch}  <- {file}  (all {len(group)} promotion(s) were doc regressions)"
-            )
+            print(f"[skipped] {branch}  <- {file}  (0 of {len(group)} promotion(s) kept)")
             continue
         action = "pushed + PR" if args.push else "built (dry-run)"
         print(f"[{action}] {branch}  <- {file}  ({len(kept_patches)} commit(s))")
@@ -410,6 +416,8 @@ def _harvest(args: argparse.Namespace) -> int:  # noqa: C901  clone/repo setup +
             opened += 1
     git("checkout", base, check=False)
     tail = f", {skipped} doc-regression(s) dropped" if skipped else ""
+    if unappliable:
+        tail += f", {unappliable} stale patch(es) no longer apply"
     print(f"\nharvest: {len(groups)} file group(s), {opened} PR(s) opened{tail}")
     return 0
 
