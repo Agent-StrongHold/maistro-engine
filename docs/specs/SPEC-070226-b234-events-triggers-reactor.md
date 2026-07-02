@@ -3,7 +3,7 @@ id: SPEC-070226-b234
 title: "Events, triggers, and the reactor: durable event log with idempotent replay"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-07-02
 substrate:
   - maistro-engine#ADR-086
@@ -19,7 +19,11 @@ blocked-by: []
 contracts:
   - behavioral
   - boundary
-tests: []
+tests:
+  - packages/maistro-core/tests/events/test_durable_log.py
+  - packages/maistro-core/tests/events/test_trigger_store.py
+  - packages/maistro-core/tests/events/test_invocations.py
+  - packages/maistro-core/tests/events/test_processing.py
 layer: Observability
 owners:
   - '@BlakeMatthews-dev'
@@ -50,7 +54,38 @@ The 1kHz reactor loop (SPEC-013) currently emits events in-memory; this SPEC per
 
 ## Decision
 
-### Event log schema
+> **Implementation note (2026-07-02):** implemented as protocol-driven stores in
+> `packages/maistro-core/src/maistro/events/` (per maistro-core DI conventions) rather than
+> the raw PostgreSQL DDL originally sketched here. Each store has an in-memory implementation
+> and an aiosqlite-backed one (mirroring `maistro.persistence.sqlite_*`); a PostgreSQL
+> implementation can be added under `maistro.persistence` later without touching the loop.
+> Modules:
+>
+> - `maistro/events/durable_log.py` — `LoggedEvent`, `EventLogStore` protocol (append-only,
+>   query by type/time window, keyset pagination via `after_id`/`limit`),
+>   `InMemoryEventLog`, `SqliteEventLog`.
+> - `maistro/events/trigger_store.py` — `TriggerDefinition`, `pattern_matches()` (dot-segmented
+>   glob: `agent.*` matches `agent.created`, not `task.created` and not `agent.task.created`),
+>   `TriggerStore` protocol, `InMemoryTriggerStore`, `SqliteTriggerStore`.
+> - `maistro/events/invocations.py` — `HandlerInvocation` with `(trigger_id, event_id)`
+>   idempotency key, `InvocationStatus` (pending/success/failed/retrying), `MAX_ATTEMPTS = 3`,
+>   `InvocationStore` protocol, `InMemoryInvocationStore`, `SqliteInvocationStore`
+>   (composite PK + `INSERT OR IGNORE` enforce the key at the storage layer).
+> - `maistro/events/processing.py` — `HandlerCaller` protocol (injected async callable),
+>   `HTTPHandlerCaller` (httpx POST of `event.to_dict()` to `trigger.handler_url`, raises
+>   `HandlerCallError` on >=400 or transport error), and the pure async `process_events()`
+>   loop function ticked by the reactor with injected stores.
+>
+> Deviations from the original text: `process_events()` is cursor-based (`after_id` in,
+> new cursor out) — the cursor only advances past an event once all matching triggers are
+> terminal, so retries happen on subsequent ticks and a crash (lost cursor) safely replays
+> from an older position. Retry backoff is not `sleep`-based inside the loop; it falls out
+> of the tick cadence (the reactor/caller owns pacing). On permanent failure a
+> `handler.failed` event is appended to the log (source `reactor`) instead of an in-memory
+> `emit()`. The reference SQL/pseudocode below is kept for context; SQLite schemas in the
+> modules are the concrete form.
+
+### Event log schema (original PostgreSQL sketch — see implementation note)
 
 ```sql
 CREATE TABLE event_log (
@@ -161,12 +196,14 @@ The `(trigger_id, event_id)` unique key ensures a handler is invoked at most onc
 
 ## Acceptance criteria
 
-- [ ] Every event emitted is persisted to event_log (property: no lost events).
-- [ ] Triggers match event patterns correctly ("agent.*" matches "agent.created" but not "task.created").
-- [ ] Handler is invoked exactly once per event (idempotency test: simulate crash, restart, confirm
+- [x] Every event emitted is persisted to event_log (property: no lost events).
+- [x] Triggers match event patterns correctly ("agent.*" matches "agent.created" but not "task.created").
+- [x] Handler is invoked exactly once per event (idempotency test: simulate crash, restart, confirm
       no duplicate invocations).
-- [ ] Failed handler is retried up to 3 times (exponential backoff).
+- [x] Failed handler is retried up to 3 times (backoff via reactor tick cadence, not in-loop sleep).
 - [ ] Event query API (GET /events?event_type=...&since=...) returns paginated results.
+      (Store-level `EventLogStore.query()` supports this; the HTTP route belongs in
+      maistro-server / hive-conductor and is not wired yet.)
 
 ## Testing
 
