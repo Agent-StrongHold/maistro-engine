@@ -165,6 +165,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Push branches and open PRs via gh (default: dry-run — build branches locally only).",
     )
+    harvest.add_argument(
+        "--skip-doc-regressions",
+        action="store_true",
+        help="Drop any promotion that only made an existing docstring vaguer (older runs "
+        "predate the no_doc_regression fitness veto), so a harvest keeps the genuinely-new "
+        "docstrings but not the specificity regressions.",
+    )
 
     evolve = sub.add_parser(
         "evolve",
@@ -258,11 +265,12 @@ def _evolve(args: argparse.Namespace) -> int:
     return 0
 
 
-def _harvest(args: argparse.Namespace) -> int:
+def _harvest(args: argparse.Namespace) -> int:  # noqa: C901  clone/repo setup + am/skip/PR loop
     import subprocess
     import tempfile
     from datetime import UTC, datetime
 
+    from maistro_evolve.doc_regression import doc_regressions
     from maistro_rsi.harvest import branch_slug, group_by_file, load_manifest, pr_body, pr_title
 
     export = Path(args.export_dir)
@@ -318,14 +326,35 @@ def _harvest(args: argparse.Namespace) -> int:
 
     # base is set above for --clone-url; for --repo-dir default to its current branch.
     base = base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+
+    def _regresses_docs(rel: str) -> bool:
+        # Compare the file just committed (HEAD) against its parent (HEAD~1).
+        if not rel.endswith(".py"):
+            return False
+        before = git("show", f"HEAD~1:{rel}", check=False)
+        after = git("show", f"HEAD:{rel}", check=False)
+        if before.returncode != 0 or after.returncode != 0:
+            return False
+        return bool(doc_regressions(before.stdout, after.stdout))
+
     opened = 0
+    skipped = 0
     for file, group in groups.items():
         branch = branch_slug(file, session)
         git("checkout", "-B", branch, base)
+        kept_patches = []
         for patch in group:
             git("am", "--3way", str((export / patch.patch_file).resolve()))
+            if args.skip_doc_regressions and _regresses_docs(file):
+                git("reset", "--hard", "HEAD~1")  # drop the doc-specificity regression
+                skipped += 1
+                continue
+            kept_patches.append(patch)
+        if not kept_patches:
+            print(f"[skipped] {branch}  <- {file}  (all {len(group)} promotion(s) were doc regressions)")
+            continue
         action = "pushed + PR" if args.push else "built (dry-run)"
-        print(f"[{action}] {branch}  <- {file}  ({len(group)} commit(s))")
+        print(f"[{action}] {branch}  <- {file}  ({len(kept_patches)} commit(s))")
         if args.push:
             git("push", "-u", "origin", branch, "--force-with-lease")
             subprocess.run(
@@ -338,16 +367,17 @@ def _harvest(args: argparse.Namespace) -> int:
                     "--head",
                     branch,
                     "--title",
-                    pr_title(file, group),
+                    pr_title(file, kept_patches),
                     "--body",
-                    pr_body(file, group),
+                    pr_body(file, kept_patches),
                 ],
                 cwd=repo,
                 check=True,
             )
             opened += 1
     git("checkout", base, check=False)
-    print(f"\nharvest: {len(groups)} file group(s), {opened} PR(s) opened")
+    tail = f", {skipped} doc-regression(s) dropped" if skipped else ""
+    print(f"\nharvest: {len(groups)} file group(s), {opened} PR(s) opened{tail}")
     return 0
 
 
