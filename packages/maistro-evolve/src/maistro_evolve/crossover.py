@@ -14,6 +14,7 @@ from .types import (
 
 
 def _new_id() -> str:
+    """Generate a 12-character hexadecimal UUID."""
     return uuid.uuid4().hex[:12]
 
 
