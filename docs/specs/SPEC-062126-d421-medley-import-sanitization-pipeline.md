@@ -3,7 +3,7 @@ id: SPEC-062126-d421
 title: "Medley import sanitization pipeline — scan, salvage-or-block, register, re-scan-on-use"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-06-21
 substrate:
   - maistro-engine#ADR-072
@@ -190,13 +190,12 @@ blocked) is a signed decision record (ADR-073).
 
 ## Open questions
 
-- Where the re-scan-on-use hash/binding is stored — on the `SkillDefinition`, in the registry, or as
-  a Sentinel policy attachment (defer to implementation; all are compatible with the verdict shape).
-- Whether `forge` improvement runs **before** or **after** the salvage step for unsigned imports, or
-  is skipped for `paste`/`upload` to keep the trusted path minimal (leaning: salvage first, improve
-  optional and always re-scanned).
-- Report delivery surface (dashboard vs. CLI vs. API) and whether to auto-format the source's known
-  abuse-report endpoint when one is discoverable.
+- **Hash/binding storage** (DECIDED): store on Sentinel policy attachment. Provides audit trail,
+  per-skill policies, fits ADR-073 security model.
+- **Salvage vs. improve order** (DECIDED): salvage first, improve optional and always re-scanned.
+  Keeps trusted path minimal; forge output is re-scanned same as salvage output.
+- **Report delivery surface** (DEFERRED to Phase 2): start with API endpoint (`GET /admin/import-reports/{id}`),
+  CLI output, and dashboard follow-up. Auto-format abuse endpoint discovery deferred.
 
 ## References
 

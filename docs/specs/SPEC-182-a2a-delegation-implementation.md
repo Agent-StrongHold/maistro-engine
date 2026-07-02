@@ -3,7 +3,7 @@ id: SPEC-182
 title: A2A delegation broker — implementation
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-05-29
 accepted: null
 implemented: null

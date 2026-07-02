@@ -3,7 +3,7 @@ id: SPEC-183
 title: OAuth2 user authentication — implementation
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-05-29
 accepted: null
 implemented: null

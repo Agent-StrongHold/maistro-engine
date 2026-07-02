@@ -3,7 +3,7 @@ id: SPEC-192
 title: "Persona authoring pipeline — interview, research, two-tier refinement, and agent-roster expansion"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-06-01
 substrate:
   - maistro-engine#ADR-006
@@ -344,14 +344,14 @@ return ci.confidence_interval.low > 0  # 95% CI excludes zero
 
 ## Open questions
 
-1. **Template file tree location** (deferred from ADR-060): `personas/departments/` +
-   `personas/creators/` vs a unified `templates/` root with `kind:` discrimination. Decision should
-   be made before P0 ships.
-2. **`persona_smith` is itself a persona**: the authoring pipeline is a creator that spawns interview,
-   research, and refine agents. Bootstrapping order: `persona_smith` is hardcoded initially, then
-   self-described once the expander works.
-3. **Minimum viable A/B UI**: the blind-A/B loop requires a user-facing pick interface. Minimum is an
-   API endpoint (`POST /eval/ab/{persona_id}/choice`) plus a minimal chat-driven picker in
-   hive-conductor. Full UI is follow-up.
-4. **`PromptfooScorer` subprocess model**: promptfoo requires Node.js. Container images must include
-   it, or the adapter must be strictly optional (like DeepEvalScorer). Defer to P3.
+1. **Template file tree location** (DECIDED): unified `templates/` root with `kind:` discrimination.
+   Cleaner, aligns with ADR-053 recipe overlay pattern. Separate `personas/departments/` and
+   `personas/creators/` trees deferred.
+2. **`persona_smith` is itself a persona** (DEFERRED to Phase 1): the authoring pipeline is a creator
+   that spawns interview, research, and refine agents. Bootstrapping order: `persona_smith` is
+   hardcoded initially, then self-described once the expander works.
+3. **Minimum viable A/B UI** (DEFERRED to Phase 2): the blind-A/B loop requires a user-facing pick
+   interface. Minimum is an API endpoint (`POST /eval/ab/{persona_id}/choice`) plus a minimal
+   chat-driven picker in hive-conductor. Full UI is follow-up work.
+4. **`PromptfooScorer` subprocess model** (DEFERRED to Phase 3): promptfoo requires Node.js. Make
+   the adapter strictly optional (like DeepEvalScorer), with graceful fallback.

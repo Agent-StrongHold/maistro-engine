@@ -3,7 +3,7 @@ id: SPEC-208
 title: Foreign harness adapter — HarnessRunner slot and agent/skill format adapters
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-06-15
 substrate:
   - maistro-engine#ADR-061526-f383
@@ -209,14 +209,15 @@ dedicated scope (`harness:session`) gates this route.
 
 ## Open questions
 
-- Per-harness session lifecycle limits (idle timeout, max concurrent sessions per host) —
-  resource-management policy, likely belongs with the follow-up stateful policy engine
-  (ADR-061526-f383, Follow-ups) rather than this spec.
-- Whether `HarnessNodeStrategy` needs its own `priority_tier` interaction with
-  `determine_execution_tier` (`conduit.py:24-33`) when a foreign harness reports its own
-  cost/latency profile.
-- Exact MCP manifest versioning/compatibility story as the MCP spec evolves — `export_agent()`
-  should target a pinned MCP schema version with a documented upgrade path.
+- **Per-harness session lifecycle limits** (DEFERRED to Phase 2): idle timeout, max concurrent
+  sessions per host — resource-management policy belongs with the follow-up stateful policy engine
+  (ADR-061526-f383 follow-ups).
+- **HarnessNodeStrategy priority tier interaction** (DEFERRED to implementation): whether it needs
+  its own `priority_tier` interaction with `determine_execution_tier` when a foreign harness
+  reports its own cost/latency profile — likely emerges during wiring.
+- **MCP manifest versioning** (DEFERRED with pinned baseline): `export_agent()` targets a pinned
+  MCP schema version with a documented upgrade path; exact compatibility story as MCP spec evolves
+  is a follow-up.
 
 ## References
 
