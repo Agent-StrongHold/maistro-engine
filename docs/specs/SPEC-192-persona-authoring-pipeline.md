@@ -23,7 +23,12 @@ blocked-by:
 contracts:
   - behavioral
   - boundary
-tests: []
+tests:
+  - packages/maistro-core/tests/personas/test_vocabulary.py
+  - packages/maistro-core/tests/personas/test_rubric_loader.py
+  - packages/maistro-core/tests/personas/test_scorer.py
+  - packages/maistro-core/tests/personas/test_expander.py
+  - packages/maistro-core/tests/personas/test_golden.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -33,6 +38,20 @@ history:
 ---
 
 # SPEC-192: Persona authoring pipeline
+
+> **Implementation status (2026-07-02):** P0 + P1 implemented in
+> `packages/maistro-core/src/maistro/personas/` — check vocabulary, generic
+> `RubricEval` YAML loader (unified `templates/` root with `kind:`
+> discrimination), `RubricScorer` over `maistro.protocols.Scorer`, persona
+> template schema + expander (worked example expands to 3 inactive
+> `AgentRecipe` records with `no_medical_claims` hard gates), versioned
+> `GoldenRecord` store (in-memory), and a strictly-optional `DeepEvalScorer`
+> with graceful `RubricScorer` fallback. The 9 department eval files already
+> exist as YAML in `packages/hive-conductor/eval/departments/yaml/` and load
+> unchanged through the core loader; porting hive-conductor's `eval/` package
+> to consume `maistro.personas` is follow-up. P2/P3 (interviewer agent,
+> significance-gated hill-climber, blind A/B endpoint, Bradley-Terry residual,
+> `PromptfooScorer`) are not yet built.
 
 ## Context
 
