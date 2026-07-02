@@ -48,10 +48,12 @@ from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
 logger = structlog.get_logger()
 
 _DEFAULT_OBJECTIVE = (
-    "Make exactly one small, safe, self-contained improvement to this codebase. "
-    "Good candidates: fix a clear bug, tighten a type, add a missing test, or "
-    "improve a confusing name or docstring. Read files before you edit them, "
-    "keep the diff minimal, and do not break existing behavior. "
+    "Make exactly one small, safe, self-contained improvement to this codebase, "
+    "in priority order: fix a real bug (test-first: add the failing test, then the "
+    "fix), add a focused unit test for currently-untested behavior, strengthen a "
+    "weak test assertion — and only if the code is already well-tested, improve a "
+    "type hint or docstring. Read files before you edit them, keep the diff "
+    "minimal, and do not break existing behavior. "
     "Use only the read_file, write_file and search tools — do NOT run git, "
     "commit, or shell commands: the harness stages, commits, and runs the tests "
     "for you after you finish. If you cannot find a safe improvement, make no "
@@ -64,17 +66,22 @@ def _targeted_objective(path: str) -> str:
 
     Naming the file removes the discovery step that weak models fail at (they
     can't reliably search for a target), so each cycle is a concrete, bounded
-    edit of a known file.
+    edit of a known file. Test-first by default: substantive verification work
+    (a new test, a stronger assertion, a bug-fix) outranks docstring/type
+    polish, which is a fallback only — mirroring the fitness signals
+    (new_test/coverage-delta reward, doc-regression veto).
     """
     return (
-        f"Improve the file `{path}` in this repository. Make one small, safe, "
-        f"self-contained improvement: clarify or add a module- or function-level "
-        f"docstring, tighten a type hint, or fix an obvious minor issue. First read "
-        f"`{path}` with the read_file tool, then make the change with the edit_file "
-        f"tool (a targeted exact-string replacement) — do NOT rewrite the whole file "
-        f"with write_file, and do not reformat or touch lines unrelated to your change. "
-        f"Keep the edit minimal and do not alter runtime behavior. Use only read_file "
-        f"and edit_file — do not run git or shell commands."
+        f"Improve the module `{path}`, in priority order: (1) add ONE focused unit test for "
+        f"currently-untested behavior in it — create or extend its test file — and make sure it "
+        f"passes; (2) fix a real bug if you find one, test-first (add the failing test, then the "
+        f"fix); (3) strengthen a test assertion that checks too little. Only if the module is "
+        f"already well-tested and correct, improve a type hint or docstring instead. First read "
+        f"`{path}` with the read_file tool; use edit_file for targeted exact-string changes and "
+        f"write_file only to create a new test file — do NOT rewrite existing files wholesale, "
+        f"and do not reformat or touch lines unrelated to your change. Keep the diff minimal and "
+        f"do not alter runtime behavior except to fix a bug. Edit only this module and its test "
+        f"file. Do not run git or shell commands."
     )
 
 
