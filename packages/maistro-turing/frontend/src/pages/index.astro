@@ -1,0 +1,11 @@
+---
+import Base from "../layouts/Base.astro";
+import Dashboard from "../components/Dashboard.tsx";
+export const prerender = false;
+---
+
+<Base title="dashboard" active="dashboard">
+  <h1>live self-model</h1>
+  <div class="section-rule"></div>
+  <Dashboard client:load />
+</Base>
