@@ -257,6 +257,10 @@ def _evolve(args: argparse.Namespace) -> int:
         eval_batch_size=args.population,
         tournament_size=2,
         goal=args.goal,
+        # Keep breeding/mutation on the routable roster — otherwise a mutated
+        # model gene (e.g. gemini-2.5-flash from the generic registry) yields
+        # guaranteed-0 evals and spreads through the lineage.
+        allowed_models=models or [],
     )
 
     # The hyper-mutator's meta-LLM: a plain async text->text callable over the

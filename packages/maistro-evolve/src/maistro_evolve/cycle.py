@@ -62,6 +62,12 @@ class EvolutionConfig(BaseModel):
     # Operator context threaded into the hyper-mutator's meta-prompt.
     goal: str = ""
     user_preferences: str = ""
+    # The run's routable model roster. When set, breeding/mutation only assigns
+    # models from it — mutating a lineage onto a model the gateway can't serve is
+    # a guaranteed-0 evaluation whose dead gene then spreads (observed live: a
+    # drifted `gemini-2.5-flash` child burned evals on 429s two generations deep).
+    # Empty ⇒ the generic MODEL_REGISTRY (unit-test/offline behavior).
+    allowed_models: list[str] = []
 
 
 class EvolutionCycle:
@@ -169,7 +175,9 @@ class EvolutionCycle:
                 a = genome_map.get(parent_ids[i])
                 b = genome_map.get(parent_ids[i + 1] if i + 1 < len(parent_ids) else parent_ids[0])
                 if a and b:
-                    child = crossover_and_mutate(a, b, config.mutation_rate)
+                    child = crossover_and_mutate(
+                        a, b, config.mutation_rate, models=config.allowed_models or None
+                    )
                     population.add(child)
                     # Use force_assign: mutation chains rewrite parent_a_id, so
                     # assign() would fall back to round-robin and place the child
@@ -193,7 +201,9 @@ class EvolutionCycle:
                     pa = breeding_pool[0] if breeding_pool else None
                     pb = None
                 if pa and pb:
-                    child = crossover_and_mutate(pa, pb, config.mutation_rate)
+                    child = crossover_and_mutate(
+                        pa, pb, config.mutation_rate, models=config.allowed_models or None
+                    )
                     population.add(child)
                     island_pop.force_assign(child.id, island_id)
 

@@ -94,6 +94,10 @@ def crossover_and_mutate(
     parent_a: PipelineGenome,
     parent_b: PipelineGenome,
     mutation_rate: float = 0.3,
+    models: list[str] | None = None,
 ) -> PipelineGenome:
+    """``models`` constrains the child's model mutation to the run's routable
+    roster (see ``mutate_all``) — without it, breeding can drift a lineage onto
+    models the gateway can't serve."""
     child = crossover(parent_a, parent_b)
-    return mutate_all(child, mutation_rate)
+    return mutate_all(child, mutation_rate, models)

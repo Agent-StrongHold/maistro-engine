@@ -20,6 +20,12 @@ from .types import (
     PipelineGenome,
 )
 
+# Default model pool for mutation/seeding when the caller doesn't constrain one.
+# IMPORTANT: pass ``models=[...]`` (the run's actual routable roster, e.g.
+# EvolutionConfig.allowed_models) wherever possible — mutating a genome onto a
+# model the gateway can't serve is a guaranteed-0 evaluation, and the dead gene
+# then SPREADS through breeding/hyper-mutation (observed live: a mutated
+# `gemini-2.5-flash` child burned evals on 429s across two generations).
 MODEL_REGISTRY = [
     "cerebras-qwen-3-235b-a22b-2507",
     "gpt-4o",
@@ -48,7 +54,10 @@ def _new_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-def mutate_topology(genome: PipelineGenome, rate: float) -> PipelineGenome:
+def mutate_topology(
+    genome: PipelineGenome, rate: float, models: list[str] | None = None
+) -> PipelineGenome:
+    pool = models or MODEL_REGISTRY
     topo = deepcopy(genome.topology)
     if random.random() < rate and len(topo.nodes) > 1:
         removable = [n for n in topo.nodes if n.id != topo.entry_node]
@@ -64,7 +73,7 @@ def mutate_topology(genome: PipelineGenome, rate: float) -> PipelineGenome:
             id=_new_id(),
             role=random.choice(["worker", "scout", "drone"]),
             strategy=random.choice(STRATEGY_LIST),
-            model=random.choice(MODEL_REGISTRY),
+            model=random.choice(pool),
             temperature=round(random.uniform(0.0, 1.0), 2),
             max_tokens=random.choice([256, 512, 1024, 2048, 4096, 8192, 16384]),
             system_prompt="You are a helpful assistant.",
@@ -115,11 +124,14 @@ def mutate_topology(genome: PipelineGenome, rate: float) -> PipelineGenome:
     )
 
 
-def mutate_node(genome: PipelineGenome, rate: float) -> PipelineGenome:
+def mutate_node(
+    genome: PipelineGenome, rate: float, models: list[str] | None = None
+) -> PipelineGenome:
+    pool = models or MODEL_REGISTRY
     topo = deepcopy(genome.topology)
     for node in topo.nodes:
         if random.random() < rate:
-            node.model = random.choice(MODEL_REGISTRY)
+            node.model = random.choice(pool)
         if random.random() < rate:
             node.temperature = round(
                 max(0.0, min(1.0, node.temperature + random.gauss(0, 0.15))), 2
@@ -266,24 +278,29 @@ def mutate_fixer_genome(genome: PipelineGenome, rate: float) -> PipelineGenome:
     )
 
 
-def mutate_all(genome: PipelineGenome, rate: float) -> PipelineGenome:
+def mutate_all(
+    genome: PipelineGenome, rate: float, models: list[str] | None = None
+) -> PipelineGenome:
     """
     Apply all mutation operators to the genome in sequence.
 
-    This function sequentially applies topology, node, prompt, and evaluation weight
-    mutations to the input genome, each with the given mutation rate. The resulting
-    genome is a mutated version of the input, with a new name indicating that all
-    mutation types were applied.
+    This function sequentially applies topology, node, prompt, fixer-genome, and
+    evaluation weight mutations to the input genome, each with the given mutation
+    rate. The resulting genome is a mutated version of the input, with a new name
+    indicating that all mutation types were applied.
 
     Args:
         genome: The input pipeline genome to mutate.
         rate: The mutation rate (probability) for each individual mutation step.
+        models: Optional model pool constraint — the run's routable roster. When
+            given, model mutation/new nodes only draw from it (an unroutable
+            model is a guaranteed-0 evaluation whose gene spreads via breeding).
 
     Returns:
         A new PipelineGenome with all mutations applied.
     """
-    current = mutate_topology(genome, rate)
-    current = mutate_node(current, rate)
+    current = mutate_topology(genome, rate, models)
+    current = mutate_node(current, rate, models)
     current = mutate_prompt(current, rate)
     current = mutate_fixer_genome(current, rate)
     current = mutate_eval_weights(current, rate)
