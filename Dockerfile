@@ -1,5 +1,6 @@
-# maistro-engine API image — Chainguard/Wolfi (glibc, nonroot uid 65532, no
-# shell/pip, near-zero CVEs).
+# maistro-engine API image — Chainguard/Wolfi (glibc, nonroot uid 65532, low CVE).
+# Runtime uses the -dev variant so `git` can be apk-installed for the git tools;
+# this image is not vuln-gated, so that trade is free (see runtime stage below).
 #
 # The RESEARCH browser surface (browser-use + Playwright + Chromium) — previously
 # baked in here and "the single largest remaining CVE source" — has been split
@@ -30,9 +31,16 @@ RUN pip install --no-cache-dir \
       "openai>=1.40,<2" \
       "httpx>=0.27.0"
 
-# ─── thin Wolfi runtime: near-0-CVE base, nonroot, no shell/pip ───
-FROM cgr.dev/chainguard/python:latest
+# ─── Wolfi runtime (-dev variant): low-CVE, has apk so `git` is available ───
+# This image is NOT vuln-gated (only the hive-conductor image is trivy/grype
+# scanned), so the -dev variant's slightly larger surface has no gate cost. It
+# stays Wolfi (low-CVE) while providing the `git` binary the orchestrator's git
+# tools (maistro.tools.git — used by orchestrator/waves/fan_in.py) exec directly;
+# the previous distroless runtime shed git and broke those tools.
+FROM cgr.dev/chainguard/python:latest-dev
 WORKDIR /app
+USER root
+RUN apk add --no-cache git
 # /usr/local/bin is on PATH so the static docker CLI (copied below) is found when
 # the sandbox tool shells out to `docker run`.
 ENV PATH="/app/venv/bin:/usr/local/bin:$PATH" \
@@ -46,11 +54,13 @@ COPY alembic/ alembic/
 COPY alembic.ini .
 COPY pyproject.toml uv.lock README.md ./
 # Static docker CLI (talks to a mounted /var/run/docker.sock) — a single static
-# binary, no daemon; safe to copy onto the distroless base.
+# binary, no daemon.
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 EXPOSE 8000
 STOPSIGNAL SIGTERM
-# exec-form, stdlib healthcheck — no curl/shell in the image.
+# Drop back to the base image's nonroot uid for runtime (apk install needed root).
+USER 65532
+# exec-form, stdlib healthcheck — no curl in the image.
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD ["python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health/live', timeout=4).status==200 else 1)"]
 # Base image's ENTRYPOINT is `python`, so invoke uvicorn via `python -m`.
