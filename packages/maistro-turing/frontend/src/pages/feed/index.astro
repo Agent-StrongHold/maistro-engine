@@ -1,0 +1,15 @@
+---
+import Base from "../../layouts/Base.astro";
+import Feed from "../../components/Feed.tsx";
+export const prerender = false;
+---
+
+<Base title="feed" active="feed">
+  <h1>producer feed</h1>
+  <div class="section-rule"></div>
+  <p class="muted">
+    blog, reflection, curiosity, and emotion artifacts as they accumulate. each
+    links to its statically-rendered page.
+  </p>
+  <Feed client:load />
+</Base>

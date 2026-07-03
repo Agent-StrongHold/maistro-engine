@@ -32,11 +32,15 @@ import asyncio
 import json
 import subprocess
 import uuid
+from collections import Counter
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import structlog
 
+from maistro_evolve.improvement import BudgetTier, ImprovementKind
 from maistro_rsi.competitors import Competitor
 from maistro_rsi.merge import greedy_merge
 from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
@@ -44,10 +48,12 @@ from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
 logger = structlog.get_logger()
 
 _DEFAULT_OBJECTIVE = (
-    "Make exactly one small, safe, self-contained improvement to this codebase. "
-    "Good candidates: fix a clear bug, tighten a type, add a missing test, or "
-    "improve a confusing name or docstring. Read files before you edit them, "
-    "keep the diff minimal, and do not break existing behavior. "
+    "Make exactly one small, safe, self-contained improvement to this codebase, "
+    "in priority order: fix a real bug (test-first: add the failing test, then the "
+    "fix), add a focused unit test for currently-untested behavior, strengthen a "
+    "weak test assertion — and only if the code is already well-tested, improve a "
+    "type hint or docstring. Read files before you edit them, keep the diff "
+    "minimal, and do not break existing behavior. "
     "Use only the read_file, write_file and search tools — do NOT run git, "
     "commit, or shell commands: the harness stages, commits, and runs the tests "
     "for you after you finish. If you cannot find a safe improvement, make no "
@@ -60,17 +66,22 @@ def _targeted_objective(path: str) -> str:
 
     Naming the file removes the discovery step that weak models fail at (they
     can't reliably search for a target), so each cycle is a concrete, bounded
-    edit of a known file.
+    edit of a known file. Test-first by default: substantive verification work
+    (a new test, a stronger assertion, a bug-fix) outranks docstring/type
+    polish, which is a fallback only — mirroring the fitness signals
+    (new_test/coverage-delta reward, doc-regression veto).
     """
     return (
-        f"Improve the file `{path}` in this repository. Make one small, safe, "
-        f"self-contained improvement: clarify or add a module- or function-level "
-        f"docstring, tighten a type hint, or fix an obvious minor issue. First read "
-        f"`{path}` with the read_file tool, then make the change with the edit_file "
-        f"tool (a targeted exact-string replacement) — do NOT rewrite the whole file "
-        f"with write_file, and do not reformat or touch lines unrelated to your change. "
-        f"Keep the edit minimal and do not alter runtime behavior. Use only read_file "
-        f"and edit_file — do not run git or shell commands."
+        f"Improve the module `{path}`, in priority order: (1) add ONE focused unit test for "
+        f"currently-untested behavior in it — create or extend its test file — and make sure it "
+        f"passes; (2) fix a real bug if you find one, test-first (add the failing test, then the "
+        f"fix); (3) strengthen a test assertion that checks too little. Only if the module is "
+        f"already well-tested and correct, improve a type hint or docstring instead. First read "
+        f"`{path}` with the read_file tool; use edit_file for targeted exact-string changes and "
+        f"write_file only to create a new test file — do NOT rewrite existing files wholesale, "
+        f"and do not reformat or touch lines unrelated to your change. Keep the diff minimal and "
+        f"do not alter runtime behavior except to fix a bug. Edit only this module and its test "
+        f"file. Do not run git or shell commands."
     )
 
 
@@ -138,6 +149,43 @@ def _scouted_objective(path: str, instruction: str) -> str:
         f"change with the edit_file tool (a targeted exact-string replacement) — do NOT rewrite "
         f"the whole file, do not reformat unrelated lines, and do not alter runtime behavior. "
         f"Use only read_file and edit_file — do not run git or shell commands."
+    )
+
+
+def _guess_test_path(target: str) -> str:
+    """Best-effort test file for a source path: ``.../pkg/src/mod.py`` →
+    ``.../pkg/tests/test_mod.py``. Used to show the scout the module's existing
+    tests so it can reason about weak assertions / missing cases."""
+    t = target.replace("\\", "/")
+    stem = t.rsplit("/", 1)[-1]
+    name = stem[:-3] if stem.endswith(".py") else stem
+    if "/src/" in t:
+        pkg_root = t.split("/src/", 1)[0]
+        return f"{pkg_root}/tests/test_{name}.py"
+    return f"tests/test_{name}.py"
+
+
+def _fixer_objective(path: str, kind: ImprovementKind, instruction: str) -> str:
+    """The tiered base-fixer scaffold: implement one scout item, with rules keyed
+    to its kind. FEATURE (v2.0) work is allowed to be ambitious and multi-file;
+    everything else is a bounded, test-first, single-module change. This is the
+    fixed task contract — the evolvable strategy layer is the genome's prompt."""
+    if kind is ImprovementKind.FEATURE:
+        return (
+            f"Implement this enhancement to the `{path}` module:\n  {instruction}\n"
+            "This is a substantial, ambitious change — design the improved capability or API and "
+            "implement it across the files it needs. Prove it with NEW tests written first that "
+            "specify the new behavior, and keep all existing tests green; preserve backward "
+            "compatibility unless the enhancement explicitly supersedes it. Use read_file, "
+            "edit_file and write_file across the files involved. Do not run git or shell commands."
+        )
+    return (
+        f"Implement this specific improvement to `{path}`:\n  {instruction}\n"
+        "Work test-first: add or extend the test for this module (create or extend its test file) "
+        "so it fails against the current code, then change the code until it passes. Keep the diff "
+        "minimal and focused on this one item — do not reformat or touch unrelated lines, and all "
+        "existing tests must stay green. Edit only this module and its test file, using read_file, "
+        "edit_file and write_file. Do not run git or shell commands."
     )
 
 
@@ -220,6 +268,8 @@ def make_builders_apply_patch(
     *,
     model: str | None = None,
     temperature: float | None = None,
+    reasoning_effort: str | None = None,
+    system_prompt: str | None = None,
     max_agent_turns: int = 6,
     isolation: str = "local",
     image: str = "maistro-builders:latest",
@@ -247,10 +297,23 @@ def make_builders_apply_patch(
 
         config = AgentLoopConfig(model=model) if model else AgentLoopConfig()
         runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
-        runner.set_llm(ResponsesAPICallable(model=model, temperature=temperature))
+        # 300s timeout: the code group load-balances across reasoning deployments
+        # (gpt-oss-120b on Cerebras at 5 RPM) whose queueing + long generations
+        # overran the default 120s in a live run (httpx.ReadTimeout).
+        runner.set_llm(
+            ResponsesAPICallable(
+                model=model,
+                temperature=temperature,
+                reasoning_effort=reasoning_effort,
+                timeout=300.0,
+            )
+        )
 
+        # The genome's evolvable strategy prompt (when supplied) becomes the system
+        # message; otherwise the builders default. The task (objective) is the user
+        # message either way, so mutation tunes *approach*, not the task contract.
         messages: list[dict[str, object]] = [
-            {"role": "system", "content": config.system_prompt},
+            {"role": "system", "content": system_prompt or config.system_prompt},
             {"role": "user", "content": objective},
         ]
         for turn in range(max_agent_turns):
@@ -312,6 +375,9 @@ class LocalRsiConfig:
     targets: list[str] = field(default_factory=list)
     model: str | None = None
     agent_turns_per_cycle: int = 6
+    # Larger turn budget for a FEATURE (v2.0) slot — ambitious, multi-file work
+    # (ImprovementKind.FEATURE unlocks it; bounded kinds use agent_turns_per_cycle).
+    feature_agent_turns: int = 15
     # "local" (host worktree) or "container" (ADR-093 Docker isolation).
     isolation: str = "local"
     sandbox_image: str = "maistro-builders:latest"
@@ -341,6 +407,17 @@ class LocalRsiConfig:
     # exported here as a git-am-able patch plus a manifest.json, for the harvester
     # to open PRs grouped by file. This is the durable output of an isolated run.
     export_patches: str | None = None
+    # Checkpointing for long runs. Every ``report_every`` cycles (0 = only at the
+    # end), write a progress report (markdown + JSON) into ``report_dir`` and
+    # refresh a rolling, harvestable patch export of everything promoted so far.
+    # The baseline keeps ratcheting forward across the whole run — a checkpoint is
+    # an observation point, not a reset — so each report covers cumulative
+    # progress and the export always holds the complete promotion set to date
+    # (recoverable if a long run is interrupted). Point ``report_dir`` at a path
+    # OUTSIDE the edited workspace (e.g. a host-mounted dir) to get reports out of
+    # an isolated run without exposing them to the agent.
+    report_every: int = 0
+    report_dir: str | None = None
 
 
 @dataclass
@@ -395,6 +472,81 @@ class LocalRsiResult:
         return "\n".join(lines)
 
 
+def build_checkpoint_report(
+    cycles: list[CycleOutcome],
+    *,
+    total_planned: int,
+    baseline_dir: str,
+    window: int,
+    label: str = "",
+) -> tuple[str, dict[str, Any]]:
+    """Render a progress report over ``cycles`` run so far — cumulative totals
+    plus a detail of the most recent ``window`` cycles. Pure: derived entirely
+    from the outcome list, so it's testable without git or an agent.
+
+    Returns ``(markdown, machine_json)``. ``label`` distinguishes an interim
+    checkpoint ("cycle 5") from the "final" report in headings.
+    """
+    done = len(cycles)
+    promoted = [c for c in cycles if c.promoted]
+    per_file = Counter(c.target for c in promoted if c.target)
+    # Every promoted cycle counts — 0.0 is a valid promoted composite (a
+    # non-fitness run defaults to 0.0, and an accepted scorecard can compose to
+    # 0.0), so filtering truthy values would overstate the average.
+    composites = [c.composite for c in promoted]
+    avg_composite = round(sum(composites) / len(composites), 3) if composites else 0.0
+    recent = cycles[-window:] if window > 0 else cycles
+    heading = label or (f"cycle {done}" if done else "start")
+
+    data: dict[str, Any] = {
+        "checkpoint": heading,
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "cycles_run": done,
+        "cycles_planned": total_planned,
+        "promotions": len(promoted),
+        "promotion_rate": round(len(promoted) / done, 3) if done else 0.0,
+        "avg_composite": avg_composite,
+        "files_improved": dict(per_file),
+        "baseline_dir": baseline_dir,
+        "recent": [
+            {
+                "index": c.index,
+                "target": c.target,
+                "promoted": c.promoted,
+                "changed": c.changed,
+                "tests_passed": c.tests_passed,
+                "files_touched": c.files_touched,
+                "composite": c.composite,
+                "note": c.note,
+            }
+            for c in recent
+        ],
+    }
+
+    lines = [
+        f"# RSI checkpoint — {heading} / {total_planned} planned",
+        "",
+        f"_generated {data['generated_at']}_",
+        "",
+        "## Cumulative",
+        f"- Cycles run: **{done} / {total_planned}**",
+        f"- Promotions: **{len(promoted)}** ({data['promotion_rate']:.0%} of cycles run)",
+        f"- Distinct files improved: **{len(per_file)}**",
+        f"- Avg composite (promoted): **{avg_composite}**",
+        f"- Baseline: `{baseline_dir}` — {len(promoted)} promotions deep",
+    ]
+    if per_file:
+        lines += ["", "## Per-file promotions"]
+        lines += [f"- `{f}`: {n}" for f, n in per_file.most_common()]
+    lines += ["", f"## Recent window (last {len(recent)} cycle(s))"]
+    for c in recent:
+        mark = "promoted" if c.promoted else ("no change" if not c.changed else "rejected")
+        detail = f"composite={c.composite}" if c.promoted else c.note or ""
+        tgt = f" {c.target}" if c.target else ""
+        lines.append(f"- cycle {c.index}:{tgt} — **{mark}** {detail}".rstrip())
+    return "\n".join(lines) + "\n", data
+
+
 class LocalRsiLoop:
     """Run up to ``max_cycles`` self-improvement cycles against a throwaway clone.
 
@@ -433,46 +585,66 @@ class LocalRsiLoop:
         target = self._target_for_cycle(index)
         return _targeted_objective(target) if target else self._config.objective
 
-    def _shared_objective(self, index: int) -> str:
-        """The objective every competitor implements this cycle.
+    def _cycle_slots(self, index: int) -> list[tuple[str, BudgetTier]]:
+        """The (objective, budget) slots competitors fill this cycle.
 
-        With ``scout`` on, one model reads the target file and names a concrete
-        improvement, so the head-to-head is fair (competitors differ in *how*
-        they fix it, not *what*). Otherwise the standard targeted/generic
-        objective is used. A silent scout falls back to that objective.
+        With ``scout`` on, the scout reads the target's source + existing tests and
+        returns a ranked shortlist of typed improvements; each becomes a slot whose
+        objective is the tiered fixer scaffold and whose budget is set by its kind
+        (FEATURE unlocks the big budget). Competitors spread across the slots
+        (complementary) and, over runs, collide on hot ones (competitive). Without
+        scout — or on a silent/garbled scout — a single bounded slot carries the
+        classic targeted/generic objective so a cycle never stalls.
         """
         target = self._target_for_cycle(index)
-        base = self._objective_for_cycle(index)
+        fallback = [(self._objective_for_cycle(index), BudgetTier.BOUNDED)]
         if not (self._config.scout and target):
-            return base
+            return fallback
         try:
             source = (self._baseline / target).read_text(encoding="utf-8")
         except OSError:
-            return base
+            return fallback
+        try:
+            tests = (self._baseline / _guess_test_path(target)).read_text(encoding="utf-8")
+        except OSError:
+            tests = ""
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
-        from maistro_rsi.scout import scout_objective
+        from maistro_rsi.scout import scout_shortlist
 
         llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
-        instruction = scout_objective(source, llm, fallback="")
-        if not instruction:
-            return base
-        logger.info("rsi_local_scout", index=index, target=target, instruction=instruction[:200])
-        return _scouted_objective(target, instruction)
+        items = scout_shortlist(source, tests, "", llm, max_items=3)
+        if not items:
+            return fallback
+        logger.info(
+            "rsi_local_scout",
+            index=index,
+            target=target,
+            items=[{"kind": it.kind.value, "instruction": it.instruction[:120]} for it in items],
+        )
+        return [(_fixer_objective(target, it.kind, it.instruction), it.kind.budget) for it in items]
 
     def _competitors(self) -> list[Competitor]:
         # Empty roster ⇒ a single attempt with the configured model (classic cycle).
         return self._config.competitors or [Competitor(model=self._config.model or "")]
 
-    def _apply_for_competitor(self, competitor: Competitor, objective: str) -> ApplyPatchFn:
+    def _apply_for_competitor(
+        self, competitor: Competitor, objective: str, budget: BudgetTier = BudgetTier.BOUNDED
+    ) -> ApplyPatchFn:
         # An injected callable (tests) wins; otherwise build a builders provider
-        # carrying this competitor's model + temperature and the shared objective.
+        # carrying this competitor's model + temperature and the slot's objective.
+        # A FEATURE (v2.0) slot unlocks a larger turn budget for ambitious work.
         if self._injected_apply is not None:
             return self._injected_apply
+        turns = self._config.agent_turns_per_cycle
+        if budget is BudgetTier.UNLOCKED:
+            turns = max(turns, self._config.feature_agent_turns)
         return make_builders_apply_patch(
             objective,
             model=competitor.model or self._config.model,
             temperature=competitor.temperature,
-            max_agent_turns=self._config.agent_turns_per_cycle,
+            reasoning_effort=competitor.reasoning_effort,
+            system_prompt=competitor.prompt,
+            max_agent_turns=turns,
             isolation=self._config.isolation,
             image=self._config.sandbox_image,
         )
@@ -499,7 +671,12 @@ class LocalRsiLoop:
         )
 
     def _run_variant(
-        self, index: int, seq: int, competitor: Competitor, objective: str
+        self,
+        index: int,
+        seq: int,
+        competitor: Competitor,
+        objective: str,
+        budget: BudgetTier = BudgetTier.BOUNDED,
     ) -> _VariantResult:
         """Run one competitor in its own worktree off the baseline and score it.
 
@@ -521,7 +698,7 @@ class LocalRsiLoop:
         )
         r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label)
         try:
-            apply_fn = self._apply_for_competitor(competitor, objective)
+            apply_fn = self._apply_for_competitor(competitor, objective, budget)
             asyncio.run(apply_fn(LocalSandbox(cdir), str(cdir)))
             _git(cdir, "add", "-A")
             r.changed_files = self._changed_files(cdir)
@@ -572,13 +749,16 @@ class LocalRsiLoop:
 
     def _run_cycle(self, index: int) -> CycleOutcome:
         target = self._target_for_cycle(index)
-        objective = self._shared_objective(index)
+        slots = self._cycle_slots(index)
         competitors = self._competitors()
         variants: list[_VariantResult] = []
         created: list[tuple[str, Path]] = []
         try:
             for seq, comp in enumerate(competitors, 1):
-                r = self._run_variant(index, seq, comp, objective)
+                # Spread competitors across the scout's shortlist slots; with more
+                # competitors than slots they double up (competitive on one item).
+                objective, budget = slots[(seq - 1) % len(slots)]
+                r = self._run_variant(index, seq, comp, objective, budget)
                 variants.append(r)
                 created.append((r.branch, r.cycle_dir))
 
@@ -753,19 +933,78 @@ class LocalRsiLoop:
                     index, changed=False, tests_passed=False, promoted=False, note=f"error: {exc}"
                 )
             result.cycles.append(outcome)
+            # Interim checkpoint every N cycles: a progress report + a refreshed
+            # export of everything promoted so far. The baseline is not touched —
+            # the loop keeps ratcheting from here.
+            if (
+                self._config.report_dir
+                and self._config.report_every
+                and index % self._config.report_every == 0
+                and index != self._config.max_cycles
+            ):
+                self._write_checkpoint(result, label=f"cycle {index}")
         logger.info(
             "rsi_local_loop_complete", promotions=result.promotions, cycles=len(result.cycles)
         )
+        # A final report always closes out a reported run (captures the last,
+        # possibly-partial window).
+        if self._config.report_dir:
+            self._write_checkpoint(result, label="final")
         if self._config.export_patches and result.promotions:
             n = self.export_promotions(Path(self._config.export_patches))
             logger.info("rsi_local_exported", patches=n, dest=self._config.export_patches)
         return result
 
-    def export_promotions(self, dest: Path) -> int:
+    def _write_checkpoint(self, result: LocalRsiResult, *, label: str) -> None:
+        """Write a progress report (markdown + JSON) and refresh the rolling,
+        complete patch export under ``report_dir``.
+
+        Never raises: a checkpoint is observability for a long run, so a reporting
+        hiccup must never abort the loop that is producing real promotions.
+        """
+        try:
+            report_dir = Path(self._config.report_dir or ".")
+            report_dir.mkdir(parents=True, exist_ok=True)
+            md, data = build_checkpoint_report(
+                result.cycles,
+                total_planned=self._config.max_cycles,
+                baseline_dir=str(self._baseline),
+                window=self._config.report_every or len(result.cycles),
+                label=label,
+            )
+            slug = label.replace(" ", "-")
+            (report_dir / f"checkpoint-{slug}.md").write_text(md, encoding="utf-8")
+            (report_dir / f"checkpoint-{slug}.json").write_text(
+                json.dumps(data, indent=2), encoding="utf-8"
+            )
+            # Refresh a rolling, COMPLETE export of everything promoted so far, so
+            # an interrupted long run stays harvestable from its last checkpoint.
+            # Always clear+rewrite — even at zero promotions — so a reused report
+            # dir can't leave stale patches/manifest that `harvest` would apply.
+            self.export_promotions(report_dir / "export", clear=True)
+            logger.info(
+                "rsi_local_checkpoint",
+                label=label,
+                cycles=len(result.cycles),
+                promotions=result.promotions,
+                dir=str(report_dir),
+            )
+        except Exception as exc:
+            logger.warning("rsi_local_checkpoint_error", label=label, error=str(exc))
+
+    def export_promotions(self, dest: Path, *, clear: bool = False) -> int:
         """Export each promotion commit (start_ref..baseline) as a git-am-able
         patch plus a manifest.json mapping patch -> edited file, for the harvester
-        to open PRs grouped by file. Returns the number of patches written."""
+        to open PRs grouped by file. Returns the number of patches written.
+
+        ``clear`` first removes any stale ``*.patch``/manifest from a prior write,
+        so a rolling checkpoint export always reflects exactly the current set.
+        """
         dest.mkdir(parents=True, exist_ok=True)
+        if clear:
+            for stale in dest.glob("*.patch"):
+                stale.unlink()
+            (dest / "manifest.json").unlink(missing_ok=True)
         rng = f"{self._start_ref}..{self._config.baseline_branch}"
         revs = _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
         manifest: list[dict[str, str]] = []

@@ -249,12 +249,22 @@ class LiteLLMCallable:
     """
 
     def __init__(
-        self, model: str | None = None, timeout: float = 120.0, temperature: float | None = None
+        self,
+        model: str | None = None,
+        timeout: float = 120.0,
+        temperature: float | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.model = model or _default_model()
         self.timeout = timeout
         # A competing genome's sampling temperature; None = provider default.
         self.temperature = temperature
+        # Reasoning-model effort level ("low"/"medium"/"high"), the
+        # temperature/top_p/top_k/(partial)max_tokens replacement on o-series,
+        # GPT-5, Gemini-2.5-thinking, DeepSeek-R1, etc. Reasoning models reject an
+        # explicit temperature outright, so __call__ sends one or the other, never
+        # both — this takes priority when set.
+        self.reasoning_effort = reasoning_effort
 
     def _is_configured(self) -> bool:
         return bool(_base_url() and _api_key())
@@ -282,9 +292,13 @@ class LiteLLMCallable:
             "messages": _to_openai_messages(messages),
             "max_tokens": max_tokens,
         }
-        # Only send temperature when set, so competing genome configs vary while
-        # the default (no-temperature) path stays byte-identical to before.
-        if self.temperature is not None:
+        # reasoning_effort and temperature are mutually exclusive on reasoning
+        # models (sending both 400s), so prefer reasoning_effort when set and
+        # never send temperature alongside it. Neither set ⇒ provider default,
+        # keeping the byte-identical default path for existing callers.
+        if self.reasoning_effort is not None:
+            body["reasoning_effort"] = self.reasoning_effort
+        elif self.temperature is not None:
             body["temperature"] = self.temperature
         if tools:
             # LiteLLM forwards OpenAI-format tool definitions to every provider

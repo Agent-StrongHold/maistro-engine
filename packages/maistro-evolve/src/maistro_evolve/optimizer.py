@@ -34,6 +34,22 @@ async def optimize_topology(
     signal: dict[str, Any],
     llm_call: Any = None,
 ) -> dict[str, Any]:
+    """
+    Optimize the topology of a pipeline genome based on evaluation signals.
+
+    This function generates suggestions for improving the pipeline topology,
+    either by leveraging an LLM call or falling back to a heuristic approach.
+
+    Args:
+        genome: The pipeline genome containing the current topology to optimize.
+        signal: A dictionary containing evaluation signals such as the weakest benchmark,
+            score, and suggestions for improvement.
+        llm_call: An optional async function to call an LLM for generating optimization
+            suggestions. If not provided, a heuristic suggestion is returned.
+
+    Returns:
+        A dictionary containing the optimization suggestion and its source (either "llm" or "heuristic").
+    """
     meta_prompt = (
         f"You are an expert at optimizing AI agent pipeline topologies.\n"
         f"The pipeline scored {signal.get('score', 0):.3f} on {signal.get('weakest_benchmark', 'unknown')}.\n"

@@ -109,6 +109,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "(the durable output of an isolated run; feed to `maistro_rsi harvest`).",
     )
     run.add_argument(
+        "--report-every",
+        type=int,
+        default=0,
+        help="Emit a progress report + refreshed patch export every N cycles "
+        "(0 = only a final report). The baseline keeps ratcheting — a checkpoint "
+        "is an observation point, not a reset.",
+    )
+    run.add_argument(
+        "--report-dir",
+        default=None,
+        help="Where to write checkpoint reports (checkpoint-*.md/.json) and the "
+        "rolling export/. Point this OUTSIDE the edited repo (e.g. a host-mounted "
+        "dir) to get reports out of an isolated run.",
+    )
+    run.add_argument(
         "--work-root",
         default=None,
         help="Where to put throwaway clones/worktrees (default: a temp dir).",
@@ -150,6 +165,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Push branches and open PRs via gh (default: dry-run — build branches locally only).",
     )
+    harvest.add_argument(
+        "--skip-doc-regressions",
+        action="store_true",
+        help="Drop any promotion that only made an existing docstring vaguer (older runs "
+        "predate the no_doc_regression fitness veto), so a harvest keeps the genuinely-new "
+        "docstrings but not the specificity regressions.",
+    )
 
     evolve = sub.add_parser(
         "evolve",
@@ -175,6 +197,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--db", default=None, help="PopulationStore path (persists lineage; default: in-memory)."
     )
     evolve.add_argument("--work-root", default=None)
+    evolve.add_argument(
+        "--goal",
+        default="",
+        help="Operator goal threaded into the hyper-mutator's meta-prompt "
+        "(guides what the fixer population evolves toward).",
+    )
+    evolve.add_argument(
+        "--mutator-model",
+        default=None,
+        help="Gateway alias for the hyper-mutator's meta-prompts (default: the "
+        "first --models entry). Without a reachable gateway the hyper-mutator "
+        "simply proposes nothing.",
+    )
     return parser
 
 
@@ -221,12 +256,34 @@ def _evolve(args: argparse.Namespace) -> int:
         population_size=args.population,
         eval_batch_size=args.population,
         tournament_size=2,
+        goal=args.goal,
+        # Keep breeding/mutation on the routable roster — otherwise a mutated
+        # model gene (e.g. gemini-2.5-flash from the generic registry) yields
+        # guaranteed-0 evals and spreads through the lineage.
+        allowed_models=models or [],
     )
+
+    # The hyper-mutator's meta-LLM: a plain async text->text callable over the
+    # gateway. Unconfigured gateway ⇒ stub text ⇒ proposals parse to nothing —
+    # evolution still runs, just without guided mutation.
+    llm_call = None
+    mutator_model = args.mutator_model or (models[0] if models else None)
+    if mutator_model:
+        from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
+
+        callable_ = ResponsesAPICallable(model=mutator_model, timeout=300.0)
+
+        async def llm_call(prompt: str) -> str:
+            result = await asyncio.to_thread(callable_, [{"role": "user", "content": prompt}])
+            content = result.get("content", "") if isinstance(result, dict) else result
+            return content if isinstance(content, str) else str(content)
+
     print(
         f"RSI evolve -> {args.population} genomes x {args.cycles} cycle(s) on {args.target} "
-        f"(models={models or 'evolve defaults (not routable!)'})"
+        f"(models={models or 'evolve defaults (not routable!)'}, "
+        f"hyper-mutator={mutator_model or 'off'})"
     )
-    asyncio.run(run_evolution(store, harness, args.cycles, config=cfg))
+    asyncio.run(run_evolution(store, harness, args.cycles, config=cfg, llm_call=llm_call))
 
     genomes = store.list_all()
     print(f"\nEvolution complete: {len(genomes)} genomes")
@@ -243,11 +300,12 @@ def _evolve(args: argparse.Namespace) -> int:
     return 0
 
 
-def _harvest(args: argparse.Namespace) -> int:
+def _harvest(args: argparse.Namespace) -> int:  # noqa: C901  clone/repo setup + am/skip/PR loop
     import subprocess
     import tempfile
     from datetime import UTC, datetime
 
+    from maistro_evolve.doc_regression import doc_regressions
     from maistro_rsi.harvest import branch_slug, group_by_file, load_manifest, pr_body, pr_title
 
     export = Path(args.export_dir)
@@ -303,14 +361,43 @@ def _harvest(args: argparse.Namespace) -> int:
 
     # base is set above for --clone-url; for --repo-dir default to its current branch.
     base = base or git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+
+    def _regresses_docs(rel: str) -> bool:
+        # Compare the file just committed (HEAD) against its parent (HEAD~1).
+        if not rel.endswith(".py"):
+            return False
+        before = git("show", f"HEAD~1:{rel}", check=False)
+        after = git("show", f"HEAD:{rel}", check=False)
+        if before.returncode != 0 or after.returncode != 0:
+            return False
+        return bool(doc_regressions(before.stdout, after.stdout))
+
     opened = 0
+    skipped = 0
+    unappliable = 0
     for file, group in groups.items():
         branch = branch_slug(file, session)
         git("checkout", "-B", branch, base)
+        kept_patches = []
         for patch in group:
-            git("am", "--3way", str((export / patch.patch_file).resolve()))
+            # A patch from an older run may no longer apply once the base has
+            # moved past it (even with --3way). Skip it and keep harvesting —
+            # one stale patch must not sink the rest of the run's promotions.
+            am = git("am", "--3way", str((export / patch.patch_file).resolve()), check=False)
+            if am.returncode != 0:
+                git("am", "--abort", check=False)
+                unappliable += 1
+                continue
+            if args.skip_doc_regressions and _regresses_docs(file):
+                git("reset", "--hard", "HEAD~1")  # drop the doc-specificity regression
+                skipped += 1
+                continue
+            kept_patches.append(patch)
+        if not kept_patches:
+            print(f"[skipped] {branch}  <- {file}  (0 of {len(group)} promotion(s) kept)")
+            continue
         action = "pushed + PR" if args.push else "built (dry-run)"
-        print(f"[{action}] {branch}  <- {file}  ({len(group)} commit(s))")
+        print(f"[{action}] {branch}  <- {file}  ({len(kept_patches)} commit(s))")
         if args.push:
             git("push", "-u", "origin", branch, "--force-with-lease")
             subprocess.run(
@@ -323,16 +410,19 @@ def _harvest(args: argparse.Namespace) -> int:
                     "--head",
                     branch,
                     "--title",
-                    pr_title(file, group),
+                    pr_title(file, kept_patches),
                     "--body",
-                    pr_body(file, group),
+                    pr_body(file, kept_patches),
                 ],
                 cwd=repo,
                 check=True,
             )
             opened += 1
     git("checkout", base, check=False)
-    print(f"\nharvest: {len(groups)} file group(s), {opened} PR(s) opened")
+    tail = f", {skipped} doc-regression(s) dropped" if skipped else ""
+    if unappliable:
+        tail += f", {unappliable} stale patch(es) no longer apply"
+    print(f"\nharvest: {len(groups)} file group(s), {opened} PR(s) opened{tail}")
     return 0
 
 
@@ -366,6 +456,8 @@ def main(argv: list[str] | None = None) -> int:
             scout=args.scout,
             scout_model=args.scout_model,
             export_patches=args.export_patches,
+            report_every=args.report_every,
+            report_dir=args.report_dir,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"

@@ -1,0 +1,38 @@
+---
+import Base from "../../layouts/Base.astro";
+
+// SSR, not SSG: fetched live at request time so an artifact published after the
+// last frontend build still has a working detail page (the Feed list links here
+// for every live artifact, not just ones present in the build-time collection).
+export const prerender = false;
+
+const { id } = Astro.params;
+const base = import.meta.env.PUBLIC_TURING_API ?? "http://localhost:8120";
+
+let artifact: { kind: string; title: string; created_at: string; body: string } | null = null;
+try {
+  const res = await fetch(`${base}/v1/feed/${id}`, {
+    headers: Astro.request.headers.has("cookie")
+      ? { cookie: Astro.request.headers.get("cookie")! }
+      : {},
+  });
+  if (res.ok) artifact = await res.json();
+} catch {
+  artifact = null;
+}
+
+if (artifact === null) {
+  return Astro.redirect("/feed", 302);
+}
+---
+
+<Base title={artifact.title} active="feed">
+  <span class="kind-tag">{artifact.kind}</span>
+  <h1 style="margin-top:0.75rem">{artifact.title}</h1>
+  <p class="muted" style="font-family:var(--mono);font-size:0.78rem">
+    {new Date(artifact.created_at).toLocaleString()}
+  </p>
+  <div class="section-rule"></div>
+  <article class="card" style="white-space:pre-wrap">{artifact.body}</article>
+  <p><a href="/feed">← back to feed</a></p>
+</Base>

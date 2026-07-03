@@ -21,6 +21,7 @@ from pathlib import Path
 from maistro_evolve.assertion_strength import score_assertions
 from maistro_evolve.code_quality import score_path
 from maistro_evolve.coverage_gate import coverage_gate, coverage_signal, measure_coverage
+from maistro_evolve.doc_regression import doc_regressions
 from maistro_evolve.scorecard import (
     FitnessWeights,
     GateResult,
@@ -29,10 +30,14 @@ from maistro_evolve.scorecard import (
     SignalScore,
     architecture_fit_signal,
     capability_signal,
+    judge_signal,
+    perf_signal,
 )
 from maistro_evolve.tdd_gate import (
     TddEvidence,
     changed_test_paths,
+    count_net_new_tests,
+    new_test_signal,
     red_green_signal,
     run_test_selection,
 )
@@ -58,6 +63,16 @@ class FitnessInputs:
     lint_gates: list[GateResult] = field(default_factory=list)
     capability: tuple[float, float] | None = None
     architecture_fit: object | None = None
+    # Net-new ``test_*`` functions added by the candidate (drives the presence-
+    # gated ``new_test`` signal together with the coverage delta).
+    net_new_tests: int = 0
+    # Symbols whose docstring lost material specificity — any entry vetoes.
+    doc_regression_reasons: list[str] = field(default_factory=list)
+    # LLM impact judge for a FEATURE/v2.0 change: (score 0..1, rationale). Injected
+    # only when a judge gateway is available; absent otherwise.
+    feature_judge: tuple[float, str] | None = None
+    # Wall-clock timing for a PERF change: (baseline_seconds, candidate_seconds).
+    perf: tuple[float, float] | None = None
 
 
 def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None) -> Scorecard:
@@ -70,9 +85,30 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
             inp.test_reason or ("ok" if inp.tests_passed else "failed"),
         ),
         coverage_gate(inp.baseline_coverage, inp.candidate_coverage),
+        GateResult(
+            "no_doc_regression",
+            not inp.doc_regression_reasons,
+            "; ".join(inp.doc_regression_reasons) or "no docstring made vaguer",
+        ),
         *inp.lint_gates,
     ]
     scores: list[SignalScore] = [red_green_signal(inp.tdd, w.red_green)]
+    cov_delta = (
+        inp.candidate_coverage - inp.baseline_coverage
+        if inp.candidate_coverage is not None and inp.baseline_coverage is not None
+        else None
+    )
+    nt = new_test_signal(inp.net_new_tests, cov_delta, w.new_test)
+    if nt is not None:
+        scores.append(nt)
+    if inp.feature_judge is not None:
+        scores.append(
+            judge_signal(
+                "feature_judge", inp.feature_judge[0], w.feature_judge, inp.feature_judge[1]
+            )
+        )
+    if inp.perf is not None:
+        scores.append(perf_signal(inp.perf[0], inp.perf[1], w.perf))
     if inp.capability is not None:
         scores.append(capability_signal(inp.capability[0], inp.capability[1], w.capability))
     if inp.assertion_score is not None:
@@ -199,6 +235,28 @@ def _mean_quality(cwd: Path, src_files: list[str]) -> tuple[float | None, str]:
     return round(mean, 4), f"mean code-quality over {len(composites)} changed source file(s)"
 
 
+def _doc_regressions(cwd: Path, baseline_ref: str, src_files: list[str]) -> list[str]:
+    """Per changed source file, compare its docstrings against ``baseline_ref`` and
+    collect any that lost material specificity (see ``doc_regression``). A file
+    absent on baseline (all-new) has no baseline docstrings, so never regresses."""
+    reasons: list[str] = []
+    for rel in src_files:
+        try:
+            candidate = (cwd / rel).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        base = subprocess.run(
+            ["git", "show", f"{baseline_ref}:{rel}"],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+        )
+        if base.returncode != 0:
+            continue
+        reasons += [f"{rel}::{r}" for r in doc_regressions(base.stdout, candidate)]
+    return reasons
+
+
 def _mean_assertion(cwd: Path, test_files: list[str]) -> tuple[float | None, str]:
     scores = []
     for f in test_files:
@@ -261,9 +319,16 @@ def evaluate_candidate(
     tdd: TddEvidence | None = None,
     capability: tuple[float, float] | None = None,
     architecture_fit: object | None = None,
+    feature_judge: tuple[float, str] | None = None,
+    perf: tuple[float, float] | None = None,
     timeout: int = 900,
 ) -> Scorecard:
-    """Run the local signals for a candidate and compose the Scorecard."""
+    """Run the local signals for a candidate and compose the Scorecard.
+
+    ``feature_judge`` (score, rationale) and ``perf`` (baseline_s, candidate_s) are
+    injected by callers that have a judge gateway / timing harness; without them
+    those signals are simply absent (composite renormalises over present signals).
+    """
     cwd = Path(candidate_dir)
     src = [f for f in changed_files if f.endswith(".py") and not _is_test(f)]
     tests = changed_test_paths(changed_files)
@@ -278,6 +343,8 @@ def evaluate_candidate(
             if baseline_ref
             else TddEvidence(changed_tests=tests)
         )
+    net_new = count_net_new_tests(cwd, baseline_ref, tests) if (baseline_ref and tests) else 0
+    doc_reasons = _doc_regressions(cwd, baseline_ref, src) if baseline_ref else []
 
     inputs = FitnessInputs(
         tests_passed=tests_passed,
@@ -292,5 +359,9 @@ def evaluate_candidate(
         lint_gates=_lint_gates(cwd, src),
         capability=capability,
         architecture_fit=architecture_fit,
+        net_new_tests=net_new,
+        doc_regression_reasons=doc_reasons,
+        feature_judge=feature_judge,
+        perf=perf,
     )
     return compose_scorecard(inputs, weights)
