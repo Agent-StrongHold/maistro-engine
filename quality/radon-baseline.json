@@ -303,16 +303,6 @@
       "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
     },
     {
-      "key": "packages/maistro-core/src/maistro/graph/node.py::NodeRun.execute",
-      "path": "packages/maistro-core/src/maistro/graph/node.py",
-      "line": 258,
-      "name": "execute",
-      "classname": "NodeRun",
-      "rank": "C",
-      "complexity": 11,
-      "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-    },
-    {
       "key": "packages/maistro-core/src/maistro/graph/node.py::_blackboard_prefix",
       "path": "packages/maistro-core/src/maistro/graph/node.py",
       "line": 119,

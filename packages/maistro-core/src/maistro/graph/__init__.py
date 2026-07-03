@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from maistro.graph.executor import run_graph
+from maistro.graph.harness_executor import HarnessExecutionError, HarnessNodeExecutor
+from maistro.graph.node import NodeExecutor
 from maistro.graph.optimizer import GraphOptimizer
 from maistro.graph.types import (
     AgentRole,
@@ -13,6 +15,7 @@ from maistro.graph.types import (
     GraphEdge,
     GraphNodeResult,
     GraphTask,
+    HarnessOutput,
     HyperagentOutput,
     NodeConfig,
     NodePerformanceMetrics,
@@ -38,8 +41,12 @@ __all__ = [
     "GraphNodeResult",
     "GraphOptimizer",
     "GraphTask",
+    "HarnessExecutionError",
+    "HarnessNodeExecutor",
+    "HarnessOutput",
     "HyperagentOutput",
     "NodeConfig",
+    "NodeExecutor",
     "NodePerformanceMetrics",
     "OptimizationSignal",
     "PMRoleOutput",
