@@ -58,6 +58,15 @@ class AgentImporter(Protocol):
     def to_agent_card(self, source: Any) -> AgentCard: ...
 
 
+def _frontmatter_tools(raw: Any) -> tuple[str, ...]:
+    """Normalize a frontmatter ``tools`` field (comma-string or list) to a tuple."""
+    if isinstance(raw, str):
+        return tuple(t.strip() for t in raw.split(",") if t.strip())
+    if isinstance(raw, list):
+        return tuple(str(t) for t in raw)
+    return ()
+
+
 def _openai_tool_name(tool: Any) -> str:
     if isinstance(tool, dict):
         fn = tool.get("function")
@@ -73,6 +82,13 @@ def _openai_tool_name(tool: Any) -> str:
     return ""
 
 
+def _openai_tools(raw: Any) -> tuple[str, ...]:
+    """Extract tool names from an OpenAI Assistant ``tools`` list."""
+    if not isinstance(raw, list):
+        return ()
+    return tuple(n for n in (_openai_tool_name(t) for t in raw) if n)
+
+
 class OpenAIAssistantImporter:
     """OpenAI Assistants / Agent SDK spec (JSON) -> AgentCard."""
 
@@ -85,18 +101,13 @@ class OpenAIAssistantImporter:
     def to_agent_card(self, source: Any) -> AgentCard:
         data = _as_dict(source)
         name = str(data.get("name") or data.get("id") or "imported_assistant")
-        raw_tools = data.get("tools", [])
-        tools = (
-            tuple(n for n in (_openai_tool_name(t) for t in raw_tools) if n)
-            if isinstance(raw_tools, list)
-            else ()
-        )
+        description = str(data.get("instructions") or data.get("description") or "")
         return AgentCard(
             id=str(data.get("id") or name),
             name=name,
-            description=str(data.get("instructions") or data.get("description") or "")[:500],
+            description=description[:500],
             model=str(data.get("model") or "auto"),
-            tools=tools,
+            tools=_openai_tools(data.get("tools", [])),
             scope="imported",
         )
 
@@ -120,20 +131,13 @@ class ClaudeCodeAgentImporter:
             raise ValueError("not a Claude Code agent markdown document")
         front, body = split
         name = str(front.get("name", "imported_agent"))
-        tools_raw = front.get("tools", [])
-        if isinstance(tools_raw, str):
-            tools = tuple(t.strip() for t in tools_raw.split(",") if t.strip())
-        elif isinstance(tools_raw, list):
-            tools = tuple(str(t) for t in tools_raw)
-        else:
-            tools = ()
         description = str(front.get("description", "")) or body
         return AgentCard(
             id=name,
             name=name,
             description=description[:500],
             model=str(front.get("model", "auto")),
-            tools=tools,
+            tools=_frontmatter_tools(front.get("tools", [])),
             scope="imported",
         )
 
