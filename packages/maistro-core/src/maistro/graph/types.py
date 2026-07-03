@@ -33,6 +33,10 @@ class AgentRole(StrEnum):
     DELIVERY = "delivery"
     RISK_DEPENDENCY = "risk_dependency"
     REPORTING = "reporting"
+    # Outbound foreign-harness node (SPEC-208 §5): a node whose turn is driven
+    # by a foreign coding harness via the harness_runner capability slot, not
+    # the LLM. See graph/harness_executor.py for the executor bridge.
+    HARNESS = "harness"
 
 
 class ExecutionMode(StrEnum):
@@ -291,6 +295,22 @@ class PMRoleOutput(BaseModel):
     source: str = "llm"  # "llm" | "no_data" | "experience_context_fallback"
 
 
+class HarnessOutput(BaseModel):
+    """Result of a foreign-harness-backed graph node (SPEC-208 §5 outbound).
+
+    Where LLM nodes emit a role-specific typed output, a harness node wraps one
+    turn of a foreign coding harness: a natural-language summary, the actions it
+    proposed (already Warden-scanned + policy-gated by the harness manager), and
+    the raw provider envelope kept for audit. `actions` stays untyped
+    (`list[dict]`) because each foreign harness emits its own action shape;
+    normalizing them is an importer concern, not this boundary's.
+    """
+
+    summary: str = ""
+    actions: list[dict[str, Any]] = Field(default_factory=list)
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
 class NodePerformanceMetrics(BaseModel):
     # `role` accepts AgentRole values or arbitrary node-id / kind strings.
     role: str
@@ -386,6 +406,13 @@ DEFAULT_SYSTEM_PROMPTS: dict[AgentRole, str] = {
         "real Jira data, real research findings) into a structured executive "
         "summary. You never produce metrics without underlying evidence; "
         "missing data is shown as 'no data available' not as zero."
+    ),
+    # Informational only — a harness node is driven by a foreign harness, not
+    # this prompt; it is passed through as the session's system context.
+    AgentRole.HARNESS: (
+        "You are a foreign coding harness executing one turn of this task. "
+        "Perform the requested work and report a concise summary plus the "
+        "actions you took. All actions are scanned and policy-gated."
     ),
 }
 
