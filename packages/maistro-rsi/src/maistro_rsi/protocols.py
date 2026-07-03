@@ -48,8 +48,10 @@ class MicroVmSandbox(Protocol):
         ...
 
 
-# Supplied by the RSI runner: given a sandbox and a checked-out workspace,
-# produce the actual code modification (typically by driving an agent).
-# Kept out of `selfbranch` so the git/sandbox plumbing stays testable
-# independent of any particular agent strategy.
-ApplyPatchFn = Callable[[MicroVmSandbox, str], Coroutine[Any, Any, None]]
+# Supplied by the RSI runner: given a sandbox, a checked-out workspace, and
+# the model the quota-burn scheduler picked for this cycle (None when no
+# pool is available), produce the actual code modification (typically by
+# driving an agent). The model arg is what makes quota-burn routing real
+# rather than reporting-only. Kept out of `selfbranch` so the git/sandbox
+# plumbing stays testable independent of any particular agent strategy.
+ApplyPatchFn = Callable[[MicroVmSandbox, str, str | None], Coroutine[Any, Any, None]]

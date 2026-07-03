@@ -74,6 +74,16 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
+      # maistro-rsi + maistro-evolve aren't workspace-root deps (no uv.lock
+      # entry), so put their src trees on PYTHONPATH — the same pattern the
+      # root CLAUDE.md documents for local runs. Their third-party deps
+      # (httpx, pydantic, structlog, fastmcp via the root env) are already
+      # installed by `uv sync` above.
+      - run: uv run pytest packages/maistro-rsi/tests packages/maistro-evolve/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+          PYTHONPATH: packages/maistro-rsi/src:packages/maistro-evolve/src
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
