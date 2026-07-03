@@ -62,6 +62,18 @@ class EvolutionConfig(BaseModel):
     # Operator context threaded into the hyper-mutator's meta-prompt.
     goal: str = ""
     user_preferences: str = ""
+    # The run's routable model roster. When set, breeding/mutation only assigns
+    # models from it — mutating a lineage onto a model the gateway can't serve is
+    # a guaranteed-0 evaluation whose dead gene then spreads (observed live: a
+    # drifted `gemini-2.5-flash` child burned evals on 429s two generations deep).
+    # Empty ⇒ the generic MODEL_REGISTRY (unit-test/offline behavior).
+    allowed_models: list[str] = []
+    # Weight of the NEWEST benchmark sample when a genome is re-evaluated:
+    # score = alpha*new + (1-alpha)*old (exponential moving average). 1.0
+    # restores the raw-overwrite behavior; lower = stickier history. Damps
+    # agent-nondeterminism noise on repeat sampling (a genome scored 0.76 then
+    # 0.0 across two identical evals in a live run).
+    eval_ema_alpha: float = Field(default=0.5, gt=0.0, le=1.0)
 
 
 class EvolutionCycle:
@@ -75,6 +87,32 @@ class EvolutionCycle:
         self._island_pop: IslandPopulation | None = None
         self._cycle_count: int = 0
 
+    @staticmethod
+    def _fold_score(
+        genome: PipelineGenome, benchmark: str, score: float, stub: bool, alpha: float
+    ) -> None:
+        """Fold a new benchmark sample into the genome's score as an exponential
+        moving average: ``alpha*new + (1-alpha)*old``.
+
+        Agent-backed benchmarks (code_rsi) are nondeterministic — a genome scored
+        0.76 at acceptance and 0.0 on re-evaluation in a live run — so a raw
+        overwrite makes fitness a lottery over the LAST sample. The EMA damps
+        that noise while still weighting recent behavior highest. Two rules:
+        the first real sample stands alone (nothing to blend), and a STUB sample
+        (transient gateway/agent failure — SPEC-202: noise, not evidence) never
+        overwrites or dilutes real signal; it only stands in when there is no
+        real score yet.
+        """
+        prior = genome.eval_scores.get(benchmark)
+        if stub and prior is not None:
+            return
+        if prior is None:
+            genome.eval_scores[benchmark] = score
+        else:
+            genome.eval_scores[benchmark] = round(alpha * score + (1 - alpha) * prior, 4)
+        samples: dict[str, int] = genome.harness_params.setdefault("eval_samples", {})
+        samples[benchmark] = samples.get(benchmark, 0) + 1
+
     async def _evaluate_unevaluated(
         self,
         population: PopulationStore,
@@ -87,7 +125,13 @@ class EvolutionCycle:
         for genome in batch:
             results = await self.harness.evaluate_genome(genome, config.target_benchmarks, llm_call)
             for r in results:
-                genome.eval_scores[r.benchmark] = r.score
+                self._fold_score(
+                    genome,
+                    r.benchmark,
+                    r.score,
+                    bool(r.metadata.get("stub")),
+                    config.eval_ema_alpha,
+                )
                 genome.harness_params["total_cost_usd"] = (
                     genome.harness_params.get("total_cost_usd", 0.0) + r.cost_usd
                 )
@@ -169,7 +213,9 @@ class EvolutionCycle:
                 a = genome_map.get(parent_ids[i])
                 b = genome_map.get(parent_ids[i + 1] if i + 1 < len(parent_ids) else parent_ids[0])
                 if a and b:
-                    child = crossover_and_mutate(a, b, config.mutation_rate)
+                    child = crossover_and_mutate(
+                        a, b, config.mutation_rate, models=config.allowed_models or None
+                    )
                     population.add(child)
                     # Use force_assign: mutation chains rewrite parent_a_id, so
                     # assign() would fall back to round-robin and place the child
@@ -193,7 +239,9 @@ class EvolutionCycle:
                     pa = breeding_pool[0] if breeding_pool else None
                     pb = None
                 if pa and pb:
-                    child = crossover_and_mutate(pa, pb, config.mutation_rate)
+                    child = crossover_and_mutate(
+                        pa, pb, config.mutation_rate, models=config.allowed_models or None
+                    )
                     population.add(child)
                     island_pop.force_assign(child.id, island_id)
 

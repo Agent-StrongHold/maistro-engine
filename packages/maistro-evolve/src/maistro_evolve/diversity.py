@@ -83,7 +83,10 @@ def population_diversity(population: list[PipelineGenome]) -> float:
     return total / count if count > 0 else 0.0
 
 
-def _random_genome() -> PipelineGenome:
+def _random_genome(models: list[str] | None = None) -> PipelineGenome:
+    """``models`` pins every node to the run's routable roster (an unroutable
+    model is a guaranteed-0 evaluation); default is the generic MODEL_REGISTRY."""
+    pool = models or MODEL_REGISTRY
     node_count = random.randint(2, 6)
     nodes: list[NodeGenome] = []
     for _ in range(node_count):
@@ -92,7 +95,7 @@ def _random_genome() -> PipelineGenome:
                 id=_new_id(),
                 role=random.choice(["queen", "worker", "scout", "drone", "guard"]),
                 strategy=random.choice(STRATEGY_LIST),
-                model=random.choice(MODEL_REGISTRY),
+                model=random.choice(pool),
                 temperature=round(random.uniform(0.0, 1.0), 2),
                 max_tokens=random.choice([256, 512, 1024, 2048, 4096, 8192, 16384]),
                 system_prompt="You are a helpful agent.",
@@ -148,5 +151,6 @@ def _random_genome() -> PipelineGenome:
 def emergency_spawn(
     population: list[PipelineGenome],
     count: int,
+    models: list[str] | None = None,
 ) -> list[PipelineGenome]:
-    return [_random_genome() for _ in range(count)]
+    return [_random_genome(models) for _ in range(count)]
