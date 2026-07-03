@@ -43,7 +43,7 @@ import json
 import random
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FixerStrategy(StrEnum):
@@ -71,10 +71,16 @@ class RiskLevel(StrEnum):
 
 
 class ReasoningEffort(StrEnum):
-    """OpenAI-convention levels, forwarded as-is by the LiteLLM gateway to any
-    reasoning-capable provider it proxies to."""
+    """Reasoning-effort levels, forwarded as-is by the LiteLLM gateway.
 
-    MINIMAL = "minimal"
+    Deliberately the portable low/medium/high subset: OpenAI additionally accepts
+    'minimal', but other reasoning providers validate the value server-side and
+    reject it (Cerebras 400s: "Input should be 'none', 'low', 'medium' or
+    'high'") — caught live when a randomly-seeded genome drew 'minimal' against a
+    mixed model group. Non-reasoning deployments in a group are covered by the
+    gateway's drop_params, which silently drops the whole parameter for them.
+    """
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -115,6 +121,15 @@ class FixerGenome(BaseModel):
     codebase_standards: str = ""
     learned_successes: str = ""
     learned_failures: str = ""
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def _migrate_minimal(cls, v: object) -> object:
+        """Read-compat for populations persisted before 'minimal' was dropped
+        from the enum: coerce it to 'low' instead of failing validation, so an
+        old population.db (whose whole point is lineage across runs) stays
+        loadable. New writes can only contain the portable values."""
+        return "low" if v == "minimal" else v
 
 
 def to_prompt_payload(fixer: FixerGenome) -> dict[str, object]:

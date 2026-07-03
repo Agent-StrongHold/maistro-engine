@@ -74,8 +74,20 @@ def test_render_is_deterministic() -> None:
     assert render_system_prompt(f) == render_system_prompt(f.model_copy(deep=True))
 
 
-def test_reasoning_effort_enum_values_match_openai_convention() -> None:
-    assert {e.value for e in ReasoningEffort} == {"minimal", "low", "medium", "high"}
+def test_reasoning_effort_enum_is_the_portable_subset() -> None:
+    # low/medium/high only: OpenAI also accepts 'minimal', but other providers
+    # validate the value server-side and reject it (Cerebras 400) — caught live.
+    assert {e.value for e in ReasoningEffort} == {"low", "medium", "high"}
+
+
+def test_legacy_minimal_migrates_to_low_on_read() -> None:
+    # A population.db persisted before 'minimal' was dropped must stay loadable
+    # (its whole point is lineage across runs): coerce on validation, not fail.
+    f = FixerGenome.model_validate({"reasoning_effort": "minimal"})
+    assert f.reasoning_effort is ReasoningEffort.LOW
+    # New/portable values pass through untouched; None stays None.
+    assert FixerGenome.model_validate({"reasoning_effort": "high"}).reasoning_effort.value == "high"
+    assert FixerGenome.model_validate({"reasoning_effort": None}).reasoning_effort is None
 
 
 def test_node_genome_fixer_round_trips_yaml_and_json() -> None:
