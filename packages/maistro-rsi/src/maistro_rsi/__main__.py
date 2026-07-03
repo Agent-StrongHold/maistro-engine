@@ -92,6 +92,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "single attempt with --model.",
     )
     run.add_argument(
+        "--genome-db",
+        default=None,
+        help="PopulationStore path from an `evolve` run. The evolved CHAMPION "
+        "genome joins the tournament roster — its rendered strategy prompt, "
+        "sampling knobs, and learned memory compete in real improvement work. "
+        "This is how evolution's learnings flow into later runs.",
+    )
+    run.add_argument(
         "--scout",
         action="store_true",
         help="Before competing, one model reads the target file and names the "
@@ -437,6 +445,20 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         work_root = args.work_root or tempfile.mkdtemp(prefix="maistro-rsi-")
         targets = [t.strip() for t in args.targets.split(",") if t.strip()] if args.targets else []
+        competitors = parse_competitors(args.competitors)
+        if args.genome_db:
+            # Evolution's learnings flow into real work: the persisted champion
+            # genome (evolved slots + hyper-mutator-written memory) competes in
+            # this run via its rendered prompt/config.
+            from maistro_rsi.evolve_bridge import genome_to_competitor, open_population
+
+            champion = open_population(args.genome_db).get_champion()
+            if champion is not None:
+                comp = genome_to_competitor(champion)
+                competitors.append(comp)
+                print(f"tournament roster += evolved champion {champion.name} ({comp.label})")
+            else:
+                print(f"warning: no champion in {args.genome_db} — roster unchanged")
         config = LocalRsiConfig(
             repo_path=str(repo),
             test_command=args.test_cmd,
@@ -452,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
             use_fitness=args.fitness,
             coverage_source=args.coverage_source,
             coverage_pytest_args=args.coverage_pytest_args,
-            competitors=parse_competitors(args.competitors),
+            competitors=competitors,
             scout=args.scout,
             scout_model=args.scout_model,
             export_patches=args.export_patches,
