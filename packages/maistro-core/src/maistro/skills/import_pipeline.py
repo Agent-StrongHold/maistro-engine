@@ -186,7 +186,7 @@ async def _fetch_content(
             return None, f"Skill fetch returned {resp.status_code} from {request.url}"
         return resp.text, None
 
-    if request.raw is not None:
+    if request.source in (ImportSource.UPLOAD, ImportSource.PASTE) and request.raw is not None:
         return request.raw, None
     return None, "Import request has no content (missing raw body or url)"
 

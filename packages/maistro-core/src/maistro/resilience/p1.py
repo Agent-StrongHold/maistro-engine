@@ -45,6 +45,16 @@ class Layer(StrEnum):
     ANY = WILDCARD
 
 
+#: All policy-scopable layers, most-specific first (``ANY`` is the wildcard).
+LAYERS: tuple[Layer, ...] = (
+    Layer.FOUNDATION,
+    Layer.ORCHESTRATION,
+    Layer.AGENTS,
+    Layer.TOOLS,
+    Layer.ANY,
+)
+
+
 def classify_error_code(error: Exception) -> str:
     """Map an exception to a P1 error code via the ADR-038 classifier.
 
@@ -294,6 +304,7 @@ class InMemoryResiliencePolicyStore:
 
 __all__ = [
     "DEFAULT_POLICY",
+    "LAYERS",
     "P1_ERROR_CODES",
     "WILDCARD",
     "BackoffStrategy",

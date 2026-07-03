@@ -457,3 +457,51 @@ class HierarchicalOrchestrator:
             except HarnessUnavailableError:
                 continue
         raise NoAvailableHarnessError(harnesses)
+
+
+async def rank_harnesses(
+    registry: HarnessRegistry,
+    *,
+    capability: str = "",
+    agent_name: str = "",
+    by: str = "cost",
+) -> list[HarnessAdvertisement]:
+    """Rank the discovered harnesses for a spawn (cheapest/fastest first).
+
+    Filters on an advertised ``capability`` and/or an agent already present in
+    the harness's ``agent_roster``, then sorts by ``cost_multiplier`` (default)
+    or ``latency_multiplier`` — the natural input for ``spawn_with_fallback``'s
+    ordered preference list.
+    """
+    if by not in ("cost", "latency"):
+        raise ValueError(f"by must be 'cost' or 'latency', got {by!r}")
+    harnesses = await registry.list_harnesses()
+    if capability:
+        harnesses = [h for h in harnesses if capability in h.capabilities]
+    if agent_name:
+        harnesses = [h for h in harnesses if agent_name in h.agent_roster]
+    if by == "latency":
+        return sorted(harnesses, key=lambda h: h.latency_multiplier)
+    return sorted(harnesses, key=lambda h: h.cost_multiplier)
+
+
+__all__ = [
+    "AgentSource",
+    "AllHarnessesFailedError",
+    "ForeignHarnessError",
+    "HTTPHarnessTransport",
+    "HarnessAdvertisement",
+    "HarnessRegistry",
+    "HarnessResultComparator",
+    "HarnessTask",
+    "HarnessTaskResult",
+    "HarnessTransport",
+    "HarnessUnavailableError",
+    "HierarchicalOrchestrator",
+    "HierarchyError",
+    "InMemoryHarnessRegistry",
+    "LoopbackHarnessTransport",
+    "NoAvailableHarnessError",
+    "QualityHarnessComparator",
+    "rank_harnesses",
+]
