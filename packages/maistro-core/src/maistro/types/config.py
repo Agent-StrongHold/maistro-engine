@@ -113,6 +113,7 @@ class AgentConfig(BaseModel):
     database_url: str = ""
     redis_url: str = ""
     agents_dir: str = ""
+    provider_config_path: str = ""
     litellm_url: str = "http://litellm:4000"
     litellm_key: str = ""
     router_api_key: str = ""

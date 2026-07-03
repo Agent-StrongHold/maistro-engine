@@ -12,6 +12,18 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol, runtime_checkable
 
+__all__ = [
+    "EvidencedCriterion",
+    "GoldenRecord",
+    "GoldenRecordDiff",
+    "GoldenRecordStore",
+    "InMemoryGoldenRecordStore",
+    "SourceEvidence",
+    "diff_records",
+    "record_research",
+    "signoff_report",
+]
+
 
 @dataclass(frozen=True)
 class SourceEvidence:
@@ -140,3 +152,57 @@ class InMemoryGoldenRecordStore:
 
     async def list_versions(self, persona_id: str) -> list[int]:
         return sorted(self._records.get(persona_id, {}))
+
+
+async def record_research(
+    store: GoldenRecordStore,
+    persona_id: str,
+    sources: list[SourceEvidence],
+    criteria: list[EvidencedCriterion],
+) -> tuple[GoldenRecord, GoldenRecordDiff]:
+    """Persist a new research version and diff it against the previous latest.
+
+    The returned diff is the human sign-off artifact: nothing replaces the
+    Tier 1 floor until the added/removed/changed criteria are approved.
+    """
+    previous = await store.get_latest(persona_id)
+    record = await store.save(persona_id, sources, criteria)
+    return record, diff_records(previous, record)
+
+
+async def signoff_report(store: GoldenRecordStore, persona_id: str) -> dict[str, Any]:
+    """Admin-readable sign-off summary for a persona's latest golden record.
+
+    Includes the full version history, evidence provenance, criteria mapped
+    through the ``registered`` escape hatch (``needs_review``), and the diff
+    against the superseded version.
+    """
+    versions = await store.list_versions(persona_id)
+    latest = await store.get_latest(persona_id)
+    if latest is None:
+        return {"persona_id": persona_id, "versions": versions, "latest": None}
+    previous = (
+        await store.get_version(persona_id, latest.supersedes)
+        if latest.supersedes is not None
+        else None
+    )
+    diff = diff_records(previous, latest)
+    return {
+        "persona_id": persona_id,
+        "versions": versions,
+        "latest": latest.version,
+        "sources": [
+            {
+                "url": source.url,
+                "title": source.title,
+                "fetched_at": source.fetch_ts.isoformat(),
+                "chars": len(source.full_text),
+            }
+            for source in latest.sources
+        ],
+        "needs_review": [c.name for c in latest.criteria if c.needs_review],
+        "has_changes": diff.has_changes,
+        "added": diff.added,
+        "removed": diff.removed,
+        "changed": diff.changed,
+    }

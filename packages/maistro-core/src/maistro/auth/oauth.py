@@ -51,6 +51,8 @@ __all__ = [
     "OAuthTokenValidationError",
     "StateStore",
     "UnverifiedJWTClaimsValidator",
+    "begin_login",
+    "complete_login",
     "default_id_token_verifier",
 ]
 
@@ -589,3 +591,33 @@ class IdentityLinker:
                 "auth.oauth.link",
                 {"provider": identity.provider, "sub": identity.sub, "user_id": user_id},
             )
+
+
+async def begin_login(client: OAuth2Client, provider: str, redirect_uri: str) -> tuple[str, str]:
+    """Start an Authorization Code + PKCE login: returns ``(url, state)``."""
+    return await client.authorize_url(provider, redirect_uri)
+
+
+async def complete_login(
+    client: OAuth2Client,
+    linker: IdentityLinker,
+    *,
+    provider: str,
+    code: str,
+    state: str,
+    redirect_uri: str,
+    require_verified_email: bool = False,
+) -> tuple[str | None, OAuthExchange]:
+    """Finish the login: exchange the code, then resolve the local user.
+
+    Returns ``(user_id, exchange)``; ``user_id`` is ``None`` when the verified
+    identity maps to no local account (and open registration cannot provision
+    one) or, with ``require_verified_email``, when the IdP reports the email
+    address as unverified. Raises on any invalid state/code/token.
+    """
+    exchange = await client.exchange_code(provider, code, state, redirect_uri)
+    identity = exchange.identity
+    if require_verified_email and identity.email is not None and not identity.email_verified:
+        return None, exchange
+    user_id = await linker.resolve_user(identity)
+    return user_id, exchange

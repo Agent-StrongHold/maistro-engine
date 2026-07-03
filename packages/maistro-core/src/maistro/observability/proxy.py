@@ -239,7 +239,7 @@ class RecordingLLMClient(_RecordingProxyBase):
 
     async def call(self, request: LLMRequest) -> LLMResponse:
         request_args = asdict(request)
-        if self._replay_session is not None:
+        if self.in_replay_mode and self._replay_session is not None:
             response = await self._replay_session.next_response("llm", request_args)
             return LLMResponse(**response)
         inner: LLMClient = self._inner
@@ -253,7 +253,7 @@ class RecordingToolDispatcher(_RecordingProxyBase):
 
     async def call(self, tool_call: ToolCall) -> ToolResult:
         request_args = asdict(tool_call)
-        if self._replay_session is not None:
+        if self.in_replay_mode and self._replay_session is not None:
             response = await self._replay_session.next_response("tool", request_args)
             return ToolResult(**response)
         inner: ToolDispatcher = self._inner
