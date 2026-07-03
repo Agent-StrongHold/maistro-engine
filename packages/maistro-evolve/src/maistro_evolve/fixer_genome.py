@@ -43,7 +43,7 @@ import json
 import random
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FixerStrategy(StrEnum):
@@ -121,6 +121,15 @@ class FixerGenome(BaseModel):
     codebase_standards: str = ""
     learned_successes: str = ""
     learned_failures: str = ""
+
+    @field_validator("reasoning_effort", mode="before")
+    @classmethod
+    def _migrate_minimal(cls, v: object) -> object:
+        """Read-compat for populations persisted before 'minimal' was dropped
+        from the enum: coerce it to 'low' instead of failing validation, so an
+        old population.db (whose whole point is lineage across runs) stays
+        loadable. New writes can only contain the portable values."""
+        return "low" if v == "minimal" else v
 
 
 def to_prompt_payload(fixer: FixerGenome) -> dict[str, object]:

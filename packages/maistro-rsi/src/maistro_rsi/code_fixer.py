@@ -17,6 +17,8 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
+import structlog
+
 from maistro_rsi.candidate_fitness import evaluate_candidate
 from maistro_rsi.competitors import Competitor
 from maistro_rsi.local_loop import (
@@ -26,6 +28,8 @@ from maistro_rsi.local_loop import (
     _targeted_objective,
     make_builders_apply_patch,
 )
+
+logger = structlog.get_logger()
 
 
 class LiveCodeFixer:
@@ -126,6 +130,15 @@ class LiveCodeFixer:
                 timeout=self._timeout,
             )
             return (scorecard.accepted, scorecard.composite, False)
+        except Exception as exc:
+            # Never raises — mirrors _run_variant's contract in the tournament
+            # loop. A gateway timeout / transient agent failure is not evidence
+            # about the genome, so mark the result a STUB (no real signal): the
+            # hyper-mutator refuses to verify against stubs (SPEC-202), and one
+            # flaky call no longer kills an entire multi-hour evolution run
+            # (a live httpx.ReadTimeout did exactly that).
+            logger.warning("code_rsi_eval_errored", competitor=competitor.label, error=str(exc))
+            return (False, 0.0, True)
         finally:
             _git(self._baseline, "worktree", "remove", "--force", str(cdir), check=False)
             _git(self._baseline, "branch", "-D", branch, check=False)

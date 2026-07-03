@@ -33,12 +33,16 @@ fi
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 
-# Locate the .env holding the gateway key (same probe order as the run wrapper).
-ENV_FILE=""
-for c in "/c/maistro/.env" "$HOME/.maistro/maistro-engine/.env" "C:/maistro/.env"; do
-    [[ -f "$c" ]] && { ENV_FILE="$c"; break; }
-done
-[[ -f "$ENV_FILE" ]] || { echo "error: no gateway .env found"; exit 2; }
+# Locate the .env holding the gateway key: explicit override first, then the
+# installer locations, then the repo-root .env (the documented
+# `docker compose up -d` setup keeps the credentials there).
+ENV_FILE="${MAISTRO_RSI_ENV_FILE:-}"
+if [[ -z "$ENV_FILE" ]]; then
+    for c in "/c/maistro/.env" "$HOME/.maistro/maistro-engine/.env" "C:/maistro/.env" "./.env"; do
+        [[ -f "$c" ]] && { ENV_FILE="$c"; break; }
+    done
+fi
+[[ -f "$ENV_FILE" ]] || { echo "error: no gateway .env found (set MAISTRO_RSI_ENV_FILE)"; exit 2; }
 
 # Same network story as the run wrapper: the gateway is loopback-published, so
 # join the compose network and use the fixed container name (not the `litellm`
@@ -69,14 +73,19 @@ echo "RSI evolve (full isolation) -> image=$IMAGE cycles=$CYCLES target=$TARGET"
 echo "  models=$MODELS network=$NETWORK gateway=$GATEWAY_URL"
 echo "  out -> $OUT_DIR (population.db persists lineage)"
 
+# GOAL travels as a docker env var, not interpolated into the inner command —
+# it's documented free-form text, and shell syntax inside it must reach --goal
+# literally, never be parsed by the inner bash. pipefail so a failing evolve is
+# not masked by tee's exit 0.
 exec docker run --rm \
     --network "$NETWORK" \
     --add-host=host.docker.internal:host-gateway \
     -v "${ENV_MOUNT}:/run/gateway.env:ro" \
     -v "${OUT_MOUNT}:/run/out" \
     -e "PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistro-rsi/src:packages/maistro-bootstrap/src" \
+    -e "RSI_GOAL=$GOAL" \
     "$IMAGE" \
-    bash -lc "sed 's/\r\$//' /run/gateway.env > /tmp/gw.env; set -a; . /tmp/gw.env; set +a; \
+    bash -lc "set -o pipefail; sed 's/\r\$//' /run/gateway.env > /tmp/gw.env; set -a; . /tmp/gw.env; set +a; \
         export LITELLM_URL='$GATEWAY_URL' LITELLM_BASE_URL='$GATEWAY_URL' LITELLM_PROXY_URL='$GATEWAY_URL'; \
         unset DB_PASSWORD LANGFUSE_PUBLIC_KEY LANGFUSE_SECRET_KEY LANGFUSE_NEXTAUTH_SECRET LANGFUSE_SALT \
               API_KEYS MAISTRO_ACCESS_TOKEN OPENAI_API_KEY ANTHROPIC_API_KEY GEMINI_API_KEY MISTRAL_API_KEY \
@@ -94,5 +103,5 @@ exec docker run --rm \
         --coverage-pytest-args '$COV_ARGS' \
         --agent-turns 6 \
         --db /run/out/population.db \
-        --goal \"$GOAL\" \
+        --goal \"\$RSI_GOAL\" \
         --work-root /tmp/rsi-evo 2>&1 | tee /run/out/evolve.log"

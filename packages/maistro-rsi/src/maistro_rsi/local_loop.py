@@ -297,9 +297,15 @@ def make_builders_apply_patch(
 
         config = AgentLoopConfig(model=model) if model else AgentLoopConfig()
         runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
+        # 300s timeout: the code group load-balances across reasoning deployments
+        # (gpt-oss-120b on Cerebras at 5 RPM) whose queueing + long generations
+        # overran the default 120s in a live run (httpx.ReadTimeout).
         runner.set_llm(
             ResponsesAPICallable(
-                model=model, temperature=temperature, reasoning_effort=reasoning_effort
+                model=model,
+                temperature=temperature,
+                reasoning_effort=reasoning_effort,
+                timeout=300.0,
             )
         )
 

@@ -80,6 +80,16 @@ def test_reasoning_effort_enum_is_the_portable_subset() -> None:
     assert {e.value for e in ReasoningEffort} == {"low", "medium", "high"}
 
 
+def test_legacy_minimal_migrates_to_low_on_read() -> None:
+    # A population.db persisted before 'minimal' was dropped must stay loadable
+    # (its whole point is lineage across runs): coerce on validation, not fail.
+    f = FixerGenome.model_validate({"reasoning_effort": "minimal"})
+    assert f.reasoning_effort is ReasoningEffort.LOW
+    # New/portable values pass through untouched; None stays None.
+    assert FixerGenome.model_validate({"reasoning_effort": "high"}).reasoning_effort.value == "high"
+    assert FixerGenome.model_validate({"reasoning_effort": None}).reasoning_effort is None
+
+
 def test_node_genome_fixer_round_trips_yaml_and_json() -> None:
     g = _random_genome()  # every node carries a random FixerGenome
     entry = next(n for n in g.topology.nodes if n.id == g.topology.entry_node)

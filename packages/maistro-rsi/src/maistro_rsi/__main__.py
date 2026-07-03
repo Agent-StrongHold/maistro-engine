@@ -267,7 +267,7 @@ def _evolve(args: argparse.Namespace) -> int:
     if mutator_model:
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
 
-        callable_ = ResponsesAPICallable(model=mutator_model)
+        callable_ = ResponsesAPICallable(model=mutator_model, timeout=300.0)
 
         async def llm_call(prompt: str) -> str:
             result = await asyncio.to_thread(callable_, [{"role": "user", "content": prompt}])
