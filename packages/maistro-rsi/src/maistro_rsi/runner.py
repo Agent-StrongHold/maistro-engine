@@ -55,7 +55,6 @@ class RsiCycleConfig:
     keep_workspace: bool = False
 
 
-
 @dataclass
 class RsiCycleResult:
     run_id: str

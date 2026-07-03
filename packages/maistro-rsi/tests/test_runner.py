@@ -352,9 +352,7 @@ class TestModelAndLlmCallThreading:
     score by heuristic."""
 
     @pytest.mark.asyncio
-    async def test_scheduler_model_reaches_apply_patch(
-        self, patched_sandbox, patched_self_branch
-    ):
+    async def test_scheduler_model_reaches_apply_patch(self, patched_sandbox, patched_self_branch):
         """The quota-burn pick must reach the patching agent via ApplyPatchFn's
         third argument (scoring gets it separately: run() bakes it into the
         gateway-built llm_call)."""

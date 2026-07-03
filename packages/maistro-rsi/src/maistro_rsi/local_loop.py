@@ -355,9 +355,7 @@ def make_builders_apply_patch(
         else:
             from maistro_bootstrap.builders.sandbox import LocalWorktreeSandbox
 
-            await _run_turns(
-                BuilderSession(sandbox=LocalWorktreeSandbox(work_path)), cycle_model
-            )
+            await _run_turns(BuilderSession(sandbox=LocalWorktreeSandbox(work_path)), cycle_model)
 
     return apply
 
