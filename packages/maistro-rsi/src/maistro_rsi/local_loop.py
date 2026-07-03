@@ -139,6 +139,37 @@ def _git_apply(cwd: Path, patch: str) -> bool:
     return proc.returncode == 0
 
 
+_TRANSIENT_ERROR_MARKERS = (
+    "ratelimit",
+    "rate limit",
+    "429",
+    "quota",
+    "billing",
+    "payment",
+    "insufficient credit",
+    "overloaded",
+    "503",
+)
+
+
+def _entry_model(genome: Any) -> str:
+    """The model of a genome's entry (fixer) node — the one that authors fixes."""
+    nodes = genome.topology.nodes
+    entry = next((n for n in nodes if n.id == genome.topology.entry_node), nodes[0])
+    return str(entry.model)
+
+
+def _is_transient_provider_error(text: str) -> bool:
+    """Is this error a provider being temporarily unavailable (rate limit /
+    quota / billing / overload) rather than evidence about the fix or genome?
+
+    Transient errors bench the MODEL for a few cycles (it sits out) instead of
+    scoring the genome or killing the run — capacity problems are not fitness.
+    """
+    lowered = text.lower()
+    return any(marker in lowered for marker in _TRANSIENT_ERROR_MARKERS)
+
+
 def _scouted_objective(path: str, instruction: str) -> str:
     """Wrap a scout's concrete instruction in the agent's tool-use guidance so
     every competitor implements the *same* identified improvement."""
@@ -407,6 +438,25 @@ class LocalRsiConfig:
     # exported here as a git-am-able patch plus a manifest.json, for the harvester
     # to open PRs grouped by file. This is the durable output of an isolated run.
     export_patches: str | None = None
+    # Unified live evolution (ADR-070126-6386 v2, "the run IS the gym"): when a
+    # PopulationStore path is given, the genome population IS the tournament
+    # roster — each cycle's REAL composites fold back into the genomes (EMA),
+    # same-objective variants fight Elo battles, then cull/breed/hyper-mutation
+    # run between cycles and the children join the next cycle's roster, verified
+    # by actual work. No separate training evaluations exist; fixes are kept
+    # (promoted/exported) exactly as in a plain run. The population persists, so
+    # every run continues the lineage.
+    genome_db: str | None = None
+    # Operator goal threaded into the hyper-mutator's meta-prompt in live mode.
+    evolve_goal: str = ""
+    # Roster cap per cycle in live mode (genomes beyond this wait their turn;
+    # unscored children get priority so verification never starves).
+    roster_size: int = 4
+    # Model bench: a competitor whose model hits a TRANSIENT provider error
+    # (429/rate-limit/quota/billing) sits out this many cycles instead of dying —
+    # no eval burned, no stub folded into its genome, seat freed for others.
+    # Lets the roster safely include every provider; rate limits become rest.
+    bench_cycles: int = 3
     # Checkpointing for long runs. Every ``report_every`` cycles (0 = only at the
     # end), write a progress report (markdown + JSON) into ``report_dir`` and
     # refresh a rolling, harvestable patch export of everything promoted so far.
@@ -435,6 +485,12 @@ class _VariantResult:
     files_touched: int = 0
     changed_files: list[str] = field(default_factory=list)
     note: str = ""
+    # Which shortlist slot this variant attempted (same slot ⇒ same objective ⇒
+    # a fair Elo battle in live-evolution mode), which model ran it, and — when
+    # the competitor was projected from a genome — which genome authored it.
+    slot: int = 0
+    model: str = ""
+    genome_id: str | None = None
 
 
 @dataclass
@@ -562,6 +618,33 @@ class LocalRsiLoop:
         self._baseline = Path(config.work_root) / "baseline"
         self._baseline_cov: float | None = None  # cached; invalidated on promote
         self._start_ref: str | None = None  # baseline sha before any promotion
+        # Unified live evolution (genome_db set): the population that IS the
+        # roster, an in-run Elo ladder, and the label→genome mapping for folding
+        # real composites back into the genomes that authored them.
+        self._population: Any = None
+        self._elo: Any = None
+        self._label_to_genome: dict[str, str] = {}
+        # Model bench: model -> first cycle index at which it may play again.
+        self._bench: dict[str, int] = {}
+        # Per-model reliability (run-local EMA, starts 1.0): transient provider
+        # failures decay it, successes recover it. Multiplied into genome fitness
+        # so a genome married to a flaky provider scores lower than the SAME slot
+        # settings on a dependable model — evolution then re-tries winning
+        # strategies on other carriers. Deliberately not persisted: provider
+        # health is temporal; yesterday's outage shouldn't punish forever.
+        self._reliability: dict[str, float] = {}
+        if config.genome_db:
+            from maistro_evolve.tournament import EloTournament
+            from maistro_rsi.evolve_bridge import open_population, seed_population
+
+            self._population = open_population(config.genome_db)
+            # Top-up seeding: an existing lineage is continued, never buried.
+            seed_population(
+                self._population,
+                config.roster_size,
+                models=[config.model] if config.model else None,
+            )
+            self._elo = EloTournament()
 
     def _baseline_coverage(self) -> float | None:
         if not self._config.use_fitness:
@@ -623,9 +706,62 @@ class LocalRsiLoop:
         )
         return [(_fixer_objective(target, it.kind, it.instruction), it.kind.budget) for it in items]
 
-    def _competitors(self) -> list[Competitor]:
+    def _benched(self, model: str, index: int) -> bool:
+        return self._bench.get(model, 0) > index
+
+    def _bench_model(self, model: str, index: int) -> None:
+        until = index + 1 + self._config.bench_cycles
+        self._bench[model] = until
+        logger.info("rsi_model_benched", model=model, until_cycle=until)
+
+    def _observe_reliability(self, model: str, ok: bool) -> float:
+        """EMA per-model reliability: 0.7*prev + 0.3*outcome, starting at 1.0."""
+        prev = self._reliability.get(model, 1.0)
+        current = round(0.7 * prev + 0.3 * (1.0 if ok else 0.0), 4)
+        self._reliability[model] = current
+        return current
+
+    def _competitors(self, index: int = 1) -> list[Competitor]:
+        if self._population is not None:
+            return self._genome_roster(index)
         # Empty roster ⇒ a single attempt with the configured model (classic cycle).
-        return self._config.competitors or [Competitor(model=self._config.model or "")]
+        # Benched models sit the cycle out; never filter down to an empty roster.
+        static = [c for c in self._config.competitors if not self._benched(c.model, index)]
+        return static or self._config.competitors or [Competitor(model=self._config.model or "")]
+
+    def _genome_roster(self, index: int) -> list[Competitor]:
+        """Project the population onto this cycle's roster (live evolution).
+
+        Unscored genomes (fresh children awaiting verification-by-work) get
+        priority so verification never starves; remaining seats go to the
+        fittest. Genomes whose model is benched (transient provider errors) sit
+        the cycle out — no eval burned, no stub folded, seat freed. Static
+        ``--competitors`` entries still join (they compete but don't evolve).
+        Labels are made genome-unique so composites fold back to the exact
+        genome that authored the fix.
+        """
+        from maistro_rsi.evolve_bridge import genome_to_competitor
+
+        genomes = [
+            g for g in self._population.list_all() if not self._benched(_entry_model(g), index)
+        ]
+        unscored = [g for g in genomes if not g.eval_scores]
+        scored = sorted(
+            (g for g in genomes if g.eval_scores),
+            key=lambda g: g.fitness_score or 0.0,
+            reverse=True,
+        )
+        seats = max(1, self._config.roster_size)
+        picked = (unscored + scored)[:seats]
+        self._label_to_genome.clear()
+        roster: list[Competitor] = []
+        for g in picked:
+            comp = genome_to_competitor(g)
+            comp.label = f"{g.name[:18]}#{g.id[:6]}"
+            self._label_to_genome[comp.label] = g.id
+            roster.append(comp)
+        roster += [c for c in self._config.competitors if not self._benched(c.model, index)]
+        return roster or [Competitor(model=self._config.model or "")]
 
     def _apply_for_competitor(
         self, competitor: Competitor, objective: str, budget: BudgetTier = BudgetTier.BOUNDED
@@ -724,6 +860,12 @@ class LocalRsiLoop:
                 r.note = "" if r.tests_passed else "test command failed"
         except Exception as exc:
             r.note = f"variant errored: {exc}"
+            if _is_transient_provider_error(str(exc)):
+                # Capacity, not fitness: bench the model so it sits out a few
+                # cycles, and mark the result transient so live evolution folds
+                # NO sample for this genome (sitting out is neutral).
+                r.note = f"transient: {exc}"
+                self._bench_model(competitor.model, index)
         logger.info(
             "rsi_local_variant",
             index=index,
@@ -750,17 +892,28 @@ class LocalRsiLoop:
     def _run_cycle(self, index: int) -> CycleOutcome:
         target = self._target_for_cycle(index)
         slots = self._cycle_slots(index)
-        competitors = self._competitors()
+        competitors = self._competitors(index)
         variants: list[_VariantResult] = []
         created: list[tuple[str, Path]] = []
         try:
             for seq, comp in enumerate(competitors, 1):
                 # Spread competitors across the scout's shortlist slots; with more
                 # competitors than slots they double up (competitive on one item).
-                objective, budget = slots[(seq - 1) % len(slots)]
+                slot_idx = (seq - 1) % len(slots)
+                objective, budget = slots[slot_idx]
                 r = self._run_variant(index, seq, comp, objective, budget)
+                r.slot = slot_idx
+                r.model = comp.model or self._config.model or ""
+                r.genome_id = self._label_to_genome.get(comp.label)
                 variants.append(r)
                 created.append((r.branch, r.cycle_dir))
+
+            # Live evolution: fold this cycle's REAL composites back into the
+            # genomes that authored them, then evolve the population. Runs before
+            # promotion selection so a cycle with no accepted variant still
+            # teaches (a rejected fix's 0.0 is genuine evidence).
+            if self._population is not None:
+                self._live_evolution_step(index, variants)
 
             accepted = sorted(
                 (r for r in variants if r.accepted), key=lambda r: r.composite, reverse=True
@@ -815,6 +968,160 @@ class LocalRsiLoop:
                     self._baseline, "worktree", "remove", "--force", str(worktree_dir), check=False
                 )
                 _git(self._baseline, "branch", "-D", branch, check=False)
+
+    def _live_evolution_step(self, index: int, variants: list[_VariantResult]) -> None:
+        """The unified loop's between-cycle evolution — real work IS the evaluation.
+
+        Folds each genome-authored variant's composite into its genome (EMA;
+        a rejected fix's 0.0 is genuine evidence, an agent error is a stub, a
+        TRANSIENT provider error folds nothing — the model sat out). Same-slot
+        variants fought over the same scout item, so they settle it on the Elo
+        ladder. Then fitness → cull → breed → a hyper-mutator child for the top
+        genome, which joins UNVERIFIED: its verification is the next cycle's
+        actual work. Never raises — evolution must not sink the work loop.
+        """
+        try:
+            # Reliability first: every attempt teaches about its MODEL —
+            # transient provider failures decay it, anything that reached
+            # scoring recovers it (including static competitors' models).
+            for v in variants:
+                if v.model:
+                    self._observe_reliability(v.model, ok=not v.note.startswith("transient:"))
+
+            self._fold_cycle_scores(variants)
+            self._record_cycle_battles(variants)
+            scored = self._refit_cull_breed()
+            # Guided mutation: the hyper-mutator proposes a child for the top
+            # genome, grounded in lineage + the operator goal.
+            if scored:
+                self._hyper_propose(scored[0])
+
+            logger.info(
+                "rsi_live_evolution",
+                index=index,
+                population=len(self._population.list_all()),
+                benched=[m for m, until in self._bench.items() if until > index],
+            )
+        except Exception as exc:
+            logger.warning("rsi_live_evolution_error", index=index, error=str(exc))
+
+    def _fold_cycle_scores(self, variants: list[_VariantResult]) -> None:
+        """Fold each genome-authored variant's real composite into its genome
+        (EMA). A transient sit-out folds nothing; an agent error folds a stub."""
+        from maistro_evolve.cycle import EvolutionCycle
+
+        store = self._population
+        by_id = {g.id: g for g in store.list_all()}
+        for v in variants:
+            genome = by_id.get(v.genome_id or "")
+            if genome is None or v.note.startswith("transient:"):
+                continue  # static competitor, culled genome, or sat out
+            stub = v.note.startswith("variant errored")
+            EvolutionCycle._fold_score(genome, "code_rsi", v.composite, stub, 0.5)
+            genome.updated_at = datetime.now(UTC).isoformat()
+            store.add(genome)
+
+    def _record_cycle_battles(self, variants: list[_VariantResult]) -> None:
+        """Same-slot variants attempted the SAME scout item — a fair Elo battle."""
+        if self._elo is None:
+            return
+        by_id = {g.id: g for g in self._population.list_all()}
+        fought = [
+            v for v in variants if v.genome_id in by_id and not v.note.startswith("transient:")
+        ]
+        for i, a in enumerate(fought):
+            for b in fought[i + 1 :]:
+                if a.slot == b.slot:
+                    self._elo.record_battle(
+                        benchmark="code_rsi",
+                        genome_a_id=a.genome_id,
+                        genome_b_id=b.genome_id,
+                        score_a=a.composite,
+                        score_b=b.composite,
+                    )
+        for v in fought:
+            elo = self._elo.get_avg_elo(v.genome_id)
+            if elo > 0:
+                by_id[v.genome_id].harness_params["avg_elo"] = elo
+
+    def _refit_cull_breed(self) -> list[Any]:
+        """Fitness (reliability-multiplied) → cull the weakest → breed one child.
+
+        Fitness is MULTIPLIED by the genome's model reliability: the same slot
+        settings on a flaky provider are worth less than on a dependable one, so
+        evolution re-tries winning strategies on more reliable carriers. Unscored
+        children are never culled — they haven't had their verification cycle.
+        Returns the surviving scored genomes, fittest first.
+        """
+        from maistro_evolve.crossover import crossover_and_mutate
+        from maistro_evolve.fitness import compute_fitness
+
+        store = self._population
+        everyone = store.list_all()
+        for g in everyone:
+            if g.eval_scores:
+                reliability = self._reliability.get(_entry_model(g), 1.0)
+                g.fitness_score = compute_fitness(g, everyone).total * reliability
+                g.harness_params["model_reliability"] = reliability
+                store.add(g)
+
+        scored = sorted(
+            (g for g in store.list_all() if g.fitness_score is not None),
+            key=lambda g: g.fitness_score or 0.0,
+            reverse=True,
+        )
+        max_pop = max(4, self._config.roster_size * 2)
+        excess = min(len(store.list_all()) - max_pop, len(scored))
+        if excess > 0:
+            for g in scored[-excess:]:
+                store.remove(g.id)
+            scored = scored[:-excess]
+
+        # Breed: one crossover child of the two fittest, models constrained to
+        # what the population actually runs (no drift off the roster).
+        if len(scored) >= 2 and len(store.list_all()) < max_pop:
+            models = sorted({_entry_model(g) for g in store.list_all()})
+            store.add(crossover_and_mutate(scored[0], scored[1], 0.3, models=models))
+        return scored
+
+    def _hyper_propose(self, top: Any) -> None:
+        """Ask the hyper-mutator for one guided child of ``top``; it joins the
+        population UNVERIFIED and earns its scores in the next real cycle."""
+        from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
+        from maistro_evolve.hyper_mutator import (
+            entry_node,
+            propose_fixer_candidates,
+            slot_lineage,
+            spawn_fixer_challenger,
+        )
+
+        node = entry_node(top)
+        if node is None or node.fixer is None:
+            return
+        callable_ = ResponsesAPICallable(
+            model=self._config.scout_model or self._config.model, timeout=300.0
+        )
+
+        async def llm(prompt: str) -> str:
+            result = await asyncio.to_thread(callable_, [{"role": "user", "content": prompt}])
+            content = result.get("content", "") if isinstance(result, dict) else result
+            return content if isinstance(content, str) else str(content)
+
+        async def propose() -> list[Any]:
+            return await propose_fixer_candidates(
+                node.fixer,
+                "code_rsi",
+                top.eval_scores.get("code_rsi", 0.0),
+                llm,
+                1,
+                lineage=slot_lineage(top, self._population.list_all()),
+                goal=self._config.evolve_goal,
+            )
+
+        for candidate in asyncio.run(propose())[:1]:
+            child = spawn_fixer_challenger(top, candidate)
+            self._population.add(child)
+            logger.info("rsi_live_hyper_child", parent=top.name, child=child.name)
 
     def _select_and_merge(
         self,

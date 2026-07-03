@@ -94,10 +94,24 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--genome-db",
         default=None,
-        help="PopulationStore path from an `evolve` run. The evolved CHAMPION "
-        "genome joins the tournament roster — its rendered strategy prompt, "
-        "sampling knobs, and learned memory compete in real improvement work. "
-        "This is how evolution's learnings flow into later runs.",
+        help="PopulationStore path — activates UNIFIED LIVE EVOLUTION: the genome "
+        "population IS the tournament roster, each cycle's real composites fold "
+        "back into the genomes (EMA), same-objective variants fight Elo battles, "
+        "and cull/breed/hyper-mutation run between cycles. Work is kept "
+        "(promoted/exported) exactly as in a plain run; the population persists, "
+        "so every run continues the lineage. No separate training evals exist.",
+    )
+    run.add_argument(
+        "--evolve-goal",
+        default="",
+        help="Operator goal for the hyper-mutator's meta-prompts in live mode.",
+    )
+    run.add_argument(
+        "--roster-size",
+        type=int,
+        default=4,
+        help="Genomes fielded per cycle in live mode (unscored children get "
+        "priority so verification-by-work never starves). Default: 4.",
     )
     run.add_argument(
         "--scout",
@@ -447,18 +461,10 @@ def main(argv: list[str] | None = None) -> int:
         targets = [t.strip() for t in args.targets.split(",") if t.strip()] if args.targets else []
         competitors = parse_competitors(args.competitors)
         if args.genome_db:
-            # Evolution's learnings flow into real work: the persisted champion
-            # genome (evolved slots + hyper-mutator-written memory) competes in
-            # this run via its rendered prompt/config.
-            from maistro_rsi.evolve_bridge import genome_to_competitor, open_population
-
-            champion = open_population(args.genome_db).get_champion()
-            if champion is not None:
-                comp = genome_to_competitor(champion)
-                competitors.append(comp)
-                print(f"tournament roster += evolved champion {champion.name} ({comp.label})")
-            else:
-                print(f"warning: no champion in {args.genome_db} — roster unchanged")
+            print(
+                f"live evolution: population at {args.genome_db} IS the roster — "
+                "work is kept AND scores the genomes; lineage continues across runs"
+            )
         config = LocalRsiConfig(
             repo_path=str(repo),
             test_command=args.test_cmd,
@@ -480,6 +486,9 @@ def main(argv: list[str] | None = None) -> int:
             export_patches=args.export_patches,
             report_every=args.report_every,
             report_dir=args.report_dir,
+            genome_db=args.genome_db,
+            evolve_goal=args.evolve_goal,
+            roster_size=args.roster_size,
         )
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"
