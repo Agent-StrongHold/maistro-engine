@@ -54,6 +54,26 @@ def test_genome_to_competitor_without_fixer_falls_back_to_node() -> None:
 
 
 @pytest.mark.ac("ADR-070126-6386/stage3")
+def test_seed_population_tops_up_never_buries_a_lineage() -> None:
+    # A persisted population is the lineage (evolved slots + written learnings):
+    # resuming a run must top up to n, not add n fresh randoms on top.
+    from maistro_evolve.population import PopulationStore
+
+    store = PopulationStore()
+    seed_population(store, 4)
+    lineage_ids = {g.id for g in store.list_all()}
+    assert len(lineage_ids) == 4
+    seed_population(store, 4)  # resume with a full population: no-op
+    assert {g.id for g in store.list_all()} == lineage_ids
+    for gid in list(lineage_ids)[:2]:
+        store.remove(gid)  # a cull shrank the population
+    seed_population(store, 4)  # resume: top up the 2 missing, keep the 2 evolved
+    survivors = {g.id for g in store.list_all()}
+    assert len(survivors) == 4
+    assert len(survivors & lineage_ids) == 2
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
 async def test_code_rsi_runner_scores_genome_by_its_fix() -> None:
     async def fake_fix_and_score(comp, target):  # type: ignore[no-untyped-def]
         return (True, 0.7, False)  # accepted, composite, is_stub
@@ -79,9 +99,16 @@ async def test_runner_honours_gate_veto_and_stub() -> None:
 
 @pytest.mark.ac("ADR-070126-6386/stage3")
 async def test_population_evolves_under_code_rsi(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    import random
+
     from maistro_evolve.cycle import EvolutionConfig
     from maistro_evolve.harness import EvalHarness
     from maistro_evolve.population import PopulationStore
+
+    # Evolve's randomness is unseeded (module gotcha) and this test asserts an
+    # emergent outcome (offspring survive 3 cycles of culling) — flaky ~1-in-6
+    # unpinned. Fix the seed so the trajectory is deterministic.
+    random.seed(20260703)
 
     store = PopulationStore(db_path=tmp_path / "pop.db")
     seed_population(store, 6)
