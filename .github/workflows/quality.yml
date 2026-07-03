@@ -119,13 +119,19 @@ jobs:
       #        dataclass fields, protocol methods) across the other 8 packages;
       #        genuine dead code in the new RSI/evolve code was removed in this
       #        PR rather than baselined.
+      #   1303 (2026-07-02) 15 newly-implemented ADR specs (#193) add dataclass
+      #        fields / protocol methods / public API used only by tests — the
+      #        same known false-positive class already baselined above.
+      #   1317 (2026-07-02) RSI v2 (ADR-070126-6386 v2, #217): +14 on top,
+      #        measured on the merged tree, all live code vulture can't see —
+      #        FixerGenome StrEnum members (reached via list(Enum)/pydantic
+      #        validation, e.g. REACT/STRICT_TDD/CRITIC), HyperMutationOutcome
+      #        pydantic fields (candidate_count/challenger_id/parent_b_id),
+      #        ScoutItem.location, ImprovementKind.primary_signals, and the
+      #        back-compat scout_objective.
       - name: vulture (dead-code; confidence ≥ 60 — ratchet)
         env:
-          # 1266 -> 1303: the 15 newly-implemented ADR specs in this PR add
-          # dataclass fields / protocol methods / public API used only by tests,
-          # the same known false-positive class already baselined above. Genuine
-          # dead code was not introduced; ratchet raised to the new floor.
-          VULTURE_BASELINE: 1303
+          VULTURE_BASELINE: 1317
         run: |
           uv run vulture packages/*/src --min-confidence 60 > vulture.log 2>&1 || true
           count=$(wc -l < vulture.log | tr -d ' ')

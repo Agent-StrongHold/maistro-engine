@@ -5,6 +5,14 @@ import uuid
 from copy import deepcopy
 from datetime import UTC, datetime
 
+from .fixer_genome import (
+    FixerGenome,
+    FixerStrategy,
+    ReasoningEffort,
+    ReviewPass,
+    RiskLevel,
+    TestStyle,
+)
 from .types import (
     DAGEdgeGenome,
     EvalWeights,
@@ -209,6 +217,55 @@ def mutate_eval_weights(genome: PipelineGenome, rate: float) -> PipelineGenome:
     )
 
 
+def _mutate_one_fixer(fixer: FixerGenome, rate: float) -> FixerGenome:
+    """Typed operators over one FixerGenome's slots: enum flip, float jitter, text
+    variation. The baseline (random) mutation path; the hyper-mutator (W6) is the
+    guided alternative that writes evidence-based values instead of random ones."""
+    f = fixer.model_copy(deep=True)
+    if random.random() < rate:
+        f.strategy = random.choice(list(FixerStrategy))
+    if random.random() < rate:
+        f.test_style = random.choice(list(TestStyle))
+    if random.random() < rate:
+        f.review_pass = random.choice(list(ReviewPass))
+    if random.random() < rate:
+        f.risk = random.choice(list(RiskLevel))
+    if random.random() < rate:
+        f.reasoning_effort = random.choice([None, *list(ReasoningEffort)])
+    for slot in ("minimalism", "ambition", "edge_focus", "tdd_rigor"):
+        if random.random() < rate:
+            setattr(f, slot, round(max(0.0, min(1.0, getattr(f, slot) + random.gauss(0, 0.15))), 2))
+    if random.random() < rate and f.temperature is not None:
+        f.temperature = round(max(0.0, min(2.0, f.temperature + random.gauss(0, 0.15))), 2)
+    if random.random() < rate:
+        f.strategy_hint = random.choice(PROMPT_VARIATIONS)
+    return f
+
+
+def mutate_fixer_genome(genome: PipelineGenome, rate: float) -> PipelineGenome:
+    """Apply `_mutate_one_fixer` to every node that carries a FixerGenome. Nodes
+    without one (genomes predating ADR-070126-6386 v2, or non-fixer roles) are
+    left untouched — this operator only mutates the RSI-fixer strategy layer."""
+    topo = deepcopy(genome.topology)
+    for node in topo.nodes:
+        if node.fixer is not None:
+            node.fixer = _mutate_one_fixer(node.fixer, rate)
+    return PipelineGenome(
+        id=_new_id(),
+        name=genome.name + "-fixer-mut",
+        topology=topo,
+        eval_weights=deepcopy(genome.eval_weights),
+        harness_params=deepcopy(genome.harness_params),
+        fitness_score=None,
+        eval_scores={},
+        generation=genome.generation,
+        parent_a_id=genome.id,
+        parent_b_id=None,
+        created_at=_fresh_timestamp(),
+        updated_at=_fresh_timestamp(),
+    )
+
+
 def mutate_all(genome: PipelineGenome, rate: float) -> PipelineGenome:
     """
     Apply all mutation operators to the genome in sequence.
@@ -228,6 +285,7 @@ def mutate_all(genome: PipelineGenome, rate: float) -> PipelineGenome:
     current = mutate_topology(genome, rate)
     current = mutate_node(current, rate)
     current = mutate_prompt(current, rate)
+    current = mutate_fixer_genome(current, rate)
     current = mutate_eval_weights(current, rate)
     current.name = genome.name + "-all-mut"
     return current

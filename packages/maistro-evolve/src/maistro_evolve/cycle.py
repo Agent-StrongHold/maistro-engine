@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from .crossover import crossover_and_mutate
 from .fitness import compute_fitness
 from .harness import EvalHarness
+from .hyper_mutator import entry_node, hyper_mutate, slot_lineage
 from .optimizer import extract_signal, optimize_topology
 from .population import IslandPopulation, PopulationStore, migrate_islands
 from .reflect import reflective_improve
@@ -50,6 +51,17 @@ class EvolutionConfig(BaseModel):
     # island_count=1 degenerates to the pre-spec single-pool behavior.
     island_count: int = Field(default=1, ge=1, le=MAX_ISLAND_COUNT)
     migration_interval: int = Field(default=5, ge=1, le=MAX_MIGRATION_INTERVAL)
+    # Hyper-mutation (ADR-070126-6386 v2): genomes whose entry node carries a
+    # typed FixerGenome route their self-improve step through the LLM
+    # hyper-mutator (guided slot proposals) INSTEAD of free-text reflection —
+    # reflection rewrites node.system_prompt, which genome_to_competitor ignores
+    # when a fixer is present, so reflecting those genomes would burn expensive
+    # code_rsi evals mutating an inert string. Shares the self_improve_* budget
+    # knobs above.
+    hyper_mutate: bool = True
+    # Operator context threaded into the hyper-mutator's meta-prompt.
+    goal: str = ""
+    user_preferences: str = ""
 
 
 class EvolutionCycle:
@@ -185,6 +197,50 @@ class EvolutionCycle:
                     population.add(child)
                     island_pop.force_assign(child.id, island_id)
 
+    async def _hyper_mutate_one(
+        self,
+        genome: PipelineGenome,
+        population: PopulationStore,
+        config: EvolutionConfig,
+        llm_call: Any,
+        all_genomes: list[PipelineGenome],
+    ) -> None:
+        """Guided slot mutation for one typed-fixer genome (propose→verify; an
+        accepted challenger joins as a child). Keeps a bounded proposal history in
+        harness_params so future rounds see the OPRO-style trajectory."""
+        window = config.reflect_history_window
+        stored: list[tuple[str, float]] = genome.harness_params.get("hyper_history", [])
+        outcome = await hyper_mutate(
+            genome,
+            self.harness,
+            llm_call,
+            benchmarks=config.target_benchmarks,
+            num_candidates=config.self_improve_candidates,
+            accept_margin=config.self_improve_accept_margin,
+            lineage=slot_lineage(genome, all_genomes),
+            goal=config.goal,
+            preferences=config.user_preferences,
+            history=[(exc, sc) for exc, sc in stored][-window:] if window > 0 else [],
+        )
+        if outcome is None:
+            return
+        if outcome.accepted and outcome.challenger is not None:
+            population.add(outcome.challenger)
+        if window > 0 and outcome.best_candidate_slots and outcome.best_candidate_score is not None:
+            import json as _json
+
+            entry: tuple[str, float] = (
+                _json.dumps(outcome.best_candidate_slots)[:160],
+                outcome.best_candidate_score,
+            )
+            updated = [*stored, entry][-window:]
+            genome.harness_params["hyper_history"] = updated
+            if outcome.accepted and outcome.challenger is not None:
+                outcome.challenger.harness_params["hyper_history"] = updated
+        genome.harness_params["last_hyper_mutation"] = outcome.summary()
+        genome.updated_at = datetime.now(UTC).isoformat()
+        population.add(genome)
+
     async def _self_improve_top(
         self,
         population: PopulationStore,
@@ -203,6 +259,14 @@ class EvolutionCycle:
         top = scored[: config.self_improve_top_n]
 
         for genome in top:
+            # Typed-fixer genomes route through the hyper-mutator (see the
+            # hyper_mutate config comment): free-text reflection would rewrite a
+            # system_prompt that genome_to_competitor ignores for these genomes.
+            node = entry_node(genome)
+            if config.hyper_mutate and node is not None and node.fixer is not None:
+                await self._hyper_mutate_one(genome, population, config, llm_call, all_genomes)
+                continue
+
             from .types import EvalResult
 
             eval_results = [EvalResult(benchmark=k, score=v) for k, v in genome.eval_scores.items()]

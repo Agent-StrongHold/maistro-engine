@@ -80,6 +80,69 @@ def red_green_signal(evidence: TddEvidence, weight: float = 0.05) -> SignalScore
     )
 
 
+def _count_test_functions(source: str) -> int:
+    """Count ``test_*`` functions/methods in Python ``source`` (0 on a parse error)."""
+    import ast
+
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return 0
+    return sum(
+        1
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name.startswith("test_")
+    )
+
+
+def count_net_new_tests(repo_dir: str | Path, baseline_ref: str, test_files: list[str]) -> int:
+    """Net increase in ``test_*`` functions across ``test_files`` vs ``baseline_ref``.
+
+    Candidate count minus baseline count (floored at 0): a genuinely added test
+    raises it; a rename or edit-in-place leaves it at 0. Baseline is read with
+    ``git show`` (a file absent on baseline counts as 0 → all its tests are new).
+    """
+    cwd = Path(repo_dir)
+    net = 0
+    for rel in test_files:
+        try:
+            candidate = (cwd / rel).read_text(encoding="utf-8")
+        except OSError:
+            candidate = ""
+        base = subprocess.run(
+            ["git", "show", f"{baseline_ref}:{rel}"],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+        )
+        baseline_src = base.stdout if base.returncode == 0 else ""
+        net += max(0, _count_test_functions(candidate) - _count_test_functions(baseline_src))
+    return net
+
+
+def new_test_signal(
+    net_new_tests: int, coverage_delta: float | None, weight: float
+) -> SignalScore | None:
+    """Reward a genuinely new, coverage-raising test — or return ``None`` (absent).
+
+    Fires only when a net-new ``test_*`` was added **and** coverage rose, so the
+    signal is present exactly for substantive test work. Because ``composite``
+    renormalises over present signals, its presence lifts a test-adding candidate
+    well above a docstring-only one (which lacks it), and its absence never
+    dilutes a non-test candidate. The passing gate stays "tests_pass" elsewhere.
+    """
+    if net_new_tests <= 0 or coverage_delta is None or coverage_delta <= 0:
+        return None
+    return SignalScore(
+        name="new_test",
+        kind=MeasureKind.CALCULATED,
+        score=1.0,
+        weight=weight,
+        rationale=f"{net_new_tests} net-new green test(s); coverage +{coverage_delta:.1f}pp",
+    )
+
+
 def run_test_selection(
     repo_dir: str | Path, selectors: list[str], *, timeout: int = 600
 ) -> tuple[int, str]:

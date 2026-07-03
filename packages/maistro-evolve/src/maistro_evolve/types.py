@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .fixer_genome import FixerGenome
+
 
 class DAGEdgeGenome(BaseModel):
     id: str
@@ -21,6 +23,11 @@ class NodeGenome(BaseModel):
     max_tokens: int
     system_prompt: str
     max_tool_rounds: int
+    # The evolvable RSI-fixer strategy layer (ADR-070126-6386 v2) — optional so
+    # existing genomes/tests that build a NodeGenome without one stay valid; only
+    # meaningful for nodes used as an RSI fixer's entry (see
+    # maistro_rsi.evolve_bridge.genome_to_competitor).
+    fixer: FixerGenome | None = None
 
 
 class DAGTopology(BaseModel):

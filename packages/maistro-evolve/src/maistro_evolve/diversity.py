@@ -6,6 +6,7 @@ import random
 import uuid
 from datetime import UTC, datetime
 
+from .fixer_genome import random_fixer_genome
 from .mutate import MODEL_REGISTRY, STRATEGY_LIST
 from .types import (
     DAGEdgeGenome,
@@ -96,6 +97,7 @@ def _random_genome() -> PipelineGenome:
                 max_tokens=random.choice([256, 512, 1024, 2048, 4096, 8192, 16384]),
                 system_prompt="You are a helpful agent.",
                 max_tool_rounds=random.randint(1, 20),
+                fixer=random_fixer_genome(),
             )
         )
 

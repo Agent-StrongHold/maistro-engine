@@ -137,6 +137,7 @@ exec docker run --rm \
         --coverage-pytest-args '$COV_ARGS' \
         --targets '$TARGETS' \
         --agent-turns 6 \
+        --scout \
         --report-every $REPORT_EVERY \
         --report-dir /run/reports \
         --work-root /tmp/rsi-work"

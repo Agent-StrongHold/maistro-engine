@@ -13,14 +13,23 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Competitor:
-    """One fixer config: a model alias and an optional sampling temperature.
+    """One fixer config: a model alias, sampling knobs, and an optional system
+    prompt (the evolvable strategy layer rendered from a genome).
 
-    ``label`` is excluded from equality so two competitors with the same model
-    and temperature compare equal regardless of how they were labelled.
+    ``reasoning_effort`` (reasoning-model effort level) and ``temperature``
+    (non-reasoning sampling) are mutually exclusive at the LLM callable — see
+    ``maistro_bootstrap.builders.responses_callable.LiteLLMCallable`` — a
+    competitor may carry either, both (reasoning_effort wins), or neither.
+
+    ``label`` and ``prompt`` are excluded from equality so two competitors with the
+    same model/temperature/reasoning_effort compare equal regardless of label or
+    prompt text.
     """
 
     model: str
     temperature: float | None = None
+    reasoning_effort: str | None = None
+    prompt: str | None = field(default=None, compare=False)
     label: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:

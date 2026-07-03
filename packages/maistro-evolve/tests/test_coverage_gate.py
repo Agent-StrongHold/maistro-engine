@@ -23,10 +23,16 @@ def test_gate_not_enforced_when_coverage_unavailable() -> None:
     assert cg.coverage_gate(80.0, None).passed is True
 
 
-def test_coverage_signal_scores_absolute_with_delta() -> None:
+def test_coverage_signal_scores_the_delta_not_the_absolute() -> None:
+    # Reward the direction of the move: flat is neutral, a gain trends to 1.0, a
+    # drop toward 0.0 — so a restyle (flat) no longer scores the suite's standing
+    # coverage like every other candidate.
+    assert cg.coverage_signal(60.0, 60.0, 0.2).score == 0.5  # flat → neutral
+    assert cg.coverage_signal(60.0, 61.0, 0.2).score == 0.75  # +1pp over a 2pp swing
+    assert cg.coverage_signal(60.0, 75.0, 0.2).score == 1.0  # big gain → clamped 1.0
+    assert cg.coverage_signal(60.0, 55.0, 0.2).score == 0.0  # drop → clamped 0.0
     s = cg.coverage_signal(60.0, 75.0, 0.2)
-    assert abs(s.score - 0.75) < 1e-9
-    assert "+15.0" in s.rationale
+    assert "+15.0pp" in s.rationale
     assert s.detail["delta"] == 15.0
 
 
