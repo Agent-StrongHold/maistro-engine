@@ -82,6 +82,9 @@ def test_agent_importer_edge_cases():
     md = "---\nname: lister\ntools:\n  - a\n  - b\n---\nBody as description."
     card = imp.to_agent_card(md)
     assert card.tools == ("a", "b") and card.description == "Body as description."
+    # tools as neither str nor list (an int) → empty.
+    card2 = imp.to_agent_card("---\nname: a\ndescription: d\ntools: 42\n---\nbody")
+    assert card2.tools == ()
 
 
 def test_openai_tools_odd_shapes_ignored():
@@ -90,6 +93,11 @@ def test_openai_tools_odd_shapes_ignored():
     )
     # dict-without-name/type → "", int → "", plain string kept.
     assert card.tools == ("bash",)
+    # A non-list `tools` field yields no tools.
+    card2 = OpenAIAssistantImporter().to_agent_card(
+        {"instructions": "x", "model": "m", "tools": "not-a-list"}
+    )
+    assert card2.tools == ()
 
 
 # --- skill importers -----------------------------------------------------
