@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from maistro.capabilities.bootstrap import default_capability_registry
 from maistro.capabilities.discovery import discover_into
+from maistro.capabilities.harness_manager import HarnessSessionManager
 from maistro.capabilities.http import AsyncHttp
 from maistro.capabilities.http_client import HttpxAsyncHttp
 from maistro.capabilities.protocols import CapabilityProvider
@@ -41,6 +42,7 @@ __all__ = [
     "FallbackPolicy",
     "HarnessInputBlocked",
     "HarnessRunner",
+    "HarnessSessionManager",
     "HttpxAsyncHttp",
     "ProviderHealth",
     "SafeHarnessRunner",
