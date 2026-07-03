@@ -71,10 +71,16 @@ class RiskLevel(StrEnum):
 
 
 class ReasoningEffort(StrEnum):
-    """OpenAI-convention levels, forwarded as-is by the LiteLLM gateway to any
-    reasoning-capable provider it proxies to."""
+    """Reasoning-effort levels, forwarded as-is by the LiteLLM gateway.
 
-    MINIMAL = "minimal"
+    Deliberately the portable low/medium/high subset: OpenAI additionally accepts
+    'minimal', but other reasoning providers validate the value server-side and
+    reject it (Cerebras 400s: "Input should be 'none', 'low', 'medium' or
+    'high'") — caught live when a randomly-seeded genome drew 'minimal' against a
+    mixed model group. Non-reasoning deployments in a group are covered by the
+    gateway's drop_params, which silently drops the whole parameter for them.
+    """
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

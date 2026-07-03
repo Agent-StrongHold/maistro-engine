@@ -259,7 +259,7 @@ class LiteLLMCallable:
         self.timeout = timeout
         # A competing genome's sampling temperature; None = provider default.
         self.temperature = temperature
-        # Reasoning-model effort level ("minimal"/"low"/"medium"/"high"), the
+        # Reasoning-model effort level ("low"/"medium"/"high"), the
         # temperature/top_p/top_k/(partial)max_tokens replacement on o-series,
         # GPT-5, Gemini-2.5-thinking, DeepSeek-R1, etc. Reasoning models reject an
         # explicit temperature outright, so __call__ sends one or the other, never

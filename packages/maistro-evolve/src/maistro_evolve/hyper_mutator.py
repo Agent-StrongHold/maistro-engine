@@ -107,7 +107,7 @@ _SCHEMA_TEXT = (
     "  test_style: one of characterization|strict_tdd|property_based\n"
     "  review_pass: one of none|self_review|critic\n"
     "  risk: one of conservative|balanced|bold\n"
-    "  reasoning_effort: one of minimal|low|medium|high, or null (non-reasoning model)\n"
+    "  reasoning_effort: one of low|medium|high, or null (non-reasoning model)\n"
     "  temperature: float 0..2, or null\n"
     "  minimalism, ambition, edge_focus, tdd_rigor: float 0..1\n"
     "  persona, strategy_hint, goals, codebase_standards, learned_successes, "
