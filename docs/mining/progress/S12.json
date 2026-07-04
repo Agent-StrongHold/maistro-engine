@@ -1,0 +1,13 @@
+{
+  "slice": "S12",
+  "status": "complete",
+  "files_total": 15,
+  "files_done": 15,
+  "last_file": "scheduling/store.py",
+  "note": "2026-07-04T01:45:00Z — 15 files scanned (7 classifier, 6 router, 2 scheduling). Major findings: cost normalization redesign in router (scorer+scarcity+selector), type safety upgrades in classifier, cron validation improvements in scheduling, helper function refactoring in multi_intent/filter. No regressions.",
+  "summary": {
+    "classifier": "Type safety improvements (Literals, coerce_priority helper); multi_intent refactoring into helpers",
+    "router": "Cost normalization design (scorer 1/ln scale → [0,1] map), over-quota filtering (None return), scarcity paygo floor, selector explicit error handling, filter helper extraction",
+    "scheduling": "Sophisticated cron gap calculation replacing heuristics; org_id scoping is Stronghold-specific"
+  }
+}
