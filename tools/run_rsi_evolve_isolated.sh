@@ -17,6 +17,12 @@ set -euo pipefail
 #     OUT_DIR  host dir for population.db + log       (default ./rsi-reports/evolve-<ts>)
 #     MODELS   comma-separated gateway aliases        (default code)
 #     GOAL     operator goal for the hyper-mutator    (default: test-first fixes)
+#
+# LINEAGE SURVIVES: population.db carries the evolved slots and the
+# hyper-mutator's written learnings. Pass the SAME OUT_DIR to continue a lineage
+# (seeding is top-up only — it never buries an existing population in randoms);
+# the timestamped default starts a fresh one. Feed the champion into real
+# tournament runs with `maistro_rsi run --genome-db <OUT_DIR>/population.db`.
 
 CYCLES="${1:-10}"
 TARGET="${2:-packages/maistro-evolve/src/maistro_evolve/mutate.py}"

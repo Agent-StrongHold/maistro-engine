@@ -112,7 +112,7 @@ class LiveCodeFixer:
                 isolation=self._isolation,
                 image=self._image,
             )
-            await apply_fn(LocalSandbox(cdir), str(cdir))
+            await apply_fn(LocalSandbox(cdir), str(cdir), None)
             _git(cdir, "add", "-A")
             status = _git(cdir, "status", "--porcelain")
             changed = [ln[3:].strip() for ln in status.stdout.splitlines() if ln.strip()]

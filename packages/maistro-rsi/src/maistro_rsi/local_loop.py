@@ -291,18 +291,22 @@ def make_builders_apply_patch(
     ``MAISTRO_BUILDERS_MODEL``/``DEFAULT_MODEL`` from the loaded ``.env``).
     """
 
-    async def _run_turns(session: object) -> None:
+    async def _run_turns(session: object, cycle_model: str | None = None) -> None:
         from maistro_bootstrap.builders.agent_loop import AgentLoopConfig, TurnRunner
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
 
-        config = AgentLoopConfig(model=model) if model else AgentLoopConfig()
+        # Factory `model` is an explicit operator choice and wins; otherwise the
+        # per-cycle model (the quota-burn scheduler's pick, threaded through
+        # ApplyPatchFn's third argument) applies.
+        effective_model = model or cycle_model
+        config = AgentLoopConfig(model=effective_model) if effective_model else AgentLoopConfig()
         runner = TurnRunner(session=session, config=config)  # type: ignore[arg-type]
         # 300s timeout: the code group load-balances across reasoning deployments
         # (gpt-oss-120b on Cerebras at 5 RPM) whose queueing + long generations
         # overran the default 120s in a live run (httpx.ReadTimeout).
         runner.set_llm(
             ResponsesAPICallable(
-                model=model,
+                model=effective_model,
                 temperature=temperature,
                 reasoning_effort=reasoning_effort,
                 timeout=300.0,
@@ -332,7 +336,9 @@ def make_builders_apply_patch(
             messages.append({"role": "assistant", "content": content})
             messages.append({"role": "user", "content": "Continue if useful, otherwise stop."})
 
-    async def apply(sandbox: MicroVmSandbox, workspace: str) -> None:
+    async def apply(
+        sandbox: MicroVmSandbox, workspace: str, cycle_model: str | None = None
+    ) -> None:
         # Imported lazily so the package stays importable without the builders
         # extras installed (mirrors _builders_tui.py's own lazy import).
         from maistro_bootstrap.builders.session import BuilderSession
@@ -342,14 +348,14 @@ def make_builders_apply_patch(
             from maistro_bootstrap.builders.container_sandbox import ContainerBuilderSandbox
 
             with ContainerBuilderSandbox(work_path, image=image) as csbx:
-                await _run_turns(BuilderSession(sandbox=csbx))
+                await _run_turns(BuilderSession(sandbox=csbx), cycle_model)
                 # Agent ran isolated in the container; bring its edits back to the
                 # host worktree so the loop can stage/commit/test them.
                 csbx.sync_to_host()
         else:
             from maistro_bootstrap.builders.sandbox import LocalWorktreeSandbox
 
-            await _run_turns(BuilderSession(sandbox=LocalWorktreeSandbox(work_path)))
+            await _run_turns(BuilderSession(sandbox=LocalWorktreeSandbox(work_path)), cycle_model)
 
     return apply
 
@@ -699,7 +705,7 @@ class LocalRsiLoop:
         r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label)
         try:
             apply_fn = self._apply_for_competitor(competitor, objective, budget)
-            asyncio.run(apply_fn(LocalSandbox(cdir), str(cdir)))
+            asyncio.run(apply_fn(LocalSandbox(cdir), str(cdir), None))
             _git(cdir, "add", "-A")
             r.changed_files = self._changed_files(cdir)
             if not r.changed_files:

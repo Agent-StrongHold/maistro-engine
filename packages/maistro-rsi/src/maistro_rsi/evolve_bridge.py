@@ -71,7 +71,13 @@ def make_code_rsi_runner(fix_and_score: FixAndScore, target: str) -> BenchmarkRu
 
 
 def seed_population(store: PopulationStore, n: int, models: list[str] | None = None) -> None:
-    """Seed the store with `n` random fixer genomes (varied model/temp/prompt).
+    """Top the store up to `n` genomes with random fixer seeds (model/temp/prompt).
+
+    TOP-UP, not blind seeding: a persisted population.db is the lineage — its
+    genomes carry evolved slots and the hyper-mutator's written learnings
+    (learned_successes/learned_failures) — so resuming a run must NOT bury it
+    under fresh randoms. An existing population of >= n genomes is left alone;
+    a partial one is topped up; only an empty store gets the full n.
 
     Pass ``models`` (gateway aliases like the `code` group) to pin EVERY node to a
     real, routable alias — evolve's own MODEL_REGISTRY names aren't LiteLLM
@@ -81,7 +87,8 @@ def seed_population(store: PopulationStore, n: int, models: list[str] | None = N
     """
     from maistro_evolve.diversity import _random_genome
 
-    for _ in range(n):
+    existing = len(store.list_all())
+    for _ in range(max(0, n - existing)):
         store.add(_random_genome(models))
 
 
