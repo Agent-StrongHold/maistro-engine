@@ -154,6 +154,44 @@ _CONFIRMATION_PATTERNS = re.compile(
 )
 
 
+def _collect_missing_signals(
+    profile: dict[str, Any], text: str
+) -> tuple[list[MissingDetail], dict[str, bool]]:
+    """Check each signal category's patterns against `text`.
+
+    Returns the missing-detail list plus a per-category hit map (a category
+    with no configured patterns counts as satisfied — it isn't required for
+    that task type).
+    """
+    missing: list[MissingDetail] = []
+    signal_flags: dict[str, bool] = {}
+
+    for category in ("what", "where", "how", "context"):
+        patterns = profile.get(category, [])
+        if not patterns:
+            signal_flags[category] = True
+            continue
+        signal_flags[category] = any(p.search(text) for p in patterns)
+        if not signal_flags[category]:
+            question = profile.get(
+                f"{category}_question", f"Please provide more {category} detail."
+            )
+            missing.append(MissingDetail(category, question))
+
+    return missing, signal_flags
+
+
+def _confidence_from_signals(signal_ratio: float, word_count: int) -> float:
+    """Map signal coverage + message length to a confidence score."""
+    if signal_ratio >= 0.75:
+        return 0.9 if word_count >= 10 else 0.7
+    if signal_ratio >= 0.5:
+        return 0.7 if word_count >= 8 else 0.5
+    if signal_ratio >= 0.25:
+        return 0.4
+    return 0.1
+
+
 def analyze_request_sufficiency(
     text: str,
     task_type: str = "code",
@@ -182,26 +220,10 @@ def analyze_request_sufficiency(
             summary="Follow-up confirmation of prior detailed request",
         )
 
-    # Check signals
-    missing: list[MissingDetail] = []
-    signal_flags: dict[str, bool] = {}
-
-    for category in ("what", "where", "how", "context"):
-        patterns = profile.get(category, [])
-        if not patterns:
-            signal_flags[category] = True  # No patterns = not required for this task type
-            continue
-        signal_flags[category] = any(p.search(text) for p in patterns)
-        if not signal_flags[category]:
-            question = profile.get(
-                f"{category}_question", f"Please provide more {category} detail."
-            )
-            missing.append(MissingDetail(category, question))
+    missing, signal_flags = _collect_missing_signals(profile, text)
 
     word_count = len(text.split())
     min_words = profile.get("min_words", 6)
-    signal_count = sum(signal_flags.values())
-    total_signals = len(signal_flags)
 
     # Hard floor: under min_words is never sufficient
     if word_count < min_words:
@@ -211,16 +233,8 @@ def analyze_request_sufficiency(
             missing=missing or [MissingDetail("detail", "Please provide more detail.")],
         )
 
-    # Confidence based on signal coverage + length
-    signal_ratio = signal_count / max(total_signals, 1)
-    if signal_ratio >= 0.75:
-        confidence = 0.9 if word_count >= 10 else 0.7
-    elif signal_ratio >= 0.5:
-        confidence = 0.7 if word_count >= 8 else 0.5
-    elif signal_ratio >= 0.25:
-        confidence = 0.4
-    else:
-        confidence = 0.1
+    signal_ratio = sum(signal_flags.values()) / max(len(signal_flags), 1)
+    confidence = _confidence_from_signals(signal_ratio, word_count)
 
     max_missing = profile.get("max_missing", 1)
     sufficient = confidence >= 0.7 and len(missing) <= max_missing
