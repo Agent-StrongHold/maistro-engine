@@ -43,6 +43,32 @@ _ENV_KEYS = (
     "DEFAULT_MODEL",
 )
 
+# Gateway attribution headers -> keys in the returned "gateway" dict. These are
+# LiteLLM proxy response headers: which deployment actually served the call
+# (after any in-group failover), how it got there, what it cost, and the
+# served deployment's remaining rate-limit headroom. Callers use them for
+# per-deployment calibration and proactive benching — the loop can keep
+# addressing model GROUPS while still learning per-carrier truth.
+_GATEWAY_HEADERS = {
+    "model_id": "x-litellm-model-id",
+    "model_group": "x-litellm-model-group",
+    "api_base": "x-litellm-model-api-base",
+    "attempted_retries": "x-litellm-attempted-retries",
+    "attempted_fallbacks": "x-litellm-attempted-fallbacks",
+    "response_cost": "x-litellm-response-cost",
+    "remaining_requests": "x-ratelimit-remaining-requests",
+    "remaining_tokens": "x-ratelimit-remaining-tokens",
+}
+
+
+def _no_cache_default() -> bool:
+    """RSI/evolve set MAISTRO_LLM_NO_CACHE=1 (via the isolated wrappers) so the
+    gateway's Redis response cache is bypassed: cached completions would return
+    byte-identical responses to competing genome variants, collapsing the
+    sampling diversity the tournament depends on. Regular work (builders TUI,
+    conductor) leaves it unset and benefits from the cache."""
+    return os.environ.get("MAISTRO_LLM_NO_CACHE", "").strip().lower() in ("1", "true", "yes")
+
 _env_loaded = False
 
 
@@ -254,11 +280,14 @@ class LiteLLMCallable:
         timeout: float = 120.0,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
+        no_cache: bool | None = None,
     ) -> None:
         self.model = model or _default_model()
         self.timeout = timeout
         # A competing genome's sampling temperature; None = provider default.
         self.temperature = temperature
+        # None = defer to MAISTRO_LLM_NO_CACHE (see _no_cache_default).
+        self.no_cache = _no_cache_default() if no_cache is None else no_cache
         # Reasoning-model effort level ("low"/"medium"/"high"), the
         # temperature/top_p/top_k/(partial)max_tokens replacement on o-series,
         # GPT-5, Gemini-2.5-thinking, DeepSeek-R1, etc. Reasoning models reject an
@@ -292,6 +321,10 @@ class LiteLLMCallable:
             "messages": _to_openai_messages(messages),
             "max_tokens": max_tokens,
         }
+        if self.no_cache:
+            # LiteLLM per-request cache controls: don't read OR write the
+            # gateway's response cache for this call.
+            body["cache"] = {"no-cache": True, "no-store": True}
         # reasoning_effort and temperature are mutually exclusive on reasoning
         # models (sending both 400s), so prefer reasoning_effort when set and
         # never send temperature alongside it. Neither set ⇒ provider default,
@@ -324,6 +357,22 @@ class LiteLLMCallable:
         )
         if resp.status_code >= 400:
             raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
+
+        gateway = {
+            key: resp.headers[header]
+            for key, header in _GATEWAY_HEADERS.items()
+            if header in resp.headers
+        }
+        if gateway.get("attempted_fallbacks") not in (None, "0"):
+            # The requested group/deployment was exhausted and another carrier
+            # served the call — surface it so calibration sees failover events.
+            logger.info(
+                "gateway fallback: requested=%s served_by=%s fallbacks=%s retries=%s",
+                self.model,
+                gateway.get("model_id", "?"),
+                gateway.get("attempted_fallbacks"),
+                gateway.get("attempted_retries", "0"),
+            )
 
         data = resp.json()
         choice = data["choices"][0]
@@ -362,6 +411,10 @@ class LiteLLMCallable:
                 "input_tokens": usage.get("prompt_tokens", 0),
                 "output_tokens": usage.get("completion_tokens", 0),
             },
+            # Per-call gateway attribution (deployment served, failover hops,
+            # cost, remaining headroom). Extra key — existing consumers that
+            # only read content/stop_reason/usage are unaffected.
+            "gateway": gateway,
         }
 
 

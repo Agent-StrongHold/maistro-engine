@@ -90,6 +90,7 @@ exec docker run --rm \
     -v "${OUT_MOUNT}:/run/out" \
     -e "PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistro-rsi/src:packages/maistro-bootstrap/src" \
     -e "RSI_GOAL=$GOAL" \
+    -e "MAISTRO_LLM_NO_CACHE=1" \
     "$IMAGE" \
     bash -lc "set -o pipefail; sed 's/\r\$//' /run/gateway.env > /tmp/gw.env; set -a; . /tmp/gw.env; set +a; \
         export LITELLM_URL='$GATEWAY_URL' LITELLM_BASE_URL='$GATEWAY_URL' LITELLM_PROXY_URL='$GATEWAY_URL'; \

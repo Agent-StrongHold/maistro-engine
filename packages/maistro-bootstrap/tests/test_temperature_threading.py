@@ -18,6 +18,7 @@ from maistro_bootstrap.builders.responses_callable import LiteLLMCallable
 class _FakeResp:
     status_code = 200
     text = ""
+    headers: dict[str, str] = {}
 
     def json(self) -> dict[str, Any]:
         return {

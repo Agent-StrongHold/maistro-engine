@@ -141,6 +141,7 @@ exec docker run --rm \
     -v "${ENV_MOUNT}:/run/gateway.env:ro" \
     -v "${REPORT_MOUNT}:/run/reports" \
     -e "RSI_GOAL=$EVOLVE_GOAL" \
+    -e "MAISTRO_LLM_NO_CACHE=1" \
     -e "PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistro-rsi/src:packages/maistro-bootstrap/src" \
     "$IMAGE" \
     bash -lc "sed 's/\r\$//' /run/gateway.env > /tmp/gw.env; set -a; . /tmp/gw.env; set +a; \
