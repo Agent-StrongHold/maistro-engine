@@ -1,6 +1,7 @@
 # Mining inventory — stronghold / AgentTuring / A2UI → maistro-engine
 
-**Status:** first-wave (Opus) reports complete; Haiku line-level re-scan (S01–S17) in progress.
+**Status:** first-wave (Opus) reports complete; Haiku line-level sweep S01–S17 **complete**
+(see `reports/S*.md`, 2.9k lines of findings).
 **Scope:** product-agnostic only (ADR-019/035). Enterprise/multi-tenant/K8s/coin-economy = skip.
 **Baseline:** maistro-engine has 112 ADRs, 142 specs; date-based ID scheme (ADR-062026-9b30).
 
@@ -70,6 +71,31 @@ by-design drops, not accidents.
 - E3: Autonoetic thesis / Tulving anchor → short "why" ADR
 - E4: 22 Tranche-11 "autonoetic blends" → `docs/research/` digest
 - E5: turing-obsidian-store / memory-consolidator / self-talk-loop / dossier-drift specs
+
+## GROUP F — Haiku line-level sweep results (S01–S17)
+
+**At/above parity (no action):** warden (S01 — engine ahead: overlapping scan windows, extra
+exfil patterns), skills marketplace/forge (S04 — engine superset), pii/ratelimit/auth (S03),
+classifier/router/scheduling (S12 — cost normalization is a deliberate redesign, nothing
+dropped), persistence/quota (S09), memory consolidation (S08 — engine ahead), agent strategies
+(prior wave — clean port).
+
+**New actionable gaps found by the sweep:**
+
+| # | Item | Slice/report | Severity | Effort |
+|---|---|---|---|---|
+| F1 | Gate `_check_sufficiency()` is a 2-line stub vs stronghold's 271-line request-sufficiency analyzer (task-signal patterns, confirmation detection, confidence) | S02 | partial | M |
+| F2 | Tool-layer security guards: SSRF on HTTP tool invocation, path-traversal/symlink escape checks, shell-metachar guards — unverified/missing in engine tools | S06 | **high** | M |
+| F3 | Builders DAG runtime modules absent: `dag.py`(541L), `graph.py`(170L), `graph_executor.py`(285L), `pipeline.py`(554L) — the ADR-099/SPEC-201 gated verify-and-revise loop exists in stronghold code, engine has only the docs | S11 | missing | M–L |
+| F4 | Orchestrator async queue-dispatcher pattern (WorkItem merge, dispatch API, polling coordination — 20 gaps) vs engine's wave-only orchestrator | S10 | missing | M–L |
+| F5 | 4 missing DI protocol seams: `DataStore`, `RateLimiter`, `McpDeployerClient`, `VaultClient` | S13 | missing | S–M |
+| F6 | `sessions/summarizer.py` episodic bridge absent from engine | S09 | missing | M |
+| F7 | a2a delegation audit trail dropped `user_id` (tenant drop is by-design; user_id is not) | S15 | weaker | S |
+| F8 | Type fixes: `GateResult.clarifying_questions` typed `tuple[Any,...]`; missing `ToolResult.sentinel_repaired` flag | S14 | weaker | S |
+| F9 | SSE heartbeat pattern + LiteLLM dynamic model federation (portable patterns from chat/models routes) | S16 | partial | S–M |
+| F10 | Engine `memory/learnings/embeddings` + hybrid lexical+vector retrieval scoring deltas; outcomes thumbs-down feedback loop | S07/S08 | partial | M |
+| F11 | Stray auto-inserted `__import__()` logging in engine learnings promoter (lines ~163–170) — cleanup | S07 | cleanup | S |
+| F12 | SSRF-mitigation docstring guidance dropped from 3 connector functions | S05 | doc | S |
 
 ## SKIP (Stronghold-owned per ADR-019/035, or superseded)
 
