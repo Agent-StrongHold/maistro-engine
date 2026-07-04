@@ -2,7 +2,7 @@
   "slice": "S07",
   "status": "in_progress",
   "files_total": 6,
-  "files_done": 4,
-  "last_file": "store.py",
-  "note": "2026-07-04 examined store.py - all coverage present, dedup/FIFO/org-isolation logic identical"
+  "files_done": 5,
+  "last_file": "embeddings.py",
+  "note": "2026-07-04 examined embeddings.py - found 3 gaps: org_id not forwarded in hybrid search, weird logging code in engine"
 }
