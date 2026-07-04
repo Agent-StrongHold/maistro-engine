@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import maistro_rsi.selfbranch as selfbranch
@@ -35,6 +37,10 @@ class FakeGitOps:
         self.calls.append("branch")
         return {"ok": True}
 
+    async def git_add(self, workspace):
+        self.calls.append("add")
+        return {"ok": True}
+
     async def git_commit(self, workspace, message, add_all=True):
         self.calls.append("commit")
         return {"ok": True}
@@ -60,6 +66,7 @@ def patch_git_ops(monkeypatch):
 
     monkeypatch.setattr(selfbranch, "git_clone", fake.git_clone)
     monkeypatch.setattr(selfbranch, "git_branch", fake.git_branch)
+    monkeypatch.setattr(selfbranch, "git_add", fake.git_add)
     monkeypatch.setattr(selfbranch, "git_commit", fake.git_commit)
     monkeypatch.setattr(selfbranch, "git_diff", fake.git_diff)
     monkeypatch.setattr(selfbranch, "git_push", fake.git_push)
@@ -67,7 +74,7 @@ def patch_git_ops(monkeypatch):
     return fake
 
 
-async def _noop_patch(sandbox, workspace) -> None:
+async def _noop_patch(sandbox, workspace, model=None) -> None:
     pass
 
 
@@ -94,23 +101,32 @@ class TestRunSelfBranchAttempt:
 
     @pytest.mark.asyncio
     async def test_successful_clone_runs_branch_then_patch_then_commit_in_order(self, monkeypatch):
-        """selfbranch-3: branch -> apply_patch -> commit happen in that order before tests."""
+        """selfbranch-3: branch -> apply_patch -> add -> diff -> commit happen in that
+        order before tests. add/diff must precede commit so the captured diff is
+        non-empty (diff is read from the staged tree, not from HEAD after commit)."""
         order: list[str] = []
         fake = FakeGitOps(order=order)
         monkeypatch.setattr(selfbranch, "git_clone", fake.git_clone)
         monkeypatch.setattr(selfbranch, "git_branch", fake.git_branch)
+        monkeypatch.setattr(selfbranch, "git_add", fake.git_add)
         monkeypatch.setattr(selfbranch, "git_commit", fake.git_commit)
         monkeypatch.setattr(selfbranch, "git_diff", fake.git_diff)
         monkeypatch.setattr(selfbranch, "git_push", fake.git_push)
         monkeypatch.setattr(selfbranch, "github_create_pr", fake.github_create_pr)
 
-        async def tracking_patch(sandbox, workspace):
+        async def tracking_patch(sandbox, workspace, model=None):
             order.append("patch")
 
         attempt = new_attempt("https://github.com/org/repo.git", "pytest -q")
         await run_self_branch_attempt(FakeSandbox(), "/ws", attempt, tracking_patch)
 
-        assert order.index("branch") < order.index("patch") < order.index("commit")
+        assert (
+            order.index("branch")
+            < order.index("patch")
+            < order.index("add")
+            < order.index("diff")
+            < order.index("commit")
+        )
 
     @pytest.mark.asyncio
     async def test_tests_passed_true_only_when_exit_zero_and_no_error(self, patch_git_ops):
@@ -284,3 +300,46 @@ class TestPathsTouchedByDiff:
     def test_empty_diff_yields_no_paths(self):
         """selfbranch-7: a diff with no `diff --git` headers touches no paths."""
         assert paths_touched_by_diff("") == []
+
+
+class TestCapturedDiffIsNonEmpty:
+    """Regression test against real git (no fakes): the diff captured for the
+    quarantine gate and PR body must reflect the actual patch, not an empty
+    diff against a tree that already matches HEAD after commit."""
+
+    @pytest.fixture(autouse=True)
+    def patch_git_ops(self):
+        """Shadow the module-level autouse fixture — this class needs real git,
+        not FakeGitOps, to exercise the actual clone/add/diff/commit sequence."""
+        yield None
+
+    @pytest.mark.asyncio
+    async def test_diff_reflects_a_real_file_added_by_the_patch(self, tmp_path, monkeypatch):
+        import subprocess
+
+        origin = tmp_path / "origin"
+        origin.mkdir()
+        subprocess.run(["git", "init", "-q"], cwd=origin, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=origin, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=origin, check=True)
+        (origin / "README.md").write_text("hello\n")
+        subprocess.run(["git", "add", "."], cwd=origin, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=origin, check=True)
+        subprocess.run(["git", "branch", "-M", "main"], cwd=origin, check=True)
+
+        workspace_root = tmp_path / "maistro-workspace"
+        monkeypatch.setattr(
+            "maistro.tools.sandbox.workspace.ALLOWED_HOST_ROOTS",
+            (workspace_root,),
+        )
+        workspace = str(workspace_root / "run1")
+
+        async def add_a_file(_sandbox, ws: str, model=None) -> None:
+            (Path(ws) / "new_feature.py").write_text("print('patched')\n")
+
+        attempt = new_attempt(f"file://{origin}", "true", base_branch="main")
+        result = await run_self_branch_attempt(FakeSandbox(), workspace, attempt, add_a_file)
+
+        assert "new_feature.py" in result.diff
+        assert "print('patched')" in result.diff
+        assert paths_touched_by_diff(result.diff) == ["new_feature.py"]
