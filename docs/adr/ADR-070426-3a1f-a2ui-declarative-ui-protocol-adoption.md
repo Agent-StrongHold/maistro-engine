@@ -61,10 +61,9 @@ Apache-2.0, a fork of Google's A2UI project) without ever formalizing the decisi
   the tenant level.
 - `SPEC-179` FR-5 (Canvas gateway) already assumes A2UI: "WebView loads canvas and A2UI URLs
   provided by the gateway."
-- `docs/mining/INVENTORY.md` A1 flags it as the highest-effort, highest-signal Wave-1 gap: "BACKLOG
-  `[engine-090/091]` + `[sh-602]` commit to it; SPEC-179 references it; never formalized."
 
-No ADR, no SPEC, and no code exist for any of this. This ADR closes that gap.
+Three separate backlog items and a shipped spec all lean on A2UI, yet no ADR, no SPEC, and no
+code exist for any of it. This ADR closes that gap.
 
 ### What A2UI is
 
@@ -225,8 +224,9 @@ no ADR for, and leaves `[sh-602]`'s Open WebUI attribution workaround unimplemen
   WebView consume upstream renderers directly.
 - Any frontend implementation work (React components, WebView wiring). This ADR is a protocol and
   trust-boundary decision; frontend consumption is downstream of it.
-- Mirroring A2UI's Hypothesis/conformance-style test suite into `formal/`. Tracked as a follow-up
-  in `docs/mining/reports/wave1-a2ui.md` action 6, not decided here.
+- Mirroring A2UI's Hypothesis/conformance-style test suite into `formal/`. Worth doing once the
+  SDK integration (Decision §3) actually lands, so the conformance tests have something to run
+  against; deciding the shape of that suite now, before any code exists, is premature.
 - Redesigning `maistro-design`/`ArtifactNode`. Both are unchanged by this decision.
 - Defining the concrete request/response flow through `Conduit`, the catalog registry shape, or the
   action-event re-entry path. That is SPEC-277.
@@ -241,7 +241,6 @@ no ADR for, and leaves `[sh-602]`'s Open WebUI attribution workaround unimplemen
 - [ADR-062326-702b: Multi-modality design outputs and hierarchical artifact containers](ADR-062326-702b-multi-modality-design-outputs-hierarchical-artifact-containers.md)
 - [SPEC-277: A2UI surface integration](../specs/SPEC-277-a2ui-surface-integration.md)
 - BACKLOG `[engine-090]`, `[engine-091]`, `[sh-602]` — `BACKLOG.md`
-- `docs/mining/reports/wave1-a2ui.md`, `docs/mining/INVENTORY.md` (item A1)
 - A2UI project: `/home/user/A2UI/README.md`, `docs/concepts/{overview,catalogs,actions,data-binding}.md`,
   `specification/v0_10/README.md`
 - Seams: `maistro.types.security.TrustTier`, `maistro.capabilities.protocols.HarnessRunner`
