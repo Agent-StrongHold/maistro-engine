@@ -15,6 +15,15 @@ from maistro_design.protocols import (
     SVGRenderer,
     TypographyRenderer,
 )
+from maistro_design.renderers import (
+    NATIVE_SLOTS,
+    RendererDiscovery,
+    RendererRegistry,
+    RenderProvider,
+    RenderProviderError,
+    RenderSlotUnavailableError,
+    available_skills,
+)
 from maistro_design.scan import ScanReport, scan_design_output
 from maistro_design.skills.builtins import load_builtins
 from maistro_design.skills.registry import InMemoryDesignSkillRegistry
@@ -49,6 +58,7 @@ from maistro_design.types import (
     DiscoveryResult,
     IncompatibleDesignSystemError,
     OutputFormat,
+    RenderSlot,
     SkillMode,
     SkillModeError,
     SkillNotFoundError,
@@ -59,6 +69,7 @@ from maistro_design.types import (
 )
 
 __all__ = [
+    "NATIVE_SLOTS",
     "ArtifactKind",
     "ArtifactNode",
     "ColorToken",
@@ -86,6 +97,12 @@ __all__ = [
     "IncompatibleDesignSystemError",
     "OutputFormat",
     "PgDesignProjectStore",
+    "RenderProvider",
+    "RenderProviderError",
+    "RenderSlot",
+    "RenderSlotUnavailableError",
+    "RendererDiscovery",
+    "RendererRegistry",
     "SVGRenderer",
     "ScanReport",
     "SkillMode",
@@ -98,6 +115,7 @@ __all__ = [
     "TrustUpgradeRequiredError",
     "TypographyRenderer",
     "TypographyToken",
+    "available_skills",
     "import_from_catalog",
     "import_open_design_system",
     "load_builtins",
