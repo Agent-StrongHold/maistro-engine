@@ -1,6 +1,6 @@
 {
   "slice": "S16",
-  "status": "in_progress",
+  "status": "complete",
   "files_total": 5,
   "files_done": 5,
   "last_file": "models.py",
@@ -11,5 +11,5 @@
     "tasks.py",
     "models.py"
   ],
-  "note": "2026-07-04T00:00:00Z"
+  "note": "2026-07-04T00:00:00Z — audit complete; 1 missing (agents CRUD), 3 partial (chat Gate, agents_stream SSE, tasks Warden), 1 missing (models LiteLLM federation)"
 }
