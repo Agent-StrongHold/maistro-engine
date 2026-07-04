@@ -1,0 +1,8 @@
+{
+  "slice": "S07",
+  "status": "in_progress",
+  "files_total": 6,
+  "files_done": 2,
+  "last_file": "promoter.py",
+  "note": "2026-07-04 examined promoter.py - found bug fix in _check_with_gate (find_relevant vs list_all)"
+}
