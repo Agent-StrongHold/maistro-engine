@@ -10,6 +10,8 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
+
 from maistro_rsi.local_loop import (
     LocalRsiConfig,
     LocalRsiLoop,
@@ -72,6 +74,7 @@ def test_transient_error_classifier() -> None:
     assert not _is_transient_provider_error("SyntaxError: invalid syntax")
 
 
+@pytest.mark.ac("SPEC-070126-9d37/AC-15")
 def test_reliability_ema_decays_and_recovers(tmp_path: Path) -> None:
     random.seed(7)
     loop = LocalRsiLoop(_live_config(tmp_path), apply_patch=_make_apply(_bump))
@@ -80,6 +83,7 @@ def test_reliability_ema_decays_and_recovers(tmp_path: Path) -> None:
     assert loop._observe_reliability("m", ok=True) > 0.49  # recovers on success
 
 
+@pytest.mark.ac("SPEC-070126-9d37/AC-13")
 def test_real_work_scores_the_population_and_it_evolves(tmp_path: Path) -> None:
     random.seed(11)
     config = _live_config(tmp_path)
@@ -99,6 +103,7 @@ def test_real_work_scores_the_population_and_it_evolves(tmp_path: Path) -> None:
     assert (tmp_path / "pop.db").exists()
 
 
+@pytest.mark.ac("SPEC-070126-9d37/AC-14")
 def test_transient_provider_error_benches_model_and_folds_nothing(tmp_path: Path) -> None:
     random.seed(13)
 
@@ -129,6 +134,7 @@ def test_parse_retry_after_all_documented_formats() -> None:
     assert _parse_retry_after_seconds("no wait stated here") is None
 
 
+@pytest.mark.ac("SPEC-070126-9d37/AC-14")
 def test_bench_honors_provider_stated_retry_after(tmp_path: Path) -> None:
     """A stated 7s RPM blip must not cost minutes; a stated 58s must be waited."""
     loop = LocalRsiLoop(_live_config(tmp_path), apply_patch=_make_apply(_bump))
@@ -142,6 +148,7 @@ def test_bench_honors_provider_stated_retry_after(tmp_path: Path) -> None:
     assert 50 < remaining < 65
 
 
+@pytest.mark.ac("SPEC-070126-9d37/AC-14")
 def test_bench_default_backs_off_geometrically_and_resets_on_success(tmp_path: Path) -> None:
     loop = LocalRsiLoop(_live_config(tmp_path, bench_cycles=1), apply_patch=_make_apply(_bump))
 
@@ -159,9 +166,7 @@ def test_bench_default_backs_off_geometrically_and_resets_on_success(tmp_path: P
 
 
 def test_genome_models_seeds_population_across_models(tmp_path: Path) -> None:
-    config = _live_config(
-        tmp_path, genome_models=["model-a", "model-b", "model-c"], roster_size=3
-    )
+    config = _live_config(tmp_path, genome_models=["model-a", "model-b", "model-c"], roster_size=3)
     loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
     from maistro_rsi.local_loop import _entry_model
 

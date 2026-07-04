@@ -162,4 +162,5 @@ exec docker run --rm \
         $LIVE_FLAGS \
         --report-every $REPORT_EVERY \
         --report-dir /run/reports \
+        --export-patches /run/reports/export \
         --work-root /tmp/rsi-work"

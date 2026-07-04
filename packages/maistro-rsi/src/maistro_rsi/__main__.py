@@ -502,8 +502,30 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"
         )
-        result = LocalRsiLoop(config).run()
+        loop = LocalRsiLoop(config)
+        result = loop.run()
         print("\n" + result.summary())
+        if config.genome_db:
+            summary = loop._population_summary()
+            print(
+                f"\nEvolution: {summary['population_size']} genome(s), "
+                f"generations={summary['generations']}"
+            )
+            for g in summary["top_genomes"]:
+                print(
+                    f"  champion: {g['name']} (gen {g['generation']}, {g['model']}) "
+                    f"fitness={g['fitness']} tdd_rigor={g['tdd_rigor']} "
+                    f"test_style={g['test_style']}"
+                )
+            if summary["reliability"]:
+                print(
+                    "  reliability: "
+                    + ", ".join(
+                        f"{m}={round(v, 3)}" for m, v in sorted(summary["reliability"].items())
+                    )
+                )
+            if summary["benched_models"]:
+                print(f"  benched: {', '.join(summary['benched_models'])}")
         return 0
 
     if args.command == "harvest":

@@ -11,6 +11,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from maistro_rsi.spec_tracker import (
     ac_markers_in,
     format_gaps,
@@ -95,6 +97,7 @@ def _git(cwd: Path, *args: str) -> None:
     assert proc.returncode == 0, proc.stderr
 
 
+@pytest.mark.ac("SPEC-070126-9d37/AC-16")
 def test_new_ac_coverage_counts_only_net_new_markers(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path, test_src=_TEST_WITH_MARKERS)
     _git(repo, "init", "-q")
@@ -113,6 +116,7 @@ def test_new_ac_coverage_counts_only_net_new_markers(tmp_path: Path) -> None:
     assert new_ac_coverage(repo, "HEAD", [test_file]) == []
 
 
+@pytest.mark.ac("SPEC-070126-9d37/AC-16")
 def test_proposed_specs_requires_wellformed_contract(tmp_path: Path) -> None:
     root = tmp_path
     (root / "docs" / "specs").mkdir(parents=True)

@@ -601,10 +601,18 @@ def build_checkpoint_report(
     baseline_dir: str,
     window: int,
     label: str = "",
+    population_summary: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Render a progress report over ``cycles`` run so far — cumulative totals
     plus a detail of the most recent ``window`` cycles. Pure: derived entirely
-    from the outcome list, so it's testable without git or an agent.
+    from the outcome list (and, in live mode, the population snapshot), so
+    it's testable without git or an agent.
+
+    ``population_summary`` (see ``LocalRsiLoop._population_summary``) is only
+    present in unified live-evolution mode; when given, an "## Evolution"
+    section reports WORK (promotions, above) alongside LEARNING (population
+    size/generations, the fittest genomes, per-model reliability, who's
+    currently benched, and the newest written lineage memory).
 
     Returns ``(markdown, machine_json)``. ``label`` distinguishes an interim
     checkpoint ("cycle 5") from the "final" report in headings.
@@ -666,7 +674,44 @@ def build_checkpoint_report(
         detail = f"composite={c.composite}" if c.promoted else c.note or ""
         tgt = f" {c.target}" if c.target else ""
         lines.append(f"- cycle {c.index}:{tgt} — **{mark}** {detail}".rstrip())
+    if population_summary is not None:
+        data["evolution"] = population_summary
+        lines += _evolution_report_lines(population_summary)
     return "\n".join(lines) + "\n", data
+
+
+def _evolution_report_lines(summary: dict[str, Any]) -> list[str]:
+    """Render ``LocalRsiLoop._population_summary`` as the "## Evolution"
+    section: WORK is promotions (above); this is LEARNING — is the population
+    actually evolving, not just producing accepted patches."""
+    lines = ["", "## Evolution"]
+    gens = summary.get("generations") or {}
+    pop_line = f"- Population: **{summary.get('population_size', 0)}** genome(s)"
+    if gens:
+        histogram = ", ".join(f"gen {g}: {n}" for g, n in gens.items())
+        pop_line += f" across **{len(gens)}** generation(s): {histogram}"
+    lines.append(pop_line)
+    top = summary.get("top_genomes") or []
+    if top:
+        lines += ["", "### Fittest genomes"]
+        for g in top:
+            lines.append(
+                f"- `{g.get('name')}` (gen {g.get('generation')}, {g.get('model')}) — "
+                f"fitness={g.get('fitness')} code_rsi={g.get('code_rsi')} "
+                f"tdd_rigor={g.get('tdd_rigor')} test_style={g.get('test_style')}"
+            )
+    reliability = summary.get("reliability") or {}
+    if reliability:
+        lines += ["", "### Model reliability"]
+        lines += [f"- `{m}`: {round(v, 3)}" for m, v in sorted(reliability.items())]
+    benched = summary.get("benched_models") or []
+    if benched:
+        lines += ["", f"### Currently benched: {', '.join(f'`{m}`' for m in benched)}"]
+    memory = summary.get("memory") or {}
+    if memory:
+        lines += ["", "### Newest lineage memory (fittest genome)"]
+        lines += [f"- **{k}**: {v}" for k, v in memory.items()]
+    return lines
 
 
 class LocalRsiLoop:
@@ -698,6 +743,7 @@ class LocalRsiLoop:
         # reset by any successful scoring of the model.
         self._bench: dict[str, float] = {}
         self._bench_counts: dict[str, int] = {}
+        self._benched_this_cycle: set[str] = set()  # models benched during current cycle
         # Per-file uncovered lines from the baseline coverage run — the scout
         # targets real gaps, and an empty list is the earned-ambition trigger.
         self._baseline_missing: dict[str, list[int]] = {}
@@ -855,6 +901,7 @@ class LocalRsiLoop:
             source = f"default x{streak}"
         seconds = min(seconds, self._MAX_BENCH_SECONDS)
         self._bench[model] = time.monotonic() + seconds
+        self._benched_this_cycle.add(model)  # skip remaining attempts in this cycle
         logger.info(
             "rsi_model_benched",
             model=model,
@@ -939,6 +986,48 @@ class LocalRsiLoop:
     def _changed_files(self, cwd: Path) -> list[str]:
         status = _git(cwd, "status", "--porcelain")
         return [ln[3:].strip() for ln in status.stdout.splitlines() if ln.strip()]
+
+    def _load_saved_patches(self) -> None:
+        """Resume from a prior run: reapply all saved patches to the baseline.
+
+        When a run is interrupted or restarted (same REPORT_DIR), patches
+        exported to REPORT_DIR/export/*.patch are applied to the fresh baseline
+        so the new run picks up where the old one left off. This preserves all
+        promotions across restarts/crashes.
+        """
+        if not self._config.export_patches:
+            return  # no export dir configured; nothing to restore
+        export_dir = Path(self._config.export_patches)
+        if not export_dir.exists():
+            return  # no prior exports yet
+        patches = sorted(export_dir.glob("*.patch"))
+        if not patches:
+            return
+        logger.info(
+            "rsi_local_resume_patches",
+            count=len(patches),
+            export_dir=str(export_dir),
+        )
+        for patch_file in patches:
+            # git apply is idempotent (applying an already-applied patch errors
+            # gracefully with "already applied"), so restarts are safe.
+            result = _git(
+                self._baseline,
+                "apply",
+                "--reject",
+                str(patch_file),
+            )
+            if result.returncode == 0:
+                logger.info("rsi_local_patch_applied", patch=patch_file.name)
+            else:
+                # Patch already applied (or conflicts) — log and continue.
+                # The baseline may be ahead of these patches if a prior run
+                # completed cycles that hadn't been exported yet.
+                logger.info(
+                    "rsi_local_patch_skip",
+                    patch=patch_file.name,
+                    note="already applied or conflict",
+                )
 
     def _setup_baseline(self) -> None:
         work_root = Path(self._config.work_root)
@@ -1042,6 +1131,7 @@ class LocalRsiLoop:
         return applied
 
     def _run_cycle(self, index: int) -> CycleOutcome:
+        self._benched_this_cycle.clear()  # reset in-cycle benching tracker
         target = self._target_for_cycle(index)
         slots = self._cycle_slots(index)
         competitors = self._competitors(index)
@@ -1049,6 +1139,9 @@ class LocalRsiLoop:
         created: list[tuple[str, Path]] = []
         try:
             for seq, comp in enumerate(competitors, 1):
+                # Skip if this model was benched during this cycle — don't waste attempts
+                if (comp.model or self._config.model) in self._benched_this_cycle:
+                    continue
                 # Spread competitors across the scout's shortlist slots; with more
                 # competitors than slots they double up (competitive on one item).
                 slot_idx = (seq - 1) % len(slots)
@@ -1279,6 +1372,55 @@ class LocalRsiLoop:
             self._population.add(child)
             logger.info("rsi_live_hyper_child", parent=top.name, child=child.name)
 
+    def _population_summary(self) -> dict[str, Any]:
+        """Snapshot the live population for checkpoint observability: WORK
+        (promotions) is already in every report; this is whether the run is
+        actually LEARNING — population size, generation spread, the fittest
+        genomes' settings, per-model reliability, who's sitting out, and the
+        newest lineage memory the hyper-mutator wrote. Purely descriptive:
+        reading this never changes the run.
+        """
+        from maistro_evolve.hyper_mutator import entry_node
+
+        genomes = self._population.list_all()
+        generations = dict(sorted(Counter(g.generation for g in genomes).items()))
+        scored = sorted(
+            (g for g in genomes if g.fitness_score is not None),
+            key=lambda g: g.fitness_score or 0.0,
+            reverse=True,
+        )
+        top_genomes = []
+        for g in scored[:3]:
+            node = entry_node(g)
+            fixer = node.fixer if node else None
+            top_genomes.append(
+                {
+                    "name": g.name,
+                    "generation": g.generation,
+                    "fitness": g.fitness_score,
+                    "code_rsi": g.eval_scores.get("code_rsi"),
+                    "model": _entry_model(g),
+                    "tdd_rigor": fixer.tdd_rigor if fixer else None,
+                    "test_style": fixer.test_style.value if fixer else None,
+                }
+            )
+        memory: dict[str, str] = {}
+        if scored:
+            node = entry_node(scored[0])
+            fixer = node.fixer if node else None
+            if fixer and fixer.learned_successes:
+                memory["learned_successes"] = fixer.learned_successes[:160]
+            if fixer and fixer.learned_failures:
+                memory["learned_failures"] = fixer.learned_failures[:160]
+        return {
+            "population_size": len(genomes),
+            "generations": generations,
+            "top_genomes": top_genomes,
+            "reliability": dict(self._reliability),
+            "benched_models": [m for m in self._bench if self._benched(m)],
+            "memory": memory,
+        }
+
     def _select_and_merge(
         self,
         index: int,
@@ -1385,6 +1527,7 @@ class LocalRsiLoop:
 
     def run(self) -> LocalRsiResult:
         self._setup_baseline()
+        self._load_saved_patches()  # resume from a prior run by reapplying saved patches
         result = LocalRsiResult(baseline_dir=str(self._baseline))
         for index in range(1, self._config.max_cycles + 1):
             logger.info("rsi_local_cycle_start", index=index, of=self._config.max_cycles)
@@ -1416,6 +1559,8 @@ class LocalRsiLoop:
         if self._config.export_patches and result.promotions:
             n = self.export_promotions(Path(self._config.export_patches))
             logger.info("rsi_local_exported", patches=n, dest=self._config.export_patches)
+        if self._population is not None:
+            logger.info("rsi_live_final_summary", **self._population_summary())
         return result
 
     def _write_checkpoint(self, result: LocalRsiResult, *, label: str) -> None:
@@ -1434,6 +1579,9 @@ class LocalRsiLoop:
                 baseline_dir=str(self._baseline),
                 window=self._config.report_every or len(result.cycles),
                 label=label,
+                population_summary=(
+                    self._population_summary() if self._population is not None else None
+                ),
             )
             slug = label.replace(" ", "-")
             (report_dir / f"checkpoint-{slug}.md").write_text(md, encoding="utf-8")
