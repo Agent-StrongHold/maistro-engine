@@ -1,1 +1,1 @@
-{"slice":"S14","status":"in_progress","files_total":23,"files_done":13,"last_file":"/home/user/stronghold/src/stronghold/types/reactor.py","note":"Completed all types/ files; starting config/"}
+{"slice":"S14","status":"complete","files_total":23,"files_done":23,"last_file":"complete","note":"S14 mining complete. 2 gaps (GateResult clarifying_questions type, ToolResult sentinel_repaired field); remainder parity or Stronghold-owned."}
