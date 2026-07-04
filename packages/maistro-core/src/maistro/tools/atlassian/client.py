@@ -122,6 +122,43 @@ def _resolve_mcp_url() -> str:
     )
 
 
+def _extract_jira_summary(fields: dict[str, Any]) -> str:
+    return str(fields.get("summary", "") if isinstance(fields, dict) else "")
+
+
+def _extract_jira_status(fields: dict[str, Any]) -> str:
+    status_obj = fields.get("status") if isinstance(fields, dict) else None
+    status = status_obj.get("name") if isinstance(status_obj, dict) else (status_obj or "")
+    return str(status or "")
+
+
+def _extract_jira_assignee(fields: dict[str, Any]) -> str | None:
+    assignee_obj = fields.get("assignee") if isinstance(fields, dict) else None
+    assignee = assignee_obj.get("displayName") if isinstance(assignee_obj, dict) else assignee_obj
+    return str(assignee) if assignee else None
+
+
+def _extract_jira_issuetype(fields: dict[str, Any]) -> str:
+    issuetype_obj = fields.get("issuetype") if isinstance(fields, dict) else None
+    issuetype = (
+        issuetype_obj.get("name") if isinstance(issuetype_obj, dict) else (issuetype_obj or "")
+    )
+    return str(issuetype or "")
+
+
+def _extract_jira_url(d: dict[str, Any]) -> str | None:
+    return str(d.get("self") or d.get("url") or "") or None
+
+
+def _extract_jira_description(fields: dict[str, Any]) -> str:
+    return str(fields.get("description", "") if isinstance(fields, dict) else "")[:_MAX_DESCRIPTION]
+
+
+def _extract_jira_labels(fields: dict[str, Any]) -> tuple[str, ...]:
+    labels = fields.get("labels", []) if isinstance(fields, dict) else []
+    return tuple(str(lbl) for lbl in labels) if isinstance(labels, list) else ()
+
+
 class AtlassianMCPClient:
     """v0 client for the on-prem MAISTRO Atlassian MCP.
 
@@ -334,29 +371,17 @@ class AtlassianMCPClient:
     @staticmethod
     def _parse_jira_issue(d: dict[str, Any]) -> JiraIssue:
         # Atlassian REST returns nested fields; FastMCP may flatten them. Try both.
-        fields = d.get("fields") if isinstance(d.get("fields"), dict) else d
-        assignee_obj = fields.get("assignee") if isinstance(fields, dict) else None
-        assignee = (
-            assignee_obj.get("displayName") if isinstance(assignee_obj, dict) else assignee_obj
-        )
-        status_obj = fields.get("status") if isinstance(fields, dict) else None
-        status = status_obj.get("name") if isinstance(status_obj, dict) else (status_obj or "")
-        issuetype_obj = fields.get("issuetype") if isinstance(fields, dict) else None
-        issuetype = (
-            issuetype_obj.get("name") if isinstance(issuetype_obj, dict) else (issuetype_obj or "")
-        )
-        labels = fields.get("labels", []) if isinstance(fields, dict) else []
+        maybe_fields = d.get("fields")
+        fields: dict[str, Any] = maybe_fields if isinstance(maybe_fields, dict) else d
         return JiraIssue(
             key=str(d.get("key", "")),
-            summary=str(fields.get("summary", "") if isinstance(fields, dict) else ""),
-            status=str(status or ""),
-            assignee=str(assignee) if assignee else None,
-            issuetype=str(issuetype or ""),
-            url=str(d.get("self") or d.get("url") or "") or None,
-            description=str(fields.get("description", "") if isinstance(fields, dict) else "")[
-                :_MAX_DESCRIPTION
-            ],
-            labels=tuple(str(lbl) for lbl in labels) if isinstance(labels, list) else (),
+            summary=_extract_jira_summary(fields),
+            status=_extract_jira_status(fields),
+            assignee=_extract_jira_assignee(fields),
+            issuetype=_extract_jira_issuetype(fields),
+            url=_extract_jira_url(d),
+            description=_extract_jira_description(fields),
+            labels=_extract_jira_labels(fields),
         )
 
     @staticmethod
