@@ -125,7 +125,7 @@ class ToolGuardrail:
             )
         return GuardrailResult(action=GuardrailAction.ALLOW)
 
-    def _evaluate(self, current: ToolCallRecord) -> GuardrailResult:
+    def _check_exact_repeat(self, current: ToolCallRecord) -> GuardrailResult | None:
         exact = [
             r
             for r in self._history[:-1]
@@ -145,50 +145,67 @@ class ToolGuardrail:
                 repeat_count=len(exact) + 1,
                 message=f"Exact repeat warning: '{current.tool_name}' ({len(exact) + 1} times)",
             )
+        return None
 
-        if current.error:
-            same_tool_errors = [
-                r for r in self._history[:-1] if r.tool_name == current.tool_name and r.error
-            ]
-            if len(same_tool_errors) >= self._thresholds.same_tool_failure_block:
-                return GuardrailResult(
-                    action=GuardrailAction.BLOCK,
-                    pattern=LoopPattern.SAME_TOOL_FAILURES,
-                    repeat_count=len(same_tool_errors) + 1,
-                    message=f"Same-tool failures: '{current.tool_name}' failed {len(same_tool_errors) + 1} times",
-                )
-            if len(same_tool_errors) >= self._thresholds.same_tool_failure_warn:
-                return GuardrailResult(
-                    action=GuardrailAction.WARN,
-                    pattern=LoopPattern.SAME_TOOL_FAILURES,
-                    repeat_count=len(same_tool_errors) + 1,
-                    message=f"Same-tool failure warning: '{current.tool_name}' ({len(same_tool_errors) + 1} failures)",
-                )
+    def _check_same_tool_failures(self, current: ToolCallRecord) -> GuardrailResult | None:
+        if not current.error:
+            return None
+        same_tool_errors = [
+            r for r in self._history[:-1] if r.tool_name == current.tool_name and r.error
+        ]
+        if len(same_tool_errors) >= self._thresholds.same_tool_failure_block:
+            return GuardrailResult(
+                action=GuardrailAction.BLOCK,
+                pattern=LoopPattern.SAME_TOOL_FAILURES,
+                repeat_count=len(same_tool_errors) + 1,
+                message=f"Same-tool failures: '{current.tool_name}' failed {len(same_tool_errors) + 1} times",
+            )
+        if len(same_tool_errors) >= self._thresholds.same_tool_failure_warn:
+            return GuardrailResult(
+                action=GuardrailAction.WARN,
+                pattern=LoopPattern.SAME_TOOL_FAILURES,
+                repeat_count=len(same_tool_errors) + 1,
+                message=f"Same-tool failure warning: '{current.tool_name}' ({len(same_tool_errors) + 1} failures)",
+            )
+        return None
 
-        if current.result_hash and not current.error:
-            idempotent = [
-                r
-                for r in self._history[:-1]
-                if r.tool_name == current.tool_name
-                and r.args_hash == current.args_hash
-                and r.result_hash == current.result_hash
-                and not r.error
-            ]
-            if len(idempotent) >= self._thresholds.idempotent_block:
-                return GuardrailResult(
-                    action=GuardrailAction.BLOCK,
-                    pattern=LoopPattern.IDEMPOTENT_NO_PROGRESS,
-                    repeat_count=len(idempotent) + 1,
-                    message=f"Idempotent no-progress: '{current.tool_name}' returning same result {len(idempotent) + 1} times",
-                )
-            if len(idempotent) >= self._thresholds.idempotent_warn:
-                return GuardrailResult(
-                    action=GuardrailAction.WARN,
-                    pattern=LoopPattern.IDEMPOTENT_NO_PROGRESS,
-                    repeat_count=len(idempotent) + 1,
-                    message=f"Idempotent warning: '{current.tool_name}' same result ({len(idempotent) + 1} times)",
-                )
+    def _check_idempotent_no_progress(self, current: ToolCallRecord) -> GuardrailResult | None:
+        if not (current.result_hash and not current.error):
+            return None
+        idempotent = [
+            r
+            for r in self._history[:-1]
+            if r.tool_name == current.tool_name
+            and r.args_hash == current.args_hash
+            and r.result_hash == current.result_hash
+            and not r.error
+        ]
+        if len(idempotent) >= self._thresholds.idempotent_block:
+            return GuardrailResult(
+                action=GuardrailAction.BLOCK,
+                pattern=LoopPattern.IDEMPOTENT_NO_PROGRESS,
+                repeat_count=len(idempotent) + 1,
+                message=f"Idempotent no-progress: '{current.tool_name}' returning same result {len(idempotent) + 1} times",
+            )
+        if len(idempotent) >= self._thresholds.idempotent_warn:
+            return GuardrailResult(
+                action=GuardrailAction.WARN,
+                pattern=LoopPattern.IDEMPOTENT_NO_PROGRESS,
+                repeat_count=len(idempotent) + 1,
+                message=f"Idempotent warning: '{current.tool_name}' same result ({len(idempotent) + 1} times)",
+            )
+        return None
 
+    def _evaluate(self, current: ToolCallRecord) -> GuardrailResult:
+        checks = (
+            self._check_exact_repeat,
+            self._check_same_tool_failures,
+            self._check_idempotent_no_progress,
+        )
+        for check in checks:
+            result = check(current)
+            if result is not None:
+                return result
         return GuardrailResult(action=GuardrailAction.ALLOW)
 
     def reset(self) -> None:
