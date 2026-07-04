@@ -15,12 +15,17 @@ set -euo pipefail
 #   A running LiteLLM gateway on the host at :4000 with a `code` model group.
 #
 # Usage:
-#   tools/run_rsi_isolated.sh [CYCLES] [ENV_FILE] [MODEL] [REPORT_EVERY] [REPORT_DIR]
-#     CYCLES        number of self-improvement cycles       (default 150)
-#     ENV_FILE      .env with the gateway key (LITELLM_*)   (default: the install's)
-#     MODEL         LiteLLM model alias for the agent       (default: code)
-#     REPORT_EVERY  emit a checkpoint report every N cycles (default 5; 0 = end only)
-#     REPORT_DIR    host dir to receive reports + export/   (default ./rsi-reports/<ts>)
+#   tools/run_rsi_isolated.sh [CYCLES] [ENV_FILE] [MODEL] [REPORT_EVERY] [REPORT_DIR] [GENOME_MODELS] [EVOLVE_GOAL]
+#     CYCLES         number of self-improvement cycles       (default 150)
+#     ENV_FILE       .env with the gateway key (LITELLM_*)   (default: the install's)
+#     MODEL          LiteLLM model alias for the agent       (default: code)
+#     REPORT_EVERY   emit a checkpoint report every N cycles (default 5; 0 = end only)
+#     REPORT_DIR     host dir to receive reports + export/   (default ./rsi-reports/<ts>)
+#     GENOME_MODELS  CSV of per-model groups to evolve over — ACTIVATES UNIFIED
+#                    LIVE EVOLUTION (population.db in REPORT_DIR; the population
+#                    IS the roster; lineage continues across runs that share a
+#                    REPORT_DIR). Empty = classic non-evolving run.
+#     EVOLVE_GOAL    operator goal for the hyper-mutator     (default: test-first + spec doctrine)
 #
 # The baseline ratchets forward across the WHOLE run — a checkpoint is an
 # observation point, not a reset — so each report covers cumulative progress and
@@ -33,6 +38,8 @@ ENV_FILE="${2:-}"
 MODEL="${3:-code}"
 REPORT_EVERY="${4:-5}"
 REPORT_DIR="${5:-}"
+GENOME_MODELS="${6:-}"
+EVOLVE_GOAL="${7:-Do substantive test-first work: finish contracted spec acceptance criteria and prove them with @pytest.mark.ac tests; raise ambition without lowering tdd_rigor — a feature only counts when it ships with tests written first.}"
 IMAGE="${MAISTRO_RSI_IMAGE:-maistro-rsi-runner:latest}"
 # The LiteLLM gateway is published to host-loopback only (compose maps
 # 127.0.0.1:4000:4000), so it is NOT reachable via host.docker.internal. Instead
@@ -103,8 +110,21 @@ $E/fitness.py,$E/cycle.py,$E/architecture_fit.py,$E/scorecard.py,$E/types.py,\
 $R/merge.py,$R/competitors.py,$R/scout.py,$R/harvest.py,$R/evolve_bridge.py,\
 $R/candidate_fitness.py,$R/quota_burn.py,$R/quarantine.py,$R/htr.py,$R/coordinator.py"
 
+# Unified live evolution: GENOME_MODELS set ⇒ the population (persisted in
+# REPORT_DIR/population.db, host-visible, lineage continues across runs that
+# share a REPORT_DIR) is the roster. The GOAL rides in as an env var — never
+# interpolate free text into the inner bash command line.
+LIVE_FLAGS=""
+if [[ -n "$GENOME_MODELS" ]]; then
+    LIVE_FLAGS="--genome-db /run/reports/population.db --genome-models '$GENOME_MODELS' --roster-size 4 --evolve-goal \"\$RSI_GOAL\""
+fi
+
 echo "RSI (full isolation) -> image=$IMAGE cycles=$CYCLES model=$MODEL gateway=$GATEWAY_URL"
 echo "  reports -> $REPORT_DIR (every $REPORT_EVERY cycles)"
+if [[ -n "$GENOME_MODELS" ]]; then
+    echo "  UNIFIED LIVE EVOLUTION over models: $GENOME_MODELS"
+    echo "  population.db persists in REPORT_DIR (same dir = same lineage)"
+fi
 
 # Keep the gateway secret OUT of the editable workspace. Mount the .env OUTSIDE
 # /workspace (so the builders agent's workspace-rooted read_file/search can't
@@ -120,6 +140,7 @@ exec docker run --rm \
     --add-host=host.docker.internal:host-gateway \
     -v "${ENV_MOUNT}:/run/gateway.env:ro" \
     -v "${REPORT_MOUNT}:/run/reports" \
+    -e "RSI_GOAL=$EVOLVE_GOAL" \
     -e "PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistro-rsi/src:packages/maistro-bootstrap/src" \
     "$IMAGE" \
     bash -lc "sed 's/\r\$//' /run/gateway.env > /tmp/gw.env; set -a; . /tmp/gw.env; set +a; \
@@ -138,6 +159,7 @@ exec docker run --rm \
         --targets '$TARGETS' \
         --agent-turns 6 \
         --scout \
+        $LIVE_FLAGS \
         --report-every $REPORT_EVERY \
         --report-dir /run/reports \
         --work-root /tmp/rsi-work"

@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import random
 import subprocess
+import time
 from pathlib import Path
 
 from maistro_rsi.local_loop import (
     LocalRsiConfig,
     LocalRsiLoop,
     _is_transient_provider_error,
+    _parse_retry_after_seconds,
 )
 from maistro_rsi.protocols import MicroVmSandbox
 
@@ -109,10 +111,66 @@ def test_transient_provider_error_benches_model_and_folds_nothing(tmp_path: Path
 
     # The run survived and completed every cycle.
     assert len(result.cycles) == 2
-    # The model got benched instead of the genomes dying.
-    assert loop._bench.get("testmodel", 0) > 1
+    # The model got benched (wall-clock deadline in the future) instead of the
+    # genomes dying.
+    assert loop._benched("testmodel")
     # Sitting out is NEUTRAL: no samples were folded into any genome.
     for g in loop._population.list_all():
         assert not g.eval_scores, "a benched cycle must not score the genome"
     # But reliability remembers: the model's score decayed below 1.0.
     assert loop._reliability.get("testmodel", 1.0) < 1.0
+
+
+def test_parse_retry_after_all_documented_formats() -> None:
+    # Formats catalogued in C:\maistro\MODEL-LIMITS.md.
+    assert _parse_retry_after_seconds("Please try again in 7.664s") == 7.664
+    assert _parse_retry_after_seconds('"retryDelay": "58s"') == 58.0
+    assert _parse_retry_after_seconds("retry-after: 30") == 30.0
+    assert _parse_retry_after_seconds("no wait stated here") is None
+
+
+def test_bench_honors_provider_stated_retry_after(tmp_path: Path) -> None:
+    """A stated 7s RPM blip must not cost minutes; a stated 58s must be waited."""
+    loop = LocalRsiLoop(_live_config(tmp_path), apply_patch=_make_apply(_bump))
+
+    loop._bench_model("groqmodel", index=1, error_text="Please try again in 7.664s")
+    remaining = loop._bench["groqmodel"] - time.monotonic()
+    assert 6 < remaining <= 31  # honored, floored at the 30s minimum
+
+    loop._bench_model("geminimodel", index=1, error_text='"retryDelay": "58s"')
+    remaining = loop._bench["geminimodel"] - time.monotonic()
+    assert 50 < remaining < 65
+
+
+def test_bench_default_backs_off_geometrically_and_resets_on_success(tmp_path: Path) -> None:
+    loop = LocalRsiLoop(_live_config(tmp_path, bench_cycles=1), apply_patch=_make_apply(_bump))
+
+    loop._bench_model("m", index=1, error_text="429 no stated wait")
+    first = loop._bench["m"] - time.monotonic()
+    loop._bench_model("m", index=2, error_text="429 no stated wait")
+    second = loop._bench["m"] - time.monotonic()
+    # Consecutive benches double the default sit-out (capped at the ceiling).
+    assert second > first * 1.5
+    # Real scored work ends the streak: the next bench is short again.
+    loop._observe_reliability("m", ok=True)
+    loop._bench_model("m", index=3, error_text="429 no stated wait")
+    third = loop._bench["m"] - time.monotonic()
+    assert third < second
+
+
+def test_genome_models_seeds_population_across_models(tmp_path: Path) -> None:
+    config = _live_config(
+        tmp_path, genome_models=["model-a", "model-b", "model-c"], roster_size=3
+    )
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    from maistro_rsi.local_loop import _entry_model
+
+    models = {_entry_model(g) for g in loop._population.list_all()}
+    assert models == {"model-a", "model-b", "model-c"}
+
+
+def test_empty_genome_models_falls_back_to_model(tmp_path: Path) -> None:
+    loop = LocalRsiLoop(_live_config(tmp_path), apply_patch=_make_apply(_bump))
+    from maistro_rsi.local_loop import _entry_model
+
+    assert {_entry_model(g) for g in loop._population.list_all()} == {"testmodel"}

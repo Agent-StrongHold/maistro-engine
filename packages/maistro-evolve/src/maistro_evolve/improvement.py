@@ -39,6 +39,8 @@ class ImprovementKind(StrEnum):
     BUG_FIX = "bug_fix"  # code violates its contract — turn red→green
     NEW_TEST = "new_test"  # evidence-based test for untested behavior
     ASSERTION = "assertion"  # strengthen a test that asserts too little
+    SPEC = "spec"  # implement a specific UNIMPLEMENTED acceptance criterion (finish contracted work)
+    BACKLOG = "backlog"  # draft a NEW spec for a genuinely good idea — the disciplined alternative to hacking in an unspecced feature
     FEATURE = "feature"  # a genuinely better capability/API/design (v2.0)
     EDGE_CASE = "edge_case"  # a boundary/error path with no test
     REFACTOR = "refactor"  # behavior-preserving clarity/DRY/complexity win
@@ -47,8 +49,14 @@ class ImprovementKind(StrEnum):
 
     @property
     def budget(self) -> BudgetTier:
-        """FEATURE work is the only tier that unlocks the large, multi-file budget."""
-        return BudgetTier.UNLOCKED if self is ImprovementKind.FEATURE else BudgetTier.BOUNDED
+        """SPEC/BACKLOG/FEATURE are the tiers that unlock the large, multi-file
+        budget — each is inherently multi-file (implementing an AC across code
+        + tests, drafting a new spec doc, or building a v2.0 capability)."""
+        return (
+            BudgetTier.UNLOCKED
+            if self in (ImprovementKind.SPEC, ImprovementKind.BACKLOG, ImprovementKind.FEATURE)
+            else BudgetTier.BOUNDED
+        )
 
     @property
     def priority(self) -> int:
@@ -74,23 +82,32 @@ class ImprovementKind(StrEnum):
             return cls.DOC
 
 
-# Preference order: correctness (bug→test→assertion) → growth (feature) → edge →
-# refactor → perf → doc-fallback. Tunable; the scout may still rank by impact.
+# Preference order — the maturity ladder: correctness (bug→test→assertion) →
+# finish CONTRACTED work (spec) → propose disciplined NEW work (backlog: draft a
+# spec instead of hacking in a feature raw) → growth (feature) → edge → refactor
+# → perf → doc-fallback. Finishing a promise you already made outranks either
+# inventing one (backlog) or shipping one un-specced (feature); proposing a new
+# spec still outranks shipping a raw feature — it's the disciplined path from
+# idea to contracted, testable work. Tunable; the scout may still rank by impact.
 _PRIORITY: dict[ImprovementKind, int] = {
     ImprovementKind.BUG_FIX: 0,
     ImprovementKind.NEW_TEST: 1,
     ImprovementKind.ASSERTION: 2,
-    ImprovementKind.FEATURE: 3,
-    ImprovementKind.EDGE_CASE: 4,
-    ImprovementKind.REFACTOR: 5,
-    ImprovementKind.PERF: 6,
-    ImprovementKind.DOC: 7,
+    ImprovementKind.SPEC: 3,
+    ImprovementKind.BACKLOG: 4,
+    ImprovementKind.FEATURE: 5,
+    ImprovementKind.EDGE_CASE: 6,
+    ImprovementKind.REFACTOR: 7,
+    ImprovementKind.PERF: 8,
+    ImprovementKind.DOC: 9,
 }
 
 _PRIMARY_SIGNALS: dict[ImprovementKind, tuple[str, ...]] = {
     ImprovementKind.BUG_FIX: ("red_green",),
     ImprovementKind.NEW_TEST: ("new_test", "coverage"),
     ImprovementKind.ASSERTION: ("assertion_strength",),
+    ImprovementKind.SPEC: ("spec_completion", "new_test"),
+    ImprovementKind.BACKLOG: ("spec_proposed", "code_quality"),
     ImprovementKind.FEATURE: ("feature_judge", "capability"),
     ImprovementKind.EDGE_CASE: ("new_test", "coverage"),
     ImprovementKind.REFACTOR: ("code_quality",),

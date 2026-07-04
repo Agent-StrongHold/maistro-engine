@@ -73,6 +73,42 @@ class FitnessInputs:
     feature_judge: tuple[float, str] | None = None
     # Wall-clock timing for a PERF change: (baseline_seconds, candidate_seconds).
     perf: tuple[float, float] | None = None
+    # AC ids newly claimed by @pytest.mark.ac in this candidate's tests (net-new
+    # vs baseline — see spec_tracker.new_ac_coverage). Non-empty + green tests ⇒
+    # the spec_completion signal fires: the biggest single reward in the system.
+    new_ac_ids: list[str] = field(default_factory=list)
+    # Spec ids of NEW well-formed docs/specs/ contracts this candidate authored
+    # (spec_tracker.proposed_specs) — the BACKLOG path: formalise the idea first.
+    proposed_spec_ids: list[str] = field(default_factory=list)
+
+
+def _ladder_signals(inp: FitnessInputs, w: FitnessWeights) -> list[SignalScore]:
+    """Presence-gated maturity-ladder rewards: each fires only on the real event
+    (net-new AC claims with green tests / a new well-formed spec contract), so
+    it can never dilute candidates doing other work, and can't be farmed by
+    re-tagging existing ACs (only net-new ids count — spec_tracker)."""
+    signals: list[SignalScore] = []
+    if inp.new_ac_ids and inp.tests_passed:
+        signals.append(
+            SignalScore(
+                "spec_completion",
+                MeasureKind.CALCULATED,
+                1.0,
+                w.spec_completion,
+                f"newly proven acceptance criteria: {', '.join(inp.new_ac_ids)}",
+            )
+        )
+    if inp.proposed_spec_ids:
+        signals.append(
+            SignalScore(
+                "spec_proposed",
+                MeasureKind.CALCULATED,
+                1.0,
+                w.spec_proposed,
+                f"new spec contract(s) drafted: {', '.join(inp.proposed_spec_ids)}",
+            )
+        )
+    return signals
 
 
 def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None) -> Scorecard:
@@ -101,6 +137,7 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
     nt = new_test_signal(inp.net_new_tests, cov_delta, w.new_test)
     if nt is not None:
         scores.append(nt)
+    scores.extend(_ladder_signals(inp, w))
     if inp.feature_judge is not None:
         scores.append(
             judge_signal(
@@ -345,6 +382,10 @@ def evaluate_candidate(
         )
     net_new = count_net_new_tests(cwd, baseline_ref, tests) if (baseline_ref and tests) else 0
     doc_reasons = _doc_regressions(cwd, baseline_ref, src) if baseline_ref else []
+    from maistro_rsi.spec_tracker import new_ac_coverage, proposed_specs
+
+    new_acs = new_ac_coverage(cwd, baseline_ref, tests) if (baseline_ref and tests) else []
+    new_specs = proposed_specs(cwd, changed_files)
 
     inputs = FitnessInputs(
         tests_passed=tests_passed,
@@ -363,5 +404,7 @@ def evaluate_candidate(
         doc_regression_reasons=doc_reasons,
         feature_judge=feature_judge,
         perf=perf,
+        new_ac_ids=new_acs,
+        proposed_spec_ids=new_specs,
     )
     return compose_scorecard(inputs, weights)

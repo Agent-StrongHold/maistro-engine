@@ -36,6 +36,29 @@ def measure_coverage(
     caller can treat coverage as unavailable rather than as 0% — which would
     falsely fail the gate.
     """
+    total, _ = measure_coverage_detailed(
+        repo_dir, source=source, pytest_args=pytest_args, timeout=timeout
+    )
+    return total
+
+
+def measure_coverage_detailed(
+    repo_dir: str | Path,
+    *,
+    source: str = ".",
+    pytest_args: str = "",
+    timeout: int = 900,
+) -> tuple[float | None, dict[str, list[int]]]:
+    """Like :func:`measure_coverage`, but also returns each file's uncovered
+    (missing) line numbers — the scout uses these to target real gaps instead
+    of guessing, and to earn the ambition to propose a ``feature`` once a
+    module's uncovered lines run out. Paths are normalized to forward slashes
+    so they compare consistently across OS. One ``coverage run`` + ``coverage
+    json`` invocation, same as ``measure_coverage`` — no extra cost.
+
+    Returns ``(total_pct, {file: [missing_line, ...]})``; the dict is empty
+    whenever coverage data can't be produced.
+    """
     cwd = str(repo_dir)
     try:
         subprocess.run(
@@ -63,13 +86,20 @@ def measure_coverage(
             timeout=120,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        return None, {}
     if report.returncode != 0 or not report.stdout.strip():
-        return None
+        return None, {}
     try:
-        return float(json.loads(report.stdout)["totals"]["percent_covered"])
+        payload = json.loads(report.stdout)
+        total = float(payload["totals"]["percent_covered"])
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-        return None
+        return None, {}
+    missing: dict[str, list[int]] = {}
+    for file_path, file_data in payload.get("files", {}).items():
+        lines = file_data.get("missing_lines")
+        if lines:
+            missing[file_path.replace("\\", "/")] = list(lines)
+    return total, missing
 
 
 def coverage_gate(

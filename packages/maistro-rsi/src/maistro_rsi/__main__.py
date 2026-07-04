@@ -102,6 +102,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "so every run continues the lineage. No separate training evals exist.",
     )
     run.add_argument(
+        "--genome-models",
+        default="",
+        help="CSV of model aliases to seed the genome population across in live "
+        "mode (one seed per model — evolution learns per-model differences and "
+        "the bench/reliability machinery makes the full roster safe). "
+        "Empty ⇒ seed on --model only.",
+    )
+    run.add_argument(
         "--evolve-goal",
         default="",
         help="Operator goal for the hyper-mutator's meta-prompts in live mode.",
@@ -487,6 +495,7 @@ def main(argv: list[str] | None = None) -> int:
             report_every=args.report_every,
             report_dir=args.report_dir,
             genome_db=args.genome_db,
+            genome_models=[m.strip() for m in args.genome_models.split(",") if m.strip()],
             evolve_goal=args.evolve_goal,
             roster_size=args.roster_size,
         )

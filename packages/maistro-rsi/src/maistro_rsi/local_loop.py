@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import subprocess
+import time
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
@@ -170,6 +172,34 @@ def _is_transient_provider_error(text: str) -> bool:
     return any(marker in lowered for marker in _TRANSIENT_ERROR_MARKERS)
 
 
+# Providers state their own wait inside 429 errors (formats catalogued in
+# C:\maistro\MODEL-LIMITS.md): Groq puts "Please try again in 7.664s" in the
+# body, Gemini a google.rpc.RetryInfo `"retryDelay": "58s"`, and several
+# carriers a `retry-after: N` header that LiteLLM folds into the error text.
+_RETRY_AFTER_PATTERNS = (
+    re.compile(r'retrydelay"?\s*[:=]\s*"?(\d+(?:\.\d+)?)\s*s', re.IGNORECASE),
+    re.compile(r"try again in\s+(\d+(?:\.\d+)?)\s*s", re.IGNORECASE),
+    re.compile(r"retry-after[\"':\s]+(\d+(?:\.\d+)?)", re.IGNORECASE),
+)
+
+
+def _parse_retry_after_seconds(text: str) -> float | None:
+    """Extract the provider's own stated wait from an error, if it names one.
+
+    The bench honors this over any fixed sit-out length — a 7s Groq RPM blip
+    shouldn't cost minutes, and a 58s Gemini daily-quota wait shouldn't be
+    retried in 10. Returns None when no wait is stated (fall back to cycles).
+    """
+    for pattern in _RETRY_AFTER_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                continue
+    return None
+
+
 def _scouted_objective(path: str, instruction: str) -> str:
     """Wrap a scout's concrete instruction in the agent's tool-use guidance so
     every competitor implements the *same* identified improvement."""
@@ -198,9 +228,34 @@ def _guess_test_path(target: str) -> str:
 
 def _fixer_objective(path: str, kind: ImprovementKind, instruction: str) -> str:
     """The tiered base-fixer scaffold: implement one scout item, with rules keyed
-    to its kind. FEATURE (v2.0) work is allowed to be ambitious and multi-file;
+    to its kind. SPEC finishes contracted acceptance criteria (the biggest reward,
+    claimed via @pytest.mark.ac); BACKLOG drafts a new spec contract instead of
+    hacking a feature in raw; FEATURE (v2.0) work is ambitious and multi-file;
     everything else is a bounded, test-first, single-module change. This is the
     fixed task contract — the evolvable strategy layer is the genome's prompt."""
+    if kind is ImprovementKind.SPEC:
+        return (
+            f"Implement this UNFULFILLED acceptance criterion (related module: `{path}`):\n"
+            f"  {instruction}\n"
+            "This finishes work the repo has already contracted in docs/specs/ — the highest-"
+            "reward move available. Work test-first: write the test that PROVES the criterion, "
+            'decorated with @pytest.mark.ac("SPEC-<id>/AC-<n>") using the exact ids from the '
+            "instruction, confirm it fails, then implement until it passes with every existing "
+            "test still green. Use read_file, edit_file and write_file across the files the "
+            "criterion needs. Do not run git or shell commands."
+        )
+    if kind is ImprovementKind.BACKLOG:
+        return (
+            f"Draft a NEW spec contract for this capability idea (related module: `{path}`):\n"
+            f"  {instruction}\n"
+            "Create one markdown file under docs/specs/ following the existing SPEC-*.md "
+            "convention: YAML frontmatter with a unique `id: SPEC-<date>-<short>` plus title/"
+            "repo/kind/status/created, a short design section, and enumerated acceptance "
+            "criteria as '- [ ] **AC-n**' checkboxes — each one concrete and testable. Do NOT "
+            "implement the capability; the contract is the deliverable (implementation becomes "
+            "future spec work). Read a neighboring docs/specs/SPEC-*.md first to match the "
+            "format. Use read_file and write_file. Do not run git or shell commands."
+        )
     if kind is ImprovementKind.FEATURE:
         return (
             f"Implement this enhancement to the `{path}` module:\n  {instruction}\n"
@@ -447,15 +502,23 @@ class LocalRsiConfig:
     # (promoted/exported) exactly as in a plain run. The population persists, so
     # every run continues the lineage.
     genome_db: str | None = None
+    # Models to seed the genome population across in live mode (one seed genome
+    # per model, so evolution learns per-model differences from cycle one).
+    # Empty ⇒ fall back to [model]. Top-up seeding only — an existing lineage in
+    # genome_db is continued, never buried.
+    genome_models: list[str] = field(default_factory=list)
     # Operator goal threaded into the hyper-mutator's meta-prompt in live mode.
     evolve_goal: str = ""
     # Roster cap per cycle in live mode (genomes beyond this wait their turn;
     # unscored children get priority so verification never starves).
     roster_size: int = 4
     # Model bench: a competitor whose model hits a TRANSIENT provider error
-    # (429/rate-limit/quota/billing) sits out this many cycles instead of dying —
-    # no eval burned, no stub folded into its genome, seat freed for others.
-    # Lets the roster safely include every provider; rate limits become rest.
+    # (429/rate-limit/quota/billing) sits out instead of dying — no eval burned,
+    # no stub folded into its genome, seat freed for others. The sit-out length
+    # honors the provider's own stated retry-after when the error names one;
+    # otherwise it defaults to this many cycles' worth of estimated wall-clock,
+    # doubling on each consecutive bench of the same model (a chronically
+    # exhausted daily quota backs off instead of burning a probe every cycle).
     bench_cycles: int = 3
     # Checkpointing for long runs. Every ``report_every`` cycles (0 = only at the
     # end), write a progress report (markdown + JSON) into ``report_dir`` and
@@ -491,6 +554,9 @@ class _VariantResult:
     slot: int = 0
     model: str = ""
     genome_id: str | None = None
+    # The ImprovementKind of the slot's scout item — reports and evolution can
+    # see WHICH rung of the maturity ladder the work was on.
+    kind: ImprovementKind = ImprovementKind.DOC
 
 
 @dataclass
@@ -624,8 +690,20 @@ class LocalRsiLoop:
         self._population: Any = None
         self._elo: Any = None
         self._label_to_genome: dict[str, str] = {}
-        # Model bench: model -> first cycle index at which it may play again.
-        self._bench: dict[str, int] = {}
+        # Model bench: model -> wall-clock deadline (time.monotonic()) until
+        # which it sits out. Deadlines come from the provider's own retry-after
+        # when the error states one; otherwise from bench_cycles worth of
+        # estimated cycle time, doubling per consecutive bench (see
+        # _bench_model). _bench_counts tracks the consecutive-bench streak,
+        # reset by any successful scoring of the model.
+        self._bench: dict[str, float] = {}
+        self._bench_counts: dict[str, int] = {}
+        # Per-file uncovered lines from the baseline coverage run — the scout
+        # targets real gaps, and an empty list is the earned-ambition trigger.
+        self._baseline_missing: dict[str, list[int]] = {}
+        # Contracted-but-unproven spec ACs (spec_tracker.spec_gaps), cached per
+        # baseline state — refreshed when a promotion may have claimed some.
+        self._spec_gaps: dict[str, list[str]] | None = None
         # Per-model reliability (run-local EMA, starts 1.0): transient provider
         # failures decay it, successes recover it. Multiplied into genome fitness
         # so a genome married to a flaky provider scores lower than the SAME slot
@@ -639,10 +717,13 @@ class LocalRsiLoop:
 
             self._population = open_population(config.genome_db)
             # Top-up seeding: an existing lineage is continued, never buried.
+            # Seed across every roster model so evolution learns per-model
+            # differences from cycle one (genome_models beats a single model).
+            seed_models = config.genome_models or ([config.model] if config.model else None)
             seed_population(
                 self._population,
-                config.roster_size,
-                models=[config.model] if config.model else None,
+                max(config.roster_size, len(config.genome_models)),
+                models=seed_models,
             )
             self._elo = EloTournament()
 
@@ -650,14 +731,35 @@ class LocalRsiLoop:
         if not self._config.use_fitness:
             return None
         if self._baseline_cov is None:
-            from maistro_evolve.coverage_gate import measure_coverage
+            from maistro_evolve.coverage_gate import measure_coverage_detailed
 
-            self._baseline_cov = measure_coverage(
+            # One instrumented run yields both the total (the gate) and each
+            # file's missing lines (the scout's real targets) — no extra cost.
+            self._baseline_cov, self._baseline_missing = measure_coverage_detailed(
                 self._baseline,
                 source=self._config.coverage_source,
                 pytest_args=self._config.coverage_pytest_args,
             )
         return self._baseline_cov
+
+    def _uncovered_for(self, target: str) -> list[int]:
+        """The baseline's uncovered line numbers for ``target`` (empty = fully
+        covered — the earned-ambition trigger, or coverage unavailable)."""
+        self._baseline_coverage()  # ensure the cache is populated
+        return self._baseline_missing.get(target.replace("\\", "/"), [])
+
+    def _spec_gaps_text(self) -> str:
+        """Contracted-but-unproven ACs, rendered for the scout prompt (cached)."""
+        if self._spec_gaps is None:
+            from maistro_rsi.spec_tracker import spec_gaps
+
+            try:
+                self._spec_gaps = spec_gaps(self._baseline)
+            except Exception:  # sensing must never stall a cycle
+                self._spec_gaps = {}
+        from maistro_rsi.spec_tracker import format_gaps
+
+        return format_gaps(self._spec_gaps)
 
     def _target_for_cycle(self, index: int) -> str:
         if self._config.targets:
@@ -668,19 +770,21 @@ class LocalRsiLoop:
         target = self._target_for_cycle(index)
         return _targeted_objective(target) if target else self._config.objective
 
-    def _cycle_slots(self, index: int) -> list[tuple[str, BudgetTier]]:
-        """The (objective, budget) slots competitors fill this cycle.
+    def _cycle_slots(self, index: int) -> list[tuple[str, BudgetTier, ImprovementKind]]:
+        """The (objective, budget, kind) slots competitors fill this cycle.
 
-        With ``scout`` on, the scout reads the target's source + existing tests and
-        returns a ranked shortlist of typed improvements; each becomes a slot whose
-        objective is the tiered fixer scaffold and whose budget is set by its kind
-        (FEATURE unlocks the big budget). Competitors spread across the slots
-        (complementary) and, over runs, collide on hot ones (competitive). Without
-        scout — or on a silent/garbled scout — a single bounded slot carries the
-        classic targeted/generic objective so a cycle never stalls.
+        With ``scout`` on, the scout reads the target's source, existing tests,
+        its real uncovered lines, and the repo's unimplemented spec ACs, and
+        returns a ranked shortlist of typed improvements; each becomes a slot
+        whose objective is the tiered fixer scaffold and whose budget/kind route
+        everything downstream (SPEC/BACKLOG/FEATURE unlock the big budget).
+        Competitors spread across the slots (complementary) and, over runs,
+        collide on hot ones (competitive). Without scout — or on a
+        silent/garbled scout — a single bounded slot carries the classic
+        targeted/generic objective so a cycle never stalls.
         """
         target = self._target_for_cycle(index)
-        fallback = [(self._objective_for_cycle(index), BudgetTier.BOUNDED)]
+        fallback = [(self._objective_for_cycle(index), BudgetTier.BOUNDED, ImprovementKind.DOC)]
         if not (self._config.scout and target):
             return fallback
         try:
@@ -695,7 +799,14 @@ class LocalRsiLoop:
         from maistro_rsi.scout import scout_shortlist
 
         llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
-        items = scout_shortlist(source, tests, "", llm, max_items=3)
+        items = scout_shortlist(
+            source,
+            tests,
+            self._uncovered_for(target),
+            llm,
+            spec_gaps=self._spec_gaps_text(),
+            max_items=3,
+        )
         if not items:
             return fallback
         logger.info(
@@ -704,21 +815,61 @@ class LocalRsiLoop:
             target=target,
             items=[{"kind": it.kind.value, "instruction": it.instruction[:120]} for it in items],
         )
-        return [(_fixer_objective(target, it.kind, it.instruction), it.kind.budget) for it in items]
+        return [
+            (_fixer_objective(target, it.kind, it.instruction), it.kind.budget, it.kind)
+            for it in items
+        ]
 
-    def _benched(self, model: str, index: int) -> bool:
-        return self._bench.get(model, 0) > index
+    # Rough wall-clock cost of one cycle (agent turns + scorecard) — the unit
+    # behind the default bench duration when no retry-after is stated.
+    _EST_CYCLE_SECONDS = 180.0
+    # Floor under provider-stated waits (a "try again in 2s" isn't worth
+    # un-benching for) and ceiling on backoff (an exhausted daily quota still
+    # gets a probe every ~30 min so recovery is noticed the same run).
+    _MIN_BENCH_SECONDS = 30.0
+    _MAX_BENCH_SECONDS = 1800.0
 
-    def _bench_model(self, model: str, index: int) -> None:
-        until = index + 1 + self._config.bench_cycles
-        self._bench[model] = until
-        logger.info("rsi_model_benched", model=model, until_cycle=until)
+    def _benched(self, model: str, index: int = 0) -> bool:
+        del index  # wall-clock deadlines now; kept for call-site compatibility
+        return self._bench.get(model, 0.0) > time.monotonic()
+
+    def _bench_model(self, model: str, index: int, error_text: str = "") -> None:
+        """Sit the model out until a wall-clock deadline.
+
+        Honors the provider's OWN stated wait when the error carries one (Groq
+        'try again in Xs', Gemini retryDelay, retry-after headers — formats in
+        C:\\maistro\\MODEL-LIMITS.md). Otherwise defaults to ``bench_cycles``
+        worth of estimated cycle time, DOUBLED per consecutive bench of this
+        model — a one-off RPM blip costs one short sit-out, while a drained
+        daily quota backs off geometrically instead of burning a probe every
+        cycle. The streak resets when the model scores work again.
+        """
+        streak = self._bench_counts.get(model, 0) + 1
+        self._bench_counts[model] = streak
+        stated = _parse_retry_after_seconds(error_text)
+        if stated is not None:
+            seconds = max(stated, self._MIN_BENCH_SECONDS)
+            source = "provider retry-after"
+        else:
+            seconds = self._config.bench_cycles * self._EST_CYCLE_SECONDS * (2 ** (streak - 1))
+            source = f"default x{streak}"
+        seconds = min(seconds, self._MAX_BENCH_SECONDS)
+        self._bench[model] = time.monotonic() + seconds
+        logger.info(
+            "rsi_model_benched",
+            model=model,
+            cycle=index,
+            seconds=round(seconds, 1),
+            source=source,
+        )
 
     def _observe_reliability(self, model: str, ok: bool) -> float:
         """EMA per-model reliability: 0.7*prev + 0.3*outcome, starting at 1.0."""
         prev = self._reliability.get(model, 1.0)
         current = round(0.7 * prev + 0.3 * (1.0 if ok else 0.0), 4)
         self._reliability[model] = current
+        if ok:
+            self._bench_counts.pop(model, None)  # streak ends on real work
         return current
 
     def _competitors(self, index: int = 1) -> list[Competitor]:
@@ -813,6 +964,7 @@ class LocalRsiLoop:
         competitor: Competitor,
         objective: str,
         budget: BudgetTier = BudgetTier.BOUNDED,
+        kind: ImprovementKind = ImprovementKind.DOC,
     ) -> _VariantResult:
         """Run one competitor in its own worktree off the baseline and score it.
 
@@ -832,7 +984,7 @@ class LocalRsiLoop:
             str(cdir),
             self._config.baseline_branch,
         )
-        r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label)
+        r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label, kind=kind)
         try:
             apply_fn = self._apply_for_competitor(competitor, objective, budget)
             asyncio.run(apply_fn(LocalSandbox(cdir), str(cdir)))
@@ -865,7 +1017,7 @@ class LocalRsiLoop:
                 # cycles, and mark the result transient so live evolution folds
                 # NO sample for this genome (sitting out is neutral).
                 r.note = f"transient: {exc}"
-                self._bench_model(competitor.model, index)
+                self._bench_model(competitor.model, index, error_text=str(exc))
         logger.info(
             "rsi_local_variant",
             index=index,
@@ -900,8 +1052,8 @@ class LocalRsiLoop:
                 # Spread competitors across the scout's shortlist slots; with more
                 # competitors than slots they double up (competitive on one item).
                 slot_idx = (seq - 1) % len(slots)
-                objective, budget = slots[slot_idx]
-                r = self._run_variant(index, seq, comp, objective, budget)
+                objective, budget, kind = slots[slot_idx]
+                r = self._run_variant(index, seq, comp, objective, budget, kind)
                 r.slot = slot_idx
                 r.model = comp.model or self._config.model or ""
                 r.genome_id = self._label_to_genome.get(comp.label)
@@ -938,7 +1090,11 @@ class LocalRsiLoop:
                 index, target, accepted, created
             )
             _git(self._baseline, "merge", "--ff-only", promote_branch)
-            self._baseline_cov = None  # baseline advanced — recompute coverage next cycle
+            # Baseline advanced — recompute coverage/uncovered/spec-gaps next
+            # cycle (a promotion may have covered lines or claimed AC gaps).
+            self._baseline_cov = None
+            self._baseline_missing = {}
+            self._spec_gaps = None
             note = (
                 f"tournament: {len(competitors)} competitor(s), {len(accepted)} passed, "
                 f"kept {kept_n} (composite={composite})"
@@ -1000,7 +1156,7 @@ class LocalRsiLoop:
                 "rsi_live_evolution",
                 index=index,
                 population=len(self._population.list_all()),
-                benched=[m for m, until in self._bench.items() if until > index],
+                benched=[m for m in self._bench if self._benched(m)],
             )
         except Exception as exc:
             logger.warning("rsi_live_evolution_error", index=index, error=str(exc))
