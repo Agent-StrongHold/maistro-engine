@@ -33,6 +33,7 @@ from maistro_server.api import (
     webhooks,
     ws,
 )
+from maistro_server.api.middleware import PayloadSizeLimitMiddleware, SecurityHeadersMiddleware
 from maistro_server.api.rate_limit import RateLimitMiddleware
 from maistro_server.api.schemas import ErrorDetail, ErrorResponse
 
@@ -157,6 +158,18 @@ app.add_middleware(RateLimitMiddleware)
 
 # Request correlation IDs
 app.add_middleware(RequestIDMiddleware)
+
+# Global payload size limit — rejects oversized/malformed bodies before
+# CORS/rate-limit/request-id do any work.
+app.add_middleware(
+    PayloadSizeLimitMiddleware,
+    max_bytes=_settings.max_request_body_bytes,
+)
+
+# Security headers — the true outermost middleware (added last), so headers
+# land on every response, including early rejections from the middlewares
+# added above (e.g. 413 from PayloadSizeLimitMiddleware, 429 from RateLimit).
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.exception_handler(HTTPException)

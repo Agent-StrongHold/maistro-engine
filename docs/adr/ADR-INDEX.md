@@ -90,6 +90,8 @@ Turing / deferred-to-vN) and **`DECISION-BACKLOG.md`** (in-scope but not yet dec
 | ADR-070426-b5e9 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Six-tier priority system (P0–P5) refining ADR-010 lanes — routing weight, model bias, token multiplier, eviction order. |
 | ADR-070426-e8a3 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Session Trust Floor — monotonically non-increasing per-session trust reducer; compaction cannot heal it; WardenVerdict.confidence. |
 | ADR-070426-9f47 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Autonoetic self-model threat model — guardrail invariants G1–G18 as mandatory AC for the turing migration. |
+| ADR-070426-e9da | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Header-based CSRF defense (`X-Maistro-Request`) for hive-conductor's cookie-authenticated mutations; docs-only, flags the conftest fixture update as acceptance-blocking. |
+| ADR-070426-ac56 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Wire `CostAwareRouter.fallback_chain()` into the conductor's retry loop for cross-model fallback; docs-only, DI change deferred to SPEC-280. |
 
 *Turing-specific ADRs (autonoetic self-model) are tracked as a separate set — see `OUT-OF-SCOPE.md`
 §Turing and `DECISION-BACKLOG.md` §Turing. ADR-061 (maistro-design-package) and ADR-100 (its

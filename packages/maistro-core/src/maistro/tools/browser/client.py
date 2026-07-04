@@ -29,6 +29,7 @@ import time
 from typing import Any
 
 from maistro.tools.browser.types import BrowseResult, Citation, SearchResult
+from maistro.tools.net_guard import SSRFBlockedError, validate_outbound_url
 
 
 class BrowserToolError(RuntimeError):
@@ -195,6 +196,10 @@ class BrowserClient:
             "summary of what you read. Do not invent details — quote where "
             "possible."
         )
+        try:
+            validate_outbound_url(url)
+        except SSRFBlockedError as exc:
+            raise BrowserToolError(f"browse blocked by SSRF guard: {exc}") from exc
         try:
             agent = Agent(task=full_task, llm=llm, max_steps=self.max_steps)
             run_result = await asyncio.wait_for(

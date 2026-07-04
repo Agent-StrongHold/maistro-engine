@@ -119,6 +119,11 @@ class Settings(BaseSettings):
     tier_4_model: str = ""
 
     max_webhook_body_bytes: int = 1_048_576
+    max_request_body_bytes: int = Field(
+        default=1_048_576,
+        description="Global HTTP request body size limit enforced by PayloadSizeLimitMiddleware "
+        "(distinct from max_webhook_body_bytes, which the webhook routes enforce specifically).",
+    )
 
     rate_limit_per_minute: int = 60
     rate_limit_burst: int = 10
