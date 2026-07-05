@@ -204,6 +204,12 @@ def test_rolling_export_is_complete_and_not_stale(tmp_path: Path) -> None:
         max_cycles=4,
         report_every=2,
         report_dir=str(reports),
+        # This test is about rolling-export completeness, not the checkpoint
+        # reviewer — the fixture rewrites the SAME file every cycle, so a
+        # cold-start RLPHD revert (see test_review_promotions.py) would
+        # legitimately shrink the exported set, which isn't what's under test
+        # here.
+        promotion_review=False,
     )
     LocalRsiLoop(config, apply_patch=_make_apply(_bump)).run()
 

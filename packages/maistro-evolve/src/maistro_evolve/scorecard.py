@@ -48,6 +48,10 @@ class GateResult:
     name: str
     passed: bool
     reason: str
+    # Optional raw numeric evidence behind the pass/fail (e.g. a judge's score) —
+    # so a downstream reviewer can read the underlying confidence, not just the
+    # boolean veto. Mirrors SignalScore.detail's existing convention.
+    detail: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass

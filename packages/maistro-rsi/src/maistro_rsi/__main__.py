@@ -133,6 +133,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Model alias for the scout (default: --model).",
     )
     run.add_argument(
+        "--scout-fallback-models",
+        default="",
+        help="Comma-separated models the scout tries in skill-ranked order when "
+        "--scout-model is benched or fails (default: --genome-models, so no "
+        "override is usually needed in live-evolution mode).",
+    )
+    run.add_argument(
+        "--no-regression-judge",
+        action="store_true",
+        help="Skip the second-opinion LLM regression check (on by default) — "
+        "saves the extra LLM call per already-passing candidate.",
+    )
+    run.add_argument(
+        "--no-promotion-review",
+        action="store_true",
+        help="Skip the checkpoint-time RLPHD review that reverts low-confidence "
+        "promotions pending human approve/deny (on by default).",
+    )
+    run.add_argument(
         "--export-patches",
         default=None,
         help="After the run, export each promotion as a patch + manifest.json here "
@@ -240,6 +259,27 @@ def _build_parser() -> argparse.ArgumentParser:
         "first --models entry). Without a reachable gateway the hyper-mutator "
         "simply proposes nothing.",
     )
+
+    review = sub.add_parser(
+        "review",
+        help="List/approve/deny promotions the checkpoint reviewer reverted "
+        "pending human judgment (SPEC-248 RLPHD). Pure host-side file "
+        "operations — no running container needed.",
+    )
+    review.add_argument(
+        "--report-dir", required=True, help="The run's REPORT_DIR (same one passed to `run`)."
+    )
+    review_sub = review.add_subparsers(dest="review_action", required=True)
+    review_sub.add_parser("list", help="List promotions still pending a decision.")
+    approve = review_sub.add_parser(
+        "approve", help="Approve a flagged promotion — re-queues its patch for the next harvest."
+    )
+    approve.add_argument("sha", help="Commit sha (or its 12-char prefix) of the flagged promotion.")
+    deny = review_sub.add_parser(
+        "deny", help="Deny a flagged promotion — it stays reverted; the patch is kept for audit."
+    )
+    deny.add_argument("sha", help="Commit sha (or its 12-char prefix) of the flagged promotion.")
+
     return parser
 
 
@@ -460,73 +500,7 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     if args.command == "run":
-        repo = Path(args.repo).expanduser()
-        # `.git` is a dir in a normal checkout, a file in a linked worktree.
-        if not (repo / ".git").exists():
-            print(f"error: {repo} is not a git repository", file=sys.stderr)
-            return 2
-        work_root = args.work_root or tempfile.mkdtemp(prefix="maistro-rsi-")
-        targets = [t.strip() for t in args.targets.split(",") if t.strip()] if args.targets else []
-        competitors = parse_competitors(args.competitors)
-        if args.genome_db:
-            print(
-                f"live evolution: population at {args.genome_db} IS the roster — "
-                "work is kept AND scores the genomes; lineage continues across runs"
-            )
-        config = LocalRsiConfig(
-            repo_path=str(repo),
-            test_command=args.test_cmd,
-            work_root=work_root,
-            max_cycles=args.cycles,
-            # Only override the config's own default objective when one is given.
-            **({"objective": args.objective} if args.objective else {}),
-            targets=targets,
-            model=args.model,
-            agent_turns_per_cycle=args.agent_turns,
-            isolation=args.isolation,
-            sandbox_image=args.image,
-            use_fitness=args.fitness,
-            coverage_source=args.coverage_source,
-            coverage_pytest_args=args.coverage_pytest_args,
-            competitors=competitors,
-            scout=args.scout,
-            scout_model=args.scout_model,
-            export_patches=args.export_patches,
-            report_every=args.report_every,
-            report_dir=args.report_dir,
-            genome_db=args.genome_db,
-            genome_models=[m.strip() for m in args.genome_models.split(",") if m.strip()],
-            evolve_goal=args.evolve_goal,
-            roster_size=args.roster_size,
-        )
-        print(
-            f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"
-        )
-        loop = LocalRsiLoop(config)
-        result = loop.run()
-        print("\n" + result.summary())
-        if config.genome_db:
-            summary = loop._population_summary()
-            print(
-                f"\nEvolution: {summary['population_size']} genome(s), "
-                f"generations={summary['generations']}"
-            )
-            for g in summary["top_genomes"]:
-                print(
-                    f"  champion: {g['name']} (gen {g['generation']}, {g['model']}) "
-                    f"fitness={g['fitness']} tdd_rigor={g['tdd_rigor']} "
-                    f"test_style={g['test_style']}"
-                )
-            if summary["reliability"]:
-                print(
-                    "  reliability: "
-                    + ", ".join(
-                        f"{m}={round(v, 3)}" for m, v in sorted(summary["reliability"].items())
-                    )
-                )
-            if summary["benched_models"]:
-                print(f"  benched: {', '.join(summary['benched_models'])}")
-        return 0
+        return _run(args)
 
     if args.command == "harvest":
         return _harvest(args)
@@ -534,7 +508,117 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "evolve":
         return _evolve(args)
 
+    if args.command == "review":
+        return _review(args)
+
     return 1
+
+
+def _run(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).expanduser()
+    # `.git` is a dir in a normal checkout, a file in a linked worktree.
+    if not (repo / ".git").exists():
+        print(f"error: {repo} is not a git repository", file=sys.stderr)
+        return 2
+    work_root = args.work_root or tempfile.mkdtemp(prefix="maistro-rsi-")
+    targets = [t.strip() for t in args.targets.split(",") if t.strip()] if args.targets else []
+    competitors = parse_competitors(args.competitors)
+    if args.genome_db:
+        print(
+            f"live evolution: population at {args.genome_db} IS the roster — "
+            "work is kept AND scores the genomes; lineage continues across runs"
+        )
+    config = LocalRsiConfig(
+        repo_path=str(repo),
+        test_command=args.test_cmd,
+        work_root=work_root,
+        max_cycles=args.cycles,
+        # Only override the config's own default objective when one is given.
+        **({"objective": args.objective} if args.objective else {}),
+        targets=targets,
+        model=args.model,
+        agent_turns_per_cycle=args.agent_turns,
+        isolation=args.isolation,
+        sandbox_image=args.image,
+        use_fitness=args.fitness,
+        coverage_source=args.coverage_source,
+        coverage_pytest_args=args.coverage_pytest_args,
+        competitors=competitors,
+        scout=args.scout,
+        scout_model=args.scout_model,
+        scout_fallback_models=[
+            m.strip() for m in args.scout_fallback_models.split(",") if m.strip()
+        ],
+        regression_judge=not args.no_regression_judge,
+        promotion_review=not args.no_promotion_review,
+        export_patches=args.export_patches,
+        report_every=args.report_every,
+        report_dir=args.report_dir,
+        genome_db=args.genome_db,
+        genome_models=[m.strip() for m in args.genome_models.split(",") if m.strip()],
+        evolve_goal=args.evolve_goal,
+        roster_size=args.roster_size,
+    )
+    print(
+        f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"
+    )
+    loop = LocalRsiLoop(config)
+    result = loop.run()
+    print("\n" + result.summary())
+    if config.genome_db:
+        summary = loop._population_summary()
+        print(
+            f"\nEvolution: {summary['population_size']} genome(s), "
+            f"generations={summary['generations']}"
+        )
+        for g in summary["top_genomes"]:
+            print(
+                f"  champion: {g['name']} (gen {g['generation']}, {g['model']}) "
+                f"fitness={g['fitness']} tdd_rigor={g['tdd_rigor']} "
+                f"test_style={g['test_style']}"
+            )
+        if summary["reliability"]:
+            print(
+                "  reliability: "
+                + ", ".join(
+                    f"{m}={round(v, 3)}" for m, v in sorted(summary["reliability"].items())
+                )
+            )
+        if summary["benched_models"]:
+            print(f"  benched: {', '.join(summary['benched_models'])}")
+    return 0
+
+
+def _review(args: argparse.Namespace) -> int:
+    from maistro_rsi.promotion_review import load_pending_reviews, resolve_review
+
+    report_dir = Path(args.report_dir).expanduser()
+    flagged_dir = report_dir / "flagged"
+
+    if args.review_action == "list":
+        pending = load_pending_reviews(flagged_dir)
+        if not pending:
+            print("No promotions pending review.")
+            return 0
+        for r in pending:
+            print(
+                f"{r.sha[:12]}  cycle={r.index:<4} kind={r.kind:<12} target={r.target}\n"
+                f"    predicted_p={r.predicted_p:.3f} theta={r.theta:.3f}  {r.note}"
+            )
+        return 0
+
+    sha = args.sha
+    decision = "approve" if args.review_action == "approve" else "deny"
+    try:
+        review = resolve_review(
+            flagged_dir, report_dir / "export", report_dir / "rlphd_state.json", sha, decision
+        )
+    except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    verb = "approved — patch re-queued for the next harvest" if decision == "approve" else "denied"
+    print(f"{review.sha[:12]} ({review.target}) {verb}. RLPHD model updated for {review.action_class}.")
+    return 0
 
 
 if __name__ == "__main__":

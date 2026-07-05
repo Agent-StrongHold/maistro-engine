@@ -489,6 +489,15 @@ class LocalRsiConfig:
     # competitors implement (a fairer head-to-head than each inventing its own).
     scout: bool = False
     scout_model: str | None = None
+    # Ordered fallback catalog the scout tries in turn (skipping any that are
+    # currently benched) instead of depending on one static model — a single
+    # chronically-benched scout model was observed to silently zero the scout
+    # for the rest of a run (scout_shortlist swallows the error and returns
+    # []). Empty means "use genome_models" (already the full run roster in
+    # live-evolution mode), falling back to [model] if that's empty too — see
+    # _scout_fallback_catalog(). The actual try-in-order and skill-ranking
+    # happens at runtime (scout_fallback.py); this is just the candidate pool.
+    scout_fallback_models: list[str] = field(default_factory=list)
     # Stage 4 (ADR-070126-6386): when set, after the run each promotion is
     # exported here as a git-am-able patch plus a manifest.json, for the harvester
     # to open PRs grouped by file. This is the durable output of an isolated run.
@@ -520,6 +529,19 @@ class LocalRsiConfig:
     # doubling on each consecutive bench of the same model (a chronically
     # exhausted daily quota backs off instead of burning a probe every cycle).
     bench_cycles: int = 3
+    # Second-opinion LLM regression check (ADR-070126-6386 v3): a narrow judge
+    # pass over every candidate that already cleared the deterministic gates,
+    # aimed at semantic regressions no existing test covers (a data-shape
+    # conversion silently narrowed, an untested branch riding on an unrelated
+    # test's credit). Default on; set False to skip the extra LLM call.
+    regression_judge: bool = True
+    # Checkpoint-time RLPHD promotion review (SPEC-248 / promotion_review.py):
+    # a low-confidence promotion (predicted human-approval p below its
+    # adaptive theta) gets reverted so nothing keeps building on top of it,
+    # patch saved for later human approve/deny. Default on; set False to
+    # disable (e.g. a test exercising unrelated checkpoint mechanics that
+    # never anticipated a revert).
+    promotion_review: bool = True
     # Checkpointing for long runs. Every ``report_every`` cycles (0 = only at the
     # end), write a progress report (markdown + JSON) into ``report_dir`` and
     # refresh a rolling, harvestable patch export of everything promoted so far.
@@ -557,6 +579,10 @@ class _VariantResult:
     # The ImprovementKind of the slot's scout item — reports and evolution can
     # see WHICH rung of the maturity ladder the work was on.
     kind: ImprovementKind = ImprovementKind.DOC
+    # The second-opinion LLM regression judge's raw score (None if the judge
+    # never ran) — survives past its pass/fail gate for the checkpoint-time
+    # RLPHD reviewer to use as prediction evidence.
+    regression_judge_score: float | None = None
 
 
 @dataclass
@@ -569,6 +595,12 @@ class CycleOutcome:
     target: str = ""
     note: str = ""
     composite: float = 0.0
+    # The promoted merge commit's sha, its (representative, top-scored) kind,
+    # and the regression judge's raw score — the evidence a checkpoint-time
+    # RLPHD reviewer needs, without re-deriving it from logs.
+    sha: str = ""
+    kind: ImprovementKind = ImprovementKind.DOC
+    regression_judge_score: float | None = None
 
 
 @dataclass
@@ -729,6 +761,25 @@ class LocalRsiLoop:
         self._baseline = Path(config.work_root) / "baseline"
         self._baseline_cov: float | None = None  # cached; invalidated on promote
         self._start_ref: str | None = None  # baseline sha before any promotion
+        # Checkpoint-time RLPHD review (promotion_review.py) scans only commits
+        # since the LAST review pass — set to _start_ref once the baseline is
+        # ready, advanced after each _review_promotions() call.
+        self._last_reviewed_ref: str | None = None
+        # Commits on baseline_branch that are real (a resume commit, a revert)
+        # but aren't in result.cycles as a promotion — _check_persistence_integrity
+        # must add these back in, or every resume/revert reads as a false
+        # "history diverged from the promotion count" alarm. export_promotions
+        # also excludes these shas: a reverted promotion and its own revert
+        # commit both represent "nothing net happened," not exportable work.
+        self._non_promotion_commits = 0
+        self._excluded_from_export: set[str] = set()
+        # Scout model fallback (scout_fallback.py): loaded lazily on first use
+        # (needs report_dir, which _setup_baseline doesn't touch) so it survives
+        # restarts the same way population.db/rlphd_state.json do; None until
+        # then. _last_scout_model records which model actually served THIS
+        # cycle, so a promotion can credit it.
+        self._scout_fallback: Any = None
+        self._last_scout_model: str | None = None
         # Unified live evolution (genome_db set): the population that IS the
         # roster, an in-run Elo ladder, and the label→genome mapping for folding
         # real composites back into the genomes that authored them.
@@ -816,6 +867,58 @@ class LocalRsiLoop:
         target = self._target_for_cycle(index)
         return _targeted_objective(target) if target else self._config.objective
 
+    def _scout_fallback_path(self) -> Path | None:
+        if not self._config.report_dir:
+            return None
+        return Path(self._config.report_dir) / "scout_fallback.json"
+
+    def _scout_fallback_catalog(self) -> list[str]:
+        """The candidate pool the scout tries in turn. Explicit
+        ``scout_fallback_models`` wins; otherwise ``genome_models`` (already
+        the full live-evolution roster); otherwise the single ``model``."""
+        if self._config.scout_fallback_models:
+            return list(self._config.scout_fallback_models)
+        if self._config.genome_models:
+            return list(self._config.genome_models)
+        return [self._config.model] if self._config.model else []
+
+    def _ensure_scout_fallback_loaded(self) -> None:
+        if self._scout_fallback is None:
+            from maistro_rsi.scout_fallback import ScoutFallbackState, load_state
+
+            path = self._scout_fallback_path()
+            self._scout_fallback = load_state(path) if path is not None else ScoutFallbackState()
+
+    def _save_scout_fallback(self) -> None:
+        path = self._scout_fallback_path()
+        if path is not None and self._scout_fallback is not None:
+            from maistro_rsi.scout_fallback import save_state
+
+            save_state(path, self._scout_fallback)
+
+    def _next_scout_order(self) -> list[str]:
+        """This cycle's ordered candidates, advancing (and persisting) the
+        round-robin rotation for next time — see scout_fallback.next_order."""
+        from maistro_rsi.scout_fallback import next_order
+
+        self._ensure_scout_fallback_loaded()
+        order, self._scout_fallback = next_order(
+            self._scout_fallback, self._scout_fallback_catalog()
+        )
+        self._save_scout_fallback()
+        return order
+
+    def _record_scout_success(self, model: str | None) -> None:
+        """Credit the model that served as scout in a cycle that got promoted
+        — the only signal that decides the fallback order over time."""
+        if not model:
+            return
+        from maistro_rsi.scout_fallback import record_success
+
+        self._ensure_scout_fallback_loaded()
+        self._scout_fallback = record_success(self._scout_fallback, model)
+        self._save_scout_fallback()
+
     def _cycle_slots(self, index: int) -> list[tuple[str, BudgetTier, ImprovementKind]]:
         """The (objective, budget, kind) slots competitors fill this cycle.
 
@@ -828,7 +931,14 @@ class LocalRsiLoop:
         collide on hot ones (competitive). Without scout — or on a
         silent/garbled scout — a single bounded slot carries the classic
         targeted/generic objective so a cycle never stalls.
+
+        The scout model is NOT static: a chronically-benched single model
+        used to silently zero the scout for every remaining cycle
+        (scout_shortlist swallows LLM errors and returns ``[]``). Instead we
+        try every model in the skill-ranked fallback order (scout_fallback.py),
+        skipping any currently benched, until one produces a real shortlist.
         """
+        self._last_scout_model = None
         target = self._target_for_cycle(index)
         fallback = [(self._objective_for_cycle(index), BudgetTier.BOUNDED, ImprovementKind.DOC)]
         if not (self._config.scout and target):
@@ -844,21 +954,39 @@ class LocalRsiLoop:
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
         from maistro_rsi.scout import scout_shortlist
 
-        llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
-        items = scout_shortlist(
-            source,
-            tests,
-            self._uncovered_for(target),
-            llm,
-            spec_gaps=self._spec_gaps_text(),
-            max_items=3,
-        )
+        fallback_order = self._next_scout_order()
+        # An explicit scout_model is a preference, not an exclusive pin — it's
+        # tried first, but a chronically-benched model still fails over into
+        # the skill-ranked list rather than zeroing the scout for the rest of
+        # the run (the exact failure this fallback exists to prevent).
+        candidates = (
+            [self._config.scout_model] if self._config.scout_model else []
+        ) + [m for m in fallback_order if m != self._config.scout_model]
+        items: list[Any] = []
+        scout_used: str | None = None
+        for model in candidates:
+            if self._benched(model):
+                continue
+            llm = ResponsesAPICallable(model=model)
+            items = scout_shortlist(
+                source,
+                tests,
+                self._uncovered_for(target),
+                llm,
+                spec_gaps=self._spec_gaps_text(),
+                max_items=3,
+            )
+            if items:
+                scout_used = model
+                break
         if not items:
             return fallback
+        self._last_scout_model = scout_used
         logger.info(
             "rsi_local_scout",
             index=index,
             target=target,
+            scout_model=scout_used,
             items=[{"kind": it.kind.value, "instruction": it.instruction[:120]} for it in items],
         )
         return [
@@ -1008,6 +1136,7 @@ class LocalRsiLoop:
             count=len(patches),
             export_dir=str(export_dir),
         )
+        applied = 0
         for patch_file in patches:
             # git apply is idempotent (applying an already-applied patch errors
             # gracefully with "already applied"), so restarts are safe.
@@ -1016,8 +1145,10 @@ class LocalRsiLoop:
                 "apply",
                 "--reject",
                 str(patch_file),
+                check=False,
             )
             if result.returncode == 0:
+                applied += 1
                 logger.info("rsi_local_patch_applied", patch=patch_file.name)
             else:
                 # Patch already applied (or conflicts) — log and continue.
@@ -1028,6 +1159,27 @@ class LocalRsiLoop:
                     patch=patch_file.name,
                     note="already applied or conflict",
                 )
+        # CRITICAL: `git apply` only touches the working tree — it never moves
+        # `baseline_branch`. Every cycle's variant is created via `git worktree
+        # add <dir> baseline_branch` (checks out the BRANCH REF, not this dirty
+        # working tree), so without this commit the resumed patches are
+        # invisible to every subsequent cycle: they'd sit here uncommitted while
+        # cycles silently rebuild from the pristine pre-resume commit. Committing
+        # also self-heals `export_promotions` (ranges from `_start_ref`, set
+        # before this method runs), so the next checkpoint's rolling export
+        # correctly includes the resumed history again instead of only this
+        # launch's own new commits.
+        if applied and self._changed_files(self._baseline):
+            _git(self._baseline, "add", "-A")
+            _git(
+                self._baseline,
+                "commit",
+                "-q",
+                "-m",
+                f"resume: reapply {applied} saved patch(es)",
+            )
+            self._non_promotion_commits += 1
+            logger.info("rsi_local_resume_committed", patches=applied)
 
     def _setup_baseline(self) -> None:
         work_root = Path(self._config.work_root)
@@ -1092,9 +1244,13 @@ class LocalRsiLoop:
                 f"RSI cycle {index} [{competitor.label}]: {objective[:50]}",
             )
             if self._config.use_fitness:
-                r.accepted, r.composite, r.note, r.tests_passed = self._fitness_decision(
-                    index, cdir, r.changed_files
-                )
+                (
+                    r.accepted,
+                    r.composite,
+                    r.note,
+                    r.tests_passed,
+                    r.regression_judge_score,
+                ) = self._fitness_decision(index, cdir, r.changed_files, target=objective)
             else:
                 r.tests_passed = self._run_tests(cdir)
                 r.accepted = r.tests_passed
@@ -1179,10 +1335,12 @@ class LocalRsiLoop:
                     note=note,
                 )
 
-            promote_branch, composite, files, kept_n = self._select_and_merge(
+            promote_branch, composite, files, kept_n, judge_score = self._select_and_merge(
                 index, target, accepted, created
             )
             _git(self._baseline, "merge", "--ff-only", promote_branch)
+            promoted_sha = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
+            self._record_scout_success(self._last_scout_model)
             # Baseline advanced — recompute coverage/uncovered/spec-gaps next
             # cycle (a promotion may have covered lines or claimed AC gaps).
             self._baseline_cov = None
@@ -1200,6 +1358,7 @@ class LocalRsiLoop:
                 passed=len(accepted),
                 kept=kept_n,
                 composite=composite,
+                sha=promoted_sha,
             )
             return CycleOutcome(
                 index,
@@ -1210,6 +1369,9 @@ class LocalRsiLoop:
                 target=target,
                 composite=composite,
                 note=note,
+                sha=promoted_sha,
+                kind=accepted[0].kind,
+                regression_judge_score=judge_score,
             )
         finally:
             for branch, worktree_dir in created:
@@ -1427,9 +1589,9 @@ class LocalRsiLoop:
         target: str,
         accepted: list[_VariantResult],
         created: list[tuple[str, Path]],
-    ) -> tuple[str, float, int, int]:
+    ) -> tuple[str, float, int, int, float | None]:
         """Combine passing candidates (highest-composite first). Returns
-        ``(promote_branch, composite, files_touched, kept_count)``.
+        ``(promote_branch, composite, files_touched, kept_count, regression_judge_score)``.
 
         One winner promotes its branch directly (identical to the classic cycle).
         A 2+ combination keeps only non-conflicting diffs (complementary), is
@@ -1437,7 +1599,7 @@ class LocalRsiLoop:
         """
         if len(accepted) == 1:
             top = accepted[0]
-            return top.branch, top.composite, top.files_touched, 1
+            return top.branch, top.composite, top.files_touched, 1, top.regression_judge_score
 
         merge_branch = f"rsi/cycle-{index}-m-{uuid.uuid4().hex[:6]}"
         merge_dir = Path(self._config.work_root) / f"cycle-{index}-m"
@@ -1458,7 +1620,7 @@ class LocalRsiLoop:
             # one won. 0 kept: nothing applied cleanly onto the merge worktree —
             # fall back to the top candidate, which is committed and validated.
             top = kept[0] if kept else accepted[0]
-            return top.branch, top.composite, top.files_touched, 1
+            return top.branch, top.composite, top.files_touched, 1, top.regression_judge_score
         changed_files = self._changed_files(merge_dir)
         _git(merge_dir, "add", "-A")
         _git(
@@ -1469,25 +1631,60 @@ class LocalRsiLoop:
             f"RSI cycle {index}: merged {len(kept)} complementary fix(es) of {target}",
         )
         if self._config.use_fitness:
-            m_ok, m_comp, reason, _tp = self._fitness_decision(index, merge_dir, changed_files)
+            m_ok, m_comp, reason, _tp, m_judge = self._fitness_decision(
+                index, merge_dir, changed_files
+            )
             if not m_ok:
                 logger.info("rsi_local_merge_regressed", index=index, reason=reason)
-                return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
-            return merge_branch, m_comp, len(changed_files), len(kept)
+                return (
+                    kept[0].branch,
+                    kept[0].composite,
+                    kept[0].files_touched,
+                    1,
+                    kept[0].regression_judge_score,
+                )
+            return merge_branch, m_comp, len(changed_files), len(kept), m_judge
         # No fitness: each kept candidate passed its own tests in isolation, but
         # the COMBINATION was never tested — two non-conflicting patches can still
         # interact and break the suite. Retest the merged worktree; fall back to
         # the top candidate (known-good on its own) if the combination regresses.
         if self._run_tests(merge_dir):
-            return merge_branch, kept[0].composite, len(changed_files), len(kept)
+            return (
+                merge_branch,
+                kept[0].composite,
+                len(changed_files),
+                len(kept),
+                kept[0].regression_judge_score,
+            )
         logger.info("rsi_local_merge_untested_regressed", index=index)
-        return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
+        return (
+            kept[0].branch,
+            kept[0].composite,
+            kept[0].files_touched,
+            1,
+            kept[0].regression_judge_score,
+        )
+
+    def _judge_regression(self, diff_text: str, target: str) -> tuple[float, str]:
+        """Second-opinion LLM regression check — see regression_judge.py. Never
+        raises: an unavailable/erroring gateway must not block promotion."""
+        try:
+            from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
+            from maistro_rsi.regression_judge import judge_regression
+
+            llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
+            return judge_regression(diff_text, target, llm)
+        except Exception:
+            return 0.7, "judge unavailable"
 
     def _fitness_decision(
-        self, index: int, cycle_dir: Path, changed_files: list[str]
-    ) -> tuple[bool, float, str, bool]:
+        self, index: int, cycle_dir: Path, changed_files: list[str], *, target: str = ""
+    ) -> tuple[bool, float, str, bool, float | None]:
         """Build the multi-signal Scorecard for the candidate and return
-        (accepted, composite, reject_reason, tests_passed). Logs explain()."""
+        (accepted, composite, reject_reason, tests_passed, regression_judge_score).
+        Logs explain(). The judge score (None if the judge never ran) survives
+        past its pass/fail gate so the checkpoint-time RLPHD reviewer can use
+        it as prediction evidence, not just the boolean veto."""
         from maistro_rsi.candidate_fitness import evaluate_candidate
 
         scorecard = evaluate_candidate(
@@ -1499,6 +1696,8 @@ class LocalRsiLoop:
             baseline_coverage=self._baseline_coverage(),
             baseline_ref=self._config.baseline_branch,
             timeout=self._config.test_timeout,
+            regression_judge_fn=self._judge_regression if self._config.regression_judge else None,
+            target=target,
         )
         logger.info(
             "rsi_local_scorecard",
@@ -1509,7 +1708,11 @@ class LocalRsiLoop:
         )
         tests_passed = next((g.passed for g in scorecard.gates if g.name == "tests_pass"), False)
         reason = next((f"{g.name}: {g.reason}" for g in scorecard.gates if not g.passed), "")
-        return scorecard.accepted, scorecard.composite, reason, tests_passed
+        judge_score = next(
+            (g.detail.get("score") for g in scorecard.gates if g.name == "no_flagged_regression"),
+            None,
+        )
+        return scorecard.accepted, scorecard.composite, reason, tests_passed, judge_score
 
     def _run_tests(self, cycle_dir: Path) -> bool:
         # shell=True: the test command is operator-supplied config, not agent input.
@@ -1528,6 +1731,10 @@ class LocalRsiLoop:
     def run(self) -> LocalRsiResult:
         self._setup_baseline()
         self._load_saved_patches()  # resume from a prior run by reapplying saved patches
+        # Review starts AFTER any resume commit: a resumed patch is already-
+        # decided history from a prior run, not a fresh scored promotion — it
+        # must never be re-reviewed (it has no CycleOutcome/features to score).
+        self._last_reviewed_ref = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
         result = LocalRsiResult(baseline_dir=str(self._baseline))
         for index in range(1, self._config.max_cycles + 1):
             logger.info("rsi_local_cycle_start", index=index, of=self._config.max_cycles)
@@ -1588,10 +1795,14 @@ class LocalRsiLoop:
             (report_dir / f"checkpoint-{slug}.json").write_text(
                 json.dumps(data, indent=2), encoding="utf-8"
             )
+            self._review_promotions(result, report_dir)
+            self._check_persistence_integrity(result, label)
             # Refresh a rolling, COMPLETE export of everything promoted so far, so
             # an interrupted long run stays harvestable from its last checkpoint.
             # Always clear+rewrite — even at zero promotions — so a reused report
             # dir can't leave stale patches/manifest that `harvest` would apply.
+            # Runs AFTER _review_promotions so a just-reverted promotion is never
+            # exported as if it were still kept.
             self.export_promotions(report_dir / "export", clear=True)
             logger.info(
                 "rsi_local_checkpoint",
@@ -1602,6 +1813,181 @@ class LocalRsiLoop:
             )
         except Exception as exc:
             logger.warning("rsi_local_checkpoint_error", label=label, error=str(exc))
+
+    def _review_promotions(self, result: LocalRsiResult, report_dir: Path) -> None:
+        """Checkpoint-time RLPHD gate (promotion_review.py / SPEC-248): any
+        promotion since the last review pass whose predicted approval
+        confidence falls below its action-class's adaptive theta is REVERTED
+        NOW — so nothing keeps building on top of it — but the original patch
+        is saved to ``report_dir/flagged/``, queued for a human decision that
+        feeds straight back into the same dual-signal, surprise-weighted
+        update RLPHD already uses for tool-call approval.
+
+        A promotion a LATER commit already depends on (touched the same file)
+        is never reverted: supersession makes a clean revert impossible
+        without unwinding real work, so it's observed and skipped, not
+        silently ignored. Never raises: a reviewer hiccup must not abort a
+        long run's real work.
+        """
+        if not self._config.promotion_review or self._last_reviewed_ref is None:
+            return
+        try:
+            from maistro_rsi.promotion_review import RlphdStateStore
+
+            revs = _git(
+                self._baseline,
+                "rev-list",
+                "--reverse",
+                f"{self._last_reviewed_ref}..{self._config.baseline_branch}",
+            ).stdout.split()
+            if not revs:
+                return
+            by_sha = {c.sha: c for c in result.cycles if c.promoted and c.sha}
+            files_by_sha: dict[str, set[str]] = {}
+            for sha in revs:
+                names = [
+                    ln.strip()
+                    for ln in _git(
+                        self._baseline, "show", "--name-only", "--pretty=format:", sha
+                    ).stdout.splitlines()
+                    if ln.strip()
+                ]
+                files_by_sha[sha] = set(names)
+
+            state = RlphdStateStore(report_dir / "rlphd_state.json")
+            for i, sha in enumerate(revs):
+                outcome = by_sha.get(sha)
+                if outcome is None:
+                    continue  # not a scored promotion (e.g. a resume commit)
+                later_files: set[str] = set()
+                for later_sha in revs[i + 1 :]:
+                    later_files |= files_by_sha.get(later_sha, set())
+                superseded = bool(files_by_sha[sha] & later_files)
+                self._review_one_promotion(outcome, sha, superseded, state, report_dir)
+            self._last_reviewed_ref = _git(
+                self._baseline, "rev-parse", self._config.baseline_branch
+            ).stdout.strip()
+        except Exception as exc:
+            logger.warning("rsi_local_review_error", error=str(exc))
+
+    def _review_one_promotion(
+        self,
+        outcome: CycleOutcome,
+        sha: str,
+        superseded: bool,
+        state: Any,
+        report_dir: Path,
+    ) -> None:
+        """One commit's RLPHD verdict: keep, observe-but-skip (superseded), or
+        revert-and-flag. Split out of _review_promotions to keep that method's
+        branching within the project's complexity budget."""
+        from maistro_rsi.promotion_review import (
+            PendingReview,
+            action_class_for,
+            extract_features,
+            flag_for_review,
+            now_iso,
+        )
+
+        action_class = action_class_for(outcome.kind)
+        features = extract_features(
+            regression_judge_score=outcome.regression_judge_score,
+            composite=outcome.composite,
+            kind=outcome.kind,
+        )
+        p, theta = state.predict(action_class, features)
+        if superseded:
+            logger.info(
+                "rsi_local_review_superseded",
+                sha=sha,
+                index=outcome.index,
+                predicted_p=p,
+                theta=theta,
+                note="later work depends on this file — cannot cleanly revert",
+            )
+            return
+        if p >= theta:
+            logger.info(
+                "rsi_local_review_kept", sha=sha, index=outcome.index, predicted_p=p, theta=theta
+            )
+            return
+        patch_text = _git(self._baseline, "show", sha).stdout
+        revert_result = _git(self._baseline, "revert", "--no-edit", sha, check=False)
+        if revert_result.returncode != 0:
+            _git(self._baseline, "revert", "--abort", check=False)
+            logger.warning(
+                "rsi_local_review_revert_failed",
+                sha=sha,
+                index=outcome.index,
+                error=revert_result.stderr.strip(),
+            )
+            return
+        revert_sha = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
+        # Both the original promotion and its own revert commit are "nothing
+        # net happened" — exclude both from the harvestable export, and count
+        # the revert as a real, non-promotion commit so the persistence
+        # self-check doesn't false-alarm on it.
+        self._excluded_from_export.add(sha)
+        self._excluded_from_export.add(revert_sha)
+        self._non_promotion_commits += 1
+        review = PendingReview(
+            sha=sha,
+            index=outcome.index,
+            target=outcome.target,
+            kind=outcome.kind.value,
+            action_class=action_class,
+            features=features,
+            predicted_p=p,
+            theta=theta,
+            flagged_at=now_iso(),
+            note=f"composite={outcome.composite} judge_score={outcome.regression_judge_score}",
+        )
+        flag_for_review(report_dir / "flagged", review, patch_text)
+        logger.warning(
+            "rsi_local_review_reverted",
+            sha=sha,
+            index=outcome.index,
+            target=outcome.target,
+            predicted_p=p,
+            theta=theta,
+            note="reverted pending human review — patch saved, not discarded",
+        )
+
+    def _check_persistence_integrity(self, result: LocalRsiResult, label: str) -> None:
+        """Trust-but-verify: the in-memory promotion count must match the actual
+        git history on ``baseline_branch``. A mismatch means the persistence
+        machinery (patch resume, worktree merges) silently diverged from what the
+        loop believes it promoted — exactly the failure mode a resumed-patch
+        commit gap once caused. Logs loudly rather than halting: an operator
+        should investigate, but a reporting check must never abort real work."""
+        if self._start_ref is None:
+            return
+        try:
+            actual = int(
+                _git(
+                    self._baseline,
+                    "rev-list",
+                    "--count",
+                    f"{self._start_ref}..{self._config.baseline_branch}",
+                ).stdout.strip()
+            )
+        except (RuntimeError, ValueError):
+            return
+        expected = result.promotions + self._non_promotion_commits
+        if actual != expected:
+            logger.error(
+                "rsi_local_persistence_mismatch",
+                label=label,
+                recorded_promotions=result.promotions,
+                non_promotion_commits=self._non_promotion_commits,
+                actual_commits=actual,
+                note=(
+                    "git history on baseline_branch diverged from the in-memory "
+                    "promotion count — a prior run's work may not be reaching the "
+                    "committed baseline. Investigate before trusting this run's "
+                    "export/resume state."
+                ),
+            )
 
     def export_promotions(self, dest: Path, *, clear: bool = False) -> int:
         """Export each promotion commit (start_ref..baseline) as a git-am-able
@@ -1617,7 +2003,11 @@ class LocalRsiLoop:
                 stale.unlink()
             (dest / "manifest.json").unlink(missing_ok=True)
         rng = f"{self._start_ref}..{self._config.baseline_branch}"
-        revs = _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
+        revs = [
+            sha
+            for sha in _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
+            if sha not in self._excluded_from_export
+        ]
         manifest: list[dict[str, str]] = []
         for i, sha in enumerate(revs, 1):
             names = [
