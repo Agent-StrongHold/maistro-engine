@@ -40,7 +40,8 @@ async def _get_key_status(api_key: str, *, base_url: str = _BASE_URL) -> dict[st
     async with httpx.AsyncClient(timeout=15.0) as client:
         r = await client.get(f"{base_url}/key", headers={"Authorization": f"Bearer {api_key}"})
         r.raise_for_status()
-        return r.json().get("data", {})
+        data = r.json().get("data")
+        return data if isinstance(data, dict) else {}
 
 
 async def gather_report(inference_key: str, management_key: str | None) -> dict[str, object]:
@@ -88,7 +89,9 @@ def _render(report: dict[str, object]) -> str:
     tier = "paid (>=1 purchase)" if not report["is_free_tier"] else "free (never purchased)"
     lines.append(f"  free tier: {tier} -> {report['free_rpd_cap']} :free requests/day")
     if "free_requests_remaining" in report:
-        lines.append(f"  free requests remaining today: {int(report['free_requests_remaining'])}")
+        rem_free = report["free_requests_remaining"]
+        rem_free_n = int(rem_free) if isinstance(rem_free, int | float) else 0
+        lines.append(f"  free requests remaining today: {rem_free_n}")
         activity = report.get("activity") or []
         if activity:
             lines.append("  per-model activity:")
