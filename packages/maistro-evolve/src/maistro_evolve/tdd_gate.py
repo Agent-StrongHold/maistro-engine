@@ -122,7 +122,11 @@ def count_net_new_tests(repo_dir: str | Path, baseline_ref: str, test_files: lis
 
 
 def new_test_signal(
-    net_new_tests: int, coverage_delta: float | None, weight: float
+    net_new_tests: int,
+    coverage_delta: float | None,
+    weight: float,
+    *,
+    uncovered_new_lines: dict[str, list[int]] | None = None,
 ) -> SignalScore | None:
     """Reward a genuinely new, coverage-raising test — or return ``None`` (absent).
 
@@ -131,8 +135,17 @@ def new_test_signal(
     renormalises over present signals, its presence lifts a test-adding candidate
     well above a docstring-only one (which lacks it), and its absence never
     dilutes a non-test candidate. The passing gate stays "tests_pass" elsewhere.
+
+    ``uncovered_new_lines`` (from ``coverage_gate.uncovered_new_lines``) guards
+    against a project-wide coverage delta hiding an untested part of THIS diff:
+    if the candidate added source lines that its own coverage run never
+    executed, the signal withholds credit even though an unrelated test in the
+    same diff raised the aggregate percentage — otherwise a well-tested change
+    can carry an untested one to a positive composite for free.
     """
     if net_new_tests <= 0 or coverage_delta is None or coverage_delta <= 0:
+        return None
+    if uncovered_new_lines:
         return None
     return SignalScore(
         name="new_test",

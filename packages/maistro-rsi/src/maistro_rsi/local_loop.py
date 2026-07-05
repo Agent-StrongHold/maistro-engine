@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import subprocess
+import time
 import uuid
 from collections import Counter
 from dataclasses import dataclass, field
@@ -139,6 +141,65 @@ def _git_apply(cwd: Path, patch: str) -> bool:
     return proc.returncode == 0
 
 
+_TRANSIENT_ERROR_MARKERS = (
+    "ratelimit",
+    "rate limit",
+    "429",
+    "quota",
+    "billing",
+    "payment",
+    "insufficient credit",
+    "overloaded",
+    "503",
+)
+
+
+def _entry_model(genome: Any) -> str:
+    """The model of a genome's entry (fixer) node — the one that authors fixes."""
+    nodes = genome.topology.nodes
+    entry = next((n for n in nodes if n.id == genome.topology.entry_node), nodes[0])
+    return str(entry.model)
+
+
+def _is_transient_provider_error(text: str) -> bool:
+    """Is this error a provider being temporarily unavailable (rate limit /
+    quota / billing / overload) rather than evidence about the fix or genome?
+
+    Transient errors bench the MODEL for a few cycles (it sits out) instead of
+    scoring the genome or killing the run — capacity problems are not fitness.
+    """
+    lowered = text.lower()
+    return any(marker in lowered for marker in _TRANSIENT_ERROR_MARKERS)
+
+
+# Providers state their own wait inside 429 errors (formats catalogued in
+# C:\maistro\MODEL-LIMITS.md): Groq puts "Please try again in 7.664s" in the
+# body, Gemini a google.rpc.RetryInfo `"retryDelay": "58s"`, and several
+# carriers a `retry-after: N` header that LiteLLM folds into the error text.
+_RETRY_AFTER_PATTERNS = (
+    re.compile(r'retrydelay"?\s*[:=]\s*"?(\d+(?:\.\d+)?)\s*s', re.IGNORECASE),
+    re.compile(r"try again in\s+(\d+(?:\.\d+)?)\s*s", re.IGNORECASE),
+    re.compile(r"retry-after[\"':\s]+(\d+(?:\.\d+)?)", re.IGNORECASE),
+)
+
+
+def _parse_retry_after_seconds(text: str) -> float | None:
+    """Extract the provider's own stated wait from an error, if it names one.
+
+    The bench honors this over any fixed sit-out length — a 7s Groq RPM blip
+    shouldn't cost minutes, and a 58s Gemini daily-quota wait shouldn't be
+    retried in 10. Returns None when no wait is stated (fall back to cycles).
+    """
+    for pattern in _RETRY_AFTER_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                continue
+    return None
+
+
 def _scouted_objective(path: str, instruction: str) -> str:
     """Wrap a scout's concrete instruction in the agent's tool-use guidance so
     every competitor implements the *same* identified improvement."""
@@ -167,9 +228,34 @@ def _guess_test_path(target: str) -> str:
 
 def _fixer_objective(path: str, kind: ImprovementKind, instruction: str) -> str:
     """The tiered base-fixer scaffold: implement one scout item, with rules keyed
-    to its kind. FEATURE (v2.0) work is allowed to be ambitious and multi-file;
+    to its kind. SPEC finishes contracted acceptance criteria (the biggest reward,
+    claimed via @pytest.mark.ac); BACKLOG drafts a new spec contract instead of
+    hacking a feature in raw; FEATURE (v2.0) work is ambitious and multi-file;
     everything else is a bounded, test-first, single-module change. This is the
     fixed task contract — the evolvable strategy layer is the genome's prompt."""
+    if kind is ImprovementKind.SPEC:
+        return (
+            f"Implement this UNFULFILLED acceptance criterion (related module: `{path}`):\n"
+            f"  {instruction}\n"
+            "This finishes work the repo has already contracted in docs/specs/ — the highest-"
+            "reward move available. Work test-first: write the test that PROVES the criterion, "
+            'decorated with @pytest.mark.ac("SPEC-<id>/AC-<n>") using the exact ids from the '
+            "instruction, confirm it fails, then implement until it passes with every existing "
+            "test still green. Use read_file, edit_file and write_file across the files the "
+            "criterion needs. Do not run git or shell commands."
+        )
+    if kind is ImprovementKind.BACKLOG:
+        return (
+            f"Draft a NEW spec contract for this capability idea (related module: `{path}`):\n"
+            f"  {instruction}\n"
+            "Create one markdown file under docs/specs/ following the existing SPEC-*.md "
+            "convention: YAML frontmatter with a unique `id: SPEC-<date>-<short>` plus title/"
+            "repo/kind/status/created, a short design section, and enumerated acceptance "
+            "criteria as '- [ ] **AC-n**' checkboxes — each one concrete and testable. Do NOT "
+            "implement the capability; the contract is the deliverable (implementation becomes "
+            "future spec work). Read a neighboring docs/specs/SPEC-*.md first to match the "
+            "format. Use read_file and write_file. Do not run git or shell commands."
+        )
     if kind is ImprovementKind.FEATURE:
         return (
             f"Implement this enhancement to the `{path}` module:\n  {instruction}\n"
@@ -409,10 +495,59 @@ class LocalRsiConfig:
     # competitors implement (a fairer head-to-head than each inventing its own).
     scout: bool = False
     scout_model: str | None = None
+    # Ordered fallback catalog the scout tries in turn (skipping any that are
+    # currently benched) instead of depending on one static model — a single
+    # chronically-benched scout model was observed to silently zero the scout
+    # for the rest of a run (scout_shortlist swallows the error and returns
+    # []). Empty means "use genome_models" (already the full run roster in
+    # live-evolution mode), falling back to [model] if that's empty too — see
+    # _scout_fallback_catalog(). The actual try-in-order and skill-ranking
+    # happens at runtime (scout_fallback.py); this is just the candidate pool.
+    scout_fallback_models: list[str] = field(default_factory=list)
     # Stage 4 (ADR-070126-6386): when set, after the run each promotion is
     # exported here as a git-am-able patch plus a manifest.json, for the harvester
     # to open PRs grouped by file. This is the durable output of an isolated run.
     export_patches: str | None = None
+    # Unified live evolution (ADR-070126-6386 v2, "the run IS the gym"): when a
+    # PopulationStore path is given, the genome population IS the tournament
+    # roster — each cycle's REAL composites fold back into the genomes (EMA),
+    # same-objective variants fight Elo battles, then cull/breed/hyper-mutation
+    # run between cycles and the children join the next cycle's roster, verified
+    # by actual work. No separate training evaluations exist; fixes are kept
+    # (promoted/exported) exactly as in a plain run. The population persists, so
+    # every run continues the lineage.
+    genome_db: str | None = None
+    # Models to seed the genome population across in live mode (one seed genome
+    # per model, so evolution learns per-model differences from cycle one).
+    # Empty ⇒ fall back to [model]. Top-up seeding only — an existing lineage in
+    # genome_db is continued, never buried.
+    genome_models: list[str] = field(default_factory=list)
+    # Operator goal threaded into the hyper-mutator's meta-prompt in live mode.
+    evolve_goal: str = ""
+    # Roster cap per cycle in live mode (genomes beyond this wait their turn;
+    # unscored children get priority so verification never starves).
+    roster_size: int = 4
+    # Model bench: a competitor whose model hits a TRANSIENT provider error
+    # (429/rate-limit/quota/billing) sits out instead of dying — no eval burned,
+    # no stub folded into its genome, seat freed for others. The sit-out length
+    # honors the provider's own stated retry-after when the error names one;
+    # otherwise it defaults to this many cycles' worth of estimated wall-clock,
+    # doubling on each consecutive bench of the same model (a chronically
+    # exhausted daily quota backs off instead of burning a probe every cycle).
+    bench_cycles: int = 3
+    # Second-opinion LLM regression check (ADR-070126-6386 v3): a narrow judge
+    # pass over every candidate that already cleared the deterministic gates,
+    # aimed at semantic regressions no existing test covers (a data-shape
+    # conversion silently narrowed, an untested branch riding on an unrelated
+    # test's credit). Default on; set False to skip the extra LLM call.
+    regression_judge: bool = True
+    # Checkpoint-time RLPHD promotion review (SPEC-248 / promotion_review.py):
+    # a low-confidence promotion (predicted human-approval p below its
+    # adaptive theta) gets reverted so nothing keeps building on top of it,
+    # patch saved for later human approve/deny. Default on; set False to
+    # disable (e.g. a test exercising unrelated checkpoint mechanics that
+    # never anticipated a revert).
+    promotion_review: bool = True
     # Checkpointing for long runs. Every ``report_every`` cycles (0 = only at the
     # end), write a progress report (markdown + JSON) into ``report_dir`` and
     # refresh a rolling, harvestable patch export of everything promoted so far.
@@ -441,6 +576,23 @@ class _VariantResult:
     files_touched: int = 0
     changed_files: list[str] = field(default_factory=list)
     note: str = ""
+    # True when the attempt raised (bad apply, git failure, fitness crash) — kept
+    # distinct from a genuine no-op so the cycle summary never reports a crashed
+    # variant as "agent made no change".
+    errored: bool = False
+    # Which shortlist slot this variant attempted (same slot ⇒ same objective ⇒
+    # a fair Elo battle in live-evolution mode), which model ran it, and — when
+    # the competitor was projected from a genome — which genome authored it.
+    slot: int = 0
+    model: str = ""
+    genome_id: str | None = None
+    # The ImprovementKind of the slot's scout item — reports and evolution can
+    # see WHICH rung of the maturity ladder the work was on.
+    kind: ImprovementKind = ImprovementKind.DOC
+    # The second-opinion LLM regression judge's raw score (None if the judge
+    # never ran) — survives past its pass/fail gate for the checkpoint-time
+    # RLPHD reviewer to use as prediction evidence.
+    regression_judge_score: float | None = None
 
 
 @dataclass
@@ -453,6 +605,12 @@ class CycleOutcome:
     target: str = ""
     note: str = ""
     composite: float = 0.0
+    # The promoted merge commit's sha, its (representative, top-scored) kind,
+    # and the regression judge's raw score — the evidence a checkpoint-time
+    # RLPHD reviewer needs, without re-deriving it from logs.
+    sha: str = ""
+    kind: ImprovementKind = ImprovementKind.DOC
+    regression_judge_score: float | None = None
 
 
 @dataclass
@@ -485,10 +643,18 @@ def build_checkpoint_report(
     baseline_dir: str,
     window: int,
     label: str = "",
+    population_summary: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Render a progress report over ``cycles`` run so far — cumulative totals
     plus a detail of the most recent ``window`` cycles. Pure: derived entirely
-    from the outcome list, so it's testable without git or an agent.
+    from the outcome list (and, in live mode, the population snapshot), so
+    it's testable without git or an agent.
+
+    ``population_summary`` (see ``LocalRsiLoop._population_summary``) is only
+    present in unified live-evolution mode; when given, an "## Evolution"
+    section reports WORK (promotions, above) alongside LEARNING (population
+    size/generations, the fittest genomes, per-model reliability, who's
+    currently benched, and the newest written lineage memory).
 
     Returns ``(markdown, machine_json)``. ``label`` distinguishes an interim
     checkpoint ("cycle 5") from the "final" report in headings.
@@ -550,7 +716,44 @@ def build_checkpoint_report(
         detail = f"composite={c.composite}" if c.promoted else c.note or ""
         tgt = f" {c.target}" if c.target else ""
         lines.append(f"- cycle {c.index}:{tgt} — **{mark}** {detail}".rstrip())
+    if population_summary is not None:
+        data["evolution"] = population_summary
+        lines += _evolution_report_lines(population_summary)
     return "\n".join(lines) + "\n", data
+
+
+def _evolution_report_lines(summary: dict[str, Any]) -> list[str]:
+    """Render ``LocalRsiLoop._population_summary`` as the "## Evolution"
+    section: WORK is promotions (above); this is LEARNING — is the population
+    actually evolving, not just producing accepted patches."""
+    lines = ["", "## Evolution"]
+    gens = summary.get("generations") or {}
+    pop_line = f"- Population: **{summary.get('population_size', 0)}** genome(s)"
+    if gens:
+        histogram = ", ".join(f"gen {g}: {n}" for g, n in gens.items())
+        pop_line += f" across **{len(gens)}** generation(s): {histogram}"
+    lines.append(pop_line)
+    top = summary.get("top_genomes") or []
+    if top:
+        lines += ["", "### Fittest genomes"]
+        for g in top:
+            lines.append(
+                f"- `{g.get('name')}` (gen {g.get('generation')}, {g.get('model')}) — "
+                f"fitness={g.get('fitness')} code_rsi={g.get('code_rsi')} "
+                f"tdd_rigor={g.get('tdd_rigor')} test_style={g.get('test_style')}"
+            )
+    reliability = summary.get("reliability") or {}
+    if reliability:
+        lines += ["", "### Model reliability"]
+        lines += [f"- `{m}`: {round(v, 3)}" for m, v in sorted(reliability.items())]
+    benched = summary.get("benched_models") or []
+    if benched:
+        lines += ["", f"### Currently benched: {', '.join(f'`{m}`' for m in benched)}"]
+    memory = summary.get("memory") or {}
+    if memory:
+        lines += ["", "### Newest lineage memory (fittest genome)"]
+        lines += [f"- **{k}**: {v}" for k, v in memory.items()]
+    return lines
 
 
 class LocalRsiLoop:
@@ -568,19 +771,102 @@ class LocalRsiLoop:
         self._baseline = Path(config.work_root) / "baseline"
         self._baseline_cov: float | None = None  # cached; invalidated on promote
         self._start_ref: str | None = None  # baseline sha before any promotion
+        # Checkpoint-time RLPHD review (promotion_review.py) scans only commits
+        # since the LAST review pass — set to _start_ref once the baseline is
+        # ready, advanced after each _review_promotions() call.
+        self._last_reviewed_ref: str | None = None
+        # Commits on baseline_branch that are real (a resume commit, a revert)
+        # but aren't in result.cycles as a promotion — _check_persistence_integrity
+        # must add these back in, or every resume/revert reads as a false
+        # "history diverged from the promotion count" alarm. export_promotions
+        # also excludes these shas: a reverted promotion and its own revert
+        # commit both represent "nothing net happened," not exportable work.
+        self._non_promotion_commits = 0
+        self._excluded_from_export: set[str] = set()
+        # Scout model fallback (scout_fallback.py): loaded lazily on first use
+        # (needs report_dir, which _setup_baseline doesn't touch) so it survives
+        # restarts the same way population.db/rlphd_state.json do; None until
+        # then. _last_scout_model records which model actually served THIS
+        # cycle, so a promotion can credit it.
+        self._scout_fallback: Any = None
+        self._last_scout_model: str | None = None
+        # Unified live evolution (genome_db set): the population that IS the
+        # roster, an in-run Elo ladder, and the label→genome mapping for folding
+        # real composites back into the genomes that authored them.
+        self._population: Any = None
+        self._elo: Any = None
+        self._label_to_genome: dict[str, str] = {}
+        # Model bench: model -> wall-clock deadline (time.monotonic()) until
+        # which it sits out. Deadlines come from the provider's own retry-after
+        # when the error states one; otherwise from bench_cycles worth of
+        # estimated cycle time, doubling per consecutive bench (see
+        # _bench_model). _bench_counts tracks the consecutive-bench streak,
+        # reset by any successful scoring of the model.
+        self._bench: dict[str, float] = {}
+        self._bench_counts: dict[str, int] = {}
+        self._benched_this_cycle: set[str] = set()  # models benched during current cycle
+        # Per-file uncovered lines from the baseline coverage run — the scout
+        # targets real gaps, and an empty list is the earned-ambition trigger.
+        self._baseline_missing: dict[str, list[int]] = {}
+        # Contracted-but-unproven spec ACs (spec_tracker.spec_gaps), cached per
+        # baseline state — refreshed when a promotion may have claimed some.
+        self._spec_gaps: dict[str, list[str]] | None = None
+        # Per-model reliability (run-local EMA, starts 1.0): transient provider
+        # failures decay it, successes recover it. Multiplied into genome fitness
+        # so a genome married to a flaky provider scores lower than the SAME slot
+        # settings on a dependable model — evolution then re-tries winning
+        # strategies on other carriers. Deliberately not persisted: provider
+        # health is temporal; yesterday's outage shouldn't punish forever.
+        self._reliability: dict[str, float] = {}
+        if config.genome_db:
+            from maistro_evolve.tournament import EloTournament
+            from maistro_rsi.evolve_bridge import open_population, seed_population
+
+            self._population = open_population(config.genome_db)
+            # Top-up seeding: an existing lineage is continued, never buried.
+            # Seed across every roster model so evolution learns per-model
+            # differences from cycle one (genome_models beats a single model).
+            seed_models = config.genome_models or ([config.model] if config.model else None)
+            seed_population(
+                self._population,
+                max(config.roster_size, len(config.genome_models)),
+                models=seed_models,
+            )
+            self._elo = EloTournament()
 
     def _baseline_coverage(self) -> float | None:
         if not self._config.use_fitness:
             return None
         if self._baseline_cov is None:
-            from maistro_evolve.coverage_gate import measure_coverage
+            from maistro_evolve.coverage_gate import measure_coverage_detailed
 
-            self._baseline_cov = measure_coverage(
+            # One instrumented run yields both the total (the gate) and each
+            # file's missing lines (the scout's real targets) — no extra cost.
+            self._baseline_cov, self._baseline_missing = measure_coverage_detailed(
                 self._baseline,
                 source=self._config.coverage_source,
                 pytest_args=self._config.coverage_pytest_args,
             )
         return self._baseline_cov
+
+    def _uncovered_for(self, target: str) -> list[int]:
+        """The baseline's uncovered line numbers for ``target`` (empty = fully
+        covered — the earned-ambition trigger, or coverage unavailable)."""
+        self._baseline_coverage()  # ensure the cache is populated
+        return self._baseline_missing.get(target.replace("\\", "/"), [])
+
+    def _spec_gaps_text(self) -> str:
+        """Contracted-but-unproven ACs, rendered for the scout prompt (cached)."""
+        if self._spec_gaps is None:
+            from maistro_rsi.spec_tracker import spec_gaps
+
+            try:
+                self._spec_gaps = spec_gaps(self._baseline)
+            except Exception:  # sensing must never stall a cycle
+                self._spec_gaps = {}
+        from maistro_rsi.spec_tracker import format_gaps
+
+        return format_gaps(self._spec_gaps)
 
     def _target_for_cycle(self, index: int) -> str:
         if self._config.targets:
@@ -591,19 +877,80 @@ class LocalRsiLoop:
         target = self._target_for_cycle(index)
         return _targeted_objective(target) if target else self._config.objective
 
-    def _cycle_slots(self, index: int) -> list[tuple[str, BudgetTier]]:
-        """The (objective, budget) slots competitors fill this cycle.
+    def _scout_fallback_path(self) -> Path | None:
+        if not self._config.report_dir:
+            return None
+        return Path(self._config.report_dir) / "scout_fallback.json"
 
-        With ``scout`` on, the scout reads the target's source + existing tests and
-        returns a ranked shortlist of typed improvements; each becomes a slot whose
-        objective is the tiered fixer scaffold and whose budget is set by its kind
-        (FEATURE unlocks the big budget). Competitors spread across the slots
-        (complementary) and, over runs, collide on hot ones (competitive). Without
-        scout — or on a silent/garbled scout — a single bounded slot carries the
-        classic targeted/generic objective so a cycle never stalls.
+    def _scout_fallback_catalog(self) -> list[str]:
+        """The candidate pool the scout tries in turn. Explicit
+        ``scout_fallback_models`` wins; otherwise ``genome_models`` (already
+        the full live-evolution roster); otherwise the single ``model``."""
+        if self._config.scout_fallback_models:
+            return list(self._config.scout_fallback_models)
+        if self._config.genome_models:
+            return list(self._config.genome_models)
+        return [self._config.model] if self._config.model else []
+
+    def _ensure_scout_fallback_loaded(self) -> None:
+        if self._scout_fallback is None:
+            from maistro_rsi.scout_fallback import ScoutFallbackState, load_state
+
+            path = self._scout_fallback_path()
+            self._scout_fallback = load_state(path) if path is not None else ScoutFallbackState()
+
+    def _save_scout_fallback(self) -> None:
+        path = self._scout_fallback_path()
+        if path is not None and self._scout_fallback is not None:
+            from maistro_rsi.scout_fallback import save_state
+
+            save_state(path, self._scout_fallback)
+
+    def _next_scout_order(self) -> list[str]:
+        """This cycle's ordered candidates, advancing (and persisting) the
+        round-robin rotation for next time — see scout_fallback.next_order."""
+        from maistro_rsi.scout_fallback import next_order
+
+        self._ensure_scout_fallback_loaded()
+        order, self._scout_fallback = next_order(
+            self._scout_fallback, self._scout_fallback_catalog()
+        )
+        self._save_scout_fallback()
+        return order
+
+    def _record_scout_success(self, model: str | None) -> None:
+        """Credit the model that served as scout in a cycle that got promoted
+        — the only signal that decides the fallback order over time."""
+        if not model:
+            return
+        from maistro_rsi.scout_fallback import record_success
+
+        self._ensure_scout_fallback_loaded()
+        self._scout_fallback = record_success(self._scout_fallback, model)
+        self._save_scout_fallback()
+
+    def _cycle_slots(self, index: int) -> list[tuple[str, BudgetTier, ImprovementKind]]:
+        """The (objective, budget, kind) slots competitors fill this cycle.
+
+        With ``scout`` on, the scout reads the target's source, existing tests,
+        its real uncovered lines, and the repo's unimplemented spec ACs, and
+        returns a ranked shortlist of typed improvements; each becomes a slot
+        whose objective is the tiered fixer scaffold and whose budget/kind route
+        everything downstream (SPEC/BACKLOG/FEATURE unlock the big budget).
+        Competitors spread across the slots (complementary) and, over runs,
+        collide on hot ones (competitive). Without scout — or on a
+        silent/garbled scout — a single bounded slot carries the classic
+        targeted/generic objective so a cycle never stalls.
+
+        The scout model is NOT static: a chronically-benched single model
+        used to silently zero the scout for every remaining cycle
+        (scout_shortlist swallows LLM errors and returns ``[]``). Instead we
+        try every model in the skill-ranked fallback order (scout_fallback.py),
+        skipping any currently benched, until one produces a real shortlist.
         """
+        self._last_scout_model = None
         target = self._target_for_cycle(index)
-        fallback = [(self._objective_for_cycle(index), BudgetTier.BOUNDED)]
+        fallback = [(self._objective_for_cycle(index), BudgetTier.BOUNDED, ImprovementKind.DOC)]
         if not (self._config.scout and target):
             return fallback
         try:
@@ -617,21 +964,140 @@ class LocalRsiLoop:
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
         from maistro_rsi.scout import scout_shortlist
 
-        llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
-        items = scout_shortlist(source, tests, "", llm, max_items=3)
+        fallback_order = self._next_scout_order()
+        # An explicit scout_model is a preference, not an exclusive pin — it's
+        # tried first, but a chronically-benched model still fails over into
+        # the skill-ranked list rather than zeroing the scout for the rest of
+        # the run (the exact failure this fallback exists to prevent).
+        candidates = ([self._config.scout_model] if self._config.scout_model else []) + [
+            m for m in fallback_order if m != self._config.scout_model
+        ]
+        items: list[Any] = []
+        scout_used: str | None = None
+        for model in candidates:
+            if self._benched(model):
+                continue
+            llm = ResponsesAPICallable(model=model)
+            items = scout_shortlist(
+                source,
+                tests,
+                self._uncovered_for(target),
+                llm,
+                spec_gaps=self._spec_gaps_text(),
+                max_items=3,
+            )
+            if items:
+                scout_used = model
+                break
         if not items:
             return fallback
+        self._last_scout_model = scout_used
         logger.info(
             "rsi_local_scout",
             index=index,
             target=target,
+            scout_model=scout_used,
             items=[{"kind": it.kind.value, "instruction": it.instruction[:120]} for it in items],
         )
-        return [(_fixer_objective(target, it.kind, it.instruction), it.kind.budget) for it in items]
+        return [
+            (_fixer_objective(target, it.kind, it.instruction), it.kind.budget, it.kind)
+            for it in items
+        ]
 
-    def _competitors(self) -> list[Competitor]:
+    # Rough wall-clock cost of one cycle (agent turns + scorecard) — the unit
+    # behind the default bench duration when no retry-after is stated.
+    _EST_CYCLE_SECONDS = 180.0
+    # Floor under provider-stated waits (a "try again in 2s" isn't worth
+    # un-benching for) and ceiling on backoff (an exhausted daily quota still
+    # gets a probe every ~30 min so recovery is noticed the same run).
+    _MIN_BENCH_SECONDS = 30.0
+    _MAX_BENCH_SECONDS = 1800.0
+
+    def _benched(self, model: str, index: int = 0) -> bool:
+        del index  # wall-clock deadlines now; kept for call-site compatibility
+        return self._bench.get(model, 0.0) > time.monotonic()
+
+    def _bench_model(self, model: str, index: int, error_text: str = "") -> None:
+        """Sit the model out until a wall-clock deadline.
+
+        Honors the provider's OWN stated wait when the error carries one (Groq
+        'try again in Xs', Gemini retryDelay, retry-after headers — formats in
+        C:\\maistro\\MODEL-LIMITS.md). Otherwise defaults to ``bench_cycles``
+        worth of estimated cycle time, DOUBLED per consecutive bench of this
+        model — a one-off RPM blip costs one short sit-out, while a drained
+        daily quota backs off geometrically instead of burning a probe every
+        cycle. The streak resets when the model scores work again.
+        """
+        streak = self._bench_counts.get(model, 0) + 1
+        self._bench_counts[model] = streak
+        stated = _parse_retry_after_seconds(error_text)
+        if stated is not None:
+            seconds = max(stated, self._MIN_BENCH_SECONDS)
+            source = "provider retry-after"
+        else:
+            seconds = self._config.bench_cycles * self._EST_CYCLE_SECONDS * (2 ** (streak - 1))
+            source = f"default x{streak}"
+        seconds = min(seconds, self._MAX_BENCH_SECONDS)
+        self._bench[model] = time.monotonic() + seconds
+        self._benched_this_cycle.add(model)  # skip remaining attempts in this cycle
+        logger.info(
+            "rsi_model_benched",
+            model=model,
+            cycle=index,
+            seconds=round(seconds, 1),
+            source=source,
+        )
+
+    def _observe_reliability(self, model: str, ok: bool) -> float:
+        """EMA per-model reliability: 0.7*prev + 0.3*outcome, starting at 1.0."""
+        prev = self._reliability.get(model, 1.0)
+        current = round(0.7 * prev + 0.3 * (1.0 if ok else 0.0), 4)
+        self._reliability[model] = current
+        if ok:
+            self._bench_counts.pop(model, None)  # streak ends on real work
+        return current
+
+    def _competitors(self, index: int = 1) -> list[Competitor]:
+        if self._population is not None:
+            return self._genome_roster(index)
         # Empty roster ⇒ a single attempt with the configured model (classic cycle).
-        return self._config.competitors or [Competitor(model=self._config.model or "")]
+        # Benched models sit the cycle out; never filter down to an empty roster.
+        static = [c for c in self._config.competitors if not self._benched(c.model, index)]
+        return static or self._config.competitors or [Competitor(model=self._config.model or "")]
+
+    def _genome_roster(self, index: int) -> list[Competitor]:
+        """Project the population onto this cycle's roster (live evolution).
+
+        Unscored genomes (fresh children awaiting verification-by-work) get
+        priority so verification never starves; remaining seats go to the
+        fittest. Genomes whose model is benched (transient provider errors) sit
+        the cycle out — no eval burned, no stub folded, seat freed. Static
+        ``--competitors`` entries still join (they compete but don't evolve).
+        Labels are made genome-unique so composites fold back to the exact
+        genome that authored the fix.
+        """
+        from maistro_rsi.evolve_bridge import genome_to_competitor
+
+        genomes = [
+            g for g in self._population.list_all() if not self._benched(_entry_model(g), index)
+        ]
+        unscored = [g for g in genomes if not g.eval_scores]
+        scored = sorted(
+            (g for g in genomes if g.eval_scores),
+            key=lambda g: g.fitness_score or 0.0,
+            reverse=True,
+        )
+        seats = max(1, self._config.roster_size)
+        picked = (unscored + scored)[:seats]
+        self._label_to_genome.clear()
+        roster: list[Competitor] = []
+        for g in picked:
+            comp = genome_to_competitor(g)
+            comp.label = f"{g.name[:18]}#{g.id[:6]}"
+            self._label_to_genome[comp.label] = g.id
+            roster.append(comp)
+        roster += [c for c in self._config.competitors if not self._benched(c.model, index)]
+        return roster or [Competitor(model=self._config.model or "")]
 
     def _apply_for_competitor(
         self, competitor: Competitor, objective: str, budget: BudgetTier = BudgetTier.BOUNDED
@@ -659,6 +1125,72 @@ class LocalRsiLoop:
         status = _git(cwd, "status", "--porcelain")
         return [ln[3:].strip() for ln in status.stdout.splitlines() if ln.strip()]
 
+    def _load_saved_patches(self) -> None:
+        """Resume from a prior run: reapply all saved patches to the baseline.
+
+        When a run is interrupted or restarted (same REPORT_DIR), patches
+        exported to REPORT_DIR/export/*.patch are applied to the fresh baseline
+        so the new run picks up where the old one left off. This preserves all
+        promotions across restarts/crashes.
+        """
+        if not self._config.export_patches:
+            return  # no export dir configured; nothing to restore
+        export_dir = Path(self._config.export_patches)
+        if not export_dir.exists():
+            return  # no prior exports yet
+        patches = sorted(export_dir.glob("*.patch"))
+        if not patches:
+            return
+        logger.info(
+            "rsi_local_resume_patches",
+            count=len(patches),
+            export_dir=str(export_dir),
+        )
+        applied = 0
+        for patch_file in patches:
+            # git apply is idempotent (applying an already-applied patch errors
+            # gracefully with "already applied"), so restarts are safe.
+            result = _git(
+                self._baseline,
+                "apply",
+                "--reject",
+                str(patch_file),
+                check=False,
+            )
+            if result.returncode == 0:
+                applied += 1
+                logger.info("rsi_local_patch_applied", patch=patch_file.name)
+            else:
+                # Patch already applied (or conflicts) — log and continue.
+                # The baseline may be ahead of these patches if a prior run
+                # completed cycles that hadn't been exported yet.
+                logger.info(
+                    "rsi_local_patch_skip",
+                    patch=patch_file.name,
+                    note="already applied or conflict",
+                )
+        # CRITICAL: `git apply` only touches the working tree — it never moves
+        # `baseline_branch`. Every cycle's variant is created via `git worktree
+        # add <dir> baseline_branch` (checks out the BRANCH REF, not this dirty
+        # working tree), so without this commit the resumed patches are
+        # invisible to every subsequent cycle: they'd sit here uncommitted while
+        # cycles silently rebuild from the pristine pre-resume commit. Committing
+        # also self-heals `export_promotions` (ranges from `_start_ref`, set
+        # before this method runs), so the next checkpoint's rolling export
+        # correctly includes the resumed history again instead of only this
+        # launch's own new commits.
+        if applied and self._changed_files(self._baseline):
+            _git(self._baseline, "add", "-A")
+            _git(
+                self._baseline,
+                "commit",
+                "-q",
+                "-m",
+                f"resume: reapply {applied} saved patch(es)",
+            )
+            self._non_promotion_commits += 1
+            logger.info("rsi_local_resume_committed", patches=applied)
+
     def _setup_baseline(self) -> None:
         work_root = Path(self._config.work_root)
         work_root.mkdir(parents=True, exist_ok=True)
@@ -683,6 +1215,7 @@ class LocalRsiLoop:
         competitor: Competitor,
         objective: str,
         budget: BudgetTier = BudgetTier.BOUNDED,
+        kind: ImprovementKind = ImprovementKind.DOC,
     ) -> _VariantResult:
         """Run one competitor in its own worktree off the baseline and score it.
 
@@ -702,7 +1235,7 @@ class LocalRsiLoop:
             str(cdir),
             self._config.baseline_branch,
         )
-        r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label)
+        r = _VariantResult(branch=branch, cycle_dir=cdir, label=competitor.label, kind=kind)
         try:
             apply_fn = self._apply_for_competitor(competitor, objective, budget)
             asyncio.run(apply_fn(LocalSandbox(cdir), str(cdir), None))
@@ -721,15 +1254,48 @@ class LocalRsiLoop:
                 f"RSI cycle {index} [{competitor.label}]: {objective[:50]}",
             )
             if self._config.use_fitness:
-                r.accepted, r.composite, r.note, r.tests_passed = self._fitness_decision(
-                    index, cdir, r.changed_files
-                )
+                (
+                    r.accepted,
+                    r.composite,
+                    r.note,
+                    r.tests_passed,
+                    r.regression_judge_score,
+                ) = self._fitness_decision(index, cdir, r.changed_files, target=objective)
             else:
                 r.tests_passed = self._run_tests(cdir)
                 r.accepted = r.tests_passed
                 r.note = "" if r.tests_passed else "test command failed"
         except Exception as exc:
-            r.note = f"variant errored: {exc}"
+            r.errored = True
+            if _is_transient_provider_error(str(exc)):
+                # Capacity, not fitness: bench the model so it sits out a few
+                # cycles, and mark the result transient so live evolution folds
+                # NO sample for this genome (sitting out is neutral). Expected
+                # under load, so info-level and no traceback.
+                r.note = f"transient: {exc}"
+                self._bench_model(competitor.model, index, error_text=str(exc))
+                logger.info(
+                    "rsi_local_variant_transient",
+                    index=index,
+                    competitor=competitor.label,
+                    model=competitor.model or self._config.model,
+                    error=str(exc),
+                )
+            else:
+                # A non-transient variant fault (bad apply, git failure, fitness
+                # crash) is a REAL error, not the agent quietly declining to
+                # change anything. Surface it with a traceback so it can never
+                # masquerade as "agent made no change" in the cycle summary.
+                r.note = f"variant errored: {exc}"
+                logger.warning(
+                    "rsi_local_variant_error",
+                    index=index,
+                    competitor=competitor.label,
+                    error=str(exc),
+                    exc_info=True,
+                )
+        # note is logged unconditionally: an errored/transient variant otherwise
+        # looks identical to a genuine no-op (both changed=False, accepted=False).
         logger.info(
             "rsi_local_variant",
             index=index,
@@ -737,6 +1303,8 @@ class LocalRsiLoop:
             accepted=r.accepted,
             composite=r.composite,
             changed=r.changed,
+            errored=r.errored,
+            note=r.note,
         )
         return r
 
@@ -754,29 +1322,60 @@ class LocalRsiLoop:
         return applied
 
     def _run_cycle(self, index: int) -> CycleOutcome:
+        self._benched_this_cycle.clear()  # reset in-cycle benching tracker
         target = self._target_for_cycle(index)
         slots = self._cycle_slots(index)
-        competitors = self._competitors()
+        competitors = self._competitors(index)
         variants: list[_VariantResult] = []
         created: list[tuple[str, Path]] = []
         try:
             for seq, comp in enumerate(competitors, 1):
+                # Skip if this model was benched during this cycle — don't waste attempts
+                if (comp.model or self._config.model) in self._benched_this_cycle:
+                    continue
                 # Spread competitors across the scout's shortlist slots; with more
                 # competitors than slots they double up (competitive on one item).
-                objective, budget = slots[(seq - 1) % len(slots)]
-                r = self._run_variant(index, seq, comp, objective, budget)
+                slot_idx = (seq - 1) % len(slots)
+                objective, budget, kind = slots[slot_idx]
+                r = self._run_variant(index, seq, comp, objective, budget, kind)
+                r.slot = slot_idx
+                r.model = comp.model or self._config.model or ""
+                r.genome_id = self._label_to_genome.get(comp.label)
                 variants.append(r)
                 created.append((r.branch, r.cycle_dir))
+
+            # Live evolution: fold this cycle's REAL composites back into the
+            # genomes that authored them, then evolve the population. Runs before
+            # promotion selection so a cycle with no accepted variant still
+            # teaches (a rejected fix's 0.0 is genuine evidence).
+            if self._population is not None:
+                self._live_evolution_step(index, variants)
 
             accepted = sorted(
                 (r for r in variants if r.accepted), key=lambda r: r.composite, reverse=True
             )
             if not accepted:
                 changed_any = any(r.changed for r in variants)
-                note = next(
-                    (r.note for r in variants if r.changed and r.note),
-                    "agent made no change" if not changed_any else "rejected by fitness",
-                )
+                errored = [r for r in variants if r.errored]
+                if changed_any:
+                    # A variant produced a diff but no variant was accepted.
+                    note = next(
+                        (r.note for r in variants if r.changed and r.note),
+                        "rejected by fitness",
+                    )
+                elif errored:
+                    # Every variant either crashed or no-op'd, and at least one
+                    # crashed — report the fault, not a misleading "no change".
+                    note = f"all {len(variants)} variant(s) failed; first error: {errored[0].note}"
+                    logger.warning(
+                        "rsi_local_cycle_all_variants_errored",
+                        index=index,
+                        errored=len(errored),
+                        total=len(variants),
+                        first_error=errored[0].note,
+                    )
+                else:
+                    note = "agent made no change"
                 return CycleOutcome(
                     index,
                     changed=changed_any,
@@ -787,11 +1386,17 @@ class LocalRsiLoop:
                     note=note,
                 )
 
-            promote_branch, composite, files, kept_n = self._select_and_merge(
+            promote_branch, composite, files, kept_n, judge_score = self._select_and_merge(
                 index, target, accepted, created
             )
             _git(self._baseline, "merge", "--ff-only", promote_branch)
-            self._baseline_cov = None  # baseline advanced — recompute coverage next cycle
+            promoted_sha = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
+            self._record_scout_success(self._last_scout_model)
+            # Baseline advanced — recompute coverage/uncovered/spec-gaps next
+            # cycle (a promotion may have covered lines or claimed AC gaps).
+            self._baseline_cov = None
+            self._baseline_missing = {}
+            self._spec_gaps = None
             note = (
                 f"tournament: {len(competitors)} competitor(s), {len(accepted)} passed, "
                 f"kept {kept_n} (composite={composite})"
@@ -804,6 +1409,7 @@ class LocalRsiLoop:
                 passed=len(accepted),
                 kept=kept_n,
                 composite=composite,
+                sha=promoted_sha,
             )
             return CycleOutcome(
                 index,
@@ -814,6 +1420,9 @@ class LocalRsiLoop:
                 target=target,
                 composite=composite,
                 note=note,
+                sha=promoted_sha,
+                kind=accepted[0].kind,
+                regression_judge_score=judge_score,
             )
         finally:
             for branch, worktree_dir in created:
@@ -822,15 +1431,219 @@ class LocalRsiLoop:
                 )
                 _git(self._baseline, "branch", "-D", branch, check=False)
 
+    def _live_evolution_step(self, index: int, variants: list[_VariantResult]) -> None:
+        """The unified loop's between-cycle evolution — real work IS the evaluation.
+
+        Folds each genome-authored variant's composite into its genome (EMA;
+        a rejected fix's 0.0 is genuine evidence, an agent error is a stub, a
+        TRANSIENT provider error folds nothing — the model sat out). Same-slot
+        variants fought over the same scout item, so they settle it on the Elo
+        ladder. Then fitness → cull → breed → a hyper-mutator child for the top
+        genome, which joins UNVERIFIED: its verification is the next cycle's
+        actual work. Never raises — evolution must not sink the work loop.
+        """
+        try:
+            # Reliability first: every attempt teaches about its MODEL —
+            # transient provider failures decay it, anything that reached
+            # scoring recovers it (including static competitors' models).
+            for v in variants:
+                if v.model:
+                    self._observe_reliability(v.model, ok=not v.note.startswith("transient:"))
+
+            self._fold_cycle_scores(variants)
+            self._record_cycle_battles(variants)
+            scored = self._refit_cull_breed()
+            # Guided mutation: the hyper-mutator proposes a child for the top
+            # genome, grounded in lineage + the operator goal.
+            if scored:
+                self._hyper_propose(scored[0])
+
+            logger.info(
+                "rsi_live_evolution",
+                index=index,
+                population=len(self._population.list_all()),
+                benched=[m for m in self._bench if self._benched(m)],
+            )
+        except Exception as exc:
+            logger.warning("rsi_live_evolution_error", index=index, error=str(exc))
+
+    def _fold_cycle_scores(self, variants: list[_VariantResult]) -> None:
+        """Fold each genome-authored variant's real composite into its genome
+        (EMA). A transient sit-out folds nothing; an agent error folds a stub."""
+        from maistro_evolve.cycle import EvolutionCycle
+
+        store = self._population
+        by_id = {g.id: g for g in store.list_all()}
+        for v in variants:
+            genome = by_id.get(v.genome_id or "")
+            if genome is None or v.note.startswith("transient:"):
+                continue  # static competitor, culled genome, or sat out
+            stub = v.note.startswith("variant errored")
+            EvolutionCycle._fold_score(genome, "code_rsi", v.composite, stub, 0.5)
+            genome.updated_at = datetime.now(UTC).isoformat()
+            store.add(genome)
+
+    def _record_cycle_battles(self, variants: list[_VariantResult]) -> None:
+        """Same-slot variants attempted the SAME scout item — a fair Elo battle."""
+        if self._elo is None:
+            return
+        by_id = {g.id: g for g in self._population.list_all()}
+        fought = [
+            v for v in variants if v.genome_id in by_id and not v.note.startswith("transient:")
+        ]
+        for i, a in enumerate(fought):
+            for b in fought[i + 1 :]:
+                if a.slot == b.slot:
+                    self._elo.record_battle(
+                        benchmark="code_rsi",
+                        genome_a_id=a.genome_id,
+                        genome_b_id=b.genome_id,
+                        score_a=a.composite,
+                        score_b=b.composite,
+                    )
+        for v in fought:
+            elo = self._elo.get_avg_elo(v.genome_id)
+            if elo > 0:
+                by_id[v.genome_id].harness_params["avg_elo"] = elo
+
+    def _refit_cull_breed(self) -> list[Any]:
+        """Fitness (reliability-multiplied) → cull the weakest → breed one child.
+
+        Fitness is MULTIPLIED by the genome's model reliability: the same slot
+        settings on a flaky provider are worth less than on a dependable one, so
+        evolution re-tries winning strategies on more reliable carriers. Unscored
+        children are never culled — they haven't had their verification cycle.
+        Returns the surviving scored genomes, fittest first.
+        """
+        from maistro_evolve.crossover import crossover_and_mutate
+        from maistro_evolve.fitness import compute_fitness
+
+        store = self._population
+        everyone = store.list_all()
+        for g in everyone:
+            if g.eval_scores:
+                reliability = self._reliability.get(_entry_model(g), 1.0)
+                g.fitness_score = compute_fitness(g, everyone).total * reliability
+                g.harness_params["model_reliability"] = reliability
+                store.add(g)
+
+        scored = sorted(
+            (g for g in store.list_all() if g.fitness_score is not None),
+            key=lambda g: g.fitness_score or 0.0,
+            reverse=True,
+        )
+        max_pop = max(4, self._config.roster_size * 2)
+        excess = min(len(store.list_all()) - max_pop, len(scored))
+        if excess > 0:
+            for g in scored[-excess:]:
+                store.remove(g.id)
+            scored = scored[:-excess]
+
+        # Breed: one crossover child of the two fittest, models constrained to
+        # what the population actually runs (no drift off the roster).
+        if len(scored) >= 2 and len(store.list_all()) < max_pop:
+            models = sorted({_entry_model(g) for g in store.list_all()})
+            store.add(crossover_and_mutate(scored[0], scored[1], 0.3, models=models))
+        return scored
+
+    def _hyper_propose(self, top: Any) -> None:
+        """Ask the hyper-mutator for one guided child of ``top``; it joins the
+        population UNVERIFIED and earns its scores in the next real cycle."""
+        from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
+        from maistro_evolve.hyper_mutator import (
+            entry_node,
+            propose_fixer_candidates,
+            slot_lineage,
+            spawn_fixer_challenger,
+        )
+
+        node = entry_node(top)
+        if node is None or node.fixer is None:
+            return
+        fixer = node.fixer  # narrowed local — mypy keeps this non-None inside propose()
+        callable_ = ResponsesAPICallable(
+            model=self._config.scout_model or self._config.model, timeout=300.0
+        )
+
+        async def llm(prompt: str) -> str:
+            result = await asyncio.to_thread(callable_, [{"role": "user", "content": prompt}])
+            content = result.get("content", "") if isinstance(result, dict) else result
+            return content if isinstance(content, str) else str(content)
+
+        async def propose() -> list[Any]:
+            return await propose_fixer_candidates(
+                fixer,
+                "code_rsi",
+                top.eval_scores.get("code_rsi", 0.0),
+                llm,
+                1,
+                lineage=slot_lineage(top, self._population.list_all()),
+                goal=self._config.evolve_goal,
+            )
+
+        for candidate in asyncio.run(propose())[:1]:
+            child = spawn_fixer_challenger(top, candidate)
+            self._population.add(child)
+            logger.info("rsi_live_hyper_child", parent=top.name, child=child.name)
+
+    def _population_summary(self) -> dict[str, Any]:
+        """Snapshot the live population for checkpoint observability: WORK
+        (promotions) is already in every report; this is whether the run is
+        actually LEARNING — population size, generation spread, the fittest
+        genomes' settings, per-model reliability, who's sitting out, and the
+        newest lineage memory the hyper-mutator wrote. Purely descriptive:
+        reading this never changes the run.
+        """
+        from maistro_evolve.hyper_mutator import entry_node
+
+        genomes = self._population.list_all()
+        generations = dict(sorted(Counter(g.generation for g in genomes).items()))
+        scored = sorted(
+            (g for g in genomes if g.fitness_score is not None),
+            key=lambda g: g.fitness_score or 0.0,
+            reverse=True,
+        )
+        top_genomes = []
+        for g in scored[:3]:
+            node = entry_node(g)
+            fixer = node.fixer if node else None
+            top_genomes.append(
+                {
+                    "name": g.name,
+                    "generation": g.generation,
+                    "fitness": g.fitness_score,
+                    "code_rsi": g.eval_scores.get("code_rsi"),
+                    "model": _entry_model(g),
+                    "tdd_rigor": fixer.tdd_rigor if fixer else None,
+                    "test_style": fixer.test_style.value if fixer else None,
+                }
+            )
+        memory: dict[str, str] = {}
+        if scored:
+            node = entry_node(scored[0])
+            fixer = node.fixer if node else None
+            if fixer and fixer.learned_successes:
+                memory["learned_successes"] = fixer.learned_successes[:160]
+            if fixer and fixer.learned_failures:
+                memory["learned_failures"] = fixer.learned_failures[:160]
+        return {
+            "population_size": len(genomes),
+            "generations": generations,
+            "top_genomes": top_genomes,
+            "reliability": dict(self._reliability),
+            "benched_models": [m for m in self._bench if self._benched(m)],
+            "memory": memory,
+        }
+
     def _select_and_merge(
         self,
         index: int,
         target: str,
         accepted: list[_VariantResult],
         created: list[tuple[str, Path]],
-    ) -> tuple[str, float, int, int]:
+    ) -> tuple[str, float, int, int, float | None]:
         """Combine passing candidates (highest-composite first). Returns
-        ``(promote_branch, composite, files_touched, kept_count)``.
+        ``(promote_branch, composite, files_touched, kept_count, regression_judge_score)``.
 
         One winner promotes its branch directly (identical to the classic cycle).
         A 2+ combination keeps only non-conflicting diffs (complementary), is
@@ -838,7 +1651,7 @@ class LocalRsiLoop:
         """
         if len(accepted) == 1:
             top = accepted[0]
-            return top.branch, top.composite, top.files_touched, 1
+            return top.branch, top.composite, top.files_touched, 1, top.regression_judge_score
 
         merge_branch = f"rsi/cycle-{index}-m-{uuid.uuid4().hex[:6]}"
         merge_dir = Path(self._config.work_root) / f"cycle-{index}-m"
@@ -859,7 +1672,7 @@ class LocalRsiLoop:
             # one won. 0 kept: nothing applied cleanly onto the merge worktree —
             # fall back to the top candidate, which is committed and validated.
             top = kept[0] if kept else accepted[0]
-            return top.branch, top.composite, top.files_touched, 1
+            return top.branch, top.composite, top.files_touched, 1, top.regression_judge_score
         changed_files = self._changed_files(merge_dir)
         _git(merge_dir, "add", "-A")
         _git(
@@ -870,25 +1683,60 @@ class LocalRsiLoop:
             f"RSI cycle {index}: merged {len(kept)} complementary fix(es) of {target}",
         )
         if self._config.use_fitness:
-            m_ok, m_comp, reason, _tp = self._fitness_decision(index, merge_dir, changed_files)
+            m_ok, m_comp, reason, _tp, m_judge = self._fitness_decision(
+                index, merge_dir, changed_files
+            )
             if not m_ok:
                 logger.info("rsi_local_merge_regressed", index=index, reason=reason)
-                return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
-            return merge_branch, m_comp, len(changed_files), len(kept)
+                return (
+                    kept[0].branch,
+                    kept[0].composite,
+                    kept[0].files_touched,
+                    1,
+                    kept[0].regression_judge_score,
+                )
+            return merge_branch, m_comp, len(changed_files), len(kept), m_judge
         # No fitness: each kept candidate passed its own tests in isolation, but
         # the COMBINATION was never tested — two non-conflicting patches can still
         # interact and break the suite. Retest the merged worktree; fall back to
         # the top candidate (known-good on its own) if the combination regresses.
         if self._run_tests(merge_dir):
-            return merge_branch, kept[0].composite, len(changed_files), len(kept)
+            return (
+                merge_branch,
+                kept[0].composite,
+                len(changed_files),
+                len(kept),
+                kept[0].regression_judge_score,
+            )
         logger.info("rsi_local_merge_untested_regressed", index=index)
-        return kept[0].branch, kept[0].composite, kept[0].files_touched, 1
+        return (
+            kept[0].branch,
+            kept[0].composite,
+            kept[0].files_touched,
+            1,
+            kept[0].regression_judge_score,
+        )
+
+    def _judge_regression(self, diff_text: str, target: str) -> tuple[float, str]:
+        """Second-opinion LLM regression check — see regression_judge.py. Never
+        raises: an unavailable/erroring gateway must not block promotion."""
+        try:
+            from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
+            from maistro_rsi.regression_judge import judge_regression
+
+            llm = ResponsesAPICallable(model=self._config.scout_model or self._config.model)
+            return judge_regression(diff_text, target, llm)
+        except Exception:
+            return 0.7, "judge unavailable"
 
     def _fitness_decision(
-        self, index: int, cycle_dir: Path, changed_files: list[str]
-    ) -> tuple[bool, float, str, bool]:
+        self, index: int, cycle_dir: Path, changed_files: list[str], *, target: str = ""
+    ) -> tuple[bool, float, str, bool, float | None]:
         """Build the multi-signal Scorecard for the candidate and return
-        (accepted, composite, reject_reason, tests_passed). Logs explain()."""
+        (accepted, composite, reject_reason, tests_passed, regression_judge_score).
+        Logs explain(). The judge score (None if the judge never ran) survives
+        past its pass/fail gate so the checkpoint-time RLPHD reviewer can use
+        it as prediction evidence, not just the boolean veto."""
         from maistro_rsi.candidate_fitness import evaluate_candidate
 
         scorecard = evaluate_candidate(
@@ -900,6 +1748,8 @@ class LocalRsiLoop:
             baseline_coverage=self._baseline_coverage(),
             baseline_ref=self._config.baseline_branch,
             timeout=self._config.test_timeout,
+            regression_judge_fn=self._judge_regression if self._config.regression_judge else None,
+            target=target,
         )
         logger.info(
             "rsi_local_scorecard",
@@ -910,7 +1760,13 @@ class LocalRsiLoop:
         )
         tests_passed = next((g.passed for g in scorecard.gates if g.name == "tests_pass"), False)
         reason = next((f"{g.name}: {g.reason}" for g in scorecard.gates if not g.passed), "")
-        return scorecard.accepted, scorecard.composite, reason, tests_passed
+        judge_raw = next(
+            (g.detail.get("score") for g in scorecard.gates if g.name == "no_flagged_regression"),
+            None,
+        )
+        # detail is dict[str, object]; the regression judge stores a float score.
+        judge_score = float(judge_raw) if isinstance(judge_raw, int | float) else None
+        return scorecard.accepted, scorecard.composite, reason, tests_passed, judge_score
 
     def _run_tests(self, cycle_dir: Path) -> bool:
         # shell=True: the test command is operator-supplied config, not agent input.
@@ -928,6 +1784,11 @@ class LocalRsiLoop:
 
     def run(self) -> LocalRsiResult:
         self._setup_baseline()
+        self._load_saved_patches()  # resume from a prior run by reapplying saved patches
+        # Review starts AFTER any resume commit: a resumed patch is already-
+        # decided history from a prior run, not a fresh scored promotion — it
+        # must never be re-reviewed (it has no CycleOutcome/features to score).
+        self._last_reviewed_ref = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
         result = LocalRsiResult(baseline_dir=str(self._baseline))
         for index in range(1, self._config.max_cycles + 1):
             logger.info("rsi_local_cycle_start", index=index, of=self._config.max_cycles)
@@ -959,6 +1820,8 @@ class LocalRsiLoop:
         if self._config.export_patches and result.promotions:
             n = self.export_promotions(Path(self._config.export_patches))
             logger.info("rsi_local_exported", patches=n, dest=self._config.export_patches)
+        if self._population is not None:
+            logger.info("rsi_live_final_summary", **self._population_summary())
         return result
 
     def _write_checkpoint(self, result: LocalRsiResult, *, label: str) -> None:
@@ -977,16 +1840,23 @@ class LocalRsiLoop:
                 baseline_dir=str(self._baseline),
                 window=self._config.report_every or len(result.cycles),
                 label=label,
+                population_summary=(
+                    self._population_summary() if self._population is not None else None
+                ),
             )
             slug = label.replace(" ", "-")
             (report_dir / f"checkpoint-{slug}.md").write_text(md, encoding="utf-8")
             (report_dir / f"checkpoint-{slug}.json").write_text(
                 json.dumps(data, indent=2), encoding="utf-8"
             )
+            self._review_promotions(result, report_dir)
+            self._check_persistence_integrity(result, label)
             # Refresh a rolling, COMPLETE export of everything promoted so far, so
             # an interrupted long run stays harvestable from its last checkpoint.
             # Always clear+rewrite — even at zero promotions — so a reused report
             # dir can't leave stale patches/manifest that `harvest` would apply.
+            # Runs AFTER _review_promotions so a just-reverted promotion is never
+            # exported as if it were still kept.
             self.export_promotions(report_dir / "export", clear=True)
             logger.info(
                 "rsi_local_checkpoint",
@@ -997,6 +1867,181 @@ class LocalRsiLoop:
             )
         except Exception as exc:
             logger.warning("rsi_local_checkpoint_error", label=label, error=str(exc))
+
+    def _review_promotions(self, result: LocalRsiResult, report_dir: Path) -> None:
+        """Checkpoint-time RLPHD gate (promotion_review.py / SPEC-248): any
+        promotion since the last review pass whose predicted approval
+        confidence falls below its action-class's adaptive theta is REVERTED
+        NOW — so nothing keeps building on top of it — but the original patch
+        is saved to ``report_dir/flagged/``, queued for a human decision that
+        feeds straight back into the same dual-signal, surprise-weighted
+        update RLPHD already uses for tool-call approval.
+
+        A promotion a LATER commit already depends on (touched the same file)
+        is never reverted: supersession makes a clean revert impossible
+        without unwinding real work, so it's observed and skipped, not
+        silently ignored. Never raises: a reviewer hiccup must not abort a
+        long run's real work.
+        """
+        if not self._config.promotion_review or self._last_reviewed_ref is None:
+            return
+        try:
+            from maistro_rsi.promotion_review import RlphdStateStore
+
+            revs = _git(
+                self._baseline,
+                "rev-list",
+                "--reverse",
+                f"{self._last_reviewed_ref}..{self._config.baseline_branch}",
+            ).stdout.split()
+            if not revs:
+                return
+            by_sha = {c.sha: c for c in result.cycles if c.promoted and c.sha}
+            files_by_sha: dict[str, set[str]] = {}
+            for sha in revs:
+                names = [
+                    ln.strip()
+                    for ln in _git(
+                        self._baseline, "show", "--name-only", "--pretty=format:", sha
+                    ).stdout.splitlines()
+                    if ln.strip()
+                ]
+                files_by_sha[sha] = set(names)
+
+            state = RlphdStateStore(report_dir / "rlphd_state.json")
+            for i, sha in enumerate(revs):
+                outcome = by_sha.get(sha)
+                if outcome is None:
+                    continue  # not a scored promotion (e.g. a resume commit)
+                later_files: set[str] = set()
+                for later_sha in revs[i + 1 :]:
+                    later_files |= files_by_sha.get(later_sha, set())
+                superseded = bool(files_by_sha[sha] & later_files)
+                self._review_one_promotion(outcome, sha, superseded, state, report_dir)
+            self._last_reviewed_ref = _git(
+                self._baseline, "rev-parse", self._config.baseline_branch
+            ).stdout.strip()
+        except Exception as exc:
+            logger.warning("rsi_local_review_error", error=str(exc))
+
+    def _review_one_promotion(
+        self,
+        outcome: CycleOutcome,
+        sha: str,
+        superseded: bool,
+        state: Any,
+        report_dir: Path,
+    ) -> None:
+        """One commit's RLPHD verdict: keep, observe-but-skip (superseded), or
+        revert-and-flag. Split out of _review_promotions to keep that method's
+        branching within the project's complexity budget."""
+        from maistro_rsi.promotion_review import (
+            PendingReview,
+            action_class_for,
+            extract_features,
+            flag_for_review,
+            now_iso,
+        )
+
+        action_class = action_class_for(outcome.kind)
+        features = extract_features(
+            regression_judge_score=outcome.regression_judge_score,
+            composite=outcome.composite,
+            kind=outcome.kind,
+        )
+        p, theta = state.predict(action_class, features)
+        if superseded:
+            logger.info(
+                "rsi_local_review_superseded",
+                sha=sha,
+                index=outcome.index,
+                predicted_p=p,
+                theta=theta,
+                note="later work depends on this file — cannot cleanly revert",
+            )
+            return
+        if p >= theta:
+            logger.info(
+                "rsi_local_review_kept", sha=sha, index=outcome.index, predicted_p=p, theta=theta
+            )
+            return
+        patch_text = _git(self._baseline, "show", sha).stdout
+        revert_result = _git(self._baseline, "revert", "--no-edit", sha, check=False)
+        if revert_result.returncode != 0:
+            _git(self._baseline, "revert", "--abort", check=False)
+            logger.warning(
+                "rsi_local_review_revert_failed",
+                sha=sha,
+                index=outcome.index,
+                error=revert_result.stderr.strip(),
+            )
+            return
+        revert_sha = _git(self._baseline, "rev-parse", "HEAD").stdout.strip()
+        # Both the original promotion and its own revert commit are "nothing
+        # net happened" — exclude both from the harvestable export, and count
+        # the revert as a real, non-promotion commit so the persistence
+        # self-check doesn't false-alarm on it.
+        self._excluded_from_export.add(sha)
+        self._excluded_from_export.add(revert_sha)
+        self._non_promotion_commits += 1
+        review = PendingReview(
+            sha=sha,
+            index=outcome.index,
+            target=outcome.target,
+            kind=outcome.kind.value,
+            action_class=action_class,
+            features=features,
+            predicted_p=p,
+            theta=theta,
+            flagged_at=now_iso(),
+            note=f"composite={outcome.composite} judge_score={outcome.regression_judge_score}",
+        )
+        flag_for_review(report_dir / "flagged", review, patch_text)
+        logger.warning(
+            "rsi_local_review_reverted",
+            sha=sha,
+            index=outcome.index,
+            target=outcome.target,
+            predicted_p=p,
+            theta=theta,
+            note="reverted pending human review — patch saved, not discarded",
+        )
+
+    def _check_persistence_integrity(self, result: LocalRsiResult, label: str) -> None:
+        """Trust-but-verify: the in-memory promotion count must match the actual
+        git history on ``baseline_branch``. A mismatch means the persistence
+        machinery (patch resume, worktree merges) silently diverged from what the
+        loop believes it promoted — exactly the failure mode a resumed-patch
+        commit gap once caused. Logs loudly rather than halting: an operator
+        should investigate, but a reporting check must never abort real work."""
+        if self._start_ref is None:
+            return
+        try:
+            actual = int(
+                _git(
+                    self._baseline,
+                    "rev-list",
+                    "--count",
+                    f"{self._start_ref}..{self._config.baseline_branch}",
+                ).stdout.strip()
+            )
+        except (RuntimeError, ValueError):
+            return
+        expected = result.promotions + self._non_promotion_commits
+        if actual != expected:
+            logger.error(
+                "rsi_local_persistence_mismatch",
+                label=label,
+                recorded_promotions=result.promotions,
+                non_promotion_commits=self._non_promotion_commits,
+                actual_commits=actual,
+                note=(
+                    "git history on baseline_branch diverged from the in-memory "
+                    "promotion count — a prior run's work may not be reaching the "
+                    "committed baseline. Investigate before trusting this run's "
+                    "export/resume state."
+                ),
+            )
 
     def export_promotions(self, dest: Path, *, clear: bool = False) -> int:
         """Export each promotion commit (start_ref..baseline) as a git-am-able
@@ -1012,7 +2057,11 @@ class LocalRsiLoop:
                 stale.unlink()
             (dest / "manifest.json").unlink(missing_ok=True)
         rng = f"{self._start_ref}..{self._config.baseline_branch}"
-        revs = _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
+        revs = [
+            sha
+            for sha in _git(self._baseline, "rev-list", "--reverse", rng).stdout.split()
+            if sha not in self._excluded_from_export
+        ]
         manifest: list[dict[str, str]] = []
         for i, sha in enumerate(revs, 1):
             names = [

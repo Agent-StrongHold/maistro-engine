@@ -11,16 +11,25 @@ runnable offline. `compose_scorecard()` is pure and takes already-gathered
 
 from __future__ import annotations
 
+import ast
 import json
 import os
+import shlex
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from maistro_evolve.assertion_strength import score_assertions
 from maistro_evolve.code_quality import score_path
-from maistro_evolve.coverage_gate import coverage_gate, coverage_signal, measure_coverage
+from maistro_evolve.coverage_gate import (
+    coverage_gate,
+    coverage_signal,
+    measure_coverage_detailed,
+    new_source_lines,
+    uncovered_new_lines,
+)
 from maistro_evolve.doc_regression import doc_regressions
 from maistro_evolve.scorecard import (
     FitnessWeights,
@@ -49,6 +58,79 @@ def _is_test(path: str) -> bool:
     return any(h in path.replace("\\", "/") for h in _TEST_HINTS)
 
 
+def _syntax_check(cwd: Path, py_files: list[str]) -> list[str]:
+    """Every changed ``.py`` file must at least parse — test or source, in or
+    out of the configured test roots. A file that can't be collected by the
+    scoped test command (see ``_uncollectable_tests``) is otherwise invisible
+    to every other gate, so a broken file can sit silently in the repo forever
+    unless something checks it unconditionally. This is that check."""
+    reasons: list[str] = []
+    for rel in py_files:
+        path = cwd / rel
+        if not path.is_file():
+            continue
+        try:
+            ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+        except SyntaxError as exc:
+            reasons.append(f"{rel}: {exc.msg} (line {exc.lineno})")
+        except OSError:
+            continue
+    return reasons
+
+
+def _parse_test_roots(pytest_args: str) -> list[str]:
+    """Extract the configured test-root paths from a pytest args string.
+
+    ``coverage_pytest_args`` (and ``test_command``) already encode exactly the
+    paths pytest will collect from — e.g. ``"packages/x/tests packages/y/tests
+    --ignore=..."``. Parsing them here means a new test file's location can be
+    checked against the SAME roots the harness actually uses, with no separate
+    config to keep in sync.
+    """
+    roots = []
+    for tok in shlex.split(pytest_args):
+        if tok.startswith("-"):
+            continue
+        roots.append(tok.replace("\\", "/").rstrip("/"))
+    return roots
+
+
+def _uncollectable_tests(cwd: Path, test_files: list[str], valid_roots: list[str]) -> list[str]:
+    """New/changed test files that the harness's own scoped pytest invocation
+    would never run: either the path falls outside every configured test root,
+    or pytest can't collect any item from it (e.g. a syntax error, or a name
+    that doesn't match pytest's discovery pattern). A test the harness never
+    executes contributes nothing — its presence must not be rewarded, and it
+    should not silently accumulate as repo clutter."""
+    reasons: list[str] = []
+    for rel in test_files:
+        norm = rel.replace("\\", "/")
+        if valid_roots and not any(
+            norm == root or norm.startswith(root + "/") for root in valid_roots
+        ):
+            reasons.append(f"{rel}: outside configured test roots ({', '.join(valid_roots)})")
+            continue
+        if not (cwd / rel).is_file():
+            continue
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "pytest", "--collect-only", "-q", rel],
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            reasons.append(f"{rel}: collection timed out or errored")
+            continue
+        if proc.returncode != 0:
+            # 0 = collected >=1 item; 5 = "no tests collected"; anything else =
+            # a collection error (e.g. import failure) — all three mean this
+            # file contributes nothing the harness will ever run.
+            reasons.append(f"{rel}: pytest could not collect it (exit {proc.returncode})")
+    return reasons
+
+
 @dataclass
 class FitnessInputs:
     tests_passed: bool
@@ -66,6 +148,11 @@ class FitnessInputs:
     # Net-new ``test_*`` functions added by the candidate (drives the presence-
     # gated ``new_test`` signal together with the coverage delta).
     net_new_tests: int = 0
+    # Lines this diff ADDED to source files that the coverage run never
+    # executed (coverage_gate.uncovered_new_lines) — non-empty withholds the
+    # new_test signal even if some unrelated coverage gain in the same diff
+    # pushed the aggregate percentage up.
+    uncovered_new_source_lines: dict[str, list[int]] = field(default_factory=dict)
     # Symbols whose docstring lost material specificity — any entry vetoes.
     doc_regression_reasons: list[str] = field(default_factory=list)
     # LLM impact judge for a FEATURE/v2.0 change: (score 0..1, rationale). Injected
@@ -73,6 +160,58 @@ class FitnessInputs:
     feature_judge: tuple[float, str] | None = None
     # Wall-clock timing for a PERF change: (baseline_seconds, candidate_seconds).
     perf: tuple[float, float] | None = None
+    # AC ids newly claimed by @pytest.mark.ac in this candidate's tests (net-new
+    # vs baseline — see spec_tracker.new_ac_coverage). Non-empty + green tests ⇒
+    # the spec_completion signal fires: the biggest single reward in the system.
+    new_ac_ids: list[str] = field(default_factory=list)
+    # Spec ids of NEW well-formed docs/specs/ contracts this candidate authored
+    # (spec_tracker.proposed_specs) — the BACKLOG path: formalise the idea first.
+    proposed_spec_ids: list[str] = field(default_factory=list)
+    # Any changed .py file that fails ast.parse — vetoes unconditionally, test
+    # or source, in or out of the configured test roots.
+    syntax_error_reasons: list[str] = field(default_factory=list)
+    # New/changed test files pytest's own scoped invocation would never
+    # collect (wrong location, or a collection error) — vetoes; an uncollected
+    # test contributes nothing and must not be counted as verification.
+    uncollectable_test_reasons: list[str] = field(default_factory=list)
+    # A changed test that still passes with its accompanying source change
+    # reverted to baseline — it doesn't exercise what it claims to. Distinct
+    # from a genuine characterization test (no source change at all in the
+    # diff), which never triggers this.
+    vacuous_test_reasons: list[str] = field(default_factory=list)
+    # Second-opinion LLM regression check (score 0..1, rationale) — only ever
+    # populated after every other gate already passed (see evaluate_candidate),
+    # so a doomed candidate never burns the extra LLM call.
+    regression_judge: tuple[float, str] | None = None
+
+
+def _ladder_signals(inp: FitnessInputs, w: FitnessWeights) -> list[SignalScore]:
+    """Presence-gated maturity-ladder rewards: each fires only on the real event
+    (net-new AC claims with green tests / a new well-formed spec contract), so
+    it can never dilute candidates doing other work, and can't be farmed by
+    re-tagging existing ACs (only net-new ids count — spec_tracker)."""
+    signals: list[SignalScore] = []
+    if inp.new_ac_ids and inp.tests_passed:
+        signals.append(
+            SignalScore(
+                "spec_completion",
+                MeasureKind.CALCULATED,
+                1.0,
+                w.spec_completion,
+                f"newly proven acceptance criteria: {', '.join(inp.new_ac_ids)}",
+            )
+        )
+    if inp.proposed_spec_ids:
+        signals.append(
+            SignalScore(
+                "spec_proposed",
+                MeasureKind.CALCULATED,
+                1.0,
+                w.spec_proposed,
+                f"new spec contract(s) drafted: {', '.join(inp.proposed_spec_ids)}",
+            )
+        )
+    return signals
 
 
 def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None) -> Scorecard:
@@ -90,17 +229,44 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
             not inp.doc_regression_reasons,
             "; ".join(inp.doc_regression_reasons) or "no docstring made vaguer",
         ),
+        GateResult(
+            "valid_syntax",
+            not inp.syntax_error_reasons,
+            "; ".join(inp.syntax_error_reasons) or "all changed .py files parse",
+        ),
+        GateResult(
+            "tests_collectable",
+            not inp.uncollectable_test_reasons,
+            "; ".join(inp.uncollectable_test_reasons) or "all changed test files are collectable",
+        ),
+        GateResult(
+            "test_exercises_change",
+            not inp.vacuous_test_reasons,
+            "; ".join(inp.vacuous_test_reasons)
+            or "changed tests depend on the accompanying change",
+        ),
         *inp.lint_gates,
     ]
+    if inp.regression_judge is not None:
+        score, rationale = inp.regression_judge
+        gates.append(
+            GateResult("no_flagged_regression", score >= 0.4, rationale, detail={"score": score})
+        )
     scores: list[SignalScore] = [red_green_signal(inp.tdd, w.red_green)]
     cov_delta = (
         inp.candidate_coverage - inp.baseline_coverage
         if inp.candidate_coverage is not None and inp.baseline_coverage is not None
         else None
     )
-    nt = new_test_signal(inp.net_new_tests, cov_delta, w.new_test)
+    nt = new_test_signal(
+        inp.net_new_tests,
+        cov_delta,
+        w.new_test,
+        uncovered_new_lines=inp.uncovered_new_source_lines,
+    )
     if nt is not None:
         scores.append(nt)
+    scores.extend(_ladder_signals(inp, w))
     if inp.feature_judge is not None:
         scores.append(
             judge_signal(
@@ -306,6 +472,22 @@ def _red_green_evidence(
     )
 
 
+def _vacuous_test_reasons(src: list[str], tests: list[str], tdd: TddEvidence) -> list[str]:
+    """A changed test that still passes with its accompanying source change
+    reverted doesn't exercise that change — it's green for an unrelated reason
+    (e.g. an earlier exception in the same call path masking that a new guard
+    clause is never reached). Only fires when ``src`` is non-empty: a genuine
+    characterization test (test-only diff, no source change at all) never
+    reaches this — ``_red_green_evidence`` only computes ``baseline_changed_rc``
+    when ``src`` is given, so it stays ``None`` for that valid case."""
+    if src and tests and tdd.baseline_changed_rc == 0:
+        return [
+            f"{', '.join(tests)}: still pass(es) with {', '.join(src)} reverted to "
+            "baseline — doesn't exercise this diff's source change"
+        ]
+    return []
+
+
 def evaluate_candidate(
     candidate_dir: str | Path,
     changed_files: list[str],
@@ -322,19 +504,29 @@ def evaluate_candidate(
     feature_judge: tuple[float, str] | None = None,
     perf: tuple[float, float] | None = None,
     timeout: int = 900,
+    regression_judge_fn: Callable[[str, str], tuple[float, str]] | None = None,
+    target: str = "",
 ) -> Scorecard:
     """Run the local signals for a candidate and compose the Scorecard.
 
     ``feature_judge`` (score, rationale) and ``perf`` (baseline_s, candidate_s) are
     injected by callers that have a judge gateway / timing harness; without them
     those signals are simply absent (composite renormalises over present signals).
+
+    ``regression_judge_fn`` (diff_text, target) -> (score, rationale) is called
+    lazily, and ONLY if every other gate already passes: a candidate that's
+    going to be rejected on tests/coverage/syntax/etc. never burns the extra
+    LLM call, so this second-opinion safety net stays cheap in aggregate.
     """
     cwd = Path(candidate_dir)
     src = [f for f in changed_files if f.endswith(".py") and not _is_test(f)]
     tests = changed_test_paths(changed_files)
+    all_py = [f for f in changed_files if f.endswith(".py")]
 
     tests_passed, test_reason = _run(test_command, cwd, timeout)
-    cand_cov = measure_coverage(cwd, source=coverage_source, pytest_args=coverage_pytest_args)
+    cand_cov, missing = measure_coverage_detailed(
+        cwd, source=coverage_source, pytest_args=coverage_pytest_args
+    )
     cq, cq_detail = _mean_quality(cwd, src)
     astr, astr_detail = _mean_assertion(cwd, tests)
     if tdd is None:
@@ -345,6 +537,20 @@ def evaluate_candidate(
         )
     net_new = count_net_new_tests(cwd, baseline_ref, tests) if (baseline_ref and tests) else 0
     doc_reasons = _doc_regressions(cwd, baseline_ref, src) if baseline_ref else []
+    from maistro_rsi.spec_tracker import new_ac_coverage, proposed_specs
+
+    new_acs = new_ac_coverage(cwd, baseline_ref, tests) if (baseline_ref and tests) else []
+    new_specs = proposed_specs(cwd, changed_files)
+
+    syntax_reasons = _syntax_check(cwd, all_py)
+    valid_roots = _parse_test_roots(coverage_pytest_args)
+    uncollectable = _uncollectable_tests(cwd, tests, valid_roots)
+    uncovered_new = (
+        uncovered_new_lines(new_source_lines(cwd, baseline_ref, src), missing)
+        if (baseline_ref and src)
+        else {}
+    )
+    vacuous_reasons = _vacuous_test_reasons(src, tests, tdd)
 
     inputs = FitnessInputs(
         tests_passed=tests_passed,
@@ -360,8 +566,29 @@ def evaluate_candidate(
         capability=capability,
         architecture_fit=architecture_fit,
         net_new_tests=net_new,
+        uncovered_new_source_lines=uncovered_new,
         doc_regression_reasons=doc_reasons,
         feature_judge=feature_judge,
         perf=perf,
+        new_ac_ids=new_acs,
+        proposed_spec_ids=new_specs,
+        syntax_error_reasons=syntax_reasons,
+        uncollectable_test_reasons=uncollectable,
+        vacuous_test_reasons=vacuous_reasons,
     )
-    return compose_scorecard(inputs, weights)
+    prelim = compose_scorecard(inputs, weights)
+    if prelim.gates_passed and regression_judge_fn is not None and baseline_ref:
+        try:
+            diff = subprocess.run(
+                ["git", "diff", baseline_ref],
+                cwd=str(cwd),
+                capture_output=True,
+                text=True,
+                timeout=60,
+            ).stdout
+        except (OSError, subprocess.TimeoutExpired):
+            diff = ""
+        if diff.strip():
+            inputs.regression_judge = regression_judge_fn(diff, target)
+            return compose_scorecard(inputs, weights)
+    return prelim

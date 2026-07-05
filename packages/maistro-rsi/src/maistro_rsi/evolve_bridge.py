@@ -88,8 +88,13 @@ def seed_population(store: PopulationStore, n: int, models: list[str] | None = N
     from maistro_evolve.diversity import _random_genome
 
     existing = len(store.list_all())
-    for _ in range(max(0, n - existing)):
-        store.add(_random_genome(models))
+    need = max(0, n - existing)
+    for i in range(need):
+        # Round-robin across the roster (not a random draw) so every model gets
+        # a seed lineage from cycle one — evolution can only learn per-model
+        # differences from models that actually field genomes.
+        pinned = [models[i % len(models)]] if models else None
+        store.add(_random_genome(pinned))
 
 
 async def run_evolution(
