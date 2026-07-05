@@ -10,6 +10,7 @@ from maistro.quota.reconciliation import (
     ProviderQuotaSnapshot,
     ReconciliationState,
     maybe_reconcile,
+    reconcile_ambient,
 )
 from maistro.quota.usage_log import InMemoryUsageLog
 
@@ -182,3 +183,64 @@ async def test_credit_top_up_does_not_crash_zero_provider_delta() -> None:
     assert outcome is not None
     assert outcome.provider_delta == pytest.approx(-40.0)
     assert outcome.matched is False  # local_delta=0 vs provider_delta=-40, well outside tolerance
+
+
+# --- reconcile_ambient -------------------------------------------------------
+
+
+def _snapshot(remaining: float, unit: LimitUnit = LimitUnit.REQUESTS) -> ProviderQuotaSnapshot:
+    return ProviderQuotaSnapshot(scope_key="s1", unit=unit, remaining=remaining, checked_at=0.0)
+
+
+def test_ambient_first_check_establishes_baseline_without_touching_policy() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0)
+    state = ReconciliationState(policy=policy)
+
+    outcome = reconcile_ambient(state, "s1", InMemoryUsageLog(), _snapshot(100.0), now=1000.0)
+
+    assert outcome.matched is None
+    assert state.last_remaining == 100.0
+    assert policy.current_interval_s == 30.0  # untouched, same as maybe_reconcile's first check
+
+
+def test_ambient_never_touches_policy_interval_even_on_mismatch() -> None:
+    """Unlike maybe_reconcile, ambient reconciliation doesn't pace anything --
+    there's no explicit network call to throttle, so a mismatch shouldn't
+    shrink an interval nobody is using for this signal."""
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0)
+    state = ReconciliationState(policy=policy, last_checked_at=0.0, last_remaining=100.0)
+    log = InMemoryUsageLog()
+    # Local log saw nothing, but the ambient signal says usage dropped a lot --
+    # a real mismatch, yet the policy interval must stay exactly where it was.
+    before = policy.current_interval_s
+
+    outcome = reconcile_ambient(state, "s1", log, _snapshot(10.0), now=30.0)
+
+    assert outcome.matched is False
+    assert policy.current_interval_s == before
+
+
+def test_ambient_runs_unconditionally_regardless_of_elapsed_time() -> None:
+    """No `due()` gate at all -- called back-to-back, both calls reconcile."""
+    # would block maybe_reconcile since seconds_since_last_check (1s) < min_interval_s
+    policy = AdaptiveReconciliationPolicy(min_interval_s=3600.0, max_interval_s=7200.0)
+    state = ReconciliationState(policy=policy, last_checked_at=0.0, last_remaining=100.0)
+    log = InMemoryUsageLog()
+
+    first = reconcile_ambient(state, "s1", log, _snapshot(99.0), now=1.0)
+    second = reconcile_ambient(state, "s1", log, _snapshot(98.0), now=2.0)
+
+    assert first.matched is not None
+    assert second.matched is not None
+    assert state.last_remaining == 98.0
+
+
+def test_ambient_matching_delta_reports_matched_true() -> None:
+    state = ReconciliationState(
+        policy=AdaptiveReconciliationPolicy(), last_checked_at=0.0, last_remaining=1000.0
+    )
+    log = InMemoryUsageLog()
+    log.record("s1", now=15.0)  # 1 request recorded locally
+    # Provider's remaining requests dropped by 1 too -- matches.
+    outcome = reconcile_ambient(state, "s1", log, _snapshot(999.0), now=30.0)
+    assert outcome.matched is True
