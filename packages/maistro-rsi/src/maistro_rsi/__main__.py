@@ -18,6 +18,7 @@ import argparse
 import sys
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 from maistro_rsi.competitors import parse_competitors
 from maistro_rsi.local_loop import LocalRsiConfig, LocalRsiLoop
@@ -606,7 +607,7 @@ def _review(args: argparse.Namespace) -> int:
         return 0
 
     sha = args.sha
-    decision = "approve" if args.review_action == "approve" else "deny"
+    decision: Literal["approve", "deny"] = "approve" if args.review_action == "approve" else "deny"
     try:
         review = resolve_review(
             flagged_dir, report_dir / "export", report_dir / "rlphd_state.json", sha, decision

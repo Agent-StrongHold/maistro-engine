@@ -1509,6 +1509,7 @@ class LocalRsiLoop:
         node = entry_node(top)
         if node is None or node.fixer is None:
             return
+        fixer = node.fixer  # narrowed local — mypy keeps this non-None inside propose()
         callable_ = ResponsesAPICallable(
             model=self._config.scout_model or self._config.model, timeout=300.0
         )
@@ -1520,7 +1521,7 @@ class LocalRsiLoop:
 
         async def propose() -> list[Any]:
             return await propose_fixer_candidates(
-                node.fixer,
+                fixer,
                 "code_rsi",
                 top.eval_scores.get("code_rsi", 0.0),
                 llm,
@@ -1708,10 +1709,12 @@ class LocalRsiLoop:
         )
         tests_passed = next((g.passed for g in scorecard.gates if g.name == "tests_pass"), False)
         reason = next((f"{g.name}: {g.reason}" for g in scorecard.gates if not g.passed), "")
-        judge_score = next(
+        judge_raw = next(
             (g.detail.get("score") for g in scorecard.gates if g.name == "no_flagged_regression"),
             None,
         )
+        # detail is dict[str, object]; the regression judge stores a float score.
+        judge_score = float(judge_raw) if isinstance(judge_raw, int | float) else None
         return scorecard.accepted, scorecard.composite, reason, tests_passed, judge_score
 
     def _run_tests(self, cycle_dir: Path) -> bool:
