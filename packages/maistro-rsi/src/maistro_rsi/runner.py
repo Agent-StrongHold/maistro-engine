@@ -26,7 +26,7 @@ from maistro_evolve.types import EvalResult, PipelineGenome
 from maistro_rsi.benchmarks import RSI_BENCHMARKS
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quota_burn import QuotaBurnScheduler
-from maistro_rsi.sandbox.microvm import create_microvm_sandbox
+from maistro_rsi.sandbox.microvm import create_rsi_sandbox
 from maistro_rsi.selfbranch import SelfBranchResult, new_attempt, run_self_branch_attempt
 
 logger = structlog.get_logger()
@@ -98,7 +98,7 @@ class RsiCycle:
         workspace = f"{self._config.workspace_root}/{run_id}"
         model = await self._scheduler.next_model(available_models)
 
-        sandbox = await create_microvm_sandbox(workspace)
+        sandbox = await create_rsi_sandbox(workspace)
         try:
             attempt = new_attempt(
                 self._config.repo_url,

@@ -94,3 +94,116 @@ class TestDockerMicroVmSandbox:
             async with DockerMicroVmSandbox(container):
                 raise RuntimeError("boom")
         assert container.destroy_calls == 1
+
+
+class TestLocalSandbox:
+    """Tests tied to SPEC.md §1 acceptance criteria sandbox-8..12."""
+
+    def test_satisfies_microvm_protocol(self, tmp_path):
+        """sandbox-8: LocalSandbox structurally satisfies MicroVmSandbox."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        assert isinstance(LocalSandbox(str(tmp_path)), MicroVmSandbox)
+
+    @pytest.mark.asyncio
+    async def test_exec_returns_exit_code_and_output(self, tmp_path):
+        """sandbox-9: exec runs against the workspace and returns (exit_code, output)."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        sandbox = LocalSandbox(str(tmp_path))
+        code, output = await sandbox.exec("echo hello")
+        assert code == 0 and "hello" in output
+
+    @pytest.mark.asyncio
+    async def test_exec_reports_nonzero_exit_verbatim(self, tmp_path):
+        """sandbox-9: a non-zero exit is reported, not swallowed."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        code, _ = await LocalSandbox(str(tmp_path)).exec("exit 3")
+        assert code == 3
+
+    @pytest.mark.asyncio
+    async def test_exec_times_out_and_reports_124(self, tmp_path):
+        """sandbox-9: a command exceeding the timeout is killed and reported as exit 124."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        code, output = await LocalSandbox(str(tmp_path)).exec("sleep 30", timeout=1)
+        assert code == 124 and "timeout" in output
+
+    @pytest.mark.asyncio
+    async def test_write_read_round_trip_relative_path_stays_in_workspace(self, tmp_path):
+        """sandbox-10: write/read round-trip; relative paths resolve under the workspace."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        sandbox = LocalSandbox(str(tmp_path))
+        await sandbox.write_file("sub/notes.txt", "hi")
+        assert await sandbox.read_file("sub/notes.txt") == "hi"
+        assert (tmp_path / "sub" / "notes.txt").read_text() == "hi"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_unique_and_restore_posture(self, tmp_path):
+        """sandbox-11: unique snapshot ids; restore raises KeyError / NotImplementedError."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        sandbox = LocalSandbox(str(tmp_path))
+        a = await sandbox.snapshot("cp")
+        b = await sandbox.snapshot("cp")
+        assert a != b
+        with pytest.raises(KeyError):
+            await sandbox.restore("never")
+        with pytest.raises(NotImplementedError):
+            await sandbox.restore(a)
+
+    @pytest.mark.asyncio
+    async def test_destroy_is_noop_and_context_manager_exits_clean(self, tmp_path):
+        """sandbox-12: destroy never raises; async-with exits cleanly."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        async with LocalSandbox(str(tmp_path)) as sandbox:
+            await sandbox.write_file("f", "x")
+        await sandbox.destroy()  # idempotent, no raise
+
+
+class TestCreateRsiSandbox:
+    """Tests tied to SPEC.md §1 acceptance criterion sandbox-13."""
+
+    @pytest.mark.asyncio
+    async def test_local_backend_selected_by_arg(self, tmp_path):
+        """sandbox-13: backend='local' returns a LocalSandbox."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+        from maistro_rsi.sandbox.microvm import create_rsi_sandbox
+
+        sandbox = await create_rsi_sandbox(str(tmp_path), backend="local")
+        assert isinstance(sandbox, LocalSandbox)
+
+    @pytest.mark.asyncio
+    async def test_local_backend_selected_by_env(self, tmp_path, monkeypatch):
+        """sandbox-13: $MAISTRO_RSI_SANDBOX=local returns a LocalSandbox."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+        from maistro_rsi.sandbox.microvm import SANDBOX_BACKEND_ENV, create_rsi_sandbox
+
+        monkeypatch.setenv(SANDBOX_BACKEND_ENV, "local")
+        assert isinstance(await create_rsi_sandbox(str(tmp_path)), LocalSandbox)
+
+    @pytest.mark.asyncio
+    async def test_arg_overrides_env_and_default_is_docker(self, tmp_path, monkeypatch):
+        """sandbox-13: explicit backend arg overrides env; default routes to the Docker backend."""
+        import maistro_rsi.sandbox.microvm as microvm_mod
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        # env says docker, arg says local → arg wins
+        monkeypatch.setenv(microvm_mod.SANDBOX_BACKEND_ENV, "docker")
+        assert isinstance(
+            await microvm_mod.create_rsi_sandbox(str(tmp_path), backend="local"), LocalSandbox
+        )
+
+        # default (no arg, no env) routes to create_microvm_sandbox — stub it so
+        # the test needs no real Docker daemon.
+        monkeypatch.delenv(microvm_mod.SANDBOX_BACKEND_ENV, raising=False)
+        sentinel = object()
+
+        async def fake_create(workspace, settings=None, env=None):
+            return sentinel
+
+        monkeypatch.setattr(microvm_mod, "create_microvm_sandbox", fake_create)
+        assert await microvm_mod.create_rsi_sandbox(str(tmp_path)) is sentinel
