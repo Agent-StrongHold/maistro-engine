@@ -1,0 +1,184 @@
+"""Tests for adaptive reconciliation: policy interval shaping + delta comparison."""
+
+from __future__ import annotations
+
+import pytest
+
+from maistro.quota.rate_profile import LimitUnit
+from maistro.quota.reconciliation import (
+    AdaptiveReconciliationPolicy,
+    ProviderQuotaSnapshot,
+    ReconciliationState,
+    maybe_reconcile,
+)
+from maistro.quota.usage_log import InMemoryUsageLog
+
+
+class _FakeVerifier:
+    def __init__(self, remaining_sequence: list[float]) -> None:
+        self._sequence = remaining_sequence
+        self._calls = 0
+
+    async def verify(self, scope_key: str) -> ProviderQuotaSnapshot:
+        remaining = self._sequence[self._calls]
+        self._calls += 1
+        return ProviderQuotaSnapshot(
+            scope_key=scope_key, unit=LimitUnit.CREDITS_USD, remaining=remaining, checked_at=0.0
+        )
+
+    @property
+    def calls(self) -> int:
+        return self._calls
+
+
+# --- AdaptiveReconciliationPolicy ------------------------------------------
+
+
+def test_policy_rejects_decrease_not_steeper_than_increase() -> None:
+    with pytest.raises(ValueError, match="decrease_factor must shrink"):
+        AdaptiveReconciliationPolicy(increase_factor=1.25, decrease_factor=0.9)
+
+
+def test_policy_rejects_increase_factor_at_or_below_one() -> None:
+    with pytest.raises(ValueError, match="increase_factor"):
+        AdaptiveReconciliationPolicy(increase_factor=1.0)
+
+
+def test_policy_rejects_decrease_factor_out_of_range() -> None:
+    with pytest.raises(ValueError, match="decrease_factor"):
+        AdaptiveReconciliationPolicy(decrease_factor=1.0)
+
+
+def test_policy_rejects_bad_interval_bounds() -> None:
+    with pytest.raises(ValueError, match="max_interval_s"):
+        AdaptiveReconciliationPolicy(min_interval_s=100.0, max_interval_s=50.0)
+
+
+def test_policy_starts_at_minimum() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0)
+    assert policy.current_interval_s == 30.0
+
+
+def test_match_grows_interval_multiplicatively() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0, increase_factor=1.25)
+    policy.record_match()
+    assert policy.current_interval_s == pytest.approx(37.5)
+
+
+def test_match_never_exceeds_max() -> None:
+    policy = AdaptiveReconciliationPolicy(
+        min_interval_s=100.0, max_interval_s=120.0, increase_factor=2.0
+    )
+    policy.record_match()
+    assert policy.current_interval_s == 120.0
+
+
+def test_mismatch_shrinks_by_more_than_match_grew_it() -> None:
+    # A low floor and several matches first, so the eventual shrink lands well
+    # above min_interval_s -- otherwise the floor clamp masks the multiplicative
+    # relationship this test exists to check.
+    policy = AdaptiveReconciliationPolicy(
+        min_interval_s=1.0, increase_factor=1.25, decrease_factor=0.4
+    )
+    for _ in range(6):
+        policy.record_match()
+    before_last_match = policy.current_interval_s / policy.increase_factor
+    policy.record_mismatch()
+    # The mismatch drops it below where it was even *before* the last match --
+    # a match-then-mismatch pair nets a loss of trust, not a wash.
+    assert policy.current_interval_s < before_last_match
+
+
+def test_mismatch_never_drops_below_min() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0, decrease_factor=0.1)
+    policy.record_mismatch()
+    assert policy.current_interval_s == 30.0
+
+
+def test_due_respects_current_interval() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=60.0)
+    assert policy.due(59.9) is False
+    assert policy.due(60.0) is True
+
+
+# --- maybe_reconcile ---------------------------------------------------------
+
+
+async def test_not_due_yet_returns_none_without_calling_verifier() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=60.0)
+    state = ReconciliationState(policy=policy, last_checked_at=1000.0)
+    verifier = _FakeVerifier([100.0])
+    log = InMemoryUsageLog()
+
+    outcome = await maybe_reconcile(state, "s1", log, verifier, now=1010.0)
+
+    assert outcome is None
+    assert verifier.calls == 0
+
+
+async def test_first_check_establishes_baseline_without_touching_policy() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0)
+    state = ReconciliationState(policy=policy)  # last_checked_at=0.0, last_remaining=None
+    verifier = _FakeVerifier([100.0])
+    log = InMemoryUsageLog()
+
+    outcome = await maybe_reconcile(state, "s1", log, verifier, now=1000.0)
+
+    assert outcome is not None
+    assert outcome.matched is None
+    assert state.last_remaining == 100.0
+    assert policy.current_interval_s == 30.0  # untouched
+
+
+async def test_matching_delta_records_match_and_grows_interval() -> None:
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0, increase_factor=1.25)
+    state = ReconciliationState(policy=policy, last_checked_at=0.0, last_remaining=100.0)
+    log = InMemoryUsageLog()
+    # Local log observed $2 of usage between t=0 and t=30 -> matches provider's $2 drop.
+    log.record("s1", cost_usd=2.0, now=15.0)
+    verifier = _FakeVerifier([98.0])
+
+    outcome = await maybe_reconcile(state, "s1", log, verifier, now=30.0)
+
+    assert outcome is not None
+    assert outcome.matched is True
+    assert outcome.provider_delta == pytest.approx(2.0)
+    assert outcome.local_delta == pytest.approx(2.0)
+    assert policy.current_interval_s == pytest.approx(37.5)
+    assert state.last_remaining == 98.0
+
+
+async def test_mismatching_delta_records_mismatch_and_shrinks_interval() -> None:
+    # Low floor + several matches first so the shrink is observable rather
+    # than masked by the min_interval_s clamp.
+    policy = AdaptiveReconciliationPolicy(min_interval_s=1.0, decrease_factor=0.4)
+    for _ in range(6):
+        policy.record_match()
+    grown = policy.current_interval_s
+    state = ReconciliationState(policy=policy, last_checked_at=0.0, last_remaining=100.0)
+    log = InMemoryUsageLog()
+    # Local log only saw $0.50 of usage, but the provider's balance dropped $10 —
+    # something (another key, a manual playground call) spent outside our tracking.
+    log.record("s1", cost_usd=0.5, now=15.0)
+    verifier = _FakeVerifier([90.0])
+
+    outcome = await maybe_reconcile(state, "s1", log, verifier, now=grown)
+
+    assert outcome is not None
+    assert outcome.matched is False
+    assert policy.current_interval_s == pytest.approx(grown * 0.4)
+
+
+async def test_credit_top_up_does_not_crash_zero_provider_delta() -> None:
+    """A negative provider_delta (balance went UP between checks, e.g. a top-up)
+    must not divide-by-zero or blow up the tolerance comparison."""
+    policy = AdaptiveReconciliationPolicy(min_interval_s=30.0)
+    state = ReconciliationState(policy=policy, last_checked_at=0.0, last_remaining=10.0)
+    log = InMemoryUsageLog()
+    verifier = _FakeVerifier([50.0])  # remaining went UP (topped off)
+
+    outcome = await maybe_reconcile(state, "s1", log, verifier, now=30.0)
+
+    assert outcome is not None
+    assert outcome.provider_delta == pytest.approx(-40.0)
+    assert outcome.matched is False  # local_delta=0 vs provider_delta=-40, well outside tolerance
