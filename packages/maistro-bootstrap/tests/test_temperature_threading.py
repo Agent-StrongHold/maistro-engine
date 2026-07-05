@@ -7,7 +7,7 @@ never adds the key (provider default), so the no-temperature path is unchanged.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -18,7 +18,7 @@ from maistro_bootstrap.builders.responses_callable import LiteLLMCallable
 class _FakeResp:
     status_code = 200
     text = ""
-    headers: dict[str, str] = {}
+    headers: ClassVar[dict[str, str]] = {}
 
     def json(self) -> dict[str, Any]:
         return {

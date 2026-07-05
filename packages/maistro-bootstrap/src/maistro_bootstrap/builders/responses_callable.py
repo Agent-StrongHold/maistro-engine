@@ -266,6 +266,51 @@ def _to_openai_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _gateway_attribution(model: str, resp: Any) -> dict[str, str]:
+    """Pull per-call gateway attribution (deployment served, failover hops,
+    cost, remaining headroom) from the response headers, and log any failover
+    so calibration sees it. Empty dict when the gateway sent no such headers."""
+    gateway = {
+        key: resp.headers[header]
+        for key, header in _GATEWAY_HEADERS.items()
+        if header in resp.headers
+    }
+    if gateway.get("attempted_fallbacks") not in (None, "0"):
+        # The requested group/deployment was exhausted and another carrier
+        # served the call — surface it so calibration sees failover events.
+        logger.info(
+            "gateway fallback: requested=%s served_by=%s fallbacks=%s retries=%s",
+            model,
+            gateway.get("model_id", "?"),
+            gateway.get("attempted_fallbacks"),
+            gateway.get("attempted_retries", "0"),
+        )
+    return gateway
+
+
+def _blocks_from_tool_calls(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Normalise OpenAI ``tool_calls`` into the block-list shape the agent loop
+    expects; arguments that aren't valid JSON degrade to an empty input dict."""
+    import json
+
+    blocks: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        fn = tc.get("function", {})
+        try:
+            inp = json.loads(fn.get("arguments", "{}"))
+        except json.JSONDecodeError:
+            inp = {}
+        blocks.append(
+            {
+                "type": "tool_use",
+                "id": tc.get("id", "tc_0"),
+                "name": fn.get("name", ""),
+                "input": inp,
+            }
+        )
+    return blocks
+
+
 class LiteLLMCallable:
     """Synchronous OpenAI-compatible callable backed by the LiteLLM proxy.
 
@@ -358,21 +403,7 @@ class LiteLLMCallable:
         if resp.status_code >= 400:
             raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
 
-        gateway = {
-            key: resp.headers[header]
-            for key, header in _GATEWAY_HEADERS.items()
-            if header in resp.headers
-        }
-        if gateway.get("attempted_fallbacks") not in (None, "0"):
-            # The requested group/deployment was exhausted and another carrier
-            # served the call — surface it so calibration sees failover events.
-            logger.info(
-                "gateway fallback: requested=%s served_by=%s fallbacks=%s retries=%s",
-                self.model,
-                gateway.get("model_id", "?"),
-                gateway.get("attempted_fallbacks"),
-                gateway.get("attempted_retries", "0"),
-            )
+        gateway = _gateway_attribution(self.model, resp)
 
         data = resp.json()
         choice = data["choices"][0]
@@ -383,24 +414,7 @@ class LiteLLMCallable:
         # Normalise tool_calls into the same block-list shape the agent loop expects.
         tool_calls = msg.get("tool_calls") or []
         if tool_calls:
-            blocks: list[dict[str, Any]] = []
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                import json
-
-                try:
-                    inp = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError:
-                    inp = {}
-                blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": tc.get("id", "tc_0"),
-                        "name": fn.get("name", ""),
-                        "input": inp,
-                    }
-                )
-            content = blocks
+            content = _blocks_from_tool_calls(tool_calls)
             stop_reason = "tool_use"
 
         usage = data.get("usage", {})
