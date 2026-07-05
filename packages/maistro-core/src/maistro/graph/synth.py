@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
@@ -39,6 +40,20 @@ Use only these node kinds unless available_kinds is specified: \
 planner, coder, reviewer, scout, conductor, llm.summarize, transform.extract_field.
 Keep it small (max_nodes constraint applies).
 """
+
+
+def _strip_code_fence(text: str) -> str:
+    if "```" not in text:
+        return text
+    m = re.search(r"```(?:json)?\s*\n?(.*?)```", text, re.DOTALL)
+    return m.group(1).strip() if m else text
+
+
+def _coerce_role(value: str) -> AgentRole | str:
+    try:
+        return AgentRole(value)
+    except ValueError:
+        return value
 
 
 @dataclass(frozen=True)
@@ -128,39 +143,21 @@ class LLMDagSynthesizer:
             return await self._fallback.synthesize(request)
 
     def _parse(self, text: str, request: SynthRequest) -> SynthResult:
-        cleaned = text.strip()
-        if "```" in cleaned:
-            import re
-
-            m = re.search(r"```(?:json)?\s*\n?(.*?)```", cleaned, re.DOTALL)
-            if m:
-                cleaned = m.group(1).strip()
-        data: dict[str, Any] = json.loads(cleaned)
+        data: dict[str, Any] = json.loads(_strip_code_fence(text.strip()))
 
         raw_nodes: list[str] = data.get("nodes") or []
         raw_edges: list[dict[str, str]] = data.get("edges") or []
         entry_raw: str = data.get("entry") or (raw_nodes[0] if raw_nodes else AgentRole.PLANNER)
         rationale: str = data.get("rationale") or ""
 
-        nodes: list[AgentRole | str] = []
-        for n in raw_nodes[: request.max_nodes]:
-            try:
-                nodes.append(AgentRole(n))
-            except ValueError:
-                nodes.append(n)
-
-        edges: list[GraphEdge] = [
+        nodes = [_coerce_role(n) for n in raw_nodes[: request.max_nodes]]
+        edges = [
             GraphEdge(from_role=e["from_node"], to_role=e.get("to_node"))
             for e in raw_edges
             if "from_node" in e
         ]
 
-        try:
-            entry: AgentRole | str = AgentRole(entry_raw)
-        except ValueError:
-            entry = entry_raw
-
-        config = GraphConfig(nodes=nodes, edges=edges, entry=entry)
+        config = GraphConfig(nodes=nodes, edges=edges, entry=_coerce_role(entry_raw))
         return SynthResult(
             graph_config=config,
             rationale=rationale,
