@@ -37,8 +37,8 @@ _SYSTEM = (
     "original exception.\n"
     "4. A guard clause or validation that would now reject previously-valid "
     "input.\n"
-    "Reply with ONLY a JSON object: {\"score\": 0.0-1.0, \"rationale\": "
-    "\"...\"}. score=1.0 means no regression risk found. score below 0.4 "
+    'Reply with ONLY a JSON object: {"score": 0.0-1.0, "rationale": '
+    '"..."}. score=1.0 means no regression risk found. score below 0.4 '
     "means you found a concrete, plausible regression — name the exact line "
     "and the failing scenario in the rationale. Do not flag style/naming "
     "preferences or vague concerns without a concrete failure scenario."

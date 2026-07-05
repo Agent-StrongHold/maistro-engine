@@ -580,9 +580,7 @@ def _run(args: argparse.Namespace) -> int:
         if summary["reliability"]:
             print(
                 "  reliability: "
-                + ", ".join(
-                    f"{m}={round(v, 3)}" for m, v in sorted(summary["reliability"].items())
-                )
+                + ", ".join(f"{m}={round(v, 3)}" for m, v in sorted(summary["reliability"].items()))
             )
         if summary["benched_models"]:
             print(f"  benched: {', '.join(summary['benched_models'])}")
@@ -617,7 +615,9 @@ def _review(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     verb = "approved — patch re-queued for the next harvest" if decision == "approve" else "denied"
-    print(f"{review.sha[:12]} ({review.target}) {verb}. RLPHD model updated for {review.action_class}.")
+    print(
+        f"{review.sha[:12]} ({review.target}) {verb}. RLPHD model updated for {review.action_class}."
+    )
     return 0
 
 

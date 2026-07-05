@@ -87,9 +87,7 @@ def test_flagged_regression_vetoes_below_threshold() -> None:
 
 
 def test_regression_judge_above_threshold_passes() -> None:
-    sc = compose_scorecard(
-        FitnessInputs(tests_passed=True, regression_judge=(0.9, "no concerns"))
-    )
+    sc = compose_scorecard(FitnessInputs(tests_passed=True, regression_judge=(0.9, "no concerns")))
     gate = next(g for g in sc.gates if g.name == "no_flagged_regression")
     assert gate.passed is True
 

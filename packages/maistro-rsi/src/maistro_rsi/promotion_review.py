@@ -127,7 +127,9 @@ class RlphdStateStore:
         except (OSError, json.JSONDecodeError):
             return
         for action_class, entry in data.get("models", {}).items():
-            self._models[action_class] = RlphdModel(feature_weights=entry.get("feature_weights", {}))
+            self._models[action_class] = RlphdModel(
+                feature_weights=entry.get("feature_weights", {})
+            )
         self._thetas.update(data.get("thetas", {}))
 
     def save(self) -> None:

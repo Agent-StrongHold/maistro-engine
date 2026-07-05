@@ -39,9 +39,12 @@ def test_extract_features_shape_and_defaults() -> None:
     }
     # judge never ran (None) -> neutral default, matching the judge's own
     # unavailable-fallback convention, not zero (which would read as "terrible").
-    assert extract_features(regression_judge_score=None, composite=0.5, kind=ImprovementKind.DOC)[
-        "judge_score"
-    ] == 0.7
+    assert (
+        extract_features(regression_judge_score=None, composite=0.5, kind=ImprovementKind.DOC)[
+            "judge_score"
+        ]
+        == 0.7
+    )
 
 
 def test_cold_start_predicts_neutral_below_default_theta(tmp_path: Path) -> None:
@@ -81,7 +84,6 @@ def test_approve_at_low_p_nudges_theta_down_a_little(tmp_path: Path) -> None:
     theta_after = store.theta_for("rsi_promotion")
     assert theta_after < theta_before, "a surprise approval should still nudge theta down"
     assert theta_before - theta_after < 0.05, "the nudge must be small, not a swing"
-
 
 
 def test_deny_lowers_weights_on_the_features_that_were_present(tmp_path: Path) -> None:
@@ -169,9 +171,7 @@ def test_approve_moves_patch_into_export_dir(tmp_path: Path) -> None:
     )
     flag_for_review(flagged_dir, review, "the original diff\n")
     export_dir = tmp_path / "export"
-    resolve_review(
-        flagged_dir, export_dir, tmp_path / "state.json", "abc123def456", "approve"
-    )
+    resolve_review(flagged_dir, export_dir, tmp_path / "state.json", "abc123def456", "approve")
     exported = list(export_dir.glob("*.patch"))
     assert len(exported) == 1
     assert exported[0].read_text(encoding="utf-8") == "the original diff\n"

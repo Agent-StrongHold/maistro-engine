@@ -100,8 +100,7 @@ class SandboxedShell:
             Path(path_str).resolve().relative_to(self._root)
         except ValueError:
             raise SandboxEscapeError(
-                f"Path escape detected: {path_str!r} in {token!r} "
-                f"escapes sandbox root {self._root}"
+                f"Path escape detected: {path_str!r} in {token!r} escapes sandbox root {self._root}"
             ) from None
 
     def _check_paths(self, tokens: list[str]) -> None:

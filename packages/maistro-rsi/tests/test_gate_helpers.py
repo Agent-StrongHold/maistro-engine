@@ -49,7 +49,10 @@ def test_syntax_check_skips_missing_files(tmp_path: Path) -> None:
 
 def test_parse_test_roots_extracts_paths_and_drops_flags() -> None:
     args = "packages/maistro-evolve/tests packages/maistro-rsi/tests --ignore=x/y -q"
-    assert _parse_test_roots(args) == ["packages/maistro-evolve/tests", "packages/maistro-rsi/tests"]
+    assert _parse_test_roots(args) == [
+        "packages/maistro-evolve/tests",
+        "packages/maistro-rsi/tests",
+    ]
 
 
 def test_parse_test_roots_empty_string() -> None:
@@ -63,9 +66,7 @@ def test_uncollectable_flags_file_outside_configured_roots(tmp_path: Path) -> No
     src_test.parent.mkdir(parents=True)
     src_test.write_text("def test_x():\n    assert True\n", encoding="utf-8")
     valid_roots = ["packages/demo/tests"]
-    reasons = _uncollectable_tests(
-        tmp_path, ["packages/demo/src/demo/test_x.py"], valid_roots
-    )
+    reasons = _uncollectable_tests(tmp_path, ["packages/demo/src/demo/test_x.py"], valid_roots)
     assert len(reasons) == 1
     assert "outside configured test roots" in reasons[0]
 
@@ -89,9 +90,7 @@ def test_uncollectable_flags_syntax_broken_test_even_inside_roots(tmp_path: Path
 def test_uncollectable_passes_a_real_collectable_test(tmp_path: Path) -> None:
     tests_dir = tmp_path / "packages" / "demo" / "tests"
     tests_dir.mkdir(parents=True)
-    (tests_dir / "test_ok.py").write_text(
-        "def test_ok():\n    assert True\n", encoding="utf-8"
-    )
+    (tests_dir / "test_ok.py").write_text("def test_ok():\n    assert True\n", encoding="utf-8")
     reasons = _uncollectable_tests(
         tmp_path, ["packages/demo/tests/test_ok.py"], ["packages/demo/tests"]
     )

@@ -39,7 +39,9 @@ class ImprovementKind(StrEnum):
     BUG_FIX = "bug_fix"  # code violates its contract — turn red→green
     NEW_TEST = "new_test"  # evidence-based test for untested behavior
     ASSERTION = "assertion"  # strengthen a test that asserts too little
-    SPEC = "spec"  # implement a specific UNIMPLEMENTED acceptance criterion (finish contracted work)
+    SPEC = (
+        "spec"  # implement a specific UNIMPLEMENTED acceptance criterion (finish contracted work)
+    )
     BACKLOG = "backlog"  # draft a NEW spec for a genuinely good idea — the disciplined alternative to hacking in an unspecced feature
     FEATURE = "feature"  # a genuinely better capability/API/design (v2.0)
     EDGE_CASE = "edge_case"  # a boundary/error path with no test

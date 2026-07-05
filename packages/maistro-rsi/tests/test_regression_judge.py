@@ -33,9 +33,7 @@ def test_parses_valid_json_verdict() -> None:
 
 
 def test_clamps_out_of_range_score() -> None:
-    score, _ = judge_regression(
-        "diff", "x.py", _stub('{"score": 5.0, "rationale": "whatever"}')
-    )
+    score, _ = judge_regression("diff", "x.py", _stub('{"score": 5.0, "rationale": "whatever"}'))
     assert score == 1.0
 
 

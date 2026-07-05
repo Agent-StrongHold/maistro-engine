@@ -82,9 +82,7 @@ def test_legitimate_relative_commands_are_allowed(
     shell._check_paths(shlex.split(cmd))  # must not raise
 
 
-def test_absolute_path_inside_workspace_is_allowed(
-    shell: SandboxedShell, tmp_path: Path
-) -> None:
+def test_absolute_path_inside_workspace_is_allowed(shell: SandboxedShell, tmp_path: Path) -> None:
     # An absolute path that genuinely resolves *inside* the root is fine.
     inside = str(tmp_path / "src" / "f.py")
     shell._check_paths(["cat", inside])  # must not raise

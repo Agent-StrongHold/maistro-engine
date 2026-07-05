@@ -242,16 +242,15 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
         GateResult(
             "test_exercises_change",
             not inp.vacuous_test_reasons,
-            "; ".join(inp.vacuous_test_reasons) or "changed tests depend on the accompanying change",
+            "; ".join(inp.vacuous_test_reasons)
+            or "changed tests depend on the accompanying change",
         ),
         *inp.lint_gates,
     ]
     if inp.regression_judge is not None:
         score, rationale = inp.regression_judge
         gates.append(
-            GateResult(
-                "no_flagged_regression", score >= 0.4, rationale, detail={"score": score}
-            )
+            GateResult("no_flagged_regression", score >= 0.4, rationale, detail={"score": score})
         )
     scores: list[SignalScore] = [red_green_signal(inp.tdd, w.red_green)]
     cov_delta = (

@@ -959,9 +959,9 @@ class LocalRsiLoop:
         # tried first, but a chronically-benched model still fails over into
         # the skill-ranked list rather than zeroing the scout for the rest of
         # the run (the exact failure this fallback exists to prevent).
-        candidates = (
-            [self._config.scout_model] if self._config.scout_model else []
-        ) + [m for m in fallback_order if m != self._config.scout_model]
+        candidates = ([self._config.scout_model] if self._config.scout_model else []) + [
+            m for m in fallback_order if m != self._config.scout_model
+        ]
         items: list[Any] = []
         scout_used: str | None = None
         for model in candidates:
