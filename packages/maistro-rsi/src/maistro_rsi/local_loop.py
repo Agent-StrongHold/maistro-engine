@@ -570,6 +570,10 @@ class _VariantResult:
     files_touched: int = 0
     changed_files: list[str] = field(default_factory=list)
     note: str = ""
+    # True when the attempt raised (bad apply, git failure, fitness crash) — kept
+    # distinct from a genuine no-op so the cycle summary never reports a crashed
+    # variant as "agent made no change".
+    errored: bool = False
     # Which shortlist slot this variant attempted (same slot ⇒ same objective ⇒
     # a fair Elo battle in live-evolution mode), which model ran it, and — when
     # the competitor was projected from a genome — which genome authored it.
@@ -1256,13 +1260,36 @@ class LocalRsiLoop:
                 r.accepted = r.tests_passed
                 r.note = "" if r.tests_passed else "test command failed"
         except Exception as exc:
-            r.note = f"variant errored: {exc}"
+            r.errored = True
             if _is_transient_provider_error(str(exc)):
                 # Capacity, not fitness: bench the model so it sits out a few
                 # cycles, and mark the result transient so live evolution folds
-                # NO sample for this genome (sitting out is neutral).
+                # NO sample for this genome (sitting out is neutral). Expected
+                # under load, so info-level and no traceback.
                 r.note = f"transient: {exc}"
                 self._bench_model(competitor.model, index, error_text=str(exc))
+                logger.info(
+                    "rsi_local_variant_transient",
+                    index=index,
+                    competitor=competitor.label,
+                    model=competitor.model or self._config.model,
+                    error=str(exc),
+                )
+            else:
+                # A non-transient variant fault (bad apply, git failure, fitness
+                # crash) is a REAL error, not the agent quietly declining to
+                # change anything. Surface it with a traceback so it can never
+                # masquerade as "agent made no change" in the cycle summary.
+                r.note = f"variant errored: {exc}"
+                logger.warning(
+                    "rsi_local_variant_error",
+                    index=index,
+                    competitor=competitor.label,
+                    error=str(exc),
+                    exc_info=True,
+                )
+        # note is logged unconditionally: an errored/transient variant otherwise
+        # looks identical to a genuine no-op (both changed=False, accepted=False).
         logger.info(
             "rsi_local_variant",
             index=index,
@@ -1270,6 +1297,8 @@ class LocalRsiLoop:
             accepted=r.accepted,
             composite=r.composite,
             changed=r.changed,
+            errored=r.errored,
+            note=r.note,
         )
         return r
 
@@ -1321,10 +1350,26 @@ class LocalRsiLoop:
             )
             if not accepted:
                 changed_any = any(r.changed for r in variants)
-                note = next(
-                    (r.note for r in variants if r.changed and r.note),
-                    "agent made no change" if not changed_any else "rejected by fitness",
-                )
+                errored = [r for r in variants if r.errored]
+                if changed_any:
+                    # A variant produced a diff but no variant was accepted.
+                    note = next(
+                        (r.note for r in variants if r.changed and r.note),
+                        "rejected by fitness",
+                    )
+                elif errored:
+                    # Every variant either crashed or no-op'd, and at least one
+                    # crashed — report the fault, not a misleading "no change".
+                    note = f"all {len(variants)} variant(s) failed; first error: {errored[0].note}"
+                    logger.warning(
+                        "rsi_local_cycle_all_variants_errored",
+                        index=index,
+                        errored=len(errored),
+                        total=len(variants),
+                        first_error=errored[0].note,
+                    )
+                else:
+                    note = "agent made no change"
                 return CycleOutcome(
                     index,
                     changed=changed_any,

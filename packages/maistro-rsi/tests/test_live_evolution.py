@@ -126,6 +126,27 @@ def test_transient_provider_error_benches_model_and_folds_nothing(tmp_path: Path
     assert loop._reliability.get("testmodel", 1.0) < 1.0
 
 
+def test_non_transient_variant_error_is_surfaced_not_hidden_as_no_change(
+    tmp_path: Path,
+) -> None:
+    random.seed(17)
+
+    async def boom(sandbox: MicroVmSandbox, workspace: str) -> None:
+        # A real fault (not a 429) — a bad apply, disk error, git failure, etc.
+        raise RuntimeError("apply exploded: something broke")
+
+    config = _live_config(tmp_path)
+    loop = LocalRsiLoop(config, apply_patch=boom)
+    result = loop.run()
+
+    # The run survives, but a crashed variant must NEVER be reported as the
+    # agent quietly declining to change anything — the fault has to be visible.
+    assert result.promotions == 0
+    notes = [c.note for c in result.cycles]
+    assert all("no change" not in n for n in notes), notes
+    assert all(("failed" in n or "errored" in n) for n in notes), notes
+
+
 def test_parse_retry_after_all_documented_formats() -> None:
     # Formats catalogued in C:\maistro\MODEL-LIMITS.md.
     assert _parse_retry_after_seconds("Please try again in 7.664s") == 7.664
