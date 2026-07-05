@@ -36,6 +36,15 @@ _DEFAULT_TIMEOUT = 30  # seconds
 # $(), backticks, semicolons, pipes, redirects, or newline smuggling.
 _INJECTION_CHARS = re.compile(r"[;|&<>`$\\\n\r]|\$\(|\}\{")
 
+# An absolute POSIX path embedded anywhere in a token, where the leading "/"
+# is NOT preceded by a path-word char or dot. This distinguishes an absolute
+# path (``--file=/etc/passwd``, ``open('/run/reports/x')``, bare ``/etc/x``)
+# from an innocuous relative one (``src/f.py``, ``tests/``), whose "/" always
+# follows a word char. Catches flag-glued long forms and interpreter string
+# arguments; the short-glued form (``-f/etc/passwd``) is handled separately
+# because its "/" follows the flag letter.
+_EMBEDDED_ABS = re.compile(r"(?<![\w.])(/[^\s'\";,)]+)")
+
 _BLOCKED_PATTERNS = (
     "sudo",
     "su ",
@@ -85,16 +94,46 @@ class SandboxedShell:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
 
+    def _assert_inside(self, path_str: str, *, token: str) -> None:
+        """Raise unless ``path_str`` resolves inside the sandbox root."""
+        try:
+            Path(path_str).resolve().relative_to(self._root)
+        except ValueError:
+            raise SandboxEscapeError(
+                f"Path escape detected: {path_str!r} in {token!r} "
+                f"escapes sandbox root {self._root}"
+            ) from None
+
     def _check_paths(self, tokens: list[str]) -> None:
-        """Raise SandboxEscapeError if any token resolves outside the root."""
+        """Raise SandboxEscapeError if any token references a path outside root.
+
+        Token inspection catches every *literal* absolute path — bare
+        (``/etc/passwd``), flag-glued (``--file=/etc/x``, ``-f/etc/x``), and
+        embedded in an interpreter string (``python -c "open('/run/x')"``). It
+        cannot see a path an interpreter *builds* at runtime
+        (``open('/ru'+'n/x')``); the report dir's real guarantee is the OS
+        filesystem boundary (non-root agent user + a 0700 report dir). This is
+        the defense-in-depth layer that stops the realistic cases.
+        """
         for token in tokens:
-            candidate = self._root / token
+            # (1) The whole token as a path relative to root — catches a bare
+            #     absolute token and ../ traversal (absolute RHS replaces root,
+            #     then relative_to raises).
             try:
-                candidate.resolve().relative_to(self._root)
+                (self._root / token).resolve().relative_to(self._root)
             except ValueError:
                 raise SandboxEscapeError(
                     f"Path escape detected: {token!r} escapes sandbox root {self._root}"
                 ) from None
+            # (2) Any absolute path embedded in the token: flag-glued long form
+            #     (--out=/etc/x) or inside an interpreter string.
+            for match in _EMBEDDED_ABS.finditer(token):
+                self._assert_inside(match.group(1), token=token)
+            # (3) Short-glued flag value (-f/etc/x, -I/usr/include): the "/"
+            #     follows the flag letter, so (2)'s lookbehind misses it. Any
+            #     flag token carrying a "/" gets its path tail validated.
+            if token.startswith("-") and "/" in token:
+                self._assert_inside(token[token.index("/") :], token=token)
 
     def run(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
         # 1. Reject shell-injection metacharacters before anything else.

@@ -135,9 +135,29 @@ fi
 # Mount the reports dir RW at /run/reports — OUTSIDE /workspace, so checkpoint
 # reports + the rolling export leave the container while staying invisible to the
 # workspace-rooted agent tools.
+# Resource + capability guardrails. This wrapper is the PRIMARY isolation tier
+# for unattended runs on Windows (docker sbx's microVM path is unstable on this
+# host — see the sbx-windows-blocked note); it must be more than "just a
+# container." Caps are generous vs the measured ≈800MB/2cpu sequential peak —
+# a runaway ceiling, not a squeeze. --cap-drop=ALL + no-new-privileges strip
+# ambient privilege the agent's subprocesses never need (git/uv/pytest run
+# fine without caps); --pids-limit bounds fork storms. Overridable via env for
+# a beefier host. NOTE: the report-dir-hidden-from-agent property is enforced
+# in depth by the run_command path guard (SandboxedShell._check_paths); the
+# stronger OS backstop (non-root USER in the image + 0700 report dir) is the
+# companion Dockerfile change.
+MEM_LIMIT="${MAISTRO_RSI_MEMORY:-6g}"
+CPU_LIMIT="${MAISTRO_RSI_CPUS:-4}"
+PIDS_LIMIT="${MAISTRO_RSI_PIDS:-1024}"
+
 exec docker run --rm \
     --network "$NETWORK" \
     --add-host=host.docker.internal:host-gateway \
+    --memory="$MEM_LIMIT" \
+    --cpus="$CPU_LIMIT" \
+    --pids-limit="$PIDS_LIMIT" \
+    --security-opt=no-new-privileges \
+    --cap-drop=ALL \
     -v "${ENV_MOUNT}:/run/gateway.env:ro" \
     -v "${REPORT_MOUNT}:/run/reports" \
     -e "RSI_GOAL=$EVOLVE_GOAL" \
