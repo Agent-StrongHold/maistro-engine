@@ -70,6 +70,11 @@ def test_embedded_proc_environ_is_blocked(shell: SandboxedShell) -> None:
         "cat report.json",
         "git diff",
         "ls src/maistro",
+        # Scoped test/coverage runs — relative paths in flag values, glued or
+        # separated, must NOT be mistaken for absolute-path escapes.
+        "pytest --ignore=packages/maistro-evolve/tests/benchmarks",
+        "coverage run --source=packages/app -m pytest",
+        "grep -Isrc/maistro pattern",
     ],
 )
 def test_legitimate_relative_commands_are_allowed(

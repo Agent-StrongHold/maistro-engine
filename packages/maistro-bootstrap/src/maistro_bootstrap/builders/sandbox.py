@@ -128,11 +128,16 @@ class SandboxedShell:
             #     (--out=/etc/x) or inside an interpreter string.
             for match in _EMBEDDED_ABS.finditer(token):
                 self._assert_inside(match.group(1), token=token)
-            # (3) Short-glued flag value (-f/etc/x, -I/usr/include): the "/"
-            #     follows the flag letter, so (2)'s lookbehind misses it. Any
-            #     flag token carrying a "/" gets its path tail validated.
-            if token.startswith("-") and "/" in token:
-                self._assert_inside(token[token.index("/") :], token=token)
+            # (3) Short-glued flag value where an absolute path is glued
+            #     directly onto a one/two-letter short flag (-f/etc/passwd,
+            #     -I/usr/include): the "/" follows the flag letter, so (2)'s
+            #     lookbehind misses it. The "/" must come RIGHT AFTER the flag
+            #     letters, so long options (--ignore=packages/foo) and relative
+            #     short values (-Isrc/foo) — both legitimate scoped paths — are
+            #     left alone; only a genuinely absolute glued value is checked.
+            short_glue = re.match(r"-[A-Za-z]{1,2}(/[^\s'\";,)]+)", token)
+            if short_glue:
+                self._assert_inside(short_glue.group(1), token=token)
 
     def run(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
         # 1. Reject shell-injection metacharacters before anything else.
