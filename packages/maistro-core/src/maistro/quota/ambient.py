@@ -1,25 +1,25 @@
 """Ambient reconciliation signals — parsed for free from a response already
 in hand, no extra network call.
 
-**`LiteLLMHeaderParser` is the one that matters for this platform's actual
-traffic.** Every real call goes through the shared LiteLLM proxy
-(`maistro_llm_call`) — never a provider directly — and LiteLLM standardizes
-whichever backend served the call into its own `x-ratelimit-remaining-
-{requests,tokens}` headers, the same two header names regardless of whether
-Groq, Cerebras, SambaNova, Mistral, or Gemini answered. (It also preserves the
-untouched originals under an `llm_provider-` prefix, and has a known gap where
-these headers are dropped on streaming responses — both are fine to be silent
-about here, since an absent header just means an empty list, not a crash.)
+**Correction (verified against LiteLLM's own docs):** the *unprefixed*
+`x-ratelimit-remaining-{requests,tokens}` headers are only conditionally the
+real upstream provider's signal. Per LiteLLM: if the calling API key has any
+rate limit configured *in LiteLLM itself*, these headers report LiteLLM's own
+internal budget/tier tracking for that key — a number this codebase has no
+way to know is (or isn't) kept in sync with the real provider's actual
+capacity. Only when the key has *no* LiteLLM-side limit configured do they
+fall back to the (still-normalized) backend signal. That's not something
+`ambient.py` can detect from a response alone, so it isn't a safe default.
 
-The five provider-specific parsers below (`GroqHeaderParser` etc.) document
-each provider's *raw, direct* API header conventions — correct only for a
-hypothetical future call path that talks to a provider without going through
-LiteLLM. They are not what `maistro_llm_call` traffic actually carries today;
-don't wire them into `build_quota_recording_hook` for this platform's real
-usage. Groq/Cerebras happen to already match LiteLLM's own convention by
-coincidence (both use the `x-ratelimit-remaining-{requests,tokens}` shape),
-but Mistral/Gemini/SambaNova's raw conventions differ from LiteLLM's
-normalized one and would silently look for the wrong header if used here.
+**The `llm_provider-`-prefixed headers are unconditionally reliable** — per
+LiteLLM's docs, these are the original upstream response headers, passed
+through *unmodified*. That also means they are **not** normalized into one
+shape: each provider's own raw, native header names survive under the
+prefix. So the five provider-specific parsers below (`GroqHeaderParser`
+etc.) — reading `llm_provider-{that provider's own header name}` by default
+via `via_litellm=True` — are the right tool for `maistro_llm_call` traffic,
+not a hypothetical unused path. Pass `via_litellm=False` only for a call path
+that talks to a provider directly, bypassing LiteLLM's prefix entirely.
 
 A response can carry more than one simultaneous dimension (both requests and
 tokens remaining at once), so `parse` returns a list, not a single snapshot.
@@ -27,10 +27,7 @@ tokens remaining at once), so `parse` returns a list, not a single snapshot.
 Cohere is deliberately not here at all: its response body carries
 `meta.billed_units` — what *this call* cost, not what's *remaining* — which
 is a usage report to record directly (see `recorder.py`), not a balance to
-reconcile against. It's also Cohere-specific JSON shape that LiteLLM's
-OpenAI-compatible normalization has no obligation to preserve, so the
-standard `usage` object (always present, see `recorder.extract_usage`) is
-the reliable signal for Cohere calls too, not `billed_units`.
+reconcile against.
 """
 
 from __future__ import annotations
@@ -43,6 +40,12 @@ import httpx
 from maistro.quota.rate_profile import LimitUnit
 from maistro.quota.reconciliation import ProviderQuotaSnapshot
 
+# Per LiteLLM's docs: the original, unmodified upstream response headers are
+# passed through under this prefix — unconditionally reliable, unlike the
+# unprefixed x-ratelimit-* headers (which reflect LiteLLM's own configured
+# rate-limit tier for the calling key whenever one is set).
+LLM_PROVIDER_HEADER_PREFIX = "llm_provider-"
+
 
 @runtime_checkable
 class AmbientSignalParser(Protocol):
@@ -52,26 +55,6 @@ class AmbientSignalParser(Protocol):
     signal, since ambient parsing is opportunistic by nature."""
 
     def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]: ...
-
-
-class LiteLLMHeaderParser:
-    """The correct ambient parser for `maistro_llm_call` traffic: LiteLLM's
-    own standardized `x-ratelimit-remaining-{requests,tokens}` headers,
-    populated by its `parallel_request_limiter` regardless of which backend
-    provider actually served the call. Use this one, not a provider-specific
-    parser, for anything that goes through this platform's shared gateway.
-    """
-
-    def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]:
-        snapshots = []
-        for header, unit in (
-            ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
-            ("x-ratelimit-remaining-tokens", LimitUnit.TOTAL_TOKENS),
-        ):
-            snap = _snapshot_from_header(scope_key, response, header, unit)
-            if snap is not None:
-                snapshots.append(snap)
-        return snapshots
 
 
 def _snapshot_from_header(
@@ -92,44 +75,73 @@ def _snapshot_from_header(
     )
 
 
+def _parse_pairs(
+    scope_key: str,
+    response: httpx.Response,
+    prefix: str,
+    header_units: tuple[tuple[str, LimitUnit], ...],
+) -> list[ProviderQuotaSnapshot]:
+    snapshots = []
+    for header, unit in header_units:
+        snap = _snapshot_from_header(scope_key, response, prefix + header, unit)
+        if snap is not None:
+            snapshots.append(snap)
+    return snapshots
+
+
 class GroqHeaderParser:
     """Per Groq's own docs: `x-ratelimit-remaining-requests` is always RPD
     (not RPM, despite the generic-looking name); `x-ratelimit-remaining-tokens`
-    is always TPM."""
+    is always TPM.
+
+    `via_litellm=True` (default) reads these under LiteLLM's `llm_provider-`
+    passthrough prefix — the correct choice for `maistro_llm_call` traffic.
+    Set `via_litellm=False` only for a hypothetical path calling Groq directly.
+    """
+
+    _HEADERS: tuple[tuple[str, LimitUnit], ...] = (
+        ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
+        ("x-ratelimit-remaining-tokens", LimitUnit.TOTAL_TOKENS),
+    )
+
+    def __init__(self, *, via_litellm: bool = True) -> None:
+        self._prefix = LLM_PROVIDER_HEADER_PREFIX if via_litellm else ""
 
     def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]:
-        snapshots = []
-        for header, unit in (
-            ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
-            ("x-ratelimit-remaining-tokens", LimitUnit.TOTAL_TOKENS),
-        ):
-            snap = _snapshot_from_header(scope_key, response, header, unit)
-            if snap is not None:
-                snapshots.append(snap)
-        return snapshots
+        return _parse_pairs(scope_key, response, self._prefix, self._HEADERS)
 
 
 class SambaNovaHeaderParser:
     """Per-minute request headroom only — SambaNova's per-model RPD/TPD
-    credit-style limits aren't exposed in response headers."""
+    credit-style limits aren't exposed in response headers. See
+    `GroqHeaderParser` for the `via_litellm` prefix rationale.
+    """
+
+    _HEADERS: tuple[tuple[str, LimitUnit], ...] = (
+        ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
+    )
+
+    def __init__(self, *, via_litellm: bool = True) -> None:
+        self._prefix = LLM_PROVIDER_HEADER_PREFIX if via_litellm else ""
 
     def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]:
-        snap = _snapshot_from_header(
-            scope_key, response, "x-ratelimit-remaining-requests", LimitUnit.REQUESTS
-        )
-        return [snap] if snap is not None else []
+        return _parse_pairs(scope_key, response, self._prefix, self._HEADERS)
 
 
 class MistralHeaderParser:
     """A single generic `X-RateLimit-Remaining` header — Mistral's docs don't
     split it by requests vs. tokens, so this is read as REQUESTS (the more
-    literal reading of an undifferentiated "rate limit" figure)."""
+    literal reading of an undifferentiated "rate limit" figure). See
+    `GroqHeaderParser` for the `via_litellm` prefix rationale.
+    """
+
+    _HEADERS: tuple[tuple[str, LimitUnit], ...] = (("X-RateLimit-Remaining", LimitUnit.REQUESTS),)
+
+    def __init__(self, *, via_litellm: bool = True) -> None:
+        self._prefix = LLM_PROVIDER_HEADER_PREFIX if via_litellm else ""
 
     def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]:
-        snap = _snapshot_from_header(
-            scope_key, response, "X-RateLimit-Remaining", LimitUnit.REQUESTS
-        )
-        return [snap] if snap is not None else []
+        return _parse_pairs(scope_key, response, self._prefix, self._HEADERS)
 
 
 class CerebrasHeaderParser:
@@ -137,20 +149,20 @@ class CerebrasHeaderParser:
     name them precisely in what's publicly documented — this assumes the same
     `x-ratelimit-remaining-{requests,tokens}` convention Groq/OpenAI-compatible
     backends use, since Cerebras's API is itself OpenAI-compatible. Flagged as
-    an assumption to verify against real traffic, not confirmed from official
-    header-name docs the way Groq/Gemini's parsers are.
+    an assumption to verify against real traffic. See `GroqHeaderParser` for
+    the `via_litellm` prefix rationale.
     """
 
+    _HEADERS: tuple[tuple[str, LimitUnit], ...] = (
+        ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
+        ("x-ratelimit-remaining-tokens", LimitUnit.TOTAL_TOKENS),
+    )
+
+    def __init__(self, *, via_litellm: bool = True) -> None:
+        self._prefix = LLM_PROVIDER_HEADER_PREFIX if via_litellm else ""
+
     def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]:
-        snapshots = []
-        for header, unit in (
-            ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
-            ("x-ratelimit-remaining-tokens", LimitUnit.TOTAL_TOKENS),
-        ):
-            snap = _snapshot_from_header(scope_key, response, header, unit)
-            if snap is not None:
-                snapshots.append(snap)
-        return snapshots
+        return _parse_pairs(scope_key, response, self._prefix, self._HEADERS)
 
 
 class GeminiHeaderParser:
@@ -159,10 +171,37 @@ class GeminiHeaderParser:
     TPM and (for image models) IPM dimension this header doesn't distinguish,
     so a caller relying solely on this signal is only getting the RPM/RPD
     picture, not the full multi-dimension one `rate_profile.py` can model.
+    See `GroqHeaderParser` for the `via_litellm` prefix rationale.
+    """
+
+    _HEADERS: tuple[tuple[str, LimitUnit], ...] = (("x-ratelimit-remaining", LimitUnit.REQUESTS),)
+
+    def __init__(self, *, via_litellm: bool = True) -> None:
+        self._prefix = LLM_PROVIDER_HEADER_PREFIX if via_litellm else ""
+
+    def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]:
+        return _parse_pairs(scope_key, response, self._prefix, self._HEADERS)
+
+
+class LiteLLMOwnBudgetHeaderParser:
+    """Reads LiteLLM's *own* internal rate-limit-tier headers (unprefixed
+    `x-ratelimit-remaining-{requests,tokens}`) — its configured budget for the
+    calling API key/team, not the upstream provider's real capacity. Useful
+    only if you specifically want to track the proxy-side budget itself
+    (e.g. to alert when a team is approaching its configured allowance);
+    do not use this to answer "how much room does the provider actually have
+    left" — that's what the `via_litellm=True` provider-specific parsers are
+    for, since LiteLLM's own tier and the real provider quota are tracked
+    completely independently and nothing keeps them in sync automatically.
     """
 
     def parse(self, scope_key: str, response: httpx.Response) -> list[ProviderQuotaSnapshot]:
-        snap = _snapshot_from_header(
-            scope_key, response, "x-ratelimit-remaining", LimitUnit.REQUESTS
+        return _parse_pairs(
+            scope_key,
+            response,
+            "",
+            (
+                ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
+                ("x-ratelimit-remaining-tokens", LimitUnit.TOTAL_TOKENS),
+            ),
         )
-        return [snap] if snap is not None else []

@@ -111,15 +111,17 @@ def build_quota_recording_hook(
     `(response_json, response) -> None` callback site) that wires both
     recording paths in one line:
 
-        hook = build_quota_recording_hook(log, "cerebras:qwen3-235b", ambient_parser=LiteLLMHeaderParser())
+        hook = build_quota_recording_hook(log, "cerebras:qwen3-235b", ambient_parser=CerebrasHeaderParser())
         await maistro_llm_call(messages, model="cerebras-qwen-3-235b", on_response=hook)
 
-    Use `LiteLLMHeaderParser` (`ambient.py`) here for any call routed through
-    `maistro_llm_call` — that's the shared gateway, and LiteLLM standardizes
-    every backend's headers into its own convention regardless of which of
-    the seven providers actually served the call. The provider-specific
-    parsers (`GroqHeaderParser` etc.) are for a hypothetical future path that
-    talks to a provider directly, not this one.
+    Pick the provider-specific parser matching whichever backend the model
+    routes to (`ambient.py`), with its default `via_litellm=True` — LiteLLM's
+    own *unprefixed* `x-ratelimit-*` headers reflect its internal budget
+    tracking for the calling key whenever one is configured, not the real
+    provider's capacity, so the reliable signal is always the `llm_provider-`
+    -prefixed passthrough these parsers read by default. There's no single
+    generic parser that works for every provider here, since the prefixed
+    headers preserve each backend's own raw, unnormalized header names.
 
     `registry` defaults to a fresh one per hook — pass a shared instance if
     several hooks (e.g. one per model) should share ambient reconciliation

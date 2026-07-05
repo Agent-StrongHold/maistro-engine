@@ -64,7 +64,10 @@ def test_record_ambient_signals_reconciles_parsed_snapshots() -> None:
     log = InMemoryUsageLog()
     response = _response(
         {"choices": []},
-        headers={"x-ratelimit-remaining-requests": "950", "x-ratelimit-remaining-tokens": "4500"},
+        headers={
+            "llm_provider-x-ratelimit-remaining-requests": "950",
+            "llm_provider-x-ratelimit-remaining-tokens": "4500",
+        },
     )
 
     outcomes = record_ambient_signals(registry, log, "groq:kimi-k2", response, GroqHeaderParser())
@@ -108,7 +111,7 @@ def test_build_quota_recording_hook_also_reconciles_ambient_signal() -> None:
     hook = build_quota_recording_hook(log, "groq:kimi-k2", ambient_parser=GroqHeaderParser())
     response = _response(
         {"usage": {"prompt_tokens": 10, "completion_tokens": 3}},
-        headers={"x-ratelimit-remaining-requests": "999"},
+        headers={"llm_provider-x-ratelimit-remaining-requests": "999"},
     )
 
     hook(response.json(), response)  # should not raise; records usage + ambient signal
@@ -125,7 +128,7 @@ def test_build_quota_recording_hook_shares_registry_across_hooks() -> None:
     hook_b = build_quota_recording_hook(
         log, "groq:kimi-k2", ambient_parser=GroqHeaderParser(), registry=shared_registry
     )
-    response = _response({}, headers={"x-ratelimit-remaining-requests": "500"})
+    response = _response({}, headers={"llm_provider-x-ratelimit-remaining-requests": "500"})
 
     hook_a(response.json(), response)
     hook_b(response.json(), response)
