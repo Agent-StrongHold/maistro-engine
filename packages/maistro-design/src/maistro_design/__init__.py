@@ -15,6 +15,7 @@ from maistro_design.protocols import (
     SVGRenderer,
     TypographyRenderer,
 )
+from maistro_design.providers import OpenDesignConfig, OpenDesignProvider
 from maistro_design.renderers import (
     NATIVE_SLOTS,
     RendererDiscovery,
@@ -95,6 +96,8 @@ __all__ = [
     "InMemoryTrustBanishList",
     "InMemoryTrustReviewQueue",
     "IncompatibleDesignSystemError",
+    "OpenDesignConfig",
+    "OpenDesignProvider",
     "OutputFormat",
     "PgDesignProjectStore",
     "RenderProvider",
