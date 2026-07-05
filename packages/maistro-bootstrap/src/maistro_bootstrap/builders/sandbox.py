@@ -36,14 +36,23 @@ _DEFAULT_TIMEOUT = 30  # seconds
 # $(), backticks, semicolons, pipes, redirects, or newline smuggling.
 _INJECTION_CHARS = re.compile(r"[;|&<>`$\\\n\r]|\$\(|\}\{")
 
+# Approved network URLs (an okayed ``curl https://host/p`` / ``pip --index-url
+# https://…``) are blanked out before the absolute-path scan so their scheme
+# ``//`` isn't mistaken for a filesystem escape. Only network schemes are
+# stripped — ``file://`` is deliberately left in, so ``file:///run/reports`` is
+# still caught below.
+_URL_SCHEME = re.compile(r"\b(?:https?|ftp|ftps|wss?)://\S*", re.IGNORECASE)
+
 # An absolute POSIX path embedded anywhere in a token, where the leading "/"
 # is NOT preceded by a path-word char or dot. This distinguishes an absolute
-# path (``--file=/etc/passwd``, ``open('/run/reports/x')``, bare ``/etc/x``)
-# from an innocuous relative one (``src/f.py``, ``tests/``), whose "/" always
-# follows a word char. Catches flag-glued long forms and interpreter string
-# arguments; the short-glued form (``-f/etc/passwd``) is handled separately
-# because its "/" follows the flag letter.
-_EMBEDDED_ABS = re.compile(r"(?<![\w.])(/[^\s'\";,)]+)")
+# path (``--file=/etc/passwd``, ``open('/run/reports/x')``, the bare root
+# ``/``, ``file:///etc/x``) from an innocuous relative one (``src/f.py``,
+# ``tests/``), whose "/" always follows a word char. The trailing ``*`` (not
+# ``+``) matches the bare root ``/`` too — e.g. ``os.chdir('/')``. Catches
+# flag-glued long forms and interpreter string arguments; short-flag clusters
+# (``-f/etc/x``, ``-RFf/etc/x``) follow the flag letters so they're handled
+# separately below.
+_EMBEDDED_ABS = re.compile(r"(?<![\w.])(/[^\s'\";,)]*)")
 
 _BLOCKED_PATTERNS = (
     "sudo",
@@ -115,6 +124,9 @@ class SandboxedShell:
         the defense-in-depth layer that stops the realistic cases.
         """
         for token in tokens:
+            # Blank out approved network URLs first so an okayed
+            # `curl https://host/p` isn't read as a filesystem escape.
+            scannable = _URL_SCHEME.sub(" ", token)
             # (1) The whole token as a path relative to root — catches a bare
             #     absolute token and ../ traversal (absolute RHS replaces root,
             #     then relative_to raises).
@@ -124,20 +136,22 @@ class SandboxedShell:
                 raise SandboxEscapeError(
                     f"Path escape detected: {token!r} escapes sandbox root {self._root}"
                 ) from None
-            # (2) Any absolute path embedded in the token: flag-glued long form
-            #     (--out=/etc/x) or inside an interpreter string.
-            for match in _EMBEDDED_ABS.finditer(token):
+            # (2) Any absolute path embedded in the token: a long-flag value
+            #     (--out=/etc/x), an interpreter string (open('/run/x')), the
+            #     bare root '/', or a file:// path.
+            for match in _EMBEDDED_ABS.finditer(scannable):
                 self._assert_inside(match.group(1), token=token)
-            # (3) Short-glued flag value where an absolute path is glued
-            #     directly onto a one/two-letter short flag (-f/etc/passwd,
-            #     -I/usr/include): the "/" follows the flag letter, so (2)'s
-            #     lookbehind misses it. The "/" must come RIGHT AFTER the flag
-            #     letters, so long options (--ignore=packages/foo) and relative
-            #     short values (-Isrc/foo) — both legitimate scoped paths — are
-            #     left alone; only a genuinely absolute glued value is checked.
-            short_glue = re.match(r"-[A-Za-z]{1,2}(/[^\s'\";,)]+)", token)
-            if short_glue:
-                self._assert_inside(short_glue.group(1), token=token)
+            # (3) A short-flag cluster with a glued path: -f/abs, -I/abs, and
+            #     clustered -RFf/abs — the "/" follows the flag letters, so
+            #     (2)'s lookbehind misses it. Any SINGLE-dash token carrying a
+            #     "/" has its tail (from the first "/") validated. Long options
+            #     (--x=rel/path) are double-dash and handled by (2), so their
+            #     relative values stay allowed. A single-dash flag glued to a
+            #     RELATIVE subpath (-Isrc/foo) is conservatively blocked too —
+            #     it's structurally identical to the -f/abs exfil form and can't
+            #     be told apart by token shape; use a space (-I src/foo).
+            if scannable.startswith("-") and not scannable.startswith("--") and "/" in scannable:
+                self._assert_inside(scannable[scannable.index("/") :], token=token)
 
     def run(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
         # 1. Reject shell-injection metacharacters before anything else.
