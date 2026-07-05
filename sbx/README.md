@@ -29,6 +29,18 @@ The mixin sets everything up; the RSI cycle itself is driven through
 draft PR). The quarantine gate (Warden + adversarial review on sensitive-surface
 diffs) still governs what may leave the sandbox as a PR.
 
+Three subsystems compose to form the workload:
+
+| Subsystem | Role in the cycle |
+|-----------|-------------------|
+| `maistro-core` | shared runtime |
+| `maistro.builders` (in core) | spec → tests → code → review pipeline — **the code-modifying agent** (the cycle's `apply_patch`) |
+| `maistro-evolve` / `maistro-rsi` | the loop + Elo tournament that branches, tests, benchmarks, and scores candidate vs. baseline |
+
+The host agent you pass to `sbx run` (e.g. `opencode`) is optional — it is one
+alternative `apply_patch` driver; the default self-modification agent is the
+maistro builders pipeline.
+
 ### Model credentials
 
 Do **not** paste API keys into the kit. Use `sbx`'s host-side secret proxy:

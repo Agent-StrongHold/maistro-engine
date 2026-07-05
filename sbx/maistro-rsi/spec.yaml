@@ -4,11 +4,14 @@ name: maistro-rsi
 displayName: maistro RSI toolchain
 description: >-
   Runs the maistro recursive-self-improvement (RSI) loop inside a Docker
-  Sandboxes (sbx) microVM. Layers the maistro-core / -evolve / -rsi toolchain,
-  a locked-down network contract, and MAISTRO_RSI_SANDBOX=local onto any agent
-  (e.g. `sbx run opencode --kit ./sbx/maistro-rsi`), so the RSI cycle branches,
-  patches, tests, and benchmarks the mounted codebase without a nested sandbox —
-  sbx is the isolation boundary.
+  Sandboxes (sbx) microVM. maistro-core (runtime), maistro.builders (the
+  spec -> tests -> code -> review pipeline that writes the actual change), and
+  maistro-evolve/-rsi (the loop + Elo tournament) work together: builders is the
+  code-modifying agent, evolve/rsi branches, tests, benchmarks, and scores it.
+  This kit layers that toolchain, a locked-down network contract, and
+  MAISTRO_RSI_SANDBOX=local onto any host agent (e.g.
+  `sbx run opencode --kit ./sbx/maistro-rsi`) so the cycle runs against the
+  mounted codebase without a nested sandbox — sbx is the isolation boundary.
 
 # Deny-by-default egress; only what an RSI cycle legitimately needs to reach.
 # Model-provider endpoints are handled by sbx's host-side secret proxy — add
@@ -47,6 +50,8 @@ commands:
         -e packages/maistro-evolve
         -e packages/maistro-rsi
       user: "0"
+      # maistro-core carries maistro.builders (the code-writing pipeline); evolve
+      # + rsi add the loop and the Elo tournament.
       description: Install the maistro RSI toolchain (editable, from the mounted repo)
   # Runs on every sandbox start; must be idempotent.
   startup:
@@ -60,8 +65,12 @@ commands:
 agentContext: |
   You are running inside a Docker Sandboxes (sbx) microVM as the maistro RSI
   harness. The mounted project is a maistro-engine checkout — the codebase you
-  may branch, patch, test, and benchmark. Guardrails still apply: every self-diff
-  is scanned by Warden and, if it touches sensitive surface (sandbox control,
-  security wiring, the self-branch/runner pipeline), requires an additional
-  adversarial review before it can leave the sandbox as a draft PR. Run the RSI
-  cycle via maistro_rsi; the sandbox backend is already set to `local`.
+  may branch, patch, test, and benchmark. Three subsystems compose here:
+  maistro-core is the runtime; maistro.builders is the spec -> tests -> code ->
+  review pipeline that produces the actual code change (it is the RSI cycle's
+  apply_patch agent); maistro-evolve/-rsi run the loop and the Elo tournament
+  that decides whether a candidate beat the baseline. Guardrails still apply:
+  every self-diff is scanned by Warden and, if it touches sensitive surface
+  (sandbox control, security wiring, the self-branch/runner pipeline), requires
+  an additional adversarial review before it can leave the sandbox as a draft
+  PR. Run the RSI cycle via maistro_rsi; the sandbox backend is already `local`.
