@@ -1,11 +1,19 @@
-"""OpenRouter `QuotaVerifier` — the one provider in the roster with a real,
-standalone, zero-cost balance-check endpoint (`GET /api/v1/key`), no separate
-management credential needed: the same bearer key used for chat completions.
+"""OpenRouter `QuotaVerifier`s — the one provider in the roster with real,
+standalone balance/usage endpoints:
+
+* `OpenRouterKeyVerifier`  — `GET /api/v1/key`, zero-cost, uses the same bearer
+  key as chat completions; reports the remaining dollar-credit balance.
+* `OpenRouterActivityVerifier` — `GET /api/v1/activity`, per-model request /
+  token / cost ground truth. Requires a MANAGEMENT (provisioning) key — the
+  inference key gets 403 here. This is the richer signal: it's how you see
+  which models a run actually consumed, and reconcile free-tier request usage
+  (free models report cost 0), which no response header exposes.
 """
 
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 
 import httpx
 
@@ -13,6 +21,15 @@ from maistro.quota.rate_profile import LimitUnit
 from maistro.quota.reconciliation import ProviderQuotaSnapshot
 
 _DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+# OpenRouter `:free`-model daily request caps (per the docs): keyed to LIFETIME
+# credits PURCHASED, not current balance — >= $10 purchased raises the daily cap
+# and it stays raised as the balance is spent down. Only a NEGATIVE balance
+# disables free models (402). RPM is a flat 20 for all free models.
+FREE_MODEL_RPM = 20
+FREE_MODEL_RPD_NO_CREDITS = 50
+FREE_MODEL_RPD_WITH_CREDITS = 1000
+FREE_MODEL_CREDITS_THRESHOLD_USD = 10.0
 
 
 class OpenRouterKeyVerifier:
@@ -47,6 +64,86 @@ class OpenRouterKeyVerifier:
         return ProviderQuotaSnapshot(
             scope_key=scope_key,
             unit=LimitUnit.CREDITS_USD,
+            remaining=remaining,
+            checked_at=time.time(),
+        )
+
+
+@dataclass(frozen=True)
+class ModelUsage:
+    """One model's usage over the activity window (from `GET /api/v1/activity`).
+    Free models report ``cost_usd == 0.0`` — the only marker distinguishing free
+    from paid usage, since the model id carries no ``:free`` suffix here."""
+
+    model: str
+    requests: int
+    cost_usd: float
+    prompt_tokens: int
+    completion_tokens: int
+
+
+class OpenRouterActivityVerifier:
+    """Ground truth from `GET /api/v1/activity` (per-model request/token/cost).
+
+    Requires a MANAGEMENT/provisioning key — the inference key returns 403.
+    ``verify()`` reports the day's REMAINING free-tier requests (free rows are
+    those with ``cost_usd == 0``), against the applicable free-model daily cap
+    (default: the >=$10-purchased tier of 1000/day; set ``free_rpd_limit`` from
+    the account's tier when it isn't). ``fetch_activity()`` exposes the full
+    per-model breakdown for observability tools.
+    """
+
+    def __init__(
+        self,
+        management_key: str,
+        *,
+        free_rpd_limit: int = FREE_MODEL_RPD_WITH_CREDITS,
+        base_url: str = _DEFAULT_BASE_URL,
+        timeout: float = 15.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._management_key = management_key
+        self._free_rpd_limit = free_rpd_limit
+        self._base_url = base_url.rstrip("/")
+        self._timeout = timeout
+        self._transport = transport  # test seam: inject an httpx.MockTransport
+
+    async def fetch_activity(self) -> list[ModelUsage]:
+        """Per-model usage, aggregated (a model can appear on multiple rows —
+        per date/endpoint), sorted most-requests first."""
+        headers = {"Authorization": f"Bearer {self._management_key}"}
+        async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+            response = await client.get(f"{self._base_url}/activity", headers=headers)
+            response.raise_for_status()
+            rows = response.json().get("data", [])
+
+        agg: dict[str, ModelUsage] = {}
+        for row in rows:
+            model = row.get("model") or row.get("model_permaslug") or "unknown"
+            reqs = int(row.get("requests") or 0)
+            cost = float(row.get("usage") or 0.0)
+            ptok = int(row.get("prompt_tokens") or 0)
+            ctok = int(row.get("completion_tokens") or 0)
+            prev = agg.get(model)
+            if prev is None:
+                agg[model] = ModelUsage(model, reqs, cost, ptok, ctok)
+            else:
+                agg[model] = ModelUsage(
+                    model,
+                    prev.requests + reqs,
+                    prev.cost_usd + cost,
+                    prev.prompt_tokens + ptok,
+                    prev.completion_tokens + ctok,
+                )
+        return sorted(agg.values(), key=lambda u: u.requests, reverse=True)
+
+    async def verify(self, scope_key: str = "openrouter:free-requests") -> ProviderQuotaSnapshot:
+        rows = await self.fetch_activity()
+        free_used = sum(u.requests for u in rows if u.cost_usd == 0.0)
+        remaining = max(0.0, float(self._free_rpd_limit) - free_used)
+        return ProviderQuotaSnapshot(
+            scope_key=scope_key,
+            unit=LimitUnit.REQUESTS,
             remaining=remaining,
             checked_at=time.time(),
         )
