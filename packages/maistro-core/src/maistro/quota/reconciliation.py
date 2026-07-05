@@ -141,7 +141,59 @@ async def maybe_reconcile(
         return None
 
     snapshot = await verifier.verify(scope_key)
+    return _compare_and_update(
+        state,
+        scope_key,
+        log,
+        snapshot,
+        tolerance=tolerance,
+        abs_floor=abs_floor,
+        now=now,
+        update_policy=True,
+    )
 
+
+def reconcile_ambient(
+    state: ReconciliationState,
+    scope_key: str,
+    log: InMemoryUsageLog,
+    snapshot: ProviderQuotaSnapshot,
+    *,
+    tolerance: float = 0.05,
+    abs_floor: float = 1.0,
+    now: float | None = None,
+) -> ReconciliationOutcome:
+    """Reconcile against a snapshot parsed for free from a response header/body
+    already in hand (see `ambient.py`) — no network call, so no throttle: an
+    ambient signal costs nothing extra, so every real call's signal is applied
+    immediately. Unlike `maybe_reconcile`, this never touches
+    `state.policy`'s interval — that interval paces *explicit* verification
+    calls, and there's no such call to pace here.
+    """
+    now = now if now is not None else time.time()
+    return _compare_and_update(
+        state,
+        scope_key,
+        log,
+        snapshot,
+        tolerance=tolerance,
+        abs_floor=abs_floor,
+        now=now,
+        update_policy=False,
+    )
+
+
+def _compare_and_update(
+    state: ReconciliationState,
+    scope_key: str,
+    log: InMemoryUsageLog,
+    snapshot: ProviderQuotaSnapshot,
+    *,
+    tolerance: float,
+    abs_floor: float,
+    now: float,
+    update_policy: bool,
+) -> ReconciliationOutcome:
     if state.last_remaining is None:
         outcome = ReconciliationOutcome(
             matched=None, local_delta=0.0, provider_delta=0.0, snapshot=snapshot
@@ -150,10 +202,11 @@ async def maybe_reconcile(
         local_delta = log.sum_between(scope_key, snapshot.unit, state.last_checked_at, now)
         provider_delta = state.last_remaining - snapshot.remaining
         matched = _within_tolerance(local_delta, provider_delta, tolerance, abs_floor)
-        if matched:
-            state.policy.record_match()
-        else:
-            state.policy.record_mismatch()
+        if update_policy:
+            if matched:
+                state.policy.record_match()
+            else:
+                state.policy.record_mismatch()
         outcome = ReconciliationOutcome(
             matched=matched,
             local_delta=local_delta,

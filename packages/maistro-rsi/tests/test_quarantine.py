@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from maistro.security._types import WardenVerdict
-from maistro_rsi.quarantine import quarantine_scan
+from maistro_rsi.quarantine import _touches_sensitive_surface, quarantine_scan
 
 
 class FakeWarden:
@@ -105,3 +105,57 @@ class TestQuarantineScan:
         verdict = await quarantine_scan("diff", ORDINARY_PATHS, FakeWarden(flagged))
 
         assert verdict.flags == ("secret_leak", "prompt_injection")
+
+
+class TestSensitiveSurfaceCoverage:
+    """The DAG-synthesis substrate (depth cap, synth_dag/spawn_harness nodes) is part of
+    the agent's own containment surface once RSI can propose changes to this repo — a
+    self-diff patching the recursion-depth cap or the harness-dispatch node changes what
+    *future* self-modifications are allowed to get away with, same as sandbox/security code."""
+
+    def test_depth_cap_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(["packages/maistro-core/src/maistro/graph/depth.py"])
+        assert touched
+
+    def test_synth_dag_node_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/nodes/agent_synth_dag.py"]
+        )
+        assert touched
+
+    def test_spawn_harness_node_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/nodes/agent_spawn_harness.py"]
+        )
+        assert touched
+
+    def test_htr_coordinator_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-rsi/src/maistro_rsi/coordinator.py"]
+        )
+        assert touched
+
+    def test_dag_shape_gate_is_sensitive_surface_via_security_prefix(self):
+        """Not new — already covered by the existing "maistro/security/" prefix. Asserted
+        here so a future refactor of that prefix can't silently drop this coverage."""
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/security/dag_shape/evaluator.py"]
+        )
+        assert touched
+
+    def test_ordinary_graph_node_is_not_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/nodes/llm_summarize.py"]
+        )
+        assert touched == []
+
+    @pytest.mark.asyncio
+    async def test_diff_touching_depth_cap_requires_adversarial_review(self):
+        clean = WardenVerdict(clean=True, flags=())
+        verdict = await quarantine_scan(
+            "diff",
+            ["packages/maistro-core/src/maistro/graph/depth.py"],
+            FakeWarden(clean),
+        )
+        assert verdict.requires_adversarial_review is True
+        assert verdict.cleared is False  # no reviewer supplied -> pending, never clears

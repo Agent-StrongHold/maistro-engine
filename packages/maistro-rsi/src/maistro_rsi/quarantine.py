@@ -24,17 +24,23 @@ from typing import Protocol
 from maistro.security.warden.detector import Warden
 
 # Path fragments that mark the agent's own containment surface: sandbox
-# control, security wiring, and the self-modification pipeline itself. A diff
-# touching any of these isn't blocked — it's escalated to require adversarial
-# review on top of Warden + the full test suite, because a change here changes
-# what *future* self-modifications are allowed to get away with.
+# control, security wiring, the self-modification pipeline itself, and the
+# DAG-synthesis substrate that lets an agent spawn further sub-agents/DAGs
+# (the recursion-depth cap and the two node kinds that dispatch through it).
+# A diff touching any of these isn't blocked — it's escalated to require
+# adversarial review on top of Warden + the full test suite, because a change
+# here changes what *future* self-modifications are allowed to get away with.
 SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     "maistro_rsi/sandbox/",
     "maistro_rsi/quarantine.py",
     "maistro_rsi/selfbranch.py",
     "maistro_rsi/runner.py",
+    "maistro_rsi/coordinator.py",
     "maistro/security/",
     "maistro/tools/sandbox/",
+    "maistro/graph/depth.py",
+    "maistro/graph/nodes/agent_synth_dag.py",
+    "maistro/graph/nodes/agent_spawn_harness.py",
 )
 
 
