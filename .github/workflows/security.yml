@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv + Python
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v6
       - name: Setup Python 3.12
         run: uv python install 3.12
 
@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install uv + Python
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v6
       - name: Setup Python 3.12
         run: uv python install 3.12
       - name: uv sync
@@ -196,7 +196,7 @@ jobs:
           path: sbom-*.json
 
       - name: Install uv + Python
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v6
       - name: Setup Python 3.12
         run: uv python install 3.12
 

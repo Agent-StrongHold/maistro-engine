@@ -42,7 +42,7 @@ jobs:
           fetch-depth: 0   # full history for Boy-Scout-Rule diff vs baseline
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v6
         with:
           version: "0.5.x"
 
