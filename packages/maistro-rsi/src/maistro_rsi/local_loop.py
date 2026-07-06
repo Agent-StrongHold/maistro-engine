@@ -154,6 +154,20 @@ _TRANSIENT_ERROR_MARKERS = (
 )
 
 
+# Cross-provider never-idle fallback pool (LocalRsiConfig.emergency_models default):
+# spans cerebras / groq / openrouter-free / openrouter-paid so that when a run's
+# roster provider is fully rate-limited, a DIFFERENT provider is still servable.
+# Ordered most-capable-first; the loop picks the first non-benched one.
+_DEFAULT_EMERGENCY_MODELS = (
+    "or-qwen3-coder",
+    "or-qwen36",
+    "cerebras-glm-4.7",
+    "groq-llama-4-scout-17b",
+    "groq-llama-3.3-70b",
+    "openrouter/openai/gpt-oss-120b:free",
+)
+
+
 def _entry_model(genome: Any) -> str:
     """The model of a genome's entry (fixer) node — the one that authors fixes."""
     nodes = genome.topology.nodes
@@ -527,6 +541,13 @@ class LocalRsiConfig:
     # Roster cap per cycle in live mode (genomes beyond this wait their turn;
     # unscored children get priority so verification never starves).
     roster_size: int = 4
+    # NEVER-IDLE fallback: when EVERY genome's model is benched (whole roster
+    # rate-limited/quota-drained), spawn a fresh genome onto the first SERVABLE
+    # model from this cross-provider pool so the cycle still does real work
+    # instead of no-opping. Empty ⇒ `_DEFAULT_EMERGENCY_MODELS`. A different
+    # provider here (cerebras/groq vs openrouter) is what rescues a run whose
+    # roster provider is fully rate-limited.
+    emergency_models: list[str] = field(default_factory=list)
     # Model bench: a competitor whose model hits a TRANSIENT provider error
     # (429/rate-limit/quota/billing) sits out instead of dying — no eval burned,
     # no stub folded into its genome, seat freed for others. The sit-out length
