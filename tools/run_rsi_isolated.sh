@@ -120,6 +120,7 @@ if [[ -n "$GENOME_MODELS" && "$GENOME_MODELS" == *free* ]]; then
     echo "  resolving free-router roster to concrete \$0 aliases (helper container)…"
     EXPANDED="$(docker run --rm --network "$NETWORK" \
         -v "${ENV_MOUNT}:/run/gateway.env:ro" \
+        -e "PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistro-rsi/src:packages/maistro-bootstrap/src" \
         "$IMAGE" bash -lc "sed 's/\r\$//' /run/gateway.env > /tmp/e.env; set -a; . /tmp/e.env; set +a; \
             export LITELLM_URL='$GATEWAY_URL' LITELLM_BASE_URL='$GATEWAY_URL' LITELLM_PROXY_URL='$GATEWAY_URL'; \
             source /workspace/.venv/bin/activate 2>/dev/null || true; \
