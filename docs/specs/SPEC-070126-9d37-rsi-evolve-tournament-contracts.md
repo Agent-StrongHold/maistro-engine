@@ -23,6 +23,10 @@ tests:
   - packages/maistro-rsi/tests/test_tournament_cycle.py
   - packages/maistro-evolve/tests/test_code_rsi_benchmark.py
   - packages/maistro-bootstrap/tests/test_temperature_threading.py
+  - packages/maistro-rsi/tests/test_live_evolution.py
+  - packages/maistro-rsi/tests/test_spec_tracker.py
+  - packages/maistro-rsi/tests/test_checkpoint_report.py
+  - packages/maistro-evolve/tests/test_improvement.py
 layer: Evolve
 owners:
   - '@BlakeMatthews-dev'
@@ -93,3 +97,37 @@ cycle into a scout→compete→select tournament driven by evolve genomes.
   `metadata["stub"] is True` when the target suite is stubbed/absent (honesty).
 - [ ] **AC-12** No tournament, scout, merge, or benchmark test depends on a real
   LLM provider, network, or wall-clock sleep (deterministic fakes only).
+
+Amendment (2026-07-04, ADR-070126-6386 unified-evolution + maturity-ladder
+amendment): the unified live loop, model bench/reliability, and the spec-
+completion/backlog ladder.
+
+- [ ] **AC-13** In `run --genome-db` mode, a real cycle's `Scorecard.composite`
+  folds into the authoring genome via EMA (not overwrite): two consecutive
+  real scores leave `eval_scores["code_rsi"]` between them, not equal to the
+  latest one alone.
+- [ ] **AC-14** A transient provider error (429/quota/billing/overload) benches
+  the model instead of scoring its genome — no `eval_scores` entry is added
+  for that cycle, and the model is excluded from the roster until its bench
+  deadline. The deadline honors a provider-stated retry-after when the error
+  names one (Groq body seconds, Gemini `retryDelay`, `retry-after` headers);
+  otherwise it defaults to `bench_cycles` worth of estimated time and doubles
+  on each consecutive bench of the same model, resetting when that model next
+  scores real work.
+- [ ] **AC-15** Per-model reliability is a run-local EMA (starts at 1.0, decays
+  on transient failure, recovers on success) that multiplies into a genome's
+  fitness during cull/breed selection — identical slot settings score lower on
+  a less-reliable model than on a more-reliable one.
+- [ ] **AC-16** `spec_completion` fires only when a candidate's changed tests
+  add a **net-new** `@pytest.mark.ac("SPEC-x/AC-n")` marker (absent on
+  baseline) for an AC enumerated in `docs/specs/*.md`, AND the candidate's
+  tests pass; re-tagging an already-claimed AC earns nothing.
+  `spec_proposed` fires only for a **new**, well-formed spec contract among
+  the changed files (parseable `id:` frontmatter plus at least two enumerated
+  acceptance criteria) — a stray markdown file earns nothing.
+- [ ] **AC-17** In live mode, every checkpoint report (`build_checkpoint_report`
+  with a population summary) includes an `## Evolution` section reporting
+  population size, the generation histogram, the fittest genomes (name,
+  generation, model, fitness, `tdd_rigor`, `test_style`), the per-model
+  reliability table, and any currently-benched models; the section is absent
+  entirely when no population summary is given (non-live runs).

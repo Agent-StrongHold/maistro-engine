@@ -186,3 +186,131 @@ cost-bearing benchmark, unlike the existing static ones.
   profile vs. blended).
 - Whether merged multi-genome commits credit Elo to each contributor or only the
   top scorer.
+
+## Amendment (2026-07-04): typed fixer genomes, unified live evolution, and the maturity ladder
+
+The tournament above shipped (PR #217) and was then extended twice more; this
+amendment brings the ADR current with both extensions in one pass.
+
+### The fixer genome became a typed "mad-lib" (`maistro_evolve.fixer_genome.FixerGenome`)
+
+Each `NodeGenome.fixer` carries 16 evolvable slots — enums (`strategy`,
+`test_style`, `review_pass`, `risk`, `reasoning_effort`), continuous dials in
+`[0,1]` (`temperature`, `minimalism`, `ambition`, `edge_focus`, `tdd_rigor`),
+and lineage-evidence text (`persona`, `strategy_hint`, `goals`,
+`codebase_standards`, `learned_successes`, `learned_failures`) — rendered as
+literal JSON into the coding agent's system prompt. An LLM **hyper-mutator**
+(`maistro_evolve.hyper_mutator`) proposes typed slot changes for the fittest
+genome each cycle, grounded in its lineage and an operator goal (GEPA
+propose→verify shape); accepted children join the population **UNVERIFIED**.
+A 10-cycle gym run showed the mutator reverse-engineer the fitness function
+from experience ("test-first fixes with multiple assertions raise
+acceptance") and converge the population on `strict_tdd` / `tdd_rigor→1.0` in
+four generations — the fixer genome does learn, not just the code.
+
+### The tournament and the evolution loop are ONE loop — working IS learning
+
+The original design ran two separate things: a standalone `evolve` gym that
+authored and scored real fixes and then discarded them, and a tournament that
+did real work but learned nothing from it. That was a mistake — they were
+never meant to be separate. `run --genome-db <path>` now makes the genome
+**population** the tournament roster directly:
+
+- Each cycle's real `Scorecard.composite` folds back into the genome that
+  authored it via an **EMA** (`eval_ema_alpha=0.5`) — not overwritten, so a
+  lucky 0.76 doesn't get erased by the next 0.0 and a genome's fitness reflects
+  its trend, not its last roll. Stubbed (errored) attempts never fold; a
+  rejected-but-real fix's `0.0` is genuine evidence and does fold.
+- Same-slot competitors (same scout item ⇒ fair comparison) fight an Elo
+  battle (`EloTournament`) whose result also lands in `harness_params`.
+- Between cycles: fitness → cull the weakest → breed one crossover child →
+  the hyper-mutator proposes one guided child of the champion. Children are
+  **verified by the next cycle's actual work**, not a separate eval.
+- `population.db` persists outside the run (host-mounted in isolated mode),
+  so lineage **compounds across runs** — `seed_population` is top-up-only and
+  never buries an existing lineage under fresh randoms.
+- The `evolve` gym command is thereby demoted to an **offline harness** for
+  ad-hoc experiments; it is not part of the production RSI path.
+
+### Capacity is not fitness — the model bench and the reliability multiplier
+
+Multi-provider free-tier rosters hit transient 429/quota/billing errors
+constantly (see `MODEL-LIMITS.md`). Those are evidence about the *provider*,
+not the genome, so they are handled separately from scoring:
+
+- A transient error **benches the model** — it sits out, no sample folds into
+  any genome (sitting out is neutral, not a rejection). The sit-out honors the
+  provider's *own* stated wait (Groq's "try again in Xs", Gemini's
+  `retryDelay`, `retry-after` headers) when the error names one; otherwise it
+  defaults to `bench_cycles` worth of estimated cycle time, **doubling per
+  consecutive bench** of the same model (capped) so a drained daily quota
+  backs off geometrically instead of re-probing every cycle. The streak
+  resets the moment the model scores real work again.
+- A run-local per-model **reliability EMA** (starts at 1.0, decays on
+  transient failure, recovers on success; deliberately *not* persisted —
+  provider health is temporal) **multiplies into genome fitness** during
+  cull/breed selection, so the same slot settings on a flaky provider rank
+  below the identical settings on a dependable one — evolution re-tries
+  winning strategies on other carriers rather than dying with the provider.
+- Net effect: the roster can safely include *every* servable model
+  (`--genome-models`, seeded round-robin so each gets a lineage from cycle
+  one) — evolution learns from every model's real behavior, including
+  surprises, instead of being pre-filtered to a "safe" shortlist.
+
+### The maturity ladder — ambition without demolishing TDD
+
+Emphasizing new features risked eroding the test-first discipline the
+hyper-mutator had already learned. The fix is a **ladder of scout item kinds**
+(`ImprovementKind`), each routed to its own budget and fitness signal, so
+ambition is *earned* rather than substituted for rigor:
+
+`bug_fix` → `new_test` → `assertion` → **`spec`** (finish a specific
+UNIMPLEMENTED acceptance criterion — the single highest-reward move, reward
+`spec_completion=0.45`, the largest weight in the system) → **`backlog`**
+(draft a *new* spec contract for a genuinely good idea — the disciplined
+alternative to shipping an unspecced feature raw, reward `spec_proposed=0.40`,
+deliberately just below `spec_completion`: proposing new work never outranks
+finishing promised work) → `feature` (v2.0, `BudgetTier.UNLOCKED`) → `edge_case`
+→ `refactor` → `perf` → `doc` (fallback only).
+
+`spec`/`backlog` completion is measured objectively, not judged:
+`maistro_rsi.spec_tracker` diffs the AC checkboxes enumerated in
+`docs/specs/*.md` against `@pytest.mark.ac("SPEC-x/AC-n")` markers across the
+test suites. `spec_completion` fires only for **net-new** AC markers with
+green tests (re-tagging an already-claimed AC earns nothing); `spec_proposed`
+fires only for a well-formed new contract (parseable `id:` frontmatter plus
+at least two enumerated ACs). Both are presence-gated exactly like
+`new_test`, so neither can dilute a candidate doing other work. The scout
+sees real uncovered lines (`coverage_gate.measure_coverage_detailed`) and real
+spec gaps, and is instructed to propose `feature`/`backlog` only once a
+module is verified and gap-free — ambition is earned, never assumed. An
+un-built LLM `feature_judge` remains future work (tracked in the SPEC below,
+not yet implemented) — FEATURE items score today on the signals that are
+actually wired (red_green, code_quality, any coverage delta), not on a judge
+that doesn't exist yet.
+
+### Observability
+
+Checkpoint reports (`build_checkpoint_report`) gained an `## Evolution`
+section in live mode: population size and generation histogram, the fittest
+genomes' settings (model, `tdd_rigor`, `test_style`, fitness), the per-model
+reliability table, which models are currently benched, and the newest
+lineage memory the hyper-mutator wrote — so a long run's *learning*, not just
+its promotions, is legible without reading logs.
+
+### Consequences (amendment)
+
+**Positive.** One loop, not two — no more discarded gym evaluations. Capacity
+problems (free-tier rate limits) no longer kill genomes or a run. Feature work
+is now possible without weakening the TDD signals that made the tournament
+converge in the first place, and finishing contracted spec work is rewarded
+above inventing anything new. Population state is observable mid-run.
+
+**Negative / risks.** `spec_tracker` depends on the AC-marker discipline being
+followed consistently (a spec with no markers/frontmatter contributes no
+signal in either direction — silently, not as an error). The reliability
+multiplier is run-local, so a long-lived population.db doesn't remember which
+models were unreliable in a *previous* run — acceptable, since provider
+health genuinely changes over time. `feature_judge` is designed but not
+built; FEATURE-kind promotions are judged by proxy signals only until it
+lands.

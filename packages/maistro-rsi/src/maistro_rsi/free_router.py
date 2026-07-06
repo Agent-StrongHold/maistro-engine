@@ -199,6 +199,25 @@ def make_free_selector(*, timeout: float = 60.0) -> FreeSelector:
     return selector
 
 
+def _pick_distinct(selector: FreeSelector | None, count: int) -> list[str]:
+    """Up to ``count`` DISTINCT concrete free aliases from ``selector`` (the free
+    catalog is finite and the router/cache can repeat a pick, so de-dup and cap
+    the attempts). Falls back to a single ``DEFAULT_FREE_MODEL`` if nothing
+    resolves — keeps a free-only roster routable."""
+    picks: list[str] = []
+    seen: set[str] = set()
+    attempts = 0
+    while len(picks) < count and attempts < count * 4:
+        attempts += 1
+        p = selector() if selector else None
+        if p is None:
+            break
+        if p not in seen:
+            seen.add(p)
+            picks.append(p)
+    return picks or [DEFAULT_FREE_MODEL]
+
+
 def expand_free_router(
     models: Sequence[str] | None,
     selector: FreeSelector | None,
