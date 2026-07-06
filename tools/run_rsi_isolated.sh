@@ -110,6 +110,28 @@ $E/fitness.py,$E/cycle.py,$E/architecture_fit.py,$E/scorecard.py,$E/types.py,\
 $R/merge.py,$R/competitors.py,$R/scout.py,$R/harvest.py,$R/evolve_bridge.py,\
 $R/candidate_fitness.py,$R/quota_burn.py,$R/quarantine.py,$R/htr.py,$R/coordinator.py"
 
+# Free-router expansion (before the roster is frozen): a `openrouter/free` /
+# `or-free-router` entry is a random-model SELECTOR, not a scorable model. Resolve
+# it to concrete, gateway-registered $0 aliases HERE — the main run's container
+# deliberately drops OPENROUTER_API_KEY, so only this step (a short-lived helper
+# container that DOES see the key from the mounted .env) can hit OpenRouter-direct
+# to learn each concrete pick and register it. No-op if no sentinel is present.
+if [[ -n "$GENOME_MODELS" && "$GENOME_MODELS" == *free* ]]; then
+    echo "  resolving free-router roster to concrete \$0 aliases (helper container)…"
+    EXPANDED="$(docker run --rm --network "$NETWORK" \
+        -v "${ENV_MOUNT}:/run/gateway.env:ro" \
+        "$IMAGE" bash -lc "sed 's/\r\$//' /run/gateway.env > /tmp/e.env; set -a; . /tmp/e.env; set +a; \
+            export LITELLM_URL='$GATEWAY_URL' LITELLM_BASE_URL='$GATEWAY_URL' LITELLM_PROXY_URL='$GATEWAY_URL'; \
+            source /workspace/.venv/bin/activate 2>/dev/null || true; \
+            python -m maistro_rsi.free_router --roster '$GENOME_MODELS' --free-count 2" 2>/dev/null | tr -d '\r' | tail -1)"
+    if [[ -n "$EXPANDED" && "$EXPANDED" == *,* || "$EXPANDED" == openrouter/* ]]; then
+        echo "  free-router expanded: $GENOME_MODELS -> $EXPANDED"
+        GENOME_MODELS="$EXPANDED"
+    else
+        echo "  warning: free-router expansion empty; loop will fall back to DEFAULT_FREE_MODEL in-container"
+    fi
+fi
+
 # Unified live evolution: GENOME_MODELS set ⇒ the population (persisted in
 # REPORT_DIR/population.db, host-visible, lineage continues across runs that
 # share a REPORT_DIR) is the roster. The GOAL rides in as an env var — never

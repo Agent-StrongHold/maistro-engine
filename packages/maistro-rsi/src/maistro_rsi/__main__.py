@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Literal
 
 from maistro_rsi.competitors import parse_competitors
+from maistro_rsi.free_router import FREE_ROUTER_ALIASES, expand_free_router, make_free_selector
 from maistro_rsi.local_loop import LocalRsiConfig, LocalRsiLoop
 
 
@@ -529,6 +530,18 @@ def _run(args: argparse.Namespace) -> int:
             f"live evolution: population at {args.genome_db} IS the roster — "
             "work is kept AND scores the genomes; lineage continues across runs"
         )
+    # A free-router sentinel (openrouter/free / or-free-router) in the roster is a
+    # random-model SELECTOR, not a scorable model — it re-randomises every call.
+    # Resolve it to concrete, gateway-registered $0 aliases so seeding + tournament
+    # pin stable models. Normally the launcher expands this HOST-SIDE (it has
+    # OPENROUTER_API_KEY, which the container env deliberately drops); this in-loop
+    # pass is the safety net — with no OpenRouter key it maps the sentinel to
+    # DEFAULT_FREE_MODEL so a raw, un-pinnable sentinel never reaches the tournament.
+    genome_models = [m.strip() for m in args.genome_models.split(",") if m.strip()]
+    if any(m in FREE_ROUTER_ALIASES for m in genome_models):
+        selector = make_free_selector()
+        genome_models = expand_free_router(genome_models, selector, free_count=2) or genome_models
+        print(f"free-router roster resolved -> {genome_models}")
     config = LocalRsiConfig(
         repo_path=str(repo),
         test_command=args.test_cmd,
@@ -556,7 +569,7 @@ def _run(args: argparse.Namespace) -> int:
         report_every=args.report_every,
         report_dir=args.report_dir,
         genome_db=args.genome_db,
-        genome_models=[m.strip() for m in args.genome_models.split(",") if m.strip()],
+        genome_models=genome_models,
         evolve_goal=args.evolve_goal,
         roster_size=args.roster_size,
     )
