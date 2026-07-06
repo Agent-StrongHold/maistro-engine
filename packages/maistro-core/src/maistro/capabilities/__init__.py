@@ -13,6 +13,11 @@ from maistro.capabilities.providers.harness_safety import (
     AllowAllGate,
     SafeHarnessRunner,
 )
+from maistro.capabilities.providers.opencode import (
+    OpencodeHarnessRunner,
+    opencode_microvm_factory,
+    opencode_microvm_runner,
+)
 from maistro.capabilities.providers.subprocess_harness import (
     SandboxExec,
     SubprocessHarnessRunner,
@@ -44,6 +49,7 @@ __all__ = [
     "HarnessRunner",
     "HarnessSessionManager",
     "HttpxAsyncHttp",
+    "OpencodeHarnessRunner",
     "ProviderHealth",
     "SafeHarnessRunner",
     "SandboxExec",
@@ -52,4 +58,6 @@ __all__ = [
     "Unavailable",
     "default_capability_registry",
     "discover_into",
+    "opencode_microvm_factory",
+    "opencode_microvm_runner",
 ]
