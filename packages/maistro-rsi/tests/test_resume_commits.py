@@ -89,6 +89,56 @@ def test_resumed_patch_is_visible_in_a_new_variant_worktree(tmp_path: Path) -> N
     assert (variant_dir / "new_file.txt").read_text(encoding="utf-8") == "resumed content\n"
 
 
+# A patch whose FIRST file applies cleanly (new_file.txt) but whose SECOND file
+# is stale (value.txt hunk context "999" never matches the real "0"). Under
+# `git apply --reject` the first file would be written and a value.txt.rej left
+# behind before a non-zero return; plain (atomic) apply writes nothing.
+_PARTIALLY_STALE_PATCH = (
+    "diff --git a/new_file.txt b/new_file.txt\n"
+    "new file mode 100644\n"
+    "index 0000000..b4de394\n"
+    "--- /dev/null\n"
+    "+++ b/new_file.txt\n"
+    "@@ -0,0 +1 @@\n"
+    "+resumed content\n"
+    "diff --git a/value.txt b/value.txt\n"
+    "index 0000000..1111111 100644\n"
+    "--- a/value.txt\n"
+    "+++ b/value.txt\n"
+    "@@ -1 +1 @@\n"
+    "-999\n"
+    "+changed\n"
+)
+
+
+def test_stale_patch_does_not_partially_poison_baseline(tmp_path: Path) -> None:
+    # Codex P1 (#239): --reject would leave the clean hunk + a .rej file in the
+    # tree, which the resume commit then swept into the baseline. Atomic apply
+    # must write NOTHING and leave no .rej when a patch doesn't fully apply.
+    repo = _make_repo(tmp_path / "src")
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+    (export_dir / "0001-stale.patch").write_text(_PARTIALLY_STALE_PATCH, encoding="utf-8")
+
+    config = LocalRsiConfig(
+        repo_path=str(repo),
+        test_command="exit 0",
+        work_root=str(tmp_path / "work"),
+        max_cycles=1,
+        export_patches=str(export_dir),
+    )
+    loop = LocalRsiLoop(config, apply_patch=None)
+    loop._setup_baseline()
+    start = loop._start_ref
+    loop._load_saved_patches()
+
+    # No hunk was applied: the clean-but-orphaned new_file.txt must NOT exist,
+    # no .rej litter, and baseline_branch must not have advanced.
+    assert not (loop._baseline / "new_file.txt").exists()
+    assert not list(loop._baseline.rglob("*.rej"))
+    assert _git(loop._baseline, "rev-parse", config.baseline_branch).stdout.strip() == start
+
+
 def test_load_saved_patches_is_noop_when_export_dir_missing(tmp_path: Path) -> None:
     repo = _make_repo(tmp_path / "src")
     config = LocalRsiConfig(

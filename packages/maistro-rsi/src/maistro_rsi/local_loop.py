@@ -1148,12 +1148,16 @@ class LocalRsiLoop:
         )
         applied = 0
         for patch_file in patches:
-            # git apply is idempotent (applying an already-applied patch errors
-            # gracefully with "already applied"), so restarts are safe.
+            # Plain `git apply` (NOT --reject) is ATOMIC: a patch that doesn't
+            # apply cleanly writes NOTHING and leaves the tree untouched. This is
+            # essential on resume — `--reject` would write every clean hunk and
+            # drop `.rej` files for the rest before returning non-zero, and those
+            # partial changes + `.rej` files would then be swept into the resume
+            # commit below and poison the baseline. It stays idempotent, too:
+            # an already-applied patch simply fails cleanly and is skipped.
             result = _git(
                 self._baseline,
                 "apply",
-                "--reject",
                 str(patch_file),
                 check=False,
             )
@@ -1161,9 +1165,10 @@ class LocalRsiLoop:
                 applied += 1
                 logger.info("rsi_local_patch_applied", patch=patch_file.name)
             else:
-                # Patch already applied (or conflicts) — log and continue.
-                # The baseline may be ahead of these patches if a prior run
-                # completed cycles that hadn't been exported yet.
+                # Patch already applied (or conflicts) — nothing was written (atomic
+                # apply), so the tree stays clean. Log and continue. The baseline may
+                # be ahead of these patches if a prior run completed cycles that
+                # hadn't been exported yet.
                 logger.info(
                     "rsi_local_patch_skip",
                     patch=patch_file.name,
