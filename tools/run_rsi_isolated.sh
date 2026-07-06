@@ -150,7 +150,7 @@ fi
 # interpolate free text into the inner bash command line.
 LIVE_FLAGS=""
 if [[ -n "$GENOME_MODELS" ]]; then
-    LIVE_FLAGS="--genome-db /run/reports/population.db --genome-models '$GENOME_MODELS' --roster-size ${MAISTRO_RSI_ROSTER_SIZE:-4} --evolve-goal \"\$RSI_GOAL\""
+    LIVE_FLAGS="--genome-db /run/reports/population.db --genome-models '$GENOME_MODELS' --roster-size ${MAISTRO_RSI_ROSTER_SIZE:-4} --emergency-models '${MAISTRO_RSI_EMERGENCY_MODELS:-}' --evolve-goal \"\$RSI_GOAL\""
 fi
 
 echo "RSI (full isolation) -> image=$IMAGE cycles=$CYCLES model=$MODEL gateway=$GATEWAY_URL"
