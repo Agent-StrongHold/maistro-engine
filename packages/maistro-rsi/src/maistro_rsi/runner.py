@@ -28,8 +28,13 @@ from maistro_rsi.benchmarks import RSI_BENCHMARKS
 from maistro_rsi.gateway import LlmCall, make_gateway_llm_call
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quota_burn import QuotaBurnScheduler
-from maistro_rsi.sandbox.microvm import create_rsi_sandbox, create_microvm_sandbox
-from maistro_rsi.selfbranch import   QuarantineCheckFn, SelfBranchResult, new_attempt, run_self_branch_attempt
+from maistro_rsi.sandbox.microvm import create_microvm_sandbox
+from maistro_rsi.selfbranch import (
+    QuarantineCheckFn,
+    SelfBranchResult,
+    new_attempt,
+    run_self_branch_attempt,
+)
 
 logger = structlog.get_logger()
 

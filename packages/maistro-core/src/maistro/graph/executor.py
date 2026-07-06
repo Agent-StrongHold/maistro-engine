@@ -4,8 +4,8 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
-from maistro.graph.node import NodeExecutor
 from maistro.graph.events import GraphEvent
+from maistro.graph.node import NodeExecutor
 from maistro.graph.run import GraphRun, evaluate_condition
 from maistro.graph.types import (
     GraphConfig,

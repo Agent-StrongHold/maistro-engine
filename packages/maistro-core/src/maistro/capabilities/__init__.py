@@ -7,7 +7,7 @@ from maistro.capabilities.discovery import discover_into
 from maistro.capabilities.harness_manager import HarnessSessionManager
 from maistro.capabilities.http import AsyncHttp
 from maistro.capabilities.http_client import HttpxAsyncHttp
-from maistro.capabilities.protocols import CapabilityProvider, HarnessRunner
+from maistro.capabilities.protocols import CapabilityProvider
 from maistro.capabilities.providers.harness_safety import (
     ActionGate,
     AllowAllGate,
@@ -23,8 +23,8 @@ from maistro.capabilities.providers.subprocess_harness import (
     SubprocessHarnessRunner,
 )
 from maistro.capabilities.registry import CapabilityRegistry
-from maistro.capabilities.slots.harness_runner import (
-    SLOT_NAME as HARNESS_RUNNER_SLOT,
+from maistro.capabilities.slots.harness import (
+    HARNESS_RUNNER_SLOT,
     GuardedHarnessRunner,
     resolve_harness_runner,
 )
@@ -47,10 +47,10 @@ __all__ = [
     "CapabilityProvider",
     "CapabilityRegistry",
     "FallbackPolicy",
-    "HarnessInputBlocked",
-    "HarnessSessionManager",
     "GuardedHarnessRunner",
+    "HarnessInputBlocked",
     "HarnessRunner",
+    "HarnessSessionManager",
     "HttpxAsyncHttp",
     "OpencodeHarnessRunner",
     "ProviderHealth",
