@@ -133,6 +133,17 @@ if [[ -n "$GENOME_MODELS" && "$GENOME_MODELS" == *free* ]]; then
     fi
 fi
 
+# RLPHD promotion review. Default OFF for unattended auto-harvest: the strict
+# fitness scorecard (tests/coverage/assertion-strength/no-doc-regression/vacuous-
+# test/syntax/collectability/regression-judge) already gates every promotion, and
+# a COLD review model emits a constant p=0.5 that reverts 100% of promotions to
+# flagged/ (no auto-PRs) without actually discriminating. Set
+# MAISTRO_RSI_PROMOTION_REVIEW=on to keep the human-review gate.
+REVIEW_FLAG="--no-promotion-review"
+if [[ "${MAISTRO_RSI_PROMOTION_REVIEW:-off}" == "on" ]]; then
+    REVIEW_FLAG=""
+fi
+
 # Unified live evolution: GENOME_MODELS set ⇒ the population (persisted in
 # REPORT_DIR/population.db, host-visible, lineage continues across runs that
 # share a REPORT_DIR) is the roster. The GOAL rides in as an env var — never
@@ -202,6 +213,7 @@ exec docker run --rm \
         --targets '$TARGETS' \
         --agent-turns 6 \
         --scout \
+        $REVIEW_FLAG \
         $LIVE_FLAGS \
         --report-every $REPORT_EVERY \
         --report-dir /run/reports \
