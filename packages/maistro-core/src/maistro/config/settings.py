@@ -64,6 +64,17 @@ class LiteLLMSettings(BaseSettings):
     master_key: str = ""
 
 
+class MistralSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MISTRAL_")
+
+    # A separate Admin Console credential -- NOT the regular completions key
+    # used for chat requests -- required by MistralAdminApiVerifier
+    # (quota/verifiers/mistral.py). Optional: unset means that verifier is
+    # unavailable/skipped rather than an error, since not every deployment
+    # needs standalone balance verification.
+    admin_api_key: str = ""
+
+
 class LangfuseSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="LANGFUSE_")
 
@@ -158,6 +169,7 @@ class Settings(BaseSettings):
 
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     litellm: LiteLLMSettings = Field(default_factory=LiteLLMSettings)
+    mistral: MistralSettings = Field(default_factory=MistralSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
     ntfy: NtfySettings = Field(default_factory=NtfySettings)
