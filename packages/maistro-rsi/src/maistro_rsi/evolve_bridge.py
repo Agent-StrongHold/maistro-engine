@@ -102,8 +102,13 @@ def seed_population(
 
     resolved: set[str] = set()
     existing = len(store.list_all())
-    for _ in range(max(0, n - existing)):
-        seed_models = expand_free_router(models, free_selector, resolved=resolved)
+    base = list(models) if models else []
+    for i in range(max(0, n - existing)):
+        # One seed per model: rotate through the roster so every provided model is
+        # covered when n >= len(models). Passing the whole roster to each genome let
+        # `_random_genome`'s per-node random.choice miss a model entirely (flaky).
+        per_seed = [base[i % len(base)]] if base else None
+        seed_models = expand_free_router(per_seed, free_selector, resolved=resolved)
         store.add(_random_genome(seed_models))
     return resolved
 
