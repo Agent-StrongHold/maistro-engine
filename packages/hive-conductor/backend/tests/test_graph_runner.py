@@ -88,6 +88,86 @@ async def test_build_llm_call_real_httpx_posts_and_extracts(
     assert captured["model"] == "picked-model"
 
 
+async def test_build_llm_call_on_response_hook_receives_body_and_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+    from services.graph_runner import _build_llm_call
+
+    monkeypatch.setenv("LITELLM_API_BASE", "http://stub.example")
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+    monkeypatch.setenv("LITELLM_API_KEY", "k")
+    monkeypatch.delenv("LITELLM_PROXY_KEY", raising=False)
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> Any:
+            return {
+                "choices": [{"message": {"content": "out"}}],
+                "usage": {"prompt_tokens": 5, "completion_tokens": 7},
+            }
+
+    class _Client:
+        def __init__(self, *a: Any, **kw: Any) -> None: ...
+        async def __aenter__(self) -> _Client:
+            return self
+
+        async def __aexit__(self, *a: Any) -> None: ...
+        async def post(self, url: str, *, json: Any, headers: Any) -> _Resp:
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+
+    captured: dict[str, Any] = {}
+
+    def on_response(data: dict, response: Any) -> None:
+        captured["data"] = data
+
+    fn = _build_llm_call(on_response)
+    out = await fn([{"role": "user", "content": "hi"}], model="picked-model")
+    assert out == "out"
+    assert captured["data"]["usage"] == {"prompt_tokens": 5, "completion_tokens": 7}
+
+
+async def test_build_llm_call_on_response_hook_failure_is_swallowed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+    from services.graph_runner import _build_llm_call
+
+    monkeypatch.setenv("LITELLM_API_BASE", "http://stub.example")
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+    monkeypatch.setenv("LITELLM_API_KEY", "k")
+    monkeypatch.delenv("LITELLM_PROXY_KEY", raising=False)
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> Any:
+            return {"choices": [{"message": {"content": "out"}}]}
+
+    class _Client:
+        def __init__(self, *a: Any, **kw: Any) -> None: ...
+        async def __aenter__(self) -> _Client:
+            return self
+
+        async def __aexit__(self, *a: Any) -> None: ...
+        async def post(self, url: str, *, json: Any, headers: Any) -> _Resp:
+            return _Resp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+
+    def broken_hook(data: dict, response: Any) -> None:
+        raise RuntimeError("recording hook blew up")
+
+    fn = _build_llm_call(broken_hook)
+    out = await fn([{"role": "user", "content": "hi"}], model="picked-model")
+    assert out == "out"
+
+
 async def test_build_llm_call_uses_default_model_when_kwarg_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -217,7 +297,7 @@ async def test_execute_dag_builds_config_and_returns_shape(
     async def _stub_llm(messages: list[dict], **kw: Any) -> str:
         return "stub response"
 
-    monkeypatch.setattr(gr, "_build_llm_call", lambda: _stub_llm)
+    monkeypatch.setattr(gr, "_build_llm_call", lambda *a, **kw: _stub_llm)
 
     out = await gr.execute_dag(
         {
@@ -246,7 +326,7 @@ async def test_execute_dag_entry_node_fallback_to_first_node(
     async def _stub_llm(messages: list[dict], **kw: Any) -> str:
         return "ok"
 
-    monkeypatch.setattr(gr, "_build_llm_call", lambda: _stub_llm)
+    monkeypatch.setattr(gr, "_build_llm_call", lambda *a, **kw: _stub_llm)
 
     out = await gr.execute_dag(
         {
@@ -438,7 +518,7 @@ async def test_execute_dag_streaming_yields_full_lifecycle(
     import maistro.graph.executor as exec_mod
 
     monkeypatch.setattr(exec_mod, "run_graph", _run_graph)
-    monkeypatch.setattr(gr, "_build_llm_call", lambda: None)
+    monkeypatch.setattr(gr, "_build_llm_call", lambda *a, **kw: None)
 
     events = []
     async for ev in gr.execute_dag_streaming(
@@ -465,7 +545,7 @@ async def test_execute_dag_streaming_yields_failed_on_exception(
     import maistro.graph.executor as exec_mod
 
     monkeypatch.setattr(exec_mod, "run_graph", _boom)
-    monkeypatch.setattr(gr, "_build_llm_call", lambda: None)
+    monkeypatch.setattr(gr, "_build_llm_call", lambda *a, **kw: None)
 
     events = []
     async for ev in gr.execute_dag_streaming(

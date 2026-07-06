@@ -9,11 +9,14 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+OnResponseHook = Callable[[dict[str, Any], httpx.Response], None]
 
 
 # Static subprocess body. All untrusted values (system prompt, task description,
@@ -255,6 +258,7 @@ async def _run_llm_node(
     inbound: dict[str, set[str]],
     results: dict[str, dict[str, Any]],
     task_desc: str,
+    on_response: OnResponseHook | None = None,
 ) -> None:
     """Run an in-process node: a tool node, or an LLM call. Writes into ``results``."""
     role = node.get("role", "worker")
@@ -280,7 +284,7 @@ async def _run_llm_node(
         {"role": "user", "content": user_content},
     ]
     try:
-        response = await _build_llm_call()(messages, model=model)
+        response = await _build_llm_call(on_response)(messages, model=model)
         results[nid] = {"role": role, "response": response, "success": True}
     except Exception as e:
         results[nid] = {"role": role, "response": str(e), "success": False}
@@ -332,6 +336,7 @@ async def execute_dag(
     user_id: str = "",
     user_credentials: dict[str, str] | None = None,
     execution_mode: str = "autonomous",
+    on_response: OnResponseHook | None = None,
 ) -> dict[str, Any]:
     """Execute a DAG — each node is its own process, scoped to user context. No cross-user data leakage.
 
@@ -339,6 +344,9 @@ async def execute_dag(
     (unattended — scheduler, optimizer, evolve harness). Autonomous is the
     default and requires gVisor-or-better sandbox isolation (ADR-093); on a
     shared-kernel-only host, sandboxed nodes refuse rather than run full-auto.
+
+    `on_response`, if given, is forwarded to every in-process LLM node's
+    `_build_llm_call` -- the additive quota-recording seam described there.
     """
     import asyncio
 
@@ -402,7 +410,9 @@ async def execute_dag(
         if async_nodes:
             await asyncio.gather(
                 *[
-                    _run_llm_node(node_map[nid], nid, inbound, results, task_desc)
+                    _run_llm_node(
+                        node_map[nid], nid, inbound, results, task_desc, on_response=on_response
+                    )
                     for nid in async_nodes
                 ]
             )
@@ -479,7 +489,17 @@ async def execute_champion() -> dict[str, Any]:
     return result
 
 
-def _build_llm_call():
+def _build_llm_call(on_response: OnResponseHook | None = None):
+    """Build the `llm_call` graph nodes/DAGs call through.
+
+    `on_response`, if given, is invoked with the parsed body and the raw
+    response right after a real (non-stub) call succeeds -- the same
+    additive quota-recording seam `pm_llm_call.maistro_llm_call` /
+    `conductor._call_gateway` expose in maistro-core, so `maistro.quota.recorder`
+    can be wired into hive-conductor's Graph Runner traffic too. A failing
+    hook is logged and swallowed since instrumentation on an already-
+    successful call must never turn into a failure the caller has to handle.
+    """
     import os
 
     base = os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL") or ""
@@ -521,6 +541,11 @@ def _build_llm_call():
             resp = await client.post(f"{base}/chat/completions", json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
+            if on_response is not None:
+                try:
+                    on_response(data, resp)
+                except Exception:
+                    logger.warning("graph_runner_on_response_hook_failed", exc_info=True)
             content = data["choices"][0]["message"]["content"]
             logger.info(
                 "graph_llm_response model=%s content_len=%d content_start=%s",
@@ -533,8 +558,12 @@ def _build_llm_call():
     return _httpx_llm
 
 
-async def execute_dag_streaming(dag_data: dict):
-    """Yield progress events as the DAG executes, one per node completion."""
+async def execute_dag_streaming(dag_data: dict, *, on_response: OnResponseHook | None = None):
+    """Yield progress events as the DAG executes, one per node completion.
+
+    `on_response`, if given, is forwarded to the graph's `llm_call` -- see
+    `_build_llm_call` for the additive quota-recording seam this exposes.
+    """
     from maistro.graph.executor import run_graph
     from maistro.graph.types import GraphBlackboard, GraphConfig, GraphEdge, NodeConfig
 
@@ -575,7 +604,7 @@ async def execute_dag_streaming(dag_data: dict):
         task_objective=dag_data.get("name", "Unnamed DAG"),
         workspace=dag_data.get("workspace", "/tmp/maistro-workspace"),  # nosec B108
     )
-    llm_call = _build_llm_call()
+    llm_call = _build_llm_call(on_response)
 
     yield {"status": "started", "node_count": len(nodes_cfg), "entry": entry_node}
 
