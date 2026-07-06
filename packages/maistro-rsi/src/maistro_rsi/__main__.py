@@ -256,9 +256,30 @@ def _evolve(args: argparse.Namespace) -> int:
     )
     harness = EvalHarness(use_real_benchmarks=False)
     harness.register_benchmark("code_rsi", make_code_rsi_runner(fixer.fix_and_score, args.target))
+    from maistro_rsi.free_router import (
+        DEFAULT_FREE_MODEL,
+        FREE_ROUTER_ALIASES,
+        make_free_selector,
+    )
+
     store = open_population(args.db)
     models = [m.strip() for m in args.models.split(",") if m.strip()] if args.models else None
-    seed_population(store, args.population, models=models)
+
+    # A free-router sentinel in the roster becomes a random-model SELECTOR: each
+    # seeded genome pins its own concrete, gateway-registered $0 model.
+    uses_free_router = bool(models and any(m in FREE_ROUTER_ALIASES for m in models))
+    free_selector = make_free_selector() if uses_free_router else None
+    resolved = seed_population(store, args.population, models=models, free_selector=free_selector)
+
+    # allowed_models must be concrete: drop the (un-pinnable) sentinel and fold in
+    # the concrete free models the selector actually surfaced, so breeding/mutation
+    # stays on routable $0 models instead of drifting back to the sentinel.
+    if models:
+        allowed = [m for m in models if m not in FREE_ROUTER_ALIASES] + sorted(resolved)
+        if not allowed:
+            allowed = [DEFAULT_FREE_MODEL]
+    else:
+        allowed = []
     cfg = EvolutionConfig(
         target_benchmarks=["code_rsi"],
         population_size=args.population,
@@ -268,14 +289,15 @@ def _evolve(args: argparse.Namespace) -> int:
         # Keep breeding/mutation on the routable roster — otherwise a mutated
         # model gene (e.g. gemini-2.5-flash from the generic registry) yields
         # guaranteed-0 evals and spreads through the lineage.
-        allowed_models=models or [],
+        allowed_models=allowed,
     )
 
     # The hyper-mutator's meta-LLM: a plain async text->text callable over the
     # gateway. Unconfigured gateway ⇒ stub text ⇒ proposals parse to nothing —
     # evolution still runs, just without guided mutation.
     llm_call = None
-    mutator_model = args.mutator_model or (models[0] if models else None)
+    # The sentinel can't drive the meta-LLM either; prefer a concrete allowed model.
+    mutator_model = args.mutator_model or (allowed[0] if allowed else None)
     if mutator_model:
         from maistro_bootstrap.builders.responses_callable import ResponsesAPICallable
 
