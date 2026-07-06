@@ -28,7 +28,7 @@ from maistro_rsi.benchmarks import RSI_BENCHMARKS
 from maistro_rsi.gateway import LlmCall, make_gateway_llm_call
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quota_burn import QuotaBurnScheduler
-from maistro_rsi.sandbox.microvm import create_microvm_sandbox
+from maistro_rsi.sandbox.microvm import create_rsi_sandbox
 from maistro_rsi.selfbranch import (
     QuarantineCheckFn,
     SelfBranchResult,
@@ -127,7 +127,7 @@ class RsiCycle:
         if llm_call is None and model:
             llm_call = make_gateway_llm_call(model)
 
-        sandbox = await create_microvm_sandbox(workspace)
+        sandbox = await create_rsi_sandbox(workspace)
         try:
             attempt = new_attempt(
                 self._config.repo_url,
