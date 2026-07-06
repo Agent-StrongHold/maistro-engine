@@ -27,13 +27,29 @@ FROM cgr.dev/chainguard/python:latest-dev AS pybuild
 WORKDIR /app
 ENV PATH="/app/venv/bin:$PATH"
 RUN python -m venv /app/venv
-# Install maistro-core + maistro-bootstrap (non-editable) so the venv is fully
+# Install the maistro library packages (non-editable) so the venv is fully
 # self-contained — nothing from these source trees is needed at runtime.
+# maistro-design/-evolve back the conductor's design + evolution routes;
+# routes/design.py imports maistro_design at module load (unguarded), so the
+# app will not boot without it. maistro-canvas is a hard dep of maistro-design.
 COPY packages/maistro-core /packages/maistro-core
 COPY packages/maistro-bootstrap /packages/maistro-bootstrap
-RUN pip install --no-cache-dir /packages/maistro-core /packages/maistro-bootstrap
+COPY packages/maistro-canvas /packages/maistro-canvas
+COPY packages/maistro-design /packages/maistro-design
+COPY packages/maistro-evolve /packages/maistro-evolve
+RUN pip install --no-cache-dir \
+    /packages/maistro-core \
+    /packages/maistro-bootstrap \
+    /packages/maistro-canvas \
+    /packages/maistro-design \
+    /packages/maistro-evolve
 COPY packages/hive-conductor/backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+# Seed dir for conductor state (SQLite/vault/state). Created under the writable
+# /app workdir because the -dev base runs as nonroot and cannot write to /. The
+# runtime stage COPY --chown's it to /data so a mounted named volume inherits
+# writable nonroot ownership.
+RUN mkdir -p /app/state_seed
 
 # ---- thin Wolfi runtime: near-0-CVE base, nonroot, no shell/pip ----
 FROM cgr.dev/chainguard/python:latest
@@ -48,6 +64,8 @@ COPY packages/hive-conductor/cage/ /app/cage/
 COPY packages/hive-conductor/eval/ /app/eval/
 COPY packages/hive-conductor/dags/ /app/dags/
 COPY --from=frontend /build/dist /app/frontend/dist
+# Persistent conductor state dir, pre-owned by the nonroot uid (see pybuild).
+COPY --from=pybuild --chown=65532:65532 /app/state_seed /data
 EXPOSE 8101
 WORKDIR /app/backend
 # Chainguard runs as nonroot (uid 65532) by default; make it explicit so the

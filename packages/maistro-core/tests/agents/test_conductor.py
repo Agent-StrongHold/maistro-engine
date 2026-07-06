@@ -154,6 +154,54 @@ class TestCallGateway:
         with pytest.raises(httpx.HTTPStatusError):
             await _call_gateway(call, "do thing", max_tokens=512, timeout=10)
 
+    @pytest.mark.asyncio
+    async def test_on_response_hook_receives_body_and_response(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"x-ratelimit-remaining-requests": "10"},
+                json={
+                    "choices": [{"message": {"content": '{"success": true}'}}],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 7},
+                },
+            )
+
+        _patched_client(monkeypatch, handler)
+        captured: dict[str, object] = {}
+
+        def on_response(data: dict, response: httpx.Response) -> None:
+            captured["data"] = data
+            captured["headers"] = dict(response.headers)
+
+        call = ConductorCall(model="m", base_url="http://gw", api_key="key", system_prompt="sys")
+        result = await _call_gateway(
+            call, "do thing", max_tokens=512, timeout=10, on_response=on_response
+        )
+        assert result == '{"success": true}'
+        assert captured["data"]["usage"] == {"prompt_tokens": 5, "completion_tokens": 7}  # type: ignore[index]
+        assert captured["headers"]["x-ratelimit-remaining-requests"] == "10"  # type: ignore[index]
+
+    @pytest.mark.asyncio
+    async def test_on_response_hook_failure_is_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200, json={"choices": [{"message": {"content": '{"success": true}'}}]}
+            )
+
+        def broken_hook(data: dict, response: httpx.Response) -> None:
+            raise RuntimeError("recording hook blew up")
+
+        _patched_client(monkeypatch, handler)
+        call = ConductorCall(model="m", base_url="http://gw", api_key="key", system_prompt="sys")
+        result = await _call_gateway(
+            call, "do thing", max_tokens=512, timeout=10, on_response=broken_hook
+        )
+        assert result == '{"success": true}'
+
 
 class TestIsRetryable:
     def test_timeout_error_is_retryable(self) -> None:
@@ -339,3 +387,32 @@ class TestRunTaskLive:
         body = captured["body"]
         user_msg = body["messages"][1]["content"]  # type: ignore[index]
         assert "Constraints:\nNone" in user_msg
+
+    async def test_forwards_on_response_hook_to_gateway(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("MAISTRO_DRY_RUN", "0")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": '{"success": true}'}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 2},
+                },
+            )
+
+        _patched_client(monkeypatch, handler)
+        captured: dict[str, object] = {}
+
+        def on_response(data: dict, response: httpx.Response) -> None:
+            captured["data"] = data
+
+        with patch(
+            "maistro.agents.conductor.resolve_model",
+            return_value=("m", "http://gw", False),
+        ):
+            task = TaskCreate(description="Implement feature")
+            result = await run_task(task, on_response=on_response)
+        assert result.success is True
+        assert captured["data"]["usage"] == {"prompt_tokens": 1, "completion_tokens": 2}  # type: ignore[index]

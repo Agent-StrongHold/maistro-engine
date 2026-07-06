@@ -3,7 +3,7 @@ id: SPEC-192
 title: "Persona authoring pipeline — interview, research, two-tier refinement, and agent-roster expansion"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Accepted
 created: 2026-06-01
 substrate:
   - maistro-engine#ADR-006
@@ -23,7 +23,12 @@ blocked-by:
 contracts:
   - behavioral
   - boundary
-tests: []
+tests:
+  - packages/maistro-core/tests/personas/test_vocabulary.py
+  - packages/maistro-core/tests/personas/test_rubric_loader.py
+  - packages/maistro-core/tests/personas/test_scorer.py
+  - packages/maistro-core/tests/personas/test_expander.py
+  - packages/maistro-core/tests/personas/test_golden.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -33,6 +38,20 @@ history:
 ---
 
 # SPEC-192: Persona authoring pipeline
+
+> **Implementation status (2026-07-02):** P0 + P1 implemented in
+> `packages/maistro-core/src/maistro/personas/` — check vocabulary, generic
+> `RubricEval` YAML loader (unified `templates/` root with `kind:`
+> discrimination), `RubricScorer` over `maistro.protocols.Scorer`, persona
+> template schema + expander (worked example expands to 3 inactive
+> `AgentRecipe` records with `no_medical_claims` hard gates), versioned
+> `GoldenRecord` store (in-memory), and a strictly-optional `DeepEvalScorer`
+> with graceful `RubricScorer` fallback. The 9 department eval files already
+> exist as YAML in `packages/hive-conductor/eval/departments/yaml/` and load
+> unchanged through the core loader; porting hive-conductor's `eval/` package
+> to consume `maistro.personas` is follow-up. P2/P3 (interviewer agent,
+> significance-gated hill-climber, blind A/B endpoint, Bradley-Terry residual,
+> `PromptfooScorer`) are not yet built.
 
 ## Context
 
@@ -344,14 +363,14 @@ return ci.confidence_interval.low > 0  # 95% CI excludes zero
 
 ## Open questions
 
-1. **Template file tree location** (deferred from ADR-060): `personas/departments/` +
-   `personas/creators/` vs a unified `templates/` root with `kind:` discrimination. Decision should
-   be made before P0 ships.
-2. **`persona_smith` is itself a persona**: the authoring pipeline is a creator that spawns interview,
-   research, and refine agents. Bootstrapping order: `persona_smith` is hardcoded initially, then
-   self-described once the expander works.
-3. **Minimum viable A/B UI**: the blind-A/B loop requires a user-facing pick interface. Minimum is an
-   API endpoint (`POST /eval/ab/{persona_id}/choice`) plus a minimal chat-driven picker in
-   hive-conductor. Full UI is follow-up.
-4. **`PromptfooScorer` subprocess model**: promptfoo requires Node.js. Container images must include
-   it, or the adapter must be strictly optional (like DeepEvalScorer). Defer to P3.
+1. **Template file tree location** (DECIDED): unified `templates/` root with `kind:` discrimination.
+   Cleaner, aligns with ADR-053 recipe overlay pattern. Separate `personas/departments/` and
+   `personas/creators/` trees deferred.
+2. **`persona_smith` is itself a persona** (DEFERRED to Phase 1): the authoring pipeline is a creator
+   that spawns interview, research, and refine agents. Bootstrapping order: `persona_smith` is
+   hardcoded initially, then self-described once the expander works.
+3. **Minimum viable A/B UI** (DEFERRED to Phase 2): the blind-A/B loop requires a user-facing pick
+   interface. Minimum is an API endpoint (`POST /eval/ab/{persona_id}/choice`) plus a minimal
+   chat-driven picker in hive-conductor. Full UI is follow-up work.
+4. **`PromptfooScorer` subprocess model** (DEFERRED to Phase 3): promptfoo requires Node.js. Make
+   the adapter strictly optional (like DeepEvalScorer), with graceful fallback.

@@ -121,17 +121,30 @@ def _get_airtable_creds(user_id: str) -> tuple[str | None, str | None]:  # noqa:
 
 def _build_system_prompt(user_id: str) -> str:  # noqa: C901  many optional prompt sections
     """Build a PM-specific system prompt with program context."""
+    from datetime import UTC, datetime
+
     ctx = _get_program_context(user_id)
+    today = datetime.now(UTC).strftime("%A, %B %d, %Y")
     base = (
+        f"Today's date is {today}. Your training data has a knowledge cutoff well before this date — "
+        "treat anything you'd otherwise call 'upcoming' or 'in the future' as something that may have already "
+        "happened, and use web_search to check rather than assuming your training data is current. "
         "You are a Fantasia orchestration assistant — an AI that helps conduct agent workflows. "
-        "You have tools for: Jira (poll_jira, search_jira, get_issue, check_blockers), "
-        "Confluence (search_confluence), agent management (create/modify/remove/list_agent_buttons), "
+        "You have general-purpose tools: web_search and browse_url (live web — use these for anything that "
+        "could be outdated: current events, recent results, prices, schedules, fast-moving docs), "
+        "agent management (create/modify/remove/list_agent_buttons), "
         "runtime metrics (query_metrics — latency p50/p95/p99, TTFT, tokens, cost, success rate), "
-        "Airtable (airtable_query — query any table in the user's connected base), "
         "memory (memory_add, memory_search, memory_delete — persistent knowledge base), "
         "profile (profile_get, profile_set, profile_delete — structured user profile), "
         "workflows (list_workflows, create_workflow, run_workflow, update_eval — DAG execution and hill-climbing), "
         "and dashboard widgets (create_dashboard_widget). "
+        "You ALSO have integration tools — Jira (poll_jira, search_jira, get_issue, check_blockers), "
+        "Confluence (search_confluence), and Airtable (airtable_query) — but these only work if the user has "
+        "connected those services under Credentials; if a call returns a 'not configured' error, tell the user "
+        "plainly and move on instead of retrying. Only reach for Jira/Confluence/Airtable when the user's "
+        "question is actually about their connected project-tracking data (sprints, tickets, blockers, a "
+        "specific Airtable base) — for general research or open-ended questions, use web_search instead, or "
+        "memory_search if it's something you'd have saved earlier. "
         "When the user asks about performance, latency, TTFT, cost, or runtime data — use query_metrics. "
         "When they tell you something about themselves, their project, or preferences — use profile_set to save it. "
         "When you need context about the user or project — use profile_get first. "
@@ -140,7 +153,13 @@ def _build_system_prompt(user_id: str) -> str:  # noqa: C901  many optional prom
         "When they correct you — infer the preference and update the profile. "
         "When they ask about Jira issues or blockers — use the Jira tools. "
         "When they ask to create or modify agents — use the agent tools. "
-        "Be concise and actionable. Never say you can't do something if you have a tool for it. "
+        "Be agent/DAG/workflow-forward: chat is the entry point, not the destination. When a request is "
+        "multi-step, will recur, or could be handed off, don't just answer once — propose wrapping it as a "
+        "reusable agent (create_agent_button) or a DAG workflow (create_workflow, then run_workflow), and do it "
+        "if the user agrees. Check list_agent_buttons / list_workflows first so you reuse or extend what "
+        "already exists instead of duplicating it. "
+        "Be concise and actionable. Never say you can't do something if you have a tool for it, "
+        "unless that tool requires a connection the user hasn't configured. "
         "You ARE the dashboard — you can read and surface any data the system tracks."
     )
     # Inject cached profile
@@ -252,7 +271,7 @@ PM_TOOLS = [
         "type": "function",
         "function": {
             "name": "save_as_action",
-            "description": "Save the current action as a reusable button on the Program dashboard. Use when the user says 'save that', 'do this again', 'every morning', etc. Pass the capability that was just used (e.g. poll_jira, check_blockers, search_jira, search_confluence, generate_exec_summary).",
+            "description": "Save the current action as a reusable agent. Use when the user says 'save that', 'do this again', 'every morning', etc. Pass the capability that was just used (e.g. poll_jira, check_blockers, search_jira, search_confluence, generate_exec_summary).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -277,7 +296,7 @@ PM_TOOLS = [
         "type": "function",
         "function": {
             "name": "create_agent_button",
-            "description": "Create a new agent button on the Program dashboard. Use when the user wants to add a new capability, save a workflow as a button, or create a recurring action.",
+            "description": "Create a new agent. Use when the user wants to add a new capability, save a workflow as a reusable agent, or create a recurring action.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -303,7 +322,7 @@ PM_TOOLS = [
         "type": "function",
         "function": {
             "name": "modify_agent_button",
-            "description": "Modify an existing agent button on the Program dashboard. Use when user says 'rename it', 'change the query', 'update the description'.",
+            "description": "Modify an existing agent. Use when user says 'rename it', 'change the query', 'update the description'.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -327,7 +346,7 @@ PM_TOOLS = [
         "type": "function",
         "function": {
             "name": "remove_agent_button",
-            "description": "Remove an agent button from the Program dashboard.",
+            "description": "Remove an agent.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -341,7 +360,7 @@ PM_TOOLS = [
         "type": "function",
         "function": {
             "name": "list_agent_buttons",
-            "description": "List all current agent buttons on the Program dashboard. Use to find IDs for modification.",
+            "description": "List all current agents. Use to find IDs for modification.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -430,6 +449,47 @@ PM_TOOLS = [
                     },
                 },
                 "required": ["content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the live web (Google/DuckDuckGo, or a search API if configured) for current "
+            "information. Your training data has a knowledge cutoff — use this for anything that may have "
+            "changed since then: current events, recent results, prices, schedules, who-won-what, "
+            "documentation for fast-moving libraries, etc. Prefer this over answering from memory whenever "
+            "the question depends on something that could be outdated.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The search query"},
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Max results to return (default 5)",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "browse_url",
+            "description": "Fetch a specific URL and extract/summarize its content. Use after web_search "
+            "returns a promising link and you need the full page, or when the user gives you a URL directly.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "The URL to fetch"},
+                    "task": {
+                        "type": "string",
+                        "description": "What to extract (default: key facts and quotes)",
+                    },
+                },
+                "required": ["url"],
             },
         },
     },
@@ -1078,6 +1138,38 @@ async def _tool_memory_add(
     return {"saved": True, "id": eid, "content": content}
 
 
+async def _tool_web_search(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    """Search the live web."""
+    query = args.get("query", "")
+    if not query:
+        return {"error": "query is required"}
+    max_results = args.get("max_results", 5)
+    try:
+        from services.tool_executor import web_search as _web_search
+
+        return await _web_search(query, max_results=max_results)
+    except Exception as e:
+        return {"error": f"web_search failed: {e}"}
+
+
+async def _tool_browse_url(
+    args: dict[str, Any], user_id: str, jira_pat: str | None
+) -> dict[str, Any]:
+    """Fetch and summarize a URL."""
+    url = args.get("url", "")
+    if not url:
+        return {"error": "url is required"}
+    task = args.get("task", "Extract key facts and quotes")
+    try:
+        from services.tool_executor import browse_url as _browse_url
+
+        return await _browse_url(url, task)
+    except Exception as e:
+        return {"error": f"browse_url failed: {e}"}
+
+
 async def _tool_memory_search(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
@@ -1533,6 +1625,8 @@ _TOOL_HANDLERS: dict[str, Any] = {
     "detect_blockers": _tool_check_blockers,
     "scan_risks": _tool_check_blockers,
     "search_confluence": _tool_search_confluence,
+    "web_search": _tool_web_search,
+    "browse_url": _tool_browse_url,
     "save_as_action": _tool_save_as_action,
     "create_agent_button": _tool_create_agent_button,
     "modify_agent_button": _tool_modify_agent_button,

@@ -22,6 +22,8 @@ jobs:
       - run: bash scripts/verify-monorepo-layout.sh
       - run: uv run ruff check .
       - run: uv run ruff format --check .
+      # Type-check EVERY package's src (no cherry-picking): a gate that skips
+      # packages lets type errors accumulate unseen in the skipped ones.
       - run: >-
           uv run mypy
           packages/maistro-core/src
@@ -31,6 +33,8 @@ jobs:
           packages/maistro-bootstrap/src
           packages/maistro-registry/src
           packages/maistro-evolve/src
+          packages/maistro-rsi/src
+          packages/maistro-design/src
 
   test:
     runs-on: ubuntu-latest
@@ -70,6 +74,16 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
+      # maistro-rsi + maistro-evolve aren't workspace-root deps (no uv.lock
+      # entry), so put their src trees on PYTHONPATH — the same pattern the
+      # root CLAUDE.md documents for local runs. Their third-party deps
+      # (httpx, pydantic, structlog, fastmcp via the root env) are already
+      # installed by `uv sync` above.
+      - run: uv run pytest packages/maistro-rsi/tests packages/maistro-evolve/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+          PYTHONPATH: packages/maistro-rsi/src:packages/maistro-evolve/src
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

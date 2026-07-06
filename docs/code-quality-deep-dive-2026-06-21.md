@@ -316,9 +316,9 @@ Potential improvements:
 
 Each negative finding now has an owning spec so follow-up work can land in focused, reviewable slices:
 
-- Canvas dispatcher/upload/reference ownership: [SPEC-062126-757a](specs/SPEC-062126-757a-canvas-tool-action-contracts.md)
-- Shared widget/chat tool-call protocol and Airtable cache: [SPEC-062126-971d](specs/SPEC-062126-971d-shared-tool-call-cache.md)
-- Skill fixer rule pipeline: [SPEC-062126-7853](specs/SPEC-062126-7853-skill-fixer-rule-pipeline.md)
+- Canvas dispatcher/upload/reference ownership: [SPEC-070126-a3f1](specs/SPEC-070126-a3f1-canvas-tool-action-contracts.md)
+- Shared widget/chat tool-call protocol and Airtable cache: [SPEC-070126-b2e4](specs/SPEC-070126-b2e4-shared-tool-call-cache.md)
+- Skill fixer rule pipeline: [SPEC-070126-c5d7](specs/SPEC-070126-c5d7-skill-fixer-rule-pipeline.md)
 - Memory scope truth table: [SPEC-262](specs/SPEC-262-memory-scope-policy-truth-table.md)
 - Graph optimizer prompt rendering contracts: [SPEC-263](specs/SPEC-263-graph-optimizer-prompt-rendering-contracts.md)
 - Vulture/radon scanner baselines: [SPEC-264](specs/SPEC-264-quality-scanner-baselines.md)

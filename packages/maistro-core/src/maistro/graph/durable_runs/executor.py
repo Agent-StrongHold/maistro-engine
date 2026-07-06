@@ -38,6 +38,12 @@ from .types import DurableNodeRecord, DurableRunRecord, NodePhase, RunStatus
 NodeResolver = Callable[[str, dict[str, Any]], BaseNode[Any, Any]]
 """Given (node_id, dag_snapshot) return an instantiated node ready to run."""
 
+# Node kinds that can descend into a spawned sub-graph -- `synth_depth`
+# increments for whatever runs next after one of these completes, not for
+# the spawning node's own invocation. Kept in sync with `agent_synth_dag.py`
+# and `agent_spawn_harness.py`'s registered `kind` ClassVars.
+_DEPTH_INCREMENTING_KINDS = frozenset({"agent.synth_dag", "agent.spawn_harness"})
+
 
 # --- Entrypoint: start a new run ------------------------------------------
 
@@ -191,6 +197,8 @@ async def _walk(
                 store=store,
             )
 
+        record = _maybe_increment_synth_depth(record, spec)
+
         next_id = _next_node(dag, node_id, result)
         record = record.model_copy(
             update={
@@ -308,9 +316,36 @@ def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRe
     return record.model_copy(update={"blackboard_snapshot": new_snapshot})
 
 
+def _maybe_increment_synth_depth(
+    record: DurableRunRecord, spec: dict[str, Any]
+) -> DurableRunRecord:
+    """Bump `synth_depth` after a node that can spawn a sub-graph completes.
+
+    Depth increments for whatever runs *next*, not for the spawning node's
+    own invocation -- descending into the spawned sub-graph is one level
+    deeper; the spawning node itself already ran at its own depth. Mirrors
+    `agent_synth_dag.py`'s `can_spawn(get_role(depth, max_depth))` check,
+    which reads this same counter back out via `_build_ctx`.
+    """
+    if spec.get("kind") not in _DEPTH_INCREMENTING_KINDS:
+        return record
+    snapshot = dict(record.blackboard_snapshot or {})
+    metadata = dict(snapshot.get("metadata") or {})
+    metadata["synth_depth"] = int(metadata.get("synth_depth", 0)) + 1
+    snapshot["metadata"] = metadata
+    return record.model_copy(update={"blackboard_snapshot": snapshot})
+
+
 def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
     """Reconstruct the NodeContext, lifting hitl_answers + blackboard
-    snapshot so HITL/wait nodes see the same state across pauses."""
+    snapshot so HITL/wait nodes see the same state across pauses.
+
+    `synth_depth` is surfaced into `NodeContext.metadata` (not
+    `blackboard.metadata`) because that's where `agent_synth_dag.py`'s
+    `can_spawn(get_role(depth, max_depth))` check reads it from — mirroring
+    how `hitl_answers` also lives in this same top-level metadata dict rather
+    than the blackboard's.
+    """
     from ..types import GraphBlackboard
 
     bb_snap = record.blackboard_snapshot or {}
@@ -324,6 +359,11 @@ def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
     except Exception:
         blackboard = None
 
+    try:
+        synth_depth = dict(bb_snap.get("metadata") or {}).get("synth_depth", 0)
+    except (TypeError, ValueError):
+        synth_depth = 0
+
     return NodeContext(
         run_id=record.run_id,
         dag_id=record.dag_id,
@@ -333,6 +373,7 @@ def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
         blackboard=blackboard,
         metadata={
             "hitl_answers": dict(record.hitl_answers),
+            "synth_depth": synth_depth,
         },
     )
 

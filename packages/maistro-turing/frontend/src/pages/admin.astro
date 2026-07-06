@@ -1,0 +1,14 @@
+---
+import Base from "../layouts/Base.astro";
+import Admin from "../components/Admin.tsx";
+export const prerender = false;
+---
+
+<Base title="admin" active="admin">
+  <h1>admin · self-model controls</h1>
+  <div class="section-rule"></div>
+  <p class="muted">
+    gated to the human-admin lane. turing's own service key cannot reach these.
+  </p>
+  <Admin client:load />
+</Base>

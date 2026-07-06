@@ -23,6 +23,28 @@ from maistro.auth.client import ServiceKeyClient
 from maistro.auth.provider import ServiceKeyAuthProvider
 from maistro.auth.registry import ServiceKeyRegistry
 
+_OAUTH_EXPORTS = (
+    "IdentityLinkStore",
+    "IdentityLinker",
+    "IdTokenVerifier",
+    "InMemoryIdentityLinkStore",
+    "InMemoryStateStore",
+    "JWKSIdTokenVerifier",
+    "OAuth2Client",
+    "OAuthError",
+    "OAuthExchange",
+    "OAuthExchangeError",
+    "OAuthIdentity",
+    "OAuthProviderConfig",
+    "OAuthStateEntry",
+    "OAuthStateError",
+    "OAuthToken",
+    "OAuthTokenValidationError",
+    "StateStore",
+    "UnverifiedJWTClaimsValidator",
+    "default_id_token_verifier",
+)
+
 
 def __getattr__(name: str) -> object:
     if name in (
@@ -34,10 +56,30 @@ def __getattr__(name: str) -> object:
         from maistro.auth import middleware as _m
 
         return getattr(_m, name)
+    if name in _OAUTH_EXPORTS:
+        from maistro.auth import oauth as _o
+
+        return getattr(_o, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 __all__ = [
+    "IdTokenVerifier",
+    "IdentityLinkStore",
+    "IdentityLinker",
+    "InMemoryIdentityLinkStore",
+    "InMemoryStateStore",
+    "JWKSIdTokenVerifier",
+    "OAuth2Client",
+    "OAuthError",
+    "OAuthExchange",
+    "OAuthExchangeError",
+    "OAuthIdentity",
+    "OAuthProviderConfig",
+    "OAuthStateEntry",
+    "OAuthStateError",
+    "OAuthToken",
+    "OAuthTokenValidationError",
     "Scope",
     "ScopeCategory",
     "ServiceIdentity",
@@ -45,6 +87,9 @@ __all__ = [
     "ServiceKeyChecker",
     "ServiceKeyClient",
     "ServiceKeyRegistry",
+    "StateStore",
+    "UnverifiedJWTClaimsValidator",
+    "default_id_token_verifier",
     "expand_scopes",
     "extract_service_identity",
     "require_any_scope",

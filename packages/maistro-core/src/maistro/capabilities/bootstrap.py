@@ -34,9 +34,9 @@ _CANONICAL_SLOTS: tuple[SlotSpec, ...] = (
     # self_repair (SPEC-188): SAFE_NOOP. Core defines the slot; the app supplies
     # the provider, which needs the app-wired infra_monitor/infra_action.
     SlotSpec(name="self_repair", fallback_policy=FallbackPolicy.SAFE_NOOP),
-    # harness_runner (SPEC-208): SAFE_NOOP. Core defines the slot; foreign-harness
-    # providers (pi/openclaw/codex) are app- or plugin-supplied — an absent or
-    # crashed harness degrades to a typed Unavailable, never breaking the host run.
+    # harness_runner (SPEC-208): SAFE_NOOP. Adapters over foreign agent harnesses
+    # (pi, openclaw, claude_code, codex) — an absent/unhealthy harness degrades to
+    # a typed Unavailable, never breaks the host run.
     SlotSpec(name="harness_runner", fallback_policy=FallbackPolicy.SAFE_NOOP),
 )
 

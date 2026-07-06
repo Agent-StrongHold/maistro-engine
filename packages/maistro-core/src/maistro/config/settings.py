@@ -8,6 +8,30 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from maistro.quota.rate_profile import LimitUnit, LimitWindow
+
+
+class RateConstraintConfig(BaseModel):
+    """YAML-config counterpart of `quota.rate_profile.RateConstraint`."""
+
+    unit: LimitUnit
+    window: LimitWindow
+    limit: int
+
+
+class ModelRateProfileConfig(BaseModel):
+    """YAML-config counterpart of `quota.rate_profile.ModelRateProfile`.
+
+    `model` is matched against a model alias string (`models.toml`'s `alias`
+    field, e.g. `"cerebras-qwen-3-235b-a22b-2507"`) by `config.rate_limits`'s
+    resolver -- not a display name.
+    """
+
+    provider: str
+    model: str
+    constraints: list[RateConstraintConfig] = Field(default_factory=list)
+    scope_key_fields: list[str] = Field(default_factory=lambda: ["provider", "model"])
+
 
 class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DB_")
@@ -38,6 +62,17 @@ class LiteLLMSettings(BaseSettings):
 
     base_url: str = "http://localhost:4000"
     master_key: str = ""
+
+
+class MistralSettings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MISTRAL_")
+
+    # A separate Admin Console credential -- NOT the regular completions key
+    # used for chat requests -- required by MistralAdminApiVerifier
+    # (quota/verifiers/mistral.py). Optional: unset means that verifier is
+    # unavailable/skipped rather than an error, since not every deployment
+    # needs standalone balance verification.
+    admin_api_key: str = ""
 
 
 class LangfuseSettings(BaseSettings):
@@ -134,6 +169,7 @@ class Settings(BaseSettings):
 
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
     litellm: LiteLLMSettings = Field(default_factory=LiteLLMSettings)
+    mistral: MistralSettings = Field(default_factory=MistralSettings)
     langfuse: LangfuseSettings = Field(default_factory=LangfuseSettings)
     sandbox: SandboxSettings = Field(default_factory=SandboxSettings)
     ntfy: NtfySettings = Field(default_factory=NtfySettings)
@@ -225,6 +261,7 @@ class MaistroYamlConfig(BaseModel):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     model_groups: dict[str, dict[str, Any]] = Field(default_factory=dict)
     permissions: dict[str, list[str]] = Field(default_factory=dict)
+    rate_profiles: list[ModelRateProfileConfig] = Field(default_factory=list)
     database_url: str = ""
     redis_url: str = ""
     agents_dir: str = ""

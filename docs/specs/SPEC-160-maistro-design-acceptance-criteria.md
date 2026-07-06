@@ -3,11 +3,12 @@ id: SPEC-160
 title: "maistro-design acceptance criteria — skills, systems, trust, engine"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-05-29
 substrate:
   - maistro-engine#ADR-061
-implements: []
+implements:
+  - maistro-engine#ADR-061
 related: []
 supersedes: []
 blocks: []
@@ -15,7 +16,9 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-design/tests/test_design.py
+  - packages/maistro-design/tests/test_engine_store_integration.py
 layer: Ability
 owners:
   - '@BlakeMatthews-dev'

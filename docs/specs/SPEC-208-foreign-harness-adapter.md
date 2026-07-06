@@ -31,6 +31,10 @@ tests:
   - packages/maistro-core/tests/policy/test_sequence_policy.py
   - packages/maistro-core/tests/tools/test_microvm_sandbox.py
   - packages/hive-conductor/backend/tests/test_harness_routes.py
+  - packages/maistro-core/tests/harness/test_harness_slot.py
+  - packages/maistro-core/tests/harness/test_harness_guard.py
+  - packages/maistro-core/tests/harness/test_importers.py
+  - packages/maistro-core/tests/harness/test_export.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
@@ -266,17 +270,15 @@ the existing middleware; a dedicated `harness:session` service-key scope can gat
 
 ## Open questions
 
-- **Real harness adapters beyond the subprocess reference.** `SubprocessHarnessRunner` is a
-  generic reference; the next concrete provider is `opencode` (`sst/opencode`), run inside a
-  `MicroVMSandbox` pointed at a caller-specified repo/workdir, surfaced as a tab/page in the
-  Conductor frontend. Tracked as follow-up work, not this spec.
-- Per-harness session lifecycle limits (idle timeout, max concurrent sessions per host). The
-  stateful policy engine (SPEC-203) covers per-session *action* policy; host-level *resource*
-  caps are still open.
-- Whether a harness node needs its own `priority_tier` interaction with `determine_execution_tier`
-  when a foreign harness reports its own cost/latency profile.
-- Exact MCP manifest versioning/compatibility story as the MCP spec evolves — `export_agent()`
-  should target a pinned MCP schema version with a documented upgrade path.
+- **Per-harness session lifecycle limits** (DEFERRED to Phase 2): idle timeout, max concurrent
+  sessions per host — resource-management policy belongs with the follow-up stateful policy engine
+  (ADR-061526-f383 follow-ups).
+- **HarnessNodeStrategy priority tier interaction** (DEFERRED to implementation): whether it needs
+  its own `priority_tier` interaction with `determine_execution_tier` when a foreign harness
+  reports its own cost/latency profile — likely emerges during wiring.
+- **MCP manifest versioning** (DEFERRED with pinned baseline): `export_agent()` targets a pinned
+  MCP schema version with a documented upgrade path; exact compatibility story as MCP spec evolves
+  is a follow-up.
 
 ## References
 

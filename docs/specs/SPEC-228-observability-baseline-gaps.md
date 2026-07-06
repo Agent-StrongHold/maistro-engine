@@ -3,7 +3,7 @@ id: SPEC-228
 title: "Observability baseline: logging, metrics, tracing scaffolding (partial vs. ADR-037)"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-20
 substrate: []
 implements:

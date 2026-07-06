@@ -60,8 +60,10 @@ class FakeHarness:
 
     def __init__(self, scores: dict[str, dict[str, float]]) -> None:
         self._scores = scores
+        self.received_llm_calls: list[object] = []
 
     async def evaluate_genome(self, genome, benchmarks=None, llm_call=None):
+        self.received_llm_calls.append(llm_call)
         per_benchmark = self._scores[genome.id]
         return [
             EvalResult(benchmark=name, score=score)
@@ -88,7 +90,7 @@ def _config(**overrides) -> RsiCycleConfig:
     return RsiCycleConfig(**base)
 
 
-async def _noop_patch(sandbox, workspace) -> None:
+async def _noop_patch(sandbox, workspace, model=None) -> None:
     pass
 
 
@@ -109,8 +111,10 @@ def patched_sandbox(monkeypatch):
 def patched_self_branch(monkeypatch):
     """Skip the real git/sandbox plumbing; the runner only needs a SelfBranchResult back."""
 
-    async def fake_run_attempt(sandbox, workspace, attempt, apply_patch, open_pr=False):
-        await apply_patch(sandbox, workspace)
+    async def fake_run_attempt(
+        sandbox, workspace, attempt, apply_patch, open_pr=False, quarantine_check=None, model=None
+    ):
+        await apply_patch(sandbox, workspace, model)
         exit_code, output = await sandbox.exec(attempt.test_command)
         return SelfBranchResult(
             attempt=attempt,
@@ -219,8 +223,16 @@ class TestRsiCycleRun:
         assert result_ok.improved is True
 
         # Case 2: candidate wins majority but tests fail -> not improved
-        async def failing_attempt(sandbox, workspace, attempt, apply_patch, open_pr=False):
-            await apply_patch(sandbox, workspace)
+        async def failing_attempt(
+            sandbox,
+            workspace,
+            attempt,
+            apply_patch,
+            open_pr=False,
+            quarantine_check=None,
+            model=None,
+        ):
+            await apply_patch(sandbox, workspace, model)
             return SelfBranchResult(attempt=attempt, test_exit_code=1, test_output="boom", diff="")
 
         monkeypatch.setattr("maistro_rsi.runner.run_self_branch_attempt", failing_attempt)
@@ -230,19 +242,78 @@ class TestRsiCycleRun:
         assert result_failed_tests.improved is False
 
     @pytest.mark.asyncio
+    async def test_injected_llm_call_reaches_both_genome_evals(
+        self, patched_sandbox, patched_self_branch
+    ):
+        """A caller-supplied llm_call is threaded to evaluate_genome for both genomes."""
+        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+
+        async def injected(messages, *, temperature=0.2, max_tokens=2048):
+            return "x"
+
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler(),
+            _noop_patch,
+            llm_call=injected,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), ["m"])
+        assert harness.received_llm_calls == [injected, injected]
+
+    @pytest.mark.asyncio
+    async def test_gateway_llm_call_built_when_model_available(
+        self, patched_sandbox, patched_self_branch
+    ):
+        """No injected llm_call + a scheduler model -> a real (non-None) call is built and used,
+        instead of the heuristic (near-noise) fallback the runner used before."""
+        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler("chat"),
+            _noop_patch,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), ["chat"])
+        assert len(harness.received_llm_calls) == 2
+        assert all(c is not None for c in harness.received_llm_calls)
+
+    @pytest.mark.asyncio
+    async def test_no_model_leaves_scoring_heuristic(self, patched_sandbox, patched_self_branch):
+        """If the scheduler yields no model, llm_call stays None (explicit heuristic fallback)."""
+        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler(None),
+            _noop_patch,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), [])
+        assert harness.received_llm_calls == [None, None]
+
+    @pytest.mark.asyncio
     async def test_sandbox_destroyed_even_when_apply_patch_raises(
         self, patched_sandbox, monkeypatch
     ):
         """runner-5: the sandbox is torn down even when the cycle fails mid-way."""
         scores = {"baseline": {"swebench": 0.5}, "candidate": {"swebench": 0.5}}
 
-        async def boom_patch(sandbox, workspace):
+        async def boom_patch(sandbox, workspace, model=None):
             raise RuntimeError("agent crashed mid-patch")
 
         async def attempt_that_runs_the_patch(
-            sandbox, workspace, attempt, apply_patch, open_pr=False
+            sandbox,
+            workspace,
+            attempt,
+            apply_patch,
+            open_pr=False,
+            quarantine_check=None,
+            model=None,
         ):
-            await apply_patch(sandbox, workspace)
+            await apply_patch(sandbox, workspace, model)
             raise AssertionError("apply_patch should have raised before this point")
 
         monkeypatch.setattr(
@@ -261,3 +332,160 @@ class TestRsiCycleRun:
             await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
 
         assert patched_sandbox["sandbox"].destroyed is True
+
+
+class SpyHarness(FakeHarness):
+    """FakeHarness that also records every evaluate_genome invocation."""
+
+    def __init__(self, scores):
+        super().__init__(scores)
+        self.calls: list[dict] = []
+
+    async def evaluate_genome(self, genome, benchmarks=None, llm_call=None):
+        self.calls.append({"genome": genome, "llm_call": llm_call})
+        return await super().evaluate_genome(genome, benchmarks=benchmarks, llm_call=llm_call)
+
+
+class TestModelAndLlmCallThreading:
+    """The quota-burn pick and the llm_call must actually reach the work —
+    without these, scheduling is reporting-only and 'real' benchmarks silently
+    score by heuristic."""
+
+    @pytest.mark.asyncio
+    async def test_scheduler_model_reaches_apply_patch(self, patched_sandbox, patched_self_branch):
+        """The quota-burn pick must reach the patching agent via ApplyPatchFn's
+        third argument (scoring gets it separately: run() bakes it into the
+        gateway-built llm_call)."""
+        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        seen_models: list[str | None] = []
+
+        async def recording_patch(sandbox, workspace, model=None):
+            seen_models.append(model)
+
+        harness = SpyHarness(scores)
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler(model="groq/kimi-k2"),
+            recording_patch,
+        )
+        result = await cycle.run(_genome("baseline"), _genome("candidate"), ["groq/kimi-k2"])
+
+        assert seen_models == ["groq/kimi-k2"]
+        assert result.model_used == "groq/kimi-k2"
+
+    @pytest.mark.asyncio
+    async def test_usage_recorded_to_scheduler_after_cycle(
+        self, patched_sandbox, patched_self_branch
+    ):
+        """Quota-burn loop closure: cumulative usage on the llm_call is recorded
+        via scheduler.record_attempt after the cycle."""
+        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+
+        async def fake_llm(messages, **kwargs):
+            return "text"
+
+        fake_llm.usage_input = 120
+        fake_llm.usage_output = 45
+
+        recorded: list[tuple] = []
+
+        class RecordingScheduler(FakeScheduler):
+            async def record_attempt(self, model, input_tokens, output_tokens):
+                recorded.append((model, input_tokens, output_tokens))
+
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            SpyHarness(scores),
+            EloTournament(),
+            RecordingScheduler(model="groq/kimi-k2"),
+            _noop_patch,
+            llm_call=fake_llm,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), ["groq/kimi-k2"])
+        assert recorded == [("groq/kimi-k2", 120, 45)]
+
+    @pytest.mark.asyncio
+    async def test_llm_call_reaches_evaluate_genome(self, patched_sandbox, patched_self_branch):
+        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+
+        async def fake_llm(messages, **kwargs):
+            return "text"
+
+        harness = SpyHarness(scores)
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            harness,
+            EloTournament(),
+            FakeScheduler(),
+            _noop_patch,
+            llm_call=fake_llm,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
+
+        assert len(harness.calls) == 2
+        assert all(c["llm_call"] is fake_llm for c in harness.calls)
+
+
+class TestWorkspaceCleanup:
+    @pytest.mark.asyncio
+    async def test_workspace_removed_by_default_and_kept_on_flag(
+        self, patched_sandbox, patched_self_branch, tmp_path, monkeypatch
+    ):
+        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        removed: list[str] = []
+        monkeypatch.setattr(
+            "maistro_rsi.runner.shutil.rmtree",
+            lambda path, ignore_errors=False: removed.append(str(path)),
+        )
+
+        base = _config(benchmarks=["swebench"], workspace_root=str(tmp_path))
+        cycle = RsiCycle(base, FakeHarness(scores), EloTournament(), FakeScheduler(), _noop_patch)
+        result = await cycle.run(_genome("baseline"), _genome("candidate"), ["m"])
+        assert removed == [f"{tmp_path}/{result.run_id}"]
+
+        removed.clear()
+        keep = _config(benchmarks=["swebench"], workspace_root=str(tmp_path), keep_workspace=True)
+        cycle2 = RsiCycle(keep, FakeHarness(scores), EloTournament(), FakeScheduler(), _noop_patch)
+        await cycle2.run(_genome("baseline"), _genome("candidate"), ["m"])
+        assert removed == []
+
+
+class TestQuarantineThreading:
+    @pytest.mark.asyncio
+    async def test_quarantine_check_reaches_run_self_branch_attempt(
+        self, patched_sandbox, monkeypatch
+    ):
+        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        received: dict = {}
+
+        async def capturing_attempt(
+            sandbox,
+            workspace,
+            attempt,
+            apply_patch,
+            open_pr=False,
+            quarantine_check=None,
+            model=None,
+        ):
+            received["quarantine_check"] = quarantine_check
+            return SelfBranchResult(
+                attempt=attempt, test_exit_code=0, test_output="ok", diff="diff"
+            )
+
+        monkeypatch.setattr("maistro_rsi.runner.run_self_branch_attempt", capturing_attempt)
+
+        async def my_check(diff, paths):
+            raise AssertionError("not called in this test")
+
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"]),
+            FakeHarness(scores),
+            EloTournament(),
+            FakeScheduler(),
+            _noop_patch,
+            quarantine_check=my_check,
+        )
+        await cycle.run(_genome("baseline"), _genome("candidate"), ["m"])
+        assert received["quarantine_check"] is my_check

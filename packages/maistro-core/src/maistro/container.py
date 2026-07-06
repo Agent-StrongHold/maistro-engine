@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from maistro.agents.context_builder import ContextBuilder
 from maistro.agents.intents import IntentRegistry, build_intent_registry
 from maistro.classifier.engine import ClassifierEngine
+from maistro.graph.nodes.agent_spawn_harness import AgentSpawnHarnessNode
 from maistro.memory.context_assembly import DefaultContextAssemblyPolicy
 from maistro.memory.episodic.store import InMemoryEpisodicStore
 from maistro.memory.learnings.extractor import ToolCorrectionExtractor
@@ -31,8 +32,37 @@ from maistro.types.config import AgentConfig
 from maistro.types.errors import ConfigError
 
 if TYPE_CHECKING:
+    import httpx
+
+    from maistro.a2a.broker import A2ABroker
     from maistro.agents.base import Agent
+    from maistro.auth.oauth import (
+        IdentityLinker,
+        OAuth2Client,
+        OAuthProviderConfig,
+        SecretResolver,
+        StateStore,
+    )
     from maistro.capabilities.registry import CapabilityRegistry
+    from maistro.events.bus import EventBus
+    from maistro.events.durable_log import EventLogStore
+    from maistro.events.invocations import InvocationStore
+    from maistro.events.processing import HandlerCaller
+    from maistro.events.trigger_store import TriggerDefinition, TriggerStore
+    from maistro.graph.harness import HarnessAdapter
+    from maistro.identity.lifecycle import (
+        AgentIdentity as LifecycleIdentity,
+    )
+    from maistro.identity.lifecycle import (
+        CapabilityToken,
+        IdentityStore,
+        SecretStore,
+        TokenStore,
+    )
+    from maistro.observability.replay import RecordStore, ReplaySession
+    from maistro.observability.tiers import PIIDetector
+    from maistro.orchestrator.hierarchy import HarnessRegistry, HierarchicalOrchestrator
+    from maistro.personas.golden import GoldenRecordStore
     from maistro.projects.store import ProjectStore
     from maistro.protocols.memory import (
         ContextAssemblyPolicy,
@@ -42,8 +72,19 @@ if TYPE_CHECKING:
         SessionStore,
     )
     from maistro.protocols.quota import QuotaTracker
+    from maistro.protocols.scorer import Scorer
+    from maistro.providers.protocols import LLMProviderRegistry, LLMRouter
+    from maistro.resilience.p1 import ResiliencePolicyStore
     from maistro.security._types import AuditLog
     from maistro.security.sentinel.policy import Sentinel
+    from maistro.skills.import_pipeline import (
+        PolicyAttachmentStore,
+        SkillImportRequest,
+        SkillImportVerdict,
+    )
+    from maistro.skills.registry import InMemorySkillRegistry
+    from maistro.types.agent import AgentIdentity
+    from maistro.types.skill import SkillDefinition
 
 logger = logging.getLogger("maistro.container")
 
@@ -73,6 +114,44 @@ class Container:
     audit_log: AuditLog | None = None
     conduit: Any = None
     db_pool: Any = None
+    # Agent-harness DAG node adapters (dispatch/poll/cancel), keyed by
+    # harness_type (e.g. "rsi_cycle"). Empty by default -- see
+    # _wire_harness_adapters for why this container never auto-populates
+    # "rsi_cycle" itself.
+    harness_adapters: dict[str, HarnessAdapter] = field(default_factory=dict)
+    spawn_harness_node: AgentSpawnHarnessNode = None  # type: ignore[assignment]
+    # Wired in create_container (P1 resilience, ADR-066).
+    resilience_policies: ResiliencePolicyStore = None  # type: ignore[assignment]
+    # Durable events (ADR-086): bus bridge + log/trigger/invocation stores.
+    event_bus: EventBus = None  # type: ignore[assignment]
+    durable_event_log: EventLogStore = None  # type: ignore[assignment]
+    trigger_store: TriggerStore = None  # type: ignore[assignment]
+    invocation_store: InvocationStore = None  # type: ignore[assignment]
+    handler_caller: HandlerCaller = None  # type: ignore[assignment]
+    # LLM provider registry + cost-aware router (SPEC-070226-cb8d).
+    provider_registry: LLMProviderRegistry = None  # type: ignore[assignment]
+    llm_router: LLMRouter = None  # type: ignore[assignment]
+    # Observability record/replay + PII tier routing (ADR-055).
+    record_store: RecordStore = None  # type: ignore[assignment]
+    pii_detector: PIIDetector = None  # type: ignore[assignment]
+    # Identity lifecycle (ADR-084).
+    identity_store: IdentityStore = None  # type: ignore[assignment]
+    token_store: TokenStore = None  # type: ignore[assignment]
+    secret_store: SecretStore = None  # type: ignore[assignment]
+    # A2A delegation broker (ADR-058).
+    a2a_broker: A2ABroker = None  # type: ignore[assignment]
+    # Hierarchical orchestration across foreign harnesses (ADR-101).
+    harness_registry: HarnessRegistry = None  # type: ignore[assignment]
+    hierarchy: HierarchicalOrchestrator = None  # type: ignore[assignment]
+    # Personas golden records (SPEC-192).
+    golden_record_store: GoldenRecordStore = None  # type: ignore[assignment]
+    # Skill import pipeline (ADR-083).
+    skill_registry: InMemorySkillRegistry = None  # type: ignore[assignment]
+    policy_attachment_store: PolicyAttachmentStore = None  # type: ignore[assignment]
+    # OAuth (ADR-059): state + identity-link stores; clients via oauth_client().
+    oauth_state_store: StateStore = None  # type: ignore[assignment]
+    identity_linker: IdentityLinker = None  # type: ignore[assignment]
+    durable_event_cursor: int = 0
 
     def __post_init__(self) -> None:
         if self.conduit is None:
@@ -100,9 +179,164 @@ class Container:
         )
         return result
 
+    async def process_durable_events(self, *, limit: int = 100) -> int:
+        """Tick the durable-event loop (ADR-086): log -> triggers -> handlers.
 
-async def create_container(config: AgentConfig) -> Container:
-    """Wire all dependencies and create the container."""
+        Advances and persists the container's replay cursor; safe to call
+        repeatedly (idempotent invocations dedupe redelivery).
+        """
+        from maistro.events.processing import process_events
+
+        self.durable_event_cursor = await process_events(
+            self.durable_event_log,
+            self.trigger_store,
+            self.invocation_store,
+            self.handler_caller,
+            after_id=self.durable_event_cursor,
+            limit=limit,
+        )
+        return self.durable_event_cursor
+
+    async def list_durable_triggers(self) -> list[TriggerDefinition]:
+        """List the durable trigger definitions backing the reactor loop."""
+        return await self.trigger_store.list_triggers()
+
+    async def set_durable_trigger_enabled(self, trigger_id: str, enabled: bool) -> None:
+        """Enable/disable one durable trigger without removing it."""
+        await self.trigger_store.set_enabled(trigger_id, enabled)
+
+    async def durable_invocations_for(self, event_id: int) -> list[Any]:
+        """Handler invocations recorded for one durable event (delivery audit)."""
+        return list(await self.invocation_store.list_for_event(event_id))
+
+    async def select_model(self, task: Any, budget: Any = None) -> Any:
+        """Budget-constrained model selection via the wired cost-aware router."""
+        return await self.llm_router.select(task, budget)
+
+    async def select_embedding_model(self, input_size_tokens: int) -> Any:
+        """Cheapest available embedding model that fits the input size."""
+        return await self.llm_router.select_embedding(input_size_tokens)
+
+    async def get_embedding_model(self, name: str) -> Any:
+        """Look up one embedding model in the wired provider registry."""
+        return await self.provider_registry.get_embedding_model(name)
+
+    def replay_session(self, trace_id: str, *, accessor: str = "replay") -> ReplaySession:
+        """Create a ReplaySession over the wired record store (ADR-055)."""
+        from maistro.observability.replay import ReplaySession as _ReplaySession
+
+        return _ReplaySession(self.record_store, trace_id, accessor=accessor)
+
+    async def create_agent_identity(
+        self, agent_id: str, *, seed: bytes | str | list[str] | None = None
+    ) -> LifecycleIdentity:
+        """Bootstrap a did:key identity for an agent (ADR-084)."""
+        from maistro.identity.lifecycle import create_agent_identity
+
+        return await create_agent_identity(
+            agent_id,
+            identity_store=self.identity_store,
+            secret_store=self.secret_store,
+            seed=seed,
+        )
+
+    async def issue_capability_token(
+        self,
+        agent_id: str,
+        target_agent_id: str,
+        capability: str,
+        ttl_seconds: int = 3600,
+    ) -> CapabilityToken:
+        """Issue a signed, expiring capability token via the wired stores."""
+        from maistro.identity.lifecycle import issue_capability_token
+
+        return await issue_capability_token(
+            agent_id,
+            target_agent_id,
+            capability,
+            ttl_seconds,
+            identity_store=self.identity_store,
+            token_store=self.token_store,
+            secret_store=self.secret_store,
+        )
+
+    async def verify_capability_token(self, token: CapabilityToken) -> bool:
+        """Verify signature, expiry, and revocation against the wired store."""
+        from maistro.identity.lifecycle import verify_capability_token
+
+        return await verify_capability_token(token, token_store=self.token_store)
+
+    async def import_skill(self, request: SkillImportRequest, **kwargs: Any) -> SkillImportVerdict:
+        """Run the fail-closed skill import pipeline against the wired stores."""
+        from maistro.skills.import_pipeline import import_skill
+
+        return await import_skill(
+            request,
+            registry=self.skill_registry,
+            policy_store=self.policy_attachment_store,
+            **kwargs,
+        )
+
+    def verify_skill_payload(self, skill_name: str, payload: str) -> tuple[bool, tuple[str, ...]]:
+        """Per-use re-scan + content-hash check for an imported skill."""
+        from maistro.skills.import_pipeline import verify_skill_payload
+
+        return verify_skill_payload(skill_name, payload, policy_store=self.policy_attachment_store)
+
+    def persona_scorer(
+        self,
+        template_path: str,
+        eval_index: int = 0,
+        *,
+        criteria: str = "",
+        judge_model: Any = None,
+        threshold: float = 0.5,
+    ) -> Scorer:
+        """Build a persona scorer: LLM judge when available, rubric otherwise.
+
+        Loads the template's Nth eval as the deterministic RubricScorer
+        fallback and upgrades to a DeepEval judge only when ``judge_model``
+        is supplied and deepeval is importable (SPEC-192 graceful fallback).
+        """
+        from maistro.personas.scorer import RubricScorer, create_judge_scorer
+
+        fallback = RubricScorer.from_yaml(template_path, eval_index)
+        return create_judge_scorer(
+            fallback.eval_name,
+            criteria or fallback.eval_name,
+            fallback=fallback,
+            model=judge_model,
+            threshold=threshold,
+        )
+
+    def oauth_client(
+        self,
+        providers: dict[str, OAuthProviderConfig],
+        http: httpx.AsyncClient,
+        secret_resolver: SecretResolver,
+    ) -> OAuth2Client:
+        """Build an OAuth2 (Auth Code + PKCE) client over the wired stores."""
+        from maistro.auth.oauth import OAuth2Client, default_id_token_verifier
+
+        return OAuth2Client(
+            providers,
+            self.oauth_state_store,
+            http,
+            secret_resolver,
+            id_token_verifier=default_id_token_verifier(),
+        )
+
+
+async def create_container(
+    config: AgentConfig, *, harness_adapters: dict[str, HarnessAdapter] | None = None
+) -> Container:
+    """Wire all dependencies and create the container.
+
+    `harness_adapters`, if given, is passed straight through to
+    `_wire_harness_adapters` -- see that function for why this container
+    cannot construct a real `RsiCycleHarnessAdapter` (`"rsi_cycle"`) on its
+    own and instead leaves the map for the caller to populate.
+    """
     if not config.router_api_key:
         msg = "ROUTER_API_KEY is required."
         raise ConfigError(msg)
@@ -153,6 +387,100 @@ async def create_container(config: AgentConfig) -> Container:
 
     capabilities = default_capability_registry()
 
+    # --- P1 resilience policies (ADR-066) --------------------------------
+    from maistro.resilience.p1 import InMemoryResiliencePolicyStore, default_policies
+
+    resilience_policies = InMemoryResiliencePolicyStore(default_policies(), include_defaults=False)
+
+    # --- Durable events (ADR-086) ----------------------------------------
+    from maistro.events.bus import EventBus
+    from maistro.events.durable_log import InMemoryEventLog, append_from_bus_event
+    from maistro.events.invocations import InMemoryInvocationStore
+    from maistro.events.processing import HTTPHandlerCaller
+    from maistro.events.trigger_store import InMemoryTriggerStore
+
+    durable_event_log: EventLogStore
+    trigger_store: TriggerStore
+    invocation_store: InvocationStore
+    if db_pool is not None:
+        (
+            durable_event_log,
+            trigger_store,
+            invocation_store,
+        ) = await _wire_sqlite_durable_events(db_pool)
+    else:
+        durable_event_log = InMemoryEventLog()
+        trigger_store = InMemoryTriggerStore()
+        invocation_store = InMemoryInvocationStore()
+    handler_caller = HTTPHandlerCaller()
+
+    event_bus = EventBus()
+
+    async def _persist_bus_event(event: Any) -> None:
+        # Bridge: every in-memory bus event is appended to the durable log.
+        await durable_event_log.append(**append_from_bus_event(event))
+
+    event_bus.subscribe(_persist_bus_event)
+
+    # --- LLM provider registry + cost-aware router (SPEC-070226-cb8d) ----
+    from maistro.providers.config import load_provider_registry
+    from maistro.providers.registry import InMemoryProviderRegistry
+    from maistro.providers.router import CostAwareRouter
+
+    provider_registry = (
+        load_provider_registry(config.provider_config_path)
+        if config.provider_config_path
+        else InMemoryProviderRegistry()
+    )
+    llm_router = CostAwareRouter(provider_registry)
+
+    # --- Observability record/replay + PII tiers (ADR-055) ---------------
+    from maistro.observability.replay import InMemoryRecordStore
+    from maistro.observability.tiers import PIIDetector
+
+    record_store = InMemoryRecordStore()
+    pii_detector = PIIDetector(mode="prod")
+
+    # --- Identity lifecycle (ADR-084) -------------------------------------
+    from maistro.identity.lifecycle import (
+        InMemoryIdentityStore,
+        InMemorySecretStore,
+        InMemoryTokenStore,
+    )
+
+    identity_store = InMemoryIdentityStore()
+    token_store = InMemoryTokenStore()
+    secret_store = InMemorySecretStore()
+
+    # --- Skill registry + import pipeline (ADR-083) ----------------------
+    from maistro.skills.import_pipeline import InMemoryPolicyAttachmentStore
+    from maistro.skills.registry import InMemorySkillRegistry
+
+    skill_registry = InMemorySkillRegistry()
+    policy_attachment_store = InMemoryPolicyAttachmentStore()
+
+    # --- A2A delegation broker (ADR-058) ----------------------------------
+    agents: dict[str, Agent] = {}
+    a2a_broker = _wire_a2a_broker(agents)
+
+    # --- Hierarchical orchestration (ADR-101) ------------------------------
+    harness_registry, hierarchy = _wire_hierarchy(agents, skill_registry)
+
+    # --- Agent-harness DAG node adapters (ADR-062 spawn_harness) -----------
+    wired_harness_adapters = _wire_harness_adapters(harness_adapters)
+    spawn_harness_node = AgentSpawnHarnessNode(adapters=wired_harness_adapters)
+
+    # --- Personas golden records (SPEC-192) --------------------------------
+    from maistro.personas.golden import InMemoryGoldenRecordStore
+
+    golden_record_store = InMemoryGoldenRecordStore()
+
+    # --- OAuth (ADR-059) ----------------------------------------------------
+    from maistro.auth.oauth import IdentityLinker, InMemoryIdentityLinkStore, InMemoryStateStore
+
+    oauth_state_store = InMemoryStateStore()
+    identity_linker = IdentityLinker(store=InMemoryIdentityLinkStore())
+
     container = Container(
         config=config,
         router=router,
@@ -171,8 +499,32 @@ async def create_container(config: AgentConfig) -> Container:
         episodic_store=episodic_store,
         project_store=project_store,
         context_assembly_policy=context_assembly_policy,
+        agents=agents,
         audit_log=audit_log,
         db_pool=db_pool,
+        resilience_policies=resilience_policies,
+        event_bus=event_bus,
+        durable_event_log=durable_event_log,
+        trigger_store=trigger_store,
+        invocation_store=invocation_store,
+        handler_caller=handler_caller,
+        provider_registry=provider_registry,
+        llm_router=llm_router,
+        record_store=record_store,
+        pii_detector=pii_detector,
+        identity_store=identity_store,
+        token_store=token_store,
+        secret_store=secret_store,
+        a2a_broker=a2a_broker,
+        harness_registry=harness_registry,
+        hierarchy=hierarchy,
+        harness_adapters=wired_harness_adapters,
+        spawn_harness_node=spawn_harness_node,
+        golden_record_store=golden_record_store,
+        skill_registry=skill_registry,
+        policy_attachment_store=policy_attachment_store,
+        oauth_state_store=oauth_state_store,
+        identity_linker=identity_linker,
     )
 
     backend = "SQLite" if db_pool is not None else "InMemory"
@@ -220,3 +572,110 @@ async def _wire_sqlite_backend(
     session_store: SessionStore = sqlite_session_store
 
     return conn, quota_tracker, learning_store, outcome_store, session_store
+
+
+async def _wire_sqlite_durable_events(
+    conn: Any,
+) -> tuple[EventLogStore, TriggerStore, InvocationStore]:
+    """Wire the durable-event stores onto the already-open SQLite connection."""
+    from maistro.events.durable_log import SqliteEventLog
+    from maistro.events.invocations import SqliteInvocationStore
+    from maistro.events.trigger_store import SqliteTriggerStore
+
+    sqlite_event_log = SqliteEventLog(conn)
+    sqlite_trigger_store = SqliteTriggerStore(conn)
+    sqlite_invocation_store = SqliteInvocationStore(conn)
+    await sqlite_event_log.ensure_schema()
+    await sqlite_trigger_store.ensure_schema()
+    await sqlite_invocation_store.ensure_schema()
+    return sqlite_event_log, sqlite_trigger_store, sqlite_invocation_store
+
+
+def _wire_a2a_broker(agents: dict[str, Agent]) -> A2ABroker:
+    """Wire the A2A broker over the container's live agent map.
+
+    The resolver and invoker are small adapter closures over ``agents`` —
+    the broker itself stays DI-clean (it never sees the container).
+    """
+    from maistro.a2a.broker import A2ABroker, A2AError, DelegationBudget, LocalTransport
+    from maistro.a2a.delegate import A2ATask
+    from maistro.agents.catalog import AgentCard
+
+    class _AgentMapCardResolver:
+        def resolve(self, agent_id: str, user_id: str = "") -> AgentCard | None:
+            agent = agents.get(agent_id)
+            if agent is None:
+                return None
+            return AgentCard.from_identity(agent.identity, user_id=user_id)
+
+    async def _invoke(task: A2ATask, budget: DelegationBudget) -> str:
+        agent = agents.get(task.to_agent)
+        if agent is None:
+            raise A2AError(f"unknown local agent '{task.to_agent}'")
+        response = await agent.handle(
+            [{"role": "user", "content": task.task}],
+            auth=None,
+            session_id=budget.trace_id,
+        )
+        return response.content
+
+    return A2ABroker(resolver=_AgentMapCardResolver(), local=LocalTransport(_invoke))
+
+
+def _wire_hierarchy(
+    agents: dict[str, Agent],
+    skill_registry: InMemorySkillRegistry,
+) -> tuple[HarnessRegistry, HierarchicalOrchestrator]:
+    """Wire hierarchical orchestration with a loopback transport.
+
+    The AgentSource adapter resolves an agent name from the container's live
+    agent map and its skill names from the wired skill registry; connecting
+    real foreign harnesses is a deployment concern (register advertisements
+    on the returned registry and connect transport handlers).
+    """
+    from maistro.orchestrator.hierarchy import (
+        HierarchicalOrchestrator,
+        HierarchyError,
+        InMemoryHarnessRegistry,
+        LoopbackHarnessTransport,
+    )
+
+    class _AgentMapSource:
+        async def resolve(self, agent_name: str) -> tuple[AgentIdentity, list[SkillDefinition]]:
+            agent = agents.get(agent_name)
+            if agent is None:
+                raise HierarchyError(f"unknown local agent '{agent_name}'")
+            skills = [
+                skill
+                for name in agent.identity.skills
+                if (skill := skill_registry.get(name)) is not None
+            ]
+            return agent.identity, skills
+
+    registry = InMemoryHarnessRegistry()
+    orchestrator = HierarchicalOrchestrator(
+        registry=registry,
+        transport=LoopbackHarnessTransport(),
+        agent_source=_AgentMapSource(),
+    )
+    return registry, orchestrator
+
+
+def _wire_harness_adapters(
+    overrides: dict[str, HarnessAdapter] | None,
+) -> dict[str, HarnessAdapter]:
+    """Wire the `agent.spawn_harness` node's adapter map.
+
+    Unlike `_wire_a2a_broker`/`_wire_hierarchy`, this has no default
+    population of its own. `RsiCycleHarnessAdapter` (`maistro-rsi`, a
+    downstream package this one cannot depend on -- `maistro-core` is the
+    shared library `maistro-rsi` imports, never the reverse) wraps `RsiCycle`,
+    whose `RsiCycleConfig` requires a real `repo_url` + `test_command`: exactly
+    the deployment-specific information a generic, `AgentConfig`-driven
+    container has no way to source safely. Fabricating placeholder values
+    would risk running RSI's self-modifying git operations against a wrong or
+    fake repo, so this stays an empty seam by default. Callers that do have
+    real RSI deployment config construct their own `RsiCycleHarnessAdapter`
+    and pass it via `create_container(config, harness_adapters={"rsi_cycle": ...})`.
+    """
+    return dict(overrides or {})

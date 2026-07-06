@@ -3,10 +3,10 @@ id: SPEC-183
 title: OAuth2 user authentication — implementation
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-05-29
 accepted: null
-implemented: null
+implemented: 2026-07-02
 substrate:
   - maistro-engine#ADR-059
 implements:
@@ -18,13 +18,16 @@ related:
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/auth/test_oauth.py
 layer: Identity
 owners:
   - '@BlakeMatthews-dev'
 history:
   - status: Proposed
     date: 2026-05-29
+  - status: Implemented
+    date: 2026-07-02
 ---
 
 # SPEC-183: OAuth2 user authentication — implementation
@@ -57,6 +60,28 @@ Phased PRs to `integration`, TDD throughout. Negative tests (no token on bad inp
 
 ### Phase 4 — audit + observability
 - `auth.oauth.login|link|refresh|failed` events; tokens never logged (ADR-044). No `org_id` anywhere (ADR-019 CI grep).
+
+## Implementation status (2026-07-02)
+
+Phases 1 and 2 are implemented in `packages/maistro-core/src/maistro/auth/oauth.py`
+with tests in `packages/maistro-core/tests/auth/test_oauth.py`. **Phase 3
+(hive-conductor start/callback routes + middleware public prefixes) and Phase 4
+(audit-event wiring into the product event bus) are follow-up work.**
+
+Deviations from the phase text above:
+
+- id_token verification uses PyJWT (`JWKSIdTokenVerifier`) behind an
+  `IdTokenVerifier` protocol; PyJWT arrives transitively (no new pyproject
+  dependency). If PyJWT is absent, `default_id_token_verifier()` falls back to
+  `UnverifiedJWTClaimsValidator` (claims-only, loud warning) — inject the JWKS
+  verifier in production.
+- Vault integration is via injection, not direct import: client secrets are
+  resolved through a `SecretResolver` callable and audit events through an
+  `EventEmitter` callable (payloads never carry tokens, ADR-044). The product
+  wires these to `vault.py` and its event bus in Phase 3/4.
+- Unknown identity with open registration is provisioned via an injected
+  `UserProvisioner` (product creates the `role="user"`, empty-permissions
+  record); core never creates users or grants admin.
 
 ## Out of scope (this spec)
 - Provider-credential OAuth for LLM providers (SPEC-014).
