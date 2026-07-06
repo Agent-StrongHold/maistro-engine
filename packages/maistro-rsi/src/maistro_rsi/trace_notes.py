@@ -39,6 +39,18 @@ RSI_NOTES_REF = "refs/notes/rsi"
 # than misparse it. Bump when the note fields change incompatibly.
 NOTE_VERSION = 1
 
+# Writing a note creates a notes commit, which needs an author identity. A CI
+# runner or a throwaway RSI clone inherits neither a global nor a repo-local one,
+# so `git notes add` fails with "Author identity unknown". Set a bot identity
+# per-invocation — mirroring local_loop._GIT_CONFIG — so annotating never depends
+# on ambient git config.
+_GIT_IDENT = (
+    "-c",
+    "user.email=rsi@maistro.local",
+    "-c",
+    "user.name=maistro-rsi",
+)
+
 
 @dataclass
 class RewardVector:
@@ -86,7 +98,7 @@ class TraceNote:
 
 def _git(cwd: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(
-        ["git", *args],
+        ["git", *_GIT_IDENT, *args],
         cwd=str(cwd),
         capture_output=True,
         text=True,
