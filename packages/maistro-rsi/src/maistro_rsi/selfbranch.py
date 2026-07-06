@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import structlog
 
 from maistro.tools.git.server import (
+    git_add,
     git_branch,
     git_clone,
     git_commit,
@@ -105,6 +106,7 @@ async def run_self_branch_attempt(
     *,
     open_pr: bool = False,
     quarantine_check: QuarantineCheckFn | None = None,
+    model: str | None = None,
 ) -> SelfBranchResult:
     """Run one clone → branch → patch → test → quarantine → (PR) cycle.
 
@@ -126,11 +128,19 @@ async def run_self_branch_attempt(
         )
 
     await git_branch(workspace, attempt.branch_name, checkout=True)
-    await apply_patch(sandbox, workspace)
-    await git_commit(workspace, attempt.commit_message, add_all=True)
+    await apply_patch(sandbox, workspace, model)
 
-    diff_result = await git_diff(workspace, staged=False)
+    # Stage and capture the diff BEFORE committing — after the commit the
+    # working tree matches HEAD and `git diff` is empty, which would hand the
+    # quarantine gate (and the PR body) a blank change to inspect. Capturing
+    # the staged diff pre-commit may include sensitive files that git_commit
+    # unstages at commit time, so quarantine sees a superset of what ships —
+    # fail-safe in the right direction.
+    await git_add(workspace)
+    diff_result = await git_diff(workspace, staged=True)
     diff = str(diff_result.get("stdout", ""))
+
+    await git_commit(workspace, attempt.commit_message, add_all=True)
 
     exit_code, output = await sandbox.exec(attempt.test_command, timeout=900)
 

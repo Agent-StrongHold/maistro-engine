@@ -10,7 +10,11 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 
+import pytest
+
+import maistro_rsi.local_loop as local_loop
 from maistro_rsi.local_loop import LocalRsiConfig, LocalRsiLoop
 from maistro_rsi.protocols import MicroVmSandbox
 
@@ -37,7 +41,7 @@ def _make_repo(path: Path) -> Path:
 def _make_apply(writer) -> object:
     """Wrap a sync ``writer(workspace: Path)`` as an async ApplyPatchFn."""
 
-    async def apply(sandbox: MicroVmSandbox, workspace: str) -> None:
+    async def apply(sandbox: MicroVmSandbox, workspace: str, model: str | None = None) -> None:
         writer(Path(workspace))
 
     return apply
@@ -139,3 +143,45 @@ def test_source_repo_untouched(tmp_path: Path) -> None:
     ).stdout
     assert head_after == head_before  # never committed to source
     assert "rsi" not in branches  # never branched the source
+
+
+class _FakeResponsesCallable:
+    """Stands in for ResponsesAPICallable: records the model it was built with
+    and immediately ends the turn."""
+
+    built_models: ClassVar[list] = []
+
+    def __init__(self, *, model=None, temperature=None, reasoning_effort=None, timeout=None):
+        type(self).built_models.append(model)
+
+    def __call__(self, messages, *, tools=None, max_tokens=None):
+        return {"content": "done", "stop_reason": "end_turn"}
+
+
+@pytest.mark.asyncio
+async def test_apply_patch_cycle_model_used_when_factory_model_unset(tmp_path, monkeypatch):
+    """ApplyPatchFn's third arg (the quota-burn scheduler's per-cycle pick)
+    reaches the builders LLM wiring when no explicit factory model was given."""
+    import maistro_bootstrap.builders.responses_callable as rc
+
+    _FakeResponsesCallable.built_models = []
+    monkeypatch.setattr(rc, "ResponsesAPICallable", _FakeResponsesCallable)
+
+    apply_fn = local_loop.make_builders_apply_patch("do a thing")
+    await apply_fn(None, str(tmp_path), "groq/kimi-k2")
+
+    assert _FakeResponsesCallable.built_models == ["groq/kimi-k2"]
+
+
+@pytest.mark.asyncio
+async def test_apply_patch_factory_model_beats_cycle_model(tmp_path, monkeypatch):
+    """An explicit factory model (e.g. the CLI's --model) is a hard override."""
+    import maistro_bootstrap.builders.responses_callable as rc
+
+    _FakeResponsesCallable.built_models = []
+    monkeypatch.setattr(rc, "ResponsesAPICallable", _FakeResponsesCallable)
+
+    apply_fn = local_loop.make_builders_apply_patch("do a thing", model="cli-override")
+    await apply_fn(None, str(tmp_path), "groq/kimi-k2")
+
+    assert _FakeResponsesCallable.built_models == ["cli-override"]

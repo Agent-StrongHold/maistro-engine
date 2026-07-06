@@ -40,7 +40,7 @@ def _make_repo(path: Path) -> Path:
 
 
 def _make_apply(writer) -> object:
-    async def apply(sandbox: MicroVmSandbox, workspace: str) -> None:
+    async def apply(sandbox: MicroVmSandbox, workspace: str, model: str | None = None) -> None:
         writer(Path(workspace))
 
     return apply

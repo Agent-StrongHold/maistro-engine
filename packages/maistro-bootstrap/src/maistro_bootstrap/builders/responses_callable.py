@@ -2,8 +2,9 @@
 
 Reads at call time (never baked in):
   - LITELLM_URL / LITELLM_BASE_URL / LITELLM_PROXY_URL — gateway base URL
-  - LITELLM_MASTER_KEY / LITELLM_PROXY_KEY          — bearer key
-  - MAISTRO_BUILDERS_MODEL / DEFAULT_MODEL           — default model alias
+  - LITELLM_MASTER_KEY / LITELLM_PROXY_KEY /
+    LITELLM_API_KEY / LITELLM_VIRTUAL_KEY              — bearer key
+  - MAISTRO_BUILDERS_MODEL / DEFAULT_MODEL             — default model alias
 
 The gateway exposes an OpenAI-compatible /v1/chat/completions endpoint, so
 every LiteLLM-supported provider (Anthropic, OpenAI, Groq, Mistral, Ollama,
@@ -118,7 +119,16 @@ def _base_url() -> str:
 
 def _api_key() -> str:
     _ensure_env_loaded()
-    return os.environ.get("LITELLM_MASTER_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
+    # Sandboxed/least-privilege deployments hold only a LiteLLM *virtual* key
+    # (LITELLM_API_KEY / LITELLM_VIRTUAL_KEY) — accept those too so the agent
+    # doesn't silently fall back to stub responses.
+    return (
+        os.environ.get("LITELLM_MASTER_KEY")
+        or os.environ.get("LITELLM_PROXY_KEY")
+        or os.environ.get("LITELLM_API_KEY")
+        or os.environ.get("LITELLM_VIRTUAL_KEY")
+        or ""
+    )
 
 
 def _default_model() -> str:

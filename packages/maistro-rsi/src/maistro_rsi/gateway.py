@@ -81,6 +81,11 @@ def make_gateway_llm_call(model: str, *, timeout: float = 60.0) -> LlmCall:
             # failure is diagnosable — and feeds accurate reasoning-vs-output
             # cost into the latency/tokens signal — instead of a silent "".
             usage = data.get("usage") or {}
+            # Cumulative counters exposed on the callable so callers (e.g.
+            # RsiCycle → QuotaBurnScheduler.record_attempt) can close the
+            # quota-burn feedback loop.
+            llm_call.usage_input += int(usage.get("prompt_tokens") or 0)  # type: ignore[attr-defined]
+            llm_call.usage_output += int(usage.get("completion_tokens") or 0)  # type: ignore[attr-defined]
             details = usage.get("completion_tokens_details") or {}
             reasoning = int(details.get("reasoning_tokens") or 0)
             completion = int(usage.get("completion_tokens") or 0)
@@ -102,4 +107,6 @@ def make_gateway_llm_call(model: str, *, timeout: float = 60.0) -> LlmCall:
                 )
             return content
 
+    llm_call.usage_input = 0  # type: ignore[attr-defined]
+    llm_call.usage_output = 0  # type: ignore[attr-defined]
     return llm_call

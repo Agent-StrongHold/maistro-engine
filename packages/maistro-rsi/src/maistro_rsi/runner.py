@@ -15,6 +15,7 @@ alongside it) rather than reimplementing them:
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from dataclasses import dataclass, field
 
@@ -28,7 +29,12 @@ from maistro_rsi.gateway import LlmCall, make_gateway_llm_call
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quota_burn import QuotaBurnScheduler
 from maistro_rsi.sandbox.microvm import create_microvm_sandbox
-from maistro_rsi.selfbranch import SelfBranchResult, new_attempt, run_self_branch_attempt
+from maistro_rsi.selfbranch import (
+    QuarantineCheckFn,
+    SelfBranchResult,
+    new_attempt,
+    run_self_branch_attempt,
+)
 
 logger = structlog.get_logger()
 
@@ -43,6 +49,10 @@ class RsiCycleConfig:
     benchmarks: list[str] = field(default_factory=lambda: list(DEFAULT_BENCHMARKS))
     open_prs: bool = False
     base_branch: str = "main"
+    # Keep the cloned workspace after the cycle (debugging). Default False:
+    # long-running loops would otherwise slowly fill the disk with one clone
+    # per run_id that nothing ever deletes.
+    keep_workspace: bool = False
 
 
 @dataclass
@@ -83,6 +93,7 @@ class RsiCycle:
         scheduler: QuotaBurnScheduler,
         apply_patch: ApplyPatchFn,
         llm_call: LlmCall | None = None,
+        quarantine_check: QuarantineCheckFn | None = None,
     ) -> None:
         self._config = config
         self._harness = harness
@@ -92,6 +103,9 @@ class RsiCycle:
         # When None, run() builds a gateway-backed llm_call from the
         # scheduler-chosen model so benchmark scoring is real, not heuristic.
         self._llm_call = llm_call
+        # Without a quarantine_check, run_self_branch_attempt treats every
+        # diff as cleared; callers that open PRs should always supply one.
+        self._quarantine_check = quarantine_check
 
     async def run(
         self,
@@ -126,6 +140,8 @@ class RsiCycle:
                 attempt,
                 self._apply_patch,
                 open_pr=self._config.open_prs,
+                quarantine_check=self._quarantine_check,
+                model=model,
             )
 
             baseline_results = await self._harness.evaluate_genome(
@@ -152,6 +168,16 @@ class RsiCycle:
             ]
         finally:
             await sandbox.destroy()
+            if not self._config.keep_workspace:
+                shutil.rmtree(workspace, ignore_errors=True)
+
+        # Close the quota-burn feedback loop: without recording usage, the
+        # scheduler ranks against a tracker nothing writes to and keeps picking
+        # the same model. Gateway-built llm_calls expose cumulative counters.
+        usage_in = int(getattr(llm_call, "usage_input", 0) or 0)
+        usage_out = int(getattr(llm_call, "usage_output", 0) or 0)
+        if model and (usage_in or usage_out):
+            await self._scheduler.record_attempt(model, usage_in, usage_out)
 
         result = RsiCycleResult(
             run_id=run_id,

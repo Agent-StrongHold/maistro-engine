@@ -136,6 +136,8 @@ def _import_node_modules() -> None:
 
     module_names = (
         "agent_delegate_remote",  # registers "agent.delegate_remote"
+        "agent_spawn_harness",  # registers "agent.spawn_harness"
+        "agent_synth_dag",  # registers "agent.synth_dag"
         "airtable_poll",  # registers "airtable.poll"
         "compliance_block",  # registers "compliance.block"
         "dashboard_append_section",  # registers "dashboard.append_section"
