@@ -593,6 +593,10 @@ class _VariantResult:
     # never ran) — survives past its pass/fail gate for the checkpoint-time
     # RLPHD reviewer to use as prediction evidence.
     regression_judge_score: float | None = None
+    # Compact acceptance evidence (per-gate pass/fail, composite, mutation score)
+    # lifted from the Scorecard, so a promotion can be annotated onto its commit
+    # as a git-notes trace record (trace_notes.py) without re-deriving from logs.
+    trace: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -1265,6 +1269,7 @@ class LocalRsiLoop:
                     r.note,
                     r.tests_passed,
                     r.regression_judge_score,
+                    r.trace,
                 ) = self._fitness_decision(index, cdir, r.changed_files, target=objective)
             else:
                 r.tests_passed = self._run_tests(cdir)
@@ -1405,6 +1410,9 @@ class LocalRsiLoop:
             note = (
                 f"tournament: {len(competitors)} competitor(s), {len(accepted)} passed, "
                 f"kept {kept_n} (composite={composite})"
+            )
+            self._annotate_promotion(
+                promoted_sha, index, target, accepted[0], composite, files, note
             )
             logger.info(
                 "rsi_local_cycle_promoted",
@@ -1688,7 +1696,7 @@ class LocalRsiLoop:
             f"RSI cycle {index}: merged {len(kept)} complementary fix(es) of {target}",
         )
         if self._config.use_fitness:
-            m_ok, m_comp, reason, _tp, m_judge = self._fitness_decision(
+            m_ok, m_comp, reason, _tp, m_judge, _trace = self._fitness_decision(
                 index, merge_dir, changed_files
             )
             if not m_ok:
@@ -1736,12 +1744,13 @@ class LocalRsiLoop:
 
     def _fitness_decision(
         self, index: int, cycle_dir: Path, changed_files: list[str], *, target: str = ""
-    ) -> tuple[bool, float, str, bool, float | None]:
+    ) -> tuple[bool, float, str, bool, float | None, dict[str, Any]]:
         """Build the multi-signal Scorecard for the candidate and return
-        (accepted, composite, reject_reason, tests_passed, regression_judge_score).
-        Logs explain(). The judge score (None if the judge never ran) survives
-        past its pass/fail gate so the checkpoint-time RLPHD reviewer can use
-        it as prediction evidence, not just the boolean veto."""
+        (accepted, composite, reject_reason, tests_passed, regression_judge_score,
+        trace). Logs explain(). The judge score (None if the judge never ran)
+        survives past its pass/fail gate so the checkpoint-time RLPHD reviewer can
+        use it as prediction evidence, not just the boolean veto. ``trace`` is a
+        compact per-gate/reward bundle for the commit's git-notes record."""
         from maistro_rsi.candidate_fitness import evaluate_candidate
 
         scorecard = evaluate_candidate(
@@ -1771,7 +1780,59 @@ class LocalRsiLoop:
         )
         # detail is dict[str, object]; the regression judge stores a float score.
         judge_score = float(judge_raw) if isinstance(judge_raw, int | float) else None
-        return scorecard.accepted, scorecard.composite, reason, tests_passed, judge_score
+        mut_raw = next(
+            (g.detail.get("score") for g in scorecard.gates if g.name == "tests_pin_behavior"),
+            None,
+        )
+        trace: dict[str, Any] = {
+            "gates": {g.name: g.passed for g in scorecard.gates},
+            "composite": scorecard.composite,
+            "mutation_score": float(mut_raw) if isinstance(mut_raw, int | float) else None,
+        }
+        return (
+            scorecard.accepted,
+            scorecard.composite,
+            reason,
+            tests_passed,
+            judge_score,
+            trace,
+        )
+
+    def _annotate_promotion(
+        self,
+        sha: str,
+        index: int,
+        target: str,
+        top: _VariantResult,
+        composite: float,
+        files: int,
+        summary: str,
+    ) -> None:
+        """Attach a git-notes trace record to a just-promoted commit (SPEC: the
+        HORIZON-style acceptance/reward substrate). Best-effort — write_trace_note
+        never raises — so annotating the ratchet can never fail a landed promotion.
+        The record makes the promotion reconstructable from git alone: its verdict
+        (per-gate pass/fail) and reward vector (pass/composite/mutation/judge)."""
+        from maistro_rsi.trace_notes import RewardVector, TraceNote, write_trace_note
+
+        gates = top.trace.get("gates") or {"tests_pass": top.tests_passed}
+        trace_note = TraceNote(
+            cycle=index,
+            target=target,
+            accepted=True,
+            kind=top.kind.value,
+            model=top.model or self._config.model or "",
+            files_touched=files,
+            reward=RewardVector(
+                delta_pass=1.0 if top.tests_passed else 0.0,
+                composite=composite,
+                mutation_score=top.trace.get("mutation_score"),
+                regression_judge=top.regression_judge_score,
+            ),
+            gates={str(k): bool(v) for k, v in gates.items()},
+            note=summary,
+        )
+        write_trace_note(self._baseline, sha, trace_note)
 
     def _run_tests(self, cycle_dir: Path) -> bool:
         # shell=True: the test command is operator-supplied config, not agent input.
