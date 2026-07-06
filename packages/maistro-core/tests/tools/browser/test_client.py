@@ -231,6 +231,32 @@ class TestSearchWeb:
             await client.search_web("test query")
 
 
+class TestBrowseSSRFGuard:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://localhost/admin",
+            "http://169.254.169.254/latest/meta-data/",
+        ],
+    )
+    async def test_blocked_url_rejected_before_agent_constructed(
+        self, monkeypatch: pytest.MonkeyPatch, url: str
+    ) -> None:
+        monkeypatch.setenv("LITELLM_URL", "http://gw")
+        monkeypatch.setenv("LITELLM_MASTER_KEY", "key")
+        fake_agent_cls = MagicMock()
+        fake_chat_openai_cls = MagicMock(return_value="chat-instance")
+        fake_module = SimpleNamespace(Agent=fake_agent_cls, ChatOpenAI=fake_chat_openai_cls)
+        monkeypatch.setitem(sys.modules, "browser_use", fake_module)
+
+        client = BrowserClient()
+        with pytest.raises(BrowserToolError, match="SSRF guard"):
+            await client.browse(url, "find something")
+
+        fake_agent_cls.assert_not_called()
+
+
 class TestBrowse:
     @pytest.mark.asyncio
     async def test_raises_when_agent_class_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:

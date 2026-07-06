@@ -17,6 +17,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from maistro.security._types import ClarifyingQuestion, GateResult
+from maistro.security.request_analyzer import analyze_request_sufficiency
 from maistro.security.warden.sanitizer import sanitize
 
 if TYPE_CHECKING:
@@ -161,10 +162,11 @@ def _check_sufficiency(
     task_type: str,
     context: list[dict[str, str]] | None,
 ) -> list[ClarifyingQuestion] | None:
-    """Basic request sufficiency check for persistent/supervised modes.
+    """Request sufficiency check for persistent/supervised modes.
 
-    Returns None if sufficient, list of ClarifyingQuestion if not.
-    Can be replaced with a more sophisticated analyzer.
+    Delegates to `analyze_request_sufficiency` for per-task-type WHAT/WHERE/
+    HOW/CONTEXT signal scoring and conversation-aware confirmation-hijack
+    guarding. Returns None if sufficient, list of ClarifyingQuestion if not.
     """
     if not text.strip():
         return [
@@ -173,4 +175,12 @@ def _check_sufficiency(
                 allow_freetext=True,
             )
         ]
-    return None
+
+    result = analyze_request_sufficiency(text, task_type, conversation_context=context)
+    if result.sufficient:
+        return None
+
+    return [
+        ClarifyingQuestion(question=detail.question, allow_freetext=True)
+        for detail in result.missing
+    ]
