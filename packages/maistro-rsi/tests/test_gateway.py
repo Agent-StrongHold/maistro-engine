@@ -69,6 +69,56 @@ async def test_request_shape_and_usage_accumulation(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_on_response_hook_receives_body_and_response(monkeypatch):
+    body = {
+        "choices": [{"message": {"content": "the answer"}}],
+        "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+    }
+    transport = _CapturingTransport(body)
+    real_client = httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr("maistro_rsi.gateway.httpx.AsyncClient", client_factory)
+
+    captured = {}
+
+    def on_response(data, response):
+        captured["data"] = data
+        captured["status"] = response.status_code
+
+    llm_call = make_gateway_llm_call("groq/kimi-k2", on_response=on_response)
+    result = await llm_call([{"role": "user", "content": "q"}])
+
+    assert result == "the answer"
+    assert captured["data"]["usage"] == {"prompt_tokens": 11, "completion_tokens": 7}
+    assert captured["status"] == 200
+
+
+@pytest.mark.asyncio
+async def test_on_response_hook_failure_is_swallowed(monkeypatch):
+    body = {"choices": [{"message": {"content": "the answer"}}]}
+    transport = _CapturingTransport(body)
+    real_client = httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    monkeypatch.setattr("maistro_rsi.gateway.httpx.AsyncClient", client_factory)
+
+    def broken_hook(data, response):
+        raise RuntimeError("recording hook blew up")
+
+    llm_call = make_gateway_llm_call("groq/kimi-k2", on_response=broken_hook)
+    result = await llm_call([{"role": "user", "content": "q"}])
+
+    assert result == "the answer"
+
+
+@pytest.mark.asyncio
 async def test_unconfigured_gateway_raises(monkeypatch):
     monkeypatch.delenv("LITELLM_URL", raising=False)
     monkeypatch.delenv("LITELLM_BASE_URL", raising=False)
