@@ -1120,6 +1120,39 @@ class LocalRsiLoop:
         roster += [c for c in self._config.competitors if not self._benched(c.model, index)]
         return roster or [Competitor(model=self._config.model or "")]
 
+    def _emergency_pool(self) -> list[str]:
+        """The never-idle fallback pool (configured ``emergency_models``, else the
+        cross-provider default), de-duped with order preserved."""
+        pool = list(self._config.emergency_models) or list(_DEFAULT_EMERGENCY_MODELS)
+        out: list[str] = []
+        for m in pool:
+            if m and m not in out:
+                out.append(m)
+        return out
+
+    def _emergency_model(self, index: int) -> str | None:
+        """A SERVABLE model to rescue an all-benched cycle: the most-reliable
+        non-benched model from the emergency pool. If the whole pool is benched
+        too, the one whose bench expires soonest (least-bad probe) — the loop must
+        still try SOMETHING rather than idle. ``None`` only if the pool is empty."""
+        pool = self._emergency_pool()
+        if not pool:
+            return None
+        servable = [m for m in pool if not self._benched(m, index)]
+        if servable:
+            return max(servable, key=lambda m: self._reliability.get(m, 1.0))
+        return min(pool, key=lambda m: self._bench.get(m, 0.0))
+
+    def _spawn_emergency_genome(self, model: str) -> Any:
+        """Seed a fresh genome pinned to ``model`` and add it to the population — a
+        new lineage on a servable model that persists and evolves, not a
+        throwaway. This is the 'we MUST run some models each cycle' guarantee."""
+        from maistro_evolve.diversity import _random_genome
+
+        genome = _random_genome([model])
+        self._population.add(genome)
+        return genome
+
     def _apply_for_competitor(
         self, competitor: Competitor, objective: str, budget: BudgetTier = BudgetTier.BOUNDED
     ) -> ApplyPatchFn:
