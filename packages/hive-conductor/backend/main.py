@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from logging_setup import configure_logging
 from middleware.auth import AuthMiddleware
 from middleware.request_log import RequestLogMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
 from pydantic import BaseModel, ConfigDict
 from routes import (
     agents,
@@ -173,6 +174,11 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(RequestLogMiddleware)
     app.add_middleware(AuthMiddleware)
+
+    # Security headers — the true outermost middleware (added last), so
+    # headers land on every response, including early rejections from the
+    # middlewares added above (e.g. 401s from AuthMiddleware).
+    app.add_middleware(SecurityHeadersMiddleware)
 
     app.include_router(health.router)
     app.include_router(auth.router, prefix="/v1/auth")
