@@ -104,7 +104,12 @@ def test_mistral_parses_generic_header() -> None:
 
 def test_cerebras_parses_both_dimensions() -> None:
     response = _response(
-        _prefixed({"x-ratelimit-remaining-requests": "25", "x-ratelimit-remaining-tokens": "55000"})
+        _prefixed(
+            {
+                "x-ratelimit-remaining-requests-day": "25",
+                "x-ratelimit-remaining-tokens-minute": "55000",
+            }
+        )
     )
     snapshots = CerebrasHeaderParser().parse("cerebras:qwen3-235b", response)
     by_unit = {s.unit: s.remaining for s in snapshots}
