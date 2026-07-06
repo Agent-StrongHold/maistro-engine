@@ -5,7 +5,14 @@ from __future__ import annotations
 import pytest
 
 from maistro.quota.rate_profile import LimitUnit
-from maistro.quota.usage_log import InMemoryUsageLog
+from maistro.quota.usage_log import InMemoryUsageLog, get_default_usage_log, set_default_usage_log
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_usage_log() -> None:
+    set_default_usage_log(None)
+    yield
+    set_default_usage_log(None)
 
 
 def test_count_since_counts_requests_in_window() -> None:
@@ -79,3 +86,22 @@ def test_sum_between_is_exclusive_start_inclusive_end() -> None:
     # An event exactly at the start boundary of the *next* window doesn't
     # double-count into it.
     assert log.sum_between("s1", LimitUnit.REQUESTS, 100.0, 200.0) == 0.0
+
+
+def test_get_default_usage_log_lazily_constructs_once() -> None:
+    first = get_default_usage_log()
+    second = get_default_usage_log()
+    assert first is second
+
+
+def test_set_default_usage_log_overrides_the_singleton() -> None:
+    override = InMemoryUsageLog()
+    set_default_usage_log(override)
+    assert get_default_usage_log() is override
+
+
+def test_set_default_usage_log_none_resets_to_a_fresh_instance() -> None:
+    override = InMemoryUsageLog()
+    set_default_usage_log(override)
+    set_default_usage_log(None)
+    assert get_default_usage_log() is not override

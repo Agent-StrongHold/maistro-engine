@@ -141,3 +141,30 @@ class InMemoryUsageLog:
         as `scope_keys`."""
         log = self._scopes.get(scope_key)
         return tuple(log.events) if log is not None else ()
+
+
+_default_usage_log: InMemoryUsageLog | None = None
+
+
+def get_default_usage_log() -> InMemoryUsageLog:
+    """The process-wide shared usage log, lazily constructed on first use.
+
+    Mirrors `config/settings.py`'s `get_yaml_config`/`set_yaml_config` module-
+    level-singleton pattern. Exists because not every caller that needs a
+    quota-aware node (`RsiQuotaPaceTriggerNode`) or a full DI `Container` --
+    hive-conductor imports maistro-core pieces directly rather than
+    constructing one (confirmed: `daily_status_runner.py` has no `Container`
+    in scope at all), so a `Container`-independent shared instance is the only
+    thing every real caller can actually reach.
+    """
+    global _default_usage_log
+    if _default_usage_log is None:
+        _default_usage_log = InMemoryUsageLog()
+    return _default_usage_log
+
+
+def set_default_usage_log(log: InMemoryUsageLog | None) -> None:
+    """Override (or, with `None`, reset) the process-wide shared usage log --
+    primarily a test seam, mirroring `set_yaml_config`."""
+    global _default_usage_log
+    _default_usage_log = log

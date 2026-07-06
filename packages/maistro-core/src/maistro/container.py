@@ -10,6 +10,7 @@ The Conduit pipeline handles the actual request flow:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,7 @@ from maistro.memory.learnings.store import InMemoryLearningStore
 from maistro.memory.outcomes import InMemoryOutcomeStore
 from maistro.projects.store import InMemoryProjectStore
 from maistro.quota.tracker import InMemoryQuotaTracker
+from maistro.quota.usage_log import InMemoryUsageLog, get_default_usage_log
 from maistro.router.selector import RouterEngine
 from maistro.security.gate import Gate
 from maistro.security.warden.detector import Warden
@@ -120,6 +122,11 @@ class Container:
     # "rsi_cycle" itself.
     harness_adapters: dict[str, HarnessAdapter] = field(default_factory=dict)
     spawn_harness_node: AgentSpawnHarnessNode = None  # type: ignore[assignment]
+    # Shared quota usage log for any node/hook that needs one (e.g.
+    # RsiQuotaPaceTriggerNode via build_node_resolver). Defaults to the
+    # process-wide singleton (quota/usage_log.py) so this container and any
+    # caller using build_node_resolver's standalone default share state.
+    usage_log: InMemoryUsageLog = field(default_factory=get_default_usage_log)
     # Wired in create_container (P1 resilience, ADR-066).
     resilience_policies: ResiliencePolicyStore = None  # type: ignore[assignment]
     # Durable events (ADR-086): bus bridge + log/trigger/invocation stores.
@@ -679,3 +686,46 @@ def _wire_harness_adapters(
     and pass it via `create_container(config, harness_adapters={"rsi_cycle": ...})`.
     """
     return dict(overrides or {})
+
+
+def build_node_resolver(
+    *,
+    harness_adapters: dict[str, HarnessAdapter] | None = None,
+    usage_log: InMemoryUsageLog | None = None,
+) -> Callable[[str, dict[str, Any]], Any]:
+    """Build a durable-executor `NodeResolver` (`(node_id, dag) -> Node`) that
+    special-cases node kinds needing wired dependencies, falling back to the
+    plain registry lookup (`get_node(kind)()`) for every other kind.
+
+    This is the missing link `container.py`'s own `harness_adapters` /
+    `spawn_harness_node` / `usage_log` were wired for but couldn't reach: the
+    only real production `node_resolver` in the codebase
+    (`hive-conductor/backend/services/daily_status_runner.py`) did bare
+    `get_node(kind)()`, so those DI-wired dependencies were unreachable from
+    any real DAG execution. Takes plain optional params (not a `Container`)
+    so it's usable both from `create_container()` (passing the container's
+    own `harness_adapters`/`usage_log`) and standalone from hive-conductor,
+    which imports maistro-core pieces directly rather than constructing a
+    full `Container` -- passing nothing there picks up the same module-level
+    defaults (`_wire_harness_adapters`'s empty-by-default map,
+    `quota.usage_log.get_default_usage_log()`) either way would.
+    """
+    from maistro.graph.nodes import get_node
+    from maistro.graph.nodes.rsi_quota_pace_trigger import RsiQuotaPaceTriggerNode
+
+    resolved_adapters = harness_adapters if harness_adapters is not None else {}
+    resolved_usage_log = usage_log if usage_log is not None else get_default_usage_log()
+
+    def _resolver(node_id: str, dag: dict[str, Any]) -> Any:
+        for n in dag.get("nodes", []):
+            if str(n.get("id")) != node_id:
+                continue
+            kind = str(n.get("kind", ""))
+            if kind == "agent.spawn_harness":
+                return AgentSpawnHarnessNode(adapters=resolved_adapters)
+            if kind == "rsi.quota_pace_trigger":
+                return RsiQuotaPaceTriggerNode(resolved_usage_log)
+            return get_node(kind)()
+        raise KeyError(node_id)
+
+    return _resolver
