@@ -180,9 +180,7 @@ class TestCliWiringSmoke:
         async def fake_create_rsi_sandbox(workspace, settings=None, env=None, backend=None):
             return _FakeMicroVmSandbox()
 
-        monkeypatch.setattr(
-            "maistro_rsi.runner.create_rsi_sandbox", fake_create_rsi_sandbox
-        )
+        monkeypatch.setattr("maistro_rsi.runner.create_rsi_sandbox", fake_create_rsi_sandbox)
 
         code = main(
             [
