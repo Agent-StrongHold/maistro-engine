@@ -1110,6 +1110,23 @@ class LocalRsiLoop:
         )
         seats = max(1, self._config.roster_size)
         picked = (unscored + scored)[:seats]
+        if not picked:
+            # NEVER IDLE: every genome's model is benched (the whole roster's
+            # provider(s) rate-limited/quota-drained). Rather than no-op the cycle,
+            # spawn a fresh genome onto a servable cross-provider model and run it —
+            # the run keeps doing real work and the population organically gains a
+            # lineage on whatever provider is actually up.
+            model = self._emergency_model(index)
+            if model is not None:
+                spawned = self._spawn_emergency_genome(model)
+                logger.warning(
+                    "rsi_local_emergency_spawn",
+                    cycle=index,
+                    model=model,
+                    genome=spawned.id,
+                    reason="all roster models benched",
+                )
+                picked = [spawned]
         self._label_to_genome.clear()
         roster: list[Competitor] = []
         for g in picked:
