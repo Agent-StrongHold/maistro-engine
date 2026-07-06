@@ -102,20 +102,14 @@ def seed_population(
 
     resolved: set[str] = set()
     existing = len(store.list_all())
-    for seeded in range(max(0, n - existing)):
+    for i in range(max(0, n - existing)):
         seed_models = expand_free_router(models, free_selector, resolved=resolved)
-        genome = _random_genome(seed_models)
-        # Random per-node assignment can collapse a multi-model roster onto one
-        # model by chance, starving the tournament of model diversity. Pin each
-        # fresh genome's entry (fixer) node to a distinct expanded model, cycling.
-        # Post-expansion models are always concrete (free sentinels resolved above).
-        if seed_models:
-            entry_id = genome.topology.entry_node
-            for node in genome.topology.nodes:
-                if node.id == entry_id:
-                    node.model = seed_models[seeded % len(seed_models)]
-                    break
-        store.add(genome)
+        # Round-robin across the roster (NOT a random draw per node): pin genome i
+        # to one model so EVERY roster model fields a lineage from cycle one —
+        # evolution can only learn per-model differences from models that actually
+        # seed genomes, and a random draw can leave a model unseeded entirely.
+        pinned = [seed_models[i % len(seed_models)]] if seed_models else None
+        store.add(_random_genome(pinned))
     return resolved
 
 
