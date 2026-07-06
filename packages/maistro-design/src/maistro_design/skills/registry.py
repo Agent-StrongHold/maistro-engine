@@ -6,10 +6,11 @@ import logging
 import threading
 from typing import TYPE_CHECKING
 
+from maistro_design.renderers import available_skills
 from maistro_design.trust import TrustTier
 
 if TYPE_CHECKING:
-    from maistro_design.types import DesignSkill
+    from maistro_design.types import DesignSkill, RenderSlot
 
 logger = logging.getLogger("maistro.design.skills.registry")
 
@@ -49,6 +50,15 @@ class InMemoryDesignSkillRegistry:
 
     def list_featured(self) -> list[DesignSkill]:
         return [s for s in self._skills.values() if s.featured]
+
+    def list_available(self, filled_slots: frozenset[RenderSlot]) -> list[DesignSkill]:
+        """Skills whose required renderer slot is filled (SPEC-070426-a22b).
+
+        A skill with ``render_slot=None`` needs no external renderer (canvas-native) and
+        is always available; one whose slot is unfilled is silently omitted — never offered,
+        so nothing fails when its plugin is absent.
+        """
+        return available_skills(self._skills.values(), filled_slots)
 
     def delete(self, slug: str) -> bool:
         with self._lock:
