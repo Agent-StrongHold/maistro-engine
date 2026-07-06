@@ -29,6 +29,7 @@ from routes import (
     design,
     eval_judge,
     feedback,
+    harness,
     health,
     install,
     mcp,
@@ -198,6 +199,7 @@ def create_app() -> FastAPI:
     app.include_router(profile.router, prefix="/v1/profile")
     app.include_router(settings_r.router, prefix="/v1/settings")
     app.include_router(capabilities.router, prefix="/v1/capabilities")
+    app.include_router(harness.router, prefix="/v1/harness")
     app.include_router(voice.router, prefix="/v1/voice")
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")

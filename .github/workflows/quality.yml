@@ -14,11 +14,16 @@
 
 name: quality
 
-# Progressive enforcement ladder (Phase 19):
+# Progressive enforcement ladder (Phase 19; vulture and radon reclassified
+# Phase 20 — SPEC-264):
 #   feat/* pushes                       -> in scope, but lighter weight (no PR-target backstop)
-#   PR/push -> develop/integration/main -> same gate everywhere: ruff/radon/mypy hard;
-#                                          xenon + vulture hard-fail on REGRESSION only (ratchet
-#                                          vs. the recorded baseline below — see those steps);
+#   PR/push -> develop/integration/main -> same gate everywhere: ruff/mypy hard; radon CC and
+#                                          vulture hard-fail on any finding unmatched by their
+#                                          respective baseline (quality/radon-baseline.json,
+#                                          quality/vulture-baseline.json — classification
+#                                          ratchets, not count ratchets); xenon hard-fails on
+#                                          module/project-average REGRESSION only (count
+#                                          ratchet vs. the recorded baseline below);
 #                                          pyright stays advisory pending a separate triage PR.
 on:
   pull_request:

@@ -28,6 +28,7 @@ def _utc_today() -> str:
     """Current UTC calendar day as ``YYYY-MM-DD`` — the day the :free caps reset on."""
     return datetime.now(UTC).strftime("%Y-%m-%d")
 
+
 # OpenRouter `:free`-model daily request caps (per the docs): keyed to LIFETIME
 # credits PURCHASED, not current balance — >= $10 purchased raises the daily cap
 # and it stays raised as the balance is spent down. Only a NEGATIVE balance
@@ -126,7 +127,9 @@ class OpenRouterActivityVerifier:
         headers = {"Authorization": f"Bearer {self._management_key}"}
         params = {"date": date} if date else None
         async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-            response = await client.get(f"{self._base_url}/activity", headers=headers, params=params)
+            response = await client.get(
+                f"{self._base_url}/activity", headers=headers, params=params
+            )
             response.raise_for_status()
             rows = response.json().get("data", [])
 

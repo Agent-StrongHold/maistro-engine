@@ -12,14 +12,22 @@ one wins; it only depends on `MicroVmSandbox`.
 
 from __future__ import annotations
 
+import os
 import uuid
 
 import structlog
 
 from maistro.config.settings import SandboxSettings
 from maistro.tools.sandbox.docker import SandboxContainer, create_sandbox
+from maistro_rsi.protocols import MicroVmSandbox
+from maistro_rsi.sandbox.local import LocalSandbox
 
 logger = structlog.get_logger()
+
+#: Env var that selects the RSI sandbox backend. ``"docker"`` (default) boots a
+#: nested container; ``"local"`` runs directly on the local FS — set by the sbx
+#: agent kit, because sbx has *already* provided an isolated microVM.
+SANDBOX_BACKEND_ENV = "MAISTRO_RSI_SANDBOX"
 
 
 class DockerMicroVmSandbox:
@@ -80,3 +88,25 @@ async def create_microvm_sandbox(
     """
     container = await create_sandbox(workspace, settings=settings, env=env)
     return DockerMicroVmSandbox(container)
+
+
+async def create_rsi_sandbox(
+    workspace: str,
+    settings: SandboxSettings | None = None,
+    env: dict[str, str] | None = None,
+    backend: str | None = None,
+) -> MicroVmSandbox:
+    """Create the RSI sandbox for ``workspace`` using the selected backend.
+
+    ``backend`` (or ``$MAISTRO_RSI_SANDBOX``) picks the isolation strategy:
+
+    - ``"local"`` → :class:`LocalSandbox`, for when the cycle already runs inside
+      an isolated microVM (a Docker Sandboxes / ``sbx`` agent) — no nested
+      Docker-in-Docker.
+    - ``"docker"`` (default) → :class:`DockerMicroVmSandbox`, which boots its own
+      container for standalone / dev runs.
+    """
+    resolved = (backend or os.environ.get(SANDBOX_BACKEND_ENV, "docker")).strip().lower()
+    if resolved == "local":
+        return LocalSandbox(workspace)
+    return await create_microvm_sandbox(workspace, settings=settings, env=env)

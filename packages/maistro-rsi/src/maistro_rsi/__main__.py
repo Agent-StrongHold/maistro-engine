@@ -562,7 +562,7 @@ def _run(args: argparse.Namespace) -> int:
     genome_models = [m.strip() for m in args.genome_models.split(",") if m.strip()]
     if any(m in FREE_ROUTER_ALIASES for m in genome_models):
         selector = make_free_selector()
-        genome_models = expand_free_router(genome_models, selector, free_count=2) or genome_models
+        genome_models = expand_free_router(genome_models, selector) or genome_models
         print(f"free-router roster resolved -> {genome_models}")
     config = LocalRsiConfig(
         repo_path=str(repo),

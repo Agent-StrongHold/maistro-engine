@@ -325,7 +325,7 @@ Each negative finding now has an owning spec so follow-up work can land in focus
 
 ## Scope caveat: these specs are a triage map, not a proof of perfection
 
-Completing SPEC-259 through SPEC-264 would close the negative findings identified in this manual deep dive, but it would not prove the implemented code is globally optimal or "perfect." The report is a representative, high-signal investigation over the files surfaced by radon/vulture and manual review on 2026-06-21. It does not exhaustively prove every package, every runtime path, every integration, or every future regression.
+Completing SPEC-062126-757a, SPEC-062126-971d, SPEC-062126-7853, SPEC-262, SPEC-263, and SPEC-264 would close the negative findings identified in this manual deep dive, but it would not prove the implemented code is globally optimal or "perfect." The report is a representative, high-signal investigation over the files surfaced by radon/vulture and manual review on 2026-06-21. It does not exhaustively prove every package, every runtime path, every integration, or every future regression.
 
 After SPEC-264 is complete, the expected state is:
 
