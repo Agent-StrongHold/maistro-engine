@@ -253,16 +253,6 @@
       "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
     },
     {
-      "key": "packages/maistro-core/src/maistro/graph/dag_validator.py::_validate_no_cycles",
-      "path": "packages/maistro-core/src/maistro/graph/dag_validator.py",
-      "line": 205,
-      "name": "_validate_no_cycles",
-      "classname": null,
-      "rank": "C",
-      "complexity": 12,
-      "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-    },
-    {
       "key": "packages/maistro-core/src/maistro/graph/dag_validator.py::_validate_schema_compatibility",
       "path": "packages/maistro-core/src/maistro/graph/dag_validator.py",
       "line": 244,
@@ -381,16 +371,6 @@
       "rank": "C",
       "complexity": 14,
       "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-    },
-    {
-      "key": "packages/maistro-core/src/maistro/graph/optimizer.py::GraphOptimizer._propose_prompt",
-      "path": "packages/maistro-core/src/maistro/graph/optimizer.py",
-      "line": 174,
-      "name": "_propose_prompt",
-      "classname": "GraphOptimizer",
-      "rank": "D",
-      "complexity": 21,
-      "rationale": "SPEC-263: see docs/specs/SPEC-263-graph-optimizer-prompt-rendering-contracts.md"
     },
     {
       "key": "packages/maistro-core/src/maistro/graph/optimizer.py::GraphOptimizer.extract_signal",
@@ -623,16 +603,6 @@
       "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
     },
     {
-      "key": "packages/maistro-core/src/maistro/security/guardrail.py::ToolGuardrail._evaluate",
-      "path": "packages/maistro-core/src/maistro/security/guardrail.py",
-      "line": 128,
-      "name": "_evaluate",
-      "classname": "ToolGuardrail",
-      "rank": "D",
-      "complexity": 21,
-      "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-    },
-    {
       "key": "packages/maistro-core/src/maistro/security/rate_limiter.py::InMemoryRateLimiter.check",
       "path": "packages/maistro-core/src/maistro/security/rate_limiter.py",
       "line": 36,
@@ -693,16 +663,6 @@
       "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
     },
     {
-      "key": "packages/maistro-core/src/maistro/skills/fixer.py::fix_content",
-      "path": "packages/maistro-core/src/maistro/skills/fixer.py",
-      "line": 13,
-      "name": "fix_content",
-      "classname": null,
-      "rank": "D",
-      "complexity": 25,
-      "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-    },
-    {
       "key": "packages/maistro-core/src/maistro/skills/parser.py::parse_skill_file",
       "path": "packages/maistro-core/src/maistro/skills/parser.py",
       "line": 76,
@@ -733,16 +693,6 @@
       "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
     },
     {
-      "key": "packages/maistro-core/src/maistro/tools/atlassian/client.py::AtlassianMCPClient._parse_jira_issue",
-      "path": "packages/maistro-core/src/maistro/tools/atlassian/client.py",
-      "line": 335,
-      "name": "_parse_jira_issue",
-      "classname": "AtlassianMCPClient",
-      "rank": "D",
-      "complexity": 21,
-      "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-    },
-    {
       "key": "packages/maistro-core/src/maistro/tools/browser/client.py::BrowserClient._parse_search_output",
       "path": "packages/maistro-core/src/maistro/tools/browser/client.py",
       "line": 220,
@@ -761,6 +711,16 @@
       "rank": "C",
       "complexity": 11,
       "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
+    },
+    {
+      "key": "packages/maistro-core/src/maistro/graph/executor.py::execute_with_resilience",
+      "path": "packages/maistro-core/src/maistro/graph/executor.py",
+      "line": 46,
+      "name": "execute_with_resilience",
+      "classname": null,
+      "rank": "C",
+      "complexity": 17,
+      "rationale": "P1 resilience retry loop (ADR-066 / SPEC-070226-af02): budget + policy + three event emissions in one control loop; splitting would separate the retry decision from its audit events. Baselined on arrival via develop; candidate for refactor with the P2 resilience work."
     }
   ]
 }

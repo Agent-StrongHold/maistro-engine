@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import base64
+import re
+
+import pytest
+
 from maistro.agents.spec.agent_spec import AgentRole, AgentSpec
 from maistro.capabilities.providers.opencode import (
     OpencodeHarnessRunner,
@@ -10,11 +15,23 @@ from maistro.capabilities.providers.opencode import (
 )
 from maistro.capabilities.providers.subprocess_harness import _Session
 from maistro.capabilities.slots.harness_runner import SLOT_NAME
+from maistro.security.dangerous_tools import is_dangerous_command
 from maistro.tools.sandbox.microvm import MicroVMRunSpec, MicroVMSandbox
+
+# Allowlisted (see maistro.tools.sandbox.workspace.ALLOWED_HOST_ROOTS) and
+# creatable in the test environment, unlike /repos.
+_WORKDIR = "/tmp/maistro-workspace/opencode-tests"
 
 
 def _spec() -> AgentSpec:
     return AgentSpec(role=AgentRole.CODER, task_id="t", subtask_id="s", description="d")
+
+
+def _decoded_prompt(cmd: str) -> str:
+    """Extract and decode the base64 prompt payload from a built command."""
+    match = re.search(r"printf %s (\S+) \| base64 -d", cmd)
+    assert match, f"no base64 prompt payload in: {cmd}"
+    return base64.b64decode(match.group(1)).decode("utf-8")
 
 
 class _FakeSandbox:
@@ -38,7 +55,7 @@ def _factory(sandbox: _FakeSandbox):
     return make
 
 
-def _session(sandbox: _FakeSandbox, workdir: str = "/repos/proj") -> _Session:
+def _session(sandbox: _FakeSandbox, workdir: str = _WORKDIR) -> _Session:
     return _Session(agent_spec=_spec(), workdir=workdir, sandbox=sandbox)  # type: ignore[arg-type]
 
 
@@ -52,7 +69,7 @@ class TestBuildCommand:
             _session(_FakeSandbox()), [{"role": "user", "content": "fix bug"}]
         )
         assert cmd.startswith("opencode run --auto ")
-        assert cmd.endswith("'fix bug'") or cmd.endswith("fix bug")
+        assert _decoded_prompt(cmd) == "fix bug"
 
     def test_model_and_agent_flags(self) -> None:
         runner = OpencodeHarnessRunner(
@@ -64,7 +81,7 @@ class TestBuildCommand:
         assert "--model anthropic/claude-opus-4-8" in cmd
         assert "--agent build" in cmd
 
-    def test_system_messages_excluded_and_prompt_quoted(self) -> None:
+    def test_system_messages_excluded_and_prompt_is_data(self) -> None:
         runner = OpencodeHarnessRunner(sandbox_factory=_factory(_FakeSandbox()))
         cmd = runner.build_command(
             _session(_FakeSandbox()),
@@ -74,8 +91,9 @@ class TestBuildCommand:
             ],
         )
         assert "IGNORE ME" not in cmd
-        # the shell-metachar-bearing prompt is quoted as one argument
-        assert "'a b; rm'" in cmd
+        # prompt text never appears raw in the command — it travels base64'd
+        assert "a b; rm" not in cmd
+        assert _decoded_prompt(cmd) == "a b; rm"
 
     def test_extra_args_passed_through(self) -> None:
         runner = OpencodeHarnessRunner(
@@ -83,6 +101,18 @@ class TestBuildCommand:
         )
         cmd = runner.build_command(_session(_FakeSandbox()), [{"role": "user", "content": "x"}])
         assert "--variant high" in cmd
+
+    def test_dangerous_text_in_prompt_does_not_trip_command_filter(self) -> None:
+        """A prompt that merely MENTIONS a dangerous command is data, not shell:
+        the built command must pass is_dangerous_command so the sandbox doesn't
+        block the turn before opencode starts."""
+        runner = OpencodeHarnessRunner(sandbox_factory=_factory(_FakeSandbox()))
+        cmd = runner.build_command(
+            _session(_FakeSandbox()),
+            [{"role": "user", "content": "add a regression test for rm -rf / handling"}],
+        )
+        assert is_dangerous_command(cmd) == []
+        assert "rm -rf" in _decoded_prompt(cmd)  # the payload still carries the text
 
 
 # --- provider surface ---------------------------------------------------------
@@ -107,7 +137,7 @@ class TestProviderSurface:
     async def test_send_returns_openai_envelope(self) -> None:
         sandbox = _FakeSandbox((0, "patched 2 files"))
         runner = OpencodeHarnessRunner(sandbox_factory=_factory(sandbox))
-        sid = await runner.start_session(_spec(), workdir="/repos/proj")
+        sid = await runner.start_session(_spec(), workdir=_WORKDIR)
         env = await runner.send(sid, [{"role": "user", "content": "fix"}])
         assert env["choices"][0]["message"]["content"] == "patched 2 files"
         assert env["exit_code"] == 0
@@ -128,23 +158,32 @@ class _FakeLauncher:
 
 
 class TestMicroVMWiring:
-    async def test_factory_boots_microvm_at_workdir(self) -> None:
+    async def test_factory_boots_microvm_at_allowlisted_workdir(self) -> None:
         launcher = _FakeLauncher()
         factory = opencode_microvm_factory(launcher, env={"OPENCODE_API_KEY": "k"})
-        sandbox = await factory("/repos/target")
+        sandbox = await factory(f"{_WORKDIR}/target")
         assert isinstance(sandbox, MicroVMSandbox)
-        code, out = await sandbox.exec("opencode run --auto 'hi'")
+        code, out = await sandbox.exec("opencode run --auto hi")
         assert code == 0 and out == "vm-ran"
         # the VM's workspace is the repo we pointed it at; env is threaded in
-        assert launcher.specs[0].workspace == "/repos/target"
+        assert launcher.specs[0].workspace.endswith("/target")
         assert launcher.specs[0].env == {"OPENCODE_API_KEY": "k"}
+
+    async def test_factory_rejects_non_allowlisted_workdir(self) -> None:
+        """workdir is caller-controlled behind the harness API — a request for
+        /, /etc, or any non-allowlisted host path must be rejected before a VM
+        is ever constructed."""
+        factory = opencode_microvm_factory(_FakeLauncher())
+        for hostile in ("/", "/etc", "/home/user"):
+            with pytest.raises(ValueError, match="not in an allowed location"):
+                await factory(hostile)
 
     async def test_runner_convenience_end_to_end(self) -> None:
         launcher = _FakeLauncher()
         runner = opencode_microvm_runner(launcher, model="anthropic/claude-opus-4-8")
-        sid = await runner.start_session(_spec(), workdir="/repos/app")
+        sid = await runner.start_session(_spec(), workdir=f"{_WORKDIR}/app")
         env = await runner.send(sid, [{"role": "user", "content": "add tests"}])
         assert env["choices"][0]["message"]["content"] == "vm-ran"
         # opencode ran inside a microVM whose workspace is the pointed-at repo
-        assert launcher.specs[-1].workspace == "/repos/app"
+        assert launcher.specs[-1].workspace.endswith("/app")
         assert "--model anthropic/claude-opus-4-8" in launcher.specs[-1].command
