@@ -246,3 +246,27 @@ def test_emergency_pool_defaults_when_unset(tmp_path: Path) -> None:
 
     loop = LocalRsiLoop(_live_config(tmp_path), apply_patch=_make_apply(_bump))
     assert loop._emergency_pool() == list(_DEFAULT_EMERGENCY_MODELS)
+
+
+def test_never_idle_probes_without_persisting_when_all_benched(tmp_path: Path) -> None:
+    # Codex P2 (#250): when roster AND emergency pool are ALL benched, field a
+    # least-bad transient probe WITHOUT persisting a new lineage — else a long
+    # outage floods population.db and evicts proven genomes.
+    from maistro_rsi.local_loop import _entry_model
+
+    config = _live_config(
+        tmp_path, genome_models=["model-a"], roster_size=1, emergency_models=["down-x"]
+    )
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    now = time.monotonic()
+    for g in loop._population.list_all():
+        loop._bench[_entry_model(g)] = now + 999
+    loop._bench["down-x"] = now + 999  # the emergency pool is benched too
+    before = len(loop._population.list_all())
+
+    roster = loop._genome_roster(index=1)
+
+    assert roster, "must still field a probe rather than idle"
+    assert roster[0].model == "down-x"  # least-bad probe
+    assert len(loop._population.list_all()) == before  # NOT persisted
+    assert roster[0].label not in loop._label_to_genome  # folds back to no genome
