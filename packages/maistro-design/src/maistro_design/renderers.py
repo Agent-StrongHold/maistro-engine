@@ -32,8 +32,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("maistro.design.renderers")
 
-# The plugin-free floor: filled unconditionally, no external provider.
-NATIVE_SLOTS: frozenset[RenderSlot] = frozenset({RenderSlot.FIXED_PAGE})
+# The plugin-free floor: filled unconditionally by the built-in canvas exporters
+# (SPEC-070426-457b) — fixed pages and multi-page decks — so a zero-plugin install is a
+# complete fixed-layout designer. Only reflowable-web and video are truly external.
+NATIVE_SLOTS: frozenset[RenderSlot] = frozenset({RenderSlot.FIXED_PAGE, RenderSlot.DECK})
 
 
 class RenderProviderError(DesignError):
@@ -78,8 +80,15 @@ class RenderProvider(Protocol):
 def available_skills(
     skills: Iterable[DesignSkill], filled_slots: frozenset[RenderSlot]
 ) -> list[DesignSkill]:
-    """Skills whose required slot is filled. A skill with ``render_slot=None`` needs no
-    external renderer (canvas-native) and is therefore always available."""
+    """Skills whose required capability slot is filled. A skill with ``render_slot=None``
+    needs no external renderer (canvas-native) and is therefore always available.
+
+    This filters on the capability-slot axis only. The orthogonal legacy
+    ``DesignSkill.required_renderer`` (html/svg/typography rasterizers) remains guarded at
+    generation time by ``DesignEngine._check_renderer_available``; no shipped built-in sets
+    it. A future skill that needs a rasterizer should also carry the matching ``render_slot``
+    so it is filtered here rather than advertised and then failing in ``generate``.
+    """
     return [s for s in skills if s.render_slot is None or s.render_slot in filled_slots]
 
 
