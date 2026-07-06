@@ -108,7 +108,9 @@ def seed_population(
         # to one model so EVERY roster model fields a lineage from cycle one —
         # evolution can only learn per-model differences from models that actually
         # seed genomes, and a random draw can leave a model unseeded entirely.
-        pinned = [seed_models[i % len(seed_models)]] if seed_models else None
+        # OFFSET by `existing` so a top-up CONTINUES the rotation past the models
+        # already seeded instead of re-covering models 0..k and starving the rest.
+        pinned = [seed_models[(existing + i) % len(seed_models)]] if seed_models else None
         store.add(_random_genome(pinned))
     return resolved
 
