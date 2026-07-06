@@ -7,9 +7,11 @@ status: Proposed
 created: 2026-04-25
 substrate:
   - maistro-engine#ADR-024
+  - maistro-engine#ADR-027
   - maistro-engine#ADR-029
   - maistro-engine#ADR-028
-implements: []
+implements:
+  - maistro-engine#ADR-027
 related: []
 supersedes: []
 blocks: []
