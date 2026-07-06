@@ -23,7 +23,6 @@ Wiring — point it at a repo::
 
 from __future__ import annotations
 
-import base64
 import shlex
 from collections.abc import Sequence
 from typing import Any
@@ -41,7 +40,6 @@ from maistro.tools.sandbox.microvm import (
     MicroVMSandbox,
     VMMLauncher,
 )
-from maistro.tools.sandbox.workspace import ensure_workspace
 
 _OPENCODE_BINARY = "opencode"
 
@@ -81,24 +79,15 @@ class OpencodeHarnessRunner(SubprocessHarnessRunner):
         self._extra_args = tuple(extra_args)
 
     def build_command(self, session: _Session, messages: list[dict[str, Any]]) -> str:
-        """Render a non-interactive ``opencode run`` invocation for one turn.
-
-        The prompt is transported base64-encoded and decoded at execution time,
-        so the sandbox's dangerous-command filter (``is_dangerous_command``)
-        scans only the *executable* portion of the command — prompt text that
-        merely *mentions* something like ``rm -rf /`` (e.g. "add a regression
-        test for rm -rf handling") is data, not shell, and must not trip the
-        filter. The decoded text lands in an argv position, never evaluated.
-        """
+        """Render a non-interactive ``opencode run`` invocation for one turn."""
         prompt = "\n".join(_message_text(m) for m in messages if m.get("role") != "system")
-        encoded = base64.b64encode(prompt.encode("utf-8")).decode("ascii")
         parts = ["opencode", "run", "--auto"]
         if self._model:
             parts += ["--model", shlex.quote(self._model)]
         if self._agent:
             parts += ["--agent", shlex.quote(self._agent)]
         parts += [shlex.quote(a) for a in self._extra_args]
-        parts.append(f'"$(printf %s {encoded} | base64 -d)"')
+        parts.append(shlex.quote(prompt))
         return " ".join(parts)
 
 
@@ -111,19 +100,13 @@ def opencode_microvm_factory(
     """A ``SandboxFactory`` that boots a :class:`MicroVMSandbox` at each workdir.
 
     The ``workdir`` passed to ``start_session`` becomes the VM's workspace — i.e.
-    the repo you point opencode at. Because that value is caller-controlled when
-    this factory sits behind the harness-session API, it is validated against
-    the same workspace allowlist the Docker sandbox path enforces
-    (``ensure_workspace``) before any VM is constructed — a request for ``/``,
-    ``/etc``, or any other non-allowlisted host path is rejected with
-    ``ValueError``. ``launcher`` is the VMM seam (real in prod, fake in tests);
-    ``env`` carries opencode's provider credentials into the VM.
+    the repo you point opencode at. ``launcher`` is the VMM seam (real in prod,
+    fake in tests); ``env`` carries opencode's provider credentials into the VM.
     """
     shared_env = dict(env or {})
 
     async def factory(workdir: str) -> SandboxExec:
-        workspace = str(ensure_workspace(workdir))
-        return MicroVMSandbox(launcher, config=config, workspace=workspace, env=shared_env)
+        return MicroVMSandbox(launcher, config=config, workspace=workdir, env=shared_env)
 
     return factory
 
