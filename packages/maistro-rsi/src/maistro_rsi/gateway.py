@@ -41,11 +41,23 @@ def _gateway_key() -> str:
     return os.environ.get("LITELLM_MASTER_KEY") or os.environ.get("LITELLM_PROXY_KEY") or ""
 
 
-def make_gateway_llm_call(model: str, *, timeout: float = 60.0) -> LlmCall:
+def make_gateway_llm_call(
+    model: str,
+    *,
+    timeout: float = 60.0,
+    on_response: Callable[[dict[str, object], httpx.Response], None] | None = None,
+) -> LlmCall:
     """Return an async ``llm_call`` that routes to ``model`` via the gateway.
 
     The URL/key are resolved on each call (not captured here), so the callable
     keeps working if the environment is populated after it's constructed.
+
+    `on_response`, if given, is invoked with the parsed body and the raw response
+    right after the request succeeds — the same additive quota-recording seam
+    `pm_llm_call.maistro_llm_call`/`conductor._call_gateway` expose, so RSI-cycle
+    evaluation traffic can feed `maistro.quota.recorder` too. A failing hook is
+    logged and swallowed since instrumentation on an already-successful call must
+    never turn into a failure the caller has to handle.
     """
 
     async def llm_call(
@@ -73,6 +85,11 @@ def make_gateway_llm_call(model: str, *, timeout: float = 60.0) -> LlmCall:
             )
             resp.raise_for_status()
             data = resp.json()
+            if on_response is not None:
+                try:
+                    on_response(data, resp)
+                except Exception:
+                    await logger.awarning("rsi_gateway_on_response_hook_failed", exc_info=True)
             content = data["choices"][0]["message"].get("content") or ""
 
             # Reasoning models bill reasoning + output against the SAME budget,

@@ -148,6 +148,7 @@ def _import_node_modules() -> None:
         "jira_poll",  # registers "jira.poll"
         "jira_wait_for_subtasks",  # registers "jira.wait_for_subtasks"
         "llm_summarize",  # registers "llm.summarize"
+        "rsi_quota_pace_trigger",  # registers "rsi.quota_pace_trigger"
         "transform_alias_keys",  # registers "transform.alias_keys"
         "transform_extract_field",  # registers "transform.extract_field"
         "transform_filter_by_type",  # registers "transform.filter_by_type"

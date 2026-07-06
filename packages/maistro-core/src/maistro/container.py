@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from maistro.agents.context_builder import ContextBuilder
 from maistro.agents.intents import IntentRegistry, build_intent_registry
 from maistro.classifier.engine import ClassifierEngine
+from maistro.graph.nodes.agent_spawn_harness import AgentSpawnHarnessNode
 from maistro.memory.context_assembly import DefaultContextAssemblyPolicy
 from maistro.memory.episodic.store import InMemoryEpisodicStore
 from maistro.memory.learnings.extractor import ToolCorrectionExtractor
@@ -48,6 +49,7 @@ if TYPE_CHECKING:
     from maistro.events.invocations import InvocationStore
     from maistro.events.processing import HandlerCaller
     from maistro.events.trigger_store import TriggerDefinition, TriggerStore
+    from maistro.graph.harness import HarnessAdapter
     from maistro.identity.lifecycle import (
         AgentIdentity as LifecycleIdentity,
     )
@@ -112,6 +114,12 @@ class Container:
     audit_log: AuditLog | None = None
     conduit: Any = None
     db_pool: Any = None
+    # Agent-harness DAG node adapters (dispatch/poll/cancel), keyed by
+    # harness_type (e.g. "rsi_cycle"). Empty by default -- see
+    # _wire_harness_adapters for why this container never auto-populates
+    # "rsi_cycle" itself.
+    harness_adapters: dict[str, HarnessAdapter] = field(default_factory=dict)
+    spawn_harness_node: AgentSpawnHarnessNode = None  # type: ignore[assignment]
     # Wired in create_container (P1 resilience, ADR-066).
     resilience_policies: ResiliencePolicyStore = None  # type: ignore[assignment]
     # Durable events (ADR-086): bus bridge + log/trigger/invocation stores.
@@ -319,8 +327,16 @@ class Container:
         )
 
 
-async def create_container(config: AgentConfig) -> Container:
-    """Wire all dependencies and create the container."""
+async def create_container(
+    config: AgentConfig, *, harness_adapters: dict[str, HarnessAdapter] | None = None
+) -> Container:
+    """Wire all dependencies and create the container.
+
+    `harness_adapters`, if given, is passed straight through to
+    `_wire_harness_adapters` -- see that function for why this container
+    cannot construct a real `RsiCycleHarnessAdapter` (`"rsi_cycle"`) on its
+    own and instead leaves the map for the caller to populate.
+    """
     if not config.router_api_key:
         msg = "ROUTER_API_KEY is required."
         raise ConfigError(msg)
@@ -450,6 +466,10 @@ async def create_container(config: AgentConfig) -> Container:
     # --- Hierarchical orchestration (ADR-101) ------------------------------
     harness_registry, hierarchy = _wire_hierarchy(agents, skill_registry)
 
+    # --- Agent-harness DAG node adapters (ADR-062 spawn_harness) -----------
+    wired_harness_adapters = _wire_harness_adapters(harness_adapters)
+    spawn_harness_node = AgentSpawnHarnessNode(adapters=wired_harness_adapters)
+
     # --- Personas golden records (SPEC-192) --------------------------------
     from maistro.personas.golden import InMemoryGoldenRecordStore
 
@@ -498,6 +518,8 @@ async def create_container(config: AgentConfig) -> Container:
         a2a_broker=a2a_broker,
         harness_registry=harness_registry,
         hierarchy=hierarchy,
+        harness_adapters=wired_harness_adapters,
+        spawn_harness_node=spawn_harness_node,
         golden_record_store=golden_record_store,
         skill_registry=skill_registry,
         policy_attachment_store=policy_attachment_store,
@@ -637,3 +659,23 @@ def _wire_hierarchy(
         agent_source=_AgentMapSource(),
     )
     return registry, orchestrator
+
+
+def _wire_harness_adapters(
+    overrides: dict[str, HarnessAdapter] | None,
+) -> dict[str, HarnessAdapter]:
+    """Wire the `agent.spawn_harness` node's adapter map.
+
+    Unlike `_wire_a2a_broker`/`_wire_hierarchy`, this has no default
+    population of its own. `RsiCycleHarnessAdapter` (`maistro-rsi`, a
+    downstream package this one cannot depend on -- `maistro-core` is the
+    shared library `maistro-rsi` imports, never the reverse) wraps `RsiCycle`,
+    whose `RsiCycleConfig` requires a real `repo_url` + `test_command`: exactly
+    the deployment-specific information a generic, `AgentConfig`-driven
+    container has no way to source safely. Fabricating placeholder values
+    would risk running RSI's self-modifying git operations against a wrong or
+    fake repo, so this stays an empty seam by default. Callers that do have
+    real RSI deployment config construct their own `RsiCycleHarnessAdapter`
+    and pass it via `create_container(config, harness_adapters={"rsi_cycle": ...})`.
+    """
+    return dict(overrides or {})

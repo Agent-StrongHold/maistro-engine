@@ -145,17 +145,18 @@ class MistralHeaderParser:
 
 
 class CerebrasHeaderParser:
-    """Cerebras's docs confirm custom real-time usage headers exist but don't
-    name them precisely in what's publicly documented — this assumes the same
-    `x-ratelimit-remaining-{requests,tokens}` convention Groq/OpenAI-compatible
-    backends use, since Cerebras's API is itself OpenAI-compatible. Flagged as
-    an assumption to verify against real traffic. See `GroqHeaderParser` for
-    the `via_litellm` prefix rationale.
+    """Confirmed against Cerebras's own docs ("we inject several custom
+    headers into every API response" to monitor usage in real time):
+    `x-ratelimit-remaining-requests-day` (RPD — daily, not per-minute, despite
+    the generic-looking name) and `x-ratelimit-remaining-tokens-minute`
+    (TPM). Unlike Groq, the two dimensions use *different* windows — day for
+    requests, minute for tokens — so don't assume they're a matched pair.
+    See `GroqHeaderParser` for the `via_litellm` prefix rationale.
     """
 
     _HEADERS: tuple[tuple[str, LimitUnit], ...] = (
-        ("x-ratelimit-remaining-requests", LimitUnit.REQUESTS),
-        ("x-ratelimit-remaining-tokens", LimitUnit.TOTAL_TOKENS),
+        ("x-ratelimit-remaining-requests-day", LimitUnit.REQUESTS),
+        ("x-ratelimit-remaining-tokens-minute", LimitUnit.TOTAL_TOKENS),
     )
 
     def __init__(self, *, via_litellm: bool = True) -> None:

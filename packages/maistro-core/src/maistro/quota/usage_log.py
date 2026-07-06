@@ -128,3 +128,16 @@ class InMemoryUsageLog:
             raise ValueError(f"tokens_since is for token/image units, got {unit}")
         now = now if now is not None else time.time()
         return self.sum_between(scope_key, unit, now - seconds_ago, now)
+
+    def scope_keys(self) -> tuple[str, ...]:
+        """All scope keys currently tracked. Read-only introspection for
+        persistence layers (`sqlite_usage_log.py`) -- never used on the hot
+        path itself, which only ever calls `record`/`sum_between`/etc."""
+        return tuple(self._scopes.keys())
+
+    def events_for(self, scope_key: str) -> tuple[UsageEvent, ...]:
+        """All currently-retained events for `scope_key`, oldest first (already
+        pruned to `max_retention_s`). Read-only introspection, same audience
+        as `scope_keys`."""
+        log = self._scopes.get(scope_key)
+        return tuple(log.events) if log is not None else ()

@@ -49,6 +49,8 @@ async def test_container_exposes_all_new_subsystems() -> None:
         "policy_attachment_store",
         "oauth_state_store",
         "identity_linker",
+        "harness_adapters",
+        "spawn_harness_node",
     ):
         assert getattr(container, attr) is not None, f"container.{attr} is not wired"
 
@@ -279,6 +281,53 @@ async def test_skill_payload_verification_via_container() -> None:
     )
     allowed, reasons = container.verify_skill_payload("bound-skill", payload)
     assert allowed is True and reasons == ()
+
+
+# --- Agent-harness DAG node adapters (ADR-062 spawn_harness) ------------------------
+
+
+async def test_harness_adapters_default_to_empty() -> None:
+    container = await _container()
+    assert container.harness_adapters == {}
+
+
+async def test_spawn_harness_node_has_no_adapters_by_default() -> None:
+    from maistro.graph.nodes.base import NodeContext
+
+    container = await _container()
+    result = await container.spawn_harness_node.run(
+        {"harness_type": "rsi_cycle", "task": "x"},
+        NodeContext(run_id="r1", dag_id="d1", node_id="n1"),
+    )
+    assert result.output.status == "failed"
+    assert "rsi_cycle" in (result.output.error or "")
+
+
+async def test_injected_harness_adapters_reach_the_container_and_the_node() -> None:
+    from maistro.graph.harness import HarnessHandle, HarnessRequest, HarnessResult
+    from maistro.graph.nodes.base import NodeContext
+
+    class _FakeAdapter:
+        async def dispatch(self, request: HarnessRequest) -> HarnessHandle:
+            return HarnessHandle(handle_id="h1", harness_type="rsi_cycle")
+
+        async def poll(self, handle: HarnessHandle) -> HarnessResult | None:
+            return HarnessResult(handle_id=handle.handle_id, success=True, output="done")
+
+        async def cancel(self, handle: HarnessHandle) -> None:
+            return None
+
+    fake = _FakeAdapter()
+    container = await create_container(
+        AgentConfig(router_api_key="test-key"), harness_adapters={"rsi_cycle": fake}
+    )
+    assert container.harness_adapters == {"rsi_cycle": fake}
+    result = await container.spawn_harness_node.run(
+        {"harness_type": "rsi_cycle", "task": "x"},
+        NodeContext(run_id="r1", dag_id="d1", node_id="n1"),
+    )
+    assert result.status == "paused"
+    assert result.metadata["handle_id"] == "h1"
 
 
 # --- OAuth (ADR-059) ----------------------------------------------------------------
