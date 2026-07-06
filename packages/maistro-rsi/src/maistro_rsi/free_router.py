@@ -106,26 +106,6 @@ def _discover_openrouter_credential(base: str, key: str, timeout: float) -> str 
     return None
 
 
-def fetch_known_models(
-    *, base: str | None = None, key: str | None = None, timeout: float = 15.0
-) -> set[str]:
-    """Model ids already registered on the gateway — so seeding skips re-registering
-    a concrete model that is already routable (and avoids duplicate rows)."""
-    base = (base or _gateway_base()).rstrip("/")
-    key = key or _gateway_key()
-    if not base or not key:
-        return set()
-    try:
-        resp = httpx.get(
-            f"{base}/v1/models", headers={"Authorization": f"Bearer {key}"}, timeout=timeout
-        )
-        resp.raise_for_status()
-        data = resp.json().get("data", [])
-    except (httpx.HTTPError, ValueError):
-        return set()
-    return {m["id"] for m in data if isinstance(m, dict) and m.get("id")}
-
-
 def register_gateway_alias(
     concrete: str,
     *,
@@ -189,12 +169,18 @@ def select_and_pin_free_model(
 def make_free_selector(*, timeout: float = 60.0) -> FreeSelector:
     """Build the per-genome selector used at seeding: each call yields a freshly
     resolved-and-pinned concrete free alias (or ``None`` to trigger the default).
-    The gateway's current model set is fetched once and shared, so repeats of the
-    finite free catalog don't re-register."""
-    known = fetch_known_models()
+
+    ``known`` starts EMPTY and accumulates only the aliases *we* register this
+    session — deliberately NOT seeded from ``fetch_known_models()``: the gateway's
+    ``/v1/models`` includes the whole wildcard-expanded OpenRouter catalog, so a
+    concrete model almost always "already exists" there yet routes via the
+    credential-less ``openrouter/*`` wildcard and 401s on tag config. Only an
+    explicit credential-bound registration routes; so we must register every fresh
+    pick, and only skip a model we ourselves already registered this run."""
+    registered: set[str] = set()
 
     def selector() -> str | None:
-        return select_and_pin_free_model(known=known, timeout=timeout)
+        return select_and_pin_free_model(known=registered, timeout=timeout)
 
     return selector
 
