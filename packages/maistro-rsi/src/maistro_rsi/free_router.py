@@ -119,7 +119,13 @@ def register_gateway_alias(
     credential and return the routable alias. A no-op (returns the alias) when it
     is already present in ``known``. Returns ``None`` only if the gateway/credential
     is unreachable or registration is rejected for a reason other than "exists"."""
-    alias = concrete if concrete.startswith("openrouter/") else f"openrouter/{concrete}"
+    # ALWAYS prepend the LiteLLM `openrouter/` provider prefix. The concrete id
+    # comes from OpenRouter-direct as a bare ``<provider>/<model>`` — including
+    # OpenRouter-OWNED models like ``openrouter/sonoma-dusk-alpha:free``, whose
+    # own leading ``openrouter/`` is part of the model id, NOT the LiteLLM prefix.
+    # Skipping the prefix there would make LiteLLM strip that segment and route
+    # ``sonoma-dusk-alpha:free`` (a different, non-existent model).
+    alias = f"openrouter/{concrete}"
     base = (base or _gateway_base()).rstrip("/")
     key = key or _gateway_key()
     if not base or not key:

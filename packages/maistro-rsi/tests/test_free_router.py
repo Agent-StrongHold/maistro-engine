@@ -102,6 +102,24 @@ def test_register_skips_when_already_known(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
 
+def test_register_double_prefixes_openrouter_owned_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An OpenRouter-OWNED model id (its own leading `openrouter/` is part of the
+    # model, not the LiteLLM provider prefix) must still be prefixed, or LiteLLM
+    # strips the segment and routes a different, non-existent model.
+    monkeypatch.setenv("LITELLM_URL", "http://gw:4000")
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-master")
+    captured: dict[str, object] = {}
+
+    def fake_post(url, *, json, headers, timeout):  # type: ignore[no-untyped-def]
+        captured["model_name"] = json["model_name"]
+        return _FakeResp(status=200, payload={})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    alias = fr.register_gateway_alias("openrouter/sonoma-dusk-alpha:free", credential="c")
+    assert alias == "openrouter/openrouter/sonoma-dusk-alpha:free"
+    assert captured["model_name"] == "openrouter/openrouter/sonoma-dusk-alpha:free"
+
+
 def test_register_treats_duplicate_as_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LITELLM_URL", "http://gw:4000")
     monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-master")
