@@ -24,6 +24,7 @@ import asyncio
 import json
 import os
 import sys
+from datetime import UTC, datetime
 
 import httpx
 
@@ -63,8 +64,12 @@ async def gather_report(inference_key: str, management_key: str | None) -> dict[
 
     if management_key:
         verifier = OpenRouterActivityVerifier(management_key, free_rpd_limit=free_rpd_cap)
-        activity = await verifier.fetch_activity()
-        snapshot = await verifier.verify()
+        # Scope both the per-model breakdown and the free-requests-remaining count to
+        # the current UTC day — the day the :free caps reset on. The default
+        # /activity window is the last 30 completed days and excludes today.
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+        activity = await verifier.fetch_activity(date=today)
+        snapshot = await verifier.verify(date=today)
         report["free_requests_remaining"] = snapshot.remaining
         report["activity"] = [
             {

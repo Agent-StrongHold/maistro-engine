@@ -13,11 +13,20 @@ from maistro.quota.verifiers.openrouter import (
 
 
 def _mock_transport(
-    rows: list[dict[str, object]], status_code: int = 200, *, expected_key: str = "mgmt-key"
+    rows: list[dict[str, object]],
+    status_code: int = 200,
+    *,
+    expected_key: str = "mgmt-key",
+    expect_date: bool | None = None,
 ) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/api/v1/activity"
         assert request.headers["authorization"] == f"Bearer {expected_key}"
+        if expect_date is True:
+            # verify() must scope to a single UTC day, else it sums 30 days of history.
+            assert request.url.params.get("date"), "expected a ?date= day scope"
+        elif expect_date is False:
+            assert "date" not in request.url.params
         return httpx.Response(status_code, json={"data": rows})
 
     return httpx.MockTransport(handler)
@@ -54,7 +63,8 @@ async def test_verify_reports_free_requests_remaining() -> None:
             {"model": "openai/gpt-oss-120b", "requests": 12, "usage": 0.0},
             {"model": "google/gemma-4-31b-it", "requests": 3, "usage": 0.0},
             {"model": "qwen/qwen3-coder", "requests": 9, "usage": 0.5},
-        ]
+        ],
+        expect_date=True,  # verify() scopes to today's UTC day
     )
     verifier = OpenRouterActivityVerifier("mgmt-key", transport=transport)
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import httpx
 
@@ -21,6 +22,11 @@ from maistro.quota.rate_profile import LimitUnit
 from maistro.quota.reconciliation import ProviderQuotaSnapshot
 
 _DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def _utc_today() -> str:
+    """Current UTC calendar day as ``YYYY-MM-DD`` — the day the :free caps reset on."""
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 # OpenRouter `:free`-model daily request caps (per the docs): keyed to LIFETIME
 # credits PURCHASED, not current balance — >= $10 purchased raises the daily cap
@@ -108,12 +114,19 @@ class OpenRouterActivityVerifier:
         self._timeout = timeout
         self._transport = transport  # test seam: inject an httpx.MockTransport
 
-    async def fetch_activity(self) -> list[ModelUsage]:
+    async def fetch_activity(self, *, date: str | None = None) -> list[ModelUsage]:
         """Per-model usage, aggregated (a model can appear on multiple rows —
-        per date/endpoint), sorted most-requests first."""
+        per date/endpoint), sorted most-requests first.
+
+        ``date`` (UTC ``YYYY-MM-DD``) scopes the query to a single day. This is
+        REQUIRED for a same-day remaining-quota read: OpenRouter's default
+        ``/activity`` response covers the last 30 COMPLETED UTC days and EXCLUDES
+        the current day, so summing it as "today" both counts stale history and
+        misses requests already made today."""
         headers = {"Authorization": f"Bearer {self._management_key}"}
+        params = {"date": date} if date else None
         async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
-            response = await client.get(f"{self._base_url}/activity", headers=headers)
+            response = await client.get(f"{self._base_url}/activity", headers=headers, params=params)
             response.raise_for_status()
             rows = response.json().get("data", [])
 
@@ -137,8 +150,13 @@ class OpenRouterActivityVerifier:
                 )
         return sorted(agg.values(), key=lambda u: u.requests, reverse=True)
 
-    async def verify(self, scope_key: str = "openrouter:free-requests") -> ProviderQuotaSnapshot:
-        rows = await self.fetch_activity()
+    async def verify(
+        self, scope_key: str = "openrouter:free-requests", *, date: str | None = None
+    ) -> ProviderQuotaSnapshot:
+        # The :free daily cap resets at 00:00 UTC, so "remaining today" must count
+        # ONLY today's free requests — scope the query to the current UTC day (the
+        # default 30-day window would badly over- or under-count).
+        rows = await self.fetch_activity(date=date or _utc_today())
         free_used = sum(u.requests for u in rows if u.cost_usd == 0.0)
         remaining = max(0.0, float(self._free_rpd_limit) - free_used)
         return ProviderQuotaSnapshot(
