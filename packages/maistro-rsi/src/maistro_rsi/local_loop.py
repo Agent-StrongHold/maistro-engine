@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import subprocess
 import time
@@ -48,6 +49,24 @@ from maistro_rsi.merge import greedy_merge
 from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
 
 logger = structlog.get_logger()
+
+
+def _prompt_cache_enabled() -> bool:
+    """Opt-in Anthropic prompt caching for the builders LLM calls, off by default.
+
+    Enable with ``MAISTRO_BUILDERS_PROMPT_CACHE=1`` (also on/true/yes). Gated
+    because it (a) only helps Anthropic-family models and (b) trades cache warmth
+    against the per-cycle model diversity the tournament relies on — see the
+    no-cache-for-diversity note in PR #239. A no-op for non-Anthropic models even
+    when on (ResponsesAPICallable gates on the model name).
+    """
+    return os.environ.get("MAISTRO_BUILDERS_PROMPT_CACHE", "").strip().lower() in (
+        "1",
+        "on",
+        "true",
+        "yes",
+    )
+
 
 _DEFAULT_OBJECTIVE = (
     "Make exactly one small, safe, self-contained improvement to this codebase, "
@@ -396,6 +415,7 @@ def make_builders_apply_patch(
                 temperature=temperature,
                 reasoning_effort=reasoning_effort,
                 timeout=300.0,
+                prompt_cache=_prompt_cache_enabled(),
             )
         )
 
