@@ -27,7 +27,7 @@ from maistro.tools.git.server import (
     git_push,
     github_create_pr,
 )
-from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
+from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox, WorkspaceProbeFn
 from maistro_rsi.quarantine import QuarantineVerdict
 
 logger = structlog.get_logger()
@@ -73,6 +73,11 @@ class SelfBranchResult:
     pr_url: str | None = None
     error: str | None = None
     quarantine: QuarantineVerdict | None = None
+    # Differential workspace evidence: the same probe run before the patch
+    # (baseline) and after it (candidate), so downstream scoring battles over
+    # what the change measurably did. None when no probe was supplied.
+    baseline_metrics: dict[str, float] | None = None
+    candidate_metrics: dict[str, float] | None = None
 
     @property
     def tests_passed(self) -> bool:
@@ -107,8 +112,9 @@ async def run_self_branch_attempt(
     open_pr: bool = False,
     quarantine_check: QuarantineCheckFn | None = None,
     model: str | None = None,
+    probe: WorkspaceProbeFn | None = None,
 ) -> SelfBranchResult:
-    """Run one clone → branch → patch → test → quarantine → (PR) cycle.
+    """Run one clone → branch → (probe) → patch → (probe) → test → quarantine → (PR) cycle.
 
     A PR requires passing tests *and* a cleared quarantine verdict — a
     self-modifying agent doesn't get to propose changes to its own codebase
@@ -116,6 +122,12 @@ async def run_self_branch_attempt(
     including changes to its own harness, that hasn't been scanned (and, for
     sensitive-surface diffs, adversarially reviewed) first. See
     `maistro_rsi.quarantine` for what "cleared" requires.
+
+    When ``probe`` is supplied it runs twice against the same checkout — right
+    after the branch (pre-patch baseline) and right after the patch is
+    committed (candidate) — so callers score the *measured differential* of the
+    change. Probes that need test artifacts should run those commands
+    themselves; the probe sees the workspace state, not the later test run.
     """
     clone = await git_clone(attempt.repo_url, workspace)
     if not clone.get("ok", True) or clone.get("exit_code", 0) != 0:
@@ -128,6 +140,7 @@ async def run_self_branch_attempt(
         )
 
     await git_branch(workspace, attempt.branch_name, checkout=True)
+    baseline_metrics = await probe(sandbox, workspace) if probe is not None else None
     await apply_patch(sandbox, workspace, model)
 
     # Stage and capture the diff BEFORE committing — after the commit the
@@ -141,6 +154,7 @@ async def run_self_branch_attempt(
     diff = str(diff_result.get("stdout", ""))
 
     await git_commit(workspace, attempt.commit_message, add_all=True)
+    candidate_metrics = await probe(sandbox, workspace) if probe is not None else None
 
     exit_code, output = await sandbox.exec(attempt.test_command, timeout=900)
 
@@ -176,6 +190,8 @@ async def run_self_branch_attempt(
         diff=diff,
         pr_url=pr_url,
         quarantine=quarantine_verdict,
+        baseline_metrics=baseline_metrics,
+        candidate_metrics=candidate_metrics,
     )
 
 

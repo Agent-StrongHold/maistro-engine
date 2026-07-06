@@ -112,7 +112,14 @@ def patched_self_branch(monkeypatch):
     """Skip the real git/sandbox plumbing; the runner only needs a SelfBranchResult back."""
 
     async def fake_run_attempt(
-        sandbox, workspace, attempt, apply_patch, open_pr=False, quarantine_check=None, model=None
+        sandbox,
+        workspace,
+        attempt,
+        apply_patch,
+        open_pr=False,
+        quarantine_check=None,
+        model=None,
+        probe=None,
     ):
         await apply_patch(sandbox, workspace, model)
         exit_code, output = await sandbox.exec(attempt.test_command)
@@ -231,6 +238,7 @@ class TestRsiCycleRun:
             open_pr=False,
             quarantine_check=None,
             model=None,
+            probe=None,
         ):
             await apply_patch(sandbox, workspace, model)
             return SelfBranchResult(attempt=attempt, test_exit_code=1, test_output="boom", diff="")
@@ -312,6 +320,7 @@ class TestRsiCycleRun:
             open_pr=False,
             quarantine_check=None,
             model=None,
+            probe=None,
         ):
             await apply_patch(sandbox, workspace, model)
             raise AssertionError("apply_patch should have raised before this point")
