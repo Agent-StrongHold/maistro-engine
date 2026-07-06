@@ -129,6 +129,15 @@ class TestSensitiveSurfaceCoverage:
         )
         assert touched
 
+    def test_durable_executor_is_sensitive_surface(self):
+        """The durable executor carries the actual synth_depth increment/
+        enforcement across checkpoints -- a diff here can defang the
+        recursion cap just as effectively as touching depth.py itself."""
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/durable_runs/executor.py"]
+        )
+        assert touched
+
     def test_htr_coordinator_is_sensitive_surface(self):
         touched = _touches_sensitive_surface(
             ["packages/maistro-rsi/src/maistro_rsi/coordinator.py"]

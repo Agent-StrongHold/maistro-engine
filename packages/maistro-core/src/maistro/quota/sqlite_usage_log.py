@@ -128,6 +128,12 @@ class SqliteUsageLog:
         pruning applies identically to a restored log as it would have to a
         continuously-running one, and `sum_between`'s boundary semantics are
         reproduced exactly rather than re-derived.
+
+        Also seeds `self._last_persisted_ts` from the rows just read: without
+        this, this same instance's next `snapshot()` call would treat every
+        restored event as unpersisted (its watermark starts at `-inf`) and
+        re-insert all of it -- duplicate rows, inflated usage, understated
+        quota headroom after every restart.
         """
         log = InMemoryUsageLog(max_retention_s=max_retention_s)
         cursor = await self._conn.execute(
@@ -135,6 +141,7 @@ class SqliteUsageLog:
             "FROM usage_events ORDER BY timestamp ASC"
         )
         rows = await cursor.fetchall()
+        seeded_watermarks: dict[str, float] = {}
         for scope_key, timestamp, input_tokens, output_tokens, images, cost_usd in rows:
             log.record(
                 scope_key,
@@ -144,6 +151,10 @@ class SqliteUsageLog:
                 cost_usd=cost_usd,
                 now=timestamp,
             )
+            # Rows are timestamp-ascending, so the last write per scope_key
+            # naturally ends up holding the max timestamp for that scope.
+            seeded_watermarks[scope_key] = timestamp
+        self._last_persisted_ts.update(seeded_watermarks)
         return log
 
 
