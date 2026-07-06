@@ -171,7 +171,7 @@ ignore_missing_imports = true
 
 # Optional/runtime integrations may be absent in minimal scan environments.
 [[tool.mypy.overrides]]
-module = ["yaml", "regex", "asyncpg", "bip_utils", "nacl.*", "PIL", "PIL.*"]
+module = ["yaml", "regex", "asyncpg", "bip_utils", "nacl.*", "PIL", "PIL.*", "pptx", "pptx.*"]
 ignore_missing_imports = true
 
 [tool.uv.sources]
