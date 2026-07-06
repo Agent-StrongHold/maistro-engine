@@ -15,6 +15,7 @@ earns a veto where the shallow metrics (docstrings, style) only earn weight.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -35,6 +36,29 @@ def measure_coverage(
     Returns None if coverage can't be produced (tool missing, no data) so the
     caller can treat coverage as unavailable rather than as 0% — which would
     falsely fail the gate.
+    """
+    total, _ = measure_coverage_detailed(
+        repo_dir, source=source, pytest_args=pytest_args, timeout=timeout
+    )
+    return total
+
+
+def measure_coverage_detailed(
+    repo_dir: str | Path,
+    *,
+    source: str = ".",
+    pytest_args: str = "",
+    timeout: int = 900,
+) -> tuple[float | None, dict[str, list[int]]]:
+    """Like :func:`measure_coverage`, but also returns each file's uncovered
+    (missing) line numbers — the scout uses these to target real gaps instead
+    of guessing, and to earn the ambition to propose a ``feature`` once a
+    module's uncovered lines run out. Paths are normalized to forward slashes
+    so they compare consistently across OS. One ``coverage run`` + ``coverage
+    json`` invocation, same as ``measure_coverage`` — no extra cost.
+
+    Returns ``(total_pct, {file: [missing_line, ...]})``; the dict is empty
+    whenever coverage data can't be produced.
     """
     cwd = str(repo_dir)
     try:
@@ -63,13 +87,79 @@ def measure_coverage(
             timeout=120,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        return None, {}
     if report.returncode != 0 or not report.stdout.strip():
-        return None
+        return None, {}
     try:
-        return float(json.loads(report.stdout)["totals"]["percent_covered"])
+        payload = json.loads(report.stdout)
+        total = float(payload["totals"]["percent_covered"])
     except (json.JSONDecodeError, KeyError, ValueError, TypeError):
-        return None
+        return None, {}
+    missing: dict[str, list[int]] = {}
+    for file_path, file_data in payload.get("files", {}).items():
+        lines = file_data.get("missing_lines")
+        if lines:
+            missing[file_path.replace("\\", "/")] = list(lines)
+    return total, missing
+
+
+def new_source_lines(
+    repo_dir: str | Path, baseline_ref: str, src_files: list[str]
+) -> dict[str, set[int]]:
+    """Line numbers ADDED (not context) to each source file vs ``baseline_ref``.
+
+    An aggregate coverage percentage can rise for reasons unrelated to the new
+    lines in THIS diff (another test in the same candidate covering unrelated
+    code) — this pins down exactly which lines the diff actually introduced, so
+    ``uncovered_new_lines`` can check whether those specific lines execute,
+    rather than trusting a project-wide number as a proxy.
+    """
+    cwd = Path(repo_dir)
+    added: dict[str, set[int]] = {}
+    for rel in src_files:
+        proc = subprocess.run(
+            ["git", "diff", "--unified=0", baseline_ref, "--", rel],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if proc.returncode != 0 or not proc.stdout:
+            continue
+        lines: set[int] = set()
+        cur: int | None = None
+        for ln in proc.stdout.splitlines():
+            if ln.startswith("@@"):
+                m = re.search(r"\+(\d+)", ln)
+                cur = int(m.group(1)) if m else None
+                continue
+            if cur is None:
+                continue
+            if ln.startswith("+") and not ln.startswith("+++"):
+                lines.add(cur)
+                cur += 1
+            elif ln.startswith("-") and not ln.startswith("---"):
+                continue  # removed line — absent from the new file, cur unmoved
+        if lines:
+            added[rel.replace("\\", "/")] = lines
+    return added
+
+
+def uncovered_new_lines(
+    new_lines: dict[str, set[int]], missing: dict[str, list[int]]
+) -> dict[str, list[int]]:
+    """Of the lines a diff ADDED, which ones the coverage run never executed.
+
+    Non-empty means the candidate's new code shipped with a gap no test in this
+    candidate actually exercises — regardless of whether some OTHER change in
+    the same diff raised the project's overall coverage percentage.
+    """
+    result: dict[str, list[int]] = {}
+    for file, lines in new_lines.items():
+        missed = sorted(lines & set(missing.get(file, [])))
+        if missed:
+            result[file] = missed
+    return result
 
 
 def coverage_gate(

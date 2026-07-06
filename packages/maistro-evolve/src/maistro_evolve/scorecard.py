@@ -48,6 +48,10 @@ class GateResult:
     name: str
     passed: bool
     reason: str
+    # Optional raw numeric evidence behind the pass/fail (e.g. a judge's score) —
+    # so a downstream reviewer can read the underlying confidence, not just the
+    # boolean veto. Mirrors SignalScore.detail's existing convention.
+    detail: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -65,7 +69,14 @@ class FitnessWeights:
     user keeps vs. edits/rejects). Weights need not sum to 1.
     """
 
-    new_test: float = 0.30  # biggest — a genuinely new, green, coverage-raising test
+    # THE MATURITY LADDER's top rewards (ADR-070126-6386 v3): finishing an
+    # already-CONTRACTED spec AC (with a marked, passing test) is the single
+    # highest-value move in the system; formalising a genuinely new idea into a
+    # well-formed spec (backlog → contract) is deliberately just barely below
+    # it — proposing new work never outranks finishing promised work.
+    spec_completion: float = 0.45  # net-new @pytest.mark.ac claims, tests green
+    spec_proposed: float = 0.40  # a new well-formed docs/specs/ contract (≥2 ACs)
+    new_test: float = 0.30  # a genuinely new, green, coverage-raising test
     capability: float = 0.28  # benchmark skill gain (present only with a benchmark)
     assertion_strength: float = 0.20  # strengthened test assertions
     red_green: float = 0.14  # test-first / bug-fix that drives code

@@ -11,6 +11,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from maistro_rsi.local_loop import (
     CycleOutcome,
     LocalRsiConfig,
@@ -114,6 +116,48 @@ def test_report_empty_is_safe() -> None:
     assert "# RSI checkpoint" in md
 
 
+def test_evolution_section_absent_without_population_summary() -> None:
+    md, data = build_checkpoint_report(
+        [_outcome(1, target="a.py", promoted=True)], total_planned=1, baseline_dir="/w", window=5
+    )
+    assert "## Evolution" not in md
+    assert "evolution" not in data
+
+
+@pytest.mark.ac("SPEC-070126-9d37/AC-17")
+def test_evolution_section_reports_learning_not_just_work() -> None:
+    summary = {
+        "population_size": 5,
+        "generations": {0: 2, 1: 3},
+        "top_genomes": [
+            {
+                "name": "champion",
+                "generation": 1,
+                "fitness": 0.82,
+                "code_rsi": 0.9,
+                "model": "devstral-medium",
+                "tdd_rigor": 1.0,
+                "test_style": "strict_tdd",
+            }
+        ],
+        "reliability": {"devstral-medium": 0.973, "gemini-2.5-flash": 0.343},
+        "benched_models": ["gemini-2.5-flash"],
+        "memory": {"learned_successes": "test-first fixes with assertions raise acceptance"},
+    }
+    md, data = build_checkpoint_report(
+        [_outcome(1, target="a.py", promoted=True)],
+        total_planned=1,
+        baseline_dir="/w",
+        window=5,
+        population_summary=summary,
+    )
+    assert data["evolution"] == summary
+    assert "## Evolution" in md
+    assert "champion" in md and "devstral-medium" in md and "strict_tdd" in md
+    assert "gemini-2.5-flash" in md  # both in reliability AND benched
+    assert "test-first fixes with assertions" in md
+
+
 # --------------------------------------------------------------------------- #
 # loop-level checkpointing
 # --------------------------------------------------------------------------- #
@@ -160,6 +204,12 @@ def test_rolling_export_is_complete_and_not_stale(tmp_path: Path) -> None:
         max_cycles=4,
         report_every=2,
         report_dir=str(reports),
+        # This test is about rolling-export completeness, not the checkpoint
+        # reviewer — the fixture rewrites the SAME file every cycle, so a
+        # cold-start RLPHD revert (see test_review_promotions.py) would
+        # legitimately shrink the exported set, which isn't what's under test
+        # here.
+        promotion_review=False,
     )
     LocalRsiLoop(config, apply_patch=_make_apply(_bump)).run()
 
@@ -170,6 +220,29 @@ def test_rolling_export_is_complete_and_not_stale(tmp_path: Path) -> None:
     # the prior window's patches rather than accumulating duplicates.
     assert len(manifest) == 4
     assert len(patches) == 4
+
+
+@pytest.mark.ac("SPEC-070126-9d37/AC-17")
+def test_live_mode_checkpoint_includes_evolution_section(tmp_path: Path) -> None:
+    repo = _make_repo(tmp_path / "src")
+    reports = tmp_path / "reports"
+    config = LocalRsiConfig(
+        repo_path=str(repo),
+        test_command="exit 0",
+        work_root=str(tmp_path / "work"),
+        max_cycles=2,
+        report_every=0,
+        report_dir=str(reports),
+        model="testmodel",
+        genome_db=str(tmp_path / "pop.db"),
+        roster_size=2,
+    )
+    LocalRsiLoop(config, apply_patch=_make_apply(_bump)).run()
+
+    final_md = (reports / "checkpoint-final.md").read_text(encoding="utf-8")
+    final_json = json.loads((reports / "checkpoint-final.json").read_text(encoding="utf-8"))
+    assert "## Evolution" in final_md
+    assert final_json["evolution"]["population_size"] >= 1
 
 
 def test_no_report_dir_writes_nothing(tmp_path: Path) -> None:
