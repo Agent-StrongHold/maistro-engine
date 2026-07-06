@@ -1,6 +1,12 @@
 """Built-in design skills covering the five shipped modes (prototype/deck/template/design-system/image)."""
 
-from maistro_design.types import DesignSkill, DiscoveryField, OutputFormat, SkillMode
+from maistro_design.types import (
+    DesignSkill,
+    DiscoveryField,
+    OutputFormat,
+    RenderSlot,
+    SkillMode,
+)
 
 _CODE_OUTPUT_INSTRUCTIONS = """## Code Output Instructions
 
@@ -20,6 +26,7 @@ BUILTINS: list[DesignSkill] = [
     # ── Prototype ────────────────────────────────────────────────────────────
     DesignSkill(
         slug="login-flow",
+        render_slot=RenderSlot.REFLOWABLE_WEB,
         name="Login Flow",
         mode=SkillMode.PROTOTYPE,
         description="Interactive login/auth flow prototype with form states and error handling.",
@@ -53,6 +60,7 @@ Follow the design guidelines strictly to ensure visual consistency.
     ),
     DesignSkill(
         slug="agent-browser",
+        render_slot=RenderSlot.REFLOWABLE_WEB,
         name="Agent Browser UI",
         mode=SkillMode.PROTOTYPE,
         description="Browser-like UI shell for agentic web browsing workflows.",
@@ -78,6 +86,7 @@ Build a realistic browser interface that supports this workflow.
     # ── Deck ─────────────────────────────────────────────────────────────────
     DesignSkill(
         slug="pitch-deck",
+        render_slot=RenderSlot.DECK,
         name="Pitch Deck",
         mode=SkillMode.DECK,
         description="Investor-ready pitch deck with structured slides.",
@@ -134,6 +143,7 @@ For PPTX/PDF: Structure as slide metadata and content suitable for conversion.""
     ),
     DesignSkill(
         slug="product-demo-deck",
+        render_slot=RenderSlot.DECK,
         name="Product Demo Deck",
         mode=SkillMode.DECK,
         description="Feature walkthrough deck for customer demos and sales.",
@@ -183,6 +193,7 @@ For PPTX/PDF: Structure for easy conversion to presentation format.""",
     # ── Template ─────────────────────────────────────────────────────────────
     DesignSkill(
         slug="landing-page",
+        render_slot=RenderSlot.REFLOWABLE_WEB,
         name="Landing Page",
         mode=SkillMode.TEMPLATE,
         description="Conversion-optimised landing page with hero, features, and CTA sections.",
@@ -230,6 +241,7 @@ Use the provided design system strictly. Follow best practices for:
     ),
     DesignSkill(
         slug="email-template",
+        render_slot=RenderSlot.REFLOWABLE_WEB,
         name="Email Template",
         mode=SkillMode.TEMPLATE,
         description="Responsive HTML email template for transactional or marketing sends.",

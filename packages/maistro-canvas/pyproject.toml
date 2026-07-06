@@ -15,9 +15,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# PPTX export (SPEC-070426-457b) — optional; without it export_pptx() raises a
+# typed ExporterDependencyError and HTML export still works.
+export = [
+    "python-pptx>=1.0",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.25",
+    "python-pptx>=1.0",
     "ruff>=0.9",
     "mypy>=1.14",
 ]
