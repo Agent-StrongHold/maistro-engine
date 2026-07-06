@@ -23,6 +23,7 @@ from maistro_evolve.harness import BenchmarkRunner, EvalHarness
 from maistro_evolve.population import PopulationStore
 from maistro_evolve.types import EvalResult, PipelineGenome
 from maistro_rsi.competitors import Competitor
+from maistro_rsi.free_router import FreeSelector, expand_free_router
 
 # Runs a genome's fixer config against a target file and returns the RSI
 # scorecard outcome: (gates_passed, composite, is_stub).
@@ -70,8 +71,15 @@ def make_code_rsi_runner(fix_and_score: FixAndScore, target: str) -> BenchmarkRu
     return runner
 
 
-def seed_population(store: PopulationStore, n: int, models: list[str] | None = None) -> None:
+def seed_population(
+    store: PopulationStore,
+    n: int,
+    models: list[str] | None = None,
+    *,
+    free_selector: FreeSelector | None = None,
+) -> set[str]:
     """Top the store up to `n` genomes with random fixer seeds (model/temp/prompt).
+    Returns the set of concrete free aliases resolved (empty when none).
 
     TOP-UP, not blind seeding: a persisted population.db is the lineage — its
     genomes carry evolved slots and the hyper-mutator's written learnings
@@ -84,17 +92,20 @@ def seed_population(store: PopulationStore, n: int, models: list[str] | None = N
     aliases, so a live run must seed with servable models. The same roster must
     also reach EvolutionConfig.allowed_models so breeding/mutation can't drift a
     lineage back off it (an unroutable model is a guaranteed-0 evaluation).
+
+    A ``free-router`` sentinel in ``models`` (see `free_router`) is not seeded
+    literally — it re-randomises every call. Each genome that draws it gets its
+    OWN concrete free model resolved-and-pinned via ``free_selector``, so the
+    population seeds onto a spread of distinct, stable, $0 models.
     """
     from maistro_evolve.diversity import _random_genome
 
+    resolved: set[str] = set()
     existing = len(store.list_all())
-    need = max(0, n - existing)
-    for i in range(need):
-        # Round-robin across the roster (not a random draw) so every model gets
-        # a seed lineage from cycle one — evolution can only learn per-model
-        # differences from models that actually field genomes.
-        pinned = [models[i % len(models)]] if models else None
-        store.add(_random_genome(pinned))
+    for _ in range(max(0, n - existing)):
+        seed_models = expand_free_router(models, free_selector, resolved=resolved)
+        store.add(_random_genome(seed_models))
+    return resolved
 
 
 async def run_evolution(

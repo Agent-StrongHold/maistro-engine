@@ -106,6 +106,26 @@ def _discover_openrouter_credential(base: str, key: str, timeout: float) -> str 
     return None
 
 
+def fetch_known_models(
+    *, base: str | None = None, key: str | None = None, timeout: float = 15.0
+) -> set[str]:
+    """Model ids already registered on the gateway — so seeding skips re-registering
+    a concrete model that is already routable (and avoids duplicate rows)."""
+    base = (base or _gateway_base()).rstrip("/")
+    key = key or _gateway_key()
+    if not base or not key:
+        return set()
+    try:
+        resp = httpx.get(
+            f"{base}/v1/models", headers={"Authorization": f"Bearer {key}"}, timeout=timeout
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", [])
+    except (httpx.HTTPError, ValueError):
+        return set()
+    return {m["id"] for m in data if isinstance(m, dict) and m.get("id")}
+
+
 def register_gateway_alias(
     concrete: str,
     *,
@@ -119,13 +139,7 @@ def register_gateway_alias(
     credential and return the routable alias. A no-op (returns the alias) when it
     is already present in ``known``. Returns ``None`` only if the gateway/credential
     is unreachable or registration is rejected for a reason other than "exists"."""
-    # ALWAYS prepend the LiteLLM `openrouter/` provider prefix. The concrete id
-    # comes from OpenRouter-direct as a bare ``<provider>/<model>`` — including
-    # OpenRouter-OWNED models like ``openrouter/sonoma-dusk-alpha:free``, whose
-    # own leading ``openrouter/`` is part of the model id, NOT the LiteLLM prefix.
-    # Skipping the prefix there would make LiteLLM strip that segment and route
-    # ``sonoma-dusk-alpha:free`` (a different, non-existent model).
-    alias = f"openrouter/{concrete}"
+    alias = concrete if concrete.startswith("openrouter/") else f"openrouter/{concrete}"
     base = (base or _gateway_base()).rstrip("/")
     key = key or _gateway_key()
     if not base or not key:
@@ -175,18 +189,12 @@ def select_and_pin_free_model(
 def make_free_selector(*, timeout: float = 60.0) -> FreeSelector:
     """Build the per-genome selector used at seeding: each call yields a freshly
     resolved-and-pinned concrete free alias (or ``None`` to trigger the default).
-
-    ``known`` starts EMPTY and accumulates only the aliases *we* register this
-    session — deliberately NOT seeded from ``fetch_known_models()``: the gateway's
-    ``/v1/models`` includes the whole wildcard-expanded OpenRouter catalog, so a
-    concrete model almost always "already exists" there yet routes via the
-    credential-less ``openrouter/*`` wildcard and 401s on tag config. Only an
-    explicit credential-bound registration routes; so we must register every fresh
-    pick, and only skip a model we ourselves already registered this run."""
-    registered: set[str] = set()
+    The gateway's current model set is fetched once and shared, so repeats of the
+    finite free catalog don't re-register."""
+    known = fetch_known_models()
 
     def selector() -> str | None:
-        return select_and_pin_free_model(known=registered, timeout=timeout)
+        return select_and_pin_free_model(known=known, timeout=timeout)
 
     return selector
 
@@ -214,15 +222,12 @@ def expand_free_router(
     models: Sequence[str] | None,
     selector: FreeSelector | None,
     *,
-    free_count: int = 1,
     resolved: set[str] | None = None,
 ) -> list[str] | None:
-    """Return ``models`` with every free-router sentinel replaced by ``free_count``
-    concrete, pinned free aliases — so the roster gains a spread of distinct,
-    stable, $0 models to seed and evolve on. A no-op when no sentinel is present.
-    Falls back to ``DEFAULT_FREE_MODEL`` when the selector yields nothing. The
-    result is de-duplicated (a model already literal in the roster, or surfaced
-    twice by the router, appears once)."""
+    """Return ``models`` with every free-router sentinel replaced by a concrete,
+    pinned free alias (one fresh pick per sentinel occurrence — so distinct
+    genomes seed onto distinct random models). A no-op when no sentinel is present.
+    Falls back to ``DEFAULT_FREE_MODEL`` when the selector yields nothing."""
     if not models:
         return list(models) if models is not None else None
     if not any(m in FREE_ROUTER_ALIASES for m in models):
@@ -230,48 +235,10 @@ def expand_free_router(
     out: list[str] = []
     for m in models:
         if m in FREE_ROUTER_ALIASES:
-            picks = _pick_distinct(selector, max(1, free_count))
-            out.extend(picks)
+            pick = (selector() if selector else None) or DEFAULT_FREE_MODEL
+            out.append(pick)
             if resolved is not None:
-                resolved.update(picks)
+                resolved.add(pick)
         else:
             out.append(m)
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for x in out:
-        if x not in seen:
-            seen.add(x)
-            deduped.append(x)
-    return deduped
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Host-side roster expansion for the launcher: resolve+register the free-router
-    sentinel into concrete $0 aliases and print the expanded roster (the container
-    can't do this — its env has the gateway key but not OPENROUTER_API_KEY).
-
-        python -m maistro_rsi.free_router --roster "or-free-router,cerebras-glm-4.7" --free-count 2
-        -> openrouter/<a>:free,openrouter/<b>:free,cerebras-glm-4.7
-    """
-    import argparse
-    import sys
-
-    # Keep stdout clean: the caller captures the expanded roster from stdout, so
-    # send all structlog output (registration logs) to stderr.
-    structlog.configure(logger_factory=structlog.PrintLoggerFactory(file=sys.stderr))
-
-    parser = argparse.ArgumentParser(prog="maistro_rsi.free_router")
-    parser.add_argument("--roster", required=True, help="Comma-separated genome-models roster.")
-    parser.add_argument(
-        "--free-count", type=int, default=2, help="Concrete free models per sentinel (default 2)."
-    )
-    args = parser.parse_args(argv)
-    models = [m.strip() for m in args.roster.split(",") if m.strip()]
-    selector = make_free_selector() if any(m in FREE_ROUTER_ALIASES for m in models) else None
-    out = expand_free_router(models, selector, free_count=args.free_count) or []
-    print(",".join(out))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+    return out
