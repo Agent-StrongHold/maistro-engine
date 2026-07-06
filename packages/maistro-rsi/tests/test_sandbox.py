@@ -163,6 +163,60 @@ class TestLocalSandbox:
             await sandbox.write_file("f", "x")
         await sandbox.destroy()  # idempotent, no raise
 
+    @pytest.mark.asyncio
+    async def test_rejects_paths_escaping_the_workspace(self, tmp_path):
+        """sandbox-14: `..` traversal and outside-absolute paths raise ValueError;
+        absolute paths inside the workspace still resolve."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        workspace = tmp_path / "ws"
+        sandbox = LocalSandbox(str(workspace))
+
+        with pytest.raises(ValueError, match="escapes"):
+            await sandbox.write_file("../evil.gitconfig", "x")
+        with pytest.raises(ValueError, match="escapes"):
+            await sandbox.read_file("sub/../../evil")
+        with pytest.raises(ValueError, match="escapes"):
+            await sandbox.write_file(str(tmp_path / "outside.txt"), "x")
+
+        inside = workspace / "ok.txt"
+        await sandbox.write_file(str(inside), "fine")  # absolute but inside
+        assert await sandbox.read_file("ok.txt") == "fine"
+
+    @pytest.mark.asyncio
+    async def test_bash_shell_semantics(self, tmp_path):
+        """sandbox-15: commands run under bash, matching the Docker backend's
+        shell contract ([[ ]] is a bashism that plain sh rejects)."""
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        code, output = await LocalSandbox(str(tmp_path)).exec('[[ -n "x" ]] && echo bash-ok')
+        assert code == 0 and "bash-ok" in output
+
+    @pytest.mark.asyncio
+    async def test_timeout_kills_the_whole_process_group(self, tmp_path):
+        """sandbox-15: a timed-out command's children die with it — a spawned
+        `sleep` must not outlive exec()."""
+        import os
+
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        sandbox = LocalSandbox(str(tmp_path))
+        code, _ = await sandbox.exec("sleep 30 & echo $! > child.pid; wait", timeout=1)
+        assert code == 124
+
+        child_pid = int((tmp_path / "child.pid").read_text().strip())
+        # SIGKILL was sent to the process group; give the kernel a beat to reap.
+        import asyncio as _asyncio
+
+        for _ in range(20):
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                break
+            await _asyncio.sleep(0.1)
+        else:
+            pytest.fail(f"child {child_pid} survived the group kill")
+
 
 class TestCreateRsiSandbox:
     """Tests tied to SPEC.md §1 acceptance criterion sandbox-13."""

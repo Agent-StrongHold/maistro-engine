@@ -46,7 +46,7 @@ commands:
     - command: >-
         pip install --quiet uv &&
         uv pip install --system
-        -e packages/maistro-core
+        -e "packages/maistro-core[llm]"
         -e packages/maistro-evolve
         -e packages/maistro-rsi
       user: "0"

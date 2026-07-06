@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import signal
 import uuid
 from pathlib import Path
 
@@ -39,26 +41,43 @@ class LocalSandbox:
         self._workspace = workspace
         self._snapshots: dict[str, str] = {}
         Path(workspace).mkdir(parents=True, exist_ok=True)
+        self._root = Path(workspace).resolve()
 
     def _resolve(self, path: str) -> Path:
+        """Resolve ``path`` inside the workspace, mirroring the Docker
+        backend's ``_safe_path`` posture: a model- or patch-supplied path such
+        as ``../.gitconfig`` (or an absolute path outside the checkout) must
+        never read or write beyond the sandbox workspace."""
         candidate = Path(path)
-        return candidate if candidate.is_absolute() else Path(self._workspace) / candidate
+        resolved = (candidate if candidate.is_absolute() else self._root / candidate).resolve()
+        if resolved != self._root and self._root not in resolved.parents:
+            raise ValueError(f"path escapes sandbox workspace: {path}")
+        return resolved
 
     async def exec(self, command: str, timeout: int = 60) -> tuple[int, str]:
-        # argv into ``/bin/sh -c`` (not shell=True) so shell operators in RSI
-        # test commands work; runs inside the isolated sbx microVM, which is the
-        # trust boundary — the RSI quarantine gate governs what may leave it.
+        # argv into ``bash -c`` (not shell=True) — bash to match the Docker
+        # backend's shell contract (`source`, `[[ ]]`, process substitution),
+        # so the same RSI test command behaves identically under both backends.
+        # Runs inside the isolated sbx microVM, which is the trust boundary —
+        # the RSI quarantine gate governs what may leave it. Its own session/
+        # process group, so a timeout kills the whole tree, not just the shell.
         proc = await asyncio.create_subprocess_exec(  # nosec B603
-            "/bin/sh",
+            "bash",
             "-c",
             command,
             cwd=self._workspace,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            start_new_session=True,
         )
         try:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         except TimeoutError:
+            # Kill the entire process group — test runners and agents spawn
+            # children (servers, `cmd & wait`) that would otherwise outlive the
+            # shell and keep mutating the workspace for the rest of the run.
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(proc.pid, signal.SIGKILL)
             proc.kill()
             # SIGKILL is delivered; bound the reap so a slow host can't wedge us.
             with contextlib.suppress(Exception):

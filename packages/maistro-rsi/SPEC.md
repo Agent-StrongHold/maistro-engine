@@ -40,6 +40,8 @@ running commands directly on the (already-isolated) local FS, and
 | sandbox-11 | `LocalSandbox.snapshot(label)` returns a unique id each call; `restore` raises `KeyError` for an unknown id and `NotImplementedError` for a captured one (same honest posture as the Docker backend). |
 | sandbox-12 | `LocalSandbox.destroy()` is a no-op that never raises — `sbx` owns the microVM lifecycle — and `async with` still exits cleanly. |
 | sandbox-13 | `create_rsi_sandbox` returns a `LocalSandbox` when the backend is `local` (arg or `$MAISTRO_RSI_SANDBOX`) and a `DockerMicroVmSandbox` otherwise; an explicit `backend` arg overrides the env var. |
+| sandbox-14 | `LocalSandbox` rejects any file path that escapes the workspace — `..` traversal or an absolute path outside it — with `ValueError`, mirroring the Docker backend's `_safe_path` posture; absolute paths *inside* the workspace still resolve. |
+| sandbox-15 | `LocalSandbox.exec` runs each command in its own process group (via `bash -c`, matching the Docker backend's shell contract) and a timeout kills the *whole group* — children spawned by the command do not outlive the call. |
 
 ---
 
