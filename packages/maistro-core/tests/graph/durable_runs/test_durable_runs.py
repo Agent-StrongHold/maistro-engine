@@ -540,3 +540,59 @@ async def test_agent_synth_dag_refuses_to_spawn_once_depth_reaches_cap_via_durab
     assert n2_output is not None
     assert n2_output["success"] is False
     assert "recursion depth cap reached" in n2_output["error"]
+
+
+async def test_refused_synth_dag_does_not_increment_depth_for_the_next_node(
+    mem_store: DurableRunStore,
+) -> None:
+    """A depth-cap refusal is encoded as SynthDagOut(success=False) inside an
+    otherwise-successful NodeResult -- it must not burn a depth level for
+    whatever runs next, or an alternate attempt after a blocked one would
+    hit the cap prematurely."""
+    from maistro.graph.nodes.agent_synth_dag import AgentSynthDagNode
+
+    captured_depths: list[int] = []
+
+    class _CaptureDepthIn(BaseModel):
+        pass
+
+    class _CaptureDepthOut(BaseModel):
+        pass
+
+    class _CaptureDepthNode(BaseNode):
+        kind: ClassVar[str] = "test.capture_synth_depth_after_refusal"
+        kind_category: ClassVar = "sync.transform"
+        input_schema: ClassVar[type[BaseModel]] = _CaptureDepthIn
+        output_schema: ClassVar[type[BaseModel]] = _CaptureDepthOut
+
+        async def _execute(self, inputs: _CaptureDepthIn, ctx: NodeContext) -> _CaptureDepthOut:
+            captured_depths.append(int((ctx.metadata or {}).get("synth_depth", 0)))
+            return _CaptureDepthOut()
+
+    def _local_resolver(node_id: str, dag: dict[str, Any]) -> BaseNode:
+        if node_id == "n1":
+            return AgentSynthDagNode()
+        if node_id == "n2":
+            return AgentSynthDagNode(max_depth=1)  # depth=1 here -> LEAF -> refuses
+        return _CaptureDepthNode()
+
+    dag = {
+        "id": "synth-depth-refusal-dag",
+        "name": "synth-depth-refusal",
+        "nodes": [
+            {"id": "n1", "kind": "agent.synth_dag", "inputs": {"objective": "add caching"}},
+            {"id": "n2", "kind": "agent.synth_dag", "inputs": {"objective": "nested work"}},
+            {"id": "n3", "kind": "test.capture_synth_depth_after_refusal"},
+        ],
+        "edges": [
+            {"from_node": "n1", "to_node": "n2"},
+            {"from_node": "n2", "to_node": "n3"},
+        ],
+        "entry_node": "n1",
+    }
+
+    result = await run_durable_dag(dag, store=mem_store, node_resolver=_local_resolver)
+    assert result.status == RunStatus.COMPLETED
+    # n1 -> depth becomes 1 for n2. n2 refuses (depth==max_depth==1) -> depth
+    # must stay 1 for n3, not bump to 2.
+    assert captured_depths == [1]

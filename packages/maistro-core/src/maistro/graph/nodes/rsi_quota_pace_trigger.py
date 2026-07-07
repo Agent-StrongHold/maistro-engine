@@ -21,6 +21,16 @@ Fed by `config.rate_limits.resolve_rate_profile` (model alias -> profile) so
 an alias with no configured profile yet gets the same permissive,
 unconstrained fallback every other quota-aware code path gets, rather than
 this node refusing to trigger anything.
+
+The durable executor's `_resolve_inputs` merges a node's inputs as
+`{**static_inputs, **upstream_output}` -- a flat, top-level merge. Since this
+node's `context` output is itself a whole dict field, it would otherwise
+*replace* (not merge with) whatever `context` a DAG author configured
+statically on the downstream `agent.spawn_harness` node, silently dropping
+`baseline_genome`/`candidate_genome` before dispatch. `RsiQuotaPaceTriggerIn.base_context`
+is the fix: a DAG author supplies the harness-required context as *this*
+node's own static input, and it's merged underneath the pacer-owned keys
+(`num_cycles`, `model_alias`, `available_models`) rather than being lost.
 """
 
 from __future__ import annotations
@@ -55,6 +65,14 @@ class RsiQuotaPaceTriggerIn(BaseModel):
         default_factory=dict,
         description="Extra scope_key_fields values the resolved profile may need "
         "(e.g. api_key, endpoint) beyond provider/model",
+    )
+    base_context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Harness-required context to pass through untouched (e.g. "
+        "baseline_genome/candidate_genome for RsiCycleHarnessAdapter) -- the "
+        "durable executor's input merge is flat, so this node's own `context` "
+        "output would otherwise replace, not merge with, whatever a DAG author "
+        "configured on the downstream agent.spawn_harness node.",
     )
     task: str = Field(default="RSI self-improvement cycle", description="Handed to the harness")
     harness_type: str = "rsi_cycle"
@@ -128,6 +146,10 @@ class RsiQuotaPaceTriggerNode(BaseNode[RsiQuotaPaceTriggerIn, RsiQuotaPaceTrigge
             harness_type=inputs.harness_type,
             task=inputs.task,
             context={
+                # base_context first so pacer-owned keys always win over
+                # anything accidentally duplicated there, while unrelated
+                # keys (baseline_genome, candidate_genome, ...) pass through.
+                **inputs.base_context,
                 "num_cycles": num_cycles,
                 "model_alias": inputs.model_alias,
                 "available_models": [inputs.model_alias],

@@ -41,6 +41,11 @@ SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     "maistro/graph/depth.py",
     "maistro/graph/nodes/agent_synth_dag.py",
     "maistro/graph/nodes/agent_spawn_harness.py",
+    # The durable executor carries the actual depth-cap *enforcement* between
+    # nodes (it's what increments/surfaces synth_depth across checkpoints) --
+    # a diff here can defang the cap just as effectively as touching depth.py
+    # itself.
+    "maistro/graph/durable_runs/executor.py",
 )
 
 

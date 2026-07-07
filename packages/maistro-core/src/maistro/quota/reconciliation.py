@@ -104,10 +104,22 @@ class AdaptiveReconciliationPolicy:
 
 @dataclass
 class ReconciliationState:
-    """Per-scope-key mutable state the orchestrator threads across calls."""
+    """Per-scope-key mutable state the orchestrator threads across calls.
+
+    `last_checked_at` is the delta-computation boundary shared by *both*
+    `maybe_reconcile` and `reconcile_ambient` (it answers "how much local
+    usage happened since we last had a snapshot to diff against," regardless
+    of which mechanism produced that snapshot). `last_explicit_check_at` is
+    separate and exists only to gate `maybe_reconcile`'s `due()` check --
+    without it, steady ambient traffic (which bumps `last_checked_at` on
+    every real call, `update_policy=False` or not) would keep resetting the
+    clock the explicit-verifier cadence reads, silently suppressing explicit
+    checks indefinitely even though the adaptive interval itself never grew.
+    """
 
     policy: AdaptiveReconciliationPolicy
     last_checked_at: float = 0.0
+    last_explicit_check_at: float = 0.0
     last_remaining: float | None = None
 
 
@@ -137,11 +149,11 @@ async def maybe_reconcile(
     left untouched (a single reading says nothing about tracking accuracy).
     """
     now = now if now is not None else time.time()
-    if not state.policy.due(now - state.last_checked_at):
+    if not state.policy.due(now - state.last_explicit_check_at):
         return None
 
     snapshot = await verifier.verify(scope_key)
-    return _compare_and_update(
+    outcome = _compare_and_update(
         state,
         scope_key,
         log,
@@ -151,6 +163,8 @@ async def maybe_reconcile(
         now=now,
         update_policy=True,
     )
+    state.last_explicit_check_at = now
+    return outcome
 
 
 def reconcile_ambient(

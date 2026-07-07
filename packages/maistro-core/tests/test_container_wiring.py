@@ -51,6 +51,7 @@ async def test_container_exposes_all_new_subsystems() -> None:
         "identity_linker",
         "harness_adapters",
         "spawn_harness_node",
+        "usage_log",
     ):
         assert getattr(container, attr) is not None, f"container.{attr} is not wired"
 
@@ -328,6 +329,92 @@ async def test_injected_harness_adapters_reach_the_container_and_the_node() -> N
     )
     assert result.status == "paused"
     assert result.metadata["handle_id"] == "h1"
+
+
+# --- build_node_resolver (production reachability) --------------------------------
+
+
+def test_build_node_resolver_resolves_spawn_harness_with_injected_adapters() -> None:
+    from maistro.container import build_node_resolver
+    from maistro.graph.nodes.agent_spawn_harness import AgentSpawnHarnessNode
+
+    fake_adapter = object()
+    resolver = build_node_resolver(harness_adapters={"rsi_cycle": fake_adapter})  # type: ignore[arg-type]
+
+    dag = {"nodes": [{"id": "n1", "kind": "agent.spawn_harness"}]}
+    node = resolver("n1", dag)
+
+    assert isinstance(node, AgentSpawnHarnessNode)
+    assert node._adapters == {"rsi_cycle": fake_adapter}
+
+
+def test_build_node_resolver_resolves_quota_pace_trigger_with_injected_usage_log() -> None:
+    from maistro.container import build_node_resolver
+    from maistro.graph.nodes.rsi_quota_pace_trigger import RsiQuotaPaceTriggerNode
+    from maistro.quota.usage_log import InMemoryUsageLog
+
+    log = InMemoryUsageLog()
+    resolver = build_node_resolver(usage_log=log)
+
+    dag = {"nodes": [{"id": "n1", "kind": "rsi.quota_pace_trigger"}]}
+    node = resolver("n1", dag)
+
+    assert isinstance(node, RsiQuotaPaceTriggerNode)
+    assert node._source is log
+
+
+def test_build_node_resolver_falls_back_to_the_plain_registry_for_other_kinds() -> None:
+    from maistro.container import build_node_resolver
+    from maistro.graph.nodes.llm_summarize import LlmSummarizeNode
+
+    resolver = build_node_resolver()
+    dag = {"nodes": [{"id": "n1", "kind": "llm.summarize"}]}
+    node = resolver("n1", dag)
+
+    assert isinstance(node, LlmSummarizeNode)
+
+
+def test_build_node_resolver_defaults_pick_up_module_level_singletons() -> None:
+    from maistro.container import build_node_resolver
+    from maistro.graph.nodes.agent_spawn_harness import AgentSpawnHarnessNode
+    from maistro.quota.usage_log import get_default_usage_log
+
+    resolver = build_node_resolver()
+    dag = {"nodes": [{"id": "n1", "kind": "agent.spawn_harness"}]}
+    node = resolver("n1", dag)
+
+    assert isinstance(node, AgentSpawnHarnessNode)
+    assert node._adapters == {}
+
+    from maistro.graph.nodes.rsi_quota_pace_trigger import RsiQuotaPaceTriggerNode
+
+    dag2 = {"nodes": [{"id": "n2", "kind": "rsi.quota_pace_trigger"}]}
+    node2 = resolver("n2", dag2)
+    assert isinstance(node2, RsiQuotaPaceTriggerNode)
+    assert node2._source is get_default_usage_log()
+
+
+def test_build_node_resolver_raises_for_unknown_node_id() -> None:
+    from maistro.container import build_node_resolver
+
+    resolver = build_node_resolver()
+    with pytest.raises(KeyError):
+        resolver("missing", {"nodes": []})
+
+
+async def test_container_usage_log_reaches_build_node_resolver() -> None:
+    from maistro.container import build_node_resolver
+    from maistro.graph.nodes.rsi_quota_pace_trigger import RsiQuotaPaceTriggerNode
+
+    container = await _container()
+    resolver = build_node_resolver(
+        harness_adapters=container.harness_adapters, usage_log=container.usage_log
+    )
+    dag = {"nodes": [{"id": "n1", "kind": "rsi.quota_pace_trigger"}]}
+    node = resolver("n1", dag)
+
+    assert isinstance(node, RsiQuotaPaceTriggerNode)
+    assert node._source is container.usage_log
 
 
 # --- OAuth (ADR-059) ----------------------------------------------------------------

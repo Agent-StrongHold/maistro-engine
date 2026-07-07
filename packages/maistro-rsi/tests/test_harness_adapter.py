@@ -182,9 +182,11 @@ async def test_poll_returns_none_while_running_then_result_when_done() -> None:
 
     assert result is not None
     assert result.success is True  # improved: tests passed + benchmark majority
-    assert result.metadata["run_id"] == "run-abc123"
-    assert result.metadata["benchmarks_won"] == 2
-    assert result.metadata["battles_total"] == 2
+    assert result.metadata["cycles_completed"] == 1
+    assert result.metadata["cycles_improved"] == 1
+    assert result.metadata["cycles"][0]["run_id"] == "run-abc123"
+    assert result.metadata["cycles"][0]["benchmarks_won"] == 2
+    assert result.metadata["cycles"][0]["battles_total"] == 2
 
 
 async def test_poll_reports_not_improved_as_unsuccessful() -> None:
@@ -292,3 +294,134 @@ async def test_runner_receives_the_genomes_and_models_from_context() -> None:
     await adapter.poll(handle)
 
     assert runner.calls == [(baseline, candidate, ["m1", "m2"])]
+
+
+# --- num_cycles: parallel multi-cycle dispatch ------------------------------
+
+
+class _SequencedRunner:
+    """Returns/raises a distinct outcome per call, in call order -- lets a
+    test control exactly which of several parallel cycles fails."""
+
+    def __init__(self, outcomes: list[RsiCycleResult | Exception]) -> None:
+        self._outcomes = outcomes
+        self.calls = 0
+
+    async def run(
+        self, baseline: PipelineGenome, candidate: PipelineGenome, available_models: list[str]
+    ) -> RsiCycleResult:
+        outcome = self._outcomes[self.calls]
+        self.calls += 1
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+async def test_dispatch_starts_num_cycles_concurrently() -> None:
+    runner = _FakeRunner(_cycle_result(), delay=0.02)
+    adapter = RsiCycleHarnessAdapter(runner)
+
+    handle = await adapter.dispatch(
+        _request(
+            baseline_genome=_genome("a"),
+            candidate_genome=_genome("b"),
+            available_models=["m1"],
+            num_cycles=3,
+        )
+    )
+    await asyncio.sleep(0)  # let all 3 tasks reach their call-recording line
+    assert len(runner.calls) == 3
+
+    await asyncio.sleep(0.05)
+    result = await adapter.poll(handle)
+
+    assert result is not None
+    assert result.success is True
+    assert result.metadata["cycles_completed"] == 3
+    assert result.metadata["cycles_improved"] == 3
+    assert len(result.metadata["cycles"]) == 3
+
+
+async def test_multi_cycle_succeeds_if_any_cycle_improved_despite_a_failure() -> None:
+    runner = _SequencedRunner(
+        [
+            _cycle_result(improved_battles=2, total_battles=2),
+            RuntimeError("cycle 2 blew up"),
+            _cycle_result(improved_battles=0, total_battles=2),
+        ]
+    )
+    adapter = RsiCycleHarnessAdapter(runner)
+    handle = await adapter.dispatch(
+        _request(
+            baseline_genome=_genome("a"),
+            candidate_genome=_genome("b"),
+            available_models=["m1"],
+            num_cycles=3,
+        )
+    )
+    await asyncio.sleep(0.01)
+    result = await adapter.poll(handle)
+
+    assert result is not None
+    assert result.success is True  # one of the three improved
+    assert result.metadata["cycles_completed"] == 2
+    assert result.metadata["cycles_improved"] == 1
+    assert result.metadata["cycles_failed"] == 1
+    assert "cycle 2 blew up" in result.metadata["errors"]
+
+
+async def test_multi_cycle_timeout_cancels_every_remaining_task() -> None:
+    runner = _FakeRunner(_cycle_result(), delay=10.0)
+    adapter = RsiCycleHarnessAdapter(runner)
+    handle = await adapter.dispatch(
+        _request(
+            baseline_genome=_genome("a"),
+            candidate_genome=_genome("b"),
+            available_models=["m1"],
+            num_cycles=3,
+            timeout_seconds=0,
+        )
+    )
+
+    result = await adapter.poll(handle)
+
+    assert result is not None
+    assert result.success is False
+    assert result.error == "timed out"
+
+
+# --- dict-serialized genomes -------------------------------------------------
+
+
+async def test_dispatch_accepts_dict_form_genomes() -> None:
+    """A persisted/JSON-deserialized durable DAG's HarnessRequest.context
+    carries plain dicts, not live PipelineGenome instances."""
+    runner = _FakeRunner(_cycle_result())
+    adapter = RsiCycleHarnessAdapter(runner)
+    baseline_dict = _genome("baseline").model_dump()
+    candidate_dict = _genome("candidate").model_dump()
+
+    handle = await adapter.dispatch(
+        _request(
+            baseline_genome=baseline_dict,
+            candidate_genome=candidate_dict,
+            available_models=["m1"],
+        )
+    )
+    await asyncio.sleep(0.01)
+    await adapter.poll(handle)
+
+    assert len(runner.calls) == 1
+    seen_baseline, seen_candidate, _ = runner.calls[0]
+    assert isinstance(seen_baseline, PipelineGenome)
+    assert isinstance(seen_candidate, PipelineGenome)
+    assert seen_baseline.id == "g-baseline"
+    assert seen_candidate.id == "g-candidate"
+
+
+async def test_dispatch_rejects_a_genome_that_is_neither_dict_nor_pipeline_genome() -> None:
+    adapter = RsiCycleHarnessAdapter(_FakeRunner())
+    with pytest.raises(ValueError, match="baseline_genome"):
+        await adapter.dispatch(
+            _request(baseline_genome=123, candidate_genome=_genome("b"), available_models=["m1"])
+        )
