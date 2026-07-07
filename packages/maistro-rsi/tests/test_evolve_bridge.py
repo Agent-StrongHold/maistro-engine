@@ -131,3 +131,16 @@ async def test_population_evolves_under_code_rsi(tmp_path) -> None:  # type: ign
     assert any(g.eval_scores.get("code_rsi") is not None for g in genomes)
     assert any(g.generation > 0 for g in genomes)  # offspring were created
     assert store.get_champion() is not None
+
+
+@pytest.mark.ac("ADR-070126-6386/stage3")
+def test_seed_population_topup_continues_rotation(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # Codex P2 (#250): a top-up must CONTINUE the round-robin past already-seeded
+    # models, not restart at 0 (which re-covers m-a/m-b and starves m-c).
+    from maistro_evolve.population import PopulationStore
+
+    store = PopulationStore(db_path=tmp_path / "pop.db")
+    seed_population(store, 1, models=["m-a", "m-b", "m-c"])  # existing seed -> m-a
+    seed_population(store, 3, models=["m-a", "m-b", "m-c"])  # top-up must add m-b, m-c
+    models = {genome_to_competitor(g).model for g in store.list_all()}
+    assert models == {"m-a", "m-b", "m-c"}

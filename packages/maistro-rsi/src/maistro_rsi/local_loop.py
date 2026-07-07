@@ -173,6 +173,20 @@ _TRANSIENT_ERROR_MARKERS = (
 )
 
 
+# Cross-provider never-idle fallback pool (LocalRsiConfig.emergency_models default):
+# spans cerebras / groq / openrouter-free / openrouter-paid so that when a run's
+# roster provider is fully rate-limited, a DIFFERENT provider is still servable.
+# Ordered most-capable-first; the loop picks the first non-benched one.
+_DEFAULT_EMERGENCY_MODELS = (
+    "or-qwen3-coder",
+    "or-qwen36",
+    "cerebras-glm-4.7",
+    "groq-llama-4-scout-17b",
+    "groq-llama-3.3-70b",
+    "openrouter/openai/gpt-oss-120b:free",
+)
+
+
 def _entry_model(genome: Any) -> str:
     """The model of a genome's entry (fixer) node — the one that authors fixes."""
     nodes = genome.topology.nodes
@@ -547,6 +561,13 @@ class LocalRsiConfig:
     # Roster cap per cycle in live mode (genomes beyond this wait their turn;
     # unscored children get priority so verification never starves).
     roster_size: int = 4
+    # NEVER-IDLE fallback: when EVERY genome's model is benched (whole roster
+    # rate-limited/quota-drained), spawn a fresh genome onto the first SERVABLE
+    # model from this cross-provider pool so the cycle still does real work
+    # instead of no-opping. Empty ⇒ `_DEFAULT_EMERGENCY_MODELS`. A different
+    # provider here (cerebras/groq vs openrouter) is what rescues a run whose
+    # roster provider is fully rate-limited.
+    emergency_models: list[str] = field(default_factory=list)
     # Model bench: a competitor whose model hits a TRANSIENT provider error
     # (429/rate-limit/quota/billing) sits out instead of dying — no eval burned,
     # no stub folded into its genome, seat freed for others. The sit-out length
@@ -1113,6 +1134,38 @@ class LocalRsiLoop:
         )
         seats = max(1, self._config.roster_size)
         picked = (unscored + scored)[:seats]
+        if not picked:
+            # NEVER IDLE: every genome's model is benched (the whole roster's
+            # provider(s) rate-limited/quota-drained). Rather than no-op the cycle,
+            # field a servable cross-provider model.
+            model = self._emergency_model(index)
+            if model is not None and not self._benched(model, index):
+                # A genuinely SERVABLE model: spawn a fresh lineage and persist it —
+                # it will do real work, score, and evolve.
+                spawned = self._spawn_emergency_genome(model)
+                logger.warning(
+                    "rsi_local_emergency_spawn",
+                    cycle=index,
+                    model=model,
+                    genome=spawned.id,
+                    reason="all roster models benched",
+                )
+                picked = [spawned]
+            elif model is not None:
+                # EVERYTHING (roster + emergency pool) is benched: a least-bad
+                # transient PROBE. Do NOT persist an unscored lineage — over a long
+                # outage that would flood population.db with duplicate emergency
+                # genomes and even evict proven scored ones (a transient 429 folds
+                # no score, and unscored genomes survive culling). Field a bare
+                # competitor whose label maps to no genome, so it never folds back.
+                logger.warning(
+                    "rsi_local_emergency_probe",
+                    cycle=index,
+                    model=model,
+                    reason="all models benched — transient probe, not persisted",
+                )
+                self._label_to_genome.clear()
+                return [Competitor(model=model, label=f"emergency-probe#{model[:16]}")]
         self._label_to_genome.clear()
         roster: list[Competitor] = []
         for g in picked:
@@ -1122,6 +1175,39 @@ class LocalRsiLoop:
             roster.append(comp)
         roster += [c for c in self._config.competitors if not self._benched(c.model, index)]
         return roster or [Competitor(model=self._config.model or "")]
+
+    def _emergency_pool(self) -> list[str]:
+        """The never-idle fallback pool (configured ``emergency_models``, else the
+        cross-provider default), de-duped with order preserved."""
+        pool = list(self._config.emergency_models) or list(_DEFAULT_EMERGENCY_MODELS)
+        out: list[str] = []
+        for m in pool:
+            if m and m not in out:
+                out.append(m)
+        return out
+
+    def _emergency_model(self, index: int) -> str | None:
+        """A SERVABLE model to rescue an all-benched cycle: the most-reliable
+        non-benched model from the emergency pool. If the whole pool is benched
+        too, the one whose bench expires soonest (least-bad probe) — the loop must
+        still try SOMETHING rather than idle. ``None`` only if the pool is empty."""
+        pool = self._emergency_pool()
+        if not pool:
+            return None
+        servable = [m for m in pool if not self._benched(m, index)]
+        if servable:
+            return max(servable, key=lambda m: self._reliability.get(m, 1.0))
+        return min(pool, key=lambda m: self._bench.get(m, 0.0))
+
+    def _spawn_emergency_genome(self, model: str) -> Any:
+        """Seed a fresh genome pinned to ``model`` and add it to the population — a
+        new lineage on a servable model that persists and evolves, not a
+        throwaway. This is the 'we MUST run some models each cycle' guarantee."""
+        from maistro_evolve.diversity import _random_genome
+
+        genome = _random_genome([model])
+        self._population.add(genome)
+        return genome
 
     def _apply_for_competitor(
         self, competitor: Competitor, objective: str, budget: BudgetTier = BudgetTier.BOUNDED
