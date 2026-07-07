@@ -23,9 +23,27 @@ logger = logging.getLogger("hive.design_service")
 __all__ = [
     "get_design_engine",
     "get_design_store",
+    "get_renderer_registry",
     "start_design_service",
     "stop_design_service",
 ]
+
+
+def _open_design_config() -> Any | None:
+    """Build an OpenDesignConfig from env, or None when the plugin is disabled.
+
+    Enabled only when OPEN_DESIGN_ENABLED is truthy, so an install without the daemon
+    never pays a startup health probe and the reflowable-web/video slots stay absent.
+    """
+    if os.environ.get("OPEN_DESIGN_ENABLED", "").lower() not in {"1", "true", "yes", "on"}:
+        return None
+    from maistro_design.providers import OpenDesignConfig
+
+    return OpenDesignConfig(
+        enabled=True,
+        base_url=os.environ.get("OPEN_DESIGN_URL", "http://127.0.0.1:7456"),
+        token=os.environ.get("OPEN_DESIGN_TOKEN"),
+    )
 
 
 @functools.lru_cache(maxsize=1)
@@ -53,6 +71,16 @@ def _get_async_session_factory() -> async_sessionmaker[Any] | None:
 
 _engine_singleton: Any = None
 _store_singleton: Any = None
+_renderer_registry_singleton: Any = None
+
+
+def get_renderer_registry() -> Any:
+    """Get the RendererRegistry singleton (renderer capability slots, SPEC-070426-a22b)."""
+    if _renderer_registry_singleton is None:
+        raise RuntimeError(
+            "RendererRegistry not initialized — ensure start_design_service() was called in app lifespan"
+        )
+    return _renderer_registry_singleton
 
 
 def get_design_engine() -> Any:
@@ -78,7 +106,7 @@ async def start_design_service(settings: Settings) -> None:
 
     Called during FastAPI lifespan startup.
     """
-    global _engine_singleton, _store_singleton
+    global _engine_singleton, _store_singleton, _renderer_registry_singleton
 
     try:
         from maistro_design.engine import DesignEngine
@@ -130,6 +158,19 @@ async def start_design_service(settings: Settings) -> None:
         _store_singleton = project_store
         logger.info("DesignEngine initialized")
 
+        # Renderer capability registry (SPEC-070426-a22b): discover optional external
+        # providers so absent ones silently drop their skills from /design/skills.
+        from maistro_design.providers import OpenDesignProvider
+        from maistro_design.renderers import RendererRegistry
+
+        registry = RendererRegistry()
+        od_config = _open_design_config()
+        if od_config is not None:
+            registry.register(OpenDesignProvider(od_config))
+        filled = await registry.discover_all()
+        _renderer_registry_singleton = registry
+        logger.info("Renderer slots available: %s", sorted(s.value for s in filled))
+
     except ImportError as exc:
         logger.warning("maistro-design not installed or unavailable: %s", exc)
     except Exception as exc:
@@ -138,9 +179,10 @@ async def start_design_service(settings: Settings) -> None:
 
 async def stop_design_service() -> None:
     """Cleanup the DesignService singletons."""
-    global _engine_singleton, _store_singleton
+    global _engine_singleton, _store_singleton, _renderer_registry_singleton
     _engine_singleton = None
     _store_singleton = None
+    _renderer_registry_singleton = None
     _get_async_engine.cache_clear()
     _get_async_session_factory.cache_clear()
     try:
