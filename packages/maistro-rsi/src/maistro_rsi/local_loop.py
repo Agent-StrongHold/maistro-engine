@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import subprocess
 import time
@@ -48,6 +49,24 @@ from maistro_rsi.merge import greedy_merge
 from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox
 
 logger = structlog.get_logger()
+
+
+def _prompt_cache_enabled() -> bool:
+    """Opt-in Anthropic prompt caching for the builders LLM calls, off by default.
+
+    Enable with ``MAISTRO_BUILDERS_PROMPT_CACHE=1`` (also on/true/yes). Gated
+    because it (a) only helps Anthropic-family models and (b) trades cache warmth
+    against the per-cycle model diversity the tournament relies on — see the
+    no-cache-for-diversity note in PR #239. A no-op for non-Anthropic models even
+    when on (ResponsesAPICallable gates on the model name).
+    """
+    return os.environ.get("MAISTRO_BUILDERS_PROMPT_CACHE", "").strip().lower() in (
+        "1",
+        "on",
+        "true",
+        "yes",
+    )
+
 
 _DEFAULT_OBJECTIVE = (
     "Make exactly one small, safe, self-contained improvement to this codebase, "
@@ -151,6 +170,20 @@ _TRANSIENT_ERROR_MARKERS = (
     "insufficient credit",
     "overloaded",
     "503",
+)
+
+
+# Cross-provider never-idle fallback pool (LocalRsiConfig.emergency_models default):
+# spans cerebras / groq / openrouter-free / openrouter-paid so that when a run's
+# roster provider is fully rate-limited, a DIFFERENT provider is still servable.
+# Ordered most-capable-first; the loop picks the first non-benched one.
+_DEFAULT_EMERGENCY_MODELS = (
+    "or-qwen3-coder",
+    "or-qwen36",
+    "cerebras-glm-4.7",
+    "groq-llama-4-scout-17b",
+    "groq-llama-3.3-70b",
+    "openrouter/openai/gpt-oss-120b:free",
 )
 
 
@@ -396,6 +429,7 @@ def make_builders_apply_patch(
                 temperature=temperature,
                 reasoning_effort=reasoning_effort,
                 timeout=300.0,
+                prompt_cache=_prompt_cache_enabled(),
             )
         )
 
@@ -527,6 +561,13 @@ class LocalRsiConfig:
     # Roster cap per cycle in live mode (genomes beyond this wait their turn;
     # unscored children get priority so verification never starves).
     roster_size: int = 4
+    # NEVER-IDLE fallback: when EVERY genome's model is benched (whole roster
+    # rate-limited/quota-drained), spawn a fresh genome onto the first SERVABLE
+    # model from this cross-provider pool so the cycle still does real work
+    # instead of no-opping. Empty ⇒ `_DEFAULT_EMERGENCY_MODELS`. A different
+    # provider here (cerebras/groq vs openrouter) is what rescues a run whose
+    # roster provider is fully rate-limited.
+    emergency_models: list[str] = field(default_factory=list)
     # Model bench: a competitor whose model hits a TRANSIENT provider error
     # (429/rate-limit/quota/billing) sits out instead of dying — no eval burned,
     # no stub folded into its genome, seat freed for others. The sit-out length
@@ -593,6 +634,10 @@ class _VariantResult:
     # never ran) — survives past its pass/fail gate for the checkpoint-time
     # RLPHD reviewer to use as prediction evidence.
     regression_judge_score: float | None = None
+    # Compact acceptance evidence (per-gate pass/fail, composite, mutation score)
+    # lifted from the Scorecard, so a promotion can be annotated onto its commit
+    # as a git-notes trace record (trace_notes.py) without re-deriving from logs.
+    trace: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -1089,6 +1134,38 @@ class LocalRsiLoop:
         )
         seats = max(1, self._config.roster_size)
         picked = (unscored + scored)[:seats]
+        if not picked:
+            # NEVER IDLE: every genome's model is benched (the whole roster's
+            # provider(s) rate-limited/quota-drained). Rather than no-op the cycle,
+            # field a servable cross-provider model.
+            model = self._emergency_model(index)
+            if model is not None and not self._benched(model, index):
+                # A genuinely SERVABLE model: spawn a fresh lineage and persist it —
+                # it will do real work, score, and evolve.
+                spawned = self._spawn_emergency_genome(model)
+                logger.warning(
+                    "rsi_local_emergency_spawn",
+                    cycle=index,
+                    model=model,
+                    genome=spawned.id,
+                    reason="all roster models benched",
+                )
+                picked = [spawned]
+            elif model is not None:
+                # EVERYTHING (roster + emergency pool) is benched: a least-bad
+                # transient PROBE. Do NOT persist an unscored lineage — over a long
+                # outage that would flood population.db with duplicate emergency
+                # genomes and even evict proven scored ones (a transient 429 folds
+                # no score, and unscored genomes survive culling). Field a bare
+                # competitor whose label maps to no genome, so it never folds back.
+                logger.warning(
+                    "rsi_local_emergency_probe",
+                    cycle=index,
+                    model=model,
+                    reason="all models benched — transient probe, not persisted",
+                )
+                self._label_to_genome.clear()
+                return [Competitor(model=model, label=f"emergency-probe#{model[:16]}")]
         self._label_to_genome.clear()
         roster: list[Competitor] = []
         for g in picked:
@@ -1098,6 +1175,39 @@ class LocalRsiLoop:
             roster.append(comp)
         roster += [c for c in self._config.competitors if not self._benched(c.model, index)]
         return roster or [Competitor(model=self._config.model or "")]
+
+    def _emergency_pool(self) -> list[str]:
+        """The never-idle fallback pool (configured ``emergency_models``, else the
+        cross-provider default), de-duped with order preserved."""
+        pool = list(self._config.emergency_models) or list(_DEFAULT_EMERGENCY_MODELS)
+        out: list[str] = []
+        for m in pool:
+            if m and m not in out:
+                out.append(m)
+        return out
+
+    def _emergency_model(self, index: int) -> str | None:
+        """A SERVABLE model to rescue an all-benched cycle: the most-reliable
+        non-benched model from the emergency pool. If the whole pool is benched
+        too, the one whose bench expires soonest (least-bad probe) — the loop must
+        still try SOMETHING rather than idle. ``None`` only if the pool is empty."""
+        pool = self._emergency_pool()
+        if not pool:
+            return None
+        servable = [m for m in pool if not self._benched(m, index)]
+        if servable:
+            return max(servable, key=lambda m: self._reliability.get(m, 1.0))
+        return min(pool, key=lambda m: self._bench.get(m, 0.0))
+
+    def _spawn_emergency_genome(self, model: str) -> Any:
+        """Seed a fresh genome pinned to ``model`` and add it to the population — a
+        new lineage on a servable model that persists and evolves, not a
+        throwaway. This is the 'we MUST run some models each cycle' guarantee."""
+        from maistro_evolve.diversity import _random_genome
+
+        genome = _random_genome([model])
+        self._population.add(genome)
+        return genome
 
     def _apply_for_competitor(
         self, competitor: Competitor, objective: str, budget: BudgetTier = BudgetTier.BOUNDED
@@ -1265,6 +1375,7 @@ class LocalRsiLoop:
                     r.note,
                     r.tests_passed,
                     r.regression_judge_score,
+                    r.trace,
                 ) = self._fitness_decision(index, cdir, r.changed_files, target=objective)
             else:
                 r.tests_passed = self._run_tests(cdir)
@@ -1405,6 +1516,9 @@ class LocalRsiLoop:
             note = (
                 f"tournament: {len(competitors)} competitor(s), {len(accepted)} passed, "
                 f"kept {kept_n} (composite={composite})"
+            )
+            self._annotate_promotion(
+                promoted_sha, index, target, accepted[0], composite, files, note
             )
             logger.info(
                 "rsi_local_cycle_promoted",
@@ -1688,7 +1802,7 @@ class LocalRsiLoop:
             f"RSI cycle {index}: merged {len(kept)} complementary fix(es) of {target}",
         )
         if self._config.use_fitness:
-            m_ok, m_comp, reason, _tp, m_judge = self._fitness_decision(
+            m_ok, m_comp, reason, _tp, m_judge, _trace = self._fitness_decision(
                 index, merge_dir, changed_files
             )
             if not m_ok:
@@ -1736,12 +1850,13 @@ class LocalRsiLoop:
 
     def _fitness_decision(
         self, index: int, cycle_dir: Path, changed_files: list[str], *, target: str = ""
-    ) -> tuple[bool, float, str, bool, float | None]:
+    ) -> tuple[bool, float, str, bool, float | None, dict[str, Any]]:
         """Build the multi-signal Scorecard for the candidate and return
-        (accepted, composite, reject_reason, tests_passed, regression_judge_score).
-        Logs explain(). The judge score (None if the judge never ran) survives
-        past its pass/fail gate so the checkpoint-time RLPHD reviewer can use
-        it as prediction evidence, not just the boolean veto."""
+        (accepted, composite, reject_reason, tests_passed, regression_judge_score,
+        trace). Logs explain(). The judge score (None if the judge never ran)
+        survives past its pass/fail gate so the checkpoint-time RLPHD reviewer can
+        use it as prediction evidence, not just the boolean veto. ``trace`` is a
+        compact per-gate/reward bundle for the commit's git-notes record."""
         from maistro_rsi.candidate_fitness import evaluate_candidate
 
         scorecard = evaluate_candidate(
@@ -1771,7 +1886,59 @@ class LocalRsiLoop:
         )
         # detail is dict[str, object]; the regression judge stores a float score.
         judge_score = float(judge_raw) if isinstance(judge_raw, int | float) else None
-        return scorecard.accepted, scorecard.composite, reason, tests_passed, judge_score
+        mut_raw = next(
+            (g.detail.get("score") for g in scorecard.gates if g.name == "tests_pin_behavior"),
+            None,
+        )
+        trace: dict[str, Any] = {
+            "gates": {g.name: g.passed for g in scorecard.gates},
+            "composite": scorecard.composite,
+            "mutation_score": float(mut_raw) if isinstance(mut_raw, int | float) else None,
+        }
+        return (
+            scorecard.accepted,
+            scorecard.composite,
+            reason,
+            tests_passed,
+            judge_score,
+            trace,
+        )
+
+    def _annotate_promotion(
+        self,
+        sha: str,
+        index: int,
+        target: str,
+        top: _VariantResult,
+        composite: float,
+        files: int,
+        summary: str,
+    ) -> None:
+        """Attach a git-notes trace record to a just-promoted commit (SPEC: the
+        HORIZON-style acceptance/reward substrate). Best-effort — write_trace_note
+        never raises — so annotating the ratchet can never fail a landed promotion.
+        The record makes the promotion reconstructable from git alone: its verdict
+        (per-gate pass/fail) and reward vector (pass/composite/mutation/judge)."""
+        from maistro_rsi.trace_notes import RewardVector, TraceNote, write_trace_note
+
+        gates = top.trace.get("gates") or {"tests_pass": top.tests_passed}
+        trace_note = TraceNote(
+            cycle=index,
+            target=target,
+            accepted=True,
+            kind=top.kind.value,
+            model=top.model or self._config.model or "",
+            files_touched=files,
+            reward=RewardVector(
+                delta_pass=1.0 if top.tests_passed else 0.0,
+                composite=composite,
+                mutation_score=top.trace.get("mutation_score"),
+                regression_judge=top.regression_judge_score,
+            ),
+            gates={str(k): bool(v) for k, v in gates.items()},
+            note=summary,
+        )
+        write_trace_note(self._baseline, sha, trace_note)
 
     def _run_tests(self, cycle_dir: Path) -> bool:
         # shell=True: the test command is operator-supplied config, not agent input.

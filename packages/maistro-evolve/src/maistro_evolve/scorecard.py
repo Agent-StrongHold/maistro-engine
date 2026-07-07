@@ -79,6 +79,7 @@ class FitnessWeights:
     new_test: float = 0.30  # a genuinely new, green, coverage-raising test
     capability: float = 0.28  # benchmark skill gain (present only with a benchmark)
     assertion_strength: float = 0.20  # strengthened test assertions
+    mutation_strength: float = 0.18  # diff-scoped mutants the changed tests kill
     red_green: float = 0.14  # test-first / bug-fix that drives code
     feature_judge: float = 0.14  # LLM impact judge for FEATURE (v2.0) work
     coverage: float = 0.10  # coverage delta (a new test raises it)

@@ -102,14 +102,16 @@ def seed_population(
 
     resolved: set[str] = set()
     existing = len(store.list_all())
-    base = list(models) if models else []
     for i in range(max(0, n - existing)):
-        # One seed per model: rotate through the roster so every provided model is
-        # covered when n >= len(models). Passing the whole roster to each genome let
-        # `_random_genome`'s per-node random.choice miss a model entirely (flaky).
-        per_seed = [base[i % len(base)]] if base else None
-        seed_models = expand_free_router(per_seed, free_selector, resolved=resolved)
-        store.add(_random_genome(seed_models))
+        seed_models = expand_free_router(models, free_selector, resolved=resolved)
+        # Round-robin across the roster (NOT a random draw per node): pin genome i
+        # to one model so EVERY roster model fields a lineage from cycle one —
+        # evolution can only learn per-model differences from models that actually
+        # seed genomes, and a random draw can leave a model unseeded entirely.
+        # OFFSET by `existing` so a top-up CONTINUES the rotation past the models
+        # already seeded instead of re-covering models 0..k and starving the rest.
+        pinned = [seed_models[(existing + i) % len(seed_models)]] if seed_models else None
+        store.add(_random_genome(pinned))
     return resolved
 
 
