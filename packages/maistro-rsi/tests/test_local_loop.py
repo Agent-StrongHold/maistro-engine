@@ -151,7 +151,15 @@ class _FakeResponsesCallable:
 
     built_models: ClassVar[list] = []
 
-    def __init__(self, *, model=None, temperature=None, reasoning_effort=None, timeout=None):
+    def __init__(
+        self,
+        *,
+        model=None,
+        temperature=None,
+        reasoning_effort=None,
+        timeout=None,
+        prompt_cache=False,
+    ):
         type(self).built_models.append(model)
 
     def __call__(self, messages, *, tools=None, max_tokens=None):
