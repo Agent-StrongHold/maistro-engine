@@ -12,7 +12,11 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from services.design_service import get_design_engine, get_design_store
+from services.design_service import (
+    get_design_engine,
+    get_design_store,
+    get_renderer_registry,
+)
 
 from maistro_design.types import (
     DesignError,
@@ -130,14 +134,23 @@ async def list_design_projects(
 
 @router.get("/skills")
 async def list_design_skills() -> list[dict[str, Any]]:
-    """List all available design skills (registered in engine).
+    """List design skills whose renderer is available (SPEC-070426-a22b).
+
+    Skills whose ``render_slot`` has no discovered provider are silently omitted — the
+    reflowable-web/video skills only appear when their external provider is up. Canvas-native
+    (fixed-page/deck) skills are always listed.
 
     Returns:
-      [{slug, name, mode, description, featured, output_formats, tags, discovery_form}]
+      [{slug, name, mode, description, featured, output_formats, tags, discovery_form, render_slot}]
     """
     try:
         engine = get_design_engine()
-        skills = engine._skills.list_all()
+        try:
+            filled = get_renderer_registry().filled_slots()
+            skills = engine._skills.list_available(filled)
+        except RuntimeError:
+            # renderer registry not initialized — fall back to the full catalog
+            skills = engine._skills.list_all()
         return [
             {
                 "slug": s.slug,
@@ -148,6 +161,7 @@ async def list_design_skills() -> list[dict[str, Any]]:
                 "output_formats": [fmt.value for fmt in s.output_formats],
                 "tags": s.tags,
                 "discovery_form": [f.to_dict() for f in s.discovery_form],
+                "render_slot": s.render_slot.value if s.render_slot else None,
             }
             for s in skills
         ]

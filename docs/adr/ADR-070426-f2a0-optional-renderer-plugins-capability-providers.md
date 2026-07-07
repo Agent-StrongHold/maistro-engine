@@ -3,8 +3,9 @@ id: ADR-070426-f2a0
 title: "Optional external renderers as discoverable capability providers behind maistro-design"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Accepted
 created: 2026-07-04
+accepted: 2026-07-06
 substrate:
   - maistro-engine#ADR-061
   - maistro-engine#ADR-100
