@@ -3,7 +3,7 @@ id: SPEC-070426-a22b
 title: "Renderer capability substrate — slots, providers, discovery, graceful absence"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-07-04
 substrate:
   - maistro-engine#ADR-061
@@ -19,7 +19,8 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-design/tests/test_renderers.py
 layer: Ability
 owners:
   - '@BlakeMatthews-dev'

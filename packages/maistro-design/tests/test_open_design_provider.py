@@ -83,6 +83,18 @@ async def test_render_reflowable_web_yields_editable_html() -> None:
     assert node.metadata["source"] == "open-design"
 
 
+async def test_render_reflowable_web_accumulates_sse_stream() -> None:
+    body = (
+        'data: {"content": "<main>"}\n\ndata: {"delta": "hi"}\n\ndata: </main>\n\ndata: [DONE]\n\n'
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    node = await _provider(handler).render("PROMPT", _skill(RenderSlot.REFLOWABLE_WEB))
+    assert node.value == "<main>hi</main>"
+
+
 async def test_render_deck_yields_pptx_blob() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"PK\x03\x04pptx")
