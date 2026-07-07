@@ -31,6 +31,7 @@ from maistro_evolve.coverage_gate import (
     uncovered_new_lines,
 )
 from maistro_evolve.doc_regression import doc_regressions
+from maistro_evolve.mutation_probe import MutationProbe, probe_diff_mutations
 from maistro_evolve.scorecard import (
     FitnessWeights,
     GateResult,
@@ -52,6 +53,17 @@ from maistro_evolve.tdd_gate import (
 )
 
 _TEST_HINTS = ("test_", "_test.py", "/tests/", "conftest.py")
+
+# Minimum fraction of diff-scoped mutants the candidate's own tests must kill for
+# the ``tests_pin_behavior`` gate to pass. Half is deliberately lenient: it
+# rejects only changes whose tests miss the majority of introduced-behavior
+# mutations — the clear over-solving / reward-hacking signature — while tolerating
+# the odd equivalent-ish mutant that no reasonable test would catch.
+_MUTATION_KILL_THRESHOLD = 0.5
+
+# Cap on mutants run per candidate. Each mutant reruns the changed tests once, so
+# this bounds the probe's cost; the site list is truncated deterministically.
+_MUTATION_MAX_MUTANTS = 6
 
 
 def _is_test(path: str) -> bool:
@@ -183,6 +195,11 @@ class FitnessInputs:
     # populated after every other gate already passed (see evaluate_candidate),
     # so a doomed candidate never burns the extra LLM call.
     regression_judge: tuple[float, str] | None = None
+    # Diff-scoped mutation probe: do the candidate's own tests catch mutations of
+    # the lines it added? Only populated after the cheap gates pass (mutation
+    # runs the tests once per mutant). An unavailable probe (no changed tests, no
+    # mutable new lines) adds no gate — never a false rejection.
+    mutation_probe: MutationProbe | None = None
 
 
 def _ladder_signals(inp: FitnessInputs, w: FitnessWeights) -> list[SignalScore]:
@@ -212,6 +229,53 @@ def _ladder_signals(inp: FitnessInputs, w: FitnessWeights) -> list[SignalScore]:
             )
         )
     return signals
+
+
+def _mutation_gate(inp: FitnessInputs) -> GateResult | None:
+    """The anti-reward-hacking veto: the candidate's own tests must catch the
+    majority of mutations of the lines it added, or the change is under-verified
+    (overfit to the observed tests rather than pinning behavior). None when the
+    probe measured nothing — an unavailable probe adds no gate."""
+    mp = inp.mutation_probe
+    if mp is None or not mp.available:
+        return None
+    return GateResult(
+        "tests_pin_behavior",
+        mp.score >= _MUTATION_KILL_THRESHOLD,
+        mp.summary(),
+        detail={"score": mp.score, "killed": mp.killed, "survived": mp.survived},
+    )
+
+
+def _conditional_gates(inp: FitnessInputs) -> list[GateResult]:
+    """Gates that only exist when their (optional) evidence was gathered: the
+    second-opinion LLM regression judge, and the diff-scoped mutation probe.
+    Kept out of ``compose_scorecard`` so the assembly there stays flat."""
+    gates: list[GateResult] = []
+    if inp.regression_judge is not None:
+        score, rationale = inp.regression_judge
+        gates.append(
+            GateResult("no_flagged_regression", score >= 0.4, rationale, detail={"score": score})
+        )
+    mut_gate = _mutation_gate(inp)
+    if mut_gate is not None:
+        gates.append(mut_gate)
+    return gates
+
+
+def _mutation_signal(inp: FitnessInputs, w: FitnessWeights) -> SignalScore | None:
+    """Ranking contribution for a passing candidate: how strongly its tests pin
+    the introduced behavior. Present only when the probe measured something."""
+    mp = inp.mutation_probe
+    if mp is None or not mp.available:
+        return None
+    return SignalScore(
+        "mutation_strength",
+        MeasureKind.CALCULATED,
+        mp.score,
+        w.mutation_strength,
+        mp.summary(),
+    )
 
 
 def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None) -> Scorecard:
@@ -246,12 +310,8 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
             or "changed tests depend on the accompanying change",
         ),
         *inp.lint_gates,
+        *_conditional_gates(inp),
     ]
-    if inp.regression_judge is not None:
-        score, rationale = inp.regression_judge
-        gates.append(
-            GateResult("no_flagged_regression", score >= 0.4, rationale, detail={"score": score})
-        )
     scores: list[SignalScore] = [red_green_signal(inp.tdd, w.red_green)]
     cov_delta = (
         inp.candidate_coverage - inp.baseline_coverage
@@ -287,6 +347,9 @@ def compose_scorecard(inp: FitnessInputs, weights: FitnessWeights | None = None)
                 inp.assertion_detail or "changed-test assertion strength",
             )
         )
+    mut_signal = _mutation_signal(inp, w)
+    if mut_signal is not None:
+        scores.append(mut_signal)
     if inp.candidate_coverage is not None:
         scores.append(coverage_signal(inp.baseline_coverage, inp.candidate_coverage, w.coverage))
     if inp.architecture_fit is not None:
@@ -545,11 +608,8 @@ def evaluate_candidate(
     syntax_reasons = _syntax_check(cwd, all_py)
     valid_roots = _parse_test_roots(coverage_pytest_args)
     uncollectable = _uncollectable_tests(cwd, tests, valid_roots)
-    uncovered_new = (
-        uncovered_new_lines(new_source_lines(cwd, baseline_ref, src), missing)
-        if (baseline_ref and src)
-        else {}
-    )
+    new_src_lines = new_source_lines(cwd, baseline_ref, src) if (baseline_ref and src) else {}
+    uncovered_new = uncovered_new_lines(new_src_lines, missing) if new_src_lines else {}
     vacuous_reasons = _vacuous_test_reasons(src, tests, tdd)
 
     inputs = FitnessInputs(
@@ -577,7 +637,24 @@ def evaluate_candidate(
         vacuous_test_reasons=vacuous_reasons,
     )
     prelim = compose_scorecard(inputs, weights)
-    if prelim.gates_passed and regression_judge_fn is not None and baseline_ref:
+    if not prelim.gates_passed:
+        return prelim
+
+    # Cost-layered after the cheap gates: mutation runs the changed tests once per
+    # mutant, so a candidate already doomed on tests/coverage/syntax never pays
+    # for it. Only meaningful when the diff added source lines AND changed tests
+    # exist to catch mutations of them.
+    if baseline_ref and new_src_lines and tests:
+        inputs.mutation_probe = probe_diff_mutations(
+            cwd, new_src_lines, tests, timeout=timeout, max_mutants=_MUTATION_MAX_MUTANTS
+        )
+        staged = compose_scorecard(inputs, weights)
+        if not staged.gates_passed:
+            return staged
+
+    # Second-opinion LLM judge last (most expensive): only for candidates that
+    # cleared every deterministic gate, including the mutation probe.
+    if regression_judge_fn is not None and baseline_ref:
         try:
             diff = subprocess.run(
                 ["git", "diff", baseline_ref],
@@ -590,5 +667,5 @@ def evaluate_candidate(
             diff = ""
         if diff.strip():
             inputs.regression_judge = regression_judge_fn(diff, target)
-            return compose_scorecard(inputs, weights)
-    return prelim
+
+    return compose_scorecard(inputs, weights)
