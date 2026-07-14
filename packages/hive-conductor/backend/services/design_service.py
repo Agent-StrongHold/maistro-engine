@@ -29,20 +29,37 @@ __all__ = [
 ]
 
 
-def _open_design_config() -> Any | None:
-    """Build an OpenDesignConfig from env, or None when the plugin is disabled.
+def _open_design_config(settings: Any | None = None) -> Any | None:
+    """Build an OpenDesignConfig, or None when the plugin is disabled.
 
-    Enabled only when OPEN_DESIGN_ENABLED is truthy, so an install without the daemon
-    never pays a startup health probe and the reflowable-web/video slots stay absent.
+    Prefers typed ``Settings`` fields (so values from ``backend/.env`` loaded by
+    pydantic-settings are honoured — those are NOT exported to ``os.environ``), and
+    falls back to the process environment when no settings are supplied. Off unless
+    explicitly enabled, so an install without the daemon never pays a startup probe.
     """
-    if os.environ.get("OPEN_DESIGN_ENABLED", "").lower() not in {"1", "true", "yes", "on"}:
+
+    def _field(name: str, env: str, default: str | None = None) -> Any:
+        if settings is not None:
+            value = getattr(settings, name, None)
+            if value is not None:
+                return value
+        return os.environ.get(env, default)
+
+    enabled = _field("open_design_enabled", "OPEN_DESIGN_ENABLED", "")
+    is_on = enabled is True or str(enabled).lower() in {"1", "true", "yes", "on"}
+    if not is_on:
         return None
+
     from maistro_design.providers import OpenDesignConfig
+
+    token = _field("open_design_token", "OPEN_DESIGN_TOKEN")
+    if hasattr(token, "get_secret_value"):  # unwrap pydantic SecretStr
+        token = token.get_secret_value()
 
     return OpenDesignConfig(
         enabled=True,
-        base_url=os.environ.get("OPEN_DESIGN_URL", "http://127.0.0.1:7456"),
-        token=os.environ.get("OPEN_DESIGN_TOKEN"),
+        base_url=_field("open_design_url", "OPEN_DESIGN_URL", "http://127.0.0.1:7456"),
+        token=token,
     )
 
 
@@ -164,7 +181,7 @@ async def start_design_service(settings: Settings) -> None:
         from maistro_design.renderers import RendererRegistry
 
         registry = RendererRegistry()
-        od_config = _open_design_config()
+        od_config = _open_design_config(settings)
         if od_config is not None:
             registry.register(OpenDesignProvider(od_config))
         filled = await registry.discover_all()

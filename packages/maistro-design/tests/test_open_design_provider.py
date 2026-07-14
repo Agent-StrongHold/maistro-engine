@@ -95,6 +95,23 @@ async def test_render_reflowable_web_accumulates_sse_stream() -> None:
     assert node.value == "<main>hi</main>"
 
 
+async def test_render_accumulates_nested_anthropic_deltas() -> None:
+    """content_block_delta events nest text under delta.text — extract it, not str(dict)."""
+    body = (
+        'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "<h1>"}}\n\n'
+        'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hi"}}\n\n'
+        'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "</h1>"}}\n\n'
+        "data: [DONE]\n\n"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    node = await _provider(handler).render("PROMPT", _skill(RenderSlot.REFLOWABLE_WEB))
+    assert node.value == "<h1>Hi</h1>"
+    assert "text_delta" not in str(node.value)  # no raw dict leaked into the artifact
+
+
 async def test_render_deck_yields_pptx_blob() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=b"PK\x03\x04pptx")
