@@ -46,7 +46,7 @@ from maistro_rsi.coordinator import (
 )
 from maistro_rsi.htr import HypothesisTree
 from maistro_rsi.protocols import ApplyPatchFn
-from maistro_rsi.quarantine import quarantine_scan
+from maistro_rsi.quarantine import QuarantineVerdict, quarantine_scan
 from maistro_rsi.quota_burn import QuotaBurnScheduler, discover_models
 from maistro_rsi.runner import (
     DEFAULT_WORKSPACE_ROOT,
@@ -148,7 +148,7 @@ def make_llm_proposer(model: str | None = None) -> HypothesisProposer:
                 timeout=60.0,
             )
             response.raise_for_status()
-            text = response.json()["choices"][0]["message"]["content"].strip()
+            text = str(response.json()["choices"][0]["message"]["content"]).strip()
             if text:
                 return text.splitlines()[0][:500]
         except Exception as exc:
@@ -256,7 +256,7 @@ def build_executor(
         benchmark_commands=dict(config.benchmark_commands),
     )
 
-    async def _quarantine_check(diff: str, touched_paths: list[str]):
+    async def _quarantine_check(diff: str, touched_paths: list[str]) -> QuarantineVerdict:
         return await quarantine_scan(diff, touched_paths, active_warden)
 
     async def _execute(context: HtrContext) -> ExecutionReport:
