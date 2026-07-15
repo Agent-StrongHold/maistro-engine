@@ -226,6 +226,18 @@ def test_expand_dedups_against_literal_roster_entries() -> None:
     assert out == ["openrouter/x:free"]  # the pick collided with the literal — appears once
 
 
+# --- _pick_distinct --------------------------------------------------------------
+
+
+def test_pick_distinct_falls_back_to_default_when_selector_returns_none() -> None:
+    # When the selector yields only None (unavailable), _pick_distinct should
+    # fall back to a single DEFAULT_FREE_MODEL rather than returning an empty list.
+    result = fr._pick_distinct(selector=lambda: None, count=3)
+    assert result == [fr.DEFAULT_FREE_MODEL]
+    # Even with count > 1, we only get ONE default fallback (keeps roster routable)
+    assert len(result) == 1
+
+
 # --- seeding integration ---------------------------------------------------------
 
 
