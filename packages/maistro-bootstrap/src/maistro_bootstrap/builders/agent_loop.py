@@ -331,4 +331,15 @@ class TurnRunner:
             full_messages.append({"role": "assistant", "content": blocks})
             full_messages.append({"role": "user", "content": tool_results})
 
-        return {"content": "(max turns reached)", "stop_reason": "max_turns"}
+        return {
+            "content": "(max turns reached)",
+            "stop_reason": "max_turns",
+            # The accumulated transcript: seed messages plus every tool_use/
+            # tool_result exchange this budget consumed. "max_turns" is an
+            # INTERNAL budget stop — the model was cut off mid-work, it did not
+            # choose to finish. A caller that wants the work to continue must
+            # resume from this transcript; quoting the sentinel back to the
+            # model as its own words makes it believe it announced running out
+            # of turns, so it apologises and stops instead of working.
+            "messages": full_messages,
+        }
