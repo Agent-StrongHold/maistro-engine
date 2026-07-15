@@ -170,6 +170,16 @@ _TRANSIENT_ERROR_MARKERS = (
     "insufficient credit",
     "overloaded",
     "503",
+    # An UNREACHABLE endpoint is capacity, not fitness — observed live when the
+    # TabbyAPI process behind a local model died and the gateway surfaced
+    # "InternalServerError: OpenAIException - Connection error."; the cycle
+    # errored instead of benching the model, so never-idle never got to field
+    # a healthy provider. Covers litellm's APIConnectionError spelling too.
+    "connection error",
+    "connectionerror",
+    "connection refused",
+    "502",
+    "504",
 )
 
 
