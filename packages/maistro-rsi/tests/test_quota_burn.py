@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from maistro.quota.tracker import InMemoryQuotaTracker
-from maistro_rsi.quota_burn import QuotaBurnScheduler, rank_models_by_headroom
+from maistro_rsi.quota_burn import QuotaBurnScheduler, discover_models, rank_models_by_headroom
 
 CYCLE = "2026-06"
 FREE_TOKENS = {"openai": 1_000_000, "anthropic": 500_000}
@@ -121,3 +122,48 @@ class TestQuotaBurnScheduler:
         # a model from a provider that was never recorded against stays untouched
         other_pct = await tracker.get_usage_pct("anthropic", CYCLE, FREE_TOKENS["anthropic"])
         assert other_pct == 0.0
+
+
+class TestDiscoverModels:
+    """Tests for discover_models function — currently has no tests."""
+
+    @pytest.mark.asyncio
+    async def test_extracts_model_ids_from_v1_models_response(self):
+        """Verify discover_models correctly parses the /v1/models response."""
+        # Simulate the LiteLLM /v1/models endpoint response
+        payload = {
+            "object": "list",
+            "data": [
+                {"id": "openai/gpt-4", "object": "model"},
+                {"id": "anthropic/claude-3-opus", "object": "model"},
+                {"id": "openai/gpt-3.5-turbo", "object": "model"},
+            ],
+        }
+
+        # Patch httpx.AsyncClient.get to return our mock response
+        class MockResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return payload
+
+        class MockClient:
+            async def get(self, url, headers):
+                return MockResponse()
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc_val, exc_tb):
+                pass
+
+        import unittest.mock
+
+        with unittest.mock.patch("maistro_rsi.quota_burn.httpx.AsyncClient", return_value=MockClient()):
+            models = await discover_models(
+                base_url="http://fake.example", api_key="fake-key"
+            )
+
+        # Should extract all "id" fields from the "data" array
+        assert models == ["openai/gpt-4", "anthropic/claude-3-opus", "openai/gpt-3.5-turbo"]
