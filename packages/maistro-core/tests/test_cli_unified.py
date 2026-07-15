@@ -205,7 +205,11 @@ class TestCLI:
         from maistro.cli import app
 
         result = runner.invoke(app, [])
-        assert result.exit_code == 0
+        # Click 8.2+ raises NoArgsIsHelpError for no_args_is_help, exiting 2 (a usage
+        # error) instead of 0 — the help text itself is unaffected; only the exit
+        # code convention changed. See .github/workflows/security.yml's pip-audit
+        # allowlist note for why we're on a post-8.2 click.
+        assert result.exit_code == 2
         assert "maistro" in result.output.lower()
 
     def test_approvals_list_no_server(self) -> None:
