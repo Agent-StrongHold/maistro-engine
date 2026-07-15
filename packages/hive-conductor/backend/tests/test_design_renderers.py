@@ -27,6 +27,23 @@ def test_open_design_config_falsey_flag_stays_disabled(monkeypatch: pytest.Monke
     assert _open_design_config() is None
 
 
+def test_open_design_config_reads_settings_not_just_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Values from .env reach the plugin via typed Settings, which os.environ never sees."""
+    from pydantic import SecretStr
+
+    monkeypatch.delenv("OPEN_DESIGN_ENABLED", raising=False)  # nothing in the process env
+
+    class _Settings:  # stand-in for config.Settings fields
+        open_design_enabled = True
+        open_design_url = "http://from-dotenv:7456"
+        open_design_token = SecretStr("dotenv-secret")
+
+    cfg = _open_design_config(_Settings())
+    assert cfg is not None
+    assert cfg.base_url == "http://from-dotenv:7456"
+    assert cfg.token == "dotenv-secret"  # SecretStr unwrapped
+
+
 async def test_registry_with_no_provider_hides_web_skills_from_listing() -> None:
     """With Open Design disabled, discovered slots are the native floor and the design
     catalog's reflowable-web skills are filtered out — the production listing contract."""

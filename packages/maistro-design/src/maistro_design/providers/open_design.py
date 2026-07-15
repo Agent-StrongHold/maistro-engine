@@ -147,8 +147,10 @@ def _ingest(resp: httpx.Response, skill: DesignSkill) -> ArtifactNode:
 def _sse_text(body: str) -> str:
     """Concatenate the ``data:`` payloads of a text/event-stream body.
 
-    Handles both JSON events (``content`` / ``text`` / ``delta`` field) and raw-text
-    events; skips comments, empty lines, and the ``[DONE]`` sentinel.
+    Handles flat JSON events (``content`` / ``text`` / ``delta`` as a string), the
+    Anthropic-style nested shape (``content_block_delta`` with
+    ``delta: {"type": "text_delta", "text": ...}``), and raw-text events; skips
+    comments, empty lines, and the ``[DONE]`` sentinel.
     """
     chunks: list[str] = []
     for line in body.splitlines():
@@ -162,10 +164,23 @@ def _sse_text(body: str) -> str:
         except json.JSONDecodeError:
             chunks.append(payload)
             continue
-        if isinstance(event, dict):
-            chunks.append(
-                str(event.get("content") or event.get("text") or event.get("delta") or "")
-            )
-        else:
-            chunks.append(str(event))
+        chunks.append(_event_text(event))
     return "".join(chunks)
+
+
+def _event_text(event: object) -> str:
+    """Extract the text an SSE event carries, across the shapes daemons emit."""
+    if isinstance(event, str):
+        return event
+    if not isinstance(event, dict):
+        return str(event)
+    # Anthropic/Open Design nested delta: {"delta": {"type": "text_delta", "text": "..."}}
+    delta = event.get("delta")
+    if isinstance(delta, dict):
+        return str(delta.get("text") or delta.get("partial_json") or "")
+    # Flat shapes: content / text / delta as a plain string.
+    for key in ("content", "text", "delta"):
+        value = event.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
