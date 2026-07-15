@@ -116,6 +116,27 @@ def test_crossover_drops_edges_whose_from_node_was_not_mapped() -> None:
     assert child.topology.edges == []
 
 
+def test_crossover_keeps_parent_b_edges_from_parent_b_entry_node() -> None:
+    # parent_b contributes an edge whose from_node is parent_b's OWN entry node.
+    # parent_b's entry isn't carried into the child as a distinct node (the child
+    # keeps parent_a's entry), but such edges must be rewired onto the child's
+    # single entry node instead of being silently dropped.
+    parent_a = _genome("a", [_node("a-entry"), _node("a-other")], [], entry_node="a-entry")
+    parent_b = _genome(
+        "b",
+        [_node("b-entry"), _node("b-other")],
+        [DAGEdgeGenome(id="e1", from_node="b-entry", to_node="b-other", condition=None)],
+        entry_node="b-entry",
+    )
+
+    child = crossover(parent_a, parent_b)
+
+    assert len(child.topology.edges) == 1
+    edge = child.topology.edges[0]
+    assert edge.from_node == child.topology.entry_node
+    assert edge.to_node in {n.id for n in child.topology.nodes}
+
+
 def test_crossover_handles_edge_with_no_to_node() -> None:
     parent_a = _genome(
         "a",
@@ -168,3 +189,30 @@ def test_crossover_and_mutate_returns_a_mutated_child() -> None:
     # becomes the sole parent, the crossover's parent_b lineage is dropped.
     assert child.parent_b_id is None
     assert child.parent_a_id != crossed.parent_a_id
+
+
+def test_crossover_preserves_edge_conditions() -> None:
+    # the edge's routing ``condition`` must survive crossover unchanged so that
+    # conditional dispatch isn't silently dropped when breeding two lineages.
+    parent_a = _genome(
+        "a",
+        [_node("a-entry"), _node("a-other")],
+        [DAGEdgeGenome(id="e1", from_node="a-entry", to_node="a-other", condition="success")],
+        entry_node="a-entry",
+    )
+    parent_b = _genome(
+        "b",
+        [_node("b-entry"), _node("b-other")],
+        [DAGEdgeGenome(id="e2", from_node="b-entry", to_node="b-other", condition="failure")],
+        entry_node="b-entry",
+    )
+
+    child = crossover(parent_a, parent_b)
+
+    # parent_a's edges are emitted before parent_b's, in order.
+    assert [e.condition for e in child.topology.edges] == ["success", "failure"]
+    # conditions ride on edges rewired onto the child's fresh node ids.
+    child_node_ids = {n.id for n in child.topology.nodes}
+    for edge in child.topology.edges:
+        assert edge.from_node in child_node_ids
+        assert edge.to_node in child_node_ids
