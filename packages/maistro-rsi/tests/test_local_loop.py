@@ -214,6 +214,64 @@ def test_resume_transcript_only_on_max_turns_with_transcript() -> None:
     assert local_loop._resume_transcript({"stop_reason": "max_turns", "messages": []}) is None
 
 
+def _seed_and_pairs(n_pairs: int, result_chars: int) -> list[dict]:
+    """A transcript shaped exactly as TurnRunner builds it: seed system+objective,
+    then one assistant(tool_use)/user(tool_result) pair per inner turn."""
+    messages: list[dict] = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "objective"},
+    ]
+    for i in range(n_pairs):
+        messages.append(
+            {
+                "role": "assistant",
+                "content": [{"type": "tool_use", "id": f"t{i}", "name": "read_file", "input": {}}],
+            }
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": f"t{i}", "content": "x" * result_chars}
+                ],
+            }
+        )
+    return messages
+
+
+def test_trim_for_resume_leaves_small_transcripts_untouched() -> None:
+    transcript = _seed_and_pairs(3, 1_000)
+    assert local_loop._trim_for_resume(list(transcript)) == transcript
+
+
+def test_trim_for_resume_drops_oldest_pairs_keeps_seed_and_newest() -> None:
+    # Observed live: accumulated resumes built a 45k-token prompt against the
+    # local tier's 32k window and the gateway rejected the cycle. Trimming must
+    # bring the resume under budget by dropping the OLDEST exchanges.
+    transcript = _seed_and_pairs(12, 20_000)
+    trimmed = local_loop._trim_for_resume(list(transcript))
+
+    assert sum(len(str(m.get("content", ""))) for m in trimmed) <= local_loop._RESUME_CHAR_BUDGET
+    # Seed verbatim; pair boundary intact; the newest exchange (the tool result
+    # the model is about to answer) survives.
+    assert trimmed[:2] == transcript[:2]
+    assert trimmed[2]["role"] == "assistant"
+    assert trimmed[-1]["content"][0]["tool_use_id"] == "t11"
+
+
+def test_trim_for_resume_elides_a_single_monster_tool_output() -> None:
+    # Sandbox _OUTPUT_CAP allows a single 1 MB tool result; pair-dropping alone
+    # can't save a transcript whose LAST pair is the problem.
+    transcript = _seed_and_pairs(1, 400_000)
+    trimmed = local_loop._trim_for_resume(list(transcript))
+
+    block = trimmed[-1]["content"][0]
+    assert len(block["content"]) <= local_loop._RESUME_ITEM_CAP + len(local_loop._ELIDED)
+    assert block["content"].endswith(local_loop._ELIDED)
+    # The original transcript was not mutated in place.
+    assert len(transcript[-1]["content"][0]["content"]) == 400_000
+
+
 class _ToolHungryResponsesCallable:
     """Fake LLM whose model always wants another tool call: every execute_turn
     exhausts TurnRunner's inner budget, so the outer loop must keep resuming."""
