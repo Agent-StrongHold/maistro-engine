@@ -24,7 +24,7 @@ from maistro_evolve.tournament import EloTournament
 from maistro_evolve.types import DAGTopology, EvalWeights, NodeGenome, PipelineGenome
 from maistro_rsi.local_loop import make_builders_apply_patch
 from maistro_rsi.quota_burn import QuotaBurnScheduler, discover_models
-from maistro_rsi.runner import RsiCycle, RsiCycleConfig, build_harness
+from maistro_rsi.runner import DEFAULT_WORKSPACE_ROOT, RsiCycle, RsiCycleConfig, build_harness
 from maistro_rsi.selfbranch import QuarantineCheckFn
 
 # Priority order for each canonical value: the first alias that's set wins.
@@ -119,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--test-command", required=True, help="Command run inside the sandbox to score the attempt"
     )
     run.add_argument("--base-branch", default="main")
-    run.add_argument("--workspace-root", default="/tmp/maistro-workspace/rsi")
+    run.add_argument("--workspace-root", default=DEFAULT_WORKSPACE_ROOT)
     run.add_argument(
         "--benchmarks",
         nargs="*",

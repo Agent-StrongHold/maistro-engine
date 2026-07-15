@@ -7,8 +7,10 @@ coding agent can fill it — the agent runs *inside* the sandbox (provided there
 by the sbx kit or the sandbox image), edits the checkout in place, and the
 surrounding `selfbranch` plumbing commits, diffs, tests, and quarantines the
 result. One generic template driver therefore covers opencode, claude, or any
-future agent; the builders-pipeline driver (Phase B) slots in beside it as just
-another ``ApplyPatchFn`` factory.
+future CLI agent, without hardcoding a specific tool. It is one option among
+several ``ApplyPatchFn`` drivers — ``maistro_rsi.local_loop.make_builders_apply_patch``
+(the native builders agent) is another, already real and compatible with the
+same 3-arg protocol.
 """
 
 from __future__ import annotations

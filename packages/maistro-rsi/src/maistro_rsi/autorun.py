@@ -30,6 +30,7 @@ import httpx
 import structlog
 
 from maistro.config.settings import get_settings
+from maistro.quota.tracker import InMemoryQuotaTracker
 from maistro.security.warden.detector import Warden
 from maistro_evolve.tournament import EloTournament
 from maistro_evolve.types import DAGTopology, EvalWeights, NodeGenome, PipelineGenome
@@ -47,7 +48,13 @@ from maistro_rsi.htr import HypothesisTree
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quarantine import quarantine_scan
 from maistro_rsi.quota_burn import QuotaBurnScheduler, discover_models
-from maistro_rsi.runner import RsiCycle, RsiCycleConfig, RsiCycleResult, build_harness
+from maistro_rsi.runner import (
+    DEFAULT_WORKSPACE_ROOT,
+    RsiCycle,
+    RsiCycleConfig,
+    RsiCycleResult,
+    build_harness,
+)
 
 logger = structlog.get_logger()
 
@@ -80,7 +87,7 @@ class AutorunConfig:
     apply_patch_factory: Callable[[str], ApplyPatchFn] | None = None
     model: str | None = None
     open_prs: bool = False
-    workspace_root: str = "/tmp/maistro-workspace/rsi"
+    workspace_root: str = DEFAULT_WORKSPACE_ROOT
     base_branch: str = "main"
     # Stop growing the tree once this much wall-clock has elapsed (checked
     # between cycles; a running cycle is never interrupted).
@@ -239,7 +246,7 @@ def build_executor(
     active_warden = warden or Warden()
     harness = build_harness()
     tournament = EloTournament()
-    scheduler = QuotaBurnScheduler()
+    scheduler = QuotaBurnScheduler(InMemoryQuotaTracker())
     cycle_config = RsiCycleConfig(
         repo_url=config.repo_url,
         test_command=config.test_command,
@@ -353,7 +360,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-template", default=OPENCODE_TEMPLATE)
     parser.add_argument("--model", default=None, help="model for proposer/genomes")
     parser.add_argument("--open-prs", action="store_true")
-    parser.add_argument("--workspace-root", default="/tmp/maistro-workspace/rsi")
+    parser.add_argument("--workspace-root", default=DEFAULT_WORKSPACE_ROOT)
     parser.add_argument("--base-branch", default="main")
     parser.add_argument("--max-seconds", type=float, default=None, help="wall-clock budget")
     return parser

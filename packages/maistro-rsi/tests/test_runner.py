@@ -477,6 +477,7 @@ class TestQuarantineThreading:
             open_pr=False,
             quarantine_check=None,
             model=None,
+            probe=None,
         ):
             received["quarantine_check"] = quarantine_check
             return SelfBranchResult(
@@ -498,3 +499,93 @@ class TestQuarantineThreading:
         )
         await cycle.run(_genome("baseline"), _genome("candidate"), ["m"])
         assert received["quarantine_check"] is my_check
+
+
+class TestProbeFromCommands:
+    """Tests tied to SPEC.md §5 differential-scoring ACs (probe_from_commands /
+    _parse_probe_score, and RsiCycle._score preferring probe metrics)."""
+
+    def test_parse_probe_score_parses_last_line_as_float(self):
+        from maistro_rsi.runner import _parse_probe_score
+
+        assert _parse_probe_score(0, "some output\n87.5\n") == 87.5
+
+    def test_parse_probe_score_falls_back_to_exit_code_on_unparseable_output(self):
+        from maistro_rsi.runner import _parse_probe_score
+
+        assert _parse_probe_score(0, "not a number") == 1.0
+        assert _parse_probe_score(1, "not a number") == 0.0
+
+    def test_parse_probe_score_falls_back_to_exit_code_on_empty_output(self):
+        from maistro_rsi.runner import _parse_probe_score
+
+        assert _parse_probe_score(0, "   \n  \n") == 1.0
+        assert _parse_probe_score(2, "") == 0.0
+
+    @pytest.mark.asyncio
+    async def test_probe_from_commands_runs_each_command_and_scores_it(self):
+        from maistro_rsi.runner import probe_from_commands
+
+        class _Sandbox:
+            def __init__(self):
+                self.calls: list[tuple[str, int]] = []
+
+            async def exec(self, command, timeout=60):
+                self.calls.append((command, timeout))
+                if command == "lint":
+                    return 0, "1.0"
+                return 1, "boom"
+
+        sandbox = _Sandbox()
+        probe = probe_from_commands({"lint": "lint", "tests": "tests"}, timeout=42)
+        scores = await probe(sandbox, "/ws")
+
+        assert scores == {"lint": 1.0, "tests": 0.0}
+        assert sandbox.calls == [("lint", 42), ("tests", 42)]
+
+    @pytest.mark.asyncio
+    async def test_cycle_prefers_probe_metrics_over_stock_benchmarks(
+        self, patched_sandbox, patched_self_branch, monkeypatch
+    ):
+        """When benchmark_commands are configured, the tournament battles over
+        the differential probe metrics, not the stock genome harness."""
+
+        async def fake_run_attempt(
+            sandbox,
+            workspace,
+            attempt,
+            apply_patch,
+            open_pr=False,
+            quarantine_check=None,
+            model=None,
+            probe=None,
+        ):
+            assert probe is not None  # a probe was actually built and passed through
+            return SelfBranchResult(
+                attempt=attempt,
+                test_exit_code=0,
+                test_output="ok",
+                diff="diff",
+                baseline_metrics={"lint": 0.2},
+                candidate_metrics={"lint": 0.9},
+            )
+
+        monkeypatch.setattr("maistro_rsi.runner.run_self_branch_attempt", fake_run_attempt)
+
+        harness = FakeHarness({"baseline": {"swebench": 0.9}, "candidate": {"swebench": 0.1}})
+        cycle = RsiCycle(
+            _config(benchmarks=["swebench"], benchmark_commands={"lint": "ruff check ."}),
+            harness,
+            EloTournament(),
+            FakeScheduler(),
+            _noop_patch,
+        )
+
+        result = await cycle.run(_genome("baseline"), _genome("candidate"), ["m"])
+
+        # probe metrics (candidate wins) drive the outcome, not the stock
+        # harness scores (which would have favored the baseline instead).
+        assert {r.benchmark for r in result.baseline_results} == {"lint"}
+        assert result.benchmarks_won == 1
+        # the stock harness was never consulted when probe metrics exist
+        assert harness.received_llm_calls == []

@@ -16,8 +16,10 @@ alongside it) rather than reimplementing them:
 from __future__ import annotations
 
 import shutil
+import tempfile
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path as _Path
 
 import structlog
 
@@ -39,6 +41,13 @@ from maistro_rsi.selfbranch import (
 logger = structlog.get_logger()
 
 DEFAULT_BENCHMARKS = ["swebench", "swebench_pro", "terminalbench"]
+
+# Not a hardcoded /tmp literal (bandit B108): resolved via tempfile.gettempdir()
+# so it honors $TMPDIR / the platform temp dir instead of assuming /tmp exists
+# and is safe to write into. Each cycle still creates a unique per-run_id
+# subdirectory beneath this root (see RsiCycle.run), so concurrent runs never
+# collide even though the root itself is shared.
+DEFAULT_WORKSPACE_ROOT = str(_Path(tempfile.gettempdir()) / "maistro-workspace" / "rsi")
 
 _PROBE_TIMEOUT_S = 300
 
@@ -75,7 +84,7 @@ def probe_from_commands(
 class RsiCycleConfig:
     repo_url: str
     test_command: str
-    workspace_root: str = "/tmp/maistro-workspace/rsi"
+    workspace_root: str = DEFAULT_WORKSPACE_ROOT
     benchmarks: list[str] = field(default_factory=lambda: list(DEFAULT_BENCHMARKS))
     open_prs: bool = False
     base_branch: str = "main"

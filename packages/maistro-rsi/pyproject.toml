@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 maistro-rsi = "maistro_rsi.cli:main"
+maistro-rsi-autorun = "maistro_rsi.autorun:main"
 
 [project.optional-dependencies]
 dev = [
@@ -22,9 +23,6 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
 ]
-
-[project.scripts]
-maistro-rsi-autorun = "maistro_rsi.autorun:main"
 
 [build-system]
 requires = ["hatchling"]
