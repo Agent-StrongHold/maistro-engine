@@ -568,6 +568,17 @@ class LocalRsiConfig:
     # provider here (cerebras/groq vs openrouter) is what rescues a run whose
     # roster provider is fully rate-limited.
     emergency_models: list[str] = field(default_factory=list)
+    # NEVER-IDLE FLOOR: a model served from local hardware (e.g. TabbyAPI/ExLlamaV3
+    # on this box's GPU), consulted only when the ENTIRE cross-provider emergency
+    # pool is benched too. Local hardware has no RPM/RPD/credit to exhaust, so it
+    # is the one tier that cannot rate-limit — it keeps cadence, lineage and RLPHD
+    # state alive through a quota outage that would otherwise stall the run for
+    # hours. Deliberately NOT a member of `emergency_models`: that pool ranks by
+    # reliability (defaulting to 1.0 for an unseen model) and a local model never
+    # benches, so inside the pool it would out-rank real cloud models and quietly
+    # become PRIMARY — the opposite of a last resort. Cloud-first has to hold by
+    # construction, not by reliability arithmetic. Empty ⇒ no local tier.
+    local_fallback_model: str = ""
     # Model bench: a competitor whose model hits a TRANSIENT provider error
     # (429/rate-limit/quota/billing) sits out instead of dying — no eval burned,
     # no stub folded into its genome, seat freed for others. The sit-out length
@@ -1187,16 +1198,25 @@ class LocalRsiLoop:
         return out
 
     def _emergency_model(self, index: int) -> str | None:
-        """A SERVABLE model to rescue an all-benched cycle: the most-reliable
-        non-benched model from the emergency pool. If the whole pool is benched
-        too, the one whose bench expires soonest (least-bad probe) — the loop must
-        still try SOMETHING rather than idle. ``None`` only if the pool is empty."""
+        """A SERVABLE model to rescue an all-benched cycle, cloud first:
+
+        1. the most-reliable non-benched model from the emergency pool;
+        2. else ``local_fallback_model`` — local hardware cannot rate-limit, so it
+           is the floor that keeps a quota-drained run alive (see the field);
+        3. else the pool model whose bench expires soonest (least-bad probe) — the
+           loop must still try SOMETHING rather than idle.
+
+        ``None`` only when the pool is empty and no local tier is configured.
+        """
         pool = self._emergency_pool()
-        if not pool:
-            return None
         servable = [m for m in pool if not self._benched(m, index)]
         if servable:
             return max(servable, key=lambda m: self._reliability.get(m, 1.0))
+        local = self._config.local_fallback_model
+        if local and not self._benched(local, index):
+            return local
+        if not pool:
+            return None
         return min(pool, key=lambda m: self._bench.get(m, 0.0))
 
     def _spawn_emergency_genome(self, model: str) -> Any:
