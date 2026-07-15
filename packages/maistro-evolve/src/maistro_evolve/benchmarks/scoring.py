@@ -176,8 +176,8 @@ def judge_score(judge_response: str) -> float:
             return min(val / 10.0, 1.0)
         return min(val, 1.0)
 
-    yes_count = judge_response.lower().count("yes")
-    no_count = judge_response.lower().count("no")
+    yes_count = len(re.findall(r"\byes\b", judge_response.lower()))
+    no_count = len(re.findall(r"\bno\b", judge_response.lower()))
     total = yes_count + no_count
     if total > 0:
         return yes_count / total
