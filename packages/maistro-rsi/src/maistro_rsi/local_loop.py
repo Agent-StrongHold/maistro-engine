@@ -414,7 +414,55 @@ def _resume_transcript(result: dict[str, Any]) -> list[dict[str, Any]] | None:
         # TurnRunner) leaves nothing safe to resume from — end the cycle rather
         # than poison the context with the sentinel.
         return None
-    return list(transcript)
+    return _trim_for_resume(list(transcript))
+
+
+# A resumed transcript must FIT back into the smallest context window in play —
+# observed live: six resumed tool budgets accumulated a 45,439-token prompt
+# against the local tier's 32,768 window and the gateway rejected the cycle
+# (ContextWindowExceededError). Budgets are chars at the ~4 chars/token
+# heuristic: ~22k tokens of transcript leaves a 32k window room for the system
+# prompt, tool schemas and the response. Stale tool outputs (sandbox _OUTPUT_CAP
+# lets a single one reach 1 MB) are elided to their head first; then the OLDEST
+# assistant/tool_result exchanges drop in pairs — never splitting a pair, never
+# touching the seed system+objective, and always keeping the newest exchange the
+# model is about to answer.
+_RESUME_CHAR_BUDGET = 90_000
+_RESUME_ITEM_CAP = 16_000
+_ELIDED = "\n[...tool output elided on resume...]"
+
+
+def _shrink_stale_output(message: dict[str, Any]) -> dict[str, Any]:
+    """A copy of ``message`` with oversized (stale) tool output cut to its head."""
+    content = message.get("content")
+    if isinstance(content, str) and len(content) > _RESUME_ITEM_CAP:
+        return {**message, "content": content[:_RESUME_ITEM_CAP] + _ELIDED}
+    if isinstance(content, list):
+        blocks = [
+            {**block, "content": block["content"][:_RESUME_ITEM_CAP] + _ELIDED}
+            if isinstance(block, dict)
+            and isinstance(block.get("content"), str)
+            and len(block["content"]) > _RESUME_ITEM_CAP
+            else block
+            for block in content
+        ]
+        if blocks != content:
+            return {**message, "content": blocks}
+    return message
+
+
+def _trim_for_resume(transcript: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _chars(messages: list[dict[str, Any]]) -> int:
+        return sum(len(str(m.get("content", ""))) for m in messages)
+
+    if _chars(transcript) <= _RESUME_CHAR_BUDGET:
+        return transcript
+    # Seed (system + objective) stays verbatim; everything after it is tool
+    # exchange history that may be shrunk or dropped.
+    trimmed = transcript[:2] + [_shrink_stale_output(m) for m in transcript[2:]]
+    while _chars(trimmed) > _RESUME_CHAR_BUDGET and len(trimmed) > 4:
+        del trimmed[2:4]  # the oldest assistant/tool_result pair, as a pair
+    return trimmed
 
 
 def make_builders_apply_patch(
