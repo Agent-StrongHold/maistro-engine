@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -72,12 +73,27 @@ _BLOCKED_PATTERNS = (
 # No os.environ spread — never leak API keys, tokens, or cloud credentials.
 # No HOME — setting HOME to the sandbox root creates a $HOME/.. escape primitive.
 _SAFE_ENV = {
-    "PATH": "/usr/local/bin:/usr/bin:/bin",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
     "TERM": "dumb",
     "PYTHONDONTWRITEBYTECODE": "1",
 }
+if os.name == "nt":
+    # Windows children are unusable without the system basics — python.exe
+    # cannot even start without SystemRoot (_Py_HashRandomization_init fails),
+    # git and tempfile need TEMP, and executable lookup by the child needs the
+    # real PATH (a POSIX PATH string is meaningless here). Each is forwarded by
+    # NAME from an allowlist — still no os.environ spread, and none of these
+    # carry credentials, so the no-secret-leak property holds unchanged.
+    _SAFE_ENV.update(
+        {
+            name: value
+            for name in ("PATH", "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "TEMP", "TMP")
+            if (value := os.environ.get(name))
+        }
+    )
+else:
+    _SAFE_ENV["PATH"] = "/usr/local/bin:/usr/bin:/bin"
 
 
 @runtime_checkable

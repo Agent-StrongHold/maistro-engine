@@ -70,6 +70,14 @@ def test_transient_error_classifier() -> None:
     assert _is_transient_provider_error("LiteLLM gateway 429: RateLimitError ...")
     assert _is_transient_provider_error("You exceeded your current quota, check billing")
     assert _is_transient_provider_error("503 service overloaded")
+    # A dead endpoint is capacity, not fitness — the live string from a local
+    # model whose serving process died mid-run (gateway 500 wrapping it).
+    assert _is_transient_provider_error(
+        'LiteLLM gateway 500: {"error":{"message":"litellm.InternalServerError: '
+        'InternalServerError: OpenAIException - Connection error."}}'
+    )
+    assert _is_transient_provider_error("APIConnectionError: connection refused")
+    assert _is_transient_provider_error("502 Bad Gateway")
     assert not _is_transient_provider_error("list index out of range")
     assert not _is_transient_provider_error("SyntaxError: invalid syntax")
 

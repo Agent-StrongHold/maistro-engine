@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,12 @@ from maistro_bootstrap.builders.sandbox import (
     SandboxedShell,
 )
 from maistro_bootstrap.builders.session import BuilderSession
+
+# Portable interpreter name for probe scripts. sys.executable can't be used:
+# it is an absolute path outside the sandbox root, which the shell rightly
+# rejects as an escape. POSIX CI images guarantee python3 on the fixed
+# _SAFE_ENV PATH; Windows resolves python from the forwarded real PATH.
+_PY = "python" if os.name == "nt" else "python3"
 
 
 @pytest.fixture()
@@ -81,14 +88,19 @@ def test_dotdot_escape_blocked(tmp_root: Path) -> None:
 
 
 @pytest.mark.ac("SPEC-201/AC-3")
-def test_safe_command_executes(shell: SandboxedShell) -> None:
-    out = shell.run("echo maistro")
+def test_safe_command_executes(shell: SandboxedShell, tmp_root: Path) -> None:
+    # A python script probe, not `echo`: portable (echo/sleep are POSIX shell
+    # builtins, not executables — shell=False on Windows has nothing to launch)
+    # and it proves real child processes work under _SAFE_ENV on every platform.
+    (tmp_root / "hello.py").write_text("print('maistro')", encoding="utf-8")
+    out = shell.run(f"{_PY} hello.py")
     assert "maistro" in out
 
 
-def test_timeout_raises(shell: SandboxedShell) -> None:
+def test_timeout_raises(shell: SandboxedShell, tmp_root: Path) -> None:
+    (tmp_root / "slow.py").write_text("import time\ntime.sleep(30)", encoding="utf-8")
     with pytest.raises(CommandTimeoutError):
-        shell.run("sleep 10", timeout=1)
+        shell.run(f"{_PY} slow.py", timeout=1)
 
 
 def test_command_substitution_blocked(shell: SandboxedShell) -> None:
@@ -107,10 +119,17 @@ def test_semicolon_injection_blocked(shell: SandboxedShell) -> None:
 
 
 def test_env_does_not_contain_os_environ(
-    shell: SandboxedShell, monkeypatch: pytest.MonkeyPatch
+    shell: SandboxedShell, tmp_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Dump the child's ENTIRE env — a real leak test, not `echo nodump` (which
+    # could never print the environment in the first place). The secret set in
+    # the parent must be absent from what the sandboxed child can see.
     monkeypatch.setenv("SECRET_API_KEY", "super-secret-value")
-    out = shell.run("echo nodump")
+    (tmp_root / "dumpenv.py").write_text(
+        "import os\nprint(repr(dict(os.environ)))", encoding="utf-8"
+    )
+    out = shell.run(f"{_PY} dumpenv.py")
+    assert "SECRET_API_KEY" not in out
     assert "super-secret-value" not in out
 
 
