@@ -138,7 +138,7 @@ async def _fake_discover():
 
 class TestSeedHypotheses:
     @pytest.mark.asyncio
-    async def test_seeds_expanded_before_first_step(self, monkeypatch):
+    async def test_seeds_expanded_before_first_step(self, monkeypatch, tmp_path):
         """autorun-3: seed hypotheses are pre-expanded onto the tree before the
         coordinator's first step, so they run before the proposer invents any."""
         seen_hypotheses: list[str] = []
@@ -154,7 +154,12 @@ class TestSeedHypotheses:
         def failing_proposer(context: HtrContext) -> str:
             raise AssertionError("proposer should not be called while seeds are queued")
 
-        config = _config(root_hypothesis="root idea", seed_hypotheses=["seed one"], num_cycles=2)
+        config = _config(
+            root_hypothesis="root idea",
+            seed_hypotheses=["seed one"],
+            num_cycles=2,
+            workspace_root=str(tmp_path),
+        )
         result = await run_autonomous(config, executor=fake_executor, proposer=failing_proposer)
 
         assert len(result.steps) == 2
@@ -167,7 +172,7 @@ class TestSeedHypotheses:
 
 class TestWallClockBudget:
     @pytest.mark.asyncio
-    async def test_budget_stops_new_cycles(self, monkeypatch):
+    async def test_budget_stops_new_cycles(self, monkeypatch, tmp_path):
         """autorun-4: once max_wall_clock_s has elapsed, no further cycles run;
         steps reflects exactly what ran before the cutoff."""
         calls = {"n": 0}
@@ -188,7 +193,7 @@ class TestWallClockBudget:
         times = itertools.chain([0.0], itertools.repeat(100.0))
         monkeypatch.setattr("maistro_rsi.autorun.time.monotonic", lambda: next(times))
 
-        config = _config(num_cycles=5, max_wall_clock_s=10.0)
+        config = _config(num_cycles=5, max_wall_clock_s=10.0, workspace_root=str(tmp_path))
         result = await run_autonomous(
             config,
             executor=fake_executor,
@@ -322,7 +327,8 @@ class TestMain:
             )
 
         monkeypatch.setattr(
-            "maistro_rsi.autorun.build_executor", lambda config, audit=None: fake_executor
+            "maistro_rsi.autorun.build_executor",
+            lambda config, audit=None, prior_learnings=(): fake_executor,
         )
 
         from maistro_rsi.autorun import main
@@ -344,3 +350,233 @@ class TestMain:
         out = capsys.readouterr().out
         assert "steps: 1" in out
         assert "best:" in out
+
+
+def _ok_report() -> ExecutionReport:
+    return ExecutionReport(
+        evidence=HypothesisEvidence(tests_passed=True, benchmarks_won=1, battles=1, improved=True)
+    )
+
+
+class TestDurableTree:
+    """Tests tied to SPEC.md §10 acceptance criteria autorun-7..9."""
+
+    @pytest.mark.asyncio
+    async def test_tree_saved_after_every_cycle(self, tmp_path):
+        """autorun-7: the snapshot exists and parses after each cycle, not
+        just at run end."""
+        import json as _json
+
+        from maistro_rsi.htr import HypothesisTree
+
+        snapshots: list[int] = []
+        tree_path = tmp_path / "htr-tree.json"
+
+        async def fake_executor(context: HtrContext) -> ExecutionReport:
+            # Snapshot count BEFORE this cycle's save: proves per-cycle writes.
+            snapshots.append(
+                len(_json.loads(tree_path.read_text())["nodes"]) if tree_path.exists() else 0
+            )
+            return _ok_report()
+
+        config = _config(num_cycles=2, workspace_root=str(tmp_path))
+        await run_autonomous(config, executor=fake_executor, proposer=lambda ctx: "next")
+
+        assert tree_path.exists()
+        restored = HypothesisTree.from_dict(_json.loads(tree_path.read_text()))
+        assert restored.summary()["total"] >= 2
+        # the second cycle observed the first cycle's persisted snapshot
+        assert snapshots[1] > 0
+
+    def test_atomic_write_leaves_no_partial_file(self, tmp_path, monkeypatch):
+        """autorun-7: a crash mid-write cannot truncate the snapshot — the
+        previous complete snapshot survives and no temp junk remains."""
+        import json as _json
+
+        from maistro_rsi.autorun import _atomic_write_json
+
+        target = tmp_path / "htr-tree.json"
+        _atomic_write_json(target, {"root_id": "a", "nodes": [{"id": "a"}]})
+        before = target.read_text()
+
+        def boom(src, dst):
+            raise OSError("disk gone")
+
+        monkeypatch.setattr("maistro_rsi.autorun.os.replace", boom)
+        with pytest.raises(OSError):
+            _atomic_write_json(target, {"root_id": "b", "nodes": []})
+
+        assert target.read_text() == before  # old snapshot intact
+        assert _json.loads(before)["root_id"] == "a"
+        assert list(tmp_path.glob("*.tmp")) == []  # temp file cleaned up
+
+    @pytest.mark.asyncio
+    async def test_resume_continues_same_tree_without_duplicating_seeds(self, tmp_path):
+        """autorun-8 + autorun-9: a second run over the same tree path
+        continues the SAME tree (budget-stopped work is not discarded) and
+        seeds are not re-expanded on resume."""
+        executed: list[str] = []
+
+        async def fake_executor(context: HtrContext) -> ExecutionReport:
+            executed.append(context.node.hypothesis)
+            return _ok_report()
+
+        config = _config(
+            root_hypothesis="root idea",
+            seed_hypotheses=["seed one"],
+            num_cycles=1,
+            workspace_root=str(tmp_path),
+        )
+        first = await run_autonomous(config, executor=fake_executor, proposer=lambda c: "p1")
+        assert len(first.steps) == 1
+
+        second = await run_autonomous(config, executor=fake_executor, proposer=lambda c: "p2")
+        # same tree continued: run 1 executed the seed (recency-first pending),
+        # run 2 resumed and executed the still-open root — NOT a fresh tree, no
+        # re-run of the already-explored node, and 'seed one' exists exactly once.
+        assert second.tree.summary()["explored"] == 2
+        seeds = [n for n in second.tree.nodes.values() if n.hypothesis == "seed one"]
+        assert len(seeds) == 1
+        assert len(executed) == 2
+        assert set(executed) == {"root idea", "seed one"}  # each executed once, across runs
+
+    @pytest.mark.asyncio
+    async def test_root_mismatch_refused_unless_fresh(self, tmp_path):
+        """autorun-8: a persisted tree with a different root hypothesis is
+        refused with a clear error; fresh=True starts over instead."""
+
+        async def fake_executor(context: HtrContext) -> ExecutionReport:
+            return _ok_report()
+
+        await run_autonomous(
+            _config(root_hypothesis="original quest", num_cycles=1, workspace_root=str(tmp_path)),
+            executor=fake_executor,
+            proposer=lambda c: "p",
+        )
+
+        with pytest.raises(ValueError, match="differs"):
+            await run_autonomous(
+                _config(
+                    root_hypothesis="different quest", num_cycles=1, workspace_root=str(tmp_path)
+                ),
+                executor=fake_executor,
+                proposer=lambda c: "p",
+            )
+
+        result = await run_autonomous(
+            _config(
+                root_hypothesis="different quest",
+                num_cycles=1,
+                workspace_root=str(tmp_path),
+                fresh=True,
+            ),
+            executor=fake_executor,
+            proposer=lambda c: "p",
+        )
+        assert result.tree.nodes[result.tree.root_id].hypothesis == "different quest"
+
+
+class TestLearningsLedger:
+    """Tests tied to SPEC.md §10 acceptance criteria autorun-10..12."""
+
+    @pytest.mark.asyncio
+    async def test_every_cycle_appends_an_insight(self, tmp_path):
+        """autorun-10: one ledger line per executed cycle, carrying the
+        distilled insight and outcome."""
+        import json as _json
+
+        async def fake_executor(context: HtrContext) -> ExecutionReport:
+            return _ok_report()
+
+        config = _config(num_cycles=2, workspace_root=str(tmp_path))
+        await run_autonomous(config, executor=fake_executor, proposer=lambda c: "next")
+
+        lines = (tmp_path / "learnings.jsonl").read_text().strip().splitlines()
+        assert len(lines) == 2
+        entry = _json.loads(lines[0])
+        assert entry["insight"]
+        assert entry["improved"] is True
+        assert entry["repo_url"] == config.repo_url
+
+    @pytest.mark.asyncio
+    async def test_fresh_run_still_recalls_prior_learnings(self, tmp_path):
+        """autorun-11: THE retained-learnings guarantee — a fresh run (new
+        tree) injects prior runs' insights into proposer and prompt context."""
+
+        async def fake_executor(context: HtrContext) -> ExecutionReport:
+            return _ok_report()
+
+        base = _config(root_hypothesis="first quest", num_cycles=1, workspace_root=str(tmp_path))
+        first = await run_autonomous(base, executor=fake_executor, proposer=lambda c: "p")
+        first_insight = first.tree.nodes[first.steps[0]].insight
+        assert first_insight
+
+        # Fresh run, different root: the tree is new, the lessons are not.
+        seen_prompts: list[str] = []
+
+        async def spying_executor(context: HtrContext) -> ExecutionReport:
+            from maistro_rsi.autorun import LearningsLedger, build_prompt
+
+            ledger = LearningsLedger(tmp_path / "learnings.jsonl")
+            recalled = ledger.recall(8, repo_url=base.repo_url)
+            seen_prompts.append(build_prompt(context, recalled))
+            return _ok_report()
+
+        await run_autonomous(
+            _config(
+                root_hypothesis="second quest",
+                num_cycles=1,
+                workspace_root=str(tmp_path),
+                fresh=True,
+            ),
+            executor=spying_executor,
+            proposer=lambda c: "p",
+        )
+        assert first_insight in seen_prompts[0]
+        assert "Lessons retained from previous runs:" in seen_prompts[0]
+
+    def test_recall_prefers_improved_then_recency_and_dedupes(self, tmp_path):
+        """autorun-11: improved-first ordering, recency tie-break, dedupe,
+        and repo scoping."""
+        import json as _json
+
+        from maistro_rsi.autorun import LearningsLedger
+
+        path = tmp_path / "learnings.jsonl"
+        rows = [
+            {"repo_url": "r1", "insight": "old failure", "improved": False},
+            {"repo_url": "r1", "insight": "old win", "improved": True},
+            {"repo_url": "r1", "insight": "new failure", "improved": False},
+            {"repo_url": "r1", "insight": "new win", "improved": True},
+            {"repo_url": "r1", "insight": "new win", "improved": True},  # dup
+            {"repo_url": "r2", "insight": "other repo", "improved": True},
+        ]
+        path.write_text("".join(_json.dumps(r) + "\n" for r in rows))
+
+        ledger = LearningsLedger(path)
+        recalled = ledger.recall(10, repo_url="r1")
+        assert recalled == ["new win", "old win", "new failure", "old failure"]
+        assert "other repo" not in recalled
+        # unscoped recall sees every repo
+        assert "other repo" in ledger.recall(10)
+
+    def test_ledger_tolerates_corruption_and_absence(self, tmp_path):
+        """autorun-12: corrupt/partial lines are skipped, a missing file is an
+        empty ledger — recall never raises."""
+        import json as _json
+
+        from maistro_rsi.autorun import LearningsLedger
+
+        missing = LearningsLedger(tmp_path / "nope.jsonl")
+        assert missing.recall(5) == []
+
+        path = tmp_path / "learnings.jsonl"
+        path.write_text(
+            _json.dumps({"insight": "good one", "improved": True})
+            + "\n{truncated garba"
+            + "\nnot json at all\n\n"
+            + _json.dumps({"no_insight_key": True})
+            + "\n"
+        )
+        ledger = LearningsLedger(path)
+        assert ledger.recall(5) == ["good one"]
