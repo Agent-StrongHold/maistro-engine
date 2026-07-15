@@ -105,7 +105,11 @@ jobs:
       - run: uv sync --extra dev
       - run: uv pip install pip-audit
       - run: uv pip freeze --exclude-editable > /tmp/deps.txt
-      - run: uv run pip-audit --strict -r /tmp/deps.txt
+      # --ignore-vuln PYSEC-2026-1325: ecdsa, no fix as of 2026-07-15. Transitive via
+      # bip-utils (HD address derivation only, maistro.identity); the timing side-channel
+      # requires ecdsa signing, which we never call — every real sign()/verify() goes
+      # through nacl.signing (Ed25519); see security.yml's allowlist for the full note.
+      - run: uv run pip-audit --strict -r /tmp/deps.txt --ignore-vuln PYSEC-2026-1325
 
   docker-build:
     runs-on: ubuntu-latest

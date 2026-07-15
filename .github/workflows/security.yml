@@ -132,7 +132,20 @@ jobs:
           #              grep across packages/ confirms we import
           #              nothing from nltk. Risk surface is the CI
           #              scan job only; no production exposure.
-          allowed = {'pydantic-ai', 'py', 'starlette', 'nltk'}
+          # ecdsa        PYSEC-2026-1325 (no fix as of 2026-07-15). Known
+          #              python-ecdsa vulnerability class is a timing
+          #              side-channel in ecdsa.SigningKey.sign_digest()
+          #              (secp256k1/ECDSA signing). Transitive via
+          #              bip-utils, used only for Bip32Slip10Secp256k1 HD
+          #              derivation (BTC/ETH address display) in
+          #              maistro.identity — read on 2026-07-15: every
+          #              actual sign()/verify() in identity/__init__.py
+          #              and identity/lifecycle.py goes through
+          #              nacl.signing (Ed25519), and _require_ed25519_path
+          #              explicitly REJECTS secp256k1 signing paths. We
+          #              never call ecdsa signing, so the vulnerable
+          #              code path is unreachable.
+          allowed = {'pydantic-ai', 'py', 'starlette', 'nltk', 'ecdsa'}
           new_vuln = [d for d in vuln if d['name'] not in allowed]
           if new_vuln:
               print('::error::pip-audit found new vulnerable deps:')
