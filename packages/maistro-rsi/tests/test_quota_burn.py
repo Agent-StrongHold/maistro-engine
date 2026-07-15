@@ -49,6 +49,29 @@ class TestRankModelsByHeadroom:
         assert over.headroom_tokens == 0
         assert ranked[-1].model == "openai/over"
 
+    @pytest.mark.asyncio
+    async def test_unlisted_provider_falls_back_to_default_free_tokens(self):
+        """A provider absent from free_tokens_per_provider is scheduled against
+        default_free_tokens rather than skipped or treated as zero budget."""
+        tracker = InMemoryQuotaTracker()
+        # "mistral" is not in FREE_TOKENS, so it must fall back to the default
+        # budget of 1,000,000; record exactly half of it as used.
+        await tracker.record_usage("mistral", CYCLE, 400_000, 100_000)
+
+        ranked = await rank_models_by_headroom(
+            ["mistral/large"],
+            tracker,
+            billing_cycle=CYCLE,
+            free_tokens_per_provider=FREE_TOKENS,
+            default_free_tokens=1_000_000,
+        )
+
+        mq = ranked[0]
+        assert mq.provider == "mistral"
+        assert mq.free_tokens == 1_000_000
+        assert mq.used_pct == pytest.approx(0.5)
+        assert mq.headroom_tokens == 500_000
+
 
 class TestQuotaBurnScheduler:
     @pytest.mark.asyncio
