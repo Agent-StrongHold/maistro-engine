@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 from maistro_rsi.protocols import MicroVmSandbox
 from maistro_rsi.sandbox.microvm import DockerMicroVmSandbox
+
+# LocalSandbox.exec() is POSIX-only by construction: it shells out to `bash` and
+# kills the process group via os.killpg/signal.SIGKILL — neither attribute even
+# exists on Windows, and `bash` there resolves to a WSL shim, not a real shell.
+# LocalSandbox is the passthrough for when RSI ALREADY runs inside an sbx Linux
+# microVM (see its module docstring), so Windows is out of scope rather than
+# broken. Only exec() is guarded; the protocol, file-I/O and path-escape tests
+# below are platform-independent and still run everywhere.
+posix_exec_only = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="LocalSandbox.exec is POSIX-only (bash + os.killpg/SIGKILL); it runs inside an sbx Linux microVM",
+)
 
 
 class FakeContainer:
@@ -105,6 +119,7 @@ class TestLocalSandbox:
 
         assert isinstance(LocalSandbox(str(tmp_path)), MicroVmSandbox)
 
+    @posix_exec_only
     @pytest.mark.asyncio
     async def test_exec_returns_exit_code_and_output(self, tmp_path):
         """sandbox-9: exec runs against the workspace and returns (exit_code, output)."""
@@ -114,6 +129,7 @@ class TestLocalSandbox:
         code, output = await sandbox.exec("echo hello")
         assert code == 0 and "hello" in output
 
+    @posix_exec_only
     @pytest.mark.asyncio
     async def test_exec_reports_nonzero_exit_verbatim(self, tmp_path):
         """sandbox-9: a non-zero exit is reported, not swallowed."""
@@ -122,6 +138,7 @@ class TestLocalSandbox:
         code, _ = await LocalSandbox(str(tmp_path)).exec("exit 3")
         assert code == 3
 
+    @posix_exec_only
     @pytest.mark.asyncio
     async def test_exec_times_out_and_reports_124(self, tmp_path):
         """sandbox-9: a command exceeding the timeout is killed and reported as exit 124."""
@@ -183,6 +200,7 @@ class TestLocalSandbox:
         await sandbox.write_file(str(inside), "fine")  # absolute but inside
         assert await sandbox.read_file("ok.txt") == "fine"
 
+    @posix_exec_only
     @pytest.mark.asyncio
     async def test_bash_shell_semantics(self, tmp_path):
         """sandbox-15: commands run under bash, matching the Docker backend's
@@ -192,6 +210,7 @@ class TestLocalSandbox:
         code, output = await LocalSandbox(str(tmp_path)).exec('[[ -n "x" ]] && echo bash-ok')
         assert code == 0 and "bash-ok" in output
 
+    @posix_exec_only
     @pytest.mark.asyncio
     async def test_timeout_kills_the_whole_process_group(self, tmp_path):
         """sandbox-15: a timed-out command's children die with it — a spawned
