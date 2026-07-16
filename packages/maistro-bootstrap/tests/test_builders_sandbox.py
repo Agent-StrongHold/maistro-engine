@@ -148,9 +148,14 @@ def test_env_points_temp_inside_sandbox_on_windows(
 
     env = SandboxedShell(tmp_root)._env()
 
-    assert Path(env["TEMP"]).resolve().is_relative_to(tmp_root.resolve())
-    assert Path(env["TMP"]).resolve().is_relative_to(tmp_root.resolve())
-    assert Path(env["TEMP"]).is_dir()  # created, not just named
+    # String comparisons, not Path(env["TEMP"]) — os.name is faked to "nt" for
+    # this test, and Python 3.13's pathlib refuses to instantiate a WindowsPath
+    # on a real POSIX system (a CI-only failure this exact test exists to
+    # avoid: it only ran on Windows locally, where the mismatch is invisible).
+    sandboxed_tmp = str(tmp_root.resolve() / ".sandbox-tmp")
+    assert env["TEMP"] == sandboxed_tmp
+    assert env["TMP"] == sandboxed_tmp
+    assert (tmp_root / ".sandbox-tmp").is_dir()  # created, not just named
     assert env["TEMP"] != r"C:\Users\real-user\AppData\Local\Temp"
 
 
