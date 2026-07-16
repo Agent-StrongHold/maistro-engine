@@ -102,6 +102,24 @@ def test_register_skips_when_already_known(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
 
+def test_register_double_prefixes_openrouter_owned_ids(monkeypatch: pytest.MonkeyPatch) -> None:
+    # An OpenRouter-OWNED model id (its own leading `openrouter/` is part of the
+    # model, not the LiteLLM provider prefix) must still be prefixed, or LiteLLM
+    # strips the segment and routes a different, non-existent model.
+    monkeypatch.setenv("LITELLM_URL", "http://gw:4000")
+    monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-master")
+    captured: dict[str, object] = {}
+
+    def fake_post(url, *, json, headers, timeout):  # type: ignore[no-untyped-def]
+        captured["model_name"] = json["model_name"]
+        return _FakeResp(status=200, payload={})
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    alias = fr.register_gateway_alias("openrouter/sonoma-dusk-alpha:free", credential="c")
+    assert alias == "openrouter/openrouter/sonoma-dusk-alpha:free"
+    assert captured["model_name"] == "openrouter/openrouter/sonoma-dusk-alpha:free"
+
+
 def test_register_treats_duplicate_as_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LITELLM_URL", "http://gw:4000")
     monkeypatch.setenv("LITELLM_MASTER_KEY", "sk-master")
@@ -152,19 +170,36 @@ def test_expand_falls_back_to_default_when_selector_yields_none() -> None:
     assert out == [fr.DEFAULT_FREE_MODEL]
 
 
+def test_expand_free_count_yields_distinct_pool() -> None:
+    # One sentinel, free_count=3 → three DISTINCT concrete aliases (the router can
+    # repeat a pick; the pool must de-dup).
+    seq = iter(["openrouter/a:free", "openrouter/a:free", "openrouter/b:free", "openrouter/c:free"])
+    out = fr.expand_free_router(["openrouter/free"], selector=lambda: next(seq, None), free_count=3)
+    assert out == ["openrouter/a:free", "openrouter/b:free", "openrouter/c:free"]
+
+
+def test_expand_dedups_against_literal_roster_entries() -> None:
+    out = fr.expand_free_router(
+        ["openrouter/x:free", "or-free-router"], selector=lambda: "openrouter/x:free"
+    )
+    assert out == ["openrouter/x:free"]  # the pick collided with the literal — appears once
+
+
 # --- seeding integration ---------------------------------------------------------
 
 
-def test_seed_population_pins_concrete_free_models() -> None:
+def test_expanded_roster_seeds_concrete_models() -> None:
+    # This branch expands the roster up-front, THEN seeds round-robin: no genome
+    # ever carries a raw sentinel.
     from maistro_evolve.population import PopulationStore
 
-    store = PopulationStore()
-    # Free-only roster: every genome must seed onto a concrete (not the sentinel).
-    resolved = seed_population(
-        store, 3, models=["openrouter/free"], free_selector=lambda: "openrouter/z/z:free"
+    roster = fr.expand_free_router(
+        ["openrouter/free", "cerebras-glm-4.7"], selector=lambda: "openrouter/z/z:free"
     )
-    assert resolved == {"openrouter/z/z:free"}
-    for g in store.list_all():
-        for node in g.topology.nodes:
-            assert node.model not in fr.FREE_ROUTER_ALIASES
-        assert genome_to_competitor(g).model == "openrouter/z/z:free"
+    assert roster == ["openrouter/z/z:free", "cerebras-glm-4.7"]
+    store = PopulationStore()
+    seed_population(store, 4, models=roster)
+    seeded = {node.model for g in store.list_all() for node in g.topology.nodes}
+    assert seeded <= set(roster)
+    assert not (seeded & fr.FREE_ROUTER_ALIASES)
+    assert all(genome_to_competitor(g).model in roster for g in store.list_all())
