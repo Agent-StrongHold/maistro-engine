@@ -56,6 +56,29 @@ class TestUpdateDirection:
         assert new_theta < 0.7
 
 
+class TestConfidenceGapScaling:
+    """The weight step scales with |p - theta|: a confident-wrong prediction
+    teaches the most, a borderline call (p ≈ theta) teaches little."""
+
+    def test_confident_prediction_moves_weights_more_than_borderline(self) -> None:
+        feats = {"risk": 1.0}
+        # Same denial, same features — only the confidence gap differs.
+        borderline = RlphdModel().update(feats, "deny", predicted_p=0.5, theta=0.45)
+        confident = RlphdModel().update(feats, "deny", predicted_p=0.9, theta=0.45)
+
+        assert borderline.feature_weights["risk"] < 0  # denied -> risk weight drops
+        # Confident-wrong (|0.9-0.45|=0.45) moves it further than borderline (|0.5-0.45|=0.05).
+        assert confident.feature_weights["risk"] < borderline.feature_weights["risk"]
+
+    def test_update_without_theta_is_unscaled_legacy_step(self) -> None:
+        # No theta => gap_scale = 1.0 => the plain gradient step is unchanged.
+        feats = {"risk": 1.0}
+        updated = RlphdModel().update(feats, "deny", predicted_p=0.8)
+
+        # base(0) + lr(0.1) * error(0 - 0.8) * feat(1.0) = -0.08
+        assert abs(updated.feature_weights["risk"] - (-0.08)) < 1e-9
+
+
 class TestSurpriseWeighting:
     def test_confirmation_moves_theta_less_than_equal_magnitude_surprise(self) -> None:
         theta = 0.7

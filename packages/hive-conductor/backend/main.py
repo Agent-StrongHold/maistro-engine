@@ -262,6 +262,18 @@ def create_app() -> FastAPI:
             exc,
         )
 
+    try:
+        from routes.rsi import router as rsi_router
+
+        app.include_router(rsi_router, prefix="/v1/rsi")
+    except Exception as exc:
+        import logging as _logging
+
+        _logging.getLogger("hive.lifespan").warning(
+            "rsi_router_unavailable: %s",
+            exc,
+        )
+
     if STATIC_DIR.is_dir():
         from starlette.responses import FileResponse
 

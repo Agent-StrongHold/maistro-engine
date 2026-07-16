@@ -18,6 +18,7 @@ import Dashboard from "./pages/Dashboard";
 import DesignStudio from "./pages/DesignStudio";
 import Docs from "./pages/Docs";
 import Evolution from "./pages/Evolution";
+import RSI from "./pages/RSI";
 import Login from "./pages/Login";
 import MCP from "./pages/MCP";
 import Memory from "./pages/Memory";
@@ -146,6 +147,7 @@ function AppRoutes() {
                 <Route path="containers" element={<Containers />} />
                 <Route path="docs" element={<Docs />} />
                 <Route path="evolution" element={<Evolution />} />
+                <Route path="rsi" element={<RSI />} />
                 <Route path="memory" element={<Memory />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
