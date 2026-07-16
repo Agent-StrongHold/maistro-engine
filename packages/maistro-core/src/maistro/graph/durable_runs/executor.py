@@ -324,13 +324,20 @@ def _actually_spawned(kind: str, result: NodeResult) -> bool:
     `NodeResult` (the executor sees a normal completion; only the node's own
     output says nothing was spawned) -- that refusal must not burn a depth
     level for the next node, or a workflow that tries an alternate synth
-    after a blocked one hits the cap prematurely. `agent.spawn_harness` never
-    reaches this check on a fresh dispatch (that exits earlier via
+    after a blocked one hits the cap prematurely. But `success=False` also
+    covers a *different* case: synthesis was approved and the sub-graph WAS
+    dispatched via `run_graph`, and only the sub-graph's own execution
+    failed -- that's a real spawn attempt and must still burn a depth level
+    (otherwise a chained retry after a failed child bypasses the recursion
+    budget). `SynthDagOut.dispatched` disambiguates the two: it's True only
+    on the branch that actually called `run_graph`. `agent.spawn_harness`
+    never reaches this check on a fresh dispatch (that exits earlier via
     `_checkpoint_pause`); getting here for that kind always means a resumed,
     already-completed external invocation, so it counts unconditionally.
     """
     if kind == "agent.synth_dag":
-        return bool(getattr(result.output, "success", True))
+        output = result.output
+        return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
     return True
 
 

@@ -596,3 +596,71 @@ async def test_refused_synth_dag_does_not_increment_depth_for_the_next_node(
     # n1 -> depth becomes 1 for n2. n2 refuses (depth==max_depth==1) -> depth
     # must stay 1 for n3, not bump to 2.
     assert captured_depths == [1]
+
+
+async def test_synth_dag_with_failed_subgraph_still_increments_depth_for_the_next_node(
+    mem_store: DurableRunStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Contrast with the refusal case above: here the synth node actually
+    dispatches its sub-graph via `run_graph` -- but the sub-graph's own
+    execution fails. That's a real spawn attempt, not a declined one, so
+    depth must still burn a level for whatever runs next."""
+    from maistro.graph.nodes.agent_synth_dag import AgentSynthDagNode
+    from maistro.graph.types import HyperagentOutput
+    from maistro.security.dag_shape.proportionality import ProportionalityVerdict
+
+    class _AlwaysJustified:
+        async def judge(self, shape: Any) -> ProportionalityVerdict:
+            return ProportionalityVerdict(justified=True, reason="fine")
+
+    async def _failing_run_graph(*args: Any, **kwargs: Any) -> HyperagentOutput:
+        return HyperagentOutput(success=False, final_answer="sub-graph blew up")
+
+    monkeypatch.setattr("maistro.graph.executor.run_graph", _failing_run_graph)
+
+    async def fake_llm_call(messages: list[dict[str, str]], **kwargs: Any) -> str:
+        return '{"summary": "ok", "subtasks": [], "estimated_files": []}'
+
+    captured_depths: list[int] = []
+
+    class _CaptureDepthIn(BaseModel):
+        pass
+
+    class _CaptureDepthOut(BaseModel):
+        pass
+
+    class _CaptureDepthNode(BaseNode):
+        kind: ClassVar[str] = "test.capture_synth_depth_after_failed_subgraph"
+        kind_category: ClassVar = "sync.transform"
+        input_schema: ClassVar[type[BaseModel]] = _CaptureDepthIn
+        output_schema: ClassVar[type[BaseModel]] = _CaptureDepthOut
+
+        async def _execute(self, inputs: _CaptureDepthIn, ctx: NodeContext) -> _CaptureDepthOut:
+            captured_depths.append(int((ctx.metadata or {}).get("synth_depth", 0)))
+            return _CaptureDepthOut()
+
+    def _local_resolver(node_id: str, dag: dict[str, Any]) -> BaseNode:
+        if node_id == "n1":
+            return AgentSynthDagNode(
+                llm_call=fake_llm_call, proportionality_judge=_AlwaysJustified()
+            )
+        return _CaptureDepthNode()
+
+    dag = {
+        "id": "synth-depth-failed-subgraph-dag",
+        "name": "synth-depth-failed-subgraph",
+        "nodes": [
+            {"id": "n1", "kind": "agent.synth_dag", "inputs": {"objective": "add caching"}},
+            {"id": "n2", "kind": "test.capture_synth_depth_after_failed_subgraph"},
+        ],
+        "edges": [{"from_node": "n1", "to_node": "n2"}],
+        "entry_node": "n1",
+    }
+
+    result = await run_durable_dag(dag, store=mem_store, node_resolver=_local_resolver)
+    assert result.status == RunStatus.COMPLETED
+    n1_output = result.node_records[0].output
+    assert n1_output is not None
+    assert n1_output["success"] is False  # the sub-graph itself failed
+    assert n1_output["dispatched"] is True  # but it WAS actually dispatched
+    assert captured_depths == [1]  # depth still burns a level for n2
