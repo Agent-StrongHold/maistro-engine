@@ -272,6 +272,35 @@ def test_trim_for_resume_elides_a_single_monster_tool_output() -> None:
     assert len(transcript[-1]["content"][0]["content"]) == 400_000
 
 
+def test_trim_for_resume_elides_an_oversized_tool_use_input_in_the_newest_pair() -> None:
+    """Codex review (#258): a tool_use block's OWN input (write_file/edit_file's
+    content/old_string/new_string) is where the bulk lives when the newest kept
+    exchange is a big write — not the tool_result. If only tool_result content
+    is capped, "always keep the newest pair" can hand back a transcript still
+    over budget, reproducing the very ContextWindowExceededError this trims."""
+    transcript = _seed_and_pairs(1, 100)
+    big_write = "x" * 400_000
+    transcript[2]["content"][0]["input"] = {
+        "path": "big.py",
+        "content": big_write,
+        "old_string": "y" * 400_000,
+    }
+
+    trimmed = local_loop._trim_for_resume(list(transcript))
+
+    assert sum(len(str(m.get("content", ""))) for m in trimmed) <= local_loop._RESUME_CHAR_BUDGET
+    shrunk_input = trimmed[2]["content"][0]["input"]
+    assert len(shrunk_input["content"]) <= local_loop._RESUME_ITEM_CAP + len(local_loop._ELIDED)
+    assert shrunk_input["content"].endswith(local_loop._ELIDED)
+    assert len(shrunk_input["old_string"]) <= local_loop._RESUME_ITEM_CAP + len(local_loop._ELIDED)
+    assert shrunk_input["path"] == "big.py"  # small values pass through untouched
+    # The pair is still intact — trimmed, not dropped or split.
+    assert trimmed[2]["content"][0]["id"] == transcript[2]["content"][0]["id"]
+    assert trimmed[3]["content"][0]["tool_use_id"] == transcript[3]["content"][0]["tool_use_id"]
+    # The original transcript was not mutated in place.
+    assert len(transcript[2]["content"][0]["input"]["content"]) == 400_000
+
+
 class _ToolHungryResponsesCallable:
     """Fake LLM whose model always wants another tool call: every execute_turn
     exhausts TurnRunner's inner budget, so the outer loop must keep resuming."""

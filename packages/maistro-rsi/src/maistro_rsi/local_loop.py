@@ -432,20 +432,44 @@ _RESUME_ITEM_CAP = 16_000
 _ELIDED = "\n[...tool output elided on resume...]"
 
 
+def _shrink_block(block: Any) -> Any:
+    """A copy of a content ``block`` with its oversized string payload(s) cut to
+    their head — from EITHER direction a tool exchange carries bulk:
+
+    - a ``tool_result``'s ``content`` — the SANDBOX's output (capped at 1MB by
+      _OUTPUT_CAP);
+    - a ``tool_use``'s ``input`` values — the LLM's OWN arguments (a
+      write_file/edit_file call's ``content``/``old_string``/``new_string``),
+      which routinely dwarf any sandbox output. Codex flagged (#258 review):
+      capping only tool_result left the newest kept exchange free to still
+      exceed the budget whenever it was a large write_file/edit_file call,
+      reproducing the exact ContextWindowExceededError this trim prevents.
+    """
+    if not isinstance(block, dict):
+        return block
+    if isinstance(block.get("content"), str) and len(block["content"]) > _RESUME_ITEM_CAP:
+        block = {**block, "content": block["content"][:_RESUME_ITEM_CAP] + _ELIDED}
+    if isinstance(block.get("input"), dict):
+        shrunk = {
+            k: (
+                v[:_RESUME_ITEM_CAP] + _ELIDED
+                if isinstance(v, str) and len(v) > _RESUME_ITEM_CAP
+                else v
+            )
+            for k, v in block["input"].items()
+        }
+        if shrunk != block["input"]:
+            block = {**block, "input": shrunk}
+    return block
+
+
 def _shrink_stale_output(message: dict[str, Any]) -> dict[str, Any]:
-    """A copy of ``message`` with oversized (stale) tool output cut to its head."""
+    """A copy of ``message`` with oversized tool call inputs/outputs cut to their head."""
     content = message.get("content")
     if isinstance(content, str) and len(content) > _RESUME_ITEM_CAP:
         return {**message, "content": content[:_RESUME_ITEM_CAP] + _ELIDED}
     if isinstance(content, list):
-        blocks = [
-            {**block, "content": block["content"][:_RESUME_ITEM_CAP] + _ELIDED}
-            if isinstance(block, dict)
-            and isinstance(block.get("content"), str)
-            and len(block["content"]) > _RESUME_ITEM_CAP
-            else block
-            for block in content
-        ]
+        blocks = [_shrink_block(block) for block in content]
         if blocks != content:
             return {**message, "content": blocks}
     return message
