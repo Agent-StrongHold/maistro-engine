@@ -84,6 +84,24 @@ def extract_features(
     }
 
 
+def explain_prediction(
+    features: dict[str, float], weights: dict[str, float]
+) -> list[dict[str, Any]]:
+    """Glass-box decomposition: how much did each feature contribute to p?
+
+    Returns a list of ``{feature, value, weight, contribution}`` sorted by
+    absolute contribution. ``contribution = weight * value`` — the signed term
+    in the weighted sum before the sigmoid. The operator sees exactly WHY Ralph
+    predicted p (which features pushed it up, which pushed it down).
+    """
+    items = []
+    for name, val in features.items():
+        w = weights.get(name, 0.0)
+        items.append({"feature": name, "value": val, "weight": w, "contribution": w * val})
+    items.sort(key=lambda x: abs(x["contribution"]), reverse=True)
+    return items
+
+
 @dataclass
 class PendingReview:
     """One flagged-and-reverted promotion, queued for a human decision."""
@@ -185,7 +203,10 @@ class RlphdStateStore:
         from maistro.security.sentinel.rlphd import update_theta
 
         model = self.model_for(action_class)
-        updated = model.update(features, decision, predicted_p)
+        # Pass theta so the weight step scales with the confidence gap |p - theta|
+        # (confident-wrong predictions teach the most); theta itself drifts via
+        # update_theta below.
+        updated = model.update(features, decision, predicted_p, theta=theta)
         self._models[action_class] = updated
         new_theta = update_theta(
             theta,
@@ -211,6 +232,24 @@ def flag_for_review(
     (flagged_dir / f"{stem}.json").write_text(review.to_json(), encoding="utf-8")
 
 
+def save_kept_review(
+    kept_dir: Path,
+    review: PendingReview,
+    patch_text: str,
+) -> None:
+    """Persist a review record for an auto-KEPT promotion (p >= theta).
+
+    Without this, the features/predicted_p/theta are only in logs and a human
+    cannot override the auto-keep or feed their decision back to RLPHD. The
+    ``kept/`` directory parallels ``flagged/`` — same shape (.patch + .json per
+    sha), resolved the same way via ``resolve_review``.
+    """
+    kept_dir.mkdir(parents=True, exist_ok=True)
+    stem = review.sha[:12]
+    (kept_dir / f"{stem}.patch").write_text(patch_text, encoding="utf-8")
+    (kept_dir / f"{stem}.json").write_text(review.to_json(), encoding="utf-8")
+
+
 def load_pending_reviews(flagged_dir: Path) -> list[PendingReview]:
     """Every flagged item that hasn't yet been resolved (no matching
     ``.decision.json`` sidecar)."""
@@ -227,6 +266,13 @@ def load_pending_reviews(flagged_dir: Path) -> list[PendingReview]:
             out.append(PendingReview.from_json(meta_file.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError, TypeError):
             continue
+    return out
+
+
+def load_kept_reviews(kept_dir: Path) -> list[PendingReview]:
+    """Auto-kept promotions (p >= theta) that haven't been human-reviewed yet.
+    Same shape as load_pending_reviews but reads from the ``kept/`` directory."""
+    return load_pending_reviews(kept_dir)
     return out
 
 

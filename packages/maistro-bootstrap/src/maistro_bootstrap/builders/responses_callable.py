@@ -275,6 +275,12 @@ class LiteLLMCallable:
         # explicit temperature outright, so __call__ sends one or the other, never
         # both — this takes priority when set.
         self.reasoning_effort = reasoning_effort
+        # Router-agnostic rate-limit pacing state (updated from response headers).
+        # See docs/model-rate-limit-headers.md — stays just under the provider
+        # ceiling so we never 429-storm (which trips abuse revocation).
+        self._rate_remaining_tokens: float | None = None
+        self._rate_limit_tokens: float | None = None
+        self._rate_remaining_reqs: float | None = None
 
     def _is_configured(self) -> bool:
         return bool(_base_url() and _api_key())
@@ -301,6 +307,10 @@ class LiteLLMCallable:
             "model": self.model,
             "messages": _to_openai_messages(messages),
             "max_tokens": max_tokens,
+            # RSI/evolve must never get cached responses — the agent's workspace
+            # state changes every turn, so a cache hit returns stale tool output
+            # that doesn't match the files the agent just wrote/read.
+            "cache": {"no-cache": True, "no-store": True},
         }
         # reasoning_effort and temperature are mutually exclusive on reasoning
         # models (sending both 400s), so prefer reasoning_effort when set and
@@ -326,14 +336,93 @@ class LiteLLMCallable:
             ]
             body["tool_choice"] = "auto"
 
-        resp = httpx.post(
-            f"{_base_url()}/v1/chat/completions",
-            json=body,
-            headers={"Authorization": f"Bearer {_api_key()}"},
-            timeout=self.timeout,
-        )
-        if resp.status_code >= 400:
-            raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
+        # Router-agnostic rate-limit pacing: stay just under the provider
+        # ceiling (reads llm_provider-* headers forwarded by the router;
+        # works behind any router, not just LiteLLM). Throttles before calls
+        # predicted to cross; backs off on 429 instead of tight-looping.
+        import time as _time
+
+        for _attempt in range(4):  # 1 try + up to 3 429-retries
+            if self._rate_remaining_reqs is not None and self._rate_remaining_reqs <= 1:
+                logger.info(
+                    "rate_pacer throttle: %.0f reqs left, waiting 60s for window",
+                    self._rate_remaining_reqs,
+                )
+                _time.sleep(60.0)
+            elif (
+                self._rate_limit_tokens
+                and self._rate_remaining_tokens is not None
+                and self._rate_remaining_tokens < 0.10 * self._rate_limit_tokens
+            ):
+                logger.info(
+                    "rate_pacer throttle: %.0f tokens left (limit %.0f), waiting 60s",
+                    self._rate_remaining_tokens,
+                    self._rate_limit_tokens,
+                )
+                _time.sleep(60.0)
+
+            resp = httpx.post(
+                f"{_base_url()}{os.environ.get('LLM_CHAT_PATH', '/v1/chat/completions')}",
+                json=body,
+                headers={"Authorization": f"Bearer {_api_key()}"},
+                timeout=self.timeout,
+            )
+
+            # observe: parse upstream rate-limit headers (llm_provider-* = real)
+            for attr, hdrs in [
+                (
+                    "_rate_remaining_tokens",
+                    [
+                        "llm_provider-x-ratelimit-remaining-tokens-minute",
+                        "llm_provider-x-ratelimit-remaining-tokens",
+                        "x-ratelimit-remaining-tokens",
+                    ],
+                ),
+                (
+                    "_rate_limit_tokens",
+                    [
+                        "llm_provider-x-ratelimit-limit-tokens-minute",
+                        "llm_provider-x-ratelimit-limit-tokens",
+                        "x-ratelimit-limit-tokens",
+                    ],
+                ),
+                (
+                    "_rate_remaining_reqs",
+                    [
+                        "llm_provider-x-ratelimit-remaining-req-minute",
+                        "llm_provider-x-ratelimit-remaining-requests-minute",
+                        "llm_provider-x-ratelimit-remaining-requests",
+                        "x-ratelimit-remaining-requests",
+                    ],
+                ),
+            ]:
+                for h in hdrs:
+                    raw = getattr(resp, "headers", {}).get(h) if hasattr(resp, "headers") else None
+                    if raw:
+                        try:
+                            setattr(self, attr, float(raw))
+                        except ValueError:
+                            pass
+                        break
+
+            if resp.status_code == 429:
+                ra = getattr(resp, "headers", {}).get("retry-after", "60") if hasattr(resp, "headers") else "60"
+                try:
+                    wait = min(float(ra), 120.0)
+                except ValueError:
+                    wait = 60.0
+                logger.warning(
+                    "rate_pacer 429, backing off %.0fs (attempt %d/4)", wait, _attempt + 1
+                )
+                _time.sleep(wait)
+                continue
+            if resp.status_code >= 400:
+                raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
+            break
+        else:
+            raise RuntimeError(
+                f"LiteLLM gateway 429: exhausted retries. Last: {resp.text[:500]}"
+            )
 
         data = resp.json()
         choice = data["choices"][0]

@@ -624,37 +624,61 @@ def _run(args: argparse.Namespace) -> int:
 
 
 def _review(args: argparse.Namespace) -> int:
-    from maistro_rsi.promotion_review import load_pending_reviews, resolve_review
+    from maistro_rsi.promotion_review import (
+        load_kept_reviews,
+        load_pending_reviews,
+        resolve_review,
+    )
 
     report_dir = Path(args.report_dir).expanduser()
     flagged_dir = report_dir / "flagged"
+    kept_dir = report_dir / "kept"
 
     if args.review_action == "list":
         pending = load_pending_reviews(flagged_dir)
-        if not pending:
+        kept = load_kept_reviews(kept_dir)
+        if not pending and not kept:
             print("No promotions pending review.")
             return 0
-        for r in pending:
-            print(
-                f"{r.sha[:12]}  cycle={r.index:<4} kind={r.kind:<12} target={r.target}\n"
-                f"    predicted_p={r.predicted_p:.3f} theta={r.theta:.3f}  {r.note}"
-            )
+        if pending:
+            print(f"=== FLAGGED (auto-reverted, need your ruling) — {len(pending)} ===")
+            for r in pending:
+                print(
+                    f"  {r.sha[:12]}  cycle={r.index:<4} kind={r.kind:<12} target={r.target}\n"
+                    f"    predicted_p={r.predicted_p:.3f} theta={r.theta:.3f}  {r.note}"
+                )
+        if kept:
+            print(f"\n=== KEPT (auto-approved, review to override) — {len(kept)} ===")
+            for r in kept:
+                print(
+                    f"  {r.sha[:12]}  cycle={r.index:<4} kind={r.kind:<12} target={r.target}\n"
+                    f"    predicted_p={r.predicted_p:.3f} theta={r.theta:.3f}  {r.note}"
+                )
+        print(
+            "\nTo decide: python -m maistro_rsi review approve <sha> --report-dir <dir>\n"
+            "            python -m maistro_rsi review deny <sha> --report-dir <dir>"
+        )
         return 0
 
     sha = args.sha
     decision: Literal["approve", "deny"] = "approve" if args.review_action == "approve" else "deny"
-    try:
-        review = resolve_review(
-            flagged_dir, report_dir / "export", report_dir / "rlphd_state.json", sha, decision
-        )
-    except FileNotFoundError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    verb = "approved — patch re-queued for the next harvest" if decision == "approve" else "denied"
-    print(
-        f"{review.sha[:12]} ({review.target}) {verb}. RLPHD model updated for {review.action_class}."
-    )
-    return 0
+    # resolve from flagged OR kept dir — the review data has the same shape
+    for d in (flagged_dir, kept_dir):
+        if (d / f"{sha[:12]}.json").is_file():
+            try:
+                review = resolve_review(
+                    d, report_dir / "export", report_dir / "rlphd_state.json", sha, decision
+                )
+            except FileNotFoundError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            verb = "approved — patch re-queued for the next harvest" if decision == "approve" else "denied"
+            print(
+                f"{review.sha[:12]} ({review.target}) {verb}. RLPHD model updated for {review.action_class}."
+            )
+            return 0
+    print(f"error: no review found for sha {sha[:12]} in {flagged_dir} or {kept_dir}", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":
