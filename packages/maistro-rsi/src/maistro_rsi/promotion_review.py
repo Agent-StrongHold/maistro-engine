@@ -94,7 +94,9 @@ def explain_prediction(
     in the weighted sum before the sigmoid. The operator sees exactly WHY Ralph
     predicted p (which features pushed it up, which pushed it down).
     """
-    items = []
+    # Annotated, not inferred: the mixed str/float values would otherwise make
+    # this list[dict[str, object]] and abs(x["contribution"]) untypeable.
+    items: list[dict[str, Any]] = []
     for name, val in features.items():
         w = weights.get(name, 0.0)
         items.append({"feature": name, "value": val, "weight": w, "contribution": w * val})
