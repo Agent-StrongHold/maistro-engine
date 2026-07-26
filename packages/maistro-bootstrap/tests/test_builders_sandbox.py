@@ -133,6 +133,62 @@ def test_env_does_not_contain_os_environ(
     assert "super-secret-value" not in out
 
 
+def test_env_points_temp_inside_sandbox_on_windows(
+    tmp_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex review (#256): forwarding the HOST's real TEMP/TMP let an
+    agent-authored script escape the sandbox via `tempfile` at runtime —
+    invisible to _check_paths, which only scans the literal command string.
+    TEMP/TMP must resolve INSIDE the sandbox root instead of being inherited."""
+    import maistro_bootstrap.builders.sandbox as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod.os, "name", "nt")
+    monkeypatch.setenv("TEMP", r"C:\Users\real-user\AppData\Local\Temp")
+    monkeypatch.setenv("TMP", r"C:\Users\real-user\AppData\Local\Temp")
+
+    env = SandboxedShell(tmp_root)._env()
+
+    # String comparisons, not Path(env["TEMP"]) — os.name is faked to "nt" for
+    # this test, and Python 3.13's pathlib refuses to instantiate a WindowsPath
+    # on a real POSIX system (a CI-only failure this exact test exists to
+    # avoid: it only ran on Windows locally, where the mismatch is invisible).
+    sandboxed_tmp = str(tmp_root.resolve() / ".sandbox-tmp")
+    assert env["TEMP"] == sandboxed_tmp
+    assert env["TMP"] == sandboxed_tmp
+    assert (tmp_root / ".sandbox-tmp").is_dir()  # created, not just named
+    assert env["TEMP"] != r"C:\Users\real-user\AppData\Local\Temp"
+
+
+def test_env_has_no_windows_only_keys_on_posix(
+    tmp_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import maistro_bootstrap.builders.sandbox as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod.os, "name", "posix")
+
+    env = SandboxedShell(tmp_root)._env()
+
+    assert "TEMP" not in env
+    assert "TMP" not in env
+
+
+@pytest.mark.skipif(os.name != "nt", reason="proves the Windows-only escape is closed")
+def test_tempfile_writes_stay_inside_sandbox_on_windows(
+    shell: SandboxedShell, tmp_root: Path
+) -> None:
+    """The concrete attack Codex described: a relative `python script.py` with
+    no absolute path anywhere in the command, where the script itself calls
+    `tempfile` at runtime. Must land inside the sandbox root, not the host's
+    real Temp directory that a naive TEMP/TMP forward would have handed it."""
+    (tmp_root / "probe.py").write_text(
+        "import tempfile\np = tempfile.mktemp()\nopen(p, 'w').write('escaped')\nprint(p)\n",
+        encoding="utf-8",
+    )
+    out = shell.run(f"{_PY} probe.py")
+    written_path = Path(out.strip().splitlines()[-1])
+    assert written_path.resolve().is_relative_to(tmp_root.resolve())
+
+
 def test_run_argv_blocks_absolute_path_escape(shell: SandboxedShell) -> None:
     with pytest.raises(SandboxEscapeError):
         shell.run_argv(["cat", "/etc/passwd"])
