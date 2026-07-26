@@ -16,8 +16,10 @@ alongside it) rather than reimplementing them:
 from __future__ import annotations
 
 import shutil
+import tempfile
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path as _Path
 
 import structlog
 
@@ -26,7 +28,7 @@ from maistro_evolve.tournament import EloTournament, GenomeBattle
 from maistro_evolve.types import EvalResult, PipelineGenome
 from maistro_rsi.benchmarks import RSI_BENCHMARKS
 from maistro_rsi.gateway import LlmCall, make_gateway_llm_call
-from maistro_rsi.protocols import ApplyPatchFn
+from maistro_rsi.protocols import ApplyPatchFn, MicroVmSandbox, WorkspaceProbeFn
 from maistro_rsi.quota_burn import QuotaBurnScheduler
 from maistro_rsi.sandbox.microvm import create_rsi_sandbox
 from maistro_rsi.selfbranch import (
@@ -40,12 +42,49 @@ logger = structlog.get_logger()
 
 DEFAULT_BENCHMARKS = ["swebench", "swebench_pro", "terminalbench"]
 
+# Not a hardcoded /tmp literal (bandit B108): resolved via tempfile.gettempdir()
+# so it honors $TMPDIR / the platform temp dir instead of assuming /tmp exists
+# and is safe to write into. Each cycle still creates a unique per-run_id
+# subdirectory beneath this root (see RsiCycle.run), so concurrent runs never
+# collide even though the root itself is shared.
+DEFAULT_WORKSPACE_ROOT = str(_Path(tempfile.gettempdir()) / "maistro-workspace" / "rsi")
+
+_PROBE_TIMEOUT_S = 300
+
+
+def _parse_probe_score(exit_code: int, output: str) -> float:
+    """Score a probe command: last output line as a float when it parses,
+    else 1.0/0.0 from the exit code."""
+    lines = [line.strip() for line in output.strip().splitlines() if line.strip()]
+    if lines:
+        try:
+            return float(lines[-1])
+        except ValueError:
+            pass
+    return 1.0 if exit_code == 0 else 0.0
+
+
+def probe_from_commands(
+    commands: dict[str, str], *, timeout: int = _PROBE_TIMEOUT_S
+) -> WorkspaceProbeFn:
+    """Build a workspace probe that runs each named shell command in the
+    checkout and scores it via :func:`_parse_probe_score`."""
+
+    async def _probe(sandbox: MicroVmSandbox, workspace: str) -> dict[str, float]:
+        scores: dict[str, float] = {}
+        for name, command in commands.items():
+            exit_code, output = await sandbox.exec(command, timeout=timeout)
+            scores[name] = _parse_probe_score(exit_code, output)
+        return scores
+
+    return _probe
+
 
 @dataclass
 class RsiCycleConfig:
     repo_url: str
     test_command: str
-    workspace_root: str = "/tmp/maistro-workspace/rsi"
+    workspace_root: str = DEFAULT_WORKSPACE_ROOT
     benchmarks: list[str] = field(default_factory=lambda: list(DEFAULT_BENCHMARKS))
     open_prs: bool = False
     base_branch: str = "main"
@@ -53,6 +92,12 @@ class RsiCycleConfig:
     # long-running loops would otherwise slowly fill the disk with one clone
     # per run_id that nothing ever deletes.
     keep_workspace: bool = False
+    # Differential workspace benchmarks: name → shell command run in the
+    # workspace before and after the patch. Score = the command's last output
+    # line parsed as a float, else 1.0/0.0 from its exit code. When set, these
+    # measured battles replace the stock genome benchmarks — the tournament
+    # then scores what the patch actually did to the checkout.
+    benchmark_commands: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -134,6 +179,11 @@ class RsiCycle:
                 self._config.test_command,
                 base_branch=self._config.base_branch,
             )
+            probe = (
+                probe_from_commands(self._config.benchmark_commands)
+                if self._config.benchmark_commands
+                else None
+            )
             branch_result = await run_self_branch_attempt(
                 sandbox,
                 workspace,
@@ -142,17 +192,11 @@ class RsiCycle:
                 open_pr=self._config.open_prs,
                 quarantine_check=self._quarantine_check,
                 model=model,
+                probe=probe,
             )
 
-            baseline_results = await self._harness.evaluate_genome(
-                baseline,
-                benchmarks=self._config.benchmarks,
-                llm_call=llm_call,
-            )
-            candidate_results = await self._harness.evaluate_genome(
-                candidate,
-                benchmarks=self._config.benchmarks,
-                llm_call=llm_call,
+            baseline_results, candidate_results = await self._score(
+                branch_result, baseline, candidate, llm_call
             )
 
             battles = [
@@ -200,3 +244,42 @@ class RsiCycle:
         )
 
         return result
+
+    async def _score(
+        self,
+        branch_result: SelfBranchResult,
+        baseline: PipelineGenome,
+        candidate: PipelineGenome,
+        llm_call: LlmCall | None,
+    ) -> tuple[list[EvalResult], list[EvalResult]]:
+        """Produce the (baseline, candidate) results the tournament battles over.
+
+        Preference order: the *differential workspace metrics* captured around
+        the patch (real evidence of what the change did to the checkout), and
+        only when no probes were configured, the stock genome benchmark suite —
+        which never sees the patch and is a much weaker signal (scored via
+        ``llm_call`` when one is available, so it's real rather than heuristic).
+        """
+        base_metrics = branch_result.baseline_metrics
+        cand_metrics = branch_result.candidate_metrics
+        if base_metrics is not None and cand_metrics is not None:
+            shared = [name for name in base_metrics if name in cand_metrics]
+            baseline_results = [
+                EvalResult(benchmark=name, score=base_metrics[name]) for name in shared
+            ]
+            candidate_results = [
+                EvalResult(benchmark=name, score=cand_metrics[name]) for name in shared
+            ]
+            return baseline_results, candidate_results
+
+        baseline_results = await self._harness.evaluate_genome(
+            baseline,
+            benchmarks=self._config.benchmarks,
+            llm_call=llm_call,
+        )
+        candidate_results = await self._harness.evaluate_genome(
+            candidate,
+            benchmarks=self._config.benchmarks,
+            llm_call=llm_call,
+        )
+        return baseline_results, candidate_results

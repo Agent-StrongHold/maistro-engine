@@ -55,3 +55,9 @@ class MicroVmSandbox(Protocol):
 # rather than reporting-only. Kept out of `selfbranch` so the git/sandbox
 # plumbing stays testable independent of any particular agent strategy.
 ApplyPatchFn = Callable[[MicroVmSandbox, str, str | None], Coroutine[Any, Any, None]]
+
+# Supplied by the RSI runner: measure the workspace's current state and return
+# named scores (e.g. {"lint": 1.0, "coverage": 87.4}). Run twice per attempt —
+# before and after the patch — so the tournament battles over the *differential*
+# evidence of what the change actually did, not a proxy that never saw it.
+WorkspaceProbeFn = Callable[[MicroVmSandbox, str], Coroutine[Any, Any, dict[str, float]]]

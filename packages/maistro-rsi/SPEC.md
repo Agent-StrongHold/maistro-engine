@@ -172,6 +172,8 @@ reasoned about independently of execution.
 | htr-5 | `best_node` returns the highest-scoring executed node — `None` while none have run — with deterministic tie-breaking (shallower depth, then earliest proposed). |
 | htr-6 | `pending` returns only OPEN nodes ordered so a node descending from a higher-scoring parent comes first (ties broken by recency), **excluding** any node whose lineage contains an abandoned ancestor (pruned branches never re-grow); `expandable_seeds` returns only EXPLORED nodes, most-promising first; `select_seed` returns the top seed or the root (if unexecuted), and raises `ValueError` if the root is abandoned and no explored branches exist. |
 | htr-7 | `distilled_insights(node_id)` returns the non-empty insights along that node's root-to-node lineage, oldest first and de-duplicated; called with no argument it follows the best node's lineage. This is the cumulative-not-local property: a node inherits every lesson on the path to it. |
+| htr-8 | `HypothesisTree.to_dict()` / `from_dict()` round-trip losslessly: statuses, scores, evidence, insights, artifacts, children, and priority order are preserved, and `pending()`, `best_node()`, `distilled_insights()`, and `summary()` return identical results on the restored tree. |
+| htr-9 | `from_dict` restores the private proposal counter to `max(order) + 1`, so `expand()` after a resume produces globally unique, correctly prioritized orderings — recency tie-breaks behave as if the process had never restarted. Restoring an empty tree or a `root_id` not among the nodes raises `ValueError`. |
 
 ---
 
@@ -192,3 +194,53 @@ coordinator importing the sandbox/git chain.
 | coordinator-3 | The `HtrContext` passed to the executor carries `distilled_insights` for the acted-on node's lineage, so a child attempt sees its ancestors' recorded lessons. |
 | coordinator-4 | Each executor `ExecutionReport` is recorded against its node (evidence, artifacts, insight), so after the run the tree's statuses/scores reflect every step and `CoordinatorResult.best` is the tree's best node. |
 | coordinator-5 | `report_from_cycle_result` maps an `RsiCycleResult` into an `ExecutionReport` — `tests_passed`/`benchmarks_won`/`battles`/`improved` evidence plus `diff`/`pr_url`/`run_id` artifacts — and importing `coordinator` does not import the runner/sandbox chain. |
+
+---
+
+## 9. Agent-backed apply_patch drivers (`apply_agents.py`)
+
+**Spec:** The RSI cycle's `apply_patch` seam (`ApplyPatchFn`) is agent-agnostic
+— any non-interactive CLI coding agent can fill it by editing the checkout
+in-sandbox. `command_apply_patch` is one generic driver, templated so it covers
+opencode (the default) or any future CLI agent, without hardcoding a specific
+tool. It is one option among several `apply_patch` drivers — `local_loop.py`'s
+`make_builders_apply_patch` (the native builders agent) is another, already
+real and already compatible with the same 3-arg protocol.
+
+| AC | Criterion |
+|----|-----------|
+| applyagents-1 | `command_apply_patch(prompt)` renders `template` with the prompt shlex-quoted, so shell metacharacters in the hypothesis/prompt text cannot break out of their argument position. |
+| applyagents-2 | The rendered command is executed via `sandbox.exec`, not a bare shell call outside the sandbox — the agent's edits happen inside the isolation boundary. |
+| applyagents-3 | A non-zero exit from the agent command raises `ApplyPatchError` (not a silently-empty patch), carrying the command's exit code and output tail. |
+| applyagents-4 | When `template` contains a `{model}` placeholder, the per-cycle `model` argument (threaded through `ApplyPatchFn`'s third parameter) is substituted, shlex-quoted; when `model` is `None` it substitutes an empty string rather than the literal `"None"`. |
+
+---
+
+## 10. Autonomous experimentation run (`autorun.py`)
+
+**Spec:** This is the *exploratory auto-experimentation* variant of RSI — a
+distinct mode from the directed cleanup loop (`local_loop.py`/`cli.py`): where
+that loop ratchets one baseline forward, `autorun` grows a `HypothesisTree`
+of *candidate experiments*, each measured against differential workspace
+probes, with the Elo tournament as the judge of what survives. `apply_patch`
+is pluggable — opencode by default, but any factory (including
+`make_builders_apply_patch`) can drive the experiment instead. Every cycle's
+outcome, win or lose, is appended to an audit log so the run is inspectable
+after the fact, and the quarantine gate (Warden, plus adversarial review when
+configured) still governs whether a winning experiment may leave the sandbox
+as a PR.
+
+| AC | Criterion |
+|----|-----------|
+| autorun-1 | `build_executor` wires each hypothesis's prompt into an `ApplyPatchFn` via `config.apply_patch_factory` when supplied, else the opencode-template default — so the driver is swappable without changing the coordinator/executor plumbing. |
+| autorun-2 | `build_executor`'s `RsiCycle` is always constructed with a `quarantine_check` backed by `quarantine_scan` + the supplied (or default) `Warden` — an autonomous run is never unquarantined. |
+| autorun-3 | `run_autonomous` pre-expands every `AutorunConfig.seed_hypotheses` onto the tree before the first coordinator step, so caller-supplied experiment ideas run before the proposer starts inventing its own. |
+| autorun-4 | `run_autonomous` stops issuing new cycles once `max_wall_clock_s` has elapsed (checked between cycles only — a running cycle always finishes), and `CoordinatorResult.steps` reflects exactly the cycles that ran. |
+| autorun-5 | `make_llm_proposer` falls back to `template_proposer` (never raises) when the LiteLLM call fails or returns empty content — a mis-configured/unreachable gateway degrades the loop to deterministic refinement instead of crashing the run. |
+| autorun-6 | `AuditLog.record` appends one JSON object per cycle (hypothesis, run id, tests_passed, benchmarks_won, quarantine verdict + flags, PR url) to its file, and never overwrites a prior record — the trail is append-only. |
+| autorun-7 | The tree snapshot is written after **every** cycle with an atomic write (temp file + `os.replace`) — a crash or kill mid-run loses at most the in-flight cycle, and a crash mid-*write* can never leave a truncated snapshot. |
+| autorun-8 | On start, an existing snapshot is loaded and continued (seeds are expanded only on a NEW tree — never duplicated on resume); a snapshot whose root hypothesis differs from the configured one is refused with a clear `ValueError`; `fresh=True` (CLI `--fresh`) explicitly starts a new tree. |
+| autorun-9 | A run stopped by the wall-clock budget resumes where it left off: the next `run_autonomous` over the same tree path continues the same tree rather than re-exploring from the root — the budget guard no longer discards work. |
+| autorun-10 | Every executed cycle appends its node's distilled insight to the `LearningsLedger` (repo url, run id, hypothesis, insight, improved, tests_passed, score) — append-only, one JSON line per cycle. |
+| autorun-11 | **Retained learnings:** prior insights recalled from the ledger are injected into the proposer and experiment-prompt context on every start — including a `fresh` run with a brand-new tree — with insights from experiments that `improved` preferred first, recency breaking ties, duplicates dropped, and repo-scoped filtering. Learnings survive tree disposal. |
+| autorun-12 | The ledger is corruption-tolerant: corrupt or partial lines are skipped with a warning (never raise) and a missing file reads as an empty ledger — a damaged memory degrades recall, never the run. |
