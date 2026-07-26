@@ -672,12 +672,18 @@ def _review(args: argparse.Namespace) -> int:
             except FileNotFoundError as exc:
                 print(f"error: {exc}", file=sys.stderr)
                 return 2
-            verb = "approved — patch re-queued for the next harvest" if decision == "approve" else "denied"
+            verb = (
+                "approved — patch re-queued for the next harvest"
+                if decision == "approve"
+                else "denied"
+            )
             print(
                 f"{review.sha[:12]} ({review.target}) {verb}. RLPHD model updated for {review.action_class}."
             )
             return 0
-    print(f"error: no review found for sha {sha[:12]} in {flagged_dir} or {kept_dir}", file=sys.stderr)
+    print(
+        f"error: no review found for sha {sha[:12]} in {flagged_dir} or {kept_dir}", file=sys.stderr
+    )
     return 2
 
 

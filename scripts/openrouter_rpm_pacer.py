@@ -19,13 +19,13 @@ headroom-aware routing backs off as the daily budget drains. Run it periodically
 Config (env, with a .env fallback): LITELLM_BASE_URL, LITELLM_MASTER_KEY,
 OPENROUTER_MANAGE_KEY. Override the .env path with --env-file.
 """
+
 from __future__ import annotations
 
 import argparse
-import math
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -64,7 +64,7 @@ def _env(key: str) -> str | None:
 
 def free_usage_today(mgmt_key: str) -> int:
     """Sum today's free-model request count (free models report $0 usage)."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     r = httpx.get(
         f"https://openrouter.ai/api/v1/analytics?date={today}",
         headers={"Authorization": f"Bearer {mgmt_key}"},
@@ -80,7 +80,7 @@ def free_usage_today(mgmt_key: str) -> int:
 
 
 def minutes_to_utc_midnight() -> float:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
     return max(1.0, (midnight - now).total_seconds() / 60.0)
 
@@ -140,7 +140,7 @@ def main() -> int:
         rpm = target_rpm(usage)
         mins = minutes_to_utc_midnight()
         deps = openrouter_deployments(base, llm_key)
-        ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        ts = datetime.now(UTC).isoformat(timespec="seconds")
         print(
             f"[{ts}] free usage today={usage}/{RPD} | mins->midnight={mins:.0f} | "
             f"target rpm={rpm} | OR deployments={len(deps)}"
@@ -162,7 +162,7 @@ def main() -> int:
     while True:
         try:
             step()
-        except Exception as e:  # noqa: BLE001 - a transient API hiccup must not kill the pacer
+        except Exception as e:
             print(f"[error] {e}", file=sys.stderr)
         import time
 

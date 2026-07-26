@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import UTC
 from pathlib import Path
 from typing import Literal
 
@@ -62,9 +63,13 @@ def available_models() -> dict:
     """Models the operator can pick from in the UI."""
     return {
         "models": [
-            {"id": "glm-4.7", "label": "GLM-4.7 (Sonnet-level, 1× quota)", "tier": "open"},
-            {"id": "glm-5.2", "label": "GLM-5.2 (Opus-level, 2× quota)", "tier": "premium"},
-            {"id": "oss120-cerebras", "label": "Cerebras gpt-oss-120b (free, daily cap)", "tier": "free"},
+            {"id": "glm-4.7", "label": "GLM-4.7 (Sonnet-level, 1x quota)", "tier": "open"},
+            {"id": "glm-5.2", "label": "GLM-5.2 (Opus-level, 2x quota)", "tier": "premium"},
+            {
+                "id": "oss120-cerebras",
+                "label": "Cerebras gpt-oss-120b (free, daily cap)",
+                "tier": "free",
+            },
             {"id": "gemini-flash", "label": "Gemini Flash (free, 5 RPM)", "tier": "free"},
         ]
     }
@@ -100,7 +105,9 @@ async def start_run(body: StartRunBody) -> dict:
     if body.mode not in ("cleanup", "greenfield"):
         raise HTTPException(status_code=400, detail="mode must be 'cleanup' or 'greenfield'")
     if body.mode == "cleanup" and not (body.repo_path and body.test_command):
-        raise HTTPException(status_code=400, detail="cleanup mode requires repo_path + test_command")
+        raise HTTPException(
+            status_code=400, detail="cleanup mode requires repo_path + test_command"
+        )
     config = {
         "repo_path": body.repo_path,
         "test_command": body.test_command,
@@ -202,23 +209,21 @@ def decide_review(run_id: str, sha: str, body: ReviewDecisionBody) -> dict:
                 for k in set(before_weights) | set(after_weights)
             },
             # explain the ORIGINAL prediction (why Ralph kept/reverted)
-            "prediction_explanation": explain_prediction(
-                review_data["features"], before_weights
-            ),
+            "prediction_explanation": explain_prediction(review_data["features"], before_weights),
         }
     except Exception:
         pass
 
     # mark resolved + store reason
     decision_file = review_dir / f"{sha[:12]}.decision.json"
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     decision_file.write_text(
         json.dumps(
             {
                 "decision": body.decision,
                 "reason": body.reason,
-                "resolved_at": datetime.now(timezone.utc).isoformat(),
+                "resolved_at": datetime.now(UTC).isoformat(),
             },
             indent=2,
         ),
@@ -272,7 +277,11 @@ def _load_reviews(directory: Path) -> list[dict]:
         try:
             data = json.loads(meta_file.read_text(encoding="utf-8"))
             data["resolved"] = resolved
-            data["decision"] = json.loads(decision_file.read_text(encoding="utf-8")).get("decision") if resolved else None
+            data["decision"] = (
+                json.loads(decision_file.read_text(encoding="utf-8")).get("decision")
+                if resolved
+                else None
+            )
             # include the patch diff for preview
             patch_file = directory / f"{data['sha'][:12]}.patch"
             if patch_file.is_file():
@@ -317,7 +326,9 @@ def _create_pr_from_patch(
             timeout=60,
         )
         title = f"RSI: {Path(target).name} ({short_sha})"
-        body_text = f"Self-improvement patch for `{target}`.\n\nComposite: {review_data.get('note', 'N/A')}"
+        body_text = (
+            f"Self-improvement patch for `{target}`.\n\nComposite: {review_data.get('note', 'N/A')}"
+        )
         pr_result = subprocess.run(
             ["gh", "pr", "create", "--title", title, "--body", body_text, "--label", "rsi"],
             cwd=repo_path,

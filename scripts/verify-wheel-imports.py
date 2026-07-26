@@ -61,7 +61,6 @@ CORE_PUBLIC_SURFACE = [
     "maistro.credentials",
     "maistro.events",
     "maistro.graph",
-    "maistro.identity",
     "maistro.memory",
     "maistro.ontology",
     "maistro.orchestrator",
@@ -106,8 +105,12 @@ class Package:
         return self.surface or [self.root]
 
 
-# maistro-core's `cli` subpackage is intentionally absent from the bare surface:
-# typer/rich live in the `tui` extra. It is still swept in `all` mode.
+# Two maistro-core subpackages are intentionally absent from the bare surface
+# above, because they are gated behind extras. Both are still swept in `all` mode,
+# so neither is exempt from the gate — only from the no-extras tier:
+#   maistro.cli       typer/rich  -> `tui` extra
+#   maistro.identity  bip-utils   -> `identity` extra (coincurve has no wheel for
+#                                    the Python the API image ships)
 PACKAGES = [
     Package("maistro-core", "maistro", CORE_PUBLIC_SURFACE, widest_extra="all"),
     Package("maistro-canvas", "maistro_canvas", widest_extra="export"),

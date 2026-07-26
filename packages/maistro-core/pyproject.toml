@@ -17,11 +17,6 @@ dependencies = [
     "pyyaml>=6.0,<7",
     "cryptography>=48.0.1,<49",
     "argon2-cffi>=23.1,<25",
-    # Ed25519 signing + BIP-39/BIP-32 derivation for maistro.identity. These are
-    # unguarded module-level imports in identity/__init__.py, so they are hard
-    # runtime deps — `import maistro.identity` fails without them.
-    "pynacl>=1.5,<2",
-    "bip-utils>=2.9,<3",
     # Warden's pattern engine (security/warden/patterns.py) prefers `regex` over
     # stdlib `re` for its match timeout. Declared so the timeout path is always
     # reachable rather than silently degrading to the `re` fallback.
@@ -60,6 +55,20 @@ builders = [
 sqlite = [
     "aiosqlite>=0.20",
 ]
+# BIP39/BIP32 HD root of trust for maistro.identity (ADR-021): Ed25519 signing
+# plus secp256k1 derivation for the BTC/ETH coin types.
+#
+# An extra rather than a base dependency, reluctantly. bip-utils requires
+# coincurve, a secp256k1 C extension whose newest release (21.0.0) publishes
+# wheels only for cp39-cp313 and whose sdist build is broken against the cffi
+# that Python 3.14 resolves. The API image's base (cgr.dev/chainguard/python,
+# Wolfi) is 3.14-only, so a base dependency here makes that image unbuildable.
+# maistro.identity raises an ImportError naming this extra when it is missing —
+# loud and actionable, not a silent fallback.
+identity = [
+    "pynacl>=1.5,<2",
+    "bip-utils>=2.9,<3",
+]
 # ASGI framework adapters — auth/middleware.py (FastAPI) and
 # observability/middleware.py (Starlette) import these at module level. Kept out
 # of the base dependencies so importing maistro.memory or maistro.router does not
@@ -69,7 +78,7 @@ asgi = [
     "starlette>=0.40,<2",
 ]
 all = [
-    "maistro-core[llm,sandbox,observability,tui,builders,sqlite,asgi]",
+    "maistro-core[llm,sandbox,observability,tui,builders,sqlite,asgi,identity]",
 ]
 dev = [
     "pytest>=8.3",

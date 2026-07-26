@@ -37,7 +37,7 @@ import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from maistro.security.sentinel.rlphd import COLD_START_THETA, RlphdModel
 from maistro_evolve.improvement import ImprovementKind
@@ -273,7 +273,6 @@ def load_kept_reviews(kept_dir: Path) -> list[PendingReview]:
     """Auto-kept promotions (p >= theta) that haven't been human-reviewed yet.
     Same shape as load_pending_reviews but reads from the ``kept/`` directory."""
     return load_pending_reviews(kept_dir)
-    return out
 
 
 def resolve_review(

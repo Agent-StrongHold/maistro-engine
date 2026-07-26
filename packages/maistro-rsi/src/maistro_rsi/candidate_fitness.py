@@ -129,9 +129,7 @@ def _uncollectable_tests(
     reasons: list[str] = []
     for rel in test_files:
         norm = rel.replace("\\", "/")
-        if all_roots and not any(
-            norm == root or norm.startswith(root + "/") for root in all_roots
-        ):
+        if all_roots and not any(norm == root or norm.startswith(root + "/") for root in all_roots):
             reasons.append(f"{rel}: outside configured test roots ({', '.join(valid_roots)})")
             continue
         if not (cwd / rel).is_file():
