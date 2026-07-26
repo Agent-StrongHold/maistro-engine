@@ -132,6 +132,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "provider is fully rate-limited.",
     )
     run.add_argument(
+        "--local-fallback-model",
+        default="",
+        help="Never-idle FLOOR: a gateway alias served from local hardware, used only "
+        "when the whole emergency pool is benched too. Local hardware has no rate limit "
+        "to hit, so it keeps a quota-drained run alive. Empty ⇒ no local tier.",
+    )
+    run.add_argument(
         "--scout",
         action="store_true",
         help="Before competing, one model reads the target file and names the "
@@ -603,6 +610,7 @@ def _run(args: argparse.Namespace) -> int:
         evolve_goal=args.evolve_goal,
         roster_size=args.roster_size,
         emergency_models=[m.strip() for m in args.emergency_models.split(",") if m.strip()],
+        local_fallback_model=args.local_fallback_model.strip(),
     )
     print(
         f"RSI local loop -> clone of {repo} in {work_root} ({args.cycles} cycles, model={args.model or 'env default'})"

@@ -170,6 +170,16 @@ _TRANSIENT_ERROR_MARKERS = (
     "insufficient credit",
     "overloaded",
     "503",
+    # An UNREACHABLE endpoint is capacity, not fitness — observed live when the
+    # TabbyAPI process behind a local model died and the gateway surfaced
+    # "InternalServerError: OpenAIException - Connection error."; the cycle
+    # errored instead of benching the model, so never-idle never got to field
+    # a healthy provider. Covers litellm's APIConnectionError spelling too.
+    "connection error",
+    "connectionerror",
+    "connection refused",
+    "502",
+    "504",
 )
 
 
@@ -382,6 +392,31 @@ class LocalSandbox:
 # ---------------------------------------------------------------------------
 
 
+def _resume_transcript(result: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The messages to continue from after `execute_turn`, or None when done.
+
+    "max_turns" is TurnRunner's internal tool-budget stop, not the model
+    finishing: the agent was cut off MID-WORK, with its whole tool transcript
+    in ``result["messages"]``. Resuming from that transcript keeps the work's
+    context (it ends with unanswered tool results, so the model just carries
+    on). The one thing this must never do is echo the "(max turns reached)"
+    sentinel back as assistant speech — a model shown that as its own words
+    believes it announced running out of budget and quits (observed live: it
+    hallucinated a "maximum number of turns (100)" and a "no git or shell
+    commands" rule to justify stopping, and the cycle ended as "agent made no
+    change"). Any other stop_reason means the agent chose to finish: None.
+    """
+    if result.get("stop_reason") != "max_turns":
+        return None
+    transcript = result.get("messages")
+    if not isinstance(transcript, list) or not transcript:
+        # A runner that doesn't hand back its transcript (injected fakes, older
+        # TurnRunner) leaves nothing safe to resume from — end the cycle rather
+        # than poison the context with the sentinel.
+        return None
+    return list(transcript)
+
+
 def make_builders_apply_patch(
     objective: str = _DEFAULT_OBJECTIVE,
     *,
@@ -397,8 +432,11 @@ def make_builders_apply_patch(
 
     Returns an async callable ``apply(sandbox, workspace)`` that points the
     builders coding agent (the same `TurnRunner` engine behind `maistro
-    builders`) at ``workspace`` and asks it to carry out ``objective``. Up to
-    ``max_agent_turns`` turns run so a single cycle can do multi-step work.
+    builders`) at ``workspace`` and asks it to carry out ``objective``.
+    ``max_agent_turns`` is the number of inner tool budgets a cycle may spend:
+    each `execute_turn` runs up to `AgentLoopConfig.max_turns` tool calls, and
+    when that budget runs out mid-work the next turn RESUMES from the full
+    transcript (see `_resume_transcript`) instead of restarting cold.
 
     ``isolation`` selects the BuilderSandbox:
       - ``"local"``    — `LocalWorktreeSandbox`, edits run on the host (fast).
@@ -442,19 +480,20 @@ def make_builders_apply_patch(
         ]
         for turn in range(max_agent_turns):
             result = await runner.execute_turn(messages=messages)
-            content = result.get("content", "")
             await logger.ainfo(
                 "rsi_local_agent_turn",
                 turn=turn + 1,
                 stop_reason=result.get("stop_reason"),
-                content_preview=str(content)[:160],
+                content_preview=str(result.get("content", ""))[:160],
             )
-            # execute_turn resolves its own internal tool loop; a non-tool_use
-            # stop means the agent considers this objective done.
-            if result.get("stop_reason") not in ("tool_use", "max_turns"):
+            # execute_turn resolves its own internal tool loop (it never
+            # returns "tool_use"); the only continue case is an exhausted
+            # inner tool budget, resumed with the full transcript so the agent
+            # keeps its context — never the "(max turns reached)" sentinel.
+            resumed = _resume_transcript(result)
+            if resumed is None:
                 break
-            messages.append({"role": "assistant", "content": content})
-            messages.append({"role": "user", "content": "Continue if useful, otherwise stop."})
+            messages = resumed
 
     async def apply(
         sandbox: MicroVmSandbox, workspace: str, cycle_model: str | None = None
@@ -568,6 +607,17 @@ class LocalRsiConfig:
     # provider here (cerebras/groq vs openrouter) is what rescues a run whose
     # roster provider is fully rate-limited.
     emergency_models: list[str] = field(default_factory=list)
+    # NEVER-IDLE FLOOR: a model served from local hardware (e.g. TabbyAPI/ExLlamaV3
+    # on this box's GPU), consulted only when the ENTIRE cross-provider emergency
+    # pool is benched too. Local hardware has no RPM/RPD/credit to exhaust, so it
+    # is the one tier that cannot rate-limit — it keeps cadence, lineage and RLPHD
+    # state alive through a quota outage that would otherwise stall the run for
+    # hours. Deliberately NOT a member of `emergency_models`: that pool ranks by
+    # reliability (defaulting to 1.0 for an unseen model) and a local model never
+    # benches, so inside the pool it would out-rank real cloud models and quietly
+    # become PRIMARY — the opposite of a last resort. Cloud-first has to hold by
+    # construction, not by reliability arithmetic. Empty ⇒ no local tier.
+    local_fallback_model: str = ""
     # Model bench: a competitor whose model hits a TRANSIENT provider error
     # (429/rate-limit/quota/billing) sits out instead of dying — no eval burned,
     # no stub folded into its genome, seat freed for others. The sit-out length
@@ -1187,16 +1237,25 @@ class LocalRsiLoop:
         return out
 
     def _emergency_model(self, index: int) -> str | None:
-        """A SERVABLE model to rescue an all-benched cycle: the most-reliable
-        non-benched model from the emergency pool. If the whole pool is benched
-        too, the one whose bench expires soonest (least-bad probe) — the loop must
-        still try SOMETHING rather than idle. ``None`` only if the pool is empty."""
+        """A SERVABLE model to rescue an all-benched cycle, cloud first:
+
+        1. the most-reliable non-benched model from the emergency pool;
+        2. else ``local_fallback_model`` — local hardware cannot rate-limit, so it
+           is the floor that keeps a quota-drained run alive (see the field);
+        3. else the pool model whose bench expires soonest (least-bad probe) — the
+           loop must still try SOMETHING rather than idle.
+
+        ``None`` only when the pool is empty and no local tier is configured.
+        """
         pool = self._emergency_pool()
-        if not pool:
-            return None
         servable = [m for m in pool if not self._benched(m, index)]
         if servable:
             return max(servable, key=lambda m: self._reliability.get(m, 1.0))
+        local = self._config.local_fallback_model
+        if local and not self._benched(local, index):
+            return local
+        if not pool:
+            return None
         return min(pool, key=lambda m: self._bench.get(m, 0.0))
 
     def _spawn_emergency_genome(self, model: str) -> Any:
