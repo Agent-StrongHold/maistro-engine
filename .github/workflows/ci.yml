@@ -94,6 +94,43 @@ jobs:
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
 
+  # Build every wheel and import it from a throwaway venv that has ONLY the
+  # package's declared dependencies. The other jobs all run inside the root
+  # `uv sync` environment, where a dev extra can supply a library that no package
+  # actually declares — which is how `maistro.identity` shipped an unguarded
+  # `import nacl` while every check stayed green. This job is the control that
+  # closes that gap: it tests what a downstream consumer installs, not what the
+  # repo's own dev environment happens to contain.
+  #
+  # Should be a required status check. See ADR-095 — required checks are
+  # configured in GitHub settings, not in this file.
+  wheel-imports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+      # Not `uv build --all-packages`: there is no [tool.uv.workspace] members
+      # table, so that only builds the (deliberately empty) root wheel.
+      - name: Build every package wheel
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          for p in packages/*/; do
+            [ -f "$p/pyproject.toml" ] || continue
+            echo "::group::build $p"
+            uv build "$p" --out-dir dist/
+            echo "::endgroup::"
+          done
+          ls -1 dist/*.whl
+      # Tier 1: no extras, documented public surface. Tier 2: widest extra,
+      # every module recursively, zero tolerated failures.
+      - name: Import wheels from a clean venv
+        run: python scripts/verify-wheel-imports.py --dist dist/ --python 3.12
+
   security:
     runs-on: ubuntu-latest
     steps:
