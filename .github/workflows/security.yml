@@ -111,41 +111,11 @@ jobs:
           # Workspace-local editable packages aren't on PyPI — pip-audit --strict
           # refuses them, so audit the frozen third-party set (same as ci.yml).
           uv pip freeze --exclude-editable > /tmp/deps.txt
+          # `|| true`: pip-audit exits non-zero on any finding; the gate script
+          # decides what blocks. The triaged allowlist lives in that script so
+          # this job and ci.yml's `security` job cannot drift apart.
           uv run pip-audit --strict --format=json -r /tmp/deps.txt > pip-audit.json || true
-          uv run python -c "
-          import json, sys
-          data = json.load(open('pip-audit.json'))
-          deps = data.get('dependencies', [])
-          vuln = [d for d in deps if d.get('vulns')]
-          # Allow-list — each entry is a TRIAGED CVE on a transitive dep:
-          #
-          # pydantic-ai  CVE-2026-46678 (fix in 1.99.0). Vulnerable code
-          #              path is force_download='allow-local'. AST grep
-          #              across packages/ on 2026-05-22 confirms we never
-          #              pass force_download anywhere. Upgrade tracked
-          #              in task #23 as housekeeping, not load-bearing.
-          # py           PYSEC-2022-42969 (no fix). ReDoS via crafted
-          #              Subversion repo info. We don't use SVN at all;
-          #              py is a transient dep pulled by pytest only.
-          # starlette    PYSEC-2026-161 (fix 1.0.1). Host-header path
-          #              injection. Transitive via fastapi; the fastapi
-          #              pin upgrades it. Tracked for next fastapi
-          #              version-bump PR. Mitigated for now by the
-          #              gateway-level Host whitelist in deployment.
-          # nltk was allow-listed here only because the safety step pulled it;
-          # that step is gone, so the entry is gone with it. (No backticks in this
-          # block: it sits inside a double-quoted shell string, so backticks would
-          # be command substitution, not quoting.)
-          allowed = {'pydantic-ai', 'py', 'starlette'}
-          new_vuln = [d for d in vuln if d['name'] not in allowed]
-          if new_vuln:
-              print('::error::pip-audit found new vulnerable deps:')
-              for d in new_vuln:
-                  for v in d['vulns']:
-                      print(f'  {d[\"name\"]}=={d[\"version\"]} {v[\"id\"]} fix={v.get(\"fix_versions\")}')
-              sys.exit(1)
-          print(f'pip-audit OK ({len(vuln)} known; all in baseline allowlist)')
-          "
+          uv run python scripts/pip_audit_gate.py pip-audit.json
 
       # The `safety check` cross-check that used to sit here was removed, not
       # escalated. Measured 2026-07-26, it was not a weak gate but a broken one:

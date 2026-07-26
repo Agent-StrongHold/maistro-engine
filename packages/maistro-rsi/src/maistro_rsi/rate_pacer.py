@@ -237,6 +237,11 @@ class RatePacer:
                 wait = bud.wait_seconds()
         if wait > 0:
             wait = max(self.min_sleep, min(wait, self.max_sleep))
+            # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            # False positive: the rule keys off "tokens" in the format string.
+            # These are LLM rate-limit quota counters (how many tokens/requests
+            # remain in the window) and a provider key name — no credential is
+            # in scope here, let alone logged.
             logger.info(
                 "rate_pacer throttle provider=%s sleeping %.1fs (remaining_tokens=%s remaining_requests=%s)",
                 self.provider_key,

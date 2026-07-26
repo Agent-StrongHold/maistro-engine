@@ -141,8 +141,14 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --extra dev
       - run: uv pip install pip-audit
+      # Workspace-local editable packages aren't on PyPI — pip-audit --strict
+      # refuses them, so audit the frozen third-party set only.
       - run: uv pip freeze --exclude-editable > /tmp/deps.txt
-      - run: uv run pip-audit --strict -r /tmp/deps.txt
+      # `|| true`: pip-audit exits non-zero when it finds anything at all. The
+      # gate script decides what actually blocks, using the one shared triaged
+      # allowlist that security.yml also uses.
+      - run: uv run pip-audit --strict --format=json -r /tmp/deps.txt > /tmp/pip-audit.json || true
+      - run: python scripts/pip_audit_gate.py /tmp/pip-audit.json
 
   docker-build:
     runs-on: ubuntu-latest
