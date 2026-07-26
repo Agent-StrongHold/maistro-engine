@@ -132,8 +132,10 @@ jobs:
           #              pin upgrades it. Tracked for next fastapi
           #              version-bump PR. Mitigated for now by the
           #              gateway-level Host whitelist in deployment.
-          # nltk was allow-listed here only because `safety` pulled it;
-          # that step is gone, so the entry is gone with it.
+          # nltk was allow-listed here only because the safety step pulled it;
+          # that step is gone, so the entry is gone with it. (No backticks in this
+          # block: it sits inside a double-quoted shell string, so backticks would
+          # be command substitution, not quoting.)
           allowed = {'pydantic-ai', 'py', 'starlette'}
           new_vuln = [d for d in vuln if d['name'] not in allowed]
           if new_vuln:
