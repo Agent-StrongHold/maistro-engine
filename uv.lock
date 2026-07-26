@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -1748,18 +1748,55 @@ requires-dist = [
 provides-extras = ["builders"]
 
 [[package]]
+name = "maistro-canvas"
+version = "0.1.0"
+source = { editable = "packages/maistro-canvas" }
+dependencies = [
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "maistro-core" },
+    { name = "pillow" },
+    { name = "pydantic" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncpg", specifier = ">=0.30,<1" },
+    { name = "fastapi", specifier = ">=0.115,<1" },
+    { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "maistro-core", specifier = ">=0.1" },
+    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.14" },
+    { name = "pillow", specifier = ">=11.0,<13" },
+    { name = "pydantic", specifier = ">=2.0,<3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.25" },
+    { name = "python-pptx", marker = "extra == 'dev'", specifier = ">=1.0,<2" },
+    { name = "python-pptx", marker = "extra == 'export'", specifier = ">=1.0,<2" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<3" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
+]
+provides-extras = ["export", "dev"]
+
+[[package]]
 name = "maistro-core"
 version = "0.1.0"
 source = { editable = "packages/maistro-core" }
 dependencies = [
     { name = "argon2-cffi" },
     { name = "asyncpg" },
+    { name = "bip-utils" },
     { name = "cryptography" },
     { name = "httpx" },
     { name = "pgvector" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pynacl" },
     { name = "pyyaml" },
+    { name = "regex" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "structlog" },
 ]
@@ -1776,11 +1813,13 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'builders'", specifier = ">=0.28" },
     { name = "argon2-cffi", specifier = ">=23.1,<25" },
     { name = "asyncpg", specifier = ">=0.30,<1" },
+    { name = "bip-utils", specifier = ">=2.9,<3" },
     { name = "cryptography", specifier = ">=48.0.1,<49" },
+    { name = "fastapi", marker = "extra == 'asgi'", specifier = ">=0.115,<1" },
     { name = "fastmcp", marker = "extra == 'llm'", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "maistro-bootstrap", extras = ["builders"], marker = "extra == 'builders'" },
-    { name = "maistro-core", extras = ["llm", "sandbox", "observability", "tui", "builders", "sqlite"], marker = "extra == 'all'" },
+    { name = "maistro-core", extras = ["llm", "sandbox", "observability", "tui", "builders", "sqlite", "asgi"], marker = "extra == 'all'" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.14" },
     { name = "opentelemetry-api", marker = "extra == 'observability'", specifier = ">=1.30" },
     { name = "opentelemetry-exporter-otlp", marker = "extra == 'observability'", specifier = ">=1.30" },
@@ -1788,18 +1827,21 @@ requires-dist = [
     { name = "pgvector", specifier = ">=0.3,<1" },
     { name = "pydantic", specifier = ">=2.0,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
+    { name = "pynacl", specifier = ">=1.5,<2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.25" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "pyyaml", specifier = ">=6.0,<7" },
+    { name = "regex", specifier = ">=2024.5.15,<2027" },
     { name = "rich", marker = "extra == 'tui'", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0,<3" },
+    { name = "starlette", marker = "extra == 'asgi'", specifier = ">=0.40,<2" },
     { name = "structlog", specifier = ">=24.4,<26" },
     { name = "textual", marker = "extra == 'builders'", specifier = ">=0.61" },
     { name = "typer", marker = "extra == 'tui'", specifier = ">=0.12" },
 ]
-provides-extras = ["llm", "sandbox", "observability", "tui", "builders", "sqlite", "all", "dev"]
+provides-extras = ["llm", "sandbox", "observability", "tui", "builders", "sqlite", "asgi", "all", "dev"]
 
 [[package]]
 name = "maistro-registry"
@@ -1830,6 +1872,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "fastmcp" },
     { name = "httpx" },
+    { name = "maistro-canvas" },
     { name = "maistro-core", extra = ["tui"] },
     { name = "maistro-registry" },
     { name = "opentelemetry-api" },
@@ -1851,18 +1894,14 @@ browser = [
 ]
 dev = [
     { name = "aiosqlite" },
-    { name = "bip-utils" },
     { name = "cosmic-ray" },
     { name = "hypothesis" },
     { name = "mypy" },
-    { name = "pillow" },
-    { name = "pynacl" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "questionary" },
     { name = "radon" },
-    { name = "regex" },
     { name = "ruff" },
     { name = "types-pyyaml" },
     { name = "types-regex" },
@@ -1875,17 +1914,13 @@ scheduling = [
 [package.dev-dependencies]
 dev = [
     { name = "aiosqlite" },
-    { name = "bip-utils" },
     { name = "cosmic-ray" },
     { name = "hypothesis" },
     { name = "mypy" },
-    { name = "pillow" },
-    { name = "pynacl" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "questionary" },
-    { name = "regex" },
     { name = "ruff" },
     { name = "types-pyyaml" },
     { name = "types-regex" },
@@ -1899,29 +1934,26 @@ requires-dist = [
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "bcrypt", specifier = ">=4.0" },
-    { name = "bip-utils", marker = "extra == 'dev'", specifier = ">=2.9" },
     { name = "cosmic-ray", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "fastmcp", specifier = ">=2.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "maistro-bootstrap", marker = "extra == 'bootstrap'", editable = "packages/maistro-bootstrap" },
+    { name = "maistro-canvas", editable = "packages/maistro-canvas" },
     { name = "maistro-core", extras = ["tui"], editable = "packages/maistro-core" },
     { name = "maistro-registry", editable = "packages/maistro-registry" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.14" },
     { name = "opentelemetry-api", specifier = ">=1.30" },
     { name = "pgvector", specifier = ">=0.3" },
-    { name = "pillow", marker = "extra == 'dev'", specifier = ">=11.0" },
     { name = "playwright", marker = "extra == 'browser'", specifier = ">=1.49" },
     { name = "pydantic-settings", specifier = ">=2.7" },
-    { name = "pynacl", marker = "extra == 'dev'", specifier = ">=1.5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.25" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "questionary", marker = "extra == 'dev'", specifier = ">=2.0" },
     { name = "radon", marker = "extra == 'dev'", specifier = ">=6.0" },
-    { name = "regex", marker = "extra == 'dev'", specifier = ">=2024.5.15" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
     { name = "structlog", specifier = ">=24.4" },
@@ -1936,17 +1968,13 @@ provides-extras = ["dev", "browser", "scheduling", "bootstrap"]
 [package.metadata.requires-dev]
 dev = [
     { name = "aiosqlite", specifier = ">=0.20" },
-    { name = "bip-utils", specifier = ">=2.9" },
     { name = "cosmic-ray", specifier = ">=8.0.0" },
     { name = "hypothesis", specifier = ">=6.0" },
     { name = "mypy", specifier = ">=1.14" },
-    { name = "pillow", specifier = ">=11.0" },
-    { name = "pynacl", specifier = ">=1.5" },
     { name = "pytest", specifier = ">=8.3" },
     { name = "pytest-asyncio", specifier = ">=0.25" },
     { name = "pytest-cov", specifier = ">=6.0" },
     { name = "questionary", specifier = ">=2.0" },
-    { name = "regex", specifier = ">=2024.5.15" },
     { name = "ruff", specifier = ">=0.9" },
     { name = "types-pyyaml", specifier = ">=6.0" },
     { name = "types-regex", specifier = ">=2024.5.15" },

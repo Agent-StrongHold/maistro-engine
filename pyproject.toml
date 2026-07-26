@@ -3,6 +3,8 @@ name = "maistro-workspace"
 version = "0.0.0"
 description = "Monorepo workspace root — all code lives in packages/"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 dependencies = [
     # API
     "fastapi>=0.115",
@@ -25,6 +27,12 @@ dependencies = [
     "argon2-cffi>=23.1",
     "maistro-registry",
     "maistro-core[tui]",
+    # Depend on the package rather than re-listing its transitive libs here: this
+    # is what supplies Pillow to the root env for `uv run mypy`/`uv run pytest`
+    # over packages/maistro-canvas. Hand-copying a package's deps into the root
+    # dev extra is what let the identity ImportError hide (see the wheel-imports
+    # CI job).
+    "maistro-canvas",
     "temporalio>=1.27.0",
 ]
 
@@ -38,14 +46,7 @@ dev = [
     "radon>=6.0",
     "vulture>=2.14",
     "types-PyYAML>=6.0",
-    # Third-party libs imported by package source (identity, warden, canvas) but
-    # not pulled by the root `uv sync` — needed so `uv run mypy`/`uv run pytest`
-    # resolve them in CI (otherwise import-not-found). Match runtime versions.
-    "bip-utils>=2.9",
-    "pynacl>=1.5",
-    "regex>=2024.5.15",
     "types-regex>=2024.5.15",
-    "pillow>=11.0",
     "questionary>=2.0",
     "aiosqlite>=0.20",
     "hypothesis>=6.0",
@@ -69,13 +70,7 @@ dev = [
     "ruff>=0.9",
     "mypy>=1.14",
     "types-PyYAML>=6.0",
-    # Third-party libs imported by package source (identity, warden, canvas) but
-    # not pulled by the root runtime dependencies in every package-specific path.
-    "bip-utils>=2.9",
-    "pynacl>=1.5",
-    "regex>=2024.5.15",
     "types-regex>=2024.5.15",
-    "pillow>=11.0",
     "questionary>=2.0",
     "aiosqlite>=0.20",
     "hypothesis>=6.0",
@@ -86,7 +81,7 @@ dev = [
 maistro-registry = "maistro_registry.cli:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 # The workspace root is a dependency-only meta package — every actual
@@ -169,9 +164,19 @@ plugins = ["pydantic.mypy"]
 module = ["maistro.models.*"]
 ignore_missing_imports = true
 
-# Optional/runtime integrations may be absent in minimal scan environments.
+# Genuinely optional integrations, absent in minimal scan environments.
+# `regex` and `nacl.*` used to be listed here — they are declared runtime deps of
+# maistro-core now (and both ship type information), so the override would mask a
+# real missing install rather than describe an optional one.
 [[tool.mypy.overrides]]
-module = ["yaml", "regex", "asyncpg", "bip_utils", "nacl.*", "PIL", "PIL.*", "pptx", "pptx.*"]
+module = ["yaml", "asyncpg", "PIL", "PIL.*", "pptx", "pptx.*"]
+ignore_missing_imports = true
+
+# bip-utils is a declared runtime dep, but publishes no py.typed marker and has no
+# stub package on PyPI. This override covers the missing stubs, not a missing
+# install — drop it if bip-utils ever ships types.
+[[tool.mypy.overrides]]
+module = ["bip_utils"]
 ignore_missing_imports = true
 
 [tool.uv.sources]
@@ -179,3 +184,4 @@ maistro-bootstrap = { path = "packages/maistro-bootstrap", editable = true }
 maistro-core = { path = "packages/maistro-core", editable = true }
 maistro-registry = { path = "packages/maistro-registry", editable = true }
 maistro-design = { path = "packages/maistro-design", editable = true }
+maistro-canvas = { path = "packages/maistro-canvas", editable = true }
