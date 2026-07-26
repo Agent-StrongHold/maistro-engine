@@ -163,7 +163,9 @@ export default function RSI() {
           .map((e: { feature: string; contribution: number }) => `${e.feature}: ${e.contribution > 0 ? "+" : ""}${e.contribution.toFixed(3)}`)
           .join(", ");
         const thetaDelta = result.weight_delta.theta.after - result.weight_delta.theta.before;
-        const weightChanges = Object.entries(result.weight_delta.weights)
+        const weightChanges = Object.entries(
+          result.weight_delta.weights as Record<string, { before: number; after: number }>,
+        )
           .filter(([, v]) => Math.abs(v.after - v.before) > 0.0001)
           .map(([k, v]) => `${k} ${v.before.toFixed(4)}→${v.after.toFixed(4)}`)
           .join(", ");

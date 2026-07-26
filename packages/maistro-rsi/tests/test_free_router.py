@@ -149,10 +149,12 @@ def test_register_returns_none_without_gateway(monkeypatch: pytest.MonkeyPatch) 
 
 # --- discover_openrouter_credential -------------------------------------------------
 
+
 def test_discover_credential_uses_override(monkeypatch: pytest.MonkeyPatch) -> None:
     # When the environment variable LITELLM_OPENROUTER_CREDENTIAL is set, the function
     # should return it without performing any HTTP request.
     monkeypatch.setenv("LITELLM_OPENROUTER_CREDENTIAL", "my-override-cred")
+
     # If an HTTP request is made, raise to ensure it is not called.
     def boom(*a, **k):  # type: ignore[no-untyped-def]
         raise AssertionError("httpx.get should not be called when override env is set")
@@ -170,23 +172,28 @@ def test_discover_credential_finds_first_openrouter(monkeypatch: pytest.MonkeyPa
     class _FakeResp2:
         def __init__(self, payload: object) -> None:
             self._payload = payload
+
         def raise_for_status(self) -> None:
             pass
+
         def json(self) -> object:
             return self._payload
 
     def fake_get(url, *, headers, timeout):  # type: ignore[no-untyped-def]
         # Return a payload with a list of credential dicts.
-        return _FakeResp2(payload={"credentials": [
-            {"credential_name": "not-openrouter/foo"},
-            {"credential_name": "openrouter/cred-1"},
-            {"credential_name": "openrouter/cred-2"},
-        ]})
+        return _FakeResp2(
+            payload={
+                "credentials": [
+                    {"credential_name": "not-openrouter/foo"},
+                    {"credential_name": "openrouter/cred-1"},
+                    {"credential_name": "openrouter/cred-2"},
+                ]
+            }
+        )
 
     monkeypatch.setattr(httpx, "get", fake_get)
     cred = fr._discover_openrouter_credential(base="http://gw", key="k", timeout=1.0)
     assert cred == "openrouter/cred-1"
-
 
 
 def test_expand_is_noop_without_sentinel() -> None:
