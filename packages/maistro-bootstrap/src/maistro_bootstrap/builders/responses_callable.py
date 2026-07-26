@@ -25,6 +25,7 @@ can still start in dev mode without a running proxy.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from pathlib import Path
@@ -250,6 +251,61 @@ def _to_openai_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _tool_use_blocks(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """OpenAI-shaped tool_calls -> the tool_use block list the agent loop expects.
+    Unparseable arguments degrade to `{}` rather than failing the whole turn."""
+    import json
+
+    blocks: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        fn = tc.get("function", {})
+        try:
+            inp = json.loads(fn.get("arguments", "{}"))
+        except json.JSONDecodeError:
+            inp = {}
+        blocks.append(
+            {
+                "type": "tool_use",
+                "id": tc.get("id", "tc_0"),
+                "name": fn.get("name", ""),
+                "input": inp,
+            }
+        )
+    return blocks
+
+
+# (attribute, header names in preference order). The `llm_provider-*` variants
+# carry the real upstream provider's counters; the bare `x-ratelimit-*` are the
+# gateway's own, used only as a fallback.
+_RATE_HEADERS: list[tuple[str, list[str]]] = [
+    (
+        "_rate_remaining_tokens",
+        [
+            "llm_provider-x-ratelimit-remaining-tokens-minute",
+            "llm_provider-x-ratelimit-remaining-tokens",
+            "x-ratelimit-remaining-tokens",
+        ],
+    ),
+    (
+        "_rate_limit_tokens",
+        [
+            "llm_provider-x-ratelimit-limit-tokens-minute",
+            "llm_provider-x-ratelimit-limit-tokens",
+            "x-ratelimit-limit-tokens",
+        ],
+    ),
+    (
+        "_rate_remaining_reqs",
+        [
+            "llm_provider-x-ratelimit-remaining-req-minute",
+            "llm_provider-x-ratelimit-remaining-requests-minute",
+            "llm_provider-x-ratelimit-remaining-requests",
+            "x-ratelimit-remaining-requests",
+        ],
+    ),
+]
+
+
 class LiteLLMCallable:
     """Synchronous OpenAI-compatible callable backed by the LiteLLM proxy.
 
@@ -284,6 +340,40 @@ class LiteLLMCallable:
 
     def _is_configured(self) -> bool:
         return bool(_base_url() and _api_key())
+
+    def _throttle_if_near_limit(self) -> None:
+        """Sleep out the current rate window when the last response said we are
+        nearly out of requests or tokens."""
+        import time as _time
+
+        if self._rate_remaining_reqs is not None and self._rate_remaining_reqs <= 1:
+            logger.info(
+                "rate_pacer throttle: %.0f reqs left, waiting 60s for window",
+                self._rate_remaining_reqs,
+            )
+            _time.sleep(60.0)
+        elif (
+            self._rate_limit_tokens
+            and self._rate_remaining_tokens is not None
+            and self._rate_remaining_tokens < 0.10 * self._rate_limit_tokens
+        ):
+            logger.info(
+                "rate_pacer throttle: %.0f tokens left (limit %.0f), waiting 60s",
+                self._rate_remaining_tokens,
+                self._rate_limit_tokens,
+            )
+            _time.sleep(60.0)
+
+    def _observe_rate_headers(self, resp: Any) -> None:
+        """Record upstream rate-limit counters (llm_provider-* = the real
+        upstream numbers; the bare x-ratelimit-* are the gateway's own)."""
+        for attr, hdrs in _RATE_HEADERS:
+            for h in hdrs:
+                raw = getattr(resp, "headers", {}).get(h) if hasattr(resp, "headers") else None
+                if raw:
+                    with contextlib.suppress(ValueError):
+                        setattr(self, attr, float(raw))
+                    break
 
     def __call__(
         self,
@@ -343,23 +433,7 @@ class LiteLLMCallable:
         import time as _time
 
         for _attempt in range(4):  # 1 try + up to 3 429-retries
-            if self._rate_remaining_reqs is not None and self._rate_remaining_reqs <= 1:
-                logger.info(
-                    "rate_pacer throttle: %.0f reqs left, waiting 60s for window",
-                    self._rate_remaining_reqs,
-                )
-                _time.sleep(60.0)
-            elif (
-                self._rate_limit_tokens
-                and self._rate_remaining_tokens is not None
-                and self._rate_remaining_tokens < 0.10 * self._rate_limit_tokens
-            ):
-                logger.info(
-                    "rate_pacer throttle: %.0f tokens left (limit %.0f), waiting 60s",
-                    self._rate_remaining_tokens,
-                    self._rate_limit_tokens,
-                )
-                _time.sleep(60.0)
+            self._throttle_if_near_limit()
 
             resp = httpx.post(
                 f"{_base_url()}{os.environ.get('LLM_CHAT_PATH', '/v1/chat/completions')}",
@@ -368,45 +442,14 @@ class LiteLLMCallable:
                 timeout=self.timeout,
             )
 
-            # observe: parse upstream rate-limit headers (llm_provider-* = real)
-            for attr, hdrs in [
-                (
-                    "_rate_remaining_tokens",
-                    [
-                        "llm_provider-x-ratelimit-remaining-tokens-minute",
-                        "llm_provider-x-ratelimit-remaining-tokens",
-                        "x-ratelimit-remaining-tokens",
-                    ],
-                ),
-                (
-                    "_rate_limit_tokens",
-                    [
-                        "llm_provider-x-ratelimit-limit-tokens-minute",
-                        "llm_provider-x-ratelimit-limit-tokens",
-                        "x-ratelimit-limit-tokens",
-                    ],
-                ),
-                (
-                    "_rate_remaining_reqs",
-                    [
-                        "llm_provider-x-ratelimit-remaining-req-minute",
-                        "llm_provider-x-ratelimit-remaining-requests-minute",
-                        "llm_provider-x-ratelimit-remaining-requests",
-                        "x-ratelimit-remaining-requests",
-                    ],
-                ),
-            ]:
-                for h in hdrs:
-                    raw = getattr(resp, "headers", {}).get(h) if hasattr(resp, "headers") else None
-                    if raw:
-                        try:
-                            setattr(self, attr, float(raw))
-                        except ValueError:
-                            pass
-                        break
+            self._observe_rate_headers(resp)
 
             if resp.status_code == 429:
-                ra = getattr(resp, "headers", {}).get("retry-after", "60") if hasattr(resp, "headers") else "60"
+                ra = (
+                    getattr(resp, "headers", {}).get("retry-after", "60")
+                    if hasattr(resp, "headers")
+                    else "60"
+                )
                 try:
                     wait = min(float(ra), 120.0)
                 except ValueError:
@@ -420,9 +463,7 @@ class LiteLLMCallable:
                 raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
             break
         else:
-            raise RuntimeError(
-                f"LiteLLM gateway 429: exhausted retries. Last: {resp.text[:500]}"
-            )
+            raise RuntimeError(f"LiteLLM gateway 429: exhausted retries. Last: {resp.text[:500]}")
 
         data = resp.json()
         choice = data["choices"][0]
@@ -431,26 +472,8 @@ class LiteLLMCallable:
         stop_reason = choice.get("finish_reason", "end_turn")
 
         # Normalise tool_calls into the same block-list shape the agent loop expects.
-        tool_calls = msg.get("tool_calls") or []
-        if tool_calls:
-            blocks: list[dict[str, Any]] = []
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                import json
-
-                try:
-                    inp = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError:
-                    inp = {}
-                blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": tc.get("id", "tc_0"),
-                        "name": fn.get("name", ""),
-                        "input": inp,
-                    }
-                )
-            content = blocks
+        if tool_calls := msg.get("tool_calls") or []:
+            content = _tool_use_blocks(tool_calls)
             stop_reason = "tool_use"
 
         usage = data.get("usage", {})

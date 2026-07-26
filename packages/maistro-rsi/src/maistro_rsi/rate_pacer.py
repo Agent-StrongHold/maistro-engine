@@ -26,9 +26,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -100,47 +101,51 @@ class RateSnapshot:
         return snap
 
 
+_DURATION_UNITS = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
+
+
+def _as_float(s: str) -> float | None:
+    """float(s), or None when it isn't a number."""
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _parse_clock_duration(s: str) -> float | None:
+    """Sum a '1m26.4s' / '1h2m' unit run, falling back to bare seconds.
+
+    Malformed numerals ('47..', '.') yield None rather than raising — these come
+    off untrusted Retry-After/reset headers, and the declared contract is
+    ``float | None``. The previous inline version let ValueError escape.
+    """
+    total = 0.0
+    rest = s
+    had_unit = False
+    while rest and (rest[0].isdigit() or rest[0] == "."):
+        i = 0
+        while i < len(rest) and (rest[i].isdigit() or rest[i] == "."):
+            i += 1
+        unit = rest[i] if i < len(rest) else ""
+        mult = _DURATION_UNITS.get(unit)
+        if mult is None:
+            # Trailing run carrying no recognised unit — read it as bare seconds.
+            return _as_float(rest)
+        total += (float(rest[:i]) if i else 0.0) * mult
+        had_unit = True
+        rest = rest[i + 1 :]
+    return total if had_unit else _as_float(s)  # bare seconds / epoch
+
+
 def _parse_duration(s: str) -> float | None:
     """Parse a reset/retry-after value: '1m26.4s', '562ms', or bare seconds."""
     s = s.strip().lower()
     if not s:
         return None
     if s.endswith("ms"):
-        try:
-            return float(s[:-2]) / 1000.0
-        except ValueError:
-            return None
-    total = 0.0
-    rest = s
-    had_unit = False
-    # forms like 1m26.4s or 1h2m
-    while rest:
-        c = rest[0]
-        if c.isdigit() or c == ".":
-            i = 0
-            while i < len(rest) and (rest[i].isdigit() or rest[i] == "."):
-                i += 1
-            num = float(rest[:i]) if i else 0.0
-            unit = rest[i] if i < len(rest) else ""
-            mult = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}.get(unit, None)
-            if mult is not None:
-                total += num * mult
-                had_unit = True
-                rest = rest[i + 1 :]
-            else:
-                # bare seconds
-                try:
-                    return float(rest)
-                except ValueError:
-                    return None
-        else:
-            break
-    if had_unit:
-        return total
-    try:
-        return float(s)  # bare seconds / epoch
-    except ValueError:
-        return None
+        ms = _as_float(s[:-2])
+        return None if ms is None else ms / 1000.0
+    return _parse_clock_duration(s)
 
 
 @dataclass
@@ -164,10 +169,8 @@ class StaticBudget:
     def _next_window_end(self) -> float:
         if self.window_seconds >= 86400:
             # align to UTC midnight for daily budgets
-            now = datetime.now(timezone.utc)
-            midnight = (now + timedelta(days=1)).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            now = datetime.now(UTC)
+            midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
             return midnight.timestamp()
         return time.monotonic() + self.window_seconds
 
@@ -234,6 +237,12 @@ class RatePacer:
                 wait = bud.wait_seconds()
         if wait > 0:
             wait = max(self.min_sleep, min(wait, self.max_sleep))
+            # False positive: the rule keys off "tokens" in the format string.
+            # These are LLM rate-limit quota counters (how many tokens/requests
+            # remain in the window) and a provider key name — no credential is
+            # in scope here, let alone logged. The suppression must sit on the
+            # line immediately before the match; semgrep ignores it otherwise.
+            # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
             logger.info(
                 "rate_pacer throttle provider=%s sleeping %.1fs (remaining_tokens=%s remaining_requests=%s)",
                 self.provider_key,

@@ -11,10 +11,8 @@ from maistro_evolve.reflect import (
     _target_node,
     propose_candidates,
     reflective_improve,
-    summarize_topology,
 )
 from maistro_evolve.types import (
-    DAGEdgeGenome,
     DAGTopology,
     EvalResult,
     EvalWeights,

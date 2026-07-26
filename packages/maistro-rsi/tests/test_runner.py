@@ -96,14 +96,17 @@ async def _noop_patch(sandbox, workspace, model=None) -> None:
 
 @pytest.fixture
 def patched_sandbox(monkeypatch):
-    """Replace `create_microvm_sandbox` with a controllable fake; returns the fake instance holder."""
+    """Replace `create_rsi_sandbox` with a controllable fake; returns the fake instance holder."""
     holder: dict[str, FakeSandbox] = {}
 
     async def fake_create(workspace, settings=None, env=None, backend=None):
         sandbox = holder.setdefault("sandbox", FakeSandbox())
         return sandbox
 
-    monkeypatch.setattr("maistro_rsi.runner.create_microvm_sandbox", fake_create)
+    # runner imports create_rsi_sandbox (the backend-selecting wrapper), so the
+    # fake must replace that binding — not create_microvm_sandbox, which runner
+    # never imports and which lacks the `backend` argument the fake accepts.
+    monkeypatch.setattr("maistro_rsi.runner.create_rsi_sandbox", fake_create)
     return holder
 
 

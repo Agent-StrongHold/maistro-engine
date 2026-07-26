@@ -1979,7 +1979,9 @@ class LocalRsiLoop:
                 flagged_at=now_iso(),
                 note=f"auto-kept (p={p:.3f} >= theta={theta:.3f}); composite={outcome.composite} judge_score={outcome.regression_judge_score}",
             )
-            save_kept_review(report_dir / "kept", kept_review, _git(self._baseline, "show", sha).stdout)
+            save_kept_review(
+                report_dir / "kept", kept_review, _git(self._baseline, "show", sha).stdout
+            )
             logger.info(
                 "rsi_local_review_kept", sha=sha, index=outcome.index, predicted_p=p, theta=theta
             )

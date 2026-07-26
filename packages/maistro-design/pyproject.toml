@@ -3,6 +3,8 @@ name = "maistro-design"
 version = "0.1.0"
 description = "Composable design skills + design systems + canvas composition engine"
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 dependencies = [
     "maistro-core>=0.1",
     "maistro-canvas>=0.1",
@@ -21,7 +23,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

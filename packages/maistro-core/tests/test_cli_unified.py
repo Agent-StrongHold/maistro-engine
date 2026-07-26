@@ -205,8 +205,14 @@ class TestCLI:
         from maistro.cli import app
 
         result = runner.invoke(app, [])
-        assert result.exit_code == 0
+        # click >= 8.2 treats "group invoked with no subcommand" as a usage
+        # error (exit 2) rather than a success, while still printing the help.
+        # We're on >= 8.3.3 because 8.1.x carries PYSEC-2026-2132, so exit 2 is
+        # the contract now. What this test guards is that help is still shown.
+        assert result.exit_code == 2
         assert "maistro" in result.output.lower()
+        assert "Usage" in result.output
+        assert "Commands" in result.output
 
     def test_approvals_list_no_server(self) -> None:
         from maistro.cli import app

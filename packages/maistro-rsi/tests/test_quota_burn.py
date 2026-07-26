@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import httpx
 import pytest
 
 from maistro.quota.tracker import InMemoryQuotaTracker
@@ -160,10 +159,10 @@ class TestDiscoverModels:
 
         import unittest.mock
 
-        with unittest.mock.patch("maistro_rsi.quota_burn.httpx.AsyncClient", return_value=MockClient()):
-            models = await discover_models(
-                base_url="http://fake.example", api_key="fake-key"
-            )
+        with unittest.mock.patch(
+            "maistro_rsi.quota_burn.httpx.AsyncClient", return_value=MockClient()
+        ):
+            models = await discover_models(base_url="http://fake.example", api_key="fake-key")
 
         # Should extract all "id" fields from the "data" array
         assert models == ["openai/gpt-4", "anthropic/claude-3-opus", "openai/gpt-3.5-turbo"]
