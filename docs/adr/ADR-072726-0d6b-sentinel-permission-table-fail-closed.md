@@ -35,7 +35,7 @@ The behaviour is **deliberate, documented, and property-tested**. It is asserted
 property under invariant **I6 — Sentinel Permission Enforcement**:
 
 ```python
-# formal/models/test_sentinel_policy.py:219-221
+# formal/models/test_sentinel_policy.py:221-223
 @settings(max_examples=20)
 def test_can_use_tool_no_entry(tool_name):
     auth = AuthContext(user_id="u1", roles=frozenset({"user"}))

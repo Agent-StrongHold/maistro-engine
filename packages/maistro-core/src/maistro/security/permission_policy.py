@@ -1,10 +1,14 @@
 """Builds the ``PermissionTable`` consumed by ``Sentinel.pre_call`` / ``authorize``.
 
 An absent entry means *permitted* by design (formal invariant I6,
-``formal/models/test_sentinel_policy.py:219-221``). This module therefore
+``formal/models/test_sentinel_policy.py:221-223``). This module therefore
 only *adds* entries and never inverts that default -- see
 ``docs/adr/ADR-072726-0d6b-sentinel-permission-table-fail-closed.md`` for the
 (proposed, not implemented) fail-closed alternative and its preconditions.
+
+At the shipped defaults (``preset="none"``, ``permissions={}``) this returns an
+empty table, so ``Sentinel.pre_call`` authorizes exactly what it authorized
+before this module existed. The mechanism becomes *armable*, not armed.
 """
 
 from __future__ import annotations

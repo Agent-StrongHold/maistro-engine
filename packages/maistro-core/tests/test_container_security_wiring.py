@@ -223,3 +223,48 @@ async def test_container_import_skill_explicit_warden_scan_wins() -> None:
 
     assert calls == ["skill_import"]
     assert verdict.outcome == "registered"
+
+
+# ---------------------------------------------------------------------------
+# The test harness is a SECOND container-assembly path. It hardcoded
+# `Gate(warden=warden)` and `permission_table = {}` while accepting an
+# AgentConfig it never consulted, so a test could configure a preset and
+# silently observe pre-fix behaviour. That is the same "parallel assembly path
+# drifts from the real one" shape that let the empty table and missing tracker
+# survive a green suite, so it needs pinning here rather than trusting the fix.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.contract("behavioral")
+@pytest.mark.scope("integration")
+def test_test_harness_honours_security_config() -> None:
+    from maistro.testing import create_test_environment
+
+    container = create_test_environment(
+        config=AgentConfig(
+            router_api_key="test-key",
+            security=SecurityConfig(
+                permission_preset="dangerous_tools_admin",
+                strike_tracking_enabled=True,
+            ),
+        )
+    ).container
+
+    assert container.sentinel._permission_table, (
+        "create_test_environment ignored config.security.permission_preset"
+    )
+    assert container.strike_tracker is not None
+    assert container.gate._strike_tracker is container.strike_tracker
+
+
+@pytest.mark.contract("behavioral")
+@pytest.mark.scope("integration")
+def test_test_harness_defaults_match_create_container() -> None:
+    """Defaults must stay inert in the harness too, or 34 call sites shift."""
+    from maistro.testing import create_test_environment
+
+    container = create_test_environment().container
+
+    assert container.sentinel._permission_table == {}
+    assert container.strike_tracker is None
+    assert container.gate._strike_tracker is None
