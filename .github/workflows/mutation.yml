@@ -39,10 +39,15 @@ jobs:
       - name: Identify changed Python files under load-bearing subtrees
         id: changed
         run: |
+          # security/ and router/ included since 2026-07: a mutation gate
+          # that excludes the security code is a quality bar that exempts the
+          # code where surviving mutants matter most.
           CHANGED=$(git diff --name-only origin/main...HEAD -- \
             'packages/maistro-core/src/maistro/graph/' \
             'packages/maistro-core/src/maistro/projects/' \
             'packages/maistro-core/src/maistro/memory/' \
+            'packages/maistro-core/src/maistro/security/' \
+            'packages/maistro-core/src/maistro/router/' \
             | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
           echo "files<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED" >> $GITHUB_OUTPUT

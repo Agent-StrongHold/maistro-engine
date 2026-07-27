@@ -3,7 +3,7 @@ name = "maistro-registry"
 version = "0.1.0"
 description = "ADR/spec registry CLI — walk, validate, lint, link-check for maistro-engine docs"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [

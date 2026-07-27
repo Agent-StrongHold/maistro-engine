@@ -3,7 +3,7 @@ name = "maistro-bootstrap"
 version = "0.1.0"
 description = "Interactive and headless installer helper for maistro-engine feature slices and Copier templates"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
