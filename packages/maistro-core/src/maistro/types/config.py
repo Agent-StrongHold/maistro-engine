@@ -55,6 +55,15 @@ class SecurityConfig(BaseModel):
     warden_enabled: bool = True
     gate_query_improve: bool = True
     gate_model: str = "auto"
+    # Selects a maistro.security.permission_policy.PERMISSION_PRESETS entry.
+    permission_preset: str = "none"
+    # Explicit tool_name -> [role, ...] overrides, applied on top of the preset.
+    permissions: dict[str, list[str]] = Field(default_factory=dict)
+    # Defaults False: no admin unlock path exists yet for the 3-strike ladder
+    # (InMemoryStrikeTracker.unlock()/.enable() have no HTTP route, CLI
+    # command, or admin surface) -- enabling this can lock an owner out of
+    # their own homelab instance with no recovery short of a process restart.
+    strike_tracking_enabled: bool = False
 
 
 class CORSConfig(BaseModel):

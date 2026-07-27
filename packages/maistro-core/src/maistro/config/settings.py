@@ -218,6 +218,8 @@ class SecurityConfig(BaseModel):
     sentinel_enabled: bool = True
     gate_query_improve: bool = True
     gate_model: str = "auto"
+    permission_preset: str = "none"
+    strike_tracking_enabled: bool = False
 
 
 class CORSConfig(BaseModel):
