@@ -117,3 +117,50 @@ def test_requested_identity_failure_aborts_before_creating_accounts(
     # Nothing was mutated — the operator can repair the dependency and retry.
     assert "admin" not in fresh_users
     assert "user" not in fresh_users
+
+
+def test_first_run_provisions_vault_and_persists_seed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+) -> None:
+    """SPEC-072726-3439 Phase 3: setup initializes the age vault and stores
+    the seed mnemonic encrypted BEFORE zero() — the once-shown mnemonic is
+    the recovery path, not the only copy."""
+    import shutil
+
+    if shutil.which("age") is None or shutil.which("age-keygen") is None:
+        pytest.skip("age not installed")
+    pytest.importorskip("maistro.identity")
+
+    import stores
+    from models.schemas import HiveUser
+    from routes.setup import complete_setup
+    from services.model_store import ModelStore
+
+    fresh_users = ModelStore("users", HiveUser)
+    monkeypatch.setattr(stores, "users", fresh_users)
+    monkeypatch.setattr("routes.setup._get_kv", lambda: None)
+    vault_file = tmp_path / "vault" / "secrets.age"
+    key_file = tmp_path / "vault" / "admin.key"
+    monkeypatch.setattr("routes.setup._vault_paths", lambda: (str(vault_file), str(key_file)))
+
+    out = complete_setup(
+        {
+            "hardware_preset": "auto",
+            "admin_username": "newadmin",
+            "admin_password": "s3cret-admin",
+            "user_username": "newuser",
+            "user_password": "s3cret-user",
+            "optional_modules": ["crypto_identity"],
+        }
+    )
+
+    assert out["config"]["vault_initialized"] is True
+    assert out["config"]["identity_persisted"] is True
+    assert vault_file.exists() and key_file.exists()
+    # The persisted mnemonic matches the one shown once in the response.
+    from maistro.vault import Vault
+
+    stored = Vault(vault_path=vault_file, identity_path=key_file).use(
+        "CONDUCTOR_SEED_MNEMONIC", lambda s: s
+    )
+    assert stored == " ".join(out["mnemonic"])

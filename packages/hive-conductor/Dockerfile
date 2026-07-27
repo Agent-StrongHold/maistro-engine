@@ -26,6 +26,12 @@ RUN npm run build
 FROM cgr.dev/chainguard/python:latest-dev AS pybuild
 WORKDIR /app
 ENV PATH="/app/venv/bin:$PATH"
+# age powers the SPEC-011 secrets vault (maistro/vault.py shells out to it);
+# first-run setup provisions the vault, so the runtime image must carry the
+# static binaries (SPEC-072726-3439 Phase 3).
+USER root
+RUN apk add --no-cache age
+USER 65532
 RUN python -m venv /app/venv
 # Install the maistro library packages (non-editable) so the venv is fully
 # self-contained — nothing from these source trees is needed at runtime.
@@ -65,6 +71,7 @@ ENV PATH="/app/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 COPY --from=pybuild /app/venv /app/venv
+COPY --from=pybuild /usr/bin/age /usr/bin/age-keygen /usr/bin/
 COPY packages/hive-conductor/backend/ /app/backend/
 COPY packages/hive-conductor/cage/ /app/cage/
 COPY packages/hive-conductor/eval/ /app/eval/

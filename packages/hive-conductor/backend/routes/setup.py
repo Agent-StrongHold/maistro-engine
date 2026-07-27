@@ -2,14 +2,68 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
 router = APIRouter(tags=["setup"])
 
+logger = logging.getLogger("hive.setup")
+
 _SETUP_KEY = "__hive_setup__"
+_SEED_VAULT_KEY = "CONDUCTOR_SEED_MNEMONIC"
+
+
+def _vault_paths() -> tuple[str, str]:
+    from config import get_settings
+
+    s = get_settings()
+    data_dir = Path(s.conductor_data_dir).expanduser()
+    vault_path = s.conductor_vault_path or str(data_dir / "secrets.age")
+    identity_path = s.conductor_identity_path or str(data_dir / "admin.key")
+    return vault_path, identity_path
+
+
+def _init_vault_best_effort() -> bool:
+    """Provision the age vault at first run so vault-first secret resolution
+    is live from day one. Best-effort: a host without the age toolchain gets
+    a loud log line and `vault_initialized: false` in the setup config, not a
+    failed setup."""
+    try:
+        from maistro.vault import init_vault
+
+        vault_path, identity_path = _vault_paths()
+        init_vault(vault_path, identity_path)
+        return True
+    except Exception as exc:
+        logger.warning("vault not initialized at setup (secrets stay env-based): %s", exc)
+        return False
+
+
+def _persist_identity_root(mnemonic_words: list[str]) -> bool:
+    """Store the seed mnemonic encrypted in the vault BEFORE it is zeroed.
+
+    Without this the runtime has no private root after the response is sent
+    (ADR-021 signing), unless the operator re-enters the once-shown mnemonic.
+    """
+    try:
+        from maistro.vault import Vault, init_vault
+
+        vault_path, identity_path = _vault_paths()
+        init_vault(vault_path, identity_path)
+        Vault(vault_path=vault_path, identity_path=identity_path).add(
+            _SEED_VAULT_KEY, " ".join(mnemonic_words)
+        )
+        return True
+    except Exception as exc:
+        logger.warning(
+            "identity root NOT persisted to vault — the once-shown mnemonic is the only copy: %s",
+            exc,
+        )
+        return False
 
 
 def _get_kv() -> Any:
@@ -47,26 +101,28 @@ class SetupCompleteBody:
     pass
 
 
-def _maybe_generate_identity(modules: list[str]) -> tuple[str | None, list[str] | None]:
+def _maybe_generate_identity(
+    modules: list[str],
+) -> tuple[str | None, list[str] | None, bool]:
     """Generate the ConductorSeed identity root when requested.
 
-    Returns (did, mnemonic_words). The operator asked for a crypto identity
-    root, and this runs BEFORE any account is created: completing setup
-    without the mnemonic would lock the one-shot endpoint behind its 409
-    guard with no later provisioning step, so a missing `identity` extra
+    Returns (did, mnemonic_words, persisted). The operator asked for a crypto
+    identity root, and this runs BEFORE any account is created: completing
+    setup without the mnemonic would lock the one-shot endpoint behind its
+    409 guard with no later provisioning step, so a missing `identity` extra
     fails the whole request instead. The operator repairs the dependency and
     retries, or deselects the module.
+
+    The seed is persisted encrypted (vault) BEFORE zero() — the once-shown
+    mnemonic is the recovery path, not the only copy. `persisted` reports
+    whether that succeeded.
     """
     if "crypto_identity" not in modules:
-        return None, None
+        return None, None, False
     try:
         from maistro.identity import ConductorSeed
     except ImportError as exc:
-        import logging as _logging
-
-        _logging.getLogger("hive.setup").error(
-            "crypto_identity requested but maistro.identity is unavailable: %s", exc
-        )
+        logger.error("crypto_identity requested but maistro.identity is unavailable: %s", exc)
         raise HTTPException(
             status_code=503,
             detail=(
@@ -79,8 +135,9 @@ def _maybe_generate_identity(modules: list[str]) -> tuple[str | None, list[str] 
     seed = ConductorSeed.generate()
     user_did = seed.did_key()
     mnemonic = seed.mnemonic_words()
+    persisted = _persist_identity_root(mnemonic)
     seed.zero()
-    return user_did, mnemonic
+    return user_did, mnemonic, persisted
 
 
 @router.post("/complete")
@@ -115,7 +172,8 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     now_ts = datetime.now(UTC)
 
     modules = body.get("optional_modules", [])
-    user_did, config_mnemonic = _maybe_generate_identity(modules)
+    vault_initialized = _init_vault_best_effort()
+    user_did, config_mnemonic, identity_persisted = _maybe_generate_identity(modules)
 
     admin_hash = hash_password(admin_password)
     user_hash = hash_password(user_password)
@@ -153,6 +211,8 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
         "admin_username": admin_username,
         "user_username": user_username,
         "user_did": user_did,
+        "vault_initialized": vault_initialized,
+        "identity_persisted": identity_persisted,
         "completed_at": now_ts.isoformat(),
     }
 
