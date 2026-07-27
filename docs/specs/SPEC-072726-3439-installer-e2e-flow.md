@@ -137,14 +137,18 @@ five are in.
   `litellm_config.yaml`.
 - Render `Onboarding` inside the authenticated shell (below `AuthGuard`), and
   mount `SetupChecklist` on the main dashboard.
-- Make identity failures loud: `setup.py` returns an explicit
-  `identity_unavailable` field instead of silently returning `mnemonic: None`
-  when crypto identity was requested. Installing the `identity` extra in the
-  hive-conductor image is blocked for now: the Chainguard base is Python 3.14
-  and `coincurve` (via `bip-utils`) publishes no cp314 wheels (21.0.0 caps at
-  cp313) while its source build is broken against current cffi — restoring
-  in-image identity moves to Phase 3 (pin a 3.13 wheel-building stage, or pick
-  up coincurve's cp314 wheels when released).
+- Make identity failures loud and atomic: when `crypto_identity` is requested
+  but `maistro.identity` cannot import or generate, `setup.py` fails the
+  request (503 with an actionable detail) **before creating any account** —
+  completing setup without the mnemonic would lock the one-shot endpoint
+  behind its 409 guard with no later provisioning step. The operator retries
+  after repairing the dependency, or deselects the module. Installing the
+  `identity` extra in the hive-conductor image is blocked for now: the
+  Chainguard base is Python 3.14 and `coincurve` (via `bip-utils`) publishes
+  no cp314 wheels (21.0.0 caps at cp313) while its source build is broken
+  against current cffi — restoring in-image identity moves to Phase 3 (pin a
+  3.13 wheel-building stage, or pick up coincurve's cp314 wheels when
+  released).
 
 ### Phase 1 — wizard collects credentials and entropy
 
@@ -162,22 +166,31 @@ five are in.
   setup. The wizard's `crypto_profile` answer decides whether it runs.
   `no_crypto` skips it entirely.
 - Non-interactive installs (`--answers-file` without a TTY) skip credential
-  collection; the UI Setup wizard remains the fallback, exactly as today.
+  prompts; the UI Setup wizard remains the fallback. For headless installs
+  that still want terminal-driven bootstrap (CI smoke tests included), a
+  pre-staged credentials file may be supplied via
+  `MAISTRO_BOOTSTRAP_CREDENTIALS_FILE` — same 0600 requirement, same
+  consume-once-and-shred semantics as the wizard-written file.
 
 ### Phase 2 — generated install files
 
 - `materialize_install_artifacts` grows two delivery renderers:
-  - `image_pull`: writes `compose.install.yml` that overrides every `build:`
-    service with pinned `image:` references (`ghcr.io/blakematthews-dev/…@sha256:…`,
-    digests injected at release time), plus the existing env/override files.
+  - `image_pull`: writes a **standalone** `compose.install.yml` (a complete
+    compose file, not an override) whose services carry only pinned `image:`
+    references (`ghcr.io/blakematthews-dev/…@sha256:…`, digests injected at
+    release time) and no `build:` keys at all. An override merged onto the
+    root compose cannot express this — Compose merges mappings, so the base
+    `build:` keys would survive and `up --build` would still build source.
   - `source_build`: writes `compose.install.yml` pinned to the checked-out
     revision plus a `Makefile` with targets `install`, `up`, `down`, `logs`,
     `status`, `backup`, `teardown`, `update` wrapping the exact compose
     invocations `install.sh` uses — the operator-facing escape hatch.
-- `install.sh` consumes `compose.install.yml` via `compose_files()` alongside
-  the existing override, keyed off the plan's `delivery` manifest. Until images
-  are published (Phase 5), `image_pull` falls back to `source_build` with a
-  loud warning rather than failing.
+- `install.sh` consumes the delivery manifest: in `image_pull` mode it runs
+  compose against the standalone file only and **never passes `--build`**
+  (`docker compose up -d`, pull policy from the pinned digests); in
+  `source_build` mode it keeps today's `up -d --build` against the root
+  compose file. Until images are published (Phase 5), `image_pull` falls back
+  to `source_build` with a loud warning rather than failing.
 
 ### Phase 3 — bring-up performs the bootstrap
 
@@ -185,11 +198,28 @@ five are in.
   `install.sh` POSTs `bootstrap-credentials.json` to `POST /v1/setup/complete`.
   On success it: prints the returned mnemonic (if any) in a framed panel,
   requires an interactive "I have written this down" confirmation, never writes
-  it to disk, then shreds the credentials file. On 409 (already set up) it
-  skips silently — idempotent re-runs.
+  it to disk, then shreds the credentials file. A 409 (already set up) is
+  **terminal consumption, not retry state**: the credentials file is shredded
+  there too — otherwise a success response lost between server commit and
+  client shred would leave both plaintext passwords on disk indefinitely.
+  Retry semantics (file kept) apply only to failures that occur before setup
+  commits (connection errors, 4xx/5xx other than 409).
 - Setup (server-side, same request) initializes the age vault: generate
   `admin.key` + empty `secrets.age` under `CONDUCTOR_DATA_DIR` if absent, so
-  vault-first secret resolution is live from day one.
+  vault-first secret resolution is live from day one. This requires the `age`
+  runtime in the conductor image — the thin Chainguard runtime ships no `age`
+  binary and `maistro/vault.py` shells out to it for every read and write.
+  Either copy a static `age`/`age-keygen` into the runtime stage or adopt an
+  in-process implementation (e.g. `pyrage`) behind the existing Vault API;
+  the installer smoke test must exercise a vault round-trip.
+- The identity root must survive the request: `distributed_identity_root`
+  setup persists the seed **encrypted at rest** (in the age vault, under the
+  same `CONDUCTOR_DATA_DIR` trust boundary) before `seed.zero()` runs — the
+  mnemonic shown once to the operator is the *recovery* path, not the only
+  copy. Without this, ADR-021 signing (AgentSpec, audit, approvals) has no
+  private root after the response is sent or the process restarts, unless the
+  operator re-enters the mnemonic. Recovery: a documented re-import flow that
+  accepts the mnemonic and re-materializes the encrypted seed.
 - `install.sh` records recovery/rollback commands (`status`, `logs`, `restart`,
   `backup`, `teardown`) into `.maistro-install/RECOVERY.md` and prints them in
   `print_success`.
@@ -199,20 +229,30 @@ five are in.
 
 ### Phase 4 — finish in the UI: provider keys, first call, tutorial
 
-- Add LLM providers (openai, anthropic, gemini, plus the LiteLLM set already
-  in compose) to the credentials provider catalog as kind `llm_provider`, so
-  `pages/Credentials.tsx` can collect keys with its existing encrypted-storage
-  UX; keys are stored in the age vault, not `.env`.
-- New `POST /v1/providers/{name}/activate`: writes the key to the vault, then
-  registers/updates the model set with the running LiteLLM instance via its
-  admin API (master key auth, dynamic model add) — no container recreate. The
-  endpoint finishes by issuing a one-token test completion and returns its
-  result; that success is the journey's "first model call".
+- LLM provider keys are deployment-wide vault material, not per-user
+  integration credentials — so they get a dedicated API surface rather than
+  riding the existing credentials routes: `PUT /v1/providers/{name}/key`
+  writes **directly to the age vault** and `POST /v1/providers/{name}/activate`
+  reads from it. The existing `UserCredentialStore` (per-user Fernet file
+  behind `routes/credentials.py`) is not used for LLM keys — routing them
+  there would satisfy neither the vault contract nor single-copy storage.
+  `pages/Credentials.tsx` hosts the UX (an "LLM providers" section) but calls
+  the providers API for this kind.
+- Provider endpoints are privileged: they use the LiteLLM master key, mutate
+  the global model registry, and can trigger billed calls. Both routes go into
+  `_PROTECTED_OPS` under `config.write` (admin or elevated), with a negative
+  authorization test proving a plain daily-driver session is refused.
+- `POST /v1/providers/{name}/activate` registers/updates the model set with
+  the running LiteLLM instance via its admin API (master key auth, dynamic
+  model add) — no container recreate — then issues a one-token test completion
+  and returns its result; that success is the journey's "first model call".
 - `setup_checklist.py` items become the tutorial spine, seeded from the plan's
-  tutorial todos at bootstrap time (replacing the orphaned `tutorial-todo.md`):
-  confirm recovery phrase, add a provider key (auto-completes on activate
-  success), send first chat, create first DAG (guided smoke prompt to the
-  guide agent), invite/level daily driver. `Onboarding.tsx` becomes a thin
+  tutorial todos at bootstrap time (replacing the orphaned `tutorial-todo.md`),
+  and are **split by account**: admin items (confirm recovery phrase, add +
+  activate a provider key) and daily-driver items (send first chat, create
+  first DAG via the guided smoke prompt) — the admin role is blocked from
+  `/v1/chat/` by design, so the checklist explicitly directs the account
+  switch before any chat-dependent step. `Onboarding.tsx` becomes a thin
   intro that hands off to the checklist instead of a parallel system.
 
 ### Phase 5 — release plumbing
@@ -261,7 +301,11 @@ five are in.
   never the modal first), SetupChecklist on dashboard, Credentials
   llm_provider flow.
 - Installer smoke (CI, Phase 5): full `get.sh` run in container matrix with
-  `--answers-file`, asserting AC-1's end state minus the browser.
+  `--answers-file` plus disposable bootstrap credentials pre-staged via
+  `MAISTRO_BOOTSTRAP_CREDENTIALS_FILE` (a noninteractive run without that
+  file skips credential collection and cannot assert account creation),
+  asserting AC-1's end state minus the browser — including a vault
+  round-trip and that the staged credentials file was shredded.
 
 ## Open questions
 

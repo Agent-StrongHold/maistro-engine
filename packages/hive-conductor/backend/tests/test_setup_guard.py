@@ -76,3 +76,44 @@ def test_first_run_setup_still_works(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out["setup_complete"] is True
     assert stores.users["admin"].username == "newadmin"
     assert stores.users["user"].username == "newuser"
+
+
+def test_requested_identity_failure_aborts_before_creating_accounts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """crypto_identity requested + identity runtime missing must fail the whole
+    request BEFORE any account exists. Completing setup without the mnemonic
+    would lock the one-shot endpoint behind its 409 guard with no later
+    identity-provisioning step (SPEC-072726-3439 Phase 0)."""
+    import sys
+
+    import stores
+    from fastapi import HTTPException
+    from models.schemas import HiveUser
+    from routes.setup import complete_setup
+    from services.model_store import ModelStore
+
+    fresh_users = ModelStore("users", HiveUser)
+    monkeypatch.setattr(stores, "users", fresh_users)
+    monkeypatch.setattr("routes.setup._get_kv", lambda: None)
+    # A None entry in sys.modules makes `from maistro.identity import ...`
+    # raise ImportError, simulating the missing [identity] extra.
+    monkeypatch.setitem(sys.modules, "maistro.identity", None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        complete_setup(
+            {
+                "hardware_preset": "auto",
+                "admin_username": "newadmin",
+                "admin_password": "s3cret-admin",
+                "user_username": "newuser",
+                "user_password": "s3cret-user",
+                "optional_modules": ["crypto_identity"],
+            }
+        )
+
+    assert exc_info.value.status_code == 503
+    assert "crypto_identity" in exc_info.value.detail
+    # Nothing was mutated — the operator can repair the dependency and retry.
+    assert "admin" not in fresh_users
+    assert "user" not in fresh_users

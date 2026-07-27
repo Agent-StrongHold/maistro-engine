@@ -47,15 +47,18 @@ class SetupCompleteBody:
     pass
 
 
-def _maybe_generate_identity(modules: list[str]) -> tuple[str | None, list[str] | None, str | None]:
+def _maybe_generate_identity(modules: list[str]) -> tuple[str | None, list[str] | None]:
     """Generate the ConductorSeed identity root when requested.
 
-    Returns (did, mnemonic_words, unavailable_reason). The operator asked for a
-    crypto identity root — a missing `identity` extra must be loud, not a
-    silently-None mnemonic (the reveal screen is the only chance to show it).
+    Returns (did, mnemonic_words). The operator asked for a crypto identity
+    root, and this runs BEFORE any account is created: completing setup
+    without the mnemonic would lock the one-shot endpoint behind its 409
+    guard with no later provisioning step, so a missing `identity` extra
+    fails the whole request instead. The operator repairs the dependency and
+    retries, or deselects the module.
     """
     if "crypto_identity" not in modules:
-        return None, None, None
+        return None, None
     try:
         from maistro.identity import ConductorSeed
     except ImportError as exc:
@@ -64,12 +67,20 @@ def _maybe_generate_identity(modules: list[str]) -> tuple[str | None, list[str] 
         _logging.getLogger("hive.setup").error(
             "crypto_identity requested but maistro.identity is unavailable: %s", exc
         )
-        return None, None, str(exc)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "crypto_identity was requested but the identity runtime is not "
+                "installed (maistro-core[identity]). Install it and retry setup, "
+                "or deselect the crypto identity module. No accounts were created. "
+                f"Underlying error: {exc}"
+            ),
+        ) from exc
     seed = ConductorSeed.generate()
     user_did = seed.did_key()
     mnemonic = seed.mnemonic_words()
     seed.zero()
-    return user_did, mnemonic, None
+    return user_did, mnemonic
 
 
 @router.post("/complete")
@@ -104,7 +115,7 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     now_ts = datetime.now(UTC)
 
     modules = body.get("optional_modules", [])
-    user_did, config_mnemonic, identity_unavailable = _maybe_generate_identity(modules)
+    user_did, config_mnemonic = _maybe_generate_identity(modules)
 
     admin_hash = hash_password(admin_password)
     user_hash = hash_password(user_password)
@@ -166,8 +177,6 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
         result["mnemonic_warning"] = (
             "Write these words down. This is the only time they will be shown. They are your root of trust for everything."
         )
-    if identity_unavailable is not None:
-        result["identity_unavailable"] = identity_unavailable
     return result
 
 
