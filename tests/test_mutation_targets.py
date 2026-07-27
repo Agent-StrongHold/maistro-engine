@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -78,3 +79,50 @@ def test_every_resolved_path_exists_on_disk(module):
         resolved = module.resolve_tests(src)
         assert resolved is not None
         assert (REPO / resolved).exists(), resolved
+
+
+class TestBudgetPrioritisation:
+    """When the budget is partial, it is spent where a survivor is worst — and
+    what got dropped is always named.
+
+    The tiering: feature -> develop caps the file count for fast feedback,
+    develop -> main runs a full sweep as the release gate.
+    """
+
+    ALL: ClassVar[list[str]] = [
+        "packages/maistro-core/src/maistro/graph/harness_executor.py",
+        "packages/maistro-core/src/maistro/router/scorer.py",
+        "packages/maistro-core/src/maistro/security/warden/detector.py",
+        "packages/maistro-core/src/maistro/memory/outcomes.py",
+    ]
+
+    def test_security_outranks_router_outranks_graph(self, module):
+        ranks = [module.priority(p) for p in self.ALL]
+        graph, router, security, other = ranks
+        assert security < router < graph < other
+
+    def test_limit_keeps_the_highest_priority_files(self, module, capsys):
+        module.main(["--limit", "2", "\n".join(self.ALL)])
+        out = capsys.readouterr()
+        kept = [line.split("\t")[0] for line in out.out.strip().splitlines()]
+        assert "security/warden/detector.py" in kept[0]
+        assert "router/scorer.py" in kept[1]
+        assert len(kept) == 2
+
+    def test_dropped_files_are_named_not_silently_skipped(self, module, capsys):
+        """The load-bearing property. A gate that quietly covers less than it
+        claims is exactly the phantom-gate failure this workflow was rewritten
+        to remove, so truncation must be loud and itemised."""
+        module.main(["--limit", "1", "\n".join(self.ALL)])
+        err = capsys.readouterr().err
+        assert "::warning::" in err
+        assert "NOT mutated" in err
+        for dropped in ("router/scorer.py", "graph/harness_executor.py"):
+            assert dropped in err, dropped
+
+    def test_zero_limit_means_full_sweep(self, module, capsys):
+        """The develop -> main release gate passes --limit 0."""
+        module.main(["--limit", "0", "\n".join(self.ALL)])
+        out = capsys.readouterr()
+        assert len(out.out.strip().splitlines()) == len(self.ALL)
+        assert "NOT mutated" not in out.err

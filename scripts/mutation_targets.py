@@ -51,9 +51,34 @@ def resolve_tests(src: str) -> Path | None:
     return None
 
 
+# Mutation budget is finite, so when it has to be spent partially it is spent
+# where a surviving mutant is worst. security/ and router/ first: an unkilled
+# mutant in the Warden or the scorer is a silently-weakened control, where one
+# in a graph node is usually a missing assertion.
+_PRIORITY = (
+    "src/maistro/security/",
+    "src/maistro/policy/",
+    "src/maistro/router/",
+    "src/maistro/graph/",
+)
+
+
+def priority(src: str) -> int:
+    for rank, prefix in enumerate(_PRIORITY):
+        if prefix in src:
+            return rank
+    return len(_PRIORITY)
+
+
 def main(argv: list[str]) -> int:
-    files = [line.strip() for line in (argv[0].splitlines() if argv else sys.stdin)]
-    resolved = 0
+    limit = 0
+    args = list(argv)
+    if args and args[0] == "--limit":
+        limit = int(args[1])
+        args = args[2:]
+
+    files = [line.strip() for line in (args[0].splitlines() if args else sys.stdin)]
+    targets: list[tuple[str, Path]] = []
     for src in files:
         if not src:
             continue
@@ -61,9 +86,28 @@ def main(argv: list[str]) -> int:
         if tests is None:
             print(f"skip (no scoped tests found): {src}", file=sys.stderr)
             continue
+        targets.append((src, tests))
+
+    targets.sort(key=lambda t: (priority(t[0]), t[0]))
+
+    if limit and len(targets) > limit:
+        dropped = targets[limit:]
+        targets = targets[:limit]
+        # Never a silent truncation: a gate that quietly covers less than it
+        # claims is the exact failure this whole workflow was rewritten to
+        # remove. Name every file that did not get mutated.
+        print(
+            f"::warning::mutation budget limit={limit}; "
+            f"{len(dropped)} changed file(s) NOT mutated in this run "
+            "(full sweep runs on the develop -> main gate and nightly):",
+            file=sys.stderr,
+        )
+        for src, _ in dropped:
+            print(f"  not mutated: {src}", file=sys.stderr)
+
+    for src, tests in targets:
         print(f"{src}\t{tests}")
-        resolved += 1
-    if resolved == 0:
+    if not targets:
         print("no changed file resolved to a scoped test path", file=sys.stderr)
     return 0
 
