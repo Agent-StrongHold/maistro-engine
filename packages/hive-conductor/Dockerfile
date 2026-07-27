@@ -37,8 +37,14 @@ COPY packages/maistro-bootstrap /packages/maistro-bootstrap
 COPY packages/maistro-canvas /packages/maistro-canvas
 COPY packages/maistro-design /packages/maistro-design
 COPY packages/maistro-evolve /packages/maistro-evolve
+# NOTE: maistro-core's [identity] extra (bip-utils → coincurve) cannot install
+# here yet: coincurve publishes no cp314 wheels (21.0.0 caps at cp313), this
+# base image is Python 3.14, and coincurve's source build is broken against
+# current cffi. Until a cp314 wheel exists, setup surfaces the gap loudly via
+# identity_unavailable instead of a silently-missing mnemonic
+# (SPEC-072726-3439 Phase 3 tracks restoring in-image identity).
 RUN pip install --no-cache-dir \
-    "/packages/maistro-core[identity]" \
+    /packages/maistro-core \
     /packages/maistro-bootstrap \
     /packages/maistro-canvas \
     /packages/maistro-design \

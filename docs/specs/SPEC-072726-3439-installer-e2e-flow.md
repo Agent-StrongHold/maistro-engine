@@ -137,9 +137,14 @@ five are in.
   `litellm_config.yaml`.
 - Render `Onboarding` inside the authenticated shell (below `AuthGuard`), and
   mount `SetupChecklist` on the main dashboard.
-- Make identity failures loud: hive-conductor image installs the `identity`
-  extra; `setup.py` returns an explicit `identity_unavailable` field instead of
-  silently returning `mnemonic: None` when crypto identity was requested.
+- Make identity failures loud: `setup.py` returns an explicit
+  `identity_unavailable` field instead of silently returning `mnemonic: None`
+  when crypto identity was requested. Installing the `identity` extra in the
+  hive-conductor image is blocked for now: the Chainguard base is Python 3.14
+  and `coincurve` (via `bip-utils`) publishes no cp314 wheels (21.0.0 caps at
+  cp313) while its source build is broken against current cffi — restoring
+  in-image identity moves to Phase 3 (pin a 3.13 wheel-building stage, or pick
+  up coincurve's cp314 wheels when released).
 
 ### Phase 1 — wizard collects credentials and entropy
 
