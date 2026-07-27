@@ -29,6 +29,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import structlog
@@ -48,7 +50,12 @@ from maistro_rsi.coordinator import (
     HypothesisProposer,
     report_from_cycle_result,
 )
-from maistro_rsi.htr import HypothesisEvidence, HypothesisNode, HypothesisTree
+from maistro_rsi.htr import (
+    FrontierExhausted,
+    HypothesisEvidence,
+    HypothesisNode,
+    HypothesisTree,
+)
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quarantine import QuarantineVerdict, quarantine_scan
 from maistro_rsi.quota_burn import QuotaBurnScheduler, discover_models
@@ -71,10 +78,28 @@ def _repo_slug(repo_url: str) -> str:
     """Filesystem-safe identifier for ``repo_url``, used to namespace the
     default tree/ledger filenames so two repos sharing a workspace root never
     collide (and, for the tree, so a mismatch is loud rather than silently
-    resuming the wrong repository's nodes)."""
+    resuming the wrong repository's nodes).
+
+    The HOST is part of a repository's identity. ``github.com/acme/widget`` and
+    ``gitlab.com/acme/widget`` are two different repositories that happen to
+    share an owner and a name; slugging on the last two path segments alone
+    merged them into one namespace, which is the collision this function exists
+    to prevent. The ``git@host:owner/repo`` form is folded to the same slug as
+    the ``https://host/owner/repo`` form — same repository, one namespace.
+    """
     cleaned = repo_url.removesuffix(".git")
-    tail = "/".join(cleaned.split("/")[-2:]) or cleaned
-    return re.sub(r"[^A-Za-z0-9]+", "-", tail).strip("-").lower()
+    # scp-like `git@github.com:acme/widget` carries no scheme for urlsplit to
+    # find; the negative lookahead keeps `https://…` out of this branch.
+    scp = re.match(r"^(?:[^@/]+@)?([^/:]+):(?!//)(.+)$", cleaned)
+    if scp:
+        host, path = scp.group(1), scp.group(2)
+    else:
+        parts = urlsplit(cleaned)
+        host = parts.hostname or ""
+        # No scheme means a bare filesystem path — there is no host to take.
+        path = parts.path if parts.scheme else cleaned
+    tail = "/".join([segment for segment in path.split("/") if segment][-2:]) or cleaned
+    return re.sub(r"[^A-Za-z0-9]+", "-", f"{host}/{tail}" if host else tail).strip("-").lower()
 
 
 @dataclass
@@ -258,19 +283,51 @@ def default_genome(genome_id: str, *, model: str = "default") -> PipelineGenome:
 
 
 class AuditLog:
-    """Append-only JSONL trail: one record per executed experiment."""
+    """Append-only JSONL trail: one record per attempted experiment.
+
+    Every entry carries an ``outcome`` so a completed cycle and a cycle that
+    died before producing a result are distinguishable without inferring it
+    from which keys happen to be present.
+    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def record(self, context: HtrContext, result: RsiCycleResult) -> None:
-        branch = result.branch_result
-        entry = {
+    def _append(self, entry: dict[str, object]) -> None:
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry) + "\n")
+
+    @staticmethod
+    def _identity(context: HtrContext) -> dict[str, object]:
+        return {
             "ts": datetime.now(UTC).isoformat(),
             "node_id": context.node.id,
             "depth": context.node.depth,
             "hypothesis": context.node.hypothesis,
+        }
+
+    def record_failure(self, context: HtrContext, error: BaseException) -> None:
+        """Record an experiment that never produced an ``RsiCycleResult``.
+
+        A cycle whose coding-agent command fails is pruned as a dead end rather
+        than raised, which is right for the tree but left the audit trail with
+        no evidence the hypothesis was ever attempted.
+        """
+        self._append(
+            {
+                **self._identity(context),
+                "outcome": "failed",
+                "error_type": type(error).__name__,
+                "error": str(error),
+            }
+        )
+
+    def record(self, context: HtrContext, result: RsiCycleResult) -> None:
+        branch = result.branch_result
+        entry = {
+            **self._identity(context),
+            "outcome": "completed",
             "run_id": result.run_id,
             "model": result.model_used,
             "tests_passed": branch.tests_passed,
@@ -284,8 +341,7 @@ class AuditLog:
             "quarantine_flags": list(branch.quarantine.flags) if branch.quarantine else [],
             "pr_url": branch.pr_url,
         }
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry) + "\n")
+        self._append(entry)
 
 
 def _atomic_write_json(path: Path, payload: dict[str, object]) -> None:
@@ -313,9 +369,18 @@ class LearningsLedger:
     the same mounted workspace) still recalls what previous runs learned.
     """
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, legacy_paths: Sequence[str | Path] = ()) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Read-only fallbacks: ledgers written before the default filename was
+        # namespaced by repository. Renaming the default silently orphaned
+        # every lesson already on disk, which contradicts the one promise this
+        # class makes — that the lessons outlive any single tree. They are
+        # recalled from, never appended to: appending would re-merge the
+        # namespaces the new name exists to separate. Cross-repo entries in a
+        # shared legacy file are still filtered out by `recall`'s repo_url
+        # predicate.
+        self.legacy_paths = [Path(p) for p in legacy_paths]
 
     def append(
         self,
@@ -352,15 +417,26 @@ class LearningsLedger:
             handle.write(json.dumps(entry) + "\n")
 
     def _read_entries(self) -> list[dict[str, object]]:
-        """Parse the ledger tolerantly: corrupt or partial lines are skipped
-        with a warning (never raise) and a missing/unreadable file is an empty
-        ledger (autorun-12)."""
-        if not self.path.exists():
+        """Every entry across the legacy ledgers and this one, oldest file
+        first so ``recall``'s recency ordering still holds."""
+        entries: list[dict[str, object]] = []
+        for path in [*self.legacy_paths, self.path]:
+            if path != self.path and path.resolve() == self.path.resolve():
+                continue  # legacy name and current name are the same file
+            entries.extend(self._read_file(path))
+        return entries
+
+    @staticmethod
+    def _read_file(path: Path) -> list[dict[str, object]]:
+        """Parse one ledger file tolerantly: corrupt or partial lines are
+        skipped with a warning (never raise) and a missing/unreadable file is
+        an empty ledger (autorun-12)."""
+        if not path.exists():
             return []
         try:
-            raw_lines = self.path.read_text(encoding="utf-8").splitlines()
+            raw_lines = path.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
-            logger.warning("rsi_learnings_read_failed", path=str(self.path), error=str(exc))
+            logger.warning("rsi_learnings_read_failed", path=str(path), error=str(exc))
             return []
         entries: list[dict[str, object]] = []
         for line in raw_lines:
@@ -370,7 +446,7 @@ class LearningsLedger:
             try:
                 entry = json.loads(line)
             except ValueError:
-                logger.warning("rsi_learnings_corrupt_line_skipped", path=str(self.path))
+                logger.warning("rsi_learnings_corrupt_line_skipped", path=str(path))
                 continue
             if isinstance(entry, dict) and entry.get("insight"):
                 entries.append(entry)
@@ -455,14 +531,28 @@ def build_executor(
             try:
                 models = await discover_models()
             except Exception as exc:
-                # LiteLLM discovery is irrelevant to the default opencode +
-                # differential-probe path (scoring never touches an llm_call);
-                # don't let it block a run that doesn't need it. Fall back to
-                # the configured model (if any) so the scheduler still has
-                # something to route to, else an empty pool degrades to
-                # heuristic scoring exactly like the "no model available"
-                # path RsiCycle.run already documents.
-                logger.warning("rsi_model_discovery_failed", error=str(exc))
+                # Suppress the failure ONLY for a run whose scoring never needs
+                # a model. Two such runs exist: one with `benchmark_commands`,
+                # where RsiCycle._score compares the differential workspace
+                # metrics captured around the patch and never builds an
+                # llm_call; and one with an explicit `config.model`, which
+                # gives the scheduler a real pool without discovery.
+                #
+                # Every other run falls through to the stock genome benchmark
+                # suite with `llm_call=None`, which scores heuristically. Those
+                # heuristic scores still populate the tournament, so the tree
+                # keeps ranking hypotheses and reporting winners while the
+                # ranking carries no signal — experiment selection quietly
+                # becomes noise. An empty pool is a real failure there, so it
+                # is raised rather than logged.
+                if not config.benchmark_commands and not config.model:
+                    raise
+                logger.warning(
+                    "rsi_model_discovery_failed",
+                    error=str(exc),
+                    probe_scored=bool(config.benchmark_commands),
+                    configured_model=config.model,
+                )
                 models = [config.model] if config.model else []
         try:
             result = await cycle.run(
@@ -475,6 +565,13 @@ def build_executor(
             # designed to prune as a dead end, not a fatal error that should
             # abort the whole autorun and strand every later hypothesis.
             logger.warning("rsi_apply_patch_failed", node_id=context.node.id, error=str(exc))
+            # Audit the failure before returning. This early return used to skip
+            # `audit.record` entirely, so the append-only trail held only the
+            # cycles that completed — the one class of cycle an operator most
+            # needs to reconstruct (why did this hypothesis die?) was the class
+            # that left no record at all.
+            if audit is not None:
+                audit.record_failure(context, exc)
             return ExecutionReport(
                 evidence=HypothesisEvidence(
                     tests_passed=False, benchmarks_won=0, battles=0, improved=False
@@ -509,7 +606,19 @@ def _load_or_create_tree(config: AutorunConfig, tree_path: Path) -> HypothesisTr
             tree.expand(tree.root_id, hypothesis)
         return tree
 
-    envelope = json.loads(tree_path.read_text(encoding="utf-8"))
+    raw = json.loads(tree_path.read_text(encoding="utf-8"))
+    # Snapshots written before the envelope existed are the bare tree dict
+    # (`{"root_id", "nodes"}`). The repo_url check below already tolerates a
+    # missing repo_url, i.e. it already declares those snapshots readable — so
+    # raising KeyError on the missing "tree" key was an inconsistency rather
+    # than a policy, and it made every pre-envelope resume crash instead of
+    # continuing. Accept the legacy shape; the root-hypothesis check still
+    # catches a mismatched tree, which is the only check available for a
+    # snapshot that never recorded its repo.
+    if isinstance(raw, dict) and "nodes" in raw and "tree" not in raw:
+        envelope: dict[str, Any] = {"repo_url": None, "tree": raw}
+    else:
+        envelope = raw
     restored_repo = envelope.get("repo_url")
     if restored_repo is not None and restored_repo != config.repo_url:
         raise ValueError(
@@ -556,7 +665,13 @@ async def run_autonomous(
     repo_slug = _repo_slug(config.repo_url)
     tree_path = Path(config.tree_path or Path(config.workspace_root) / f"htr-tree-{repo_slug}.json")
     active_ledger = ledger or LearningsLedger(
-        config.learnings_path or Path(config.workspace_root) / f"learnings-{repo_slug}.jsonl"
+        config.learnings_path or Path(config.workspace_root) / f"learnings-{repo_slug}.jsonl",
+        # Only when the default path is in use. An explicit `learnings_path`
+        # is the operator naming the file they want read; quietly folding in
+        # another one would be the surprise, not the service.
+        legacy_paths=(
+            () if config.learnings_path else (Path(config.workspace_root) / "learnings.jsonl",)
+        ),
     )
     # Scan recalled insights AGAIN at use time, not just at append time: the
     # ledger file sits on disk between runs, and an entry tampered with after
@@ -596,13 +711,17 @@ async def run_autonomous(
             # endless run of near-identical template hypotheses.
             await logger.awarning("rsi_autorun_proposer_circuit_open", error=str(exc))
             break
-        except ValueError as exc:
+        except FrontierExhausted:
             # select_seed() raises once the root is abandoned and nothing
             # remains EXPLORED — an ordinary exhausted frontier, not a fatal
             # error. Return the partial result instead of crashing the loop,
             # exactly like the wall-clock budget path above.
-            if "abandoned" not in str(exc):
-                raise
+            #
+            # Caught by TYPE, not by matching "abandoned" against a ValueError
+            # message. The proposer and the executor are both injectable and
+            # both run inside this call; a ValueError raised by either one
+            # whose message merely mentioned an abandoned anything was landing
+            # here and being logged as a clean stop.
             await logger.awarning("rsi_autorun_frontier_exhausted", steps=len(steps))
             break
         steps.extend(partial.steps)
