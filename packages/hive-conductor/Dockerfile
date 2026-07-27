@@ -38,7 +38,7 @@ COPY packages/maistro-canvas /packages/maistro-canvas
 COPY packages/maistro-design /packages/maistro-design
 COPY packages/maistro-evolve /packages/maistro-evolve
 RUN pip install --no-cache-dir \
-    /packages/maistro-core \
+    "/packages/maistro-core[identity]" \
     /packages/maistro-bootstrap \
     /packages/maistro-canvas \
     /packages/maistro-design \

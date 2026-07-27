@@ -33,7 +33,10 @@ class Settings(BaseSettings):
 
     litellm_api_base: str | None = None
     litellm_api_key: SecretStr | None = None
-    chat_default_model: str = "cerebras-qwen-3-235b-a22b-2507"
+    # Must exist in litellm_config.yaml; compose passes CHAT_DEFAULT_MODEL with
+    # the same value. setup.py's first-run fallback reads this field — change it
+    # here, not there. (The old cerebras- alias was not in the gateway config.)
+    chat_default_model: str = "gemini/gemini-2.5-flash"
     llm_http_variant: Literal["auto", "responses", "chat_completions"] = "auto"
 
     maistro_router_api_key: str | None = None

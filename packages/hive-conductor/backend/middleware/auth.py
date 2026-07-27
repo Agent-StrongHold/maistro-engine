@@ -145,6 +145,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
+        # The install wizard API is only useful before first-run provisioning,
+        # when no account exists yet to authenticate with. Public pre-setup;
+        # normal auth applies once setup completes (same one-shot boundary as
+        # /v1/setup/complete's 409 guard).
+        if _matches_public_prefix(path, "/v1/install/") and not self._setup_complete():
+            return await call_next(request)
+
         if request.method == "OPTIONS":
             return await call_next(request)
 
@@ -176,6 +183,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
 
         return await call_next(request)
+
+    def _setup_complete(self) -> bool:
+        try:
+            from routes.setup import _is_setup_complete
+
+            return _is_setup_complete()
+        except Exception:
+            # Fail closed: if setup state can't be read, require auth.
+            return True
 
     def _get_user(self, request: Request) -> dict | None:
         session_id = request.cookies.get("hive_session")

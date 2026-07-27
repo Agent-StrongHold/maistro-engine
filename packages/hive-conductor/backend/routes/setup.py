@@ -47,6 +47,31 @@ class SetupCompleteBody:
     pass
 
 
+def _maybe_generate_identity(modules: list[str]) -> tuple[str | None, list[str] | None, str | None]:
+    """Generate the ConductorSeed identity root when requested.
+
+    Returns (did, mnemonic_words, unavailable_reason). The operator asked for a
+    crypto identity root — a missing `identity` extra must be loud, not a
+    silently-None mnemonic (the reveal screen is the only chance to show it).
+    """
+    if "crypto_identity" not in modules:
+        return None, None, None
+    try:
+        from maistro.identity import ConductorSeed
+    except ImportError as exc:
+        import logging as _logging
+
+        _logging.getLogger("hive.setup").error(
+            "crypto_identity requested but maistro.identity is unavailable: %s", exc
+        )
+        return None, None, str(exc)
+    seed = ConductorSeed.generate()
+    user_did = seed.did_key()
+    mnemonic = seed.mnemonic_words()
+    seed.zero()
+    return user_did, mnemonic, None
+
+
 @router.post("/complete")
 def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     import stores
@@ -79,19 +104,7 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     now_ts = datetime.now(UTC)
 
     modules = body.get("optional_modules", [])
-    user_did: str | None = None
-    if "crypto_identity" in modules:
-        try:
-            from maistro.identity import ConductorSeed
-
-            seed = ConductorSeed.generate()
-            user_did = seed.did_key()
-            config_mnemonic = seed.mnemonic_words()
-            seed.zero()
-        except Exception:
-            config_mnemonic = None
-    else:
-        config_mnemonic = None
+    user_did, config_mnemonic, identity_unavailable = _maybe_generate_identity(modules)
 
     admin_hash = hash_password(admin_password)
     user_hash = hash_password(user_password)
@@ -118,7 +131,9 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
     # v0 fix: persist the Setup-chosen default_model into stores.settings so
     # the Settings page reflects what the user actually picked (was showing
     # the hardcoded legacy cerebras- alias regardless of Setup choice).
-    chosen_default_model = body.get("default_model") or "gemini-3.1-flash-lite"
+    from config import get_settings
+
+    chosen_default_model = body.get("default_model") or get_settings().chat_default_model
     config = {
         "hardware_preset": hardware_preset,
         "optional_modules": modules,
@@ -151,6 +166,8 @@ def complete_setup(body: dict[str, Any]) -> dict[str, Any]:
         result["mnemonic_warning"] = (
             "Write these words down. This is the only time they will be shown. They are your root of trust for everything."
         )
+    if identity_unavailable is not None:
+        result["identity_unavailable"] = identity_unavailable
     return result
 
 

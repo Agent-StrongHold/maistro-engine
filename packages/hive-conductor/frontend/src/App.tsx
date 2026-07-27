@@ -107,7 +107,22 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return <Login onAuthenticated={handleAuthenticated} />;
   }
 
-  return <UserCtx.Provider value={user}>{children}</UserCtx.Provider>;
+  return (
+    <UserCtx.Provider value={user}>
+      <OnboardingGate />
+      {children}
+    </UserCtx.Provider>
+  );
+}
+
+// Rendered only once authenticated: on a fresh install the Setup wizard and
+// Login screen must never be covered by the onboarding modal.
+function OnboardingGate() {
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("hive_onboarded"));
+  if (!showOnboarding) {
+    return null;
+  }
+  return <Onboarding onComplete={() => setShowOnboarding(false)} />;
 }
 
 function AppRoutes() {
@@ -167,20 +182,10 @@ export default function App() {
       <ToastProvider>
         <ModeProvider>
           <PocModeProvider>
-            <AppRoutesWithOnboarding />
+            <AppRoutes />
           </PocModeProvider>
         </ModeProvider>
       </ToastProvider>
     </ErrorBoundary>
-  );
-}
-
-function AppRoutesWithOnboarding() {
-  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("hive_onboarded"));
-  return (
-    <>
-      {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
-      <AppRoutes />
-    </>
   );
 }

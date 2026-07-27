@@ -58,10 +58,11 @@ What breaks the journey today (verified against the tree at develop@84eff22):
 
 1. **`/v1/install/*` is dead.** `backend/routes/install.py` imports
    `maistro_bootstrap.session.get_session_defaults`, which does not exist, so
-   both endpoints always 503; `POST /v1/install/plan` (documented in
-   plan.py:217) was never added; `frontend/src/pages/Install.tsx` is not routed
+   both endpoints always 503; `frontend/src/pages/Install.tsx` is not routed
    in `App.tsx`; and the `/v1/install` prefix is auth-gated, which is
-   chicken-and-egg for pre-setup use.
+   chicken-and-egg for pre-setup use. (`POST /v1/install/plan` is deliberately
+   retired — regression-pinned in `test_api.py` — so the session endpoint is
+   the only wizard contract to revive.)
 2. **No path from UI to a working model call.** Provider API keys live only in
    `.env` consumed by the LiteLLM container; changing them requires hand-editing
    `.env` and recreating the container. `pages/Credentials.tsx` +
@@ -121,9 +122,11 @@ five are in.
 
 - Add `maistro_bootstrap/session.py` exposing
   `get_session_defaults(partial: dict | None) -> dict` as a thin wrapper over
-  `schema.merge_session_payload`, add `POST /v1/install/plan` calling
-  `build_install_plan`, and make `/v1/install/*` public **only while setup is
-  incomplete** (same guard as `/v1/setup/`), 403 afterwards.
+  `schema.merge_session_payload`, and make `/v1/install/*` public **only while
+  setup is incomplete** (same one-shot boundary as `/v1/setup/complete`),
+  normal auth afterwards. `POST /v1/install/plan` stays retired — the session
+  shape is the single wizard contract (regression-pinned by
+  `test_install_plan_endpoint_retired`).
 - Delete the unrouted `frontend/src/pages/Install.tsx` (the terminal wizard and
   `Setup.tsx` are the real surfaces; the JSON-textarea page misleads).
 - Fix the reactor compose override: emit `build:` (context `.`, existing

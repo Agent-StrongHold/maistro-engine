@@ -344,3 +344,38 @@ def test_public_exact_entries_not_redundantly_in_boundary_prefixes() -> None:
     assert "/v1/auth/register" not in _PUBLIC_PREFIXES
     assert "/v1/auth/login" in _PUBLIC_EXACT
     assert "/v1/auth/register" in _PUBLIC_EXACT
+
+
+class TestInstallPreSetupWindow:
+    """/v1/install/* is public only before first-run provisioning — the wizard
+    runs when no account exists yet — and reverts to normal auth afterwards
+    (same one-shot boundary as /v1/setup/complete's 409 guard)."""
+
+    def test_install_requires_auth_once_setup_complete(self) -> None:
+        # conftest seeds users, so setup is complete in the test app.
+        c = TestClient(app)
+        r = c.get("/v1/install/session")
+        assert r.status_code == 401
+
+    def test_install_public_before_setup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import routes.setup as setup_routes
+
+        monkeypatch.setattr(setup_routes, "_is_setup_complete", lambda: False)
+        c = TestClient(app)
+        r = c.get("/v1/install/session")
+        # 200 in a monorepo checkout; 503 only when maistro-bootstrap is not
+        # adjacent. Never 401 — that's the regression this test pins.
+        assert r.status_code in (200, 503)
+        if r.status_code == 200:
+            assert r.json()["kind"] == "maistro_install_session_template"
+
+    def test_install_sibling_prefix_not_public_pre_setup(
+        self, monkeypatch: pytest.MonkeyPatch, temp_route
+    ) -> None:
+        import routes.setup as setup_routes
+
+        monkeypatch.setattr(setup_routes, "_is_setup_complete", lambda: False)
+        temp_route("/v1/installers-catalog")
+        c = TestClient(app)
+        r = c.get("/v1/installers-catalog")
+        assert r.status_code == 401
