@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import ClassVar
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 import maistro_rsi.local_loop as local_loop
 from maistro_rsi.local_loop import LocalRsiConfig, LocalRsiLoop
@@ -290,9 +292,13 @@ def test_trim_for_resume_elides_an_oversized_tool_use_input_in_the_newest_pair()
 
     assert sum(len(str(m.get("content", ""))) for m in trimmed) <= local_loop._RESUME_CHAR_BUDGET
     shrunk_input = trimmed[2]["content"][0]["input"]
-    assert len(shrunk_input["content"]) <= local_loop._RESUME_ITEM_CAP + len(local_loop._ELIDED)
-    assert shrunk_input["content"].endswith(local_loop._ELIDED)
-    assert len(shrunk_input["old_string"]) <= local_loop._RESUME_ITEM_CAP + len(local_loop._ELIDED)
+    # Inputs get their OWN marker, phrased as a historical record: appending
+    # "tool output elided" to the model's own write_file arguments invited it
+    # to re-issue the write with the marker embedded in real file content.
+    cap = local_loop._RESUME_ITEM_CAP + len(local_loop._ELIDED_INPUT)
+    assert len(shrunk_input["content"]) <= cap
+    assert shrunk_input["content"].endswith(local_loop._ELIDED_INPUT)
+    assert len(shrunk_input["old_string"]) <= cap
     assert shrunk_input["path"] == "big.py"  # small values pass through untouched
     # The pair is still intact — trimmed, not dropped or split.
     assert trimmed[2]["content"][0]["id"] == transcript[2]["content"][0]["id"]
@@ -354,3 +360,124 @@ async def test_exhausted_tool_budget_resumes_with_transcript_not_sentinel(tmp_pa
     assert resume_call[0]["role"] == "system"
     assert resume_call[-1]["role"] == "user"  # unanswered tool results
     assert resume_call[-1]["content"][0]["type"] == "tool_result"
+
+
+# --- _trim_for_resume: the contract as properties, not examples --------------
+#
+# The #258 review's exact words: "A Hypothesis property over generated
+# transcripts asserting the budget postcondition would have failed on finding
+# #1 immediately." Here it is, plus the structural properties the index
+# arithmetic version violated.
+
+
+def _message_strategy():
+    text_block = st.fixed_dictionaries({"type": st.just("text"), "text": st.text(max_size=2000)})
+    tool_use = st.fixed_dictionaries(
+        {
+            "type": st.just("tool_use"),
+            "id": st.uuids().map(str),
+            "name": st.sampled_from(["bash", "write_file", "edit_file"]),
+            "input": st.dictionaries(
+                st.sampled_from(["content", "old_string", "new_string", "path"]),
+                st.text(max_size=30_000),
+                max_size=3,
+            ),
+        }
+    )
+    assistant = st.fixed_dictionaries(
+        {"role": st.just("assistant"), "content": st.lists(tool_use | text_block, max_size=3)}
+    )
+    tool_result = st.fixed_dictionaries(
+        {
+            "role": st.just("user"),
+            "content": st.lists(
+                st.fixed_dictionaries(
+                    {
+                        "type": st.just("tool_result"),
+                        "tool_use_id": st.uuids().map(str),
+                        "content": st.text(max_size=60_000),
+                    }
+                ),
+                max_size=2,
+            ),
+        }
+    )
+    return assistant | tool_result
+
+
+@st.composite
+def _transcripts(draw):
+    seed = [
+        {"role": "system", "content": draw(st.text(max_size=3000))},
+        {"role": "user", "content": draw(st.text(max_size=3000))},
+    ]
+    # Sometimes a THIRD seed message — the case the old [2:4] slice deleted.
+    if draw(st.booleans()):
+        seed.append({"role": "user", "content": draw(st.text(max_size=2000))})
+    body = draw(st.lists(_message_strategy(), max_size=12))
+    return seed + body
+
+
+class TestTrimForResumeProperties:
+    @given(transcript=_transcripts())
+    @settings(max_examples=60, deadline=None)
+    def test_budget_postcondition_or_none(self, transcript):
+        """The one that matters: output fits the budget, or is None — never a
+        silently over-budget transcript handed to the gateway."""
+        trimmed = local_loop._trim_for_resume(list(transcript))
+        if trimmed is not None:
+            assert local_loop._chars(trimmed) <= local_loop._RESUME_CHAR_BUDGET
+
+    @given(transcript=_transcripts())
+    @settings(max_examples=60, deadline=None)
+    def test_seed_survives_verbatim(self, transcript):
+        """Every leading non-assistant message is seed and must not be dropped
+        or rewritten — regardless of whether the seed is 2 or 3 messages."""
+        seed_len = 0
+        while seed_len < len(transcript) and transcript[seed_len].get("role") != "assistant":
+            seed_len += 1
+        trimmed = local_loop._trim_for_resume(list(transcript))
+        if trimmed is not None:
+            assert trimmed[:seed_len] == transcript[:seed_len]
+
+    @given(transcript=_transcripts())
+    @settings(max_examples=60, deadline=None)
+    def test_no_orphan_tool_results(self, transcript):
+        """A tool_result whose assistant turn was dropped is a 400 from most
+        providers — turns and their results move as one unit."""
+        trimmed = local_loop._trim_for_resume(list(transcript))
+        if trimmed is None:
+            return
+        seed_len = 0
+        while seed_len < len(trimmed) and trimmed[seed_len].get("role") != "assistant":
+            seed_len += 1
+        seen_assistant = False
+        for message in trimmed[seed_len:]:
+            if message.get("role") == "assistant":
+                seen_assistant = True
+            else:
+                assert seen_assistant, "tool_result appeared before any assistant turn"
+
+    def test_impossible_budget_returns_none_not_over_budget(self):
+        """The old `len(trimmed) > 4` exit returned an over-budget transcript
+        silently; the contract is now None, the same as _resume_transcript's
+        other unsafe case."""
+        transcript = [
+            {"role": "system", "content": "s" * 200_000},
+            {"role": "user", "content": "objective"},
+        ]
+        assert local_loop._trim_for_resume(transcript) is None
+
+    def test_text_only_assistant_turn_does_not_split_pairs(self):
+        """Interleaved text-only turns shifted the old parity arithmetic so
+        del [2:4] split a real pair."""
+        transcript = _seed_and_pairs(6, 20_000)
+        transcript.insert(4, {"role": "assistant", "content": "thinking out loud"})
+        trimmed = local_loop._trim_for_resume(list(transcript))
+        assert trimmed is not None
+        for i, message in enumerate(trimmed):
+            if message.get("role") != "assistant" and i > 1:
+                blocks = message.get("content")
+                if isinstance(blocks, list) and blocks and blocks[0].get("type") == "tool_result":
+                    prev = trimmed[i - 1]
+                    assert prev.get("role") == "assistant", "orphaned tool_result"

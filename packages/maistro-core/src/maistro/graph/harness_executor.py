@@ -91,6 +91,17 @@ class HarnessNodeExecutor:
         blackboard: GraphBlackboard | None,
         output_type: type[BaseModel],
     ) -> BaseModel:
+        # This executor only produces HarnessOutput. Silently returning it for
+        # a planner/coder/reviewer override marked the node successful while
+        # _update_pipeline_state rejected the mismatched type, leaving plan/
+        # code/review unset — an incomplete result with a green node. Refuse
+        # loudly at dispatch instead (Codex, #262).
+        if not issubclass(HarnessOutput, output_type):
+            raise HarnessExecutionError(
+                f"HarnessNodeExecutor produces HarnessOutput, but this node "
+                f"requires {output_type.__name__}; wire a role-appropriate "
+                "executor instead of the harness override."
+            )
         spec = AgentSpec(
             role=_spec_role(role),
             task_id="graph-harness",

@@ -92,9 +92,15 @@ class MicroVMSandbox:
         workspace: str = ".",
         env: dict[str, str] | None = None,
     ) -> None:
+        from maistro.tools.sandbox.workspace import ensure_workspace
+
         self._launcher = launcher
         self._config = config or MicroVMConfig()
-        self._workspace = workspace
+        # Same allowlist the Docker backend enforces via create_sandbox():
+        # the harness API's request body ultimately controls this value, and a
+        # launcher mounts it into the VM — unvalidated, that exposed arbitrary
+        # host paths (/etc, the service checkout) inside the guest (Codex, #262).
+        self._workspace = str(ensure_workspace(workspace))
         self._env = dict(env or {})
 
     @property

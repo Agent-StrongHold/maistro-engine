@@ -392,7 +392,204 @@ class LocalSandbox:
 # ---------------------------------------------------------------------------
 
 
-def _resume_transcript(result: dict[str, Any]) -> list[dict[str, Any]] | None:
+# A resumed transcript must FIT back into the context window of whatever model
+# resumes it — observed live: six resumed tool budgets accumulated a
+# 45,439-token prompt against the local tier's 32,768 window and the gateway
+# rejected the cycle (ContextWindowExceededError).
+#
+# Budgets are characters. RSI transcripts are almost entirely source code,
+# diffs, and test output, which tokenize at ~2.5-3.5 chars/token (punctuation
+# density, indentation runs, camelCase splits) — NOT prose's ~4. 60,000 chars
+# is therefore ~20k tokens worst-case, leaving a 32k window room for the system
+# prompt, tool schemas, and the response. Callers routing to a known
+# larger-window model can raise `char_budget` per call; there is deliberately
+# no model→window table here to silently rot.
+_RESUME_CHAR_BUDGET = 60_000
+_RESUME_ITEM_CAP = 16_000
+# Distinct markers per direction. The input marker matters: appended to a
+# truncated `tool_use` argument it is the model reading ITS OWN past write_file
+# call — a marker that reads as truncated file content invites the model to
+# re-issue the write with the marker inside, corrupting a real source file.
+_ELIDED_OUTPUT = "\n[...tool output elided on resume...]"
+_ELIDED_INPUT = (
+    "\n[...tool arguments truncated in this resume record — historical entry, "
+    "do not re-issue this call from what you see here...]"
+)
+# Backwards-compat alias (tests and older callers referenced the single marker).
+_ELIDED = _ELIDED_OUTPUT
+
+
+def _chars(messages: list[dict[str, Any]]) -> int:
+    """Measured on the JSON wire form, not Python repr — repr quoting differs
+    from JSON by a few percent, and this number is tuned against a hard
+    ceiling."""
+    try:
+        return len(json.dumps(messages, default=str))
+    except (TypeError, ValueError):
+        return sum(len(str(m)) for m in messages)
+
+
+def _shrink_block(block: Any, item_cap: int = _RESUME_ITEM_CAP) -> Any:
+    """A copy of a content ``block`` with its oversized string payload(s) cut to
+    their head — from EITHER direction a tool exchange carries bulk:
+
+    - a ``tool_result``'s ``content`` — the SANDBOX's output (capped at 1MB by
+      _OUTPUT_CAP);
+    - a ``tool_use``'s ``input`` values — the LLM's OWN arguments (a
+      write_file/edit_file call's ``content``/``old_string``/``new_string``),
+      which routinely dwarf any sandbox output.
+    """
+    if not isinstance(block, dict):
+        return block
+    if isinstance(block.get("content"), str) and len(block["content"]) > item_cap:
+        block = {**block, "content": block["content"][:item_cap] + _ELIDED_OUTPUT}
+    if isinstance(block.get("input"), dict):
+        shrunk = {
+            k: (v[:item_cap] + _ELIDED_INPUT if isinstance(v, str) and len(v) > item_cap else v)
+            for k, v in block["input"].items()
+        }
+        if shrunk != block["input"]:
+            block = {**block, "input": shrunk}
+    return block
+
+
+def _shrink_stale_output(
+    message: dict[str, Any], item_cap: int = _RESUME_ITEM_CAP
+) -> dict[str, Any]:
+    """A copy of ``message`` with oversized tool call inputs/outputs cut to their head."""
+    content = message.get("content")
+    if isinstance(content, str) and len(content) > item_cap:
+        return {**message, "content": content[:item_cap] + _ELIDED_OUTPUT}
+    if isinstance(content, list):
+        blocks = [_shrink_block(block, item_cap) for block in content]
+        if blocks != content:
+            return {**message, "content": blocks}
+    return message
+
+
+def _split_units(
+    transcript: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[list[dict[str, Any]]]]:
+    """(seed, units): seed is every leading message before the first assistant
+    turn; each unit is one assistant turn plus the messages answering its tool
+    calls.
+
+    Structure-derived, not index arithmetic: the old ``del trimmed[2:4]``
+    hard-coded a 2-message seed and strict pair parity, so a third seed message
+    (e.g. recalled learnings from #257) would have been deleted while the
+    comment said "never touching the seed", and any text-only assistant turn
+    shifted parity and split a real pair — leaving an orphan tool_result most
+    providers reject with a 400.
+    """
+    seed_end = 0
+    while seed_end < len(transcript) and transcript[seed_end].get("role") != "assistant":
+        seed_end += 1
+    units: list[list[dict[str, Any]]] = []
+    for message in transcript[seed_end:]:
+        if message.get("role") == "assistant" or not units:
+            units.append([message])
+        else:
+            units.append([*units.pop(), message])
+    return list(transcript[:seed_end]), units
+
+
+def _compact_unit(unit: list[dict[str, Any]], allowance: int) -> list[dict[str, Any]]:
+    """Last resort: cut every string payload in ``unit`` so the whole unit fits
+    ``allowance``. This is the aggregate cap the per-item cap cannot provide —
+    three 15,999-char values in one block pass a 16,000 per-item cap while
+    tripling the budget."""
+    strings = 0
+    for message in unit:
+        content = message.get("content")
+        if isinstance(content, str):
+            strings += 1
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict):
+                    if isinstance(block.get("content"), str):
+                        strings += 1
+                    if isinstance(block.get("input"), dict):
+                        strings += sum(1 for v in block["input"].values() if isinstance(v, str))
+    per_value = max(200, allowance // max(1, strings))
+    return [_shrink_stale_output(m, item_cap=per_value) for m in unit]
+
+
+def _trim_for_resume(
+    transcript: list[dict[str, Any]], char_budget: int = _RESUME_CHAR_BUDGET
+) -> list[dict[str, Any]] | None:
+    """Fit ``transcript`` under ``char_budget``, or return None if impossible.
+
+    Levers are spent cheapest-first, re-measuring between steps, and the newest
+    exchange — the one the model is about to answer — is touched only as a last
+    resort:
+
+    1. shrink STALE units' oversized payloads, oldest-first;
+    2. drop stale units whole, oldest-first (never splitting a turn from its
+       tool results, never touching the seed);
+    3. shrink the newest unit's payloads;
+    4. aggregate-compact the newest unit into whatever budget remains;
+    5. still over — return None so the cycle ends BY DESIGN, the same contract
+       _resume_transcript already has for its other unsafe case. The old code's
+       ``len(trimmed) > 4`` loop exit returned an over-budget transcript with no
+       log, and the next gateway call died with the exact
+       ContextWindowExceededError this function exists to prevent.
+    """
+    if _chars(transcript) <= char_budget:
+        return list(transcript)
+
+    seed, units = _split_units(transcript)
+    if not units:
+        logger.warning(
+            "rsi_resume_trim_impossible",
+            reason="seed alone exceeds budget",
+            seed_chars=_chars(seed),
+            budget=char_budget,
+        )
+        return None
+
+    def _fits() -> bool:
+        return _chars(seed + [m for u in units for m in u]) <= char_budget
+
+    # 1. stale payloads, oldest-first.
+    for i in range(len(units) - 1):
+        units[i] = [_shrink_stale_output(m) for m in units[i]]
+        if _fits():
+            break
+
+    # 2. drop stale units, oldest-first.
+    while not _fits() and len(units) > 1:
+        del units[0]
+
+    # 3-4. the newest unit, only once nothing stale remains.
+    return _trim_newest_unit(seed, units, char_budget)
+
+
+def _trim_newest_unit(
+    seed: list[dict[str, Any]],
+    units: list[list[dict[str, Any]]],
+    char_budget: int,
+) -> list[dict[str, Any]] | None:
+    """Steps 3-5 of the trim: shrink, then aggregate-compact, the newest unit;
+    None when even that cannot fit the budget."""
+
+    def _flat() -> list[dict[str, Any]]:
+        return seed + [m for u in units for m in u]
+
+    if _chars(_flat()) > char_budget:
+        units[-1] = [_shrink_stale_output(m) for m in units[-1]]
+    if _chars(_flat()) > char_budget:
+        allowance = char_budget - _chars(seed)
+        if allowance > 0:
+            units[-1] = _compact_unit(units[-1], allowance)
+    if _chars(_flat()) > char_budget:
+        logger.warning("rsi_resume_trim_over_budget", chars=_chars(_flat()), budget=char_budget)
+        return None
+    return _flat()
+
+
+def _resume_transcript(
+    result: dict[str, Any], char_budget: int = _RESUME_CHAR_BUDGET
+) -> list[dict[str, Any]] | None:
     """The messages to continue from after `execute_turn`, or None when done.
 
     "max_turns" is TurnRunner's internal tool-budget stop, not the model
@@ -414,79 +611,7 @@ def _resume_transcript(result: dict[str, Any]) -> list[dict[str, Any]] | None:
         # TurnRunner) leaves nothing safe to resume from — end the cycle rather
         # than poison the context with the sentinel.
         return None
-    return _trim_for_resume(list(transcript))
-
-
-# A resumed transcript must FIT back into the smallest context window in play —
-# observed live: six resumed tool budgets accumulated a 45,439-token prompt
-# against the local tier's 32,768 window and the gateway rejected the cycle
-# (ContextWindowExceededError). Budgets are chars at the ~4 chars/token
-# heuristic: ~22k tokens of transcript leaves a 32k window room for the system
-# prompt, tool schemas and the response. Stale tool outputs (sandbox _OUTPUT_CAP
-# lets a single one reach 1 MB) are elided to their head first; then the OLDEST
-# assistant/tool_result exchanges drop in pairs — never splitting a pair, never
-# touching the seed system+objective, and always keeping the newest exchange the
-# model is about to answer.
-_RESUME_CHAR_BUDGET = 90_000
-_RESUME_ITEM_CAP = 16_000
-_ELIDED = "\n[...tool output elided on resume...]"
-
-
-def _shrink_block(block: Any) -> Any:
-    """A copy of a content ``block`` with its oversized string payload(s) cut to
-    their head — from EITHER direction a tool exchange carries bulk:
-
-    - a ``tool_result``'s ``content`` — the SANDBOX's output (capped at 1MB by
-      _OUTPUT_CAP);
-    - a ``tool_use``'s ``input`` values — the LLM's OWN arguments (a
-      write_file/edit_file call's ``content``/``old_string``/``new_string``),
-      which routinely dwarf any sandbox output. Codex flagged (#258 review):
-      capping only tool_result left the newest kept exchange free to still
-      exceed the budget whenever it was a large write_file/edit_file call,
-      reproducing the exact ContextWindowExceededError this trim prevents.
-    """
-    if not isinstance(block, dict):
-        return block
-    if isinstance(block.get("content"), str) and len(block["content"]) > _RESUME_ITEM_CAP:
-        block = {**block, "content": block["content"][:_RESUME_ITEM_CAP] + _ELIDED}
-    if isinstance(block.get("input"), dict):
-        shrunk = {
-            k: (
-                v[:_RESUME_ITEM_CAP] + _ELIDED
-                if isinstance(v, str) and len(v) > _RESUME_ITEM_CAP
-                else v
-            )
-            for k, v in block["input"].items()
-        }
-        if shrunk != block["input"]:
-            block = {**block, "input": shrunk}
-    return block
-
-
-def _shrink_stale_output(message: dict[str, Any]) -> dict[str, Any]:
-    """A copy of ``message`` with oversized tool call inputs/outputs cut to their head."""
-    content = message.get("content")
-    if isinstance(content, str) and len(content) > _RESUME_ITEM_CAP:
-        return {**message, "content": content[:_RESUME_ITEM_CAP] + _ELIDED}
-    if isinstance(content, list):
-        blocks = [_shrink_block(block) for block in content]
-        if blocks != content:
-            return {**message, "content": blocks}
-    return message
-
-
-def _trim_for_resume(transcript: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def _chars(messages: list[dict[str, Any]]) -> int:
-        return sum(len(str(m.get("content", ""))) for m in messages)
-
-    if _chars(transcript) <= _RESUME_CHAR_BUDGET:
-        return transcript
-    # Seed (system + objective) stays verbatim; everything after it is tool
-    # exchange history that may be shrunk or dropped.
-    trimmed = transcript[:2] + [_shrink_stale_output(m) for m in transcript[2:]]
-    while _chars(trimmed) > _RESUME_CHAR_BUDGET and len(trimmed) > 4:
-        del trimmed[2:4]  # the oldest assistant/tool_result pair, as a pair
-    return trimmed
+    return _trim_for_resume(list(transcript), char_budget=char_budget)
 
 
 def make_builders_apply_patch(

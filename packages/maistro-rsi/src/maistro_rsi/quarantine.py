@@ -47,9 +47,6 @@ SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     # agent's own command template cleared on Warden alone.
     "maistro_rsi/autorun.py",
     "maistro_rsi/apply_agents.py",
-    # Depth/attempt state that survives sandbox disposal — the budgets bounding
-    # how far a run may go.
-    "maistro_rsi/durable_runs/",
     # SafeHarnessRunner composes Warden and the ActionGate but lives under
     # capabilities/, so the "maistro/security/" pattern above never saw it.
     "maistro/capabilities/providers/",
@@ -94,12 +91,36 @@ class QuarantineVerdict:
     reason: str | None = None
 
 
+def _normalize_touched_path(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    # removeprefix, not lstrip("./"): lstrip takes a character set and would
+    # eat the leading dot of ".github/..." — turning a containment surface
+    # into an unmatched path. That exact bug shipped once.
+    while normalized.startswith("./"):
+        normalized = normalized.removeprefix("./")
+    return normalized
+
+
+def matches_sensitive_pattern(path: str) -> bool:
+    """True if ``path`` falls on the containment surface.
+
+    Segment-boundary matching, not raw substring: directory patterns match at
+    the path start or after a ``/``; file patterns must match a whole trailing
+    path segment. Raw ``pattern in path`` accepted ``notmaistro/security/x``
+    and rejected nothing adjacent — both directions were wrong.
+    """
+    normalized = _normalize_touched_path(path)
+    for pattern in SENSITIVE_PATH_PATTERNS:
+        if pattern.endswith("/"):
+            if normalized.startswith(pattern) or f"/{pattern}" in normalized:
+                return True
+        elif normalized == pattern or normalized.endswith(f"/{pattern}"):
+            return True
+    return False
+
+
 def _touches_sensitive_surface(touched_paths: list[str]) -> list[str]:
-    return [
-        path
-        for path in touched_paths
-        if any(pattern in path for pattern in SENSITIVE_PATH_PATTERNS)
-    ]
+    return [path for path in touched_paths if matches_sensitive_pattern(path)]
 
 
 async def quarantine_scan(

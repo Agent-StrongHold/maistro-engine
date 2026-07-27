@@ -148,8 +148,9 @@ class RsiCycle:
         # When None, run() builds a gateway-backed llm_call from the
         # scheduler-chosen model so benchmark scoring is real, not heuristic.
         self._llm_call = llm_call
-        # Without a quarantine_check, run_self_branch_attempt treats every
-        # diff as cleared; callers that open PRs should always supply one.
+        # Without a quarantine_check, run_self_branch_attempt refuses to ship:
+        # no verdict means DENY, so a driver that opens PRs must wire one — the
+        # type default is fail-closed rather than a comment asking nicely.
         self._quarantine_check = quarantine_check
 
     async def run(
