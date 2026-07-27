@@ -36,6 +36,17 @@ def resolve_tests(src: str) -> Path | None:
     except ValueError:
         return None
 
+    # The source must still exist. Everything below checks that a *test* path
+    # exists and never that the file under test does, so a module deleted by
+    # the PR — whose test directory naturally survives — used to resolve
+    # happily, consume one of the capped slots ahead of a live modified file,
+    # and then hand cosmic-ray a `module-path` pointing at nothing. The
+    # workflow also filters deletions out of the diff; this is the half that
+    # can be tested, and the half that holds if the diff is ever built
+    # differently.
+    if not (REPO / path).is_file():
+        return None
+
     mirror = CORE_TESTS / rel.parent / f"test_{rel.stem}.py"
     if (REPO / mirror).is_file():
         return mirror
