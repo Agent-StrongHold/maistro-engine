@@ -39,6 +39,7 @@ def _init_vault_best_effort() -> bool:
         init_vault(vault_path, identity_path)
         return True
     except Exception as exc:
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the failure reason only, never secret values
         logger.warning("vault not initialized at setup (secrets stay env-based): %s", exc)
         return False
 
