@@ -80,9 +80,15 @@ jobs:
         id: targets
         if: steps.changed.outputs.skip != 'true'
         run: |
-          echo "Base branch: ${{ github.base_ref }} — file cap: ${MUTATION_FILE_CAP:-0} (0 = full sweep)"
+          # Default 4, NOT 0. If the `github.base_ref` expression ever yields
+          # empty (an event type that doesn't set it), `:-0` would mean "no
+          # cap" and put the job straight back into the 30-minute timeout it
+          # was rewritten to escape. Degrade toward the bounded run: a capped
+          # sweep that finishes and says what it skipped beats an uncapped one
+          # that gets killed and reports nothing.
+          echo "Base branch: '${{ github.base_ref }}' — file cap: ${MUTATION_FILE_CAP:-4} (0 = full sweep)"
           uv run python scripts/mutation_targets.py \
-            --limit "${MUTATION_FILE_CAP:-0}" \
+            --limit "${MUTATION_FILE_CAP:-4}" \
             "${{ steps.changed.outputs.files }}" \
             > mutation-targets.tsv
           echo "Resolved targets:"; cat mutation-targets.tsv
