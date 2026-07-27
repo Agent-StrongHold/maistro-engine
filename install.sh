@@ -788,8 +788,32 @@ except Exception:
 PY
 }
 
+# Read the wizard's delivery mode from the materialized plan (empty when the
+# wizard was skipped). delivery.json is machine-written JSON, so a grep is safe.
+delivery_mode() {
+    local f="$PLAN_DIR/delivery.json"
+    [[ -f "$f" ]] || return 0
+    grep -o '"mode"[[:space:]]*:[[:space:]]*"[a-z_]*"' "$f" | head -1 | grep -o '[a-z_]*"$' | tr -d '"'
+}
+
 compose_files() {
     COMPOSE_FILES=(-f "$COMPOSE_FILE")
+    COMPOSE_UP_ARGS=(up -d --build)
+    local mode
+    mode="$(delivery_mode)"
+    if [[ "$mode" == "image_pull" ]]; then
+        if [[ "${MAISTRO_IMAGE_PULL_READY:-0}" == "1" && -f "$PLAN_DIR/compose.install.yml" ]]; then
+            # Standalone file: no build: keys anywhere, and no --build — pinned
+            # images only. --project-directory keeps .env interpolation and
+            # relative bind mounts anchored at the repo root.
+            COMPOSE_FILES=(--project-directory "$PWD" -f "$PLAN_DIR/compose.install.yml")
+            COMPOSE_UP_ARGS=(up -d)
+            info "Delivery: image_pull — pinned images from $PLAN_DIR/compose.install.yml (no local build)."
+        else
+            warn "delivery_mode=image_pull selected, but pinned images are not published yet."
+            warn "Falling back to source build (identical runtime behavior, longer install)."
+        fi
+    fi
     local override="$PLAN_DIR/compose.override.yml"
     if [[ -f "$override" ]]; then
         COMPOSE_FILES+=(-f "$override")
@@ -859,8 +883,8 @@ start_engine() {
     record_docker_sock
     report_arch
     compose_files
-    info "Starting maistro-engine from source..."
-    "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" up -d --build
+    info "Starting maistro-engine..."
+    "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" "${COMPOSE_UP_ARGS[@]}"
 
     info "Waiting for engine health..."
     local attempts=0

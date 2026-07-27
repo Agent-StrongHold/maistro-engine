@@ -181,10 +181,13 @@ five are in.
     release time) and no `build:` keys at all. An override merged onto the
     root compose cannot express this — Compose merges mappings, so the base
     `build:` keys would survive and `up --build` would still build source.
-  - `source_build`: writes `compose.install.yml` pinned to the checked-out
-    revision plus a `Makefile` with targets `install`, `up`, `down`, `logs`,
+  - `source_build`: writes a `Makefile` (recording the pinned source
+    revision in its header) with targets `install`, `up`, `down`, `logs`,
     `status`, `backup`, `teardown`, `update` wrapping the exact compose
-    invocations `install.sh` uses — the operator-facing escape hatch.
+    invocations `install.sh` uses against the root compose file — the
+    operator-facing escape hatch. All compose invocations pass
+    `--project-directory` at the repo root so `.env` interpolation and
+    relative bind mounts resolve identically in both modes.
 - `install.sh` consumes the delivery manifest: in `image_pull` mode it runs
   compose against the standalone file only and **never passes `--build`**
   (`docker compose up -d`, pull policy from the pinned digests); in
