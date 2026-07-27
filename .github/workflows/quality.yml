@@ -86,6 +86,19 @@ jobs:
       - name: radon CC (no function rated C+ allowed; baseline tolerates legacy until touched)
         run: uv run radon cc packages/maistro-core/src --min B --total-average
 
+      # Unlike the ratchets below, this one is a *count-free* ratchet: the
+      # baseline names every tolerated gap, and a gap that gets fixed but left
+      # in the file fails the build too. That asymmetry is the point — a count
+      # ratchet lets one fix pay for one new gap, which is how three separate
+      # reviews found a control that no longer covered its own motivating case.
+      #
+      # Enumerated security controls (_PROTECTED_OPS, SENSITIVE_PATH_PATTERNS,
+      # CORE_PUBLIC_SURFACE) are checked as properties against the real tree
+      # rather than trusted as hand-written lists. See the script's docstring
+      # for the four findings that motivated it.
+      - name: enumeration coverage (derived control lists — ratchet)
+        run: uv run python scripts/check_enumerations.py
+
       # Ratchet, not a 0-baseline: full backlog (77 ERROR blocks measured
       # 2026-06-29) is too large to clear in one PR (Phase 18 code-health
       # sweep). Hard-fails on REGRESSION (new violations beyond the

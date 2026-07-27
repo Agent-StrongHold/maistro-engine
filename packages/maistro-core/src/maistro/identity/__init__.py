@@ -21,7 +21,7 @@ try:
         Bip39SeedGenerator,
     )
     from nacl.signing import SigningKey, VerifyKey
-except ModuleNotFoundError as exc:  # pragma: no cover - install-shape guard
+except ModuleNotFoundError as exc:  # covered by tests/identity/test_extra_guard.py
     raise ImportError(
         f"maistro.identity requires the 'identity' extra (missing: {exc.name}). "
         "Install it with:  pip install 'maistro-core[identity]'"

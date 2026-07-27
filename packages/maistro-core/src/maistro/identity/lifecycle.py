@@ -24,7 +24,7 @@ try:
     from bip_utils import Base58Decoder, Base58Encoder, Bip39SeedGenerator
     from nacl.exceptions import BadSignatureError
     from nacl.signing import SigningKey, VerifyKey
-except ModuleNotFoundError as exc:  # pragma: no cover - install-shape guard
+except ModuleNotFoundError as exc:  # covered by tests/identity/test_extra_guard.py
     raise ImportError(
         f"maistro.identity.lifecycle requires the 'identity' extra (missing: {exc.name}). "
         "Install it with:  pip install 'maistro-core[identity]'"

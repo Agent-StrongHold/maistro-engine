@@ -37,6 +37,14 @@ environment:
     # Flip the RSI runner to its LocalSandbox backend: sbx already gave us an
     # isolated microVM, so a nested DockerMicroVmSandbox would be Docker-in-Docker.
     MAISTRO_RSI_SANDBOX: local
+    # Attest the containment that makes the line above safe. LocalSandbox runs
+    # the coding agent straight against the mounted filesystem, so
+    # create_rsi_sandbox() refuses `local` unless it can either detect a
+    # container/VM itself or read this attestation. This kit is the thing that
+    # *creates* the microVM, so it is the honest place to assert it exists —
+    # a hand-set MAISTRO_RSI_SANDBOX=local on a developer's real host gets
+    # refused instead of silently turning an auto-approved agent loose on it.
+    MAISTRO_RSI_SANDBOX_ATTEST_ISOLATED: i-am-inside-a-disposable-vm
 
 commands:
   # Runs once at sandbox creation. Assumes the sandbox project directory is the
