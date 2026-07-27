@@ -551,9 +551,9 @@ def test_list_proposals_limit_clamped() -> None:
 # --- HTTP route tests ----------------------------------------------------
 
 
-def test_run_endpoint_returns_ranked_proposals(authed_client: Any) -> None:
+def test_run_endpoint_returns_ranked_proposals(admin_client: Any) -> None:
     _seed_metrics("d-http", "n1", count=10, failed=8, p95=100)
-    r = authed_client.post("/v1/optimizer/d-http/run")
+    r = admin_client.post("/v1/optimizer/d-http/run")
     assert r.status_code == 200
     body = r.json()
     assert body["dag_id"] == "d-http"
@@ -561,14 +561,14 @@ def test_run_endpoint_returns_ranked_proposals(authed_client: Any) -> None:
     assert body["auto_applied"] == 0  # default apply_auto=False
 
 
-def test_run_endpoint_with_apply_auto_true(authed_client: Any) -> None:
+def test_run_endpoint_with_apply_auto_true(admin_client: Any) -> None:
     _seed_metrics("d-apply", "n1", count=10, failed=8, p95=100)
-    r = authed_client.post("/v1/optimizer/d-apply/run?apply_auto=true")
+    r = admin_client.post("/v1/optimizer/d-apply/run?apply_auto=true")
     assert r.status_code == 200
     assert r.json()["auto_applied"] >= 1
 
 
-def test_run_endpoint_empty_dag_id_returns_400(authed_client: Any) -> None:
+def test_run_endpoint_empty_dag_id_returns_400(admin_client: Any) -> None:
     """FastAPI's path can't be empty, but if a service-level ValueError
     bubbles, the route translates it to 400."""
 
@@ -582,68 +582,68 @@ def test_run_endpoint_empty_dag_id_returns_400(authed_client: Any) -> None:
 
     routes_opt.run_optimizer = _raise
     try:
-        r = authed_client.post("/v1/optimizer/anything/run")
+        r = admin_client.post("/v1/optimizer/anything/run")
         assert r.status_code == 400
     finally:
         routes_opt.run_optimizer = original
 
 
-def test_list_endpoint_returns_proposals(authed_client: Any) -> None:
+def test_list_endpoint_returns_proposals(admin_client: Any) -> None:
     _seed_metrics("d-list", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
 
     run_optimizer("d-list")
-    r = authed_client.get("/v1/optimizer/d-list/proposals")
+    r = admin_client.get("/v1/optimizer/d-list/proposals")
     assert r.status_code == 200
     items = r.json()
     assert items
     assert all(p["dag_id"] == "d-list" for p in items)
 
 
-def test_list_all_endpoint(authed_client: Any) -> None:
+def test_list_all_endpoint(admin_client: Any) -> None:
     _seed_metrics("d-all", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
 
     run_optimizer("d-all")
-    r = authed_client.get("/v1/optimizer/proposals?decision=pending")
+    r = admin_client.get("/v1/optimizer/proposals?decision=pending")
     assert r.status_code == 200
     assert r.json()
 
 
-def test_accept_endpoint(authed_client: Any) -> None:
+def test_accept_endpoint(admin_client: Any) -> None:
     _seed_metrics("d-acc", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
 
     out = run_optimizer("d-acc")
     pid = out["proposals"][0]["id"]
-    r = authed_client.post(f"/v1/optimizer/proposals/{pid}/accept")
+    r = admin_client.post(f"/v1/optimizer/proposals/{pid}/accept")
     assert r.status_code == 200
     assert r.json()["decision"] == "accepted"
 
 
-def test_reject_endpoint(authed_client: Any) -> None:
+def test_reject_endpoint(admin_client: Any) -> None:
     _seed_metrics("d-rejhttp", "n", count=10, failed=8, p95=100)
     from services.optimizer import run_optimizer
 
     out = run_optimizer("d-rejhttp")
     pid = out["proposals"][0]["id"]
-    r = authed_client.post(f"/v1/optimizer/proposals/{pid}/reject")
+    r = admin_client.post(f"/v1/optimizer/proposals/{pid}/reject")
     assert r.status_code == 200
     assert r.json()["decision"] == "rejected"
 
 
-def test_accept_endpoint_missing_id_returns_404(authed_client: Any) -> None:
-    r = authed_client.post("/v1/optimizer/proposals/missing-id/accept")
+def test_accept_endpoint_missing_id_returns_404(admin_client: Any) -> None:
+    r = admin_client.post("/v1/optimizer/proposals/missing-id/accept")
     assert r.status_code == 404
 
 
-def test_reject_endpoint_missing_id_returns_404(authed_client: Any) -> None:
-    r = authed_client.post("/v1/optimizer/proposals/missing-id/reject")
+def test_reject_endpoint_missing_id_returns_404(admin_client: Any) -> None:
+    r = admin_client.post("/v1/optimizer/proposals/missing-id/reject")
     assert r.status_code == 404
 
 
 def test_accept_endpoint_invalid_decision_returns_400(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
+    admin_client: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Force record_decision to raise ValueError — route → 400."""
     import routes.optimizer as routes_opt
@@ -652,12 +652,12 @@ def test_accept_endpoint_invalid_decision_returns_400(
         raise ValueError("oops")
 
     monkeypatch.setattr(routes_opt, "record_decision", _raise)
-    r = authed_client.post("/v1/optimizer/proposals/anything/accept")
+    r = admin_client.post("/v1/optimizer/proposals/anything/accept")
     assert r.status_code == 400
 
 
 def test_reject_endpoint_invalid_decision_returns_400(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
+    admin_client: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Same path but on reject."""
     import routes.optimizer as routes_opt
@@ -666,7 +666,7 @@ def test_reject_endpoint_invalid_decision_returns_400(
         raise ValueError("oops")
 
     monkeypatch.setattr(routes_opt, "record_decision", _raise)
-    r = authed_client.post("/v1/optimizer/proposals/anything/reject")
+    r = admin_client.post("/v1/optimizer/proposals/anything/reject")
     assert r.status_code == 400
 
 

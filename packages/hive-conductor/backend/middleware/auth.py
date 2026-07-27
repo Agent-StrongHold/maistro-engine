@@ -53,13 +53,38 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         # Killing another principal's harness session is a denial of service on
         # in-flight work, so it needs the same scope that starting one does.
         "/v1/harness": "harness.execute",
+        "/v1/containers": "containers.control",
+        "/v1/credentials": "credentials.write",
+        "/v1/dags": "dags.write",
+        "/v1/schedules": "schedules.write",
     },
     "POST": {
         "/v1/settings": "config.write",
-        # Server-wide MCP catalog edits affect everyone; gate behind admin.
-        "/v1/mcp/servers": "mcp.write",
+        # The whole /v1/mcp mutating surface, not just /servers: discover and
+        # test connect to operator-supplied endpoints, which is the same
+        # trust decision as registering one.
+        "/v1/mcp": "mcp.write",
         "/v1/agents": "agents.write",
         "/v1/skills": "skills.write",
+        # Talks to the Docker socket directly — host infrastructure control.
+        "/v1/containers": "containers.control",
+        # DAGs execute graphs whose nodes include harness/synth-DAG kinds:
+        # creating or running one is agent execution, and an unscoped DAG run
+        # would be a bypass of harness.execute via composition.
+        "/v1/dags": "dags.write",
+        # Accepting an optimizer proposal rewrites a DAG — same surface.
+        "/v1/optimizer": "dags.write",
+        # A schedule is recurring autonomous execution.
+        "/v1/schedules": "schedules.write",
+        # The evolution tournament is the self-improvement loop's other door.
+        "/v1/evolution": "rsi.execute",
+        # Executes GitHub/GitLab tools with stored credentials against real
+        # external trackers.
+        "/v1/pm-fleet/tools": "pm.execute",
+        # Audit entries name an arbitrary `actor`: an unscoped writer is a
+        # log-forgery primitive, and the app writes its own entries in-process,
+        # not over HTTP — no product flow needs this route unelevated.
+        "/v1/audit": "audit.write",
         # The inbound harness starts a coding agent against an operator-supplied
         # `workdir`: POST /v1/harness/sessions is code execution on this host,
         # and .../send steers it. Authentication alone was already required
@@ -83,11 +108,16 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/mcp/servers": "mcp.write",
         "/v1/agents": "agents.write",
         "/v1/skills": "skills.write",
+        "/v1/credentials": "credentials.write",
+        "/v1/dags": "dags.write",
+        "/v1/schedules": "schedules.write",
     },
     "PATCH": {
         "/v1/settings": "config.write",
         "/v1/mcp/servers": "mcp.write",
         "/v1/capabilities": "config.write",
+        # Toggling a skill changes what every future agent run may do.
+        "/v1/skills": "skills.write",
     },
 }
 
