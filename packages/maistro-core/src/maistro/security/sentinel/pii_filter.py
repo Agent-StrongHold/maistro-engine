@@ -105,7 +105,10 @@ _PII_PATTERNS: list[tuple[str, re.Pattern[str], Callable[[str], bool] | None]] =
         ),
         None,
     ),
-    ("email", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"), None),
+    # `[A-Za-z]`, not `[A-Z|a-z]`: the pipe is not alternation inside a
+    # character class, it is a literal `|`, so the old class matched TLDs
+    # containing a pipe character.
+    ("email", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), None),
     ("private_key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"), None),
     (
         "password",

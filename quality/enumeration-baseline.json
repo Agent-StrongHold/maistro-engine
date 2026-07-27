@@ -1,24 +1,6 @@
 {
   "_comment": "Gaps in hand-maintained security enumerations that predate scripts/check_enumerations.py. This is a ratchet, not an allowlist: a NEW gap fails the build, and so does a stale entry here. Fix a gap, delete its line. Do not add entries without fixing or filing the underlying gap.",
   "tolerated": {
-    "core_surface::maistro.code_registry": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.codebase": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.collaboration": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.config": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.constants": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.delivery": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.governance": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.integrations": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.observability": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.personas": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.policy": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.portability": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.providers": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.repertoire": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.sandbox": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.scheduler": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.tasks": "importable module absent from CORE_PUBLIC_SURFACE",
-    "core_surface::maistro.tools": "importable module absent from CORE_PUBLIC_SURFACE",
     "routes::POST /v1/voice/intent": "public mutating route \u2014 reachable without authentication (dispatch bypasses auth before the scope table)"
   }
 }

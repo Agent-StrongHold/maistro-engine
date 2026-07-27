@@ -54,6 +54,12 @@ dev = [
     "aiosqlite>=0.20",
     "hypothesis>=6.0",
     "cosmic-ray>=8.0.0",
+    # THREE workflows pass `--timeout=` to pytest; only quality.yml installed
+    # this ad-hoc. In mutation.yml the omission was silently catastrophic —
+    # without the plugin pytest exits 4 (usage error), cosmic-ray reads any
+    # nonzero exit as "the tests killed this mutant", and the gate reports a
+    # vacuous 100% kill rate having verified nothing.
+    "pytest-timeout>=2.3",
 ]
 browser = ["playwright>=1.49"]
 scheduling = ["apscheduler>=3.11"]
@@ -78,6 +84,7 @@ dev = [
     "aiosqlite>=0.20",
     "hypothesis>=6.0",
     "cosmic-ray>=8.0.0",
+    "pytest-timeout>=2.3",  # see the note in [project.optional-dependencies].dev
 ]
 
 [project.scripts]

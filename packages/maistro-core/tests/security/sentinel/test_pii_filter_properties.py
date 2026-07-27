@@ -120,3 +120,24 @@ class TestMatchInvariants:
         matches = scan_for_pii("a@b.co then AKIAIOSFODNN7EXAMPLE")
         assert [m.start for m in matches] == sorted(m.start for m in matches)
         assert isinstance(matches[0], PIIMatch)
+
+
+class TestEmailCharacterClass:
+    """`[A-Z|a-z]` put a literal pipe in the TLD class.
+
+    The distinguishing input is a TLD containing `|` — a plain
+    `user@example.com` case passes against the buggy pattern too and proves
+    nothing, which is why the bug survived every previous email test.
+    """
+
+    def test_tld_with_pipe_is_not_an_email(self) -> None:
+        assert [m for m in scan_for_pii("write to a@b.c|m today") if m.pii_type == "email"] == []
+
+    def test_pipe_bearing_text_is_not_redacted_as_email(self) -> None:
+        redacted, _ = scan_and_redact("cmd: a@b.c|m")
+        assert "[REDACTED:email]" not in redacted
+
+    def test_ordinary_addresses_still_detected(self) -> None:
+        for address in ("user@example.com", "first.last+tag@sub.domain.co.uk"):
+            found = [m for m in scan_for_pii(f"contact {address}") if m.pii_type == "email"]
+            assert found, address

@@ -19,6 +19,12 @@ on:
       - 'packages/maistro-core/src/maistro/graph/**'
       - 'packages/maistro-core/src/maistro/projects/**'
       - 'packages/maistro-core/src/maistro/memory/**'
+      # security/ and router/ must be here as well as in the changed-files
+      # filter below: a PR touching ONLY security code never triggered this
+      # workflow, so widening the inner filter alone changed nothing for
+      # exactly the files where surviving mutants matter most.
+      - 'packages/maistro-core/src/maistro/security/**'
+      - 'packages/maistro-core/src/maistro/router/**'
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
 
@@ -57,15 +63,49 @@ jobs:
             echo "skip=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Write cosmic-ray.toml for changed files
+      - name: Resolve each changed file to its scoped tests
+        id: targets
         if: steps.changed.outputs.skip != 'true'
         run: |
-          cat > cosmic-ray.toml <<EOF
+          uv run python scripts/mutation_targets.py "${{ steps.changed.outputs.files }}" \
+            > mutation-targets.tsv
+          echo "Resolved targets:"; cat mutation-targets.tsv
+          if [ ! -s mutation-targets.tsv ]; then
+            echo "::error::No changed file resolved to a scoped test path."
+            exit 1
+          fi
+
+      # A broken test command makes EVERY mutant look killed — cosmic-ray reads
+      # any nonzero exit as "the tests caught it", so a usage error is
+      # indistinguishable from a real kill and the gate reports a vacuous 100%.
+      # That was live: `--timeout=` needs pytest-timeout, which nothing in this
+      # job installed. Prove the command passes on UNMUTATED code first.
+      - name: Baseline — the test command must pass before any mutant is trusted
+        if: steps.changed.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r src tests; do
+            [ -z "$src" ] && continue
+            echo "::group::baseline $tests"
+            env PYTHONPATH=packages/maistro-core/src uv run pytest "$tests" \
+              --timeout=15 -q -x
+            echo "::endgroup::"
+          done < mutation-targets.tsv
+
+      - name: cosmic-ray per changed file + aggregate gate
+        if: steps.changed.outputs.skip != 'true'
+        run: |
+          set -uo pipefail
+          : > mutation-rows.jsonl
+          while IFS=$'\t' read -r src tests; do
+            [ -z "$src" ] && continue
+            echo "::group::mutate $src (tests: $tests)"
+            cat > cosmic-ray.toml <<EOF
           [cosmic-ray]
-          module-path = "packages/maistro-core/src/maistro"
+          module-path = "$src"
           timeout = 30.0
-          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git"]
-          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=15 -q -x"
+          excluded-modules = []
+          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest $tests --timeout=15 -q -x"
 
           [cosmic-ray.distributor]
           name = "local"
@@ -73,42 +113,39 @@ jobs:
           [cosmic-ray.distributor.local]
           worker-count = 4
           EOF
+            session="session-$(echo "$src" | tr '/.' '__').sqlite"
+            rm -f "$session"
+            uv run cosmic-ray init cosmic-ray.toml "$session"
+            uv run cosmic-ray exec cosmic-ray.toml "$session"
+            uv run cosmic-ray dump "$session" >> mutation-rows.jsonl
+            echo "::endgroup::"
+          done < mutation-targets.tsv
 
-      - name: cosmic-ray init + exec + gate
-        if: steps.changed.outputs.skip != 'true'
-        run: |
-          uv run cosmic-ray init cosmic-ray.toml session.sqlite
-          uv run cosmic-ray exec cosmic-ray.toml session.sqlite
-          uv run cosmic-ray dump session.sqlite > mutation-results.json
-          # Compute kill rate. Surviving mutants → list them; fail gate at <90%.
           uv run python -c "
           import json, sys
-          # cosmic-ray dump prints one JSON array per line: [work_item_dict, result_dict_or_null].
+          # cosmic-ray dump prints one JSON array per line: [work_item, result_or_null].
           rows = []
-          for line in open('mutation-results.json'):
+          for line in open('mutation-rows.jsonl'):
               line = line.strip()
               if not line:
                   continue
               parsed = json.loads(line)
-              if not (isinstance(parsed, list) and len(parsed) == 2):
-                  continue
-              _, result = parsed
-              if isinstance(result, dict):
-                  rows.append(result)
+              if isinstance(parsed, list) and len(parsed) == 2 and isinstance(parsed[1], dict):
+                  rows.append(parsed[1])
           total = len(rows)
           killed = sum(1 for r in rows if r.get('test_outcome') == 'killed')
           if total == 0:
-              print('No mutants produced — fail open (likely config error)')
+              print('::error::No mutants produced — config error, not a pass.')
               sys.exit(1)
           rate = killed / total
           print(f'Mutation kill rate: {killed}/{total} = {rate:.1%}')
           if rate < 0.90:
-              print(f'::error::Mutation kill rate {rate:.1%} below 90% gate. Survivors:')
+              print(f'::error::Mutation kill rate {rate:.1%} below the 90% gate. Survivors:')
               for r in rows:
                   if r.get('test_outcome') != 'killed':
                       print(f'  - {r}')
               sys.exit(1)
-          print('Mutation gate passed (≥90%)')
+          print('Mutation gate passed (>=90%)')
           "
 
       - name: Upload mutation report
@@ -117,8 +154,9 @@ jobs:
         with:
           name: mutation-pr-${{ github.event.pull_request.number }}
           path: |
-            session.sqlite
-            mutation-results.json
+            session-*.sqlite
+            mutation-rows.jsonl
+            mutation-targets.tsv
 
   mutation-nightly:
     name: Mutation testing (full sweep nightly)
