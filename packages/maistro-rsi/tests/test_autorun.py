@@ -370,12 +370,14 @@ class TestDurableTree:
         from maistro_rsi.htr import HypothesisTree
 
         snapshots: list[int] = []
-        tree_path = tmp_path / "htr-tree.json"
+        tree_path = tmp_path / "htr-tree-org-repo.json"
 
         async def fake_executor(context: HtrContext) -> ExecutionReport:
             # Snapshot count BEFORE this cycle's save: proves per-cycle writes.
             snapshots.append(
-                len(_json.loads(tree_path.read_text())["nodes"]) if tree_path.exists() else 0
+                len(_json.loads(tree_path.read_text())["tree"]["nodes"])
+                if tree_path.exists()
+                else 0
             )
             return _ok_report()
 
@@ -383,7 +385,9 @@ class TestDurableTree:
         await run_autonomous(config, executor=fake_executor, proposer=lambda ctx: "next")
 
         assert tree_path.exists()
-        restored = HypothesisTree.from_dict(_json.loads(tree_path.read_text()))
+        envelope = _json.loads(tree_path.read_text())
+        assert envelope["repo_url"] == config.repo_url
+        restored = HypothesisTree.from_dict(envelope["tree"])
         assert restored.summary()["total"] >= 2
         # the second cycle observed the first cycle's persisted snapshot
         assert snapshots[1] > 0
@@ -491,7 +495,7 @@ class TestLearningsLedger:
         config = _config(num_cycles=2, workspace_root=str(tmp_path))
         await run_autonomous(config, executor=fake_executor, proposer=lambda c: "next")
 
-        lines = (tmp_path / "learnings.jsonl").read_text().strip().splitlines()
+        lines = (tmp_path / "learnings-org-repo.jsonl").read_text().strip().splitlines()
         assert len(lines) == 2
         entry = _json.loads(lines[0])
         assert entry["insight"]
@@ -517,7 +521,7 @@ class TestLearningsLedger:
         async def spying_executor(context: HtrContext) -> ExecutionReport:
             from maistro_rsi.autorun import LearningsLedger, build_prompt
 
-            ledger = LearningsLedger(tmp_path / "learnings.jsonl")
+            ledger = LearningsLedger(tmp_path / "learnings-org-repo.jsonl")
             recalled = ledger.recall(8, repo_url=base.repo_url)
             seen_prompts.append(build_prompt(context, recalled))
             return _ok_report()
@@ -715,3 +719,246 @@ class TestProposerCircuitBreaker:
         result = await run_autonomous(config, executor=fake_executor, proposer=failing_proposer)
         assert calls["n"] == 1  # halted on first open circuit, not five attempts
         assert result.tree is not None
+
+
+class TestApplyPatchErrorHandling:
+    """Codex review (P1): a failing coding-agent command is a normal outcome
+    the tree is designed to prune as a dead end, not a fatal error that
+    should abort the whole autorun."""
+
+    @pytest.mark.asyncio
+    async def test_apply_patch_error_returns_dead_end_report(self, monkeypatch):
+        from maistro_rsi.apply_agents import ApplyPatchError
+
+        class _FailingRsiCycle:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def run(self, baseline, candidate, models):
+                raise ApplyPatchError("agent command exited 1: boom")
+
+        monkeypatch.setattr("maistro_rsi.autorun.RsiCycle", _FailingRsiCycle)
+        monkeypatch.setattr("maistro_rsi.autorun.discover_models", _fake_discover)
+
+        executor = build_executor(_config())
+        report = await executor(_context())
+
+        assert report.evidence.tests_passed is False
+        assert report.evidence.improved is False
+        assert "agent command" in (report.insight or "")
+
+    @pytest.mark.asyncio
+    async def test_apply_patch_error_lets_run_continue_to_next_hypothesis(
+        self, monkeypatch, tmp_path
+    ):
+        """End-to-end through build_executor + run_autonomous: a first-cycle
+        ApplyPatchError does not abort the run — the tree records the dead
+        end and a later cycle still executes."""
+        from maistro_rsi.apply_agents import ApplyPatchError
+
+        calls = {"n": 0}
+
+        class _FlakyRsiCycle:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def run(self, baseline, candidate, models):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise ApplyPatchError("agent command exited 1: boom")
+                return _cycle_result()
+
+        monkeypatch.setattr("maistro_rsi.autorun.RsiCycle", _FlakyRsiCycle)
+        monkeypatch.setattr("maistro_rsi.autorun.discover_models", _fake_discover)
+
+        # A seed alongside the root means two independently-pending nodes,
+        # so the first (failing) cycle doesn't exhaust the whole frontier —
+        # otherwise the ApplyPatchError'd node's own abandonment would (via
+        # TestFrontierExhaustion's fix) legitimately end the run after one
+        # step, which would defeat the point of this test.
+        config = _config(
+            root_hypothesis="root idea",
+            seed_hypotheses=["seed one"],
+            num_cycles=2,
+            workspace_root=str(tmp_path),
+        )
+        executor = build_executor(config)
+        result = await run_autonomous(config, executor=executor, proposer=lambda c: "next")
+
+        # Both nodes got processed (the run didn't crash after the first
+        # ApplyPatchError) — that's the behavior under test, independent of
+        # what _cycle_result()'s battle-less "success" happens to score as.
+        assert len(result.steps) == 2
+        assert calls["n"] == 2
+        # recency-first pending (see TestDurableTree): the seed runs first
+        # and is the one that hit the ApplyPatchError.
+        seed = next(n for n in result.tree.nodes.values() if n.hypothesis == "seed one")
+        root = result.tree.nodes[result.tree.root_id]
+        assert seed.status.value == "abandoned"
+        assert root.status.value in ("explored", "abandoned")
+
+
+class TestFrontierExhaustion:
+    """Codex review (P1): select_seed()'s ValueError once the root is
+    abandoned and nothing remains EXPLORED is ordinary pruning, not a fatal
+    error — run_autonomous must return the partial result instead of
+    crashing, exactly like the wall-clock budget path."""
+
+    @pytest.mark.asyncio
+    async def test_exhausted_frontier_returns_partial_result(self, tmp_path):
+        async def dead_end_executor(context: HtrContext) -> ExecutionReport:
+            return ExecutionReport(
+                evidence=HypothesisEvidence(
+                    tests_passed=False, benchmarks_won=0, battles=0, improved=False
+                )
+            )
+
+        config = _config(num_cycles=3, workspace_root=str(tmp_path))
+        result = await run_autonomous(config, executor=dead_end_executor, proposer=lambda c: "next")
+
+        # Only the root ever executes: it's abandoned on cycle 1, and cycle 2
+        # finds an exhausted frontier (no pending, no EXPLORED seeds, root
+        # abandoned) instead of crashing.
+        assert len(result.steps) == 1
+        root = result.tree.nodes[result.tree.root_id]
+        assert root.status.value == "abandoned"
+
+
+class TestModelDiscoveryFallback:
+    """Codex review (P1): a LiteLLM discovery failure must not block runs
+    that don't need it (the default opencode + differential-probe path never
+    touches an llm_call) — fall back to the configured model, or an empty
+    pool that degrades to heuristic scoring."""
+
+    @pytest.mark.asyncio
+    async def test_discovery_failure_falls_back_to_configured_model(self, monkeypatch):
+        captured = {}
+
+        class _FakeRsiCycle:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def run(self, baseline, candidate, models):
+                captured["models"] = models
+                return _cycle_result()
+
+        async def _boom():
+            raise RuntimeError("litellm unreachable")
+
+        monkeypatch.setattr("maistro_rsi.autorun.RsiCycle", _FakeRsiCycle)
+        monkeypatch.setattr("maistro_rsi.autorun.discover_models", _boom)
+
+        executor = build_executor(_config(model="fallback-model"))
+        await executor(_context())
+
+        assert captured["models"] == ["fallback-model"]
+
+    @pytest.mark.asyncio
+    async def test_discovery_failure_with_no_configured_model_yields_empty_pool(self, monkeypatch):
+        captured = {}
+
+        class _FakeRsiCycle:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def run(self, baseline, candidate, models):
+                captured["models"] = models
+                return _cycle_result()
+
+        async def _boom():
+            raise RuntimeError("litellm unreachable")
+
+        monkeypatch.setattr("maistro_rsi.autorun.RsiCycle", _FakeRsiCycle)
+        monkeypatch.setattr("maistro_rsi.autorun.discover_models", _boom)
+
+        executor = build_executor(_config())
+        await executor(_context())
+
+        assert captured["models"] == []
+
+
+class TestLedgerTreeOrdering:
+    """Codex review (P2): the ledger append must happen before the tree
+    snapshot write, so a crash between them loses at most a duplicate ledger
+    line (recall() dedupes by insight text) rather than permanently losing an
+    insight for a node the tree already marks EXPLORED."""
+
+    @pytest.mark.asyncio
+    async def test_ledger_appended_before_tree_snapshot(self, tmp_path, monkeypatch):
+        import maistro_rsi.autorun as autorun_mod
+        from maistro_rsi.autorun import LearningsLedger
+
+        order: list[str] = []
+        real_atomic_write = autorun_mod._atomic_write_json
+
+        def spy_write(path, payload):
+            order.append("tree")
+            return real_atomic_write(path, payload)
+
+        monkeypatch.setattr(autorun_mod, "_atomic_write_json", spy_write)
+
+        class _SpyLedger(LearningsLedger):
+            def append(self, **kwargs):
+                order.append("ledger")
+                super().append(**kwargs)
+
+        async def executor(context: HtrContext) -> ExecutionReport:
+            return _ok_report()
+
+        ledger = _SpyLedger(tmp_path / "learnings-org-repo.jsonl")
+        config = _config(num_cycles=1, workspace_root=str(tmp_path))
+        await run_autonomous(config, executor=executor, proposer=lambda c: "next", ledger=ledger)
+
+        assert order == ["ledger", "tree"]
+
+
+class TestRepoNamespacedTree:
+    """Codex review (P2): persisted trees must be namespaced by repo — two
+    repos sharing a workspace root get distinct default files, and an
+    explicit shared tree_path across repos is refused rather than silently
+    resuming the wrong repository's nodes."""
+
+    @pytest.mark.asyncio
+    async def test_default_tree_files_are_namespaced_per_repo(self, tmp_path):
+        async def executor(context: HtrContext) -> ExecutionReport:
+            return _ok_report()
+
+        config_a = _config(
+            repo_url="https://github.com/org/repo-a.git",
+            num_cycles=1,
+            workspace_root=str(tmp_path),
+        )
+        config_b = _config(
+            repo_url="https://github.com/org/repo-b.git",
+            num_cycles=1,
+            workspace_root=str(tmp_path),
+        )
+
+        await run_autonomous(config_a, executor=executor, proposer=lambda c: "p")
+        await run_autonomous(config_b, executor=executor, proposer=lambda c: "p")
+
+        assert (tmp_path / "htr-tree-org-repo-a.json").exists()
+        assert (tmp_path / "htr-tree-org-repo-b.json").exists()
+
+    @pytest.mark.asyncio
+    async def test_shared_explicit_path_refuses_cross_repo_resume(self, tmp_path):
+        async def executor(context: HtrContext) -> ExecutionReport:
+            return _ok_report()
+
+        shared_path = str(tmp_path / "shared-tree.json")
+        config_a = _config(
+            repo_url="https://github.com/org/repo-a.git",
+            num_cycles=1,
+            tree_path=shared_path,
+            workspace_root=str(tmp_path),
+        )
+        config_b = _config(
+            repo_url="https://github.com/org/repo-b.git",
+            num_cycles=1,
+            tree_path=shared_path,
+            workspace_root=str(tmp_path),
+        )
+
+        await run_autonomous(config_a, executor=executor, proposer=lambda c: "p")
+        with pytest.raises(ValueError, match="repo"):
+            await run_autonomous(config_b, executor=executor, proposer=lambda c: "p")

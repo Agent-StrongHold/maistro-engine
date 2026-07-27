@@ -21,6 +21,7 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import tempfile
 import time
 import uuid
@@ -37,7 +38,7 @@ from maistro.quota.tracker import InMemoryQuotaTracker
 from maistro.security.warden.detector import Warden
 from maistro_evolve.tournament import EloTournament
 from maistro_evolve.types import DAGTopology, EvalWeights, NodeGenome, PipelineGenome
-from maistro_rsi.apply_agents import OPENCODE_TEMPLATE, command_apply_patch
+from maistro_rsi.apply_agents import OPENCODE_TEMPLATE, ApplyPatchError, command_apply_patch
 from maistro_rsi.coordinator import (
     CoordinatorResult,
     ExecutionReport,
@@ -47,7 +48,7 @@ from maistro_rsi.coordinator import (
     HypothesisProposer,
     report_from_cycle_result,
 )
-from maistro_rsi.htr import HypothesisNode, HypothesisTree
+from maistro_rsi.htr import HypothesisEvidence, HypothesisNode, HypothesisTree
 from maistro_rsi.protocols import ApplyPatchFn
 from maistro_rsi.quarantine import QuarantineVerdict, quarantine_scan
 from maistro_rsi.quota_burn import QuotaBurnScheduler, discover_models
@@ -64,6 +65,16 @@ logger = structlog.get_logger()
 _DEFAULT_ROOT_HYPOTHESIS = (
     "Find one small, measurable improvement to this codebase that keeps the test suite green."
 )
+
+
+def _repo_slug(repo_url: str) -> str:
+    """Filesystem-safe identifier for ``repo_url``, used to namespace the
+    default tree/ledger filenames so two repos sharing a workspace root never
+    collide (and, for the tree, so a mismatch is loud rather than silently
+    resuming the wrong repository's nodes)."""
+    cleaned = repo_url.removesuffix(".git")
+    tail = "/".join(cleaned.split("/")[-2:]) or cleaned
+    return re.sub(r"[^A-Za-z0-9]+", "-", tail).strip("-").lower()
 
 
 @dataclass
@@ -438,12 +449,38 @@ def build_executor(
             (config.apply_patch_factory or _default_apply_patch_factory(config))(prompt),
             quarantine_check=_quarantine_check,
         )
-        models = list(config.available_models) or await discover_models()
-        result = await cycle.run(
-            default_genome("baseline", model=config.model or "default"),
-            default_genome(f"candidate-{context.node.id}", model=config.model or "default"),
-            models,
-        )
+        if config.available_models:
+            models = list(config.available_models)
+        else:
+            try:
+                models = await discover_models()
+            except Exception as exc:
+                # LiteLLM discovery is irrelevant to the default opencode +
+                # differential-probe path (scoring never touches an llm_call);
+                # don't let it block a run that doesn't need it. Fall back to
+                # the configured model (if any) so the scheduler still has
+                # something to route to, else an empty pool degrades to
+                # heuristic scoring exactly like the "no model available"
+                # path RsiCycle.run already documents.
+                logger.warning("rsi_model_discovery_failed", error=str(exc))
+                models = [config.model] if config.model else []
+        try:
+            result = await cycle.run(
+                default_genome("baseline", model=config.model or "default"),
+                default_genome(f"candidate-{context.node.id}", model=config.model or "default"),
+                models,
+            )
+        except ApplyPatchError as exc:
+            # A failing coding-agent command is a normal outcome the tree is
+            # designed to prune as a dead end, not a fatal error that should
+            # abort the whole autorun and strand every later hypothesis.
+            logger.warning("rsi_apply_patch_failed", node_id=context.node.id, error=str(exc))
+            return ExecutionReport(
+                evidence=HypothesisEvidence(
+                    tests_passed=False, benchmarks_won=0, battles=0, improved=False
+                ),
+                insight=f"agent command failed: {exc}",
+            )
         if audit is not None:
             audit.record(context, result)
         return report_from_cycle_result(result)
@@ -456,9 +493,14 @@ def _load_or_create_tree(config: AutorunConfig, tree_path: Path) -> HypothesisTr
     start a new one. Seeds are expanded only on a NEW tree — on resume they are
     already nodes and re-expanding would duplicate them (autorun-8).
 
-    A persisted tree whose root hypothesis differs from the configured one is
-    refused with a clear error: silently continuing a different investigation
-    (or silently discarding one) are both wrong; ``fresh=True`` is the explicit
+    The snapshot is a small envelope (``{"repo_url", "tree"}``), not the bare
+    tree dict: a persisted tree whose ``repo_url`` OR root hypothesis differs
+    from the configured one is refused with a clear error. Namespacing the
+    default path by repo (see ``run_autonomous``) already keeps different
+    repos from colliding; this envelope check is defense-in-depth for the
+    case where two repos happen to share both the default hypothesis and an
+    explicit ``--tree-path`` override — silently continuing (or discarding) a
+    different investigation is always wrong; ``fresh=True`` is the explicit
     way to start over.
     """
     if config.fresh or not tree_path.exists():
@@ -467,8 +509,15 @@ def _load_or_create_tree(config: AutorunConfig, tree_path: Path) -> HypothesisTr
             tree.expand(tree.root_id, hypothesis)
         return tree
 
-    data = json.loads(tree_path.read_text(encoding="utf-8"))
-    tree = HypothesisTree.from_dict(data)
+    envelope = json.loads(tree_path.read_text(encoding="utf-8"))
+    restored_repo = envelope.get("repo_url")
+    if restored_repo is not None and restored_repo != config.repo_url:
+        raise ValueError(
+            f"persisted tree at {tree_path} belongs to repo {restored_repo!r}, "
+            f"which differs from the configured {config.repo_url!r}; "
+            "pass --fresh to start a new tree (retained learnings still apply)"
+        )
+    tree = HypothesisTree.from_dict(envelope["tree"])
     restored_root = tree.nodes[tree.root_id].hypothesis
     if restored_root != config.root_hypothesis:
         raise ValueError(
@@ -504,9 +553,10 @@ async def run_autonomous(
     wiring is the default. The wall-clock budget is enforced between cycles.
     """
     run_id = uuid.uuid4().hex[:10]
-    tree_path = Path(config.tree_path or Path(config.workspace_root) / "htr-tree.json")
+    repo_slug = _repo_slug(config.repo_url)
+    tree_path = Path(config.tree_path or Path(config.workspace_root) / f"htr-tree-{repo_slug}.json")
     active_ledger = ledger or LearningsLedger(
-        config.learnings_path or Path(config.workspace_root) / "learnings.jsonl"
+        config.learnings_path or Path(config.workspace_root) / f"learnings-{repo_slug}.jsonl"
     )
     # Scan recalled insights AGAIN at use time, not just at append time: the
     # ledger file sits on disk between runs, and an entry tampered with after
@@ -542,12 +592,27 @@ async def run_autonomous(
         try:
             partial = await coordinator.run(1, active_proposer)
         except ProposerCircuitOpen as exc:
+            # Three consecutive gateway failures: halt rather than fund an
+            # endless run of near-identical template hypotheses.
             await logger.awarning("rsi_autorun_proposer_circuit_open", error=str(exc))
             break
+        except ValueError as exc:
+            # select_seed() raises once the root is abandoned and nothing
+            # remains EXPLORED — an ordinary exhausted frontier, not a fatal
+            # error. Return the partial result instead of crashing the loop,
+            # exactly like the wall-clock budget path above.
+            if "abandoned" not in str(exc):
+                raise
+            await logger.awarning("rsi_autorun_frontier_exhausted", steps=len(steps))
+            break
         steps.extend(partial.steps)
-        # Durable memory after EVERY cycle: crash/kill loses at most the
-        # in-flight cycle, and the distilled insight is already permanent.
-        _atomic_write_json(tree_path, tree.to_dict())
+        # Ledger first, then tree: if the process dies between these two
+        # writes, at worst a node's insight is appended twice on a later
+        # resume (recall() dedupes by insight text) rather than lost forever
+        # — the tree still marks the node EXPLORED either way, so losing the
+        # insight instead of the write ordering is the one true crash window
+        # to close (autorun-10/11's retained-learnings guarantee depends on
+        # every executed insight reaching the ledger).
         for node_id in partial.steps:
             node = tree.nodes[node_id]
             flags: tuple[str, ...] = ()
@@ -557,6 +622,7 @@ async def run_autonomous(
             active_ledger.append(
                 repo_url=config.repo_url, run_id=run_id, node=node, warden_flags=flags
             )
+        _atomic_write_json(tree_path, {"repo_url": config.repo_url, "tree": tree.to_dict()})
 
     result = CoordinatorResult(tree=tree, steps=steps)
     best = result.best
