@@ -70,7 +70,7 @@ def _imported_roots(path: Path, *, module_level_only: bool) -> set[str]:
     except (SyntaxError, UnicodeDecodeError):  # pragma: no cover - not expected
         return set()
 
-    nodes = tree.body if module_level_only else list(ast.walk(tree))
+    nodes = _module_scope_nodes(tree) if module_level_only else list(ast.walk(tree))
     roots: set[str] = set()
     for node in nodes:
         if isinstance(node, ast.Import):
@@ -80,6 +80,44 @@ def _imported_roots(path: Path, *, module_level_only: bool) -> set[str]:
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             roots.add(node.module.split(".")[0])
     return roots
+
+
+# Statement types that can wrap an import at module scope. Their bodies still
+# execute at import time, so an import inside one is a module-level import.
+_MODULE_SCOPE_WRAPPERS = (ast.If, ast.Try, ast.With, ast.For, ast.While)
+
+
+def _module_scope_nodes(tree: ast.Module) -> list[ast.stmt]:
+    """Statements that execute at import time.
+
+    Descends into module-scope ``if`` / ``try`` / ``with`` / loop bodies, but
+    never into a function or class body. Scanning ``tree.body`` alone was not
+    enough: for
+
+        try:
+            import maistro_canvas
+        except ImportError:
+            maistro_canvas = None
+
+    ``tree.body`` holds only the ``Try`` node, so the ``Import`` was invisible
+    and a feature-gated top-level import of a sibling package would sail past
+    this suite while still breaking `import maistro` for any consumer that had
+    not installed that package. A ``try/except ImportError`` at module scope is
+    exactly the shape that bug takes in the wild, which is why it must be
+    caught here and a *function-local* one must not.
+    """
+    out: list[ast.stmt] = []
+    stack: list[ast.stmt] = list(tree.body)
+    while stack:
+        node = stack.pop()
+        out.append(node)
+        if isinstance(node, _MODULE_SCOPE_WRAPPERS):
+            stack.extend(node.body)
+            stack.extend(getattr(node, "orelse", []))
+            stack.extend(getattr(node, "finalbody", []))
+            for handler in getattr(node, "handlers", []):
+                stack.extend(handler.body)
+    return out
 
 
 def _violations(
@@ -156,10 +194,22 @@ def test_fitness_detector_catches_a_planted_violation(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
+    # A module-scope try/except still executes at import time, so it counts as
+    # a module-level import even though tree.body holds only the Try node.
+    (planted / "gated.py").write_text(
+        "try:\n    import hive\nexcept ImportError:\n    hive = None\n",
+        encoding="utf-8",
+    )
+
     module_level = _violations(planted, frozenset({"hive"}))
-    assert len(module_level) == 1, f"expected exactly one violation, got {module_level}"
-    assert "offender.py" in module_level[0]
+    assert len(module_level) == 2, f"expected offender.py and gated.py, got {module_level}"
+    assert any("offender.py" in v for v in module_level)
+    assert any("gated.py" in v for v in module_level), (
+        "a module-scope try/except import must be caught: it runs at import time"
+    )
 
     any_scope = _violations(planted, frozenset({"hive"}), module_level_only=False)
-    assert len(any_scope) == 2, f"expected the guarded import too, got {any_scope}"
+    assert len(any_scope) == 3, (
+        f"expected offender.py, gated.py and the function-local guarded.py, got {any_scope}"
+    )
     assert any("guarded.py" in v for v in any_scope)

@@ -88,9 +88,13 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      # Root tests/ tree. tests/tools/ is excluded because registry.yml already
-      # owns tests/tools/registry/ and runs it with its own --confcutdir.
-      - run: uv run pytest tests/ --ignore=tests/tools -v --tb=short
+      # Root tests/ tree. Only tests/tools/registry/ is excluded — registry.yml
+      # already owns that subtree and runs it with its own --confcutdir.
+      # NOT --ignore=tests/tools: pytest ignores the whole path, which would
+      # leave test_env_sanitize.py, test_sandbox_paths.py and test_workspace.py
+      # (80 sandbox/env-security tests) orphaned from CI — the very defect this
+      # step exists to fix.
+      - run: uv run pytest tests/ --ignore=tests/tools/registry -v --tb=short
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
