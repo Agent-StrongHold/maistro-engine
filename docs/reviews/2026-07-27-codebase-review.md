@@ -301,8 +301,11 @@ Runtime-proven: `tool.py:537` binds `upload_img` while `:550-551,560-561` read `
 `img.height`. **However** — `execute_canvas` has zero callers anywhere in the repo, there is no
 `canvas/__init__.py`, and the package `__init__` does not export it. So this is a certain bug in
 unreachable legacy code. Its value is as evidence: `tool.py` is 922 LOC of untested, unreferenced
-legacy that should be deleted rather than patched. *Proven by execution; reachability confirmed
-by verifier V2.*
+legacy that should be retired rather than patched (Horizon 3, item 6). *Proven by execution;
+reachability confirmed by verifier V2.*
+Corroborating detail from the parity audit: `upload` is also the one action with **no replacement
+in the new engine**. It is broken in the old path and absent from the new one — which is the
+clearest available evidence that no user has ever exercised it.
 
 ---
 
@@ -383,8 +386,30 @@ them early in a release cycle, not before a freeze.
 5. **Consolidate hive-conductor's four reimplemented subsystems** (scheduler, HA tools,
    credentials, pg stores). For each, pick the winning copy, replace the other with a thin
    adapter, and add a regression test at the seam.
-6. **Delete `maistro-canvas/canvas/tool.py`** (922 LOC, zero callers, contains L3) in favour of
-   `executor.py` + `compositor.py` + `store.py`.
+6. **Retire `maistro-canvas/canvas/tool.py`** (922 LOC, zero importers, contains L3) in favour of
+   `executor.py` + `compositor.py` + `store.py` + `routes.py`. A capability-parity audit
+   (Appendix C) shows this is *not* a straight deletion: nine of its twelve capabilities are
+   already reimplemented better, but three did not carry over. Sequence:
+   1. **Decide `upload` and `duplicate`** — the two genuinely missing actions. Both are small
+      additions to `store.py` + `routes.py` if wanted (`LayerRecord.image_path` and `store_blob`
+      already exist, so `upload` is a route and a wiring line, not new infrastructure). If not
+      wanted, say so in the ADR from step 3 — the point is that the decision is recorded rather
+      than made silently by a deletion.
+   2. **Confirm the character-reference data question is empty.** It almost certainly is: no
+      migration anywhere creates `character_references` (the `CREATE_TABLE_SQL` at `tool.py:625`
+      is a module constant annotated "migration managed separately", and no such migration
+      exists), and `save/load/list_character_reference` have zero callers. The only residual risk
+      is an operator having run that SQL by hand against a real database, since the functions
+      accept an injected `db_pool`. One `SELECT count(*)` settles it.
+   3. **Write the ADR** recording that `AssetSheet` + `generate_sheet`/`regenerate_sheet`
+      (ADR-039) supersedes `CharacterReference`, and that the two models are not
+      wire-compatible — `AssetSheet` is a superset (sockets, skin sets, world-style inheritance,
+      pose geometry, scene-graph parenting, revisions) with no import path from the old shape.
+   4. **Delete the module**, after grepping the Da Vinci agent definition
+      (`packages/maistro-canvas/agents/davinci/`) for a dynamic load by name — a Python-import
+      grep will not catch a YAML-declared tool reference.
+
+   Effort: S if `upload`/`duplicate` are dropped, M if they are ported.
 7. **Write one ADR fixing the RSI dependency direction.** The shipped API process currently
    imports a self-modification toolchain (`services/rsi.py:138`); `Dockerfile.rsi-runner` implies
    RSI should stay out-of-band. Nothing records which is intended.
@@ -440,3 +465,35 @@ The fleet corrected itself in four places; recorded for method credibility.
   subpackages have suites importing through the package `__init__`. The only genuinely untested
   module in maistro-core is the empty `scheduler/` placeholder. No test-writing work should be
   funded against that list.
+
+
+## Appendix C — Canvas engine capability parity (`tool.py` → new engine)
+
+Commissioned to answer "does everything the legacy engine does exist in the new files, only
+better?" before authorising the deletion in Horizon 3 item 6. Answer: nine of twelve, yes and
+better; three did not carry over.
+
+### Reimplemented, and better
+
+| `tool.py` capability | Replacement | Improvement |
+|---|---|---|
+| `generate` (`:339`) | `JobAction.GENERATE` → `executor.py`, `POST /{id}/layers/{lid}/generate` | Durable job records with status, multi-variant + `accept_variant`, cancellation, Warden scan, model registry, `_sanitise_error` (`executor.py:75`) |
+| `refine` (`:400`) | `JobAction.REFINE` | Same job machinery; rejects refine on an imageless layer (`executor.py:191`) |
+| `reference` (`:435`) | `JobAction.REFERENCE` | Same |
+| `composite` (`:470`) | `PilCompositorService.composite` (`compositor.py:244`), `POST /{id}/composite` | PIL work offloaded via `asyncio.to_thread`; PNG/WebP/JPG encoders (`:212-224`); persisted history (`save_composite`, `latest_composite`) |
+| `text` (`:501`) | `JobAction.TEXT` + `_render_text_layer` (`compositor.py:109`) | Typed `TextConfig` instead of loose kwargs |
+| `list_layers` (`:566`) | `store.list_layers` + `GET /{id}/layers` | Postgres-backed instead of a module-level process dict |
+| `transform` (`:573`) | `store.update_layer` + `_transform_layer_image` (`compositor.py:63`) | Adds `normalise_rotation`, opacity/blend/visible/locked, and `reorder_layers` with z-index collision detection (`store.py:495-498`) |
+| `delete` (`:590`) | `store.remove_layer` + `DELETE` route | Transactional |
+| `get_or_create_canvas`/`destroy_canvas` (`:78`,`:89`) | `create_canvas`/`get_canvas`/`update_canvas` + delete route | Durable, org-scoped through `_require_canvas(store, canvas_id, auth.org_id)`; `_MAX_LAYERS` ceiling enforced under `SELECT … FOR UPDATE` (`store.py:266-275`) |
+
+The new engine also adds capabilities the legacy one never had: job cancellation, variant
+acceptance, canvas export, model listing, blob storage, and composite history.
+
+### Not carried over
+
+| Capability | Status | Notes |
+|---|---|---|
+| `upload` (`tool.py:528`) | **No replacement** | `routes.py:419-439` `add_layer` accepts geometry only — no image bytes, no base64, no `UploadFile`; no upload route exists anywhere in `routes.py`. Primitives are present (`LayerRecord.image_path` at `types.py:199`, `store.store_blob` at `store.py:665`), so this is a wiring gap, not missing infrastructure. Also the action broken by L3. |
+| `duplicate` (`tool.py:595`) | **Absent** | Grep for "duplicate" across `store.py`/`routes.py`/`executor.py`/`asset_*.py` returns only unrelated z-index collision messages. |
+| Character references (`tool.py:611-816`) | **Superseded by a different model** | `AssetSheet` + `generate_sheet`/`regenerate_sheet` (ADR-039, `layers.py:226`) is a strict superset — sockets, skin sets, world-style inheritance, pose geometry, scene-graph parenting, revisions — but is not wire-compatible with `CharacterReference` (`tool.py:611`), and there is no import path between them. The `character_references` table is created by no migration in the repo and the three functions have zero callers, so the data-migration risk is near zero (see Horizon 3 item 6, step 2). |
