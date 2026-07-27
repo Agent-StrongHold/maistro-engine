@@ -56,7 +56,7 @@ The line between shared runtime and product-specific code is defined in [`ADR-01
 ## Quick start
 
 ```bash
-# Requires Python 3.11+ (tooling targets 3.12) and uv — https://github.com/astral-sh/uv
+# Requires Python 3.12+ (CI tests 3.12; the container image runs 3.14) and uv — https://github.com/astral-sh/uv
 uv sync                               # install every package in the workspace
 uv sync --extra bootstrap             # optional: maistro-install TUI / answers-file planner
 uv run pytest                         # run the test suite
@@ -64,7 +64,7 @@ uv run alembic upgrade head           # apply DB migrations (needs Postgres)
 docker compose up -d                  # full local stack (Postgres + LiteLLM + Langfuse)
 ```
 
-The repo is a `uv` workspace: **seven Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker) and the planned **`apps/maistro-gateway-node-flutter`** native node (see [`SPEC-179`](docs/specs/SPEC-179-flutter-gateway-node.md)).
+The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker) and the planned **`apps/maistro-gateway-node-flutter`** native node (see [`SPEC-179`](docs/specs/SPEC-179-flutter-gateway-node.md)).
 
 | Package / tree | Purpose |
 |---|---|
@@ -90,7 +90,7 @@ request ──► conduit ──► classifier ──► orchestrator ──► 
 
 - **conduit** — single entry point; classifies, routes, delegates
 - **orchestrator** — plans tasks, manages execution, tracks state
-- **router** — picks model and agent via the scoring formula `quality^(qw·p) / cost^cw`
+- **router** — picks model and agent via the scoring formula `quality^(qw·p) / (1 + normalized_cost)^cw`
 - **agents** — base / factory / strategies / roster + A2A delegation
 - **memory** — learning, episodic, outcome stores; pgvector-backed; decays without reinforcement
 - **security** — Warden (input), Sentinel (output), Gate (boundary), PII filter — all input is untrusted
