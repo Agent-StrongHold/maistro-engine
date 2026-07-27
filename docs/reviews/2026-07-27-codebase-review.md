@@ -39,13 +39,22 @@ the default — and the resulting attacker-controlled text becomes an autonomous
 contradicts itself on the core tenancy rule, and omits two packages — one of which is an
 unguarded runtime import of the shipped API.
 
-**On the adversarial verification wave:** 18 High/Critical findings went to two independent
-verifiers instructed to refute them. **2 were refuted outright, 13 were downgraded, and 3 were
-confirmed** (one of them strengthened — the canvas server turned out to bind publicly and sit in
-the documented run path, not to be dev-only scaffolding). Refuted and downgraded findings are
-recorded in Appendix A rather than deleted, so the next review does not re-raise them. Roughly
-two-thirds of the raw High/Critical output did not survive contact with the code; the surviving
-third is what this plan funds.
+**On verification — two separate populations, which an earlier draft conflated.** Every
+High/Critical finding was verified, but by one of two routes:
+
+- **Orchestrator-verified (~18 findings).** Confirmed directly by reading the cited code or by
+  running it — e.g. C1, C2, C3, H1, H2, H4, H5, H6, H7, H8, H10, M1, M2, M3, M8. These are marked
+  *"Confirmed by direct inspection"* or *"…by execution"* below and did not need an adversarial
+  pass, because the evidence is a grep or a test run rather than a judgement call.
+- **Adversarially verified (18 findings).** The subset whose severity depended on judgement went
+  to two independent Opus verifiers instructed to *refute* them: **2 were refuted outright, 13
+  were downgraded, 3 were confirmed** (one strengthened — the canvas server binds publicly and
+  sits in the documented run path, rather than being dev-only scaffolding).
+
+So "3 confirmed" is a statistic about the adversarial subset, **not** about the findings list as
+a whole. Of the raw judgement-dependent output, two-thirds did not survive contact with the code;
+that plus the orchestrator-verified set is what this plan funds. Refuted and downgraded findings
+are recorded in Appendix A rather than deleted, so the next review does not re-raise them.
 
 ---
 
@@ -56,9 +65,14 @@ Everything in this section was produced by running code, not by reading it.
 | Suite | Result | Run by CI? |
 |---|---|---|
 | maistro-core | **5,568 passed**, 1 skipped, 1 xfailed (91s) — **97% coverage** (24,849 stmts, 784 missed) | yes |
-| root `tests/` | **360 passed** (6.1s) | **no** |
+| root `tests/` *excluding `tests/tools/`* | **360 passed** (6.1s) | **no** |
 | `maistro-turing/backend` | **26 passed** (2.3s) | **no** |
 | `maistro-design` | **156 passed** (2.2s) | **no** |
+| *(for contrast)* `tests/tools/registry/` | 74 collected | yes — `registry.yml:46` |
+
+The root `tests/` tree is **partially** covered: `registry.yml:46` runs its `tests/tools/registry/`
+subtree (74 tests). The 360 figure above was measured with `--ignore=tests/tools`, so the 542
+orphaned total below counts each test exactly once and does not include those 74.
 
 `ruff check` and `ruff format --check` both pass cleanly across all packages (1,530 files), so
 remediation starts from a clean lint baseline.
@@ -200,6 +214,18 @@ from `uv.lock` entirely; it resolves today only via pytest's `pythonpath`. The d
 `uv pip install -r requirements.txt` deploy path therefore fails at import.
 *Confirmed by direct inspection.*
 
+**H12 — The skill-import Warden scan is an optional parameter that nothing binds.**
+This is the third of the three wiring gaps named in the executive summary; an earlier draft
+asserted it there and then never gave it a finding or a remediation item. Verified:
+`skills/import_pipeline.py:307` declares `warden_scan: Callable[...] | None = None`, and the scan
+only runs behind `if warden_scan is not None:` (`:261-262`). `Container.import_skill`
+(`container.py:276-285`) forwards `registry` and `policy_store` plus `**kwargs`, and never binds
+`warden_scan` — despite `self.warden` being in scope. No caller anywhere in `packages/*/src`
+passes it. So imported skill content is checked only by the parser-level `security_scan` regex
+layer, not by the Warden pipeline the module's "fail-closed at every stage" docstring implies.
+`verify_skill_payload` (the per-use re-verification) has no Warden parameter at all.
+*Confirmed by direct inspection. Gap in the review itself surfaced by the Codex review on PR #266.*
+
 ### Medium
 
 **M1 — Admin-key comparisons are non-constant-time.** `privilege.py:267,296,313,333` use plain
@@ -263,10 +289,15 @@ mounted by nothing. *Confirmed by direct inspection.*
 shapes; `pg_audit.py:42-43` reads `entry.trace_id`/`entry.request_id`, which the Sentinel-built
 entry lacks. Verifier downgraded from High: the write is wrapped in `except Exception` at
 `sentinel/policy.py:366-367`, so the failure mode is **silent audit loss**, not a crash — and
-neither SQL audit log is currently wired. A latent landmine that detonates exactly when someone
-fixes A2. *Confirmed by verifier V2.*
+neither SQL audit log is currently wired. A latent landmine that detonates the moment a SQL audit
+implementation is actually connected — i.e. as part of **M11 / Horizon 3 item 2** (wiring the
+Postgres backend), which is why that item must not land before this one.
+*Confirmed by verifier V2.*
 
-**M10 — `create_container()` has no override seam for its defaults.** Verifier downgraded from
+**M10 — Direct `Container(...)` construction yields 26 non-optional fields silently set to
+`None`.** (Retitled: the original heading asserted "`create_container()` has no override seam",
+which this finding's own verified body refutes — keeping it would have pointed future work at
+unnecessary factory plumbing.) Verifier downgraded from
 Critical: `Container` is a dataclass whose store fields are protocol-typed, so constructor
 injection is a legitimate third substitution path, and ADR-019 names protocols — not a factory
 registry — as the Stronghold seam. What remains real is the default-wiring cruft: 26
@@ -298,11 +329,18 @@ third credential subsystem that also treats a failed PostgREST write as success
 
 **L3 — `execute_canvas`'s `upload` action raises `UnboundLocalError` on every call.**
 Runtime-proven: `tool.py:537` binds `upload_img` while `:550-551,560-561` read `img.width`/
-`img.height`. **However** — `execute_canvas` has zero callers anywhere in the repo, there is no
-`canvas/__init__.py`, and the package `__init__` does not export it. So this is a certain bug in
-unreachable legacy code. Its value is as evidence: `tool.py` is 922 LOC of untested, unreferenced
-legacy that should be retired rather than patched (Horizon 3, item 6). *Proven by execution;
-reachability confirmed by verifier V2.*
+`img.height`. **Reachability is narrower than an earlier draft claimed.** `execute_canvas` has no
+Python importers anywhere in this repo, no `canvas/__init__.py`, and no package-level export —
+but that does **not** establish it is unreachable: maistro-engine is explicitly a shared runtime
+consumed by downstream products, and agent tools are declared by *name* in YAML, which no import
+search can see. Concretely, `packages/maistro-canvas/agents/davinci/agent.yaml:14-16` declares
+`canvas` as a live tool, and line 34 states the legacy tool "is kept for existing canvases until
+ADR-044 Phase 4 closes". So the accurate statement is: **no in-repo Python importers; downstream
+and YAML-declared reachability unverified.** Its value is as evidence that `tool.py` is 922 LOC
+of untested legacy due for retirement under ADR-044 — and the unverified reachability is a reason
+to follow that ADR's phased path rather than delete (Horizon 3, item 6).
+*Bug proven by execution; in-repo import absence confirmed by verifier V2; downstream reachability
+caveat raised by the Codex review on PR #266.*
 Corroborating detail from the parity audit: `upload` is also the one action with **no replacement
 in the new engine**. It is broken in the old path and absent from the new one — which is the
 clearest available evidence that no user has ever exercised it.
@@ -325,7 +363,8 @@ traces to a finding above.
 | 5 | Add `/v1/containers` to `_PROTECTED_OPS` for POST/DELETE and gate log reads; validate `container_id` against `^[a-zA-Z0-9_.-]{1,128}$` | C3 | 1 h |
 | 5a | Add a required-key middleware to canvas `server.js`, refuse to boot without it, bind loopback instead of `0.0.0.0`, replace `cors()` with an origin allowlist, cap `pages` before spawning `python3`, and admin-gate or delete `DELETE /api/books` | C4 | 3 h |
 | 5b | Require webhook secrets in `_validate_startup` when the webhooks router is mounted; make `detect_injection` hits reject rather than log | C5 | 2 h |
-| 6 | Wire a strike tracker in `container.py` (`PgStrikeTracker` on Postgres, in-memory otherwise) | H3 | 2 h |
+| 6 | Wire a strike tracker in `container.py`. Note no Postgres wiring exists yet (M11), so wire `InMemoryStrikeTracker` now and add the `PgStrikeTracker` branch when M11 lands | H3 | 2 h |
+| 6a | Bind the skill-import Warden scan: `kwargs.setdefault("warden_scan", self.warden.scan)` in `Container.import_skill`, or make it a required positional on `import_skill` so it cannot be silently omitted | H12 | 1 h |
 | 7 | Fix `_apply_intent_hint` to iterate `config.task_types`; ignore-and-log unknown hints | H5 | 1 h |
 | 8 | Reorder `State.close()` to enqueue-and-join before setting `_shutdown`; drain until empty | H7 | 1 h |
 | 9 | Replace the four `privilege.py` `!=` comparisons with `secret_equal`; drop `admin_key` from `ElevationGrant`'s repr | M1 | 1 h |
@@ -362,7 +401,13 @@ them early in a release cycle, not before a freeze.
    already has both objects in hand.
 6. **Declare hive-conductor's dependencies (H11).** Add `maistro-design`/`maistro-rsi`/
    `maistro-evolve` to `requirements.txt` and the root `[project.dependencies]`; guard the
-   `design` router import; give hive-conductor a `pyproject.toml` so it enters the uv workspace.
+   `design` router import. ⚠️ A `pyproject.toml` alone will **not** make hive-conductor a uv
+   workspace member: the root `pyproject.toml` has **no `[tool.uv.workspace]` section at all**,
+   only `[tool.uv.sources]` path entries (`:185-190`). This is already observable with
+   `maistro-design`, which has its own `pyproject.toml` and is still absent from `uv.lock`. The
+   fix must add an explicit `[tool.uv.workspace]` members list plus a dependency edge — which also
+   means CLAUDE.md's description of this repo as a "uv workspace" needs correcting.
+   *(Raised by the Codex review on PR #266.)*
 7. **Repair the mutation and quality gates (M4, M5).** Make the mutation job consume its own
    changed-file list and use `github.base_ref`; wire `check-radon-baseline.py` or delete it;
    author `tests/fitness/` (import-boundary assertions per ADR-019/068 are the obvious first
@@ -465,6 +510,21 @@ The fleet corrected itself in four places; recorded for method credibility.
   subpackages have suites importing through the package `__init__`. The only genuinely untested
   module in maistro-core is the empty `scheduler/` placeholder. No test-writing work should be
   funded against that list.
+
+### Round two — corrections from the Codex review on PR #266
+
+An automated review of this document raised seven points. Six were valid and are now folded in;
+one was arithmetically wrong. Recorded for the same reason as the rest of this appendix.
+
+| Point | Outcome |
+|---|---|
+| Verification tally contradicts the published severities | **Accepted.** The summary conflated two populations — ~18 orchestrator-verified findings and 18 adversarially-verified ones. Rewritten to separate them. |
+| Skill-import Warden gap named but never given a finding | **Accepted.** Now **H12**, with a Horizon 1 action (item 6a). |
+| M9's "detonates when someone fixes A2" points at a refuted SSE finding | **Accepted.** Appendix renumbering broke the reference; now points at M11 / Horizon 3 item 2. |
+| M10's title asserts a claim its own verified body refutes | **Accepted.** Retitled to the surviving defect. |
+| 542 orphaned tests overcounts by 74 (`registry.yml` runs `tests/tools/registry/`) | **Rejected on the arithmetic, accepted on the label.** `tests/tools/registry` collects 74 tests; the 360 figure was measured with `--ignore=tests/tools`, so the sets are disjoint and 542 counts each test once — re-verified by collection. But the table row said "root `tests/`" without the exclusion, which was misleading; the row and a clarifying note are now explicit. |
+| Zero in-repo callers doesn't prove `canvas/tool.py` is unreachable downstream | **Accepted, and corroborated.** `agents/davinci/agent.yaml:14-16` declares `canvas` by name. L3 now says "no in-repo Python importers; downstream and YAML-declared reachability unverified". |
+| A `pyproject.toml` alone won't make hive-conductor a uv workspace member | **Accepted, and stronger than raised.** There is no `[tool.uv.workspace]` section at all. Horizon 2 item 6 corrected. |
 
 
 ## Appendix C — Canvas engine capability parity (`tool.py` → new engine)
