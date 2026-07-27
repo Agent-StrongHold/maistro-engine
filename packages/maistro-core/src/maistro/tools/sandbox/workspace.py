@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import structlog
@@ -13,9 +14,15 @@ CONTAINER_WORKSPACE = "/workspace"
 
 # Allowed host paths that can be mounted into containers.
 # Include `/private/tmp/...` because macOS resolves `/tmp` → `/private/tmp`.
+# Also include the platform temp dir's own `maistro-workspace` (usually the
+# same as the hardcoded `/tmp` entry, but not when `$TMPDIR` points elsewhere,
+# e.g. `/var/tmp` or a CI-specific dir) — callers that build their default
+# workspace root from `tempfile.gettempdir()` (maistro_rsi.runner) must not
+# fail validation for honoring the platform's own temp directory.
 ALLOWED_HOST_ROOTS = (
     Path("/tmp/maistro-workspace"),  # nosec B108 — security allowlist, not a write target
     Path("/private/tmp/maistro-workspace"),  # nosec B108 — macOS symlink target of /tmp
+    Path(tempfile.gettempdir()) / "maistro-workspace",  # nosec B108 — see comment above
     Path("/repos"),
 )
 
