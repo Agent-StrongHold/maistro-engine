@@ -107,19 +107,41 @@ def _parse_test_roots(pytest_args: str) -> list[str]:
     return roots
 
 
-def _uncollectable_tests(cwd: Path, test_files: list[str], valid_roots: list[str]) -> list[str]:
+def _uncollectable_tests(
+    cwd: Path, test_files: list[str], valid_roots: list[str], src_files: list[str] | None = None
+) -> list[str]:
     """New/changed test files that the harness's own scoped pytest invocation
     would never run: either the path falls outside every configured test root,
     or pytest can't collect any item from it (e.g. a syntax error, or a name
     that doesn't match pytest's discovery pattern). A test the harness never
     executes contributes nothing — its presence must not be rewarded, and it
-    should not silently accumulate as repo clutter."""
+    should not silently accumulate as repo clutter.
+
+    If the test file falls outside the configured roots BUT is in a valid test
+    directory for a package that has source in the diff (auto-discovery), the
+    gate PASSES — the agent put the test in the right place for the source it
+    changed, the operator just didn't include that package's tests in the scope.
+    """
+    # auto-discover valid test roots from the changed SOURCE files: if the
+    # agent changed a file in packages/X/src, then packages/X/tests is a
+    # legitimate test root even if the operator didn't list it.
+    auto_roots: list[str] = []
+    if src_files:
+        for sf in src_files:
+            norm = sf.replace("\\", "/")
+            # packages/maistro-core/src/... → packages/maistro-core/tests
+            parts = norm.split("/")
+            for i, part in enumerate(parts):
+                if part == "src" and i > 0:
+                    pkg_root = "/".join(parts[:i])
+                    auto_roots.append(f"{pkg_root}/tests")
+                    break
+    all_roots = list(set(valid_roots + auto_roots))
+
     reasons: list[str] = []
     for rel in test_files:
         norm = rel.replace("\\", "/")
-        if valid_roots and not any(
-            norm == root or norm.startswith(root + "/") for root in valid_roots
-        ):
+        if all_roots and not any(norm == root or norm.startswith(root + "/") for root in all_roots):
             reasons.append(f"{rel}: outside configured test roots ({', '.join(valid_roots)})")
             continue
         if not (cwd / rel).is_file():
@@ -607,7 +629,7 @@ def evaluate_candidate(
 
     syntax_reasons = _syntax_check(cwd, all_py)
     valid_roots = _parse_test_roots(coverage_pytest_args)
-    uncollectable = _uncollectable_tests(cwd, tests, valid_roots)
+    uncollectable = _uncollectable_tests(cwd, tests, valid_roots, src_files=src)
     new_src_lines = new_source_lines(cwd, baseline_ref, src) if (baseline_ref and src) else {}
     uncovered_new = uncovered_new_lines(new_src_lines, missing) if new_src_lines else {}
     vacuous_reasons = _vacuous_test_reasons(src, tests, tdd)

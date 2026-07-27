@@ -1,7 +1,13 @@
-# Security gate — SAST + DAST + supply chain.
+# Security gate — SAST + supply chain + container scanning.
 #
-# Pillar 5 of the QA gate. Heavy bag (containers, ZAP) runs only on PR-to-main
-# + main pushes + nightly. Lightweight SAST runs on every push.
+# Pillar 5 of the QA gate. The heavy bag (container build + scan) runs only on
+# PR-to-main + main pushes + nightly. Lightweight SAST runs on every push.
+#
+# No DAST here. There was a `dast:` job that skipped every step when
+# docker-compose.vibehost-maistro.yml was absent — and that file has never been in
+# this repo, so the job reported green while scanning nothing. The deployment
+# stack it needs lives in the deployment repo; if DAST is wanted it belongs there,
+# next to the compose file that defines the target.
 
 name: security
 
@@ -11,7 +17,7 @@ on:
   push:
     branches: [main, integration, develop, feat/*]
   schedule:
-    # Nightly full SBOM + DAST + image scan.
+    # Nightly full SBOM + image scan.
     - cron: "30 7 * * *"
 
 jobs:
@@ -82,9 +88,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ----- Supply chain: pip-audit + safety (fast; every push) -----
+  # ----- Supply chain: pip-audit (fast; every push) -----
   supply-chain:
-    name: Supply chain (pip-audit + safety)
+    name: Supply chain (pip-audit)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -96,68 +102,33 @@ jobs:
       - name: uv sync
         run: uv sync --all-extras
 
-      # pip-audit/safety are NOT project extras (see requirements-dev-tools.txt).
+      # pip-audit is NOT a project extra (see requirements-dev-tools.txt).
       - name: install supply-chain tools
-        run: uv pip install pip-audit safety
+        run: uv pip install pip-audit
 
       - name: pip-audit (strict; gate the known CVE list)
         run: |
           # Workspace-local editable packages aren't on PyPI — pip-audit --strict
           # refuses them, so audit the frozen third-party set (same as ci.yml).
           uv pip freeze --exclude-editable > /tmp/deps.txt
+          # `|| true`: pip-audit exits non-zero on any finding; the gate script
+          # decides what blocks. The triaged allowlist lives in that script so
+          # this job and ci.yml's `security` job cannot drift apart.
           uv run pip-audit --strict --format=json -r /tmp/deps.txt > pip-audit.json || true
-          uv run python -c "
-          import json, sys
-          data = json.load(open('pip-audit.json'))
-          deps = data.get('dependencies', [])
-          vuln = [d for d in deps if d.get('vulns')]
-          # Allow-list — each entry is a TRIAGED CVE on a transitive dep:
-          #
-          # pydantic-ai  CVE-2026-46678 (fix in 1.99.0). Vulnerable code
-          #              path is force_download='allow-local'. AST grep
-          #              across packages/ on 2026-05-22 confirms we never
-          #              pass force_download anywhere. Upgrade tracked
-          #              in task #23 as housekeeping, not load-bearing.
-          # py           PYSEC-2022-42969 (no fix). ReDoS via crafted
-          #              Subversion repo info. We don't use SVN at all;
-          #              py is a transient dep pulled by pytest only.
-          # starlette    PYSEC-2026-161 (fix 1.0.1). Host-header path
-          #              injection. Transitive via fastapi; the fastapi
-          #              pin upgrades it. Tracked for next fastapi
-          #              version-bump PR. Mitigated for now by the
-          #              gateway-level Host whitelist in deployment.
-          # nltk         PYSEC-2026-597 (no fix as of 2026-07-01).
-          #              Transitive dep of `safety` (the audit tool
-          #              itself), NOT of any project runtime code.
-          #              grep across packages/ confirms we import
-          #              nothing from nltk. Risk surface is the CI
-          #              scan job only; no production exposure.
-          # ecdsa        PYSEC-2026-1325 (no fix as of 2026-07-15). Known
-          #              python-ecdsa vulnerability class is a timing
-          #              side-channel in ecdsa.SigningKey.sign_digest()
-          #              (secp256k1/ECDSA signing). Transitive via
-          #              bip-utils, used only for Bip32Slip10Secp256k1 HD
-          #              derivation (BTC/ETH address display) in
-          #              maistro.identity — read on 2026-07-15: every
-          #              actual sign()/verify() in identity/__init__.py
-          #              and identity/lifecycle.py goes through
-          #              nacl.signing (Ed25519), and _require_ed25519_path
-          #              explicitly REJECTS secp256k1 signing paths. We
-          #              never call ecdsa signing, so the vulnerable
-          #              code path is unreachable.
-          allowed = {'pydantic-ai', 'py', 'starlette', 'nltk', 'ecdsa'}
-          new_vuln = [d for d in vuln if d['name'] not in allowed]
-          if new_vuln:
-              print('::error::pip-audit found new vulnerable deps:')
-              for d in new_vuln:
-                  for v in d['vulns']:
-                      print(f'  {d[\"name\"]}=={d[\"version\"]} {v[\"id\"]} fix={v.get(\"fix_versions\")}')
-              sys.exit(1)
-          print(f'pip-audit OK ({len(vuln)} known; all in baseline allowlist)')
-          "
+          uv run python scripts/pip_audit_gate.py pip-audit.json
 
-      - name: safety check (cross-check)
-        run: uv run safety check --json || echo "::warning::safety cross-check found issues (advisory)"
+      # The `safety check` cross-check that used to sit here was removed, not
+      # escalated. Measured 2026-07-26, it was not a weak gate but a broken one:
+      #   * `check` has been deprecated since 2024-06-01, and prints its
+      #     deprecation banner into the `--json` stream — the output is not valid
+      #     JSON, so nothing could ever have consumed it.
+      #   * It ran unauthenticated (api_key=false), so it saw a subset of the DB.
+      #   * Its only two findings were ecdsa 0.19.2 with no fix available, both
+      #     already reported by the pip-audit gate directly above.
+      #   * It pulled nltk, whose own advisory then had to be added to the
+      #     allowlist above. The scanner was adding vulnerabilities to the scan.
+      # pip-audit --strict is the supply-chain gate. One gate that blocks beats two
+      # where one only warns.
 
   # ----- Container scan + SBOM + signing (PR-to-main + nightly only) -----
   # Heavy bag stays scoped to main: PRs targeting develop/integration only run
@@ -231,77 +202,3 @@ jobs:
         run: |
           cosign sign --yes hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }}
           cosign sign --yes maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }}
-
-  # ----- DAST: OWASP ZAP against running stack (heavy; nightly + PR-to-main) -----
-  # Same scoping as containers above: only main-targeted PRs (or nightly) boot
-  # the live stack; develop/integration PRs stay on the fast jobs.
-  dast:
-    name: DAST (OWASP ZAP baseline)
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    if: (github.event_name == 'pull_request' && github.base_ref == 'main') || github.event_name == 'schedule'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check for deployment compose file
-        id: compose
-        run: |
-          # The DAST stack is defined by a deployment compose file that lives in
-          # the deployment repo, not here. When it's absent there is nothing to
-          # boot, so skip the live scan rather than hard-fail every PR.
-          if [ -f docker-compose.vibehost-maistro.yml ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::docker-compose.vibehost-maistro.yml not present — skipping DAST (deployment stack lives elsewhere)."
-          fi
-      - name: Boot the stack for DAST
-        if: steps.compose.outputs.present == 'true'
-        run: |
-          # Compose env file (test secrets only).
-          mkdir -p container_registry/user_containers/sandbox_templates/maistro-engine
-          cat > container_registry/user_containers/sandbox_templates/maistro-engine/.env <<EOF
-          LITELLM_PROXY_URL=http://fake-litellm:4000
-          LITELLM_PROXY_KEY=test-key
-          DB_PASSWORD=test
-          LANGFUSE_NEXTAUTH_SECRET=test-test-test-test-test-test-test
-          LANGFUSE_SALT=salt
-          API_KEYS=["test-key-for-dast"]
-          CORS_ORIGINS=["http://localhost:8090"]
-          EOF
-          docker compose --env-file container_registry/user_containers/sandbox_templates/maistro-engine/.env \
-            -f docker-compose.vibehost-maistro.yml up -d hive-conductor maistro-engine jfc-gateway
-
-          # Wait for /health to be ready.
-          for i in {1..30}; do
-            if curl -sf http://localhost:8090/health/ready; then echo "ready"; break; fi
-            sleep 2
-          done
-
-      - name: ZAP baseline scan
-        if: steps.compose.outputs.present == 'true'
-        uses: zaproxy/action-baseline@v0.14.0
-        with:
-          target: http://localhost:8090
-          cmd_options: "-J zap-report.json -r zap-report.html -m 5"
-          fail_action: false   # surfaces report; gate-blocking via the parser below
-
-      - name: Gate on new HIGH alerts
-        if: steps.compose.outputs.present == 'true'
-        run: |
-          if [ -f zap-report.json ]; then
-            HIGH=$(jq '[.site[].alerts[] | select(.riskcode == "3")] | length' zap-report.json)
-            if [ "${HIGH:-0}" -gt 0 ]; then
-              echo "::error::ZAP found ${HIGH} HIGH-severity alert(s); see zap-report.html artifact"
-              exit 1
-            fi
-            echo "ZAP HIGH count: ${HIGH}"
-          fi
-
-      - name: Upload ZAP report
-        if: steps.compose.outputs.present == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report-${{ github.event.pull_request.number || 'nightly' }}
-          path: |
-            zap-report.json
-            zap-report.html

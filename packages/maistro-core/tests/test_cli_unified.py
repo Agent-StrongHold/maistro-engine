@@ -205,12 +205,14 @@ class TestCLI:
         from maistro.cli import app
 
         result = runner.invoke(app, [])
-        # Click 8.2+ raises NoArgsIsHelpError for no_args_is_help, exiting 2 (a usage
-        # error) instead of 0 — the help text itself is unaffected; only the exit
-        # code convention changed. See .github/workflows/security.yml's pip-audit
-        # allowlist note for why we're on a post-8.2 click.
+        # click >= 8.2 treats "group invoked with no subcommand" as a usage
+        # error (exit 2) rather than a success, while still printing the help.
+        # We're on >= 8.3.3 because 8.1.x carries PYSEC-2026-2132, so exit 2 is
+        # the contract now. What this test guards is that help is still shown.
         assert result.exit_code == 2
         assert "maistro" in result.output.lower()
+        assert "Usage" in result.output
+        assert "Commands" in result.output
 
     def test_approvals_list_no_server(self) -> None:
         from maistro.cli import app

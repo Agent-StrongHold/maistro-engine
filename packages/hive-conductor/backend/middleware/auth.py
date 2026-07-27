@@ -50,6 +50,9 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/agents": "agents.delete",
         "/v1/skills": "skills.delete",
         "/v1/mcp": "mcp.delete",
+        # Killing another principal's harness session is a denial of service on
+        # in-flight work, so it needs the same scope that starting one does.
+        "/v1/harness": "harness.execute",
     },
     "POST": {
         "/v1/settings": "config.write",
@@ -57,6 +60,20 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/mcp/servers": "mcp.write",
         "/v1/agents": "agents.write",
         "/v1/skills": "skills.write",
+        # The inbound harness starts a coding agent against an operator-supplied
+        # `workdir`: POST /v1/harness/sessions is code execution on this host,
+        # and .../send steers it. Authentication alone was already required
+        # (dispatch 401s any unauthenticated /v1/ path), but *every*
+        # authenticated principal could reach it — including a role="user"
+        # account with permissions=[]. Deliberately its own scope rather than
+        # agents.write: being cleared to edit an agent's configuration is not
+        # the same as being cleared to execute code as it.
+        "/v1/harness": "harness.execute",
+        # RSI runs are the self-modification loop — they push branches and can
+        # open PRs. Separate scope again, because granting code execution on a
+        # scratch workdir is a smaller decision than granting the loop that
+        # rewrites this repository.
+        "/v1/rsi": "rsi.execute",
         # Capability discovery + approval resolution (approving a destructive
         # infra action is high-stakes) — gate behind config.write.
         "/v1/capabilities": "config.write",

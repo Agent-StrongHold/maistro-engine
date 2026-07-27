@@ -177,12 +177,10 @@ class TestCliWiringSmoke:
         workspace_root = tmp_path / "maistro-workspace"
         monkeypatch.setattr("maistro.tools.sandbox.workspace.ALLOWED_HOST_ROOTS", (workspace_root,))
 
-        async def fake_create_microvm_sandbox(workspace, settings=None, env=None):
+        async def fake_create_rsi_sandbox(workspace, settings=None, env=None, backend=None):
             return _FakeMicroVmSandbox()
 
-        monkeypatch.setattr(
-            "maistro_rsi.runner.create_microvm_sandbox", fake_create_microvm_sandbox
-        )
+        monkeypatch.setattr("maistro_rsi.runner.create_rsi_sandbox", fake_create_rsi_sandbox)
 
         code = main(
             [
@@ -254,10 +252,10 @@ class TestCliNewWiring:
         workspace_root = tmp_path / "maistro-workspace"
         monkeypatch.setattr("maistro.tools.sandbox.workspace.ALLOWED_HOST_ROOTS", (workspace_root,))
 
-        async def fake_create(workspace, settings=None, env=None):
+        async def fake_create(workspace, settings=None, env=None, backend=None):
             return _FakeMicroVmSandbox()
 
-        monkeypatch.setattr("maistro_rsi.runner.create_microvm_sandbox", fake_create)
+        monkeypatch.setattr("maistro_rsi.runner.create_rsi_sandbox", fake_create)
 
         code = main(
             [

@@ -147,6 +147,54 @@ def test_register_returns_none_without_gateway(monkeypatch: pytest.MonkeyPatch) 
 
 # --- expand_free_router ----------------------------------------------------------
 
+# --- discover_openrouter_credential -------------------------------------------------
+
+
+def test_discover_credential_uses_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    # When the environment variable LITELLM_OPENROUTER_CREDENTIAL is set, the function
+    # should return it without performing any HTTP request.
+    monkeypatch.setenv("LITELLM_OPENROUTER_CREDENTIAL", "my-override-cred")
+
+    # If an HTTP request is made, raise to ensure it is not called.
+    def boom(*a, **k):  # type: ignore[no-untyped-def]
+        raise AssertionError("httpx.get should not be called when override env is set")
+
+    monkeypatch.setattr(httpx, "get", boom)
+    cred = fr._discover_openrouter_credential(base="http://gw", key="k", timeout=1.0)
+    assert cred == "my-override-cred"
+
+
+def test_discover_credential_finds_first_openrouter(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No env override; the function should query the gateway and return the first
+    # credential whose name starts with "openrouter/".
+    monkeypatch.delenv("LITELLM_OPENROUTER_CREDENTIAL", raising=False)
+
+    class _FakeResp2:
+        def __init__(self, payload: object) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> object:
+            return self._payload
+
+    def fake_get(url, *, headers, timeout):  # type: ignore[no-untyped-def]
+        # Return a payload with a list of credential dicts.
+        return _FakeResp2(
+            payload={
+                "credentials": [
+                    {"credential_name": "not-openrouter/foo"},
+                    {"credential_name": "openrouter/cred-1"},
+                    {"credential_name": "openrouter/cred-2"},
+                ]
+            }
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    cred = fr._discover_openrouter_credential(base="http://gw", key="k", timeout=1.0)
+    assert cred == "openrouter/cred-1"
+
 
 def test_expand_is_noop_without_sentinel() -> None:
     models = ["cerebras-glm-4.7", "or-qwen36"]
@@ -183,6 +231,18 @@ def test_expand_dedups_against_literal_roster_entries() -> None:
         ["openrouter/x:free", "or-free-router"], selector=lambda: "openrouter/x:free"
     )
     assert out == ["openrouter/x:free"]  # the pick collided with the literal — appears once
+
+
+# --- _pick_distinct --------------------------------------------------------------
+
+
+def test_pick_distinct_falls_back_to_default_when_selector_returns_none() -> None:
+    # When the selector yields only None (unavailable), _pick_distinct should
+    # fall back to a single DEFAULT_FREE_MODEL rather than returning an empty list.
+    result = fr._pick_distinct(selector=lambda: None, count=3)
+    assert result == [fr.DEFAULT_FREE_MODEL]
+    # Even with count > 1, we only get ONE default fallback (keeps roster routable)
+    assert len(result) == 1
 
 
 # --- seeding integration ---------------------------------------------------------

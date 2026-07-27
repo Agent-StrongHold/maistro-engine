@@ -25,6 +25,7 @@ can still start in dev mode without a running proxy.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from pathlib import Path
@@ -250,6 +251,59 @@ def _to_openai_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _tool_use_blocks(tool_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """OpenAI-shaped tool_calls -> the tool_use block list the agent loop expects.
+    Unparseable arguments degrade to `{}` rather than failing the whole turn."""
+    import json
+
+    blocks: list[dict[str, Any]] = []
+    for tc in tool_calls:
+        fn = tc.get("function", {})
+        try:
+            inp = json.loads(fn.get("arguments", "{}"))
+        except json.JSONDecodeError:
+            inp = {}
+        blocks.append(
+            {
+                "type": "tool_use",
+                "id": tc.get("id", "tc_0"),
+                "name": fn.get("name", ""),
+                "input": inp,
+            }
+        )
+    return blocks
+
+
+# (attribute, header names in preference order). The `llm_provider-*` variants
+# carry the real upstream provider's counters; the bare `x-ratelimit-*` are the
+# gateway's own, used only as a fallback.
+_RATE_HEADERS: list[tuple[str, list[str]]] = [
+    (
+        "_rate_remaining_tokens",
+        [
+            "llm_provider-x-ratelimit-remaining-tokens-minute",
+            "llm_provider-x-ratelimit-remaining-tokens",
+            "x-ratelimit-remaining-tokens",
+        ],
+    ),
+    (
+        "_rate_limit_tokens",
+        [
+            "llm_provider-x-ratelimit-limit-tokens-minute",
+            "llm_provider-x-ratelimit-limit-tokens",
+            "x-ratelimit-limit-tokens",
+        ],
+    ),
+    (
+        "_rate_remaining_reqs",
+        [
+            "llm_provider-x-ratelimit-remaining-req-minute",
+            "llm_provider-x-ratelimit-remaining-requests-minute",
+            "llm_provider-x-ratelimit-remaining-requests",
+            "x-ratelimit-remaining-requests",
+        ],
+    ),
+]
 # Token fragments that identify an Anthropic-family alias routed through the
 # gateway. Anthropic is the only provider whose caching needs an EXPLICIT
 # cache_control breakpoint (OpenAI, vLLM, DeepSeek auto-cache a stable prefix);
@@ -329,9 +383,49 @@ class LiteLLMCallable:
         # explicit temperature outright, so __call__ sends one or the other, never
         # both — this takes priority when set.
         self.reasoning_effort = reasoning_effort
+        # Router-agnostic rate-limit pacing state (updated from response headers).
+        # See docs/model-rate-limit-headers.md — stays just under the provider
+        # ceiling so we never 429-storm (which trips abuse revocation).
+        self._rate_remaining_tokens: float | None = None
+        self._rate_limit_tokens: float | None = None
+        self._rate_remaining_reqs: float | None = None
 
     def _is_configured(self) -> bool:
         return bool(_base_url() and _api_key())
+
+    def _throttle_if_near_limit(self) -> None:
+        """Sleep out the current rate window when the last response said we are
+        nearly out of requests or tokens."""
+        import time as _time
+
+        if self._rate_remaining_reqs is not None and self._rate_remaining_reqs <= 1:
+            logger.info(
+                "rate_pacer throttle: %.0f reqs left, waiting 60s for window",
+                self._rate_remaining_reqs,
+            )
+            _time.sleep(60.0)
+        elif (
+            self._rate_limit_tokens
+            and self._rate_remaining_tokens is not None
+            and self._rate_remaining_tokens < 0.10 * self._rate_limit_tokens
+        ):
+            logger.info(
+                "rate_pacer throttle: %.0f tokens left (limit %.0f), waiting 60s",
+                self._rate_remaining_tokens,
+                self._rate_limit_tokens,
+            )
+            _time.sleep(60.0)
+
+    def _observe_rate_headers(self, resp: Any) -> None:
+        """Record upstream rate-limit counters (llm_provider-* = the real
+        upstream numbers; the bare x-ratelimit-* are the gateway's own)."""
+        for attr, hdrs in _RATE_HEADERS:
+            for h in hdrs:
+                raw = getattr(resp, "headers", {}).get(h) if hasattr(resp, "headers") else None
+                if raw:
+                    with contextlib.suppress(ValueError):
+                        setattr(self, attr, float(raw))
+                    break
 
     def __call__(
         self,
@@ -351,6 +445,29 @@ class LiteLLMCallable:
                 "usage": {"input_tokens": 0, "output_tokens": 0},
             }
 
+        body = self._build_request_body(messages, tools, max_tokens)
+
+        # Router-agnostic rate-limit pacing: stay just under the provider
+        # ceiling (reads llm_provider-* headers forwarded by the router;
+        # works behind any router, not just LiteLLM). Throttles before calls
+        # predicted to cross; backs off on 429 instead of tight-looping.
+        import time as _time
+
+        return self._post_with_pacing(body, _time)
+
+    def _build_request_body(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        max_tokens: int,
+    ) -> dict[str, Any]:
+        """Assemble the chat-completions payload.
+
+        Split out of ``__call__`` when the Anthropic prompt-cache marker and the
+        rate-limit pacing loop landed on the same method from two branches;
+        together they pushed it past the complexity gate. Body assembly is the
+        self-contained half.
+        """
         oai_messages = _to_openai_messages(messages)
         # Anthropic-only, opt-in: mark the stable prefix so the identical
         # tools+system re-sent every turn/cycle is cache-billed. Non-Anthropic
@@ -362,6 +479,10 @@ class LiteLLMCallable:
             "model": self.model,
             "messages": oai_messages,
             "max_tokens": max_tokens,
+            # RSI/evolve must never get cached responses — the agent's workspace
+            # state changes every turn, so a cache hit returns stale tool output
+            # that doesn't match the files the agent just wrote/read.
+            "cache": {"no-cache": True, "no-store": True},
         }
         # reasoning_effort and temperature are mutually exclusive on reasoning
         # models (sending both 400s), so prefer reasoning_effort when set and
@@ -387,14 +508,42 @@ class LiteLLMCallable:
             ]
             body["tool_choice"] = "auto"
 
-        resp = httpx.post(
-            f"{_base_url()}/v1/chat/completions",
-            json=body,
-            headers={"Authorization": f"Bearer {_api_key()}"},
-            timeout=self.timeout,
-        )
-        if resp.status_code >= 400:
-            raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
+        return body
+
+    def _post_with_pacing(self, body: dict[str, Any], _time: Any) -> dict[str, Any]:
+        """Post ``body``, throttling ahead of the provider ceiling and retrying 429s."""
+        for _attempt in range(4):  # 1 try + up to 3 429-retries
+            self._throttle_if_near_limit()
+
+            resp = httpx.post(
+                f"{_base_url()}{os.environ.get('LLM_CHAT_PATH', '/v1/chat/completions')}",
+                json=body,
+                headers={"Authorization": f"Bearer {_api_key()}"},
+                timeout=self.timeout,
+            )
+
+            self._observe_rate_headers(resp)
+
+            if resp.status_code == 429:
+                ra = (
+                    getattr(resp, "headers", {}).get("retry-after", "60")
+                    if hasattr(resp, "headers")
+                    else "60"
+                )
+                try:
+                    wait = min(float(ra), 120.0)
+                except ValueError:
+                    wait = 60.0
+                logger.warning(
+                    "rate_pacer 429, backing off %.0fs (attempt %d/4)", wait, _attempt + 1
+                )
+                _time.sleep(wait)
+                continue
+            if resp.status_code >= 400:
+                raise RuntimeError(f"LiteLLM gateway {resp.status_code}: {resp.text[:500]}")
+            break
+        else:
+            raise RuntimeError(f"LiteLLM gateway 429: exhausted retries. Last: {resp.text[:500]}")
 
         data = resp.json()
         choice = data["choices"][0]
@@ -403,26 +552,8 @@ class LiteLLMCallable:
         stop_reason = choice.get("finish_reason", "end_turn")
 
         # Normalise tool_calls into the same block-list shape the agent loop expects.
-        tool_calls = msg.get("tool_calls") or []
-        if tool_calls:
-            blocks: list[dict[str, Any]] = []
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                import json
-
-                try:
-                    inp = json.loads(fn.get("arguments", "{}"))
-                except json.JSONDecodeError:
-                    inp = {}
-                blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": tc.get("id", "tc_0"),
-                        "name": fn.get("name", ""),
-                        "input": inp,
-                    }
-                )
-            content = blocks
+        if tool_calls := msg.get("tool_calls") or []:
+            content = _tool_use_blocks(tool_calls)
             stop_reason = "tool_use"
 
         usage = data.get("usage", {})

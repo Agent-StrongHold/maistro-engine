@@ -12,7 +12,13 @@ from maistro_evolve.reflect import (
     propose_candidates,
     reflective_improve,
 )
-from maistro_evolve.types import DAGTopology, EvalResult, EvalWeights, NodeGenome, PipelineGenome
+from maistro_evolve.types import (
+    DAGTopology,
+    EvalResult,
+    EvalWeights,
+    NodeGenome,
+    PipelineGenome,
+)
 
 
 def _node(node_id: str) -> NodeGenome:

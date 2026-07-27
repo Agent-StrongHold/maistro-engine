@@ -221,3 +221,72 @@ class TestDistilledInsights:
         b = tree.expand(a.id, "b")
         tree.record(b.id, _evidence(won=3, battles=4, improved=True), insight="same")
         assert tree.distilled_insights(b.id) == ["same"]
+
+
+class TestTreePersistence:
+    """Tests tied to SPEC.md §7 acceptance criteria htr-8..9."""
+
+    def _grown_tree(self) -> HypothesisTree:
+        tree = HypothesisTree("root direction")
+        child = tree.expand(tree.root_id, "child idea")
+        tree.expand(tree.root_id, "second idea")
+        tree.record(
+            tree.root_id,
+            HypothesisEvidence(tests_passed=True, benchmarks_won=2, battles=2, improved=True),
+            diff="the-diff",
+            pr_url="http://pr/1",
+            run_id="r1",
+        )
+        tree.record(
+            child.id,
+            HypothesisEvidence(tests_passed=False, benchmarks_won=0, battles=2, improved=False),
+            insight="child broke the build",
+        )
+        return tree
+
+    def test_round_trip_is_lossless(self):
+        """htr-8: to_dict/from_dict preserves statuses, scores, evidence,
+        insights, artifacts, children, and priority order — pending(),
+        best_node(), distilled_insights(), summary() identical after reload."""
+        tree = self._grown_tree()
+        restored = HypothesisTree.from_dict(tree.to_dict())
+
+        assert restored.to_dict() == tree.to_dict()
+        assert [n.id for n in restored.pending()] == [n.id for n in tree.pending()]
+        assert restored.best_node().id == tree.best_node().id
+        assert restored.distilled_insights() == tree.distilled_insights()
+        assert restored.summary() == tree.summary()
+        for node_id, node in tree.nodes.items():
+            twin = restored.nodes[node_id]
+            assert twin.status is node.status
+            assert twin.score == node.score
+            assert twin.insight == node.insight
+            assert twin.artifacts == node.artifacts
+            assert twin.children == node.children
+
+    def test_order_counter_restored_for_post_resume_expansion(self):
+        """htr-9: expand() after from_dict produces globally unique,
+        correctly prioritized orderings — as if the process never restarted."""
+        tree = self._grown_tree()
+        max_order = max(n.order for n in tree.nodes.values())
+
+        restored = HypothesisTree.from_dict(tree.to_dict())
+        fresh = restored.expand(restored.root_id, "post-resume idea")
+
+        assert fresh.order == max_order + 1
+        orders = [n.order for n in restored.nodes.values()]
+        assert len(orders) == len(set(orders))  # no collisions
+        # recency tie-break: the just-added node outranks the older pending one
+        assert restored.pending()[0].id == fresh.id
+
+    def test_from_dict_rejects_empty_and_dangling_root(self):
+        """htr-9: restoring an empty tree or a root_id not among the nodes
+        raises ValueError instead of building a corrupt tree."""
+        with pytest.raises(ValueError, match="empty"):
+            HypothesisTree.from_dict({"root_id": "x", "nodes": []})
+
+        tree = HypothesisTree("root")
+        data = tree.to_dict()
+        data["root_id"] = "not-a-node"
+        with pytest.raises(ValueError, match="root_id"):
+            HypothesisTree.from_dict(data)

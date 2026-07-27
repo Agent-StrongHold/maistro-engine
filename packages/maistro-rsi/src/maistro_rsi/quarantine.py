@@ -41,11 +41,34 @@ SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     "maistro/graph/depth.py",
     "maistro/graph/nodes/agent_synth_dag.py",
     "maistro/graph/nodes/agent_spawn_harness.py",
+    # The driver that wires the quarantine check, and the module that builds the
+    # shell command every cycle executes. `runner.py` and `coordinator.py` were
+    # protected while the code constructing them was not, so a diff editing the
+    # agent's own command template cleared on Warden alone.
+    "maistro_rsi/autorun.py",
+    "maistro_rsi/apply_agents.py",
+    # Depth/attempt state that survives sandbox disposal — the budgets bounding
+    # how far a run may go.
+    "maistro_rsi/durable_runs/",
+    # SafeHarnessRunner composes Warden and the ActionGate but lives under
+    # capabilities/, so the "maistro/security/" pattern above never saw it.
+    "maistro/capabilities/providers/",
+    # Cumulative action-budget enforcement.
+    "maistro/policy/",
+    # The gates themselves, and the ratchet baselines they read. Previously the
+    # only thing standing between the loop and its own CI config was a sentence
+    # in a prompt telling the model not to touch it.
+    ".github/",
+    "quality/",
+    # The sandbox kit: it sets the backend *and* attests the isolation that
+    # makes LocalSandbox safe (see sandbox/microvm.py).
+    "sbx/",
     # The durable executor carries the actual depth-cap *enforcement* between
     # nodes (it's what increments/surfaces synth_depth across checkpoints) --
     # a diff here can defang the cap just as effectively as touching depth.py
-    # itself.
-    "maistro/graph/durable_runs/executor.py",
+    # itself. Matched at directory granularity: the whole package persists
+    # depth state, so `executor.py` alone left its siblings uncovered.
+    "maistro/graph/durable_runs/",
 )
 
 

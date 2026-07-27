@@ -19,9 +19,16 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Literal, Protocol
 
-from bip_utils import Base58Decoder, Base58Encoder, Bip39SeedGenerator
-from nacl.exceptions import BadSignatureError
-from nacl.signing import SigningKey, VerifyKey
+# See maistro/identity/__init__.py: these ship in the `identity` extra.
+try:
+    from bip_utils import Base58Decoder, Base58Encoder, Bip39SeedGenerator
+    from nacl.exceptions import BadSignatureError
+    from nacl.signing import SigningKey, VerifyKey
+except ModuleNotFoundError as exc:  # covered by tests/identity/test_extra_guard.py
+    raise ImportError(
+        f"maistro.identity.lifecycle requires the 'identity' extra (missing: {exc.name}). "
+        "Install it with:  pip install 'maistro-core[identity]'"
+    ) from exc
 
 # Multicodec prefix for an Ed25519 public key (varint(0xed) = 0xed 0x01),
 # matching maistro.identity.ConductorSeed.did_key().
