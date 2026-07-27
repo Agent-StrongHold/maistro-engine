@@ -74,6 +74,26 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
+      # maistro-turing/backend is a second FastAPI service with its own auth
+      # lanes. It MUST be its own pytest invocation: its conftest imports a
+      # bare `config` module, and hive-conductor's backend/config.py shadows it
+      # whenever the two share a process (ImportError: cannot import name
+      # 'turing_service_key' from 'config'). Same shadowing class the
+      # hive-conductor conftest already works around for `services/`.
+      - run: uv run pytest packages/maistro-turing/backend/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+      - run: uv run pytest packages/maistro-design/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+      # Root tests/ tree. tests/tools/ is excluded because registry.yml already
+      # owns tests/tools/registry/ and runs it with its own --confcutdir.
+      - run: uv run pytest tests/ --ignore=tests/tools -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
       # maistro-rsi + maistro-evolve aren't workspace-root deps (no uv.lock
       # entry), so put their src trees on PYTHONPATH — the same pattern the
       # root CLAUDE.md documents for local runs. Their third-party deps

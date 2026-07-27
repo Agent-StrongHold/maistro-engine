@@ -48,7 +48,11 @@ jobs:
           # security/ and router/ included since 2026-07: a mutation gate
           # that excludes the security code is a quality bar that exempts the
           # code where surviving mutants matter most.
-          CHANGED=$(git diff --name-only origin/main...HEAD -- \
+          # Diff against the PR's actual base. Hardcoding origin/main meant a
+          # PR into develop or integration diffed against everything those
+          # branches carry beyond main, so the "changed under load-bearing
+          # subtrees" premise was wrong and the skip guard almost never tripped.
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" -- \
             'packages/maistro-core/src/maistro/graph/' \
             'packages/maistro-core/src/maistro/projects/' \
             'packages/maistro-core/src/maistro/memory/' \
@@ -175,7 +179,12 @@ jobs:
           [cosmic-ray]
           module-path = "packages/maistro-core/src/maistro"
           timeout = 60.0
-          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git", "maistro.maistro-canvas", "maistro.maistro-turing"]
+          # "maistro.maistro-canvas" / "maistro.maistro-turing" were removed:
+          # neither is a submodule of maistro-core (both are separate top-level
+          # packages) nor a legal Python module path, so both excluded nothing.
+          # The PR job's list at :62 never carried them, so the two configs also
+          # silently disagreed.
+          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git"]
           test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=20 -q"
 
           [cosmic-ray.distributor]
