@@ -82,6 +82,32 @@ CORE_PUBLIC_SURFACE = [
     "maistro.reactor",
     "maistro.state",
     "maistro.vault",
+    # Added 2026-07: these were importable from a bare install all along but
+    # were simply never listed, so the enumeration gate reported each as a gap
+    # ("importable module absent from CORE_PUBLIC_SURFACE") and all 18 sat in
+    # the tolerated baseline. Listing them turns the bare tier into an actual
+    # assertion about them rather than tolerated silence. They are NOT
+    # extras-gated — that carve-out is SURFACE_EXEMPT (maistro.cli,
+    # maistro.identity), and anything here that needs an extra belongs there
+    # with a written reason instead.
+    "maistro.code_registry",
+    "maistro.codebase",
+    "maistro.collaboration",
+    "maistro.config",
+    "maistro.constants",
+    "maistro.delivery",
+    "maistro.governance",
+    "maistro.integrations",
+    "maistro.observability",
+    "maistro.personas",
+    "maistro.policy",
+    "maistro.portability",
+    "maistro.providers",
+    "maistro.repertoire",
+    "maistro.sandbox",
+    "maistro.scheduler",
+    "maistro.tasks",
+    "maistro.tools",
 ]
 
 

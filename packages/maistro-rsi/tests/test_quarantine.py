@@ -168,3 +168,37 @@ class TestSensitiveSurfaceCoverage:
         )
         assert verdict.requires_adversarial_review is True
         assert verdict.cleared is False  # no reviewer supplied -> pending, never clears
+
+
+class TestSensitivePathMatching:
+    """Segment-boundary matching, not raw substring: `pattern in path` accepted
+    unrelated look-alikes and a leading `./` (or the lstrip('./') "fix" that
+    eats the dot of .github/) broke real containment paths."""
+
+    def test_directory_pattern_matches_at_root_and_nested(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        assert matches_sensitive_pattern(".github/workflows/ci.yml")
+        assert matches_sensitive_pattern(
+            "packages/maistro-core/src/maistro/security/warden/detector.py"
+        )
+
+    def test_file_pattern_matches_whole_segment_only(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        assert matches_sensitive_pattern("packages/maistro-rsi/src/maistro_rsi/runner.py")
+        # A suffix look-alike is NOT the protected file.
+        assert not matches_sensitive_pattern("packages/x/src/notmaistro_rsi/runner.py.orig")
+
+    def test_leading_dot_slash_is_normalized_without_eating_dots(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        # The lstrip("./") character-set bug turned "./.github/x" into "github/x".
+        assert matches_sensitive_pattern("./.github/workflows/quality.yml")
+        assert matches_sensitive_pattern("./packages/maistro-rsi/src/maistro_rsi/autorun.py")
+
+    def test_unrelated_sibling_directory_does_not_match(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        assert not matches_sensitive_pattern("packages/x/src/notmaistro/security_helpers.py")
+        assert not matches_sensitive_pattern("docs/quality-notes/README.md")

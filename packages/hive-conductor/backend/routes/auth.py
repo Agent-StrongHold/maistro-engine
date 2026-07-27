@@ -298,3 +298,46 @@ def elevate(body: ElevateBody, hive_session: str | None = Cookie(None)) -> dict[
         "elevated_permissions": granted,
         "message": "Permissions elevated for this task. They will be revoked when the task completes.",
     }
+
+
+class GrantPermissionsBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    permissions: list[str]
+
+
+@router.patch("/users/{user_id}/permissions")
+def set_user_permissions(
+    user_id: str, body: GrantPermissionsBody, hive_session: str | None = Cookie(None)
+) -> dict[str, Any]:
+    """Admin-only: replace a user's assigned permission set.
+
+    This is the assignment half of the two-step model that /elevate is the
+    other half of: elevate can only raise permissions the account already
+    HOLDS, and registration assigns none — so before this route existed there
+    was no supported way for the daily account to ever satisfy a scope like
+    `rsi.execute` or `harness.execute`. The admin (break-glass) account
+    assigns; the daily account then elevates per task with its password.
+    """
+    import stores
+
+    actor = get_current_user(hive_session)
+    if actor is None:
+        raise HTTPException(status_code=401, detail="No session")
+    if actor["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required to assign permissions")
+
+    target = stores.users.get(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Unknown user")
+
+    updated = target.model_copy(update={"permissions": sorted(set(body.permissions))})
+    stores.users[user_id] = updated
+    log_audit(
+        "permissions_assigned",
+        actor["username"],
+        target=user_id,
+        detail={"permissions": updated.permissions},
+        severity="warning",
+    )
+    return {"ok": True, "user_id": user_id, "permissions": updated.permissions}

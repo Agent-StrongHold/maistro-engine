@@ -152,7 +152,10 @@ jobs:
         run: docker build -t maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }} .
 
       - name: Trivy scan (HIGH/CRITICAL only)
-        uses: aquasecurity/trivy-action@master
+        # Pinned to the v0.36.0 tag's commit SHA: this is the supply-chain job,
+        # and @master meant any compromise of the action repo executed here
+        # with access to the images being attested.
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           image-ref: hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }}
           severity: HIGH,CRITICAL
@@ -160,14 +163,21 @@ jobs:
           ignore-unfixed: true
 
       - name: Grype scan (cross-check)
+        # Pinned release + hardcoded checksum instead of `curl main/install.sh
+        # | sh`: piping an unpinned script off a mutable branch into a shell IS
+        # the supply-chain attack this job exists to catch.
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL -o grype.tgz https://github.com/anchore/grype/releases/download/v0.116.0/grype_0.116.0_linux_amd64.tar.gz
+          echo "40aff724297312f91ea390d003bed8d8651c74cc7f5b26732db80b3a408d2fc5  grype.tgz" | sha256sum --check
+          tar -xzf grype.tgz grype && sudo mv grype /usr/local/bin/
           grype hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }} \
             --fail-on high --only-fixed --output table
 
       - name: SBOM (syft CycloneDX-JSON)
         run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL -o syft.tgz https://github.com/anchore/syft/releases/download/v1.49.0/syft_1.49.0_linux_amd64.tar.gz
+          echo "7aa2f03ee92739cf643279ba3990548b9925d4e22cae13f46831ee62821147fe  syft.tgz" | sha256sum --check
+          tar -xzf syft.tgz syft && sudo mv syft /usr/local/bin/
           syft hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }} \
             -o cyclonedx-json > sbom-hive-conductor.json
           syft maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }} \
@@ -190,15 +200,8 @@ jobs:
           uv run pip-licenses --fail-on='GPL;LGPL;AGPL' --format=markdown \
             --output-file=licenses.md
 
-      # cosign sign: only on main pushes (we have the OIDC identity then)
-      - name: cosign install
-        if: github.ref == 'refs/heads/main'
-        uses: sigstore/cosign-installer@main
-
-      - name: cosign keyless sign
-        if: github.ref == 'refs/heads/main'
-        env:
-          COSIGN_EXPERIMENTAL: "1"
-        run: |
-          cosign sign --yes hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }}
-          cosign sign --yes maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }}
+      # Image signing was removed, not fixed: the old step ran
+      # `cosign sign` against local Docker tags that no step ever pushed to a
+      # registry, so no consumer could ever verify the signature — a green
+      # check attesting nothing. Reinstate alongside a real registry push
+      # (sign the pushed digest, not a local tag) when one exists.

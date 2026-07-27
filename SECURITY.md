@@ -158,3 +158,18 @@ than opening a public issue.
 We follow coordinated disclosure: acknowledge receipt promptly, investigate, and publish an
 advisory once a fix is available or a mitigation is documented. This project has no dedicated
 security team or SLA at this time — response times are best-effort.
+
+## Known scanning carve-out: `cage/` and `eval/`
+
+`packages/hive-conductor/{cage,eval}` are excluded from the semgrep sweep
+(`security.yml`) **and** frozen by `cage-guard.yml`, which fails any PR
+touching them. Those two facts together mean the code that executes
+model-generated output is currently neither scanned nor modifiable through the
+normal PR flow — a deliberate freeze, recorded here so it reads as a decision
+rather than an oversight.
+
+How a legitimate change lands today: a maintainer disables the `cage-guard`
+requirement for the specific PR in the GitHub UI (branch-protection admin),
+merges, and re-enables it. The right end state is a tailored semgrep ruleset
+for these paths (the generic rules false-positive on intentional `exec`) plus
+a documented override label — tracked as follow-up work, not claimed as done.

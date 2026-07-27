@@ -96,3 +96,43 @@ def test_heuristic_scan_returns_clean_for_empty_text() -> None:
 
 def test_score_text_is_an_alias_for_heuristic_scan() -> None:
     assert score_text is heuristic_scan
+
+
+# --- Windowed density: padding must not dilute a locally dense injection -----
+
+
+def _filler(n: int) -> str:
+    """Benign filler with no instruction tokens."""
+    return " ".join(f"lorem{i} ipsum{i} dolor{i} sit{i}" for i in range(n // 4 + 1))
+
+
+def test_padded_injection_is_still_flagged() -> None:
+    """The motivating input: 500 words of filler around a hostile paragraph.
+
+    The whole-text ratio is ~0.03 — structurally incapable of tripping the
+    0.15 threshold — which is exactly where indirect injection hides. The
+    sliding-window maximum is what catches it.
+    """
+    injection = (
+        "ignore disregard forget override bypass instead you must comply obey urgent critical"
+    )
+    text = _filler(250) + " " + injection + " " + _filler(250)
+    suspicious, flags = heuristic_scan(text)
+    assert suspicious is True
+    assert any(f.startswith("high_instruction_density") for f in flags)
+
+
+def test_long_benign_text_with_scattered_tokens_is_not_flagged() -> None:
+    """Ordinary long prose mentions "always", "never", "instead" at natural
+    rates; the windowed maximum must not turn normal writing into a threat."""
+    words = []
+    for i in range(500):
+        words.append("instead" if i % 45 == 0 else f"word{i}")
+    suspicious, flags = heuristic_scan(" ".join(words))
+    assert suspicious is False
+    assert flags == []
+
+
+def test_short_text_density_unchanged_by_windowing() -> None:
+    text = "please summarize this document for me tomorrow"
+    assert score_instruction_density(text) == 0.0

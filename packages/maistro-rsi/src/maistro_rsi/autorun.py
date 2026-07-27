@@ -140,17 +140,36 @@ def template_proposer(context: HtrContext) -> str:
     return f"Refinement #{attempt} of: {context.node.hypothesis}"
 
 
+class ProposerCircuitOpen(RuntimeError):
+    """The LLM proposer has failed too many consecutive times to keep spending.
+
+    Raised by ``make_llm_proposer`` after ``_MAX_CONSECUTIVE_FALLBACKS``
+    gateway failures in a row. Degrading one cycle to the template proposer is
+    resilience; degrading every cycle is an infinite spend loop — each
+    near-identical template hypothesis still runs a real coding agent and a
+    real test suite, and wall clock was the only thing that would stop it.
+    ``run_autonomous`` catches this and ends the run cleanly.
+    """
+
+
+_MAX_CONSECUTIVE_FALLBACKS = 3
+
+
 def make_llm_proposer(
     model: str | None = None, prior_learnings: Sequence[str] = ()
 ) -> HypothesisProposer:
     """An LLM-backed proposer over the connected LiteLLM instance.
 
     `HypothesisProposer` is synchronous by contract, so this uses a short
-    blocking HTTP call; any failure falls back to `template_proposer` — the
-    loop degrades to deterministic refinement rather than dying.
+    blocking HTTP call; a failure falls back to `template_proposer` so one
+    gateway blip degrades a cycle instead of killing the run — but three
+    consecutive failures open the circuit (``ProposerCircuitOpen``) and halt
+    the run instead of funding it.
     """
+    consecutive_fallbacks = 0
 
     def _propose(context: HtrContext) -> str:
+        nonlocal consecutive_fallbacks
         settings = get_settings()
         lineage = set(context.insights)
         combined = list(context.insights) + [
@@ -178,9 +197,17 @@ def make_llm_proposer(
             response.raise_for_status()
             text = str(response.json()["choices"][0]["message"]["content"]).strip()
             if text:
+                consecutive_fallbacks = 0
                 return text.splitlines()[0][:500]
         except Exception as exc:
             logger.warning("rsi_llm_proposer_failed", error=str(exc))
+        consecutive_fallbacks += 1
+        if consecutive_fallbacks >= _MAX_CONSECUTIVE_FALLBACKS:
+            raise ProposerCircuitOpen(
+                f"LLM proposer failed {consecutive_fallbacks} consecutive times; "
+                "halting the run rather than burning agent/test cycles on "
+                "near-identical template hypotheses."
+            )
         return template_proposer(context)
 
     return _propose
@@ -279,8 +306,23 @@ class LearningsLedger:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def append(self, *, repo_url: str, run_id: str, node: HypothesisNode) -> None:
-        """Record one executed hypothesis's distilled insight (autorun-10)."""
+    def append(
+        self,
+        *,
+        repo_url: str,
+        run_id: str,
+        node: HypothesisNode,
+        warden_flags: Sequence[str] = (),
+    ) -> None:
+        """Record one executed hypothesis's distilled insight (autorun-10).
+
+        ``warden_flags`` is the scan verdict for the insight text, recorded in
+        the entry. The ledger is the one artifact designed to outlive sandbox
+        disposal, and ``recall`` feeds it into every future run's prompts —
+        a cycle whose output steers a later cycle's prompt is the exact
+        indirect-injection shape Warden exists for, so the verdict travels
+        with the entry and flagged entries are never recalled.
+        """
         if not node.insight:
             return
         entry = {
@@ -293,6 +335,7 @@ class LearningsLedger:
             "improved": bool(node.evidence.improved) if node.evidence else False,
             "tests_passed": bool(node.evidence.tests_passed) if node.evidence else False,
             "score": node.score,
+            "warden_flags": list(warden_flags),
         }
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry) + "\n")
@@ -325,8 +368,11 @@ class LearningsLedger:
     def recall(self, top_k: int = 8, repo_url: str | None = None) -> list[str]:
         """Prior insights for prompt context, best-first: insights from
         experiments that actually *improved* the agent come before the rest,
-        recency breaks ties, duplicates are dropped (autorun-11)."""
+        recency breaks ties, duplicates are dropped (autorun-11). Entries whose
+        recorded Warden scan flagged the insight are excluded — recall is the
+        channel that turns one cycle's output into a later cycle's prompt."""
         entries = self._read_entries()
+        entries = [e for e in entries if not e.get("warden_flags")]
         if repo_url is not None:
             entries = [e for e in entries if e.get("repo_url") == repo_url]
         # Most recent first, then stable-sort improved wins to the front.
@@ -462,7 +508,20 @@ async def run_autonomous(
     active_ledger = ledger or LearningsLedger(
         config.learnings_path or Path(config.workspace_root) / "learnings.jsonl"
     )
-    prior_learnings = active_ledger.recall(config.recall_top_k, repo_url=config.repo_url)
+    # Scan recalled insights AGAIN at use time, not just at append time: the
+    # ledger file sits on disk between runs, and an entry tampered with after
+    # append (or written by an older version that never scanned) would
+    # otherwise ride straight into this run's prompts.
+    ledger_warden = Warden()
+    prior_learnings: list[str] = []
+    for insight in active_ledger.recall(config.recall_top_k, repo_url=config.repo_url):
+        verdict = await ledger_warden.scan(insight, "rsi_learnings")
+        if verdict.clean:
+            prior_learnings.append(insight)
+        else:
+            await logger.awarning(
+                "rsi_learnings_recall_flagged", flags=verdict.flags, insight=insight[:120]
+            )
 
     active_audit = audit or AuditLog(Path(config.workspace_root) / f"autorun-{run_id}.jsonl")
     active_executor = executor or build_executor(
@@ -480,13 +539,24 @@ async def run_autonomous(
         if budget is not None and time.monotonic() - started >= budget:
             await logger.awarning("rsi_autorun_budget_exhausted", steps=len(steps))
             break
-        partial = await coordinator.run(1, active_proposer)
+        try:
+            partial = await coordinator.run(1, active_proposer)
+        except ProposerCircuitOpen as exc:
+            await logger.awarning("rsi_autorun_proposer_circuit_open", error=str(exc))
+            break
         steps.extend(partial.steps)
         # Durable memory after EVERY cycle: crash/kill loses at most the
         # in-flight cycle, and the distilled insight is already permanent.
         _atomic_write_json(tree_path, tree.to_dict())
         for node_id in partial.steps:
-            active_ledger.append(repo_url=config.repo_url, run_id=run_id, node=tree.nodes[node_id])
+            node = tree.nodes[node_id]
+            flags: tuple[str, ...] = ()
+            if node.insight:
+                verdict = await ledger_warden.scan(node.insight, "rsi_learnings")
+                flags = verdict.flags
+            active_ledger.append(
+                repo_url=config.repo_url, run_id=run_id, node=node, warden_flags=flags
+            )
 
     result = CoordinatorResult(tree=tree, steps=steps)
     best = result.best

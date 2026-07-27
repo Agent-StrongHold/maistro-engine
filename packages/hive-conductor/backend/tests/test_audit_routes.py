@@ -71,46 +71,46 @@ def test_log_audit_with_target_detail_severity() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_list_entries_no_filter_returns_all(authed_client: Any) -> None:
+def test_list_entries_no_filter_returns_all(admin_client: Any) -> None:
     log_audit("a1", "u1")
     log_audit("a2", "u2")
-    r = authed_client.get("/v1/audit")
+    r = admin_client.get("/v1/audit")
     assert r.status_code == 200
     assert len(r.json()) == 2
 
 
-def test_list_entries_filtered_by_action(authed_client: Any) -> None:
+def test_list_entries_filtered_by_action(admin_client: Any) -> None:
     log_audit("login", "u1")
     log_audit("logout", "u1")
-    r = authed_client.get("/v1/audit", params={"action": "login"})
+    r = admin_client.get("/v1/audit", params={"action": "login"})
     body = r.json()
     assert len(body) == 1
     assert body[0]["action"] == "login"
 
 
-def test_list_entries_filtered_by_severity(authed_client: Any) -> None:
+def test_list_entries_filtered_by_severity(admin_client: Any) -> None:
     log_audit("a1", "u1", severity="warning")
     log_audit("a2", "u1", severity="info")
-    r = authed_client.get("/v1/audit", params={"severity": "warning"})
+    r = admin_client.get("/v1/audit", params={"severity": "warning"})
     body = r.json()
     assert len(body) == 1
     assert body[0]["severity"] == "warning"
 
 
-def test_list_entries_filtered_by_actor(authed_client: Any) -> None:
+def test_list_entries_filtered_by_actor(admin_client: Any) -> None:
     log_audit("a1", "alice")
     log_audit("a2", "bob")
-    r = authed_client.get("/v1/audit", params={"actor": "alice"})
+    r = admin_client.get("/v1/audit", params={"actor": "alice"})
     body = r.json()
     assert len(body) == 1
     assert body[0]["actor"] == "alice"
 
 
-def test_list_entries_combined_filters_intersect(authed_client: Any) -> None:
+def test_list_entries_combined_filters_intersect(admin_client: Any) -> None:
     log_audit("login", "alice", severity="info")
     log_audit("login", "bob", severity="info")
     log_audit("login", "alice", severity="warning")
-    r = authed_client.get(
+    r = admin_client.get(
         "/v1/audit", params={"action": "login", "actor": "alice", "severity": "warning"}
     )
     body = r.json()
@@ -119,9 +119,9 @@ def test_list_entries_combined_filters_intersect(authed_client: Any) -> None:
     assert body[0]["actor"] == "alice"
 
 
-def test_list_entries_filter_matching_nothing_returns_empty(authed_client: Any) -> None:
+def test_list_entries_filter_matching_nothing_returns_empty(admin_client: Any) -> None:
     log_audit("login", "alice")
-    r = authed_client.get("/v1/audit", params={"action": "no-such-action"})
+    r = admin_client.get("/v1/audit", params={"action": "no-such-action"})
     assert r.json() == []
 
 
@@ -130,16 +130,16 @@ def test_list_entries_filter_matching_nothing_returns_empty(authed_client: Any) 
 # --------------------------------------------------------------------------- #
 
 
-def test_get_entry_found(authed_client: Any) -> None:
+def test_get_entry_found(admin_client: Any) -> None:
     log_audit("login", "alice")
     (eid,) = stores.audit_log.keys()
-    r = authed_client.get(f"/v1/audit/{eid}")
+    r = admin_client.get(f"/v1/audit/{eid}")
     assert r.status_code == 200
     assert r.json()["id"] == eid
 
 
-def test_get_entry_missing_404(authed_client: Any) -> None:
-    r = authed_client.get("/v1/audit/missing")
+def test_get_entry_missing_404(admin_client: Any) -> None:
+    r = admin_client.get("/v1/audit/missing")
     assert r.status_code == 404
     assert r.json()["detail"] == "audit entry not found"
 
@@ -149,8 +149,8 @@ def test_get_entry_missing_404(authed_client: Any) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_create_entry_defaults(authed_client: Any) -> None:
-    r = authed_client.post("/v1/audit", json={"action": "manual", "actor": "tester"})
+def test_create_entry_defaults(admin_client: Any) -> None:
+    r = admin_client.post("/v1/audit", json={"action": "manual", "actor": "tester"})
     assert r.status_code == 201
     body = r.json()
     assert body["action"] == "manual"
@@ -161,8 +161,8 @@ def test_create_entry_defaults(authed_client: Any) -> None:
     assert body["id"] in stores.audit_log
 
 
-def test_create_entry_with_all_fields(authed_client: Any) -> None:
-    r = authed_client.post(
+def test_create_entry_with_all_fields(admin_client: Any) -> None:
+    r = admin_client.post(
         "/v1/audit",
         json={
             "action": "manual",
@@ -178,9 +178,9 @@ def test_create_entry_with_all_fields(authed_client: Any) -> None:
     assert body["severity"] == "critical"
 
 
-def test_create_entry_then_filterable_by_action(authed_client: Any) -> None:
-    authed_client.post("/v1/audit", json={"action": "manual_create", "actor": "tester"})
-    r = authed_client.get("/v1/audit", params={"action": "manual_create"})
+def test_create_entry_then_filterable_by_action(admin_client: Any) -> None:
+    admin_client.post("/v1/audit", json={"action": "manual_create", "actor": "tester"})
+    r = admin_client.get("/v1/audit", params={"action": "manual_create"})
     assert len(r.json()) == 1
 
 
@@ -191,14 +191,14 @@ def test_create_entry_then_filterable_by_action(authed_client: Any) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_list_entries_filter_tolerates_non_dict_entries(authed_client: Any) -> None:
+def test_list_entries_filter_tolerates_non_dict_entries(admin_client: Any) -> None:
     from routes.audit import AuditEntry, _now
 
     eid = "model-instance-1"
     stores.audit_log[eid] = AuditEntry(
         id=eid, action="model_action", actor="model_actor", created_at=_now()
     )
-    r = authed_client.get("/v1/audit", params={"action": "model_action"})
+    r = admin_client.get("/v1/audit", params={"action": "model_action"})
     body = r.json()
     assert len(body) == 1
     assert body[0]["id"] == eid

@@ -82,3 +82,26 @@ async def test_policy_action_gate_bridges_to_harness():
     assert await gate.allow({"tool": "rm", "path": "/"}) is False
     # A different tool passes.
     assert await gate.allow({"tool": "ls"}) is True
+
+
+class TestChargeNormalization:
+    """Charges come off the foreign harness's action envelope. A negative
+    value would CREDIT the budget; a NaN cost makes every later
+    `value > limit` comparison False, disabling BudgetRule enforcement for
+    the session (Codex, #262)."""
+
+    def test_negative_and_nonfinite_charges_are_zeroed(self):
+        from maistro.policy.gate import _as_number
+
+        assert _as_number(-500) == 0.0
+        assert _as_number(float("nan")) == 0.0
+        assert _as_number(float("inf")) == 0.0
+        assert _as_number(float("-inf")) == 0.0
+
+    def test_ordinary_charges_pass_through(self):
+        from maistro.policy.gate import _as_number
+
+        assert _as_number(12.5) == 12.5
+        assert _as_number("3") == 3.0
+        assert _as_number(None) == 0.0
+        assert _as_number("garbage") == 0.0

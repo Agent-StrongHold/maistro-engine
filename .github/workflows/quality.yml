@@ -83,7 +83,16 @@ jobs:
       - name: ruff format check
         run: uv run ruff format --check .
 
-      - name: radon CC (no function rated C+ allowed; baseline tolerates legacy until touched)
+      # The workflow header has claimed since Phase 20 that radon findings are
+      # gated against quality/radon-baseline.json — but the checker was never
+      # invoked (Codex, #262): the plain `radon cc` below reports blocks and
+      # exits 0 regardless, so the documented gate did not exist. Now it does:
+      # fails on any unbaselined C-or-worse block, or a baselined block whose
+      # complexity grew; stale entries are pruned as hotspots are refactored.
+      - name: radon CC ratchet (new/regressed hotspots vs quality/radon-baseline.json)
+        run: uv run python scripts/check-radon-baseline.py
+
+      - name: radon CC (report; the ratchet above is the gate)
         run: uv run radon cc packages/maistro-core/src --min B --total-average
 
       # Unlike the ratchets below, this one is a *count-free* ratchet: the

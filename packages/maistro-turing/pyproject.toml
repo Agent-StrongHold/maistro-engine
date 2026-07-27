@@ -3,7 +3,7 @@ name = "maistro-turing"
 version = "0.1.0"
 description = "Autonoetic self-model extensions for the Maistro platform — Turing agent runtime"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [

@@ -81,6 +81,13 @@ class SynthDagOut(BaseModel):
     rationale: str = ""
     run_output: str = ""
     error: str | None = None
+    # True only when the sub-graph was actually dispatched via `run_graph` --
+    # distinguishes "spawned but the sub-graph itself failed" (success=False,
+    # dispatched=True) from "declined to spawn" (depth cap / security block /
+    # dry-synthesis; success=False or True, dispatched=False). Consumed by
+    # the durable executor's `_actually_spawned` to decide whether a real
+    # spawn attempt occurred for recursion-depth accounting.
+    dispatched: bool = False
 
 
 def _revision_note(revision: ShapeRevision) -> str:
@@ -231,6 +238,7 @@ class AgentSynthDagNode(BaseNode[SynthDagIn, SynthDagOut]):
         output = await run_graph(task, self._llm_call)
         return SynthDagOut(
             success=output.success,
+            dispatched=True,
             synthesized_nodes=synthesized_kinds,
             rationale=synth.rationale,
             run_output=output.final_answer or "",

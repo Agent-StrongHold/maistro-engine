@@ -188,7 +188,13 @@ class TestRunSelfBranchAttempt:
         assert r2.pr_url is None
         assert "create_pr" not in fake.calls
 
-        # open_pr=True, tests pass -> PR opened
+        # open_pr=True, tests pass, quarantine cleared -> PR opened. The
+        # cleared verdict is REQUIRED: shipping without any quarantine check
+        # used to fail open, and the safety property of a self-modifying
+        # system was held up by a comment asking callers to pass the param.
+        async def cleared(diff: str, touched: list[str]) -> QuarantineVerdict:
+            return QuarantineVerdict(cleared=True, requires_adversarial_review=False, flags=())
+
         fake.calls.clear()
         r3 = await run_self_branch_attempt(
             FakeSandbox(exec_result=(0, "ok")),
@@ -196,9 +202,27 @@ class TestRunSelfBranchAttempt:
             attempt,
             _noop_patch,
             open_pr=True,
+            quarantine_check=cleared,
         )
         assert r3.pr_url == "https://github.com/org/repo/pull/1"
         assert "create_pr" in fake.calls
+
+    @pytest.mark.asyncio
+    async def test_no_quarantine_check_means_no_pr(self, patch_git_ops):
+        """A missing quarantine check is a deny, not a bypass: open_pr=True
+        with passing tests and NO check must not push or open a PR."""
+        fake = patch_git_ops
+        attempt = new_attempt("https://github.com/org/repo.git", "pytest -q")
+        result = await run_self_branch_attempt(
+            FakeSandbox(exec_result=(0, "ok")),
+            "/ws",
+            attempt,
+            _noop_patch,
+            open_pr=True,
+        )
+        assert result.pr_url is None
+        assert "create_pr" not in fake.calls
+        assert "push" not in fake.calls
 
     @pytest.mark.asyncio
     async def test_diff_reflects_captured_git_diff_output(self, patch_git_ops):

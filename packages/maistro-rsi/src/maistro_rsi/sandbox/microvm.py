@@ -37,7 +37,7 @@ SANDBOX_BACKEND_ENV = "MAISTRO_RSI_SANDBOX"
 #: :func:`isolation_evidence` — no ``/.dockerenv``, a bare ``/proc/1/cgroup``,
 #: unreadable DMI. Refusing those would brick the RSI loop in exactly the
 #: environment it is designed for, so the layer that *provides* the microVM
-#: declares it, and detection stays a convenience for plain Docker/VM hosts.
+#: declares it, and detection stays a convenience for plain container hosts.
 #:
 #: Deliberately verbose: asserting containment by hand should have to be meant,
 #: and should be greppable in a shell history or CI config afterwards.
@@ -45,9 +45,19 @@ SANDBOX_ATTEST_ENV = "MAISTRO_RSI_SANDBOX_ATTEST_ISOLATED"
 _ATTEST_VALUE = "i-am-inside-a-disposable-vm"
 
 
+# Filesystem markers consulted by isolation_evidence(). Module-level so tests
+# can point them at fixture paths and drive both verdicts deterministically.
+_CONTAINER_MARKER_FILES: tuple[str, ...] = (
+    "/.dockerenv",  # Docker/OCI runtimes create this at the container root
+    "/run/.containerenv",  # podman
+)
+_CGROUP_PATH = "/proc/1/cgroup"
+_CGROUP_RUNTIME_TOKENS: tuple[str, ...] = ("docker", "containerd", "kubepods", "libpod", "lxc")
+
+
 def isolation_evidence() -> list[str]:
     """Return positive, checkable evidence that this process is inside a
-    disposable container or VM.
+    disposable *container*.
 
     ``LocalSandbox`` executes the coding agent directly against the mounted
     filesystem with no containment of its own — the *sbx* microVM is the
@@ -56,45 +66,30 @@ def isolation_evidence() -> list[str]:
     process tree could set. This function looks for the boundary instead of
     taking its word for it.
 
-    Checks isolation in general rather than sbx specifically, on purpose. The
-    kit sets no vendor marker of its own (only ``MAISTRO_RSI_SANDBOX=local``),
-    so a literal "is this sbx" test would have to match on strings this
-    repository does not control, and would start silently failing the day
-    Docker renames one. Every signal below is a property that matters —
-    ephemeral root, foreign kernel — rather than a brand.
+    Only container evidence counts. Generic VM-ness (a KVM/QEMU/VirtualBox
+    string in DMI) deliberately does NOT: an ordinary persistent development VM
+    reports those too, and its filesystem is exactly the thing an auto-approved
+    agent must not be handed — "inside a VM" is not "disposable". A genuinely
+    bare microVM with no container markers (the sbx case) is attested by the
+    layer that creates it (``SANDBOX_ATTEST_ENV`` in ``sbx/maistro-rsi/
+    spec.yaml``) rather than guessed at here.
     """
     found: list[str] = []
 
-    # Docker/OCI runtimes create this at the container root.
-    if os.path.exists("/.dockerenv"):
-        found.append("/.dockerenv")
-    if os.path.exists("/run/.containerenv"):  # podman
-        found.append("/run/.containerenv")
+    for marker in _CONTAINER_MARKER_FILES:
+        if os.path.exists(marker):
+            found.append(marker)
 
     # PID 1's cgroup path names the supervising runtime on cgroup v1 and on v2
     # under most container runtimes.
     try:
-        with open("/proc/1/cgroup", encoding="utf-8", errors="replace") as fh:
+        with open(_CGROUP_PATH, encoding="utf-8", errors="replace") as fh:
             cgroup = fh.read()
     except OSError:
         cgroup = ""
-    for token in ("docker", "containerd", "kubepods", "libpod", "lxc"):
+    for token in _CGROUP_RUNTIME_TOKENS:
         if token in cgroup:
-            found.append(f"/proc/1/cgroup:{token}")
-            break
-
-    # A microVM reports its own virtual platform in DMI. Firecracker, QEMU/KVM
-    # and Docker's own VMM all surface here, which is what distinguishes "inside
-    # a VM" from "a container sharing the host kernel".
-    for dmi in ("/sys/class/dmi/id/product_name", "/sys/class/dmi/id/sys_vendor"):
-        try:
-            with open(dmi, encoding="utf-8", errors="replace") as fh:
-                value = fh.read().strip()
-        except OSError:
-            continue
-        lowered = value.lower()
-        if any(v in lowered for v in ("firecracker", "kvm", "qemu", "bochs", "virtual")):
-            found.append(f"{dmi}:{value}")
+            found.append(f"{_CGROUP_PATH}:{token}")
             break
 
     return found

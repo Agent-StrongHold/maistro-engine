@@ -2,7 +2,7 @@
 
 **Project:** Maistro Engine — Shared Python runtime for AI agent platforms
 **License:** Apache 2.0
-**Python:** 3.11+
+**Python:** 3.12+ (the version CI actually tests; 3.11 was claimed but never tested)
 
 ---
 
@@ -18,9 +18,10 @@ packages/
 ├── maistro-turing/    # Autonoetic self-model extensions
 ├── maistro-evolve/    # Elo tournament optimizer for agent self-improvement
 ├── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check for docs
+├── maistro-rsi/       # Recursive self-improvement: autorun loop, quarantine gate, sandbox
+├── maistro-design/    # Open Design integration (renderer registry, SSE ingest)
 ├── hive-conductor/    # Agent Conductor app (FastAPI backend + React frontend)
-├── maistro-bootstrap/ # Bootstrap stub (WIP)
-└── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check docs
+└── maistro-bootstrap/ # Bootstrap stub (WIP)
 ```
 
 ### Product relationship — contains vs. imports
@@ -175,7 +176,7 @@ print('OK')
 1. **Library-first, app is optional.** Core is a pure Python library. FastAPI app is a thin wrapper.
 2. **Protocol-driven DI.** All business logic depends on protocols (abstract interfaces), never concrete implementations.
 3. **Agents are data.** An agent is rows in a store, prompts in YAML. The runtime is shared.
-4. **Scoring formula.** `quality^(qw*p) / cost^cw` with scarcity-based cost and task-type speed bonuses.
+4. **Scoring formula.** `quality^(qw*p) / (1 + normalized_cost)^cw` with scarcity-based cost (normalized against the realistic budget band) and task-type speed bonuses.
 5. **Memory must forget.** Decay without reinforcement, weight floors for wisdom/regrets.
 6. **All input is untrusted.** Warden scans at every trust boundary. Sentinel validates tool calls.
 7. **Scope axes in core; hard tenancy in Stronghold (ADR-068).** maistro-core keeps the *soft* scope axes `global → org → team → user → agent → session` (a user may be in multiple teams/orgs). Only the *hard* `tenant` boundary — fully segmented, one tenant per user — is Stronghold-specific. (Supersedes the older "no org_id in core" shorthand, which conflated scope with tenancy.)
