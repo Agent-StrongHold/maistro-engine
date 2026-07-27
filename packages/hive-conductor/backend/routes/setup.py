@@ -122,6 +122,11 @@ def _maybe_generate_identity(
         return None, None, False
     try:
         from maistro.identity import ConductorSeed
+
+        # The identity extra can also raise lazily at generate() time (the
+        # module imports without bip_utils and defers the error) — keep
+        # generation inside the same guard so both failure shapes abort setup.
+        seed = ConductorSeed.generate()
     except ImportError as exc:
         logger.error("crypto_identity requested but maistro.identity is unavailable: %s", exc)
         raise HTTPException(
@@ -133,7 +138,6 @@ def _maybe_generate_identity(
                 f"Underlying error: {exc}"
             ),
         ) from exc
-    seed = ConductorSeed.generate()
     user_did = seed.did_key()
     mnemonic = seed.mnemonic_words()
     persisted = _persist_identity_root(mnemonic)

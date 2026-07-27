@@ -172,6 +172,10 @@ class Vault:
             raise SecretMissingError(f"SECRET_MISSING: {name}")
         return callback(secrets[name])
 
+    def has(self, name: str) -> bool:
+        """True if a secret exists — presence check without exposing the value."""
+        return name in self._ensure_loaded()
+
     def add(self, key: str, value: str) -> None:
         secrets = self._ensure_loaded()
         secrets[key] = value

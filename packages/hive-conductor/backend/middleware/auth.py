@@ -102,9 +102,15 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         # Capability discovery + approval resolution (approving a destructive
         # infra action is high-stakes) — gate behind config.write.
         "/v1/capabilities": "config.write",
+        # Provider activation uses the LiteLLM master key, mutates the global
+        # model registry, and can trigger billed calls (SPEC-072726-3439).
+        "/v1/providers": "config.write",
     },
     "PUT": {
         "/v1/settings": "config.write",
+        # Storing a deployment-wide LLM key in the vault — same decision
+        # weight as activating it.
+        "/v1/providers": "config.write",
         "/v1/mcp/servers": "mcp.write",
         "/v1/agents": "agents.write",
         "/v1/skills": "skills.write",

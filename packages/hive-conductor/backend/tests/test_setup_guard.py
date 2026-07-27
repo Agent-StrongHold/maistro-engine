@@ -129,7 +129,15 @@ def test_first_run_provisions_vault_and_persists_seed(
 
     if shutil.which("age") is None or shutil.which("age-keygen") is None:
         pytest.skip("age not installed")
-    pytest.importorskip("maistro.identity")
+    # importorskip is not enough: maistro.identity imports without bip_utils
+    # and raises ImportError lazily at generate() — probe the real call.
+    try:
+        from maistro.identity import ConductorSeed
+
+        _probe = ConductorSeed.generate()
+        _probe.zero()
+    except ImportError:
+        pytest.skip("identity extra (bip_utils/pynacl) not installed")
 
     import stores
     from models.schemas import HiveUser
