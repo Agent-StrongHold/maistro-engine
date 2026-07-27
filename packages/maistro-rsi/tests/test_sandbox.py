@@ -218,11 +218,26 @@ class TestLocalSandbox:
             pytest.fail(f"child {child_pid} survived the group kill")
 
 
+@pytest.fixture
+def isolated_env(monkeypatch):
+    """Make the isolation check deterministic and host-independent.
+
+    Backend *selection* is a separate concern from isolation *verification*, and
+    the two must not be tangled in one assertion: the CI host may or may not
+    expose `/.dockerenv`, a populated `/proc/1/cgroup` or readable DMI, so a
+    selection test that relies on the real host passes or fails by accident.
+    Tests that care about the verification behaviour drive it explicitly below.
+    """
+    import maistro_rsi.sandbox.microvm as microvm_mod
+
+    monkeypatch.setattr(microvm_mod, "isolation_evidence", lambda: ["test:stubbed"])
+
+
 class TestCreateRsiSandbox:
     """Tests tied to SPEC.md §1 acceptance criterion sandbox-13."""
 
     @pytest.mark.asyncio
-    async def test_local_backend_selected_by_arg(self, tmp_path):
+    async def test_local_backend_selected_by_arg(self, tmp_path, isolated_env):
         """sandbox-13: backend='local' returns a LocalSandbox."""
         from maistro_rsi.sandbox.local import LocalSandbox
         from maistro_rsi.sandbox.microvm import create_rsi_sandbox
@@ -231,7 +246,7 @@ class TestCreateRsiSandbox:
         assert isinstance(sandbox, LocalSandbox)
 
     @pytest.mark.asyncio
-    async def test_local_backend_selected_by_env(self, tmp_path, monkeypatch):
+    async def test_local_backend_selected_by_env(self, tmp_path, monkeypatch, isolated_env):
         """sandbox-13: $MAISTRO_RSI_SANDBOX=local returns a LocalSandbox."""
         from maistro_rsi.sandbox.local import LocalSandbox
         from maistro_rsi.sandbox.microvm import SANDBOX_BACKEND_ENV, create_rsi_sandbox
@@ -240,7 +255,9 @@ class TestCreateRsiSandbox:
         assert isinstance(await create_rsi_sandbox(str(tmp_path)), LocalSandbox)
 
     @pytest.mark.asyncio
-    async def test_arg_overrides_env_and_default_is_docker(self, tmp_path, monkeypatch):
+    async def test_arg_overrides_env_and_default_is_docker(
+        self, tmp_path, monkeypatch, isolated_env
+    ):
         """sandbox-13: explicit backend arg overrides env; default routes to the Docker backend."""
         import maistro_rsi.sandbox.microvm as microvm_mod
         from maistro_rsi.sandbox.local import LocalSandbox
@@ -261,3 +278,91 @@ class TestCreateRsiSandbox:
 
         monkeypatch.setattr(microvm_mod, "create_microvm_sandbox", fake_create)
         assert await microvm_mod.create_rsi_sandbox(str(tmp_path)) is sentinel
+
+
+class TestLocalBackendRequiresVerifiedIsolation:
+    """`local` must prove containment, not merely be asked for.
+
+    LocalSandbox executes the coding agent directly against the mounted
+    filesystem — `sbx/maistro-rsi/spec.yaml` pairs it with `--auto`, so the
+    agent's tool use is auto-approved and the microVM *is* the containment.
+    Selecting it therefore asserts something about the environment, and that
+    assertion used to be one environment variable any parent process could set.
+
+    The motivating input is a developer or a stray export setting
+    MAISTRO_RSI_SANDBOX=local on a real workstation: previously an
+    auto-approved agent loop on the real filesystem, now a refusal.
+    """
+
+    @pytest.mark.asyncio
+    async def test_refuses_local_without_isolation_evidence(self, tmp_path, monkeypatch):
+        import maistro_rsi.sandbox.microvm as microvm_mod
+
+        monkeypatch.setattr(microvm_mod, "isolation_evidence", lambda: [])
+        monkeypatch.delenv(microvm_mod.SANDBOX_ATTEST_ENV, raising=False)
+
+        with pytest.raises(RuntimeError) as exc:
+            await microvm_mod.create_rsi_sandbox(str(tmp_path), backend="local")
+
+        message = str(exc.value)
+        # The refusal has to be actionable, or an operator will reach for the
+        # nearest workaround instead of the intended one.
+        assert microvm_mod.SANDBOX_ATTEST_ENV in message
+        assert "/.dockerenv" in message
+
+    @pytest.mark.asyncio
+    async def test_allows_local_when_evidence_is_present(self, tmp_path, monkeypatch):
+        import maistro_rsi.sandbox.microvm as microvm_mod
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        monkeypatch.setattr(microvm_mod, "isolation_evidence", lambda: ["/.dockerenv"])
+        monkeypatch.delenv(microvm_mod.SANDBOX_ATTEST_ENV, raising=False)
+
+        sandbox = await microvm_mod.create_rsi_sandbox(str(tmp_path), backend="local")
+        assert isinstance(sandbox, LocalSandbox)
+
+    @pytest.mark.asyncio
+    async def test_attestation_permits_local_on_unrecognised_substrate(self, tmp_path, monkeypatch):
+        """The sbx kit's path: isolation real, markers absent.
+
+        Verified against a live example — the container this suite was developed
+        in is genuinely isolated and exposes no `/.dockerenv`, no runtime token
+        in `/proc/1/cgroup`, and unreadable DMI. Detection alone would refuse it.
+        """
+        import maistro_rsi.sandbox.microvm as microvm_mod
+        from maistro_rsi.sandbox.local import LocalSandbox
+
+        monkeypatch.setattr(microvm_mod, "isolation_evidence", lambda: [])
+        monkeypatch.setenv(microvm_mod.SANDBOX_ATTEST_ENV, "i-am-inside-a-disposable-vm")
+
+        sandbox = await microvm_mod.create_rsi_sandbox(str(tmp_path), backend="local")
+        assert isinstance(sandbox, LocalSandbox)
+
+    @pytest.mark.asyncio
+    async def test_wrong_attestation_value_is_not_accepted(self, tmp_path, monkeypatch):
+        """A truthy-looking value must not pass; the token is exact."""
+        import maistro_rsi.sandbox.microvm as microvm_mod
+
+        monkeypatch.setattr(microvm_mod, "isolation_evidence", lambda: [])
+        monkeypatch.setenv(microvm_mod.SANDBOX_ATTEST_ENV, "1")
+
+        with pytest.raises(RuntimeError):
+            await microvm_mod.create_rsi_sandbox(str(tmp_path), backend="local")
+
+    def test_sbx_kit_attests_the_isolation_it_creates(self):
+        """The kit that sets MAISTRO_RSI_SANDBOX=local must also attest.
+
+        Without this the shipped kit would hit the refusal above on any host
+        whose isolation markers are not detectable — the gate would fire on the
+        one environment it is meant to permit.
+        """
+        from pathlib import Path
+
+        import yaml
+
+        spec_path = Path(__file__).resolve().parents[3] / "sbx" / "maistro-rsi" / "spec.yaml"
+        spec = yaml.safe_load(spec_path.read_text())
+        variables = spec["environment"]["variables"]
+
+        assert variables["MAISTRO_RSI_SANDBOX"] == "local"
+        assert variables["MAISTRO_RSI_SANDBOX_ATTEST_ISOLATED"] == "i-am-inside-a-disposable-vm"
