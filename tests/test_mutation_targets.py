@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -78,3 +79,151 @@ def test_every_resolved_path_exists_on_disk(module):
         resolved = module.resolve_tests(src)
         assert resolved is not None
         assert (REPO / resolved).exists(), resolved
+
+
+class TestBudgetPrioritisation:
+    """When the budget is partial, it is spent where a survivor is worst — and
+    what got dropped is always named.
+
+    The tiering: feature -> develop caps the file count for fast feedback,
+    develop -> main runs a full sweep as the release gate.
+    """
+
+    ALL: ClassVar[list[str]] = [
+        "packages/maistro-core/src/maistro/graph/harness_executor.py",
+        "packages/maistro-core/src/maistro/router/scorer.py",
+        "packages/maistro-core/src/maistro/security/warden/detector.py",
+        "packages/maistro-core/src/maistro/memory/outcomes.py",
+    ]
+
+    def test_security_outranks_router_outranks_graph(self, module):
+        ranks = [module.priority(p) for p in self.ALL]
+        graph, router, security, other = ranks
+        assert security < router < graph < other
+
+    def test_limit_keeps_the_highest_priority_files(self, module, capsys):
+        module.main(["--limit", "2", "\n".join(self.ALL)])
+        out = capsys.readouterr()
+        kept = [line.split("\t")[0] for line in out.out.strip().splitlines()]
+        assert "security/warden/detector.py" in kept[0]
+        assert "router/scorer.py" in kept[1]
+        assert len(kept) == 2
+
+    def test_dropped_files_are_named_not_silently_skipped(self, module, capsys):
+        """The load-bearing property. A gate that quietly covers less than it
+        claims is exactly the phantom-gate failure this workflow was rewritten
+        to remove, so truncation must be loud and itemised."""
+        module.main(["--limit", "1", "\n".join(self.ALL)])
+        err = capsys.readouterr().err
+        assert "::warning::" in err
+        assert "NOT mutated" in err
+        for dropped in ("router/scorer.py", "graph/harness_executor.py"):
+            assert dropped in err, dropped
+
+    def test_zero_limit_means_full_sweep(self, module, capsys):
+        """The develop -> main release gate passes --limit 0."""
+        module.main(["--limit", "0", "\n".join(self.ALL)])
+        out = capsys.readouterr()
+        assert len(out.out.strip().splitlines()) == len(self.ALL)
+        assert "NOT mutated" not in out.err
+
+
+class TestDeletedSourcesAreNotTargets:
+    """Codex review of #267 (P2): every check in `resolve_tests` validates a
+    TEST path, none validated the source. A module deleted by the PR keeps its
+    test directory, so it resolved, consumed a capped slot ahead of a live
+    modified file, and handed cosmic-ray a `module-path` pointing at nothing.
+    """
+
+    DELETED: ClassVar[str] = "packages/maistro-core/src/maistro/security/warden/removed_rules.py"
+
+    def test_a_deleted_source_resolves_to_nothing(self, module):
+        """The deleted file's test directory (`tests/security/warden/`) exists
+        and would have satisfied the ancestor walk — the source check is the
+        only thing standing between it and a wasted budget slot."""
+        assert (REPO / "packages/maistro-core/tests/security/warden").is_dir()
+        assert not (REPO / self.DELETED).exists()
+        assert module.resolve_tests(self.DELETED) is None
+
+    def test_a_deleted_file_cannot_displace_a_live_one(self, module, capsys):
+        """The consequence that makes this P2 rather than cosmetic: the deleted
+        path outranks by priority (security/ is rank 0), so under a cap of 1 it
+        would evict the real change."""
+        module.main(
+            [
+                "--limit",
+                "1",
+                "\n".join([self.DELETED, "packages/maistro-core/src/maistro/router/scorer.py"]),
+            ]
+        )
+        out = capsys.readouterr()
+        kept = [line.split("\t")[0] for line in out.out.strip().splitlines()]
+        assert kept == ["packages/maistro-core/src/maistro/router/scorer.py"]
+
+    def test_live_sources_are_unaffected(self, module):
+        """The check must not become a filter that quietly drops real work."""
+        assert (
+            module.resolve_tests("packages/maistro-core/src/maistro/router/scorer.py") is not None
+        )
+
+
+class TestPolicyPriorityIsReachable:
+    """Codex review of #267 (P2): `policy/` ranked second in the priority table
+    while the workflow's `paths:` filter and diff pathspec both omitted it, so
+    a policy-only PR never started the job and the ranking was unreachable —
+    a coverage claim nothing delivered.
+    """
+
+    WORKFLOW: ClassVar[Path] = REPO / ".github" / "workflows" / "mutation.yml"
+
+    def test_the_policy_subtree_actually_exists(self, module):
+        """If it did not, the honest fix would be deleting the priority entry
+        rather than adding a path filter for nothing."""
+        assert (REPO / "packages/maistro-core/src/maistro/policy").is_dir()
+
+    def test_every_priority_subtree_is_in_the_workflow_scope(self, module):
+        """The property, not the example. Any future priority entry that the
+        workflow cannot see is unreachable ranking — this fails on the next one
+        too, without anyone remembering to add a test."""
+        workflow = self.WORKFLOW.read_text(encoding="utf-8")
+        for prefix in module._PRIORITY:
+            subtree = prefix.removeprefix("src/maistro/").rstrip("/")
+            assert f"maistro/{subtree}/**" in workflow, f"{subtree} missing from paths: filter"
+            assert f"maistro/{subtree}/'" in workflow, f"{subtree} missing from diff pathspec"
+
+
+class TestWorkflowDiffsAgainstItsOwnBase:
+    """Codex review of #267 (P1). The changed-files step diffed
+    `origin/main...HEAD` on a workflow that also runs for PRs into
+    develop/integration, so it attributed everything the base branch carries
+    beyond main to the PR. Measured on #267 itself: 0 files under the
+    load-bearing subtrees vs origin/develop, 13 vs origin/main — the entire
+    4-file budget spent on inherited code, passing a gate that said nothing
+    about the change under review.
+    """
+
+    WORKFLOW: ClassVar[Path] = REPO / ".github" / "workflows" / "mutation.yml"
+
+    @staticmethod
+    def _code_lines(text: str) -> str:
+        """Executable YAML/shell only. The fix's own comment quotes the broken
+        `origin/main...HEAD` to explain what it replaced, and a naive substring
+        check over the whole file fails on that prose — which it did, on the
+        first run of this test."""
+        return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+    def test_no_hardcoded_main_in_the_changed_files_diff(self):
+        code = self._code_lines(self.WORKFLOW.read_text(encoding="utf-8"))
+        assert "origin/main...HEAD" not in code
+        assert "origin/$BASE_REF...HEAD" in code
+
+    def test_base_ref_is_passed_through_env_not_interpolated_into_shell(self):
+        """A branch name inlined into a run script is an injection seam, and it
+        is attacker-influenced on fork PRs."""
+        workflow = self.WORKFLOW.read_text(encoding="utf-8")
+        assert "BASE_REF: ${{ github.base_ref }}" in workflow
+        assert "${{ github.base_ref }}...HEAD" not in workflow
+
+    def test_deletions_are_filtered_out_of_the_diff(self):
+        workflow = self.WORKFLOW.read_text(encoding="utf-8")
+        assert "--diff-filter=ACMR" in workflow
