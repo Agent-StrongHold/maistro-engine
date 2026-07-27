@@ -50,8 +50,23 @@ r = httpx.post(
     timeout=120,
 )
 r.raise_for_status()
-print(r.json()["choices"][0]["message"]["content"])
+data = r.json()
+print(json.dumps({"content": data["choices"][0]["message"]["content"], "usage": data.get("usage")}))
 """
+
+
+def _parse_node_script_output(raw_output: str) -> tuple[str, dict[str, Any] | None]:
+    """Parse `_NODE_SCRIPT`'s stdout JSON envelope into (content, usage).
+
+    Falls back to treating `raw_output` itself as the content with no usage
+    if it isn't the expected JSON shape -- a malformed envelope must degrade
+    gracefully, not break sandboxed execution.
+    """
+    try:
+        envelope = json.loads(raw_output.strip())
+        return str(envelope.get("content") or ""), envelope.get("usage")
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return raw_output.strip(), None
 
 
 def _run_node_subprocess(
@@ -90,11 +105,13 @@ def _run_node_subprocess(
             )
         )
         if result["success"]:
+            content, usage = _parse_node_script_output(result["output"])
             return {
                 "role": node.get("role", "worker"),
-                "response": result["output"].strip(),
+                "response": content,
                 "success": True,
                 "isolation": result.get("isolation", "unknown"),
+                "usage": usage,
             }
         return {
             "role": node.get("role", "worker"),
@@ -290,6 +307,31 @@ async def _run_llm_node(
         results[nid] = {"role": role, "response": str(e), "success": False}
 
 
+def _invoke_subprocess_usage_hooks(
+    subprocess_nodes: list[str],
+    results: dict[str, dict[str, Any]],
+    on_response: OnResponseHook | None,
+) -> None:
+    """After a subprocess wave's results are in, invoke `on_response` for
+    every node result carrying a usage payload. Extracted from
+    `_run_subprocess_wave` so this parent-process-only logic is directly
+    unit-testable without needing a real `ProcessPoolExecutor` fork -- a
+    sandboxed node's actual `httpx.Response` never leaves its child process,
+    so a synthetic one carrying just the usage body stands in for the hook.
+    """
+    if on_response is None:
+        return
+    for nid in subprocess_nodes:
+        usage = results.get(nid, {}).get("usage")
+        if usage is None:
+            continue
+        try:
+            synthetic_response = httpx.Response(200, json={"usage": usage})
+            on_response({"usage": usage}, synthetic_response)
+        except Exception:
+            logger.warning("graph_runner_subprocess_on_response_hook_failed", exc_info=True)
+
+
 async def _run_subprocess_wave(
     subprocess_nodes: list[str],
     node_map: dict[str, dict[str, Any]],
@@ -298,8 +340,16 @@ async def _run_subprocess_wave(
     task_desc: str,
     node_env: dict[str, str],
     execution_mode: str = "autonomous",
+    on_response: OnResponseHook | None = None,
 ) -> None:
-    """Run heavy/risky nodes each in their own process; write results in place."""
+    """Run heavy/risky nodes each in their own process; write results in place.
+
+    `on_response`, if given, is invoked afterward via
+    `_invoke_subprocess_usage_hooks` -- restoring the primary usage-based
+    recording path this tier skipped entirely before (ambient header
+    reconciliation still isn't available here; headers aren't captured
+    across the subprocess boundary).
+    """
     if not subprocess_nodes:
         return
     import asyncio
@@ -328,6 +378,7 @@ async def _run_subprocess_wave(
         subprocess_results = await asyncio.gather(*futures)
         for nid, res in zip(subprocess_nodes, subprocess_results, strict=True):
             results[nid] = res
+        _invoke_subprocess_usage_hooks(subprocess_nodes, results, on_response)
 
 
 async def execute_dag(
@@ -403,7 +454,14 @@ async def execute_dag(
 
         # Run sandboxed nodes (isolated execution)
         await _run_subprocess_wave(
-            sandbox_nodes, node_map, inbound, results, task_desc, node_env, execution_mode
+            sandbox_nodes,
+            node_map,
+            inbound,
+            results,
+            task_desc,
+            node_env,
+            execution_mode,
+            on_response=on_response,
         )
 
         # Run async nodes concurrently (light, safe — in-process, no GIL issue for I/O)

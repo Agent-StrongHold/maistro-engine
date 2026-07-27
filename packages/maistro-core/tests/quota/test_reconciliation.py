@@ -107,7 +107,7 @@ def test_due_respects_current_interval() -> None:
 
 async def test_not_due_yet_returns_none_without_calling_verifier() -> None:
     policy = AdaptiveReconciliationPolicy(min_interval_s=60.0)
-    state = ReconciliationState(policy=policy, last_checked_at=1000.0)
+    state = ReconciliationState(policy=policy, last_explicit_check_at=1000.0)
     verifier = _FakeVerifier([100.0])
     log = InMemoryUsageLog()
 
@@ -244,3 +244,27 @@ def test_ambient_matching_delta_reports_matched_true() -> None:
     # Provider's remaining requests dropped by 1 too -- matches.
     outcome = reconcile_ambient(state, "s1", log, _snapshot(999.0), now=30.0)
     assert outcome.matched is True
+
+
+async def test_steady_ambient_traffic_does_not_indefinitely_suppress_explicit_checks() -> None:
+    """Regression: on a shared ReconciliationState, reconcile_ambient used to
+    bump the same `last_checked_at` field maybe_reconcile's due() gate read,
+    so frequent ambient calls (real LLM traffic) kept resetting that clock
+    and could suppress explicit verification indefinitely even though the
+    adaptive interval itself never grew."""
+    policy = AdaptiveReconciliationPolicy(min_interval_s=60.0)
+    state = ReconciliationState(policy=policy, last_remaining=1000.0)
+    verifier = _FakeVerifier([900.0])
+    log = InMemoryUsageLog()
+
+    # Steady ambient traffic every 10s, well inside the 60s explicit interval,
+    # for longer than that interval in total elapsed time.
+    for t in (10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0):
+        reconcile_ambient(state, "s1", log, _snapshot(950.0), now=t)
+
+    # 70s have elapsed since the state was created (last_explicit_check_at
+    # starts at 0.0) -- comfortably past the 60s interval, so the explicit
+    # check must fire despite the constant ambient traffic in between.
+    outcome = await maybe_reconcile(state, "s1", log, verifier, now=70.0)
+    assert outcome is not None
+    assert verifier.calls == 1

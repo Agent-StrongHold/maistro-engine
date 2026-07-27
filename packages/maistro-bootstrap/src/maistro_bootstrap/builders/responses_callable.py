@@ -304,6 +304,50 @@ _RATE_HEADERS: list[tuple[str, list[str]]] = [
         ],
     ),
 ]
+# Token fragments that identify an Anthropic-family alias routed through the
+# gateway. Anthropic is the only provider whose caching needs an EXPLICIT
+# cache_control breakpoint (OpenAI, vLLM, DeepSeek auto-cache a stable prefix);
+# it is also the only one that accepts the structured-content shape below, so the
+# marker is gated to these models and every other alias keeps the plain payload.
+_ANTHROPIC_MODEL_MARKERS = ("claude", "anthropic", "sonnet", "opus", "haiku")
+
+
+def _is_anthropic_model(model: str) -> bool:
+    lowered = model.lower()
+    return any(marker in lowered for marker in _ANTHROPIC_MODEL_MARKERS)
+
+
+def _mark_prefix_cache(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Attach an ephemeral cache breakpoint to the first system message.
+
+    Anthropic orders the request tools -> system -> messages and caches every
+    block up to and including a breakpoint, so marking the system message caches
+    the whole stable prefix (the large tool schemas AND the system prompt) in one
+    breakpoint. The string content is promoted to a single text part carrying the
+    ``cache_control`` marker; if there is no system message (unexpected for the
+    builders loop) the messages are returned unchanged.
+    """
+    marked = False
+    out: list[dict[str, Any]] = []
+    for msg in messages:
+        content = msg.get("content")
+        if not marked and msg.get("role") == "system" and isinstance(content, str):
+            out.append(
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": content,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                }
+            )
+            marked = True
+        else:
+            out.append(msg)
+    return out
 
 
 class LiteLLMCallable:
@@ -320,9 +364,17 @@ class LiteLLMCallable:
         timeout: float = 120.0,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
+        prompt_cache: bool = False,
     ) -> None:
         self.model = model or _default_model()
         self.timeout = timeout
+        # Opt-in Anthropic prompt caching: mark the stable prefix (tools + system)
+        # with an ephemeral cache breakpoint so re-sending the identical prefix
+        # across a variant's turns/cycles bills at ~10%. Off by default and a
+        # no-op unless the routed model is Anthropic-family — every other provider
+        # sees the byte-identical legacy payload, so this can never break a
+        # non-Anthropic genome. Needs one live gateway validation before default-on.
+        self.prompt_cache = prompt_cache
         # A competing genome's sampling temperature; None = provider default.
         self.temperature = temperature
         # Reasoning-model effort level ("low"/"medium"/"high"), the
@@ -393,9 +445,39 @@ class LiteLLMCallable:
                 "usage": {"input_tokens": 0, "output_tokens": 0},
             }
 
+        body = self._build_request_body(messages, tools, max_tokens)
+
+        # Router-agnostic rate-limit pacing: stay just under the provider
+        # ceiling (reads llm_provider-* headers forwarded by the router;
+        # works behind any router, not just LiteLLM). Throttles before calls
+        # predicted to cross; backs off on 429 instead of tight-looping.
+        import time as _time
+
+        return self._post_with_pacing(body, _time)
+
+    def _build_request_body(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        max_tokens: int,
+    ) -> dict[str, Any]:
+        """Assemble the chat-completions payload.
+
+        Split out of ``__call__`` when the Anthropic prompt-cache marker and the
+        rate-limit pacing loop landed on the same method from two branches;
+        together they pushed it past the complexity gate. Body assembly is the
+        self-contained half.
+        """
+        oai_messages = _to_openai_messages(messages)
+        # Anthropic-only, opt-in: mark the stable prefix so the identical
+        # tools+system re-sent every turn/cycle is cache-billed. Non-Anthropic
+        # models keep the exact legacy messages (byte-identical), so this never
+        # perturbs their payload.
+        if self.prompt_cache and _is_anthropic_model(self.model):
+            oai_messages = _mark_prefix_cache(oai_messages)
         body: dict[str, Any] = {
             "model": self.model,
-            "messages": _to_openai_messages(messages),
+            "messages": oai_messages,
             "max_tokens": max_tokens,
             # RSI/evolve must never get cached responses — the agent's workspace
             # state changes every turn, so a cache hit returns stale tool output
@@ -426,12 +508,10 @@ class LiteLLMCallable:
             ]
             body["tool_choice"] = "auto"
 
-        # Router-agnostic rate-limit pacing: stay just under the provider
-        # ceiling (reads llm_provider-* headers forwarded by the router;
-        # works behind any router, not just LiteLLM). Throttles before calls
-        # predicted to cross; backs off on 429 instead of tight-looping.
-        import time as _time
+        return body
 
+    def _post_with_pacing(self, body: dict[str, Any], _time: Any) -> dict[str, Any]:
+        """Post ``body``, throttling ahead of the provider ceiling and retrying 429s."""
         for _attempt in range(4):  # 1 try + up to 3 429-retries
             self._throttle_if_near_limit()
 

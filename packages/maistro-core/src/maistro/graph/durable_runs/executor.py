@@ -197,7 +197,7 @@ async def _walk(
                 store=store,
             )
 
-        record = _maybe_increment_synth_depth(record, spec)
+        record = _maybe_increment_synth_depth(record, spec, result)
 
         next_id = _next_node(dag, node_id, result)
         record = record.model_copy(
@@ -316,8 +316,26 @@ def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRe
     return record.model_copy(update={"blackboard_snapshot": new_snapshot})
 
 
+def _actually_spawned(kind: str, result: NodeResult) -> bool:
+    """Did this node actually dispatch/execute a child graph, or just decline to?
+
+    `agent.synth_dag` encodes a depth-cap or security-review refusal as
+    `SynthDagOut(success=False, ...)` inside an otherwise-successful
+    `NodeResult` (the executor sees a normal completion; only the node's own
+    output says nothing was spawned) -- that refusal must not burn a depth
+    level for the next node, or a workflow that tries an alternate synth
+    after a blocked one hits the cap prematurely. `agent.spawn_harness` never
+    reaches this check on a fresh dispatch (that exits earlier via
+    `_checkpoint_pause`); getting here for that kind always means a resumed,
+    already-completed external invocation, so it counts unconditionally.
+    """
+    if kind == "agent.synth_dag":
+        return bool(getattr(result.output, "success", True))
+    return True
+
+
 def _maybe_increment_synth_depth(
-    record: DurableRunRecord, spec: dict[str, Any]
+    record: DurableRunRecord, spec: dict[str, Any], result: NodeResult
 ) -> DurableRunRecord:
     """Bump `synth_depth` after a node that can spawn a sub-graph completes.
 
@@ -327,7 +345,8 @@ def _maybe_increment_synth_depth(
     `agent_synth_dag.py`'s `can_spawn(get_role(depth, max_depth))` check,
     which reads this same counter back out via `_build_ctx`.
     """
-    if spec.get("kind") not in _DEPTH_INCREMENTING_KINDS:
+    kind = spec.get("kind")
+    if kind not in _DEPTH_INCREMENTING_KINDS or not _actually_spawned(kind, result):
         return record
     snapshot = dict(record.blackboard_snapshot or {})
     metadata = dict(snapshot.get("metadata") or {})

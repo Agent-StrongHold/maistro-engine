@@ -151,7 +151,15 @@ class _FakeResponsesCallable:
 
     built_models: ClassVar[list] = []
 
-    def __init__(self, *, model=None, temperature=None, reasoning_effort=None, timeout=None):
+    def __init__(
+        self,
+        *,
+        model=None,
+        temperature=None,
+        reasoning_effort=None,
+        timeout=None,
+        prompt_cache=False,
+    ):
         type(self).built_models.append(model)
 
     def __call__(self, messages, *, tools=None, max_tokens=None):
@@ -185,3 +193,77 @@ async def test_apply_patch_factory_model_beats_cycle_model(tmp_path, monkeypatch
     await apply_fn(None, str(tmp_path), "groq/kimi-k2")
 
     assert _FakeResponsesCallable.built_models == ["cli-override"]
+
+
+# ---------------------------------------------------------------------------
+# Inner tool-budget exhaustion: resume with context, never echo the sentinel
+# ---------------------------------------------------------------------------
+
+
+def test_resume_transcript_only_on_max_turns_with_transcript() -> None:
+    transcript = [{"role": "user", "content": "task"}]
+    # The one continue case: budget stop with a transcript to resume from.
+    resumed = local_loop._resume_transcript({"stop_reason": "max_turns", "messages": transcript})
+    assert resumed == transcript
+    assert resumed is not transcript  # a copy — caller may mutate freely
+    # The agent chose to finish: done, whatever else the result carries.
+    assert local_loop._resume_transcript({"stop_reason": "stop", "messages": transcript}) is None
+    # Budget stop but no transcript handed back (injected fakes, older
+    # runners): ending the cycle beats poisoning the context.
+    assert local_loop._resume_transcript({"stop_reason": "max_turns"}) is None
+    assert local_loop._resume_transcript({"stop_reason": "max_turns", "messages": []}) is None
+
+
+class _ToolHungryResponsesCallable:
+    """Fake LLM whose model always wants another tool call: every execute_turn
+    exhausts TurnRunner's inner budget, so the outer loop must keep resuming."""
+
+    calls: ClassVar[list[list[dict]]] = []
+
+    def __init__(self, **kwargs):
+        pass
+
+    def __call__(self, messages, *, tools=None, max_tokens=None):
+        type(self).calls.append([dict(m) for m in messages])
+        n = len(type(self).calls)
+        return {
+            "content": [{"type": "tool_use", "id": f"t{n}", "name": "no_such_tool", "input": {}}],
+            "stop_reason": "tool_use",
+        }
+
+
+@pytest.mark.asyncio
+async def test_exhausted_tool_budget_resumes_with_transcript_not_sentinel(tmp_path, monkeypatch):
+    """The live failure this pins: TurnRunner's "(max turns reached)" sentinel
+    was echoed back as the agent's own words, so the model believed it had
+    announced running out of turns and quit — every cycle logged "agent made
+    no change". The next turn must instead RESUME from the real transcript."""
+    import maistro_bootstrap.builders.responses_callable as rc
+
+    _ToolHungryResponsesCallable.calls = []
+    monkeypatch.setattr(rc, "ResponsesAPICallable", _ToolHungryResponsesCallable)
+
+    apply_fn = local_loop.make_builders_apply_patch("do a thing", max_agent_turns=2)
+    await apply_fn(None, str(tmp_path), "some-model")
+
+    from maistro_bootstrap.builders.agent_loop import AgentLoopConfig
+
+    calls = _ToolHungryResponsesCallable.calls
+    # Two outer turns, each spending the full inner budget — the run kept
+    # working instead of quitting early.
+    inner_budget = AgentLoopConfig().max_turns
+    assert len(calls) == 2 * inner_budget
+
+    # THE invariant: the internal sentinel never reaches the model as speech.
+    for call in calls:
+        for message in call:
+            assert "(max turns reached)" not in str(message.get("content"))
+
+    # Outer turn 2 resumed from the FULL transcript: seed (system + task) plus
+    # one assistant/tool_result pair per inner turn — not a 4-message reset
+    # around a sentinel.
+    resume_call = calls[inner_budget]
+    assert len(resume_call) == 2 + 2 * inner_budget
+    assert resume_call[0]["role"] == "system"
+    assert resume_call[-1]["role"] == "user"  # unanswered tool results
+    assert resume_call[-1]["content"][0]["type"] == "tool_result"

@@ -94,6 +94,35 @@ async def test_snapshot_is_incremental_not_duplicating_across_calls(
 
 
 @pytest.mark.asyncio
+async def test_restore_seeds_watermarks_so_a_later_snapshot_does_not_duplicate(
+    persist: SqliteUsageLog,
+) -> None:
+    """Simulates a process restart: snapshot, then restore() into a *fresh*
+    SqliteUsageLog instance (as a real restart would), then snapshot the
+    restored log again with no new events. Without seeding watermarks in
+    restore(), that second snapshot would re-insert every restored event."""
+    log = InMemoryUsageLog()
+    log.record("groq:kimi-k2", input_tokens=10, now=1000.0)
+    log.record("groq:kimi-k2", input_tokens=20, now=1001.0)
+    await persist.snapshot(log)
+
+    # A fresh instance sharing the same underlying connection -- exactly
+    # what a restarted process would construct.
+    persist_after_restart = SqliteUsageLog(persist._conn)
+    restored = await persist_after_restart.restore()
+    assert restored.tokens_since("groq:kimi-k2", 3600, LimitUnit.INPUT_TOKENS, now=1001.0) == 30.0
+
+    # No new events recorded -- this must be a true no-op, not a re-insert.
+    await persist_after_restart.snapshot(restored)
+    restored_again = await persist_after_restart.restore()
+    assert (
+        restored_again.tokens_since("groq:kimi-k2", 3600, LimitUnit.INPUT_TOKENS, now=1001.0)
+        == 30.0
+    )
+    assert restored_again.count_since("groq:kimi-k2", 3600, now=1001.0) == 2.0
+
+
+@pytest.mark.asyncio
 async def test_snapshot_survives_pruning_of_the_live_log(persist: SqliteUsageLog) -> None:
     """A count-based watermark would break here: pruning shifts the deque's
     indices between snapshot calls, so the watermark must be timestamp-based."""

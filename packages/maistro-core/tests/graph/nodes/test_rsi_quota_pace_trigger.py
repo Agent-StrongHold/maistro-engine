@@ -169,6 +169,72 @@ async def test_output_shape_flows_directly_into_spawn_harness_input() -> None:
     assert spawn_in.context["num_cycles"] == 6.0
 
 
+async def test_base_context_survives_the_handoff_into_a_real_spawn_harness_node() -> None:
+    """End-to-end through the durable executor: base_context (e.g. genomes a
+    DAG author configured on the trigger node itself) must still be present
+    in agent.spawn_harness's context alongside num_cycles -- not clobbered by
+    the flat upstream-output-wins merge in _resolve_inputs."""
+    from maistro.graph.durable_runs import InMemoryDurableRunStore, run_durable_dag
+    from maistro.graph.nodes import BaseNode, get_node
+    from maistro.graph.nodes.agent_spawn_harness import AgentSpawnHarnessNode
+
+    class _FakeAdapter:
+        def __init__(self) -> None:
+            self.dispatched_context: dict[str, object] | None = None
+
+        async def dispatch(self, request):  # type: ignore[no-untyped-def]
+            self.dispatched_context = dict(request.context)
+            from maistro.graph.harness import HarnessHandle
+
+            return HarnessHandle(handle_id="h1", harness_type="rsi_cycle")
+
+        async def poll(self, handle):  # type: ignore[no-untyped-def]
+            return None
+
+        async def cancel(self, handle):  # type: ignore[no-untyped-def]
+            return None
+
+    adapter = _FakeAdapter()
+
+    def _resolver(node_id: str, dag: dict) -> BaseNode:  # type: ignore[type-arg]
+        if node_id == "trigger":
+            return RsiQuotaPaceTriggerNode(InMemoryUsageLog(), now_fn=lambda: 1000.0)
+        if node_id == "spawn":
+            return AgentSpawnHarnessNode(adapters={"rsi_cycle": adapter})
+        return get_node(dag["kind"])()
+
+    dag = {
+        "id": "pace-then-spawn",
+        "name": "pace-then-spawn",
+        "nodes": [
+            {
+                "id": "trigger",
+                "kind": "rsi.quota_pace_trigger",
+                "inputs": {
+                    "model_alias": "any-alias",
+                    "deadline_epoch_s": 1000.0 + 3600.0,
+                    "time_per_cycle_s": 600.0,
+                    "base_context": {
+                        "baseline_genome": {"id": "g-base"},
+                        "candidate_genome": {"id": "g-cand"},
+                    },
+                },
+            },
+            {"id": "spawn", "kind": "agent.spawn_harness"},
+        ],
+        "edges": [{"from_node": "trigger", "to_node": "spawn"}],
+        "entry_node": "trigger",
+    }
+
+    store = InMemoryDurableRunStore()
+    await run_durable_dag(dag, store=store, node_resolver=_resolver)
+
+    assert adapter.dispatched_context is not None
+    assert adapter.dispatched_context["num_cycles"] == 6.0
+    assert adapter.dispatched_context["baseline_genome"] == {"id": "g-base"}
+    assert adapter.dispatched_context["candidate_genome"] == {"id": "g-cand"}
+
+
 async def test_resolves_rate_profile_via_configured_yaml() -> None:
     """End-to-end with the real config.rate_limits.resolve_rate_profile default
     (not an injected fake resolver), proving Phase 2c's config wiring and

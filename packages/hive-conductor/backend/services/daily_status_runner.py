@@ -18,9 +18,9 @@ from __future__ import annotations
 import logging
 from typing import Any, ClassVar
 
+from maistro.container import build_node_resolver
 from maistro.graph.dag_registry import DagRegistry
 from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus, run_durable_dag
-from maistro.graph.nodes import BaseNode, get_node
 from maistro.graph.seeds import daily_status_seed
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,14 @@ logger = logging.getLogger(__name__)
 
 # Module-level registry so a per-process boot registers once + reuses.
 _registry: DagRegistry | None = None
+
+# Module-level resolver: this app imports maistro-core pieces directly rather
+# than constructing a full Container, so build_node_resolver()'s no-arg
+# defaults (the shared usage log, an empty harness-adapter map) are what it
+# picks up -- the same pattern a full Container would wire, just reachable
+# without needing one. Falls back to the plain registry lookup
+# (`get_node(kind)()`) for kinds like jira.poll that need no special wiring.
+_node_resolver = build_node_resolver()
 
 
 def _get_registry() -> DagRegistry:
@@ -40,14 +48,6 @@ def _get_registry() -> DagRegistry:
         # registry's version-bump path tolerates re-register).
         _registry.register(daily_status_seed())
     return _registry
-
-
-def _node_resolver(node_id: str, dag: dict[str, Any]) -> BaseNode:
-    """Look up a node class from the catalog for the durable executor."""
-    for n in dag.get("nodes", []):
-        if str(n.get("id")) == node_id:
-            return get_node(str(n["kind"]))()
-    raise KeyError(node_id)
 
 
 def _inject_jira_credentials(

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -72,12 +73,31 @@ _BLOCKED_PATTERNS = (
 # No os.environ spread — never leak API keys, tokens, or cloud credentials.
 # No HOME — setting HOME to the sandbox root creates a $HOME/.. escape primitive.
 _SAFE_ENV = {
-    "PATH": "/usr/local/bin:/usr/bin:/bin",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
     "TERM": "dumb",
     "PYTHONDONTWRITEBYTECODE": "1",
 }
+if os.name == "nt":
+    # Windows children are unusable without the system basics — python.exe
+    # cannot even start without SystemRoot (_Py_HashRandomization_init fails),
+    # and executable lookup by the child needs the real PATH (a POSIX PATH
+    # string is meaningless here). Each is forwarded by NAME from an
+    # allowlist — still no os.environ spread, and none of these carry
+    # credentials, so the no-secret-leak property holds unchanged.
+    # NOTE: TEMP/TMP are deliberately NOT forwarded here — see
+    # SandboxedShell._env(). The host's real values would let an
+    # agent-authored script escape the sandbox via tempfile at runtime,
+    # invisibly to _check_paths's command-string scanning.
+    _SAFE_ENV.update(
+        {
+            name: value
+            for name in ("PATH", "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC", "PATHEXT")
+            if (value := os.environ.get(name))
+        }
+    )
+else:
+    _SAFE_ENV["PATH"] = "/usr/local/bin:/usr/bin:/bin"
 
 
 @runtime_checkable
@@ -102,6 +122,27 @@ class SandboxedShell:
 
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
+
+    def _env(self) -> dict[str, str]:
+        """The subprocess environment for this instance's root.
+
+        Codex review (#256): forwarding the HOST's real TEMP/TMP on Windows let
+        an agent-authored script escape the sandbox without ever putting an
+        absolute path in the command line — `_check_paths` scans the command
+        string, but `tempfile.mktemp()` reads TEMP/TMP from the process
+        environment at runtime, so `python script.py` calling it landed files
+        in the real user Temp directory, outside `self._root` entirely.
+        TEMP/TMP now point at a directory INSIDE the sandbox root instead of
+        being inherited — python.exe/git only need `TEMP` to exist and be
+        writable, not to be any particular directory.
+        """
+        env = dict(_SAFE_ENV)
+        if os.name == "nt":
+            sandbox_tmp = self._root / ".sandbox-tmp"
+            sandbox_tmp.mkdir(parents=True, exist_ok=True)
+            env["TEMP"] = str(sandbox_tmp)
+            env["TMP"] = str(sandbox_tmp)
+        return env
 
     def _assert_inside(self, path_str: str, *, token: str) -> None:
         """Raise unless ``path_str`` resolves inside the sandbox root."""
@@ -183,7 +224,7 @@ class SandboxedShell:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env=_SAFE_ENV,
+                env=self._env(),
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeoutError(f"Command timed out after {timeout}s: {cmd!r}") from exc
@@ -225,7 +266,7 @@ class SandboxedShell:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env=_SAFE_ENV,
+                env=self._env(),
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeoutError(f"Command timed out after {timeout}s: {argv!r}") from exc

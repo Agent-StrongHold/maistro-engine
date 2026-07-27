@@ -22,6 +22,7 @@ provider in end-to-end and test it. True SSE + on-disk artifact ingest is tracke
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -130,11 +131,56 @@ def _ingest(resp: httpx.Response, skill: DesignSkill) -> ArtifactNode:
             value=resp.content,
             metadata={**meta, "format": "mp4"},
         )
-    # reflowable-web and everything else: text (HTML)
+    # reflowable-web and everything else: text (HTML). The daemon streams SSE, so
+    # accumulate the event payloads; a plain-body response passes through unchanged.
+    content_type = resp.headers.get("content-type", "")
+    value = _sse_text(resp.text) if "text/event-stream" in content_type else resp.text
     return ArtifactNode(
         key=skill.slug,
         kind=ArtifactKind.FILE,
         format=OutputFormat.HTML,
-        value=resp.text,
+        value=value,
         metadata=meta,
     )
+
+
+def _sse_text(body: str) -> str:
+    """Concatenate the ``data:`` payloads of a text/event-stream body.
+
+    Handles flat JSON events (``content`` / ``text`` / ``delta`` as a string), the
+    Anthropic-style nested shape (``content_block_delta`` with
+    ``delta: {"type": "text_delta", "text": ...}``), and raw-text events; skips
+    comments, empty lines, and the ``[DONE]`` sentinel.
+    """
+    chunks: list[str] = []
+    for line in body.splitlines():
+        if not line.startswith("data:"):
+            continue
+        payload = line[len("data:") :].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            event = json.loads(payload)
+        except json.JSONDecodeError:
+            chunks.append(payload)
+            continue
+        chunks.append(_event_text(event))
+    return "".join(chunks)
+
+
+def _event_text(event: object) -> str:
+    """Extract the text an SSE event carries, across the shapes daemons emit."""
+    if isinstance(event, str):
+        return event
+    if not isinstance(event, dict):
+        return str(event)
+    # Anthropic/Open Design nested delta: {"delta": {"type": "text_delta", "text": "..."}}
+    delta = event.get("delta")
+    if isinstance(delta, dict):
+        return str(delta.get("text") or delta.get("partial_json") or "")
+    # Flat shapes: content / text / delta as a plain string.
+    for key in ("content", "text", "delta"):
+        value = event.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""

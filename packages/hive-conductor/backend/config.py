@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     conductor_admin_public_key: str | None = None
     conductor_user_public_key: str | None = None
 
+    # Open Design renderer plugin (SPEC-070426-6ea8). Off by default; when enabled the
+    # design service registers the provider and /design/skills gains web/video skills.
+    open_design_enabled: bool = False
+    open_design_url: str = "http://127.0.0.1:7456"
+    open_design_token: SecretStr | None = None
+
     # CORS allow-list. Defaults to local-dev origins; set CORS_ORIGINS (JSON list)
     # in deployment. Wildcard "*" is intentionally NOT the default — wildcard with
     # credentials is rejected by browsers and flagged as insecure.

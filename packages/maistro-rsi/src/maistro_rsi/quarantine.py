@@ -63,6 +63,12 @@ SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     # The sandbox kit: it sets the backend *and* attests the isolation that
     # makes LocalSandbox safe (see sandbox/microvm.py).
     "sbx/",
+    # The durable executor carries the actual depth-cap *enforcement* between
+    # nodes (it's what increments/surfaces synth_depth across checkpoints) --
+    # a diff here can defang the cap just as effectively as touching depth.py
+    # itself. Matched at directory granularity: the whole package persists
+    # depth state, so `executor.py` alone left its siblings uncovered.
+    "maistro/graph/durable_runs/",
 )
 
 

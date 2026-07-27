@@ -70,6 +70,14 @@ def test_transient_error_classifier() -> None:
     assert _is_transient_provider_error("LiteLLM gateway 429: RateLimitError ...")
     assert _is_transient_provider_error("You exceeded your current quota, check billing")
     assert _is_transient_provider_error("503 service overloaded")
+    # A dead endpoint is capacity, not fitness — the live string from a local
+    # model whose serving process died mid-run (gateway 500 wrapping it).
+    assert _is_transient_provider_error(
+        'LiteLLM gateway 500: {"error":{"message":"litellm.InternalServerError: '
+        'InternalServerError: OpenAIException - Connection error."}}'
+    )
+    assert _is_transient_provider_error("APIConnectionError: connection refused")
+    assert _is_transient_provider_error("502 Bad Gateway")
     assert not _is_transient_provider_error("list index out of range")
     assert not _is_transient_provider_error("SyntaxError: invalid syntax")
 
@@ -202,3 +210,124 @@ def test_empty_genome_models_falls_back_to_model(tmp_path: Path) -> None:
     from maistro_rsi.local_loop import _entry_model
 
     assert {_entry_model(g) for g in loop._population.list_all()} == {"testmodel"}
+
+
+def test_never_idle_spawns_when_whole_roster_benched(tmp_path: Path) -> None:
+    # Whole roster benched (its provider fully rate-limited) → the loop must NOT
+    # no-op the cycle: it spawns a fresh genome onto a servable cross-provider
+    # emergency model and fields it (the "we MUST run some models" guarantee).
+    from maistro_rsi.local_loop import _entry_model
+
+    config = _live_config(
+        tmp_path,
+        genome_models=["model-a", "model-b"],
+        roster_size=2,
+        emergency_models=["rescue-model"],
+    )
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    for g in loop._population.list_all():
+        loop._bench[_entry_model(g)] = time.monotonic() + 999  # bench every roster model
+    before = len(loop._population.list_all())
+
+    roster = loop._genome_roster(index=1)
+
+    assert roster, "loop must not idle when the whole roster is benched"
+    assert roster[0].model == "rescue-model"  # spawned onto the servable emergency model
+    assert len(loop._population.list_all()) == before + 1  # a new lineage joined the population
+
+
+def test_emergency_prefers_servable_then_soonest_unbench(tmp_path: Path) -> None:
+    config = _live_config(tmp_path, emergency_models=["down-a", "up-b", "down-c"])
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    now = time.monotonic()
+    loop._bench["down-a"] = now + 500
+    loop._bench["down-c"] = now + 50  # benched but expires soonest
+    # up-b is not benched → it wins
+    assert loop._emergency_model(index=1) == "up-b"
+    # with everything benched, the soonest-to-recover is chosen (least-bad probe)
+    loop._bench["up-b"] = now + 999
+    assert loop._emergency_model(index=1) == "down-c"
+
+
+def test_emergency_pool_defaults_when_unset(tmp_path: Path) -> None:
+    from maistro_rsi.local_loop import _DEFAULT_EMERGENCY_MODELS
+
+    loop = LocalRsiLoop(_live_config(tmp_path), apply_patch=_make_apply(_bump))
+    assert loop._emergency_pool() == list(_DEFAULT_EMERGENCY_MODELS)
+
+
+def test_never_idle_probes_without_persisting_when_all_benched(tmp_path: Path) -> None:
+    # Codex P2 (#250): when roster AND emergency pool are ALL benched, field a
+    # least-bad transient probe WITHOUT persisting a new lineage — else a long
+    # outage floods population.db and evicts proven genomes.
+    from maistro_rsi.local_loop import _entry_model
+
+    config = _live_config(
+        tmp_path, genome_models=["model-a"], roster_size=1, emergency_models=["down-x"]
+    )
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    now = time.monotonic()
+    for g in loop._population.list_all():
+        loop._bench[_entry_model(g)] = now + 999
+    loop._bench["down-x"] = now + 999  # the emergency pool is benched too
+    before = len(loop._population.list_all())
+
+    roster = loop._genome_roster(index=1)
+
+    assert roster, "must still field a probe rather than idle"
+    assert roster[0].model == "down-x"  # least-bad probe
+    assert len(loop._population.list_all()) == before  # NOT persisted
+    assert roster[0].label not in loop._label_to_genome  # folds back to no genome
+
+
+def test_local_fallback_used_when_entire_pool_benched(tmp_path: Path) -> None:
+    # The never-idle FLOOR: roster AND the cross-provider emergency pool are all
+    # rate-limited, but local hardware has no rate limit to hit — so the cycle
+    # runs on the local tier instead of degrading to a benched probe.
+    from maistro_rsi.local_loop import _entry_model
+
+    config = _live_config(
+        tmp_path,
+        genome_models=["model-a"],
+        roster_size=1,
+        emergency_models=["down-x"],
+        local_fallback_model="local-gpu",
+    )
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    now = time.monotonic()
+    for g in loop._population.list_all():
+        loop._bench[_entry_model(g)] = now + 999
+    loop._bench["down-x"] = now + 999  # the cloud pool is benched too
+    before = len(loop._population.list_all())
+
+    roster = loop._genome_roster(index=1)
+
+    assert roster[0].model == "local-gpu"  # the floor caught it
+    # Local work is REAL work: unlike a transient probe, it persists and evolves.
+    assert len(loop._population.list_all()) == before + 1
+
+
+def test_local_fallback_never_pre_empts_a_servable_cloud_model(tmp_path: Path) -> None:
+    # THE ordering guarantee. Pool selection ranks by reliability, defaulting to
+    # 1.0 for an unseen model, and a local model never benches — so a local tier
+    # placed INSIDE emergency_models would out-rank every proven cloud model and
+    # silently become primary. It must stay a last resort even when the only
+    # servable cloud model is measurably worse than a fresh local one.
+    config = _live_config(tmp_path, emergency_models=["up-b"], local_fallback_model="local-gpu")
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    loop._reliability["up-b"] = 0.2  # far below local's implicit 1.0
+
+    assert loop._emergency_model(index=1) == "up-b"
+
+    # ...and only once the cloud model is benched does the floor engage.
+    loop._bench["up-b"] = time.monotonic() + 999
+    assert loop._emergency_model(index=1) == "local-gpu"
+
+
+def test_local_fallback_unset_keeps_probe_behaviour(tmp_path: Path) -> None:
+    # No local tier configured ⇒ the pre-existing least-bad-probe path, unchanged.
+    config = _live_config(tmp_path, emergency_models=["down-x"])
+    loop = LocalRsiLoop(config, apply_patch=_make_apply(_bump))
+    loop._bench["down-x"] = time.monotonic() + 999
+
+    assert loop._emergency_model(index=1) == "down-x"
