@@ -653,16 +653,6 @@
    "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
   },
   {
-   "key": "packages/maistro-core/src/maistro/skills/connectors.py::search_claude_plugins",
-   "path": "packages/maistro-core/src/maistro/skills/connectors.py",
-   "line": 607,
-   "name": "search_claude_plugins",
-   "classname": null,
-   "rank": "C",
-   "complexity": 11,
-   "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
-  },
-  {
    "key": "packages/maistro-core/src/maistro/skills/parser.py::parse_skill_file",
    "path": "packages/maistro-core/src/maistro/skills/parser.py",
    "line": 76,
