@@ -20,9 +20,9 @@ from maistro.security._types import AuthContext, WardenVerdict
 from maistro.security.patterns import DANGEROUS_TOOL_NAMES
 from maistro.security.sentinel.authz_types import Principal
 from maistro.security.strikes import InMemoryStrikeTracker
-from maistro.types.errors import AgentError
 from maistro.skills.import_pipeline import ImportSource, SkillImportRequest
 from maistro.types.config import AgentConfig, SecurityConfig
+from maistro.types.errors import AgentError
 
 IMPORTER = Principal(id="importer1", kind="human")
 
