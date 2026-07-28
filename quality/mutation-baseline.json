@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "owner": "@BlakeMatthews-dev",
+  "policy": "Bootstrap placeholder. The first sharded full-codebase mutation sweep uploads a candidate baseline; review and commit that artifact before enabling regression enforcement.",
+  "entries": {}
+}

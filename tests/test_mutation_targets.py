@@ -67,6 +67,23 @@ def test_files_outside_core_are_not_mapped(module):
     assert module.resolve_tests("README.md") is None
 
 
+def test_full_codebase_resolver_maps_sibling_package(module):
+    got = module.resolve_package_tests("packages/maistro-rsi/src/maistro_rsi/runner.py")
+    assert got == Path("packages/maistro-rsi/tests/test_runner.py")
+
+
+def test_full_codebase_resolver_maps_external_registry_tests(module):
+    got = module.resolve_package_tests("packages/maistro-registry/src/maistro_registry/validator.py")
+    assert got == Path("tests/tools/registry/test_validator.py")
+
+
+def test_every_production_source_has_a_mutation_test_scope(module):
+    sources = module.production_sources()
+    assert len(sources) >= 800
+    unresolved = [source for source in sources if module.resolve_package_tests(source) is None]
+    assert unresolved == []
+
+
 def test_every_resolved_path_exists_on_disk(module):
     """A mapping that points at a path pytest can't collect would make every
     mutant 'killed' by usage error — the same vacuous-pass failure mode as the

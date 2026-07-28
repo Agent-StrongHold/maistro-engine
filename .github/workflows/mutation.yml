@@ -23,21 +23,7 @@ on:
   pull_request:
     branches: [main, integration, develop]
     paths:
-      - 'packages/maistro-core/src/maistro/graph/**'
-      - 'packages/maistro-core/src/maistro/projects/**'
-      - 'packages/maistro-core/src/maistro/memory/**'
-      # security/ and router/ must be here as well as in the changed-files
-      # filter below: a PR touching ONLY security code never triggered this
-      # workflow, so widening the inner filter alone changed nothing for
-      # exactly the files where surviving mutants matter most.
-      - 'packages/maistro-core/src/maistro/security/**'
-      - 'packages/maistro-core/src/maistro/router/**'
-      # policy/ ranks second in scripts/mutation_targets.py's priority table,
-      # which was unreachable while this list omitted it: a policy-only PR
-      # never started the job, and policy files in a mixed PR never reached
-      # the ranking. A priority entry for a subtree the gate cannot see is a
-      # claim about coverage that nothing delivers.
-      - 'packages/maistro-core/src/maistro/policy/**'
+      - 'packages/**/*.py'
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
 
@@ -46,13 +32,11 @@ jobs:
     name: Mutation testing on changed files
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    # ~6 min per changed file measured on PR #265 (5 of 13 files in 30 min).
-    # The release gate gets a budget that can actually finish a full sweep;
-    # feature PRs stay fast because their scope is capped below.
-    timeout-minutes: ${{ github.base_ref == 'main' && 180 || 30 }}
+    # Every changed production module is mutated. The nightly job establishes
+    # the full-codebase baseline; this job prevents PR-local regressions.
+    timeout-minutes: 360
     env:
-      # 0 = no cap (full sweep). Only the develop -> main gate gets it.
-      MUTATION_FILE_CAP: ${{ github.base_ref == 'main' && '0' || '4' }}
+      MUTATION_FILE_CAP: '0'
       # Via env, not inlined into the run script: a branch name interpolated
       # straight into shell is an injection seam, and this one is
       # attacker-influenced on fork PRs.
@@ -65,7 +49,7 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --all-extras
 
-      - name: Identify changed Python files under load-bearing subtrees
+      - name: Identify every changed production Python file
         id: changed
         run: |
           # Diff against the PR's OWN base, not a hardcoded origin/main. This
@@ -79,27 +63,20 @@ jobs:
           # the precise phantom-gate shape this workflow exists to remove.
           git fetch --no-tags --depth=0 origin "$BASE_REF" 2>/dev/null \
             || git fetch --no-tags origin "$BASE_REF"
-          # --diff-filter=ACMR excludes deletions: `resolve_tests` validates
-          # that the TEST path exists, never the source, so a deleted module
-          # whose test directory survives resolves happily, consumes a capped
-          # slot, and hands cosmic-ray a module-path that is not there.
-          CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- \
-            'packages/maistro-core/src/maistro/graph/' \
-            'packages/maistro-core/src/maistro/projects/' \
-            'packages/maistro-core/src/maistro/memory/' \
-            'packages/maistro-core/src/maistro/security/' \
-            'packages/maistro-core/src/maistro/router/' \
-            'packages/maistro-core/src/maistro/policy/' \
+          # Deletions are excluded because Cosmic Ray needs a source file. Any
+          # live package module without a test scope causes target resolution to
+          # fail rather than disappearing from the coverage claim.
+          CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- packages \
             | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
           echo "files<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
           if [ -z "$CHANGED" ]; then
-            echo "No load-bearing files changed; skipping mutation test."
+            echo "No production Python files changed; skipping mutation test."
             echo "skip=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: Resolve each changed file to its scoped tests
+      - name: Resolve every changed file to its package test scope
         id: targets
         if: steps.changed.outputs.skip != 'true'
         run: |
@@ -111,7 +88,6 @@ jobs:
           # that gets killed and reports nothing.
           echo "Base branch: '${{ github.base_ref }}' — file cap: ${MUTATION_FILE_CAP:-4} (0 = full sweep)"
           uv run python scripts/mutation_targets.py \
-            --limit "${MUTATION_FILE_CAP:-4}" \
             "${{ steps.changed.outputs.files }}" \
             > mutation-targets.tsv
           echo "Resolved targets:"; cat mutation-targets.tsv
@@ -132,7 +108,7 @@ jobs:
           while IFS=$'\t' read -r src tests; do
             [ -z "$src" ] && continue
             echo "::group::baseline $tests"
-            env PYTHONPATH=packages/maistro-core/src uv run pytest "$tests" \
+            env PYTHONPATH="$(find packages -type d -name src -printf '%p:')" uv run pytest "$tests" \
               --timeout=15 -q -x
             echo "::endgroup::"
           done < mutation-targets.tsv
@@ -150,7 +126,7 @@ jobs:
           module-path = "$src"
           timeout = 30.0
           excluded-modules = []
-          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest $tests --timeout=15 -q -x"
+          test-command = "env PYTHONPATH=$(find packages -type d -name src -printf '%p:') python -m pytest $tests --timeout=15 -q -x"
 
           [cosmic-ray.distributor]
           name = "local"
@@ -192,6 +168,7 @@ jobs:
               sys.exit(1)
           print('Mutation gate passed (>=90%)')
           "
+          uv run python scripts/check_mutation_baseline.py mutation-rows.jsonl
 
       - name: Upload mutation report
         if: always() && steps.changed.outputs.skip != 'true'
@@ -275,3 +252,87 @@ jobs:
             session-nightly.sqlite
             mutation-nightly.json
             mutation-dashboard.md
+
+  mutation-nightly-full:
+    name: Mutation testing (full codebase shard ${{ matrix.shard }})
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install 3.12
+      - run: uv sync --all-extras
+
+      - name: Resolve this shard's complete source inventory
+        run: |
+          uv run python scripts/mutation_targets.py --all > mutation-targets-all.tsv
+          awk '((NR - 1) % 32) == ${{ matrix.shard }}' mutation-targets-all.tsv > mutation-targets.tsv
+          test -s mutation-targets.tsv
+          cat mutation-targets.tsv
+
+      - name: Baseline each unmutated test command
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r src tests; do
+            env PYTHONPATH="$(find packages -type d -name src -printf '%p:')" uv run pytest "$tests" --timeout=20 -q -x
+          done < mutation-targets.tsv
+
+      - name: Mutate every source in this shard
+        run: |
+          set -euo pipefail
+          : > mutation-rows-${{ matrix.shard }}.jsonl
+          while IFS=$'\t' read -r src tests; do
+            cat > cosmic-ray.toml <<EOF
+          [cosmic-ray]
+          module-path = "$src"
+          timeout = 60.0
+          excluded-modules = []
+          test-command = "env PYTHONPATH=$(find packages -type d -name src -printf '%p:') python -m pytest $tests --timeout=20 -q -x"
+
+          [cosmic-ray.distributor]
+          name = "local"
+
+          [cosmic-ray.distributor.local]
+          worker-count = 4
+          EOF
+            session="session-${{ matrix.shard }}-$(echo "$src" | tr '/.' '__').sqlite"
+            uv run cosmic-ray init cosmic-ray.toml "$session"
+            uv run cosmic-ray exec cosmic-ray.toml "$session"
+            uv run cosmic-ray dump "$session" >> mutation-rows-${{ matrix.shard }}.jsonl
+          done < mutation-targets.tsv
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-nightly-shard-${{ matrix.shard }}
+          path: |
+            mutation-rows-${{ matrix.shard }}.jsonl
+            mutation-targets.tsv
+
+  mutation-nightly-baseline:
+    name: Mutation baseline candidate
+    if: github.event_name == 'schedule'
+    needs: mutation-nightly-full
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-nightly-shard-*
+          merge-multiple: true
+      - name: Build candidate full-codebase baseline
+        run: |
+          cat mutation-rows-*.jsonl > mutation-rows.jsonl
+          python scripts/check_mutation_baseline.py mutation-rows.jsonl \
+            --baseline mutation-baseline-candidate.json --write-baseline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutation-baseline-candidate-${{ github.run_id }}
+          path: mutation-baseline-candidate.json

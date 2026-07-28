@@ -26,6 +26,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CORE_SRC = Path("packages/maistro-core/src/maistro")
 CORE_TESTS = Path("packages/maistro-core/tests")
+PACKAGES = Path("packages")
+EXTERNAL_TEST_ROOTS = {
+    "maistro-registry": Path("tests/tools/registry"),
+}
 
 
 def resolve_tests(src: str) -> Path | None:
@@ -62,6 +66,62 @@ def resolve_tests(src: str) -> Path | None:
     return None
 
 
+def resolve_package_tests(src: str) -> Path | None:
+    """Resolve every production package file to its closest package test scope."""
+    path = Path(src)
+    if not (REPO / path).is_file() or path.suffix != ".py" or "tests" in path.parts:
+        return None
+    try:
+        path.relative_to(PACKAGES)
+    except ValueError:
+        return None
+
+    package = Path(*path.parts[:2])
+    backend_tests = package / "backend" / "tests"
+    package_tests = package / "tests"
+    package_name = package.name
+    test_root = (
+        backend_tests
+        if "backend" in path.parts and (REPO / backend_tests).is_dir()
+        else EXTERNAL_TEST_ROOTS.get(package_name, package_tests)
+    )
+    if not (REPO / test_root).is_dir():
+        return None
+
+    source_root = package
+    if "src" in path.parts:
+        index = path.parts.index("src")
+        if len(path.parts) > index + 1:
+            source_root = Path(*path.parts[: index + 2])
+    elif "backend" in path.parts:
+        source_root = package / "backend"
+    elif "frontend" in path.parts and "server" in path.parts:
+        source_root = package / "frontend" / "server"
+
+    rel = path.relative_to(source_root)
+    mirror = test_root / rel.parent / f"test_{rel.stem}.py"
+    if (REPO / mirror).is_file():
+        return mirror
+
+    parent = rel.parent
+    while True:
+        candidate = test_root / parent
+        if (REPO / candidate).is_dir():
+            return candidate
+        if parent == Path("."):
+            return test_root
+        parent = parent.parent
+
+
+def production_sources() -> list[str]:
+    """All executable package Python files, excluding tests and caches."""
+    return sorted(
+        path.relative_to(REPO).as_posix()
+        for path in (REPO / PACKAGES).rglob("*.py")
+        if "tests" not in path.parts and "__pycache__" not in path.parts
+    )
+
+
 # Mutation budget is finite, so when it has to be spent partially it is spent
 # where a surviving mutant is worst. security/ and router/ first: an unkilled
 # mutant in the Warden or the scorer is a silently-weakened control, where one
@@ -88,16 +148,25 @@ def main(argv: list[str]) -> int:
         limit = int(args[1])
         args = args[2:]
 
-    files = [line.strip() for line in (args[0].splitlines() if args else sys.stdin)]
+    files = production_sources() if args == ["--all"] else [
+        line.strip() for line in (args[0].splitlines() if args else sys.stdin)
+    ]
     targets: list[tuple[str, Path]] = []
+    unresolved: list[str] = []
     for src in files:
         if not src:
             continue
-        tests = resolve_tests(src)
+        tests = resolve_package_tests(src)
         if tests is None:
-            print(f"skip (no scoped tests found): {src}", file=sys.stderr)
+            unresolved.append(src)
             continue
         targets.append((src, tests))
+
+    if unresolved:
+        print("::error::mutation target(s) have no package test scope:", file=sys.stderr)
+        for src in unresolved:
+            print(f"  unresolvable: {src}", file=sys.stderr)
+        return 1
 
     targets.sort(key=lambda t: (priority(t[0]), t[0]))
 
