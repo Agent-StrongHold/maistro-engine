@@ -167,12 +167,41 @@ def principal_has_permission(user: dict, perm: str) -> bool:
     return perm in elevated
 
 
-def origin_allowed(origin: str | None) -> bool:
+def origin_allowed(origin: str | None, host: str | None = None) -> bool:
+    """Is `origin` permitted to open a credentialed connection to this server?
+
+    Three ways to pass, in order of how often they matter:
+
+    1. **Same-origin.** The page that opened the socket is served by this very
+       server (`Origin`'s authority == the request's own `Host`). CORS never
+       applies to same-origin requests, so a deployment reached at
+       `http://192.168.1.10:8101` — where the SPA and the API share an origin —
+       has never had any reason to list itself in `CORS_ORIGINS`, and most
+       don't. Checking the configured list alone would reject the app's own
+       front end on every non-localhost deployment, because the defaults in
+       `config.py` only cover localhost.
+    2. **No Origin at all.** curl and other non-browser callers send none.
+       Origin-based rules only bind browsers; such a caller still needs a valid
+       session.
+    3. **Explicitly configured**, including the `"*"` wildcard that
+       `CORSMiddleware` already honours for HTTP. Not honouring it here would
+       mean a deployment that deliberately opened CORS still had its sockets
+       refused.
+    """
     if not origin:
         return True
     from config import get_settings
 
-    return origin in get_settings().cors_origins
+    allowed = get_settings().cors_origins
+    if "*" in allowed or origin in allowed:
+        return True
+
+    if host:
+        _, _, origin_authority = origin.partition("://")
+        if origin_authority and origin_authority == host:
+            return True
+
+    return False
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
