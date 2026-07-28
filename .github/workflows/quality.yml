@@ -158,7 +158,10 @@ jobs:
       #        back-compat scout_objective.
       - name: vulture (dead-code; confidence ≥ 60 — ratchet)
         env:
-          VULTURE_BASELINE: 1317
+          # Measured 2026-07-28 after WS-B: 1,313 findings. Lowering the
+          # previous 1,317 ceiling banks those four removals so the debt cannot
+          # silently grow back while the classified baseline is completed.
+          VULTURE_BASELINE: 1313
         run: |
           uv run vulture packages/*/src --min-confidence 60 > vulture.log 2>&1 || true
           count=$(wc -l < vulture.log | tr -d ' ')
