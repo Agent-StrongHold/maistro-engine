@@ -126,15 +126,23 @@ class SqliteLearningStore:
         *system* prompt. Filtering matters here more than in a normal read path
         because a learning is an instruction, not a datum.
 
-        Empty `org_id` means global scope and matches only global rows, rather
-        than matching everything — a caller that omits the argument must not
-        silently receive another org's learnings. Rows with an empty `org_id`
-        are global and visible to every caller, which mirrors the existing
-        `agent_id = ''` convention on the line below.
+        Org matching is exact: `org_id` matches only rows carrying that same
+        `org_id`, and an empty `org_id` matches only rows that have none. There
+        is deliberately no global bucket. An earlier form of this predicate
+        also admitted `org_id = ''` rows to every caller, mirroring the
+        `agent_id = ''` convention on the line below, but the two are not
+        analogous — `agent_id = ''` widens within one org, while `org_id = ''`
+        crosses the tenancy boundary that SPEC-216 names a non-goal ("cross-org
+        learning sharing of any kind"). Any write path that failed to set
+        `org_id` silently published into that bucket, and a learning is an
+        instruction interpolated into the system prompt, not a datum.
+
+        This matches `InMemoryLearningStore`, the reference implementation the
+        spec describes; the SQL stores had drifted from it.
         """
         query = "SELECT * FROM learnings WHERE status = 'active'"
         params: list[Any] = []
-        query += " AND (org_id = ? OR org_id = '')"
+        query += " AND org_id = ?"
         params.append(org_id)
         if agent_id:
             query += " AND (agent_id = ? OR agent_id = '')"
@@ -180,7 +188,7 @@ class SqliteLearningStore:
         # accepted and written, so a guessed id was a cross-scope write.
         await self._conn.execute(
             f"UPDATE learnings SET {column} = {column} + 1 "  # nosec B608
-            f"WHERE id IN ({placeholders}) AND (org_id = ? OR org_id = '')",
+            f"WHERE id IN ({placeholders}) AND org_id = ?",
             [*learning_ids, org_id],
         )
         await self._conn.commit()
@@ -192,8 +200,7 @@ class SqliteLearningStore:
     ) -> list[Learning]:
         """Promote learnings with hit_count >= threshold."""
         cursor = await self._conn.execute(
-            "SELECT id FROM learnings WHERE status = 'active' AND hit_count >= ? "
-            "AND (org_id = ? OR org_id = '')",
+            "SELECT id FROM learnings WHERE status = 'active' AND hit_count >= ? AND org_id = ?",
             (threshold, org_id),
         )
         ids = [r[0] for r in await cursor.fetchall()]
@@ -220,7 +227,7 @@ class SqliteLearningStore:
         org_id: str = "",
     ) -> list[Learning]:
         """Get promoted learnings."""
-        query = "SELECT * FROM learnings WHERE status = 'promoted' AND (org_id = ? OR org_id = '')"
+        query = "SELECT * FROM learnings WHERE status = 'promoted' AND org_id = ?"
         params: list[Any] = [org_id]
         if task_type:
             query += " AND category = ?"
@@ -233,7 +240,7 @@ class SqliteLearningStore:
     async def list_all(self, org_id: str = "", limit: int = 200) -> list[Learning]:
         """List all learnings (admin endpoint)."""
         cursor = await self._conn.execute(
-            "SELECT * FROM learnings WHERE (org_id = ? OR org_id = '') ORDER BY id DESC LIMIT ?",
+            "SELECT * FROM learnings WHERE org_id = ? ORDER BY id DESC LIMIT ?",
             (org_id, limit),
         )
         columns = [d[0] for d in cursor.description]

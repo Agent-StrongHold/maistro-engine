@@ -103,16 +103,17 @@ class PgLearningStore:
 
         Same defect and same rule as `SqliteLearningStore.find_relevant`:
         `org_id` was accepted and never used, while the results are
-        interpolated into the agent's system prompt. Empty means global and
-        matches only global rows — the filter fails closed — and rows with an
-        empty `org_id` are visible to everyone, mirroring the `agent_id = ''`
-        convention already in this query.
+        interpolated into the agent's system prompt. Org matching is exact —
+        an empty `org_id` matches only rows that have none, and there is no
+        global bucket that every org can read. See that method's docstring for
+        why `org_id = ''` is not analogous to the `agent_id = ''` widening
+        still used below.
         """
         async with self._pool.acquire() as conn:
             query = """
                 SELECT * FROM learnings
                 WHERE status = 'active'
-                  AND (org_id = $1 OR org_id = '')
+                  AND org_id = $1
             """
             params: list[Any] = [org_id]
             if agent_id:
@@ -155,7 +156,7 @@ class PgLearningStore:
             column = "success_after_use" if success else "failure_after_use"
             await conn.execute(
                 f"UPDATE learnings SET {column} = {column} + 1 "  # nosec B608
-                "WHERE id = ANY($1::int[]) AND (org_id = $2 OR org_id = '')",
+                "WHERE id = ANY($1::int[]) AND org_id = $2",
                 learning_ids,
                 org_id,
             )
@@ -170,7 +171,7 @@ class PgLearningStore:
             rows = await conn.fetch(
                 """UPDATE learnings SET status = 'promoted'
                    WHERE status = 'active' AND hit_count >= $1
-                     AND (org_id = $2 OR org_id = '')
+                     AND org_id = $2
                    RETURNING *""",
                 threshold,
                 org_id,
@@ -184,9 +185,7 @@ class PgLearningStore:
     ) -> list[Learning]:
         """Get promoted learnings."""
         async with self._pool.acquire() as conn:
-            query = (
-                "SELECT * FROM learnings WHERE status = 'promoted' AND (org_id = $1 OR org_id = '')"
-            )
+            query = "SELECT * FROM learnings WHERE status = 'promoted' AND org_id = $1"
             params: list[Any] = [org_id]
             if task_type:
                 query += " AND category = $2"
@@ -198,8 +197,7 @@ class PgLearningStore:
         """List all learnings (admin endpoint)."""
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
-                "SELECT * FROM learnings WHERE (org_id = $1 OR org_id = '') "
-                "ORDER BY id DESC LIMIT $2",
+                "SELECT * FROM learnings WHERE org_id = $1 ORDER BY id DESC LIMIT $2",
                 org_id,
                 limit,
             )
