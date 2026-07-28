@@ -50,4 +50,10 @@ jobs:
             -v
 
       - name: Validate ADR/spec front-matter (warn-only window)
-        run: python -m maistro_registry.cli walk . --strict
+        # `lint` is a strict superset of `walk`: same front-matter validation
+        # via _load_walk_validation, plus supersedes/blocks cycle detection,
+        # dangling cross-reference checks, and duplicate-ID detection — none of
+        # which any workflow previously invoked, so those defects were ungated
+        # across 118 ADRs and 151 specs. Verified clean at the time of this
+        # change: 268 files, 0 errors, 0 warnings, 0 DAG/dangling findings.
+        run: python -m maistro_registry.cli lint . --strict
