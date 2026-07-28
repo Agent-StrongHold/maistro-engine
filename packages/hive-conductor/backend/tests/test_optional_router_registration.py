@@ -25,7 +25,12 @@ def test_optional_router_is_mounted_with_its_prefix(monkeypatch: pytest.MonkeyPa
     main._include_optional_router(app, "routes.example", prefix="/v1/example")
 
     importer.assert_called_once_with("routes.example")
-    assert "/v1/example/status" in {route.path for route in app.routes}
+    # Assert the public contract rather than FastAPI's private route storage.
+    # FastAPI 0.135+ keeps included routers as lazy ``_IncludedRouter`` objects
+    # without a ``path`` attribute, while the version in the uv workspace
+    # eagerly flattens them.  CI installs the conductor requirements directly,
+    # so this test must be valid against both supported representations.
+    assert "/v1/example/status" in app.openapi()["paths"]
 
 
 @pytest.mark.parametrize("module_name", ["routes.canvas", "routes.pm_fleet_v2"])
