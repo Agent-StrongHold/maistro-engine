@@ -126,7 +126,7 @@ class TestEvolutionCycle:
         for i in range(6):
             population.add(_genome(f"s{i}"))
 
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity="stub")
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=10,
@@ -149,7 +149,7 @@ class TestEvolutionCycle:
             g.fitness_score = float(i) * 10
             population.add(g)
 
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity="stub")
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=6,
@@ -173,7 +173,7 @@ class TestEvolutionCycle:
         for i in range(3):
             population.add(_genome(f"fill{i}"))
 
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity="stub")
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=5,
@@ -191,11 +191,11 @@ class TestEvolutionCycle:
 
 class TestEvalHarness:
     def test_stub_harness(self):
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity="stub")
         assert len(harness._benchmarks) == 8
 
     def test_real_harness(self):
-        harness = EvalHarness(use_real_benchmarks=True)
+        harness = EvalHarness(benchmark_fidelity="proxy")
         assert len(harness._benchmarks) == 8
         for name in [
             "ifeval",
@@ -211,7 +211,7 @@ class TestEvalHarness:
 
     @pytest.mark.asyncio
     async def test_evaluate_genome_stubs(self):
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness(benchmark_fidelity="stub")
         g = _genome("eval")
         results = await harness.evaluate_genome(g)
         assert len(results) == 8
@@ -221,10 +221,10 @@ class TestEvalHarness:
 
     @pytest.mark.asyncio
     async def test_evaluate_genome_real_no_llm(self):
-        harness = EvalHarness(use_real_benchmarks=True)
+        harness = EvalHarness(benchmark_fidelity="proxy")
         g = _genome("eval")
         results = await harness.evaluate_genome(g, benchmarks=["ifeval", "gaia"])
         assert len(results) == 2
         for r in results:
             assert 0.0 <= r.score <= 1.0
-            assert r.metadata.get("runner") == "real"
+            assert r.metadata.get("fidelity") == "proxy"

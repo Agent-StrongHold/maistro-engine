@@ -242,7 +242,7 @@ class TestRunBfcl:
         assert result.samples_evaluated == len(BFCL_SAMPLES)
         assert result.cost_usd == 0.0
         assert 0.1 <= result.score <= 0.9
-        assert result.metadata == {"total_samples": len(BFCL_SAMPLES), "runner": "real"}
+        assert result.metadata == {"total_samples": len(BFCL_SAMPLES), "fidelity": "proxy"}
 
     async def test_llm_call_scores_via_function_call_match(self):
         genome = make_genome()

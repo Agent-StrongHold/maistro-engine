@@ -56,7 +56,7 @@ def _genome(name: str = "test", prompt: str = "test") -> PipelineGenome:
 
 
 _FAILURE_METADATA = {
-    "runner": "real",
+    "fidelity": "proxy",
     "failures": [
         {
             "instruction": "Reply in exactly two sentences.",
@@ -70,7 +70,7 @@ _FAILURE_METADATA = {
 
 def _keyed_harness() -> EvalHarness:
     """Harness whose ifeval score depends on the entry prompt content."""
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="stub")
 
     async def runner(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         prompt = genome.topology.nodes[0].system_prompt
@@ -160,7 +160,7 @@ class TestReflectiveImprove:
     async def test_stub_signal_never_accepted(self):
         g = _genome()
         g.eval_scores = {"ifeval": 0.4}
-        stub_harness = EvalHarness(use_real_benchmarks=False)
+        stub_harness = EvalHarness(benchmark_fidelity="stub")
         outcome = await reflective_improve(g, stub_harness, _llm_improved)
         assert outcome is not None
         assert outcome.accepted is False

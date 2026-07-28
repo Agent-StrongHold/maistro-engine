@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +16,8 @@ from .population import IslandPopulation, PopulationStore, migrate_islands
 from .reflect import reflective_improve
 from .tournament import EloTournament
 from .types import PipelineGenome
+
+logger = logging.getLogger("maistro_evolve.cycle")
 
 # Hard, non-overridable ceilings on per-cycle resource/compute consumption.
 # These are RSI safety bounds (not tuning knobs): an evolution loop with no
@@ -390,6 +393,15 @@ class EvolutionCycle:
         config: EvolutionConfig | None = None,
     ) -> PopulationStore:
         cfg = config or EvolutionConfig()
+
+        if self.harness.fidelity != "real":
+            logger.warning(
+                "evolve_cycle_fidelity: this run's fitness signal is '%s' — %s. See SPEC-202.",
+                self.harness.fidelity,
+                "pure random noise, not an evaluation"
+                if self.harness.fidelity == "stub"
+                else "heuristic scoring against handcrafted samples, not the official benchmarks",
+            )
 
         await self._evaluate_unevaluated(population, cfg, llm_call)
 

@@ -107,13 +107,17 @@ class BenchmarkAdapter(Protocol):
 
 ## Acceptance criteria
 
-- [ ] Every `EvalResult` carries `metadata.fidelity ∈ {stub, proxy, real}`
-- [ ] `benchmark_fidelity` replaces `use_real_benchmarks`; default is `"proxy"`
-- [ ] Handcrafted runners registered under `PROXY_BENCHMARKS`
-- [ ] `fidelity="real"` with no adapter raises hard error (tested)
-- [ ] `_check_hard_gate` fails stub-scored genomes (tested)
+- [x] Every `EvalResult` carries `metadata.fidelity ∈ {stub, proxy, real}`
+- [x] `benchmark_fidelity` replaces `use_real_benchmarks`; default is `"proxy"`
+- [x] Handcrafted runners registered under `PROXY_BENCHMARKS`
+- [x] `fidelity="real"` with no adapter raises hard error (tested)
+- [ ] `_check_hard_gate` fails stub-scored genomes (tested) — still gates on raw
+      `eval_scores` floats only; fidelity isn't threaded through
+      `PipelineGenome` yet, so a stub score can still pass the threshold gate
+      today (`stub`/`proxy` distinction is enforced upstream of gating, in
+      `reflective_improve`/`hyper_mutate`'s stub-signal refusal — not here)
 - [ ] `compute_fitness(min_fidelity="real")` fails proxy-scored genomes (tested)
-- [ ] `run_cycle` logs WARNING banner naming run's fidelity
+- [x] `run_cycle` logs WARNING banner naming run's fidelity
 - [ ] `ifeval` adapter loads official dataset, reproduces reference score in CI
 - [ ] `bfcl` adapter passes self-conformance against Berkeley dataset
 - [ ] `ragas` adapter passes self-conformance with official ragas scoring

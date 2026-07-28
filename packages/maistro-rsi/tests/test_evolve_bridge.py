@@ -119,7 +119,7 @@ async def test_population_evolves_under_code_rsi(tmp_path) -> None:  # type: ign
         strong = any(c.isdigit() for c in comp.model)
         return (True, 0.9 if strong else 0.3, False)
 
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="stub")
     harness.register_benchmark("code_rsi", make_code_rsi_runner(fix_and_score, "x.py"))
     cfg = EvolutionConfig(
         target_benchmarks=["code_rsi"], population_size=6, eval_batch_size=6, tournament_size=2

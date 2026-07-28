@@ -339,7 +339,7 @@ class TestRunTauBench:
 
         assert result.benchmark == "tau_bench"
         assert result.samples_evaluated == 12
-        assert result.metadata == {"total_samples": 12, "runner": "real"}
+        assert result.metadata == {"total_samples": 12, "fidelity": "proxy"}
         assert result.cost_usd == 0.0
         assert 0.0 <= result.score <= 1.0
 
@@ -369,7 +369,7 @@ class TestRunTauBench:
 
         assert result.benchmark == "tau_bench"
         assert result.samples_evaluated == 12
-        assert result.metadata == {"total_samples": 12, "runner": "real"}
+        assert result.metadata == {"total_samples": 12, "fidelity": "proxy"}
         assert result.cost_usd > 0.0
         assert result.score > 0.0
 
@@ -414,4 +414,4 @@ class TestRunTauBench:
         # but no score is added for that sample.
         assert result.samples_evaluated == 1
         assert result.score == 0.0
-        assert result.metadata == {"total_samples": 1, "runner": "real"}
+        assert result.metadata == {"total_samples": 1, "fidelity": "proxy"}

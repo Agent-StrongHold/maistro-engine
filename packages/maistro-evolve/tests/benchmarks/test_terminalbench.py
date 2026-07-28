@@ -265,7 +265,7 @@ class TestRunTerminalbench:
         result = await run_terminalbench(genome, None)
         assert result.benchmark == "terminalbench"
         assert result.samples_evaluated == 12
-        assert result.metadata == {"total_samples": 12, "runner": "real"}
+        assert result.metadata == {"total_samples": 12, "fidelity": "proxy"}
         assert result.cost_usd == 0.0
 
     @pytest.mark.asyncio

@@ -45,7 +45,7 @@ async def test_run_tournament_battles_returns_early_with_fewer_than_two_genomes(
     population = PopulationStore()
     population.add(_genome("only"))
     cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
+        harness=EvalHarness(benchmark_fidelity="stub"), tournament=EloTournament()
     )
 
     await cycle._run_tournament_battles(population, EvolutionConfig())
@@ -62,7 +62,7 @@ async def test_run_tournament_battles_returns_early_with_fewer_than_two_scored_g
     population.add(g1)
     population.add(g2)
     cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
+        harness=EvalHarness(benchmark_fidelity="stub"), tournament=EloTournament()
     )
 
     await cycle._run_tournament_battles(population, EvolutionConfig())
@@ -75,7 +75,7 @@ def test_breed_island_does_nothing_for_empty_island() -> None:
 
     population = PopulationStore()
     cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
+        harness=EvalHarness(benchmark_fidelity="stub"), tournament=EloTournament()
     )
     island_pop = IslandPopulation(island_count=1)
 
@@ -91,7 +91,7 @@ async def test_self_improve_top_returns_early_when_no_positively_scored_genomes(
     g.fitness_score = None
     population.add(g)
     cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
+        harness=EvalHarness(benchmark_fidelity="stub"), tournament=EloTournament()
     )
 
     async def llm_call(*args: object, **kwargs: object) -> str:
@@ -114,7 +114,7 @@ async def test_run_cycle_uses_breeding_pool_path_when_tournament_has_few_rated_g
     # No genome carries eval_scores, so _run_tournament_battles' "scored < 2"
     # guard fires and total_genomes_rated stays at 0 — below the "< 2" gate in
     # run_cycle, forcing the get_breeding_pool fallback branch (lines 205-220).
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="stub")
     tournament = EloTournament()
     config = EvolutionConfig(
         population_size=8,
@@ -136,7 +136,7 @@ async def test_run_cycle_breeding_pool_fallback_with_fewer_than_two_candidates()
     population = PopulationStore()
     population.add(_genome("solo"))
 
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="stub")
     tournament = EloTournament()
     config = EvolutionConfig(
         population_size=4,

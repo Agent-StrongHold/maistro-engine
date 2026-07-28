@@ -129,7 +129,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--stub-benchmarks",
         action="store_true",
-        help="Score with stub (non-real) benchmarks instead of the real suite",
+        help=(
+            "Score with random stub benchmarks instead of the default proxy "
+            "suite (heuristic scoring against handcrafted samples — not the "
+            "official benchmarks despite sharing their names; see SPEC-202)"
+        ),
     )
     run.add_argument(
         "--open-prs", action="store_true", help="Push and open a PR if the attempt passes"
@@ -235,7 +239,7 @@ async def _run(args: argparse.Namespace) -> int:
         return 2
 
     config = _build_config(args)
-    harness = build_harness(use_real_benchmarks=not args.stub_benchmarks)
+    harness = build_harness(benchmark_fidelity="stub" if args.stub_benchmarks else "proxy")
     tournament = EloTournament()
     scheduler = QuotaBurnScheduler(InMemoryQuotaTracker())
     apply_patch = make_builders_apply_patch(

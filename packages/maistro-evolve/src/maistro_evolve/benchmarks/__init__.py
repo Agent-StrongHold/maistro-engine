@@ -9,7 +9,10 @@ from .swebench import run_swebench
 from .tau_bench import run_tau_bench
 from .terminalbench import run_terminalbench
 
-REAL_BENCHMARKS = {
+# Handcrafted heuristic/keyword-overlap runners against hardcoded samples —
+# NOT the official benchmark harnesses despite sharing their names (SPEC-202).
+# Real adapters (official dataset + official harness) are not yet implemented.
+PROXY_BENCHMARKS = {
     "ifeval": run_ifeval,
     "bfcl": run_bfcl,
     "swebench": run_swebench,

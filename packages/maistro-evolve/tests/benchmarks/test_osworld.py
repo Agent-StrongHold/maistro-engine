@@ -230,7 +230,7 @@ class TestRunOsworld:
         result = await run_osworld(genome, None)
         assert result.benchmark == "osworld"
         assert result.samples_evaluated == 10
-        assert result.metadata == {"total_samples": 10, "runner": "real"}
+        assert result.metadata == {"total_samples": 10, "fidelity": "proxy"}
         assert result.cost_usd == 0.0
 
     async def test_static_score_high_skips_judge(self, genome: Any) -> None:

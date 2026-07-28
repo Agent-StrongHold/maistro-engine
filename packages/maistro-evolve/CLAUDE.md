@@ -21,10 +21,33 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
 - `fitness.compute_fitness()` — weighted score: eval 65% / cost 15% / latency 10% / diversity 5% / elo 5%.
 - `EloTournament` — win/loss/elo per (genome, benchmark) pair.
 - `EvalHarness` — registers/runs benchmarks (ifeval, bfcl, swebench, tau_bench, gaia, ragas, terminalbench, osworld).
+  See **Benchmark fidelity** below before trusting any score from it.
 - `EvolutionCycle` — orchestrates evaluation → battles → culling → breeding → self-improve → diversity, driven by `EvolutionConfig`.
 - `reflective_improve()` (reflect.py) — GEPA/MIPROv2-inspired self-improve step: re-runs the weakest benchmark
   for failure traces, proposes K prompt candidates via grounded meta-prompts with randomized tips, re-evaluates
   each, and only an improving candidate enters the population — as a child genome, never overwriting the parent.
+
+## Benchmark fidelity — stability statement (SPEC-202)
+
+**None of `ifeval`, `bfcl`, `swebench`, `tau_bench`, `gaia`, `ragas`, `terminalbench`, `osworld` run the
+official benchmark harness.** They score model output against a small set of handcrafted samples
+(`benchmarks/datasets.py`) using keyword-overlap and line-change heuristics, sometimes backstopped by an
+LLM-as-judge call. The names match the industry-standard evals; the implementations do not. This is shipped,
+supported v1 behavior — not a bug — but treat scores accordingly.
+
+Three fidelity tiers, carried as `EvalResult.metadata["fidelity"]` and on `EvalHarness.fidelity`:
+
+| Tier | What it means | Trust for promotion |
+|------|---------------|---------------------|
+| `stub` | `random.uniform()` — no evaluation occurred | Never. `reflective_improve()` and `hyper_mutate()` both refuse to verify against it. |
+| `proxy` | Heuristic/keyword scoring against handcrafted samples — **what every benchmark above ships today** | Development only. This is the default (`EvalHarness(benchmark_fidelity="proxy")`). |
+| `real` | Official harness against the official dataset | Not implemented for any benchmark. `EvalHarness(benchmark_fidelity="real")` raises rather than silently downgrading. |
+
+`EvalHarness()` defaults to `"proxy"`; `EvolutionCycle.run_cycle()` logs a `WARNING` naming the tier on every
+call so a proxy-scored run is never mistaken for a real one. `PROXY_BENCHMARKS` (in `benchmarks/__init__.py`)
+is the honest name for the registry that `REAL_BENCHMARKS` used to be. Real adapters (official dataset +
+harness, `swebench`/`terminalbench`/`osworld` needing sandbox execution) are `docs/specs/SPEC-202` future work,
+not v1 scope.
 
 ## Gotchas
 
@@ -34,5 +57,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
   cannot breed.
 - **Long-running:** cycles batch eval jobs (`eval_batch_size`, default 5). The `benchmarks` module is optional —
   it falls back to stubs if import fails.
-- **Reflection refuses stub signal:** `reflective_improve()` returns `reason="stub_signal"` without proposing
-  candidates when the baseline eval carries `metadata.stub=True` (SPEC-202 honesty — never verify against noise).
+- **Reflection and hyper-mutation refuse stub signal:** `reflective_improve()` returns `reason="stub_signal"`
+  and `hyper_mutate()` likewise declines to verify against a baseline carrying `metadata.stub=True` (SPEC-202
+  honesty — never verify against noise). Neither currently gates on `proxy` vs `real` — only `stub` is refused
+  today; see **Benchmark fidelity** above.

@@ -214,7 +214,7 @@ class TestRunRagas:
         result = await run_ragas(genome, None)
         assert result.benchmark == "ragas"
         assert result.samples_evaluated == 12
-        assert result.metadata == {"total_samples": 12, "runner": "real"}
+        assert result.metadata == {"total_samples": 12, "fidelity": "proxy"}
         assert result.cost_usd == 0.0
         assert 0.0 <= result.score <= 1.0
 

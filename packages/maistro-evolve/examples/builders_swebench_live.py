@@ -310,7 +310,7 @@ def show(population: PopulationStore, title: str) -> None:
 
 async def main() -> None:
     t0 = time.monotonic()
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="stub")
     harness.register_benchmark("swebench", run_swebench_builders)
     cycle = EvolutionCycle(harness=harness, tournament=EloTournament())
     config = EvolutionConfig(

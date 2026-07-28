@@ -88,7 +88,7 @@ class _EvolutionService:
             self_improve=True,
             self_improve_top_n=3,
         )
-        harness = EvalHarness(use_real_benchmarks=True)
+        harness = EvalHarness(benchmark_fidelity="proxy")
 
         cycle = EvolutionCycle(harness=harness, tournament=self._tournament)
         await cycle.run_cycle(

@@ -96,7 +96,7 @@ class TestRunGaia:
 
         assert result.benchmark == "gaia"
         assert result.samples_evaluated == 15
-        assert result.metadata == {"total_samples": 15, "runner": "real"}
+        assert result.metadata == {"total_samples": 15, "fidelity": "proxy"}
         assert 0.1 <= result.score <= 0.95
         assert result.cost_usd == 0.0
 

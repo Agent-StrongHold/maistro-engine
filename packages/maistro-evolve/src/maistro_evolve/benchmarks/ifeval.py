@@ -175,7 +175,7 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real", "failures": failures},
+        metadata={"total_samples": samples, "fidelity": "proxy", "failures": failures},
     )
 
 

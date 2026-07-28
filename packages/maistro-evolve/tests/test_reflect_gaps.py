@@ -99,7 +99,7 @@ async def test_propose_candidates_skips_candidate_when_llm_call_raises() -> None
 @pytest.mark.asyncio
 async def test_reflective_improve_returns_none_when_baseline_evaluation_yields_no_results() -> None:
     genome = _genome([_node("q1")], entry_node="q1", eval_scores={"ifeval": 0.4})
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="stub")
 
     async def empty_runner(g: PipelineGenome, llm_call: Any) -> EvalResult:
         raise AssertionError("not reached: evaluate_genome filters unregistered benchmarks")
@@ -120,17 +120,17 @@ async def test_reflective_improve_returns_none_when_baseline_evaluation_yields_n
 @pytest.mark.asyncio
 async def test_reflective_improve_skips_candidate_with_no_evaluation_result() -> None:
     genome = _genome([_node("q1")], entry_node="q1", eval_scores={"ifeval": 0.4})
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="stub")
     calls = {"count": 0}
 
     async def runner(g: PipelineGenome, llm_call: Any) -> EvalResult:
         calls["count"] += 1
-        # Baseline rollout (real, non-stub score) deregisters the benchmark
+        # Baseline rollout (proxy, non-stub score) deregisters the benchmark
         # immediately after returning, so the candidate's later call to
         # evaluate_genome finds no runner for "ifeval" and comes back empty,
         # hitting the "if not results: continue" branch (line 243).
         harness._benchmarks.pop("ifeval", None)
-        return EvalResult(benchmark="ifeval", score=0.4, metadata={"runner": "real"})
+        return EvalResult(benchmark="ifeval", score=0.4, metadata={"fidelity": "proxy"})
 
     harness.register_benchmark("ifeval", runner)
 

@@ -283,7 +283,7 @@ class TestRunSwebench:
         result = await run_swebench(genome, None)
         assert result.benchmark == "swebench"
         assert result.samples_evaluated == 10
-        assert result.metadata == {"total_samples": 10, "runner": "real"}
+        assert result.metadata == {"total_samples": 10, "fidelity": "proxy"}
         assert result.cost_usd == 0.0
         assert 0.0 <= result.score <= 1.0
 
