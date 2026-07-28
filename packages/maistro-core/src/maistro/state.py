@@ -109,8 +109,13 @@ class State:
         ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         tmp_plain = backup_dir / f"state-{ts}.db.tmp"
 
-        self._writer.execute("PRAGMA wal_checkpoint(FULL)")
-        shutil.copy2(str(self._db_path), str(tmp_plain))
+        # Checkpoint and copy under the lock. A background commit landing
+        # between the two would put rows into the WAL after it was flushed, so
+        # the copied file would be a torn snapshot missing writes that the
+        # caller had already been told succeeded.
+        with self._writer_lock:
+            self._writer.execute("PRAGMA wal_checkpoint(FULL)")
+            shutil.copy2(str(self._db_path), str(tmp_plain))
 
         encrypted_name = f"state-{ts}.db.age"
         encrypted_path = backup_dir / encrypted_name
@@ -138,37 +143,79 @@ class State:
             self.open_writer()
         assert self._writer is not None
 
-        existing = self._writer.execute(
-            "SELECT 1 FROM schema_migrations WHERE name = ?", (name,)
-        ).fetchone()
-        if existing:
-            return
+        # The whole savepoint, under the lock. Without it the writer thread can
+        # commit a queued transaction on this same connection while we sit
+        # between SAVEPOINT and RELEASE — which commits the migration's partial
+        # DDL too, so a failed migration leaves a half-applied schema even
+        # though MigrationFailedError states the database is unchanged. The
+        # existence check is inside the lock as well, so two callers racing the
+        # same migration cannot both pass it.
+        with self._writer_lock:
+            existing = self._writer.execute(
+                "SELECT 1 FROM schema_migrations WHERE name = ?", (name,)
+            ).fetchone()
+            if existing:
+                return
 
-        try:
-            self._writer.execute("SAVEPOINT migration")
-            for stmt in up.split(";"):
-                stmt = stmt.strip()
-                if stmt:
-                    self._writer.execute(stmt)
-            self._writer.execute(
-                "INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)",
-                (name, datetime.now(UTC).isoformat()),
-            )
-            self._writer.execute("RELEASE migration")
-            self._writer.commit()
-        except Exception as e:
-            self._writer.execute("ROLLBACK TO migration")
-            self._writer.execute("RELEASE migration")
-            raise MigrationFailedError(f"MIGRATION_FAILED: {name}: {e}") from None
+            try:
+                self._writer.execute("SAVEPOINT migration")
+                for stmt in up.split(";"):
+                    stmt = stmt.strip()
+                    if stmt:
+                        self._writer.execute(stmt)
+                self._writer.execute(
+                    "INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)",
+                    (name, datetime.now(UTC).isoformat()),
+                )
+                self._writer.execute("RELEASE migration")
+                self._writer.commit()
+            except Exception as e:
+                self._writer.execute("ROLLBACK TO migration")
+                self._writer.execute("RELEASE migration")
+                raise MigrationFailedError(f"MIGRATION_FAILED: {name}: {e}") from None
 
-    def close(self) -> None:
-        self._shutdown.set()
+    def close(self, timeout: float = 5.0) -> None:
+        """Drain queued writes, then stop the writer thread.
+
+        Order matters and used to be wrong: `_shutdown` was set *before* the
+        sentinel was enqueued, and `_writer_loop`'s guard is
+        `while not self._shutdown.is_set()` — so the loop exited at its next
+        check and everything still queued was silently dropped. Because
+        `PersistedStore.put`/`delete` are fire-and-forget, callers got no error
+        and had every reason to believe their writes had landed.
+
+        Draining first makes `close()` mean "the writes you handed me are on
+        disk". A drain that times out is logged rather than swallowed.
+        """
         if self._writer_thread is not None:
-            self._tx_queue.put(lambda conn: None)
-            self._writer_thread.join(timeout=5.0)
+            drained = threading.Event()
+            try:
+                self._tx_queue.put(lambda conn: drained.set(), timeout=timeout)
+            except queue.Full:
+                logger.error("State.close: queue full, cannot drain; writes may be lost")
+            else:
+                if not drained.wait(timeout=timeout):
+                    logger.error(
+                        "State.close: drain timed out after %.1fs; %d transaction(s) may be lost",
+                        timeout,
+                        self._tx_queue.qsize(),
+                    )
+
+            self._shutdown.set()
+            self._writer_thread.join(timeout=timeout)
+            if self._writer_thread.is_alive():
+                logger.error("State.close: writer thread did not exit within %.1fs", timeout)
+            self._writer_thread = None
+        else:
+            self._shutdown.set()
+
         if self._writer is not None:
-            self._writer.close()
-            self._writer = None
+            # Take the lock: a migration or backup on another thread may still
+            # be mid-statement on this same connection.
+            with self._writer_lock:
+                if self._writer is not None:
+                    self._writer.close()
+                    self._writer = None
 
     def _writer_loop(self) -> None:
         assert self._writer is not None
@@ -177,13 +224,23 @@ class State:
                 fn = self._tx_queue.get(timeout=0.1)
             except queue.Empty:
                 continue
-            try:
-                fn(self._writer)
-                self._writer.commit()
-            except Exception:
-                logger.exception("State transaction failed")
-                with contextlib.suppress(Exception):
-                    self._writer.rollback()
+            # `check_same_thread=False` means this thread and any caller of
+            # run_migration()/backup() share one connection. Committing here
+            # while run_migration is between SAVEPOINT and RELEASE would commit
+            # the migration's partial work — leaving a half-applied schema
+            # despite MigrationFailedError promising the database is unchanged.
+            # `_writer_lock` existed for exactly this and was never acquired
+            # anywhere in the file.
+            with self._writer_lock:
+                if self._writer is None:  # closed underneath us
+                    return
+                try:
+                    fn(self._writer)
+                    self._writer.commit()
+                except Exception:
+                    logger.exception("State transaction failed")
+                    with contextlib.suppress(Exception):
+                        self._writer.rollback()
 
 
 _KV_MIGRATION = (

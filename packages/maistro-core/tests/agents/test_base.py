@@ -913,3 +913,143 @@ class TestHandleFinalResponse:
         assert isinstance(result, AgentResponse)
         assert result.content == ""
         assert result.agent_name == "tester"
+
+
+class TestProviderFailureHandling:
+    """Review finding H9: unhandled provider exceptions skipped cleanup.
+
+    `_run_strategy` caught only (ValueError, RuntimeError, TimeoutError,
+    OSError), and `handle()` had no try/finally at all. The shipped LLM client
+    raises bare `httpx` errors via `raise_for_status()`, and
+    `httpx.HTTPStatusError`, `AgentError`, `LLMProviderError` and
+    `CircuitOpenError` all derive from `Exception` directly — so the single most
+    likely real failure, a provider outage, was the one case that bypassed
+    `trace.end()` and `_persist_run` entirely.
+    """
+
+    async def test_arbitrary_provider_exception_is_handled(self) -> None:
+        """Fails without the fix: the exception propagated out of handle()."""
+
+        class _ProviderDown(Exception):
+            """Stands in for httpx.HTTPStatusError — derives from Exception."""
+
+        strategy = _RecordingStrategy(raises=_ProviderDown("503 from upstream"))
+        agent = _make_agent(strategy)
+
+        result = await agent.handle(messages=[{"role": "user", "content": "x"}], auth=_Auth())
+
+        assert isinstance(result, AgentResponse)
+        assert "internal error" in result.content.lower()
+
+    async def test_provider_exception_still_ends_the_trace(self) -> None:
+        """The trace must be closed on the failure path too.
+
+        A trace left open is not merely untidy: it is a span that never
+        reports, so the outage is invisible in telemetry precisely when it
+        matters most.
+        """
+
+        class _ProviderDown(Exception):
+            pass
+
+        tracer = _FakeTracer()
+        agent = _make_agent(_RecordingStrategy(raises=_ProviderDown("boom")), tracer=tracer)
+
+        await agent.handle(messages=[{"role": "user", "content": "x"}], auth=_Auth())
+
+        assert tracer.traces[0].ended is True
+
+    async def test_trace_is_ended_exactly_once_on_the_happy_path(self) -> None:
+        """Guard against the finally double-ending what _finalize_trace ended.
+
+        `_finalize_trace` used to call `trace.end()` itself; ownership moved to
+        `handle()`'s finally, and this pins that there is exactly one owner.
+        """
+
+        class _CountingTrace(_FakeTrace):
+            def __init__(self) -> None:
+                super().__init__()
+                self.end_calls = 0
+
+            def end(self) -> None:
+                self.end_calls += 1
+                super().end()
+
+        class _CountingTracer(_FakeTracer):
+            def create_trace(self, **_kwargs: Any) -> _CountingTrace:
+                trace = _CountingTrace()
+                self.traces.append(trace)
+                return trace
+
+        tracer = _CountingTracer()
+        agent = _make_agent(
+            _RecordingStrategy(ReasoningResult(response="hi", done=True)), tracer=tracer
+        )
+
+        await agent.handle(messages=[{"role": "user", "content": "ok"}], auth=_Auth())
+
+        assert tracer.traces[0].end_calls == 1
+
+    async def test_trace_end_failure_does_not_mask_the_response(self) -> None:
+        """Telemetry must never turn a successful run into an error."""
+
+        class _ExplodingTrace(_FakeTrace):
+            def end(self) -> None:
+                raise RuntimeError("langfuse unreachable")
+
+        class _ExplodingTracer(_FakeTracer):
+            def create_trace(self, **_kwargs: Any) -> _ExplodingTrace:
+                trace = _ExplodingTrace()
+                self.traces.append(trace)
+                return trace
+
+        agent = _make_agent(
+            _RecordingStrategy(ReasoningResult(response="hi", done=True)),
+            tracer=_ExplodingTracer(),
+        )
+
+        result = await agent.handle(messages=[{"role": "user", "content": "ok"}], auth=_Auth())
+
+        assert result.content == "hi"
+
+
+class TestClassifiedTaskTypeFromIntent:
+    """Review finding H4: `intent` was declared and never read."""
+
+    async def test_intent_supplies_the_task_type(self) -> None:
+        from dataclasses import dataclass as _dc
+
+        @_dc
+        class _Intent:
+            task_type: str
+
+        strategy = _RecordingStrategy(ReasoningResult(response="ok", done=True))
+        agent = _make_agent(strategy)
+
+        await agent.handle(
+            messages=[{"role": "user", "content": "x"}],
+            auth=_Auth(),
+            intent=_Intent(task_type="code"),
+        )
+
+        assert strategy.calls[0].get("classified_task_type") == "code"
+
+    async def test_explicit_classified_task_type_wins_over_intent(self) -> None:
+        """The delegation path passes it explicitly and has no Intent."""
+        from dataclasses import dataclass as _dc
+
+        @_dc
+        class _Intent:
+            task_type: str
+
+        strategy = _RecordingStrategy(ReasoningResult(response="ok", done=True))
+        agent = _make_agent(strategy)
+
+        await agent.handle(
+            messages=[{"role": "user", "content": "x"}],
+            auth=_Auth(),
+            intent=_Intent(task_type="code"),
+            classified_task_type="chat",
+        )
+
+        assert strategy.calls[0].get("classified_task_type") == "chat"
