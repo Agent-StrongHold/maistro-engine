@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react";
+import { SetupChecklist } from "../components/SetupChecklist";
 import { TemplatePicker } from "../components/TemplatePicker";
 
 const JIRA_BASE = (import.meta as any).env?.VITE_JIRA_BASE_URL || "";
@@ -1248,6 +1249,8 @@ export default function Dashboard() {
           }} style={{ padding: "4px 10px", borderRadius: 12, border: `1px solid rgba(99,102,241,0.3)`, background: "rgba(99,102,241,0.08)", color: "#a78bfa", fontSize: "0.63rem", cursor: "pointer" }}>✨ Suggest Layout</button>
         </div>
       </div>
+
+      <SetupChecklist />
 
       <ChatBar widgets={widgets} onWidgetsChange={(w) => update(w)} editing={editing} tabs={tabs} activeIdx={activeIdx} />
 

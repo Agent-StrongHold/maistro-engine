@@ -204,6 +204,30 @@ def _build_catalog() -> list[dict[str, Any]]:
 
     return [
         {
+            "id": "llm_provider",
+            "title": "Add + activate an LLM provider key (admin)",
+            "description": (
+                "Store a provider API key in the encrypted vault and activate it — "
+                "activation runs a one-token test completion, your first model call. "
+                "Do this from the admin account."
+            ),
+            "link_label": "Open Credentials",
+            "link_href": "/credentials",
+            "category": "setup",
+        },
+        {
+            "id": "first_chat",
+            "title": "Send your first chat (daily-driver account)",
+            "description": (
+                "Switch to your daily-driver login — the admin account is blocked "
+                "from chat by design — and ask the conductor to build a small "
+                "agent DAG. That prompt is the guided end of the install tutorial."
+            ),
+            "link_label": "Open Chat",
+            "link_href": "/chat",
+            "category": "setup",
+        },
+        {
             "id": "default_model",
             "title": "Pick your default model",
             "description": (
@@ -276,10 +300,32 @@ def _check_complete(item_id: str, user_id: str) -> bool:
         return _default_model_picked()
     if item_id == "interview":
         return _interview_complete(user_id)
+    if item_id == "llm_provider":
+        return _llm_provider_activated()
+    if item_id == "first_chat":
+        return _has_chat_session(user_id)
     if item_id.startswith("cred_"):
         provider_id = item_id[len("cred_") :]
         return _has_credential(user_id, provider_id)
     return False
+
+
+def _llm_provider_activated() -> bool:
+    try:
+        from routes.providers import any_provider_activated
+
+        return any_provider_activated()
+    except Exception:
+        return False
+
+
+def _has_chat_session(user_id: str) -> bool:
+    try:
+        import stores
+
+        return any(getattr(s, "user_id", None) == user_id for s in stores.chat_sessions.values())
+    except Exception:
+        return False
 
 
 @router.get("")

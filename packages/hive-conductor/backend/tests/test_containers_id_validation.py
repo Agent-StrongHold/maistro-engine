@@ -23,9 +23,13 @@ from fastapi.testclient import TestClient
 _REJECTED = [
     "..",
     ".",
-    "%2e%2e",
+    # Reaches the validator as a literal "?" / "#": uvicorn percent-decodes the
+    # path before Starlette routes it, so these are what the handler actually
+    # sees for `/v1/containers/x%3Fall%3D1`.
     "x?all=1&y=",
     "abc#frag",
+    "a%2Fb",
+    "user:pass@host",
     "-leading-dash",
     "_leading-underscore",
     "has space",

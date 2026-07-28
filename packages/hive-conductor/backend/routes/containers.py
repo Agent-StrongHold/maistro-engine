@@ -22,16 +22,24 @@ logger = logging.getLogger(__name__)
 DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
 
 
-# Docker's own identifier grammar: a 12-64 char hex ID, or a name starting with
-# an alphanumeric. Nothing else may reach the URL builders below, because every
+# Docker identifiers: a leading alphanumeric followed by alphanumerics, "_",
+# "." or "-". This single alternative already covers hex ids, since a 12-64 char
+# hex string is itself a valid name — an earlier version spelled the hex form out
+# as a separate branch, which was dead and made the grammar look stricter than it
+# is. Short id prefixes are accepted, and that is correct: the Docker API takes
+# them.
+#
+# Nothing outside this set may reach the URL builders below, because every
 # handler interpolates the path parameter straight into a Docker Engine API URL
-# and the daemon speaks that API over a socket with no auth of its own. A value
-# containing "/", ".." or a query separator is not a container reference — it is
-# a request for a *different* daemon endpoint (e.g. an id of
-# "x/json?all=1#" or "../../images/json"), so the interpolation is the whole
-# attack surface. Validate at the boundary rather than escaping per call site:
-# there are six of them and a seventh will be added without the escape.
-_CONTAINER_ID_RE = re.compile(r"\A(?:[0-9a-fA-F]{12,64}|[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127})\Z")
+# and the daemon speaks that API over a socket with no auth of its own. The
+# excluded characters are the whole point: "/", "?", "#", "%", ":" and "@" turn
+# a container reference into a request for a *different* daemon endpoint. Note
+# uvicorn percent-decodes the path before routing, so "%3F" arrives as a literal
+# "?" here — `/v1/containers/x%3Fall%3D1` was a real query-injection vector, not
+# just the ".." traversal the original comment described. Validate once at the
+# boundary rather than escaping per call site: there are six of them, and a
+# seventh will be added without the escape.
+_CONTAINER_ID_RE = re.compile(r"\A[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}\Z")
 
 
 def _validate_container_id(container_id: str) -> str:

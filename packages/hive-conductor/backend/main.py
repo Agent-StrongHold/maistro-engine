@@ -38,6 +38,7 @@ from routes import (
     missions,
     profile,
     program,
+    providers,
     quotas,
     schedules,
     setup,
@@ -185,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router, prefix="/v1/auth")
     app.include_router(credentials.router, prefix="/v1/credentials")
     app.include_router(install.router, prefix="/v1/install")
+    app.include_router(providers.router, prefix="/v1/providers")
     app.include_router(chat.router, prefix="/v1/chat")
     app.include_router(missions.router, prefix="/v1/tasks")
     app.include_router(schedules.router, prefix="/v1/schedules")

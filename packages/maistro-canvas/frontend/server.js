@@ -356,8 +356,25 @@ app.post("/api/export", async (req, res) => {
   }
   activeExports += 1;
   let released = false;
-
   let tmpDir;
+
+  const release = () => {
+    if (released) return;
+    released = true;
+    activeExports -= 1;
+    if (tmpDir) rmdir(tmpDir, { recursive: true }).catch(() => {});
+  };
+
+  // Registered BEFORE the first await, and that ordering is the whole point.
+  // The render below takes as long as a PDF takes; if the client disconnects
+  // during it, `res` emits 'close' while we are still suspended. Attaching the
+  // listener afterwards means that event has already fired and nothing ever
+  // decrements the counter — two aborted exports would wedge this endpoint at
+  // 503 until the process restarted, which is exactly the denial the cap exists
+  // to prevent. 'close' also fires on normal completion; `release` is
+  // idempotent, so the double-notify is harmless.
+  res.on("close", release);
+
   try {
     tmpDir = await mkdtemp(join(tmpdir(), "canvas-export-"));
     const payload = JSON.stringify({ mode: mode || "interior", title, author, product_id, pages, front_cover, back_cover, output_dir: tmpDir });
@@ -388,22 +405,12 @@ app.post("/api/export", async (req, res) => {
     // The slot is held until the response finishes streaming, not until the
     // handler returns — the python process is done by then but the file is
     // still being read, and releasing early would let the cap be exceeded.
-    const release = () => {
-      if (released) return;
-      released = true;
-      activeExports -= 1;
-      rmdir(tmpDir, { recursive: true }).catch(() => {});
-    };
-    stream.pipe(res);
-    stream.on("end", release);
+    // 'close' (not 'end') so a stream torn down mid-pipe still releases.
+    stream.on("close", release);
     stream.on("error", release);
-    res.on("close", release);
+    stream.pipe(res);
   } catch (e) {
-    if (!released) {
-      released = true;
-      activeExports -= 1;
-    }
-    if (tmpDir) rmdir(tmpDir, { recursive: true }).catch(() => {});
+    release();
     console.error("Export error:", e);
     res.status(500).json({ error: typeof e === "string" ? e : e.message });
   }
