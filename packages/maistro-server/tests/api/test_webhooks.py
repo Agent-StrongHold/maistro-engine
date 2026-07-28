@@ -132,7 +132,7 @@ class TestCIWebhookAuth:
         assert response.status_code == 200
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 class TestUnconfiguredWebhooksFailClosed:
     """Review finding C5: an unconfigured receiver must refuse, not accept.

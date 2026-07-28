@@ -6,6 +6,7 @@ handle() runs: Warden scan -> build context -> strategy.reason() -> post-turn.
 
 from __future__ import annotations
 
+import logging as _logging
 from typing import TYPE_CHECKING, Any
 
 from maistro.types.agent import AgentResponse
@@ -223,6 +224,15 @@ class Agent:
         classified_task_type: str = "",
         _delegation_depth: int = 0,
     ) -> AgentResponse:
+        # `intent` was accepted and never read — line 219 was the only mention of
+        # the name in this file. Callers that classify a request naturally pass
+        # the Intent rather than restating its task_type, so honour it as the
+        # fallback source instead of leaving the parameter inert. An explicit
+        # `classified_task_type` still wins: the delegation path below passes it
+        # deliberately and has no Intent to hand down.
+        if not classified_task_type and intent is not None:
+            classified_task_type = getattr(intent, "task_type", "") or ""
+
         trace = (
             self._tracer.create_trace(
                 user_id=getattr(auth, "user_id", ""),
@@ -234,13 +244,68 @@ class Agent:
             else None
         )
 
+        try:
+            return await self._handle_traced(
+                messages,
+                auth,
+                trace=trace,
+                session_id=session_id,
+                model_override=model_override,
+                status_callback=status_callback,
+                classified_task_type=classified_task_type,
+                _delegation_depth=_delegation_depth,
+            )
+        except Exception as exc:
+            # `handle()` had no try/finally at all, so any exception escaping the
+            # body skipped `trace.end()` and `_persist_run` outright — the run
+            # simply vanished, and the caller got a raw traceback string via
+            # `conduit.route_request`'s catch, which by then was too late to
+            # clean anything up. Provider outages are the common case (see the
+            # widened catch in `_run_strategy`), so "the LLM is down" used to
+            # mean "no trace, no persisted outcome, no learning".
+            import logging as _log
+
+            _log.getLogger("maistro.agent").exception(
+                "handle() failed: agent=%s error=%s", self.identity.name, type(exc).__name__
+            )
+            if trace:
+                trace.score("handle_error", 0.0, f"{type(exc).__name__}: {exc}")
+            # `failed=True` is load-bearing, not decoration. Converting the
+            # exception into a response is what lets the finally below run in
+            # order, but a caller that branches on success would otherwise read
+            # this as an answer — the A2A broker maps "no exception" straight to
+            # TaskStatus.COMPLETED, so a failed delegation reported success.
+            return AgentResponse.error_response(
+                "I encountered an internal error. Please try again.",
+                agent_name=self.identity.name,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        finally:
+            if trace:
+                try:
+                    trace.end()
+                except Exception:  # pragma: no cover - telemetry must never mask a result
+                    _logging.getLogger("maistro.agent").warning("trace.end() failed", exc_info=True)
+
+    async def _handle_traced(
+        self,
+        messages: list[dict[str, Any]],
+        auth: Any,
+        *,
+        trace: Any,
+        session_id: str | None,
+        model_override: str | None,
+        status_callback: Any,
+        classified_task_type: str,
+        _delegation_depth: int,
+    ) -> AgentResponse:
+        """The body of `handle()`. Never ends `trace` — the caller owns that."""
         user_text = _extract_user_text(messages)
 
         warden_verdict = await self._run_warden(user_text, trace)
         if not warden_verdict.clean:
             if trace:
                 trace.score("blocked", 1.0, comment=f"flags: {warden_verdict.flags}")
-                trace.end()
             return AgentResponse.blocked_response(
                 f"Blocked by Warden: {', '.join(warden_verdict.flags)}",
             )
@@ -270,9 +335,13 @@ class Agent:
             context_messages, model, tool_defs, strategy_kwargs, trace
         )
         if result is None:
-            return AgentResponse(
-                content="I encountered an internal error. Please try again.",
+            # `_run_strategy` already caught and logged; mark it failed so this
+            # is distinguishable from an answer by anything that branches on
+            # success rather than on the content string.
+            return AgentResponse.error_response(
+                "I encountered an internal error. Please try again.",
                 agent_name=self.identity.name,
+                error="strategy failed",
             )
 
         # Delegation: the strategy decided to route to a sub-agent. Resolve the
@@ -485,7 +554,17 @@ class Agent:
                     }
                 )
             return result
-        except (ValueError, RuntimeError, TimeoutError, OSError) as exc:
+        # Deliberately `Exception`, not the old
+        # (ValueError, RuntimeError, TimeoutError, OSError) tuple. The most
+        # likely real failure here is a provider outage, and none of the errors
+        # that represents are in that tuple: the shipped LLM client raises bare
+        # `httpx` errors via `raise_for_status()`, and `httpx.HTTPStatusError`,
+        # `httpx.TransportError`, `AgentError`, `LLMProviderError` and
+        # `CircuitOpenError` all derive from `Exception` directly. So the single
+        # most common way for this to fail was also the one way it was not
+        # handled. `BaseException` is still allowed through, so cancellation and
+        # KeyboardInterrupt propagate as they must.
+        except Exception as exc:
             import logging as _log
 
             _log.getLogger("maistro.agent").warning(
@@ -493,10 +572,10 @@ class Agent:
                 self.identity.name,
                 model,
                 type(exc).__name__,
+                exc_info=True,
             )
             if trace:
                 trace.score("strategy_error", 0.0, "Strategy raised an exception")
-                trace.end()
             return None
 
     async def _extract_rca(
@@ -631,7 +710,12 @@ class Agent:
         session_history_count: int,
         injected_learning_ids: list[int],
     ) -> None:
-        """Attach summary metadata to the trace and end it."""
+        """Attach summary metadata to the trace.
+
+        Ending it is `handle()`'s job, in a `finally` — this used to end the
+        trace here, which meant the trace was only ever closed on the one path
+        that reached this call.
+        """
         tool_success_count = 0
         tool_fail_count = 0
         tools_used: list[str] = []
@@ -656,7 +740,6 @@ class Agent:
                 "learnings_injected": str(len(injected_learning_ids)),
             }
         )
-        trace.end()
 
     async def _delegate(
         self,
@@ -689,8 +772,9 @@ class Agent:
                 depth,
             )
             if trace:
+                # Score only. `handle()`'s finally owns the end; ending here too
+                # would double-close the trace it is still inside.
                 trace.score("delegation_depth_exceeded", 0.0, comment=target_name)
-                trace.end()
             return AgentResponse(
                 content="Delegation chain too deep; aborting.",
                 agent_name=self.identity.name,

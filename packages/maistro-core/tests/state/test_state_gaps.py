@@ -29,7 +29,9 @@ class Widget(BaseModel):
 class TestSubmitGuard:
     def test_submit_before_open_writer_raises(self, db_path: Path) -> None:
         state = State(db_path=str(db_path))
-        with pytest.raises(RuntimeError, match="open_writer must be called before submit"):
+        # Message widened when close() started refusing writes too — it now has
+        # to name both reasons the writer can be unavailable.
+        with pytest.raises(RuntimeError, match="call open_writer"):
             state.submit(lambda conn: None)
 
 

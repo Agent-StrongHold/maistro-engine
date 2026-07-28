@@ -674,6 +674,13 @@ def _wire_a2a_broker(agents: dict[str, Agent]) -> A2ABroker:
             auth=None,
             session_id=budget.trace_id,
         )
+        # LocalTransport maps "no exception" to TaskStatus.COMPLETED, so a
+        # failed run has to be re-raised here or a delegation that never ran
+        # would be recorded as a success carrying an apology string.
+        if response.failed:
+            raise A2AError(f"local agent '{task.to_agent}' failed: {response.error}")
+        if response.blocked:
+            raise A2AError(f"local agent '{task.to_agent}' blocked: {response.block_reason}")
         return response.content
 
     return A2ABroker(resolver=_AgentMapCardResolver(), local=LocalTransport(_invoke))

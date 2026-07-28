@@ -53,20 +53,20 @@ def _assert_denied(client: TestClient, path: str, **kwargs: object) -> None:
     )
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_task_stream_rejects_anonymous(anon_client: TestClient) -> None:
     _assert_denied(anon_client, "/v1/ws/tasks/any-task")
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_dag_run_stream_rejects_anonymous(anon_client: TestClient) -> None:
     """The higher-stakes of the two: this socket runs the DAG."""
     _assert_denied(anon_client, "/v1/ws/dags/whatever/run")
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_dag_run_stream_rejects_authenticated_user_without_permission(
     authed_client: TestClient,
@@ -81,7 +81,7 @@ def test_dag_run_stream_rejects_authenticated_user_without_permission(
     _assert_denied(authed_client, "/v1/ws/dags/whatever/run")
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_cross_site_origin_is_rejected(authed_client: TestClient) -> None:
     """Cross-site WebSocket hijacking.
@@ -98,7 +98,7 @@ def test_cross_site_origin_is_rejected(authed_client: TestClient) -> None:
     )
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_task_stream_accepts_authenticated_user(authed_client: TestClient) -> None:
     """Control: the socket must still work for a legitimate caller.
@@ -118,7 +118,7 @@ def test_task_stream_accepts_authenticated_user(authed_client: TestClient) -> No
     assert exc.value.code == NORMAL_CLOSURE
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_dag_run_stream_accepts_admin(admin_client: TestClient) -> None:
     """Second control, for the gate the other tests only ever see deny.
@@ -135,7 +135,7 @@ def test_dag_run_stream_accepts_admin(admin_client: TestClient) -> None:
     assert exc.value.code == NORMAL_CLOSURE
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_same_origin_is_allowed(authed_client: TestClient) -> None:
     """A same-origin page must not be rejected.
