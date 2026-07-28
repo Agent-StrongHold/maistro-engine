@@ -31,7 +31,7 @@ from maistro.security.gate import Gate
 from maistro.security.warden.detector import Warden
 from maistro.sessions.store import InMemorySessionStore
 from maistro.types.config import AgentConfig
-from maistro.types.errors import ConfigError
+from maistro.types.errors import AgentError, ConfigError
 
 if TYPE_CHECKING:
     import httpx
@@ -182,6 +182,35 @@ class Container:
         session_id: str | None = None,
         intent_hint: str = "",
     ) -> dict[str, Any]:
+        # An armed security control that cannot run is worse than an unarmed
+        # one: the operator believes it is enforcing. Both controls this
+        # container can arm are keyed on the caller's identity --
+        # Gate.process_input derives user_id from auth and skips every strike
+        # path when it is empty (security/gate.py:62,64,102), and the ReAct and
+        # Artificer strategies guard Sentinel.pre_call with `auth is not None`
+        # (agents/strategies/react.py:252). So with auth=None an armed
+        # permission table authorizes everything and an armed strike tracker
+        # records nothing, silently.
+        #
+        # Refusing here costs nothing at the shipped defaults (empty table, no
+        # tracker -> this never fires) and converts a silent no-op into an
+        # unmissable error for anyone who opts in. That is the same defect
+        # class this container's permission table was fixed for; it should not
+        # reappear one level up.
+        if auth is None and (self.sentinel._permission_table or self.strike_tracker):
+            armed = []
+            if self.sentinel._permission_table:
+                armed.append("sentinel permission table")
+            if self.strike_tracker:
+                armed.append("strike tracking")
+            msg = (
+                f"route_request() called without auth while {' and '.join(armed)} "
+                f"{'are' if len(armed) > 1 else 'is'} armed. These controls key on "
+                "the caller identity, so they would silently enforce nothing. "
+                "Pass an AuthContext, or disable them in config.security."
+            )
+            raise AgentError(msg)
+
         result: dict[str, Any] = await self.conduit.route_request(
             messages,
             auth=auth,

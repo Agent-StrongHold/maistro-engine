@@ -11,6 +11,8 @@ missing wiring in the first place.
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 
 from maistro.container import Container, create_container
@@ -18,6 +20,7 @@ from maistro.security._types import AuthContext, WardenVerdict
 from maistro.security.patterns import DANGEROUS_TOOL_NAMES
 from maistro.security.sentinel.authz_types import Principal
 from maistro.security.strikes import InMemoryStrikeTracker
+from maistro.types.errors import AgentError
 from maistro.skills.import_pipeline import ImportSource, SkillImportRequest
 from maistro.types.config import AgentConfig, SecurityConfig
 
@@ -268,3 +271,48 @@ def test_test_harness_defaults_match_create_container() -> None:
     assert container.sentinel._permission_table == {}
     assert container.strike_tracker is None
     assert container.gate._strike_tracker is None
+
+
+# ---------------------------------------------------------------------------
+# Codex review of #270 (two P1s): both armed controls key on caller identity,
+# and the only production caller -- hive-conductor's bridge at
+# adapters/maistro_core.py:180-184 -- calls route_request() with no auth. So
+# arming either one would have enforced nothing, silently. route_request now
+# refuses that combination.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.contract("boundary")
+@pytest.mark.scope("integration")
+async def test_route_request_refuses_armed_table_without_auth() -> None:
+    container = await _container(permission_preset="dangerous_tools_admin")
+
+    with pytest.raises(AgentError, match="permission table"):
+        await container.route_request([{"role": "user", "content": "hi"}])
+
+
+@pytest.mark.contract("boundary")
+@pytest.mark.scope("integration")
+async def test_route_request_refuses_armed_tracker_without_auth() -> None:
+    container = await _container(strike_tracking_enabled=True)
+
+    with pytest.raises(AgentError, match="strike tracking"):
+        await container.route_request([{"role": "user", "content": "hi"}])
+
+
+@pytest.mark.contract("boundary")
+@pytest.mark.scope("integration")
+async def test_route_request_allows_no_auth_at_shipped_defaults() -> None:
+    """The guard must not fire for anyone who has not opted in.
+
+    Every existing caller -- including hive-conductor's bridge -- runs at these
+    defaults, so a guard that fired here would break the shipped deployment.
+    """
+    container = await _container()
+
+    assert container.sentinel._permission_table == {}
+    assert container.strike_tracker is None
+    # Reaching the conduit at all proves the guard did not raise; the conduit
+    # itself needs no agents for this call to get past the guard.
+    with contextlib.suppress(Exception):
+        await container.route_request([{"role": "user", "content": "hi"}])
