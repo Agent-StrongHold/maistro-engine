@@ -58,6 +58,14 @@ def _validate_startup(settings: Settings) -> None:
             "CRITICAL: No API keys configured and REQUIRE_AUTH is true. "
             "Set API_KEYS env var or set REQUIRE_AUTH=false for local development."
         )
+    if settings.require_webhook_secrets and not (
+        settings.github_webhook_secret and settings.ci_webhook_secret
+    ):
+        raise RuntimeError(
+            "CRITICAL: REQUIRE_WEBHOOK_SECRETS is true but GITHUB_WEBHOOK_SECRET "
+            "and/or CI_WEBHOOK_SECRET is unset. Set both, or set "
+            "REQUIRE_WEBHOOK_SECRETS=false if this deployment receives no webhooks."
+        )
 
 
 @asynccontextmanager
