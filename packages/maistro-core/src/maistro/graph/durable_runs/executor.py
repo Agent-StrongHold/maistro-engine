@@ -209,7 +209,40 @@ async def _walk(
         )
         record = await store.update(record)
 
-    # No next node — completed.
+    return await _finish_walk(record, store=store, max_steps=max_steps)
+
+
+async def _finish_walk(
+    record: DurableRunRecord,
+    *,
+    store: DurableRunStore,
+    max_steps: int,
+) -> DurableRunRecord:
+    """Record the terminal status for a walk that left its loop.
+
+    There are two ways out of that loop and they are not the same outcome.
+    Falling out because `current_node_id` is empty means the graph ran to its
+    end. Falling out because `steps` hit `max_steps` means it did NOT — the run
+    still has a live node and a partial blackboard. Both used to fall through
+    to `_mark_completed`, so a cycling or over-long DAG was persisted as a
+    success with partial results. That is worse than a failure record:
+    downstream consumers trust COMPLETED.
+
+    Split out of `_walk` rather than inlined so the added branch does not push
+    that function over the radon complexity ratchet — the gate flagged exactly
+    that, which is the gate doing its job.
+    """
+    if record.current_node_id:
+        return await _mark_failed(
+            record,
+            error_code="StepBudgetExhausted",
+            error_message=(
+                f"run exceeded max_steps={max_steps} with node "
+                f"{record.current_node_id!r} still pending; the graph may cycle"
+            ),
+            store=store,
+        )
+
     return await _mark_completed(record, store=store)
 
 
