@@ -57,6 +57,12 @@ jobs:
             age-keygen --help > /dev/null && echo "✓ age-keygen ready" || exit 1
           fi
       - run: uv sync --extra dev --extra bootstrap
+      # The root tests/ tree ran in NO workflow (registry.yml covers only
+      # tests/tools/registry/), so 524 passing tests were invisible to CI —
+      # including the tests for the enumeration gate and the mutation-target
+      # mapping, i.e. tests written to prove those controls fire, which
+      # themselves never fired. They need no repair, only an entry here.
+      - run: uv run pytest tests/ -v --tb=short
       - run: uv run pytest packages/maistro-bootstrap/tests -v --tb=short
       - run: uv run pytest packages/maistro-core/tests -v --tb=short
         env:
@@ -74,6 +80,30 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
+      # maistro-turing/backend is a second FastAPI service with its own auth
+      # lanes. It MUST be its own pytest invocation: its conftest imports a
+      # bare `config` module, and hive-conductor's backend/config.py shadows it
+      # whenever the two share a process (ImportError: cannot import name
+      # 'turing_service_key' from 'config'). Same shadowing class the
+      # hive-conductor conftest already works around for `services/`.
+      - run: uv run pytest packages/maistro-turing/backend/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+      - run: uv run pytest packages/maistro-design/tests -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
+      # Root tests/ tree. Only tests/tools/registry/ is excluded — registry.yml
+      # already owns that subtree and runs it with its own --confcutdir.
+      # NOT --ignore=tests/tools: pytest ignores the whole path, which would
+      # leave test_env_sanitize.py, test_sandbox_paths.py and test_workspace.py
+      # (80 sandbox/env-security tests) orphaned from CI — the very defect this
+      # step exists to fix.
+      - run: uv run pytest tests/ --ignore=tests/tools/registry -v --tb=short
+        env:
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
       # maistro-rsi + maistro-evolve aren't workspace-root deps (no uv.lock
       # entry), so put their src trees on PYTHONPATH — the same pattern the
       # root CLAUDE.md documents for local runs. Their third-party deps
@@ -88,9 +118,27 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: packages/hive-conductor/frontend/package-lock.json
+          cache-dependency-path: |
+            packages/hive-conductor/frontend/package-lock.json
+            packages/maistro-canvas/frontend/package-lock.json
       - run: npm ci && npm run build
         working-directory: packages/hive-conductor/frontend
+      # The canvas book-maker frontend had no CI at all — no workflow built,
+      # linted or tested it — while `server.js` is a real network service that
+      # proxies operator LLM credentials and shells out to python3. Its vitest
+      # suite (including server/security.test.js) is the only regression net the
+      # C4 hardening has, so it has to actually run somewhere.
+      #
+      # `test:ci` deliberately EXCLUDES tests/renderingPipeline.test.js: 10 of
+      # its 11 tests fail on the current tree for reasons that predate this
+      # change (the Azure image-edit fallback chain does not behave as the test
+      # asserts, and two tests time out at 5s). Those are real, unrelated
+      # product defects in the image pipeline, not auth. They are named here so
+      # the exclusion is visible rather than implied by a green check — see the
+      # follow-up item in docs/reviews/2026-07-27-codebase-review.md. Fixing
+      # them should delete this script and restore plain `npm run test`.
+      - run: npm ci && npm run test:ci
+        working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
 

@@ -1,11 +1,18 @@
 # Mutation testing (cosmic-ray) — Pillar 4 of the QA gate.
 #
-# Locked gate: ≥90% mutation kill rate on every touched file (Boy Scout Rule).
+# Gate: ≥90% mutation kill rate on the files it mutates.
 #
-# Two modes:
-#   - PR: cosmic-ray on changed files only; ≥90% kill rate to pass.
-#   - Nightly: full sweep across the load-bearing substrate (graph/, projects/,
-#     memory/outcomes, durable_runs); produces a project-wide dashboard.
+# Scope is tiered by what the PR is gating, because a full per-file sweep costs
+# roughly six minutes per changed file and cannot fit a fast feedback loop:
+#
+#   - PR -> develop/integration : the MOST SECURITY-RELEVANT changed files
+#     (security/, policy/, router/, then graph/), capped at MUTATION_FILE_CAP.
+#     Fast feedback. Any file not mutated is named explicitly in the log —
+#     never silently dropped.
+#   - PR -> main (the release gate) : EVERY changed file, no cap. This is
+#     where develop's accumulated work is held to full coverage, and the long
+#     runtime is affordable because it happens once per release.
+#   - Nightly : full sweep across the load-bearing substrate.
 #
 # Surviving mutants are tracked in docs/MUTATION-SURVIVORS.md and are
 # treated as defects (test missed a real regression).
@@ -25,6 +32,12 @@ on:
       # exactly the files where surviving mutants matter most.
       - 'packages/maistro-core/src/maistro/security/**'
       - 'packages/maistro-core/src/maistro/router/**'
+      # policy/ ranks second in scripts/mutation_targets.py's priority table,
+      # which was unreachable while this list omitted it: a policy-only PR
+      # never started the job, and policy files in a mixed PR never reached
+      # the ranking. A priority entry for a subtree the gate cannot see is a
+      # claim about coverage that nothing delivers.
+      - 'packages/maistro-core/src/maistro/policy/**'
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
 
@@ -33,7 +46,17 @@ jobs:
     name: Mutation testing on changed files
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # ~6 min per changed file measured on PR #265 (5 of 13 files in 30 min).
+    # The release gate gets a budget that can actually finish a full sweep;
+    # feature PRs stay fast because their scope is capped below.
+    timeout-minutes: ${{ github.base_ref == 'main' && 180 || 30 }}
+    env:
+      # 0 = no cap (full sweep). Only the develop -> main gate gets it.
+      MUTATION_FILE_CAP: ${{ github.base_ref == 'main' && '0' || '4' }}
+      # Via env, not inlined into the run script: a branch name interpolated
+      # straight into shell is an injection seam, and this one is
+      # attacker-influenced on fork PRs.
+      BASE_REF: ${{ github.base_ref }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,15 +68,28 @@ jobs:
       - name: Identify changed Python files under load-bearing subtrees
         id: changed
         run: |
-          # security/ and router/ included since 2026-07: a mutation gate
-          # that excludes the security code is a quality bar that exempts the
-          # code where surviving mutants matter most.
-          CHANGED=$(git diff --name-only origin/main...HEAD -- \
+          # Diff against the PR's OWN base, not a hardcoded origin/main. This
+          # workflow also runs for PRs into develop/integration, where
+          # `origin/main...HEAD` reports everything the base branch carries
+          # beyond main as though this PR had changed it. Measured on this very
+          # PR: 0 files under these subtrees vs origin/develop, 13 vs
+          # origin/main. With a 4-file cap that meant the budget was spent
+          # mutating inherited code the PR never touched, and the gate then
+          # reported a pass that said nothing about the change under review —
+          # the precise phantom-gate shape this workflow exists to remove.
+          git fetch --no-tags --depth=0 origin "$BASE_REF" 2>/dev/null \
+            || git fetch --no-tags origin "$BASE_REF"
+          # --diff-filter=ACMR excludes deletions: `resolve_tests` validates
+          # that the TEST path exists, never the source, so a deleted module
+          # whose test directory survives resolves happily, consumes a capped
+          # slot, and hands cosmic-ray a module-path that is not there.
+          CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- \
             'packages/maistro-core/src/maistro/graph/' \
             'packages/maistro-core/src/maistro/projects/' \
             'packages/maistro-core/src/maistro/memory/' \
             'packages/maistro-core/src/maistro/security/' \
             'packages/maistro-core/src/maistro/router/' \
+            'packages/maistro-core/src/maistro/policy/' \
             | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
           echo "files<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGED" >> $GITHUB_OUTPUT
@@ -67,7 +103,16 @@ jobs:
         id: targets
         if: steps.changed.outputs.skip != 'true'
         run: |
-          uv run python scripts/mutation_targets.py "${{ steps.changed.outputs.files }}" \
+          # Default 4, NOT 0. If the `github.base_ref` expression ever yields
+          # empty (an event type that doesn't set it), `:-0` would mean "no
+          # cap" and put the job straight back into the 30-minute timeout it
+          # was rewritten to escape. Degrade toward the bounded run: a capped
+          # sweep that finishes and says what it skipped beats an uncapped one
+          # that gets killed and reports nothing.
+          echo "Base branch: '${{ github.base_ref }}' — file cap: ${MUTATION_FILE_CAP:-4} (0 = full sweep)"
+          uv run python scripts/mutation_targets.py \
+            --limit "${MUTATION_FILE_CAP:-4}" \
+            "${{ steps.changed.outputs.files }}" \
             > mutation-targets.tsv
           echo "Resolved targets:"; cat mutation-targets.tsv
           if [ ! -s mutation-targets.tsv ]; then
@@ -175,7 +220,12 @@ jobs:
           [cosmic-ray]
           module-path = "packages/maistro-core/src/maistro"
           timeout = 60.0
-          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git", "maistro.maistro-canvas", "maistro.maistro-turing"]
+          # "maistro.maistro-canvas" / "maistro.maistro-turing" were removed:
+          # neither is a submodule of maistro-core (both are separate top-level
+          # packages) nor a legal Python module path, so both excluded nothing.
+          # The PR job's list at :62 never carried them, so the two configs also
+          # silently disagreed.
+          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git"]
           test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=20 -q"
 
           [cosmic-ray.distributor]

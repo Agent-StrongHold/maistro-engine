@@ -25,7 +25,7 @@ def app_with_webhook_secret():
     settings = Settings(
         require_auth=False,
         github_webhook_secret=secret,
-        ci_webhook_secret="ci-token-abc",
+        ci_webhook_secret=_CI_TOKEN,
     )
     app.dependency_overrides[get_settings] = lambda: settings
     yield secret
@@ -35,6 +35,34 @@ def app_with_webhook_secret():
 def _make_signature(payload: bytes, secret: str) -> str:
     digest = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
     return f"sha256={digest}"
+
+
+_CI_TOKEN = "ci-token-abc"
+
+
+def _post_github(client: TestClient, payload: dict, event: str, secret: str):
+    """POST a *signed* GitHub webhook.
+
+    The functionality tests below used to post unsigned bodies and rely on the
+    route's old "no secret configured => skip verification" branch. That branch
+    is now a 503 (review finding C5), so exercising routing requires a genuine
+    signature. This is a correction, not a workaround: the unsigned path was
+    never a supported way to deliver a webhook, only an unauthenticated one.
+    """
+    body = json.dumps(payload).encode()
+    return client.post(
+        "/webhooks/github",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-GitHub-Event": event,
+            "X-Hub-Signature-256": _make_signature(body, secret),
+        },
+    )
+
+
+def _post_ci(client: TestClient, payload: dict):
+    return client.post("/webhooks/ci", json=payload, headers={"X-CI-Token": _CI_TOKEN})
 
 
 class TestGitHubWebhookSignature:
@@ -99,18 +127,33 @@ class TestCIWebhookAuth:
         response = client.post(
             "/webhooks/ci",
             json={"status": "success"},
-            headers={"X-CI-Token": "ci-token-abc"},
+            headers={"X-CI-Token": _CI_TOKEN},
         )
         assert response.status_code == 200
 
 
-class TestGitHubWebhookFunctionality:
-    """Test webhook routing still works (no secrets = dev mode)."""
+class TestUnconfiguredWebhooksFailClosed:
+    """Review finding C5: an unconfigured receiver must refuse, not accept.
 
-    def test_pr_opened_creates_task(self) -> None:
-        """Evidence: PR opened events should auto-create a review task."""
-        client = _client()
-        response = client.post(
+    With no secret set, both routes previously logged a warning and processed
+    the request anyway — so any unauthenticated caller could enqueue tasks that
+    the runner executes against a workspace path derived from their own payload.
+    Deployment simply forgetting an env var was the whole exploit.
+
+    Both tests fail without the fix: they returned 200 before it.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_secrets(self):
+        settings = Settings(require_auth=False)
+        assert settings.github_webhook_secret == ""
+        assert settings.ci_webhook_secret == ""
+        app.dependency_overrides[get_settings] = lambda: settings
+        yield
+        app.dependency_overrides.clear()
+
+    def test_github_without_secret_is_refused(self) -> None:
+        response = _client().post(
             "/webhooks/github",
             json={
                 "action": "opened",
@@ -118,6 +161,32 @@ class TestGitHubWebhookFunctionality:
                 "repository": {"full_name": "org/repo"},
             },
             headers={"X-GitHub-Event": "pull_request"},
+        )
+        assert response.status_code == 503
+
+    def test_ci_without_secret_is_refused(self) -> None:
+        response = _client().post(
+            "/webhooks/ci",
+            json={"status": "failure", "repository": "org/repo", "branch": "main"},
+        )
+        assert response.status_code == 503
+
+
+class TestGitHubWebhookFunctionality:
+    """Webhook routing, exercised over the authenticated (signed) path."""
+
+    def test_pr_opened_creates_task(self, app_with_webhook_secret: str) -> None:
+        """Evidence: PR opened events should auto-create a review task."""
+        client = _client()
+        response = _post_github(
+            client,
+            {
+                "action": "opened",
+                "pull_request": {"title": "Add auth", "number": 42},
+                "repository": {"full_name": "org/repo"},
+            },
+            "pull_request",
+            app_with_webhook_secret,
         )
         assert response.status_code == 200
         data = response.json()
@@ -132,16 +201,17 @@ class TestGitHubWebhookFunctionality:
         assert "#42" in task.description
         assert task.workspace == "/repos/org/repo"
 
-    def test_issue_opened_creates_task(self) -> None:
+    def test_issue_opened_creates_task(self, app_with_webhook_secret: str) -> None:
         client = _client()
-        response = client.post(
-            "/webhooks/github",
-            json={
+        response = _post_github(
+            client,
+            {
                 "action": "opened",
                 "issue": {"title": "Bug in login", "number": 7, "body": "Steps to reproduce..."},
                 "repository": {"full_name": "org/repo"},
             },
-            headers={"X-GitHub-Event": "issues"},
+            "issues",
+            app_with_webhook_secret,
         )
         assert response.status_code == 200
         data = response.json()
@@ -155,23 +225,61 @@ class TestGitHubWebhookFunctionality:
         assert "#7" in task.description
         assert "Steps to reproduce" in task.description
 
-    def test_ignored_event(self) -> None:
+    def test_ignored_event(self, app_with_webhook_secret: str) -> None:
         client = _client()
-        response = client.post(
-            "/webhooks/github",
-            json={"action": "closed"},
-            headers={"X-GitHub-Event": "pull_request"},
+        response = _post_github(
+            client, {"action": "closed"}, "pull_request", app_with_webhook_secret
         )
         assert response.status_code == 200
         assert response.json()["status"] == "ignored"
 
+    @pytest.mark.parametrize(
+        "repo",
+        [
+            "",
+            "org",
+            "org/repo/extra",
+            "../repo",
+            "org/../repo",
+            "https://github.com/org/repo",
+        ],
+    )
+    def test_task_creating_events_reject_invalid_repository_names(
+        self, repo: str, app_with_webhook_secret: str
+    ) -> None:
+        client = _client()
+        response = _post_github(
+            client,
+            {
+                "action": "opened",
+                "pull_request": {"title": "Add auth", "number": 42},
+                "repository": {"full_name": repo},
+            },
+            "pull_request",
+            app_with_webhook_secret,
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["message"] == "Repository must be in owner/name form"
+
 
 class TestCIWebhookFunctionality:
-    def test_failure_creates_fix_task(self) -> None:
-        client = _client()
-        response = client.post(
-            "/webhooks/ci",
-            json={
+    @pytest.mark.parametrize(
+        "repository",
+        ["", "org", "org/repo/extra", "../repo", "org/../repo", "https://example.com/org/repo"],
+    )
+    def test_failure_rejects_invalid_repository_names(
+        self, repository: str, app_with_webhook_secret: str
+    ) -> None:
+        response = _post_ci(
+            _client(), {"status": "failure", "repository": repository, "branch": "main"}
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["message"] == "Repository must be in owner/name form"
+
+    def test_failure_creates_fix_task(self, app_with_webhook_secret: str) -> None:
+        response = _post_ci(
+            _client(),
+            {
                 "status": "failure",
                 "repository": "org/repo",
                 "branch": "main",
@@ -190,11 +298,42 @@ class TestCIWebhookFunctionality:
         assert "org/repo" in task.description
         assert "main" in task.description
 
-    def test_success_ignored(self) -> None:
-        client = _client()
-        response = client.post(
-            "/webhooks/ci",
-            json={"status": "success", "repository": "org/repo"},
-        )
+    def test_success_ignored(self, app_with_webhook_secret: str) -> None:
+        response = _post_ci(_client(), {"status": "success", "repository": "org/repo"})
         assert response.status_code == 200
         assert response.json()["status"] == "ignored"
+
+
+class TestWebhookBodyLimits:
+    def test_github_rejects_oversized_actual_body_without_content_length(self) -> None:
+        settings = Settings(require_auth=False, max_webhook_body_bytes=10)
+        app.dependency_overrides[get_settings] = lambda: settings
+        try:
+            client = _client()
+            response = client.post(
+                "/webhooks/github",
+                content=b'{"action":"closed"}',
+                headers={"X-GitHub-Event": "pull_request", "Content-Type": "application/json"},
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert response.status_code == 413
+
+    def test_github_rejects_malformed_content_length(self) -> None:
+        settings = Settings(require_auth=False, max_webhook_body_bytes=1000)
+        app.dependency_overrides[get_settings] = lambda: settings
+        try:
+            client = _client()
+            response = client.post(
+                "/webhooks/github",
+                content=b'{"action":"closed"}',
+                headers={
+                    "X-GitHub-Event": "pull_request",
+                    "Content-Type": "application/json",
+                    "Content-Length": "not-a-number",
+                },
+            )
+        finally:
+            app.dependency_overrides.clear()
+        assert response.status_code == 400
+        assert response.json()["error"]["message"] == "Invalid Content-Length header"

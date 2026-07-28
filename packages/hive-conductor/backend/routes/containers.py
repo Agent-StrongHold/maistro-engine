@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 from datetime import UTC, datetime
 
 import httpx
@@ -19,6 +20,25 @@ logger = logging.getLogger(__name__)
 # agent/sandbox code uses SandboxProtocol (SPEC-190) and never touches this socket.
 # nosemgrep: maistro-mounted-docker-socket -- trusted admin container management, not sandbox code
 DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
+
+
+# Docker's own identifier grammar: a 12-64 char hex ID, or a name starting with
+# an alphanumeric. Nothing else may reach the URL builders below, because every
+# handler interpolates the path parameter straight into a Docker Engine API URL
+# and the daemon speaks that API over a socket with no auth of its own. A value
+# containing "/", ".." or a query separator is not a container reference — it is
+# a request for a *different* daemon endpoint (e.g. an id of
+# "x/json?all=1#" or "../../images/json"), so the interpolation is the whole
+# attack surface. Validate at the boundary rather than escaping per call site:
+# there are six of them and a seventh will be added without the escape.
+_CONTAINER_ID_RE = re.compile(r"\A(?:[0-9a-fA-F]{12,64}|[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127})\Z")
+
+
+def _validate_container_id(container_id: str) -> str:
+    """Return `container_id` if it is a well-formed Docker id/name, else 400."""
+    if not _CONTAINER_ID_RE.match(container_id):
+        raise HTTPException(status_code=400, detail="Invalid container id")
+    return container_id
 
 
 def _docker_client() -> httpx.AsyncClient:
@@ -152,6 +172,7 @@ async def list_containers() -> list[Container]:
 
 @router.get("/{container_id}", response_model=Container)
 async def get_container(container_id: str) -> Container:
+    _validate_container_id(container_id)
     if not os.path.exists(DOCKER_SOCKET):
         raise HTTPException(status_code=503, detail="Docker socket not available")
     try:
@@ -172,6 +193,7 @@ async def get_container(container_id: str) -> Container:
 
 @router.post("/{container_id}/start")
 async def start_container(container_id: str) -> dict:
+    _validate_container_id(container_id)
     if not os.path.exists(DOCKER_SOCKET):
         raise HTTPException(status_code=503, detail="Docker socket not available")
     try:
@@ -187,6 +209,7 @@ async def start_container(container_id: str) -> dict:
 
 @router.post("/{container_id}/stop")
 async def stop_container(container_id: str) -> dict:
+    _validate_container_id(container_id)
     if not os.path.exists(DOCKER_SOCKET):
         raise HTTPException(status_code=503, detail="Docker socket not available")
     try:
@@ -202,6 +225,7 @@ async def stop_container(container_id: str) -> dict:
 
 @router.post("/{container_id}/restart")
 async def restart_container(container_id: str) -> dict:
+    _validate_container_id(container_id)
     if not os.path.exists(DOCKER_SOCKET):
         raise HTTPException(status_code=503, detail="Docker socket not available")
     try:
@@ -217,6 +241,7 @@ async def restart_container(container_id: str) -> dict:
 
 @router.delete("/{container_id}")
 async def delete_container(container_id: str) -> None:
+    _validate_container_id(container_id)
     if not os.path.exists(DOCKER_SOCKET):
         raise HTTPException(status_code=503, detail="Docker socket not available")
     try:
@@ -231,6 +256,11 @@ async def delete_container(container_id: str) -> None:
 
 @router.get("/{container_id}/logs")
 async def get_container_logs(container_id: str, tail: int = 100) -> dict:
+    _validate_container_id(container_id)
+    # `tail` is also interpolated into the Docker URL. FastAPI coerces it to an
+    # int, so it cannot carry a separator, but an unbounded value still lets a
+    # caller ask the daemon to stream an entire log history into memory.
+    tail = max(1, min(tail, 10_000))
     if not os.path.exists(DOCKER_SOCKET):
         raise HTTPException(status_code=503, detail="Docker socket not available")
     try:
