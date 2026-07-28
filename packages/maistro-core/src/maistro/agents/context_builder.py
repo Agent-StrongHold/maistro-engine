@@ -29,7 +29,7 @@ def _estimate_tokens(text: str) -> int:
     return len(text) // _CHARS_PER_TOKEN
 
 
-_MAISTRO_TAG_RE = re.compile(r"</?\s*maistro:[A-Za-z0-9_.:-]*\s*[^>]*>", re.IGNORECASE)
+_MAISTRO_TAG_RE = re.compile(r"<\s*/?\s*maistro:[A-Za-z0-9_.:-]*\s*[^>]*>", re.IGNORECASE)
 
 
 def _neutralize_delimiters(text: str) -> str:
@@ -49,6 +49,13 @@ def _neutralize_delimiters(text: str) -> str:
     only the literal footer would leave that half open. Whitespace and
     attribute variants are covered because a parser-shaped filter that only
     catches the canonical spelling is not a filter.
+
+    Whitespace is permitted on *both* sides of the optional slash. The consumer
+    is a delimiter-tolerant language model, not an XML parser, so if
+    `</ maistro:corrections>` has to be treated as a delimiter then so does
+    `< /maistro:corrections>`; anchoring the slash to `<` left the second form
+    matching nothing and preserved the stored prompt-escape it was written to
+    remove.
     """
     return _MAISTRO_TAG_RE.sub("", text)
 

@@ -74,17 +74,36 @@ async def test_find_relevant_does_not_return_another_orgs_learning(store) -> Non
 
 @pytest.mark.contract("scope-isolation")
 @pytest.mark.scope("unit")
-async def test_global_learnings_are_visible_to_everyone(store) -> None:
-    """Empty org_id means global, mirroring the existing agent_id convention.
+async def test_unowned_learnings_are_not_readable_by_an_org(store) -> None:
+    """There is no global bucket — `org_id = ''` is a scope, not a wildcard.
 
-    Without this, adding the filter would have silently hidden every learning
-    written by the current single-scope deployments (all of which store "").
+    This assertion is the inverse of the one this test carried when the H8 fix
+    first landed, and the reversal is deliberate. The original predicate was
+    `(org_id = ? OR org_id = '')`, admitting every unowned row to every caller
+    by analogy with the `agent_id = ''` convention. The analogy does not hold:
+    `agent_id = ''` widens *within* one org, while `org_id = ''` crosses the
+    tenancy boundary that SPEC-216 lists as a non-goal ("cross-org learning
+    sharing of any kind").
+
+    It was reachable, not theoretical. `BaseAgent._extract_rca` populated
+    `org_id` only on its traced branch, so with tracing disabled every RCA was
+    stored unowned — and an RCA derived from one org's tool failures then
+    landed in every other org's system prompt.
+
+    Single-tenant deployments are unaffected: they store `""` and read `""`,
+    which still matches exactly.
     """
-    await store.store(_learning(learning="global procedure", org_id=""))
+    await store.store(_learning(learning="unowned procedure", org_id=""))
 
-    for who in ("org-a", "org-b", ""):
+    for who in ("org-a", "org-b"):
         texts = [lr.learning for lr in await store.find_relevant("deploy", org_id=who)]
-        assert "global procedure" in texts, f"global learning invisible to {who!r}"
+        assert "unowned procedure" not in texts, (
+            f"an unowned learning reached {who!r} and would have been "
+            "interpolated into its system prompt"
+        )
+
+    own = [lr.learning for lr in await store.find_relevant("deploy", org_id="")]
+    assert "unowned procedure" in own, "the unscoped caller must still see its own rows"
 
 
 @pytest.mark.contract("scope-isolation")
@@ -196,9 +215,18 @@ async def test_ensure_schema_upgrades_a_pre_org_id_database() -> None:
         store = SqliteLearningStore(conn)
         await store.ensure_schema()
 
-        # The pre-existing row must survive and be treated as global.
-        texts = [lr.learning for lr in await store.find_relevant("deploy", org_id="org-a")]
+        # The pre-existing row must survive the migration and stay readable by
+        # the scope it actually belongs to. A row written before `org_id`
+        # existed carries no provenance, so it backfills to `""` — which means
+        # a single-tenant deployment (the only kind that can have written it)
+        # keeps reading it exactly as before.
+        texts = [lr.learning for lr in await store.find_relevant("deploy", org_id="")]
         assert "legacy row" in texts
+
+        # It must NOT become readable by an org. Unknown provenance is the
+        # reason to withhold it, not a reason to publish it to everyone.
+        scoped = [lr.learning for lr in await store.find_relevant("deploy", org_id="org-a")]
+        assert "legacy row" not in scoped
 
         # And ensure_schema must be safe to run again.
         await store.ensure_schema()
