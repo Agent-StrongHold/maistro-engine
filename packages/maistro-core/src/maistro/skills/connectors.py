@@ -95,6 +95,49 @@ async def search_clawhub(
     ]
 
 
+async def _fetch_claude_plugin_index(
+    http_client: httpx.AsyncClient | None,
+) -> list[SkillMetadata]:
+    """Fetch and parse the official plugin marketplace index, or raise."""
+    if http_client is None:
+        raise MarketplaceUnavailableError("Claude plugin search requires an HTTP client")
+
+    try:
+        resp = await http_client.get(
+            "https://raw.githubusercontent.com/anthropics/claude-plugins-official/main/.claude-plugin/marketplace.json",
+            timeout=5.0,
+        )
+    except Exception as exc:
+        logger.warning("Claude plugin marketplace unreachable: %s", exc)
+        raise MarketplaceUnavailableError("Claude plugin marketplace unreachable") from exc
+
+    if resp.status_code != 200:
+        raise MarketplaceUnavailableError(
+            f"Claude plugin marketplace returned HTTP {resp.status_code}"
+        )
+
+    try:
+        plugins = resp.json().get("plugins", [])
+    except Exception as exc:
+        raise MarketplaceUnavailableError(
+            "Claude plugin marketplace returned invalid JSON"
+        ) from exc
+
+    return [
+        SkillMetadata(
+            name=p.get("name", ""),
+            description=p.get("description", ""),
+            source_url=p.get("homepage", ""),
+            author=p.get("author", {}).get("name", "")
+            if isinstance(p.get("author"), dict)
+            else str(p.get("author", "")),
+            source_type="claude_plugins",
+            tags=tuple(p.get("tags", p.get("keywords", []))),
+        )
+        for p in plugins
+    ]
+
+
 async def search_claude_plugins(
     query: str = "",
     http_client: httpx.AsyncClient | None = None,
@@ -108,48 +151,11 @@ async def search_claude_plugins(
     global _claude_cache, _claude_cache_ts
 
     now = time.monotonic()
-    if _claude_cache and (now - _claude_cache_ts) < _CLAUDE_CACHE_TTL:
-        items = _claude_cache
-    else:
-        if http_client is None:
-            raise MarketplaceUnavailableError("Claude plugin search requires an HTTP client")
-        try:
-            resp = await http_client.get(
-                "https://raw.githubusercontent.com/anthropics/claude-plugins-official/main/.claude-plugin/marketplace.json",
-                timeout=5.0,
-            )
-        except Exception as exc:
-            logger.warning("Claude plugin marketplace unreachable: %s", exc)
-            raise MarketplaceUnavailableError("Claude plugin marketplace unreachable") from exc
-
-        if resp.status_code != 200:
-            raise MarketplaceUnavailableError(
-                f"Claude plugin marketplace returned HTTP {resp.status_code}"
-            )
-
-        try:
-            plugins = resp.json().get("plugins", [])
-        except Exception as exc:
-            raise MarketplaceUnavailableError(
-                "Claude plugin marketplace returned invalid JSON"
-            ) from exc
-
-        _claude_cache = [
-            SkillMetadata(
-                name=p.get("name", ""),
-                description=p.get("description", ""),
-                source_url=p.get("homepage", ""),
-                author=p.get("author", {}).get("name", "")
-                if isinstance(p.get("author"), dict)
-                else str(p.get("author", "")),
-                source_type="claude_plugins",
-                tags=tuple(p.get("tags", p.get("keywords", []))),
-            )
-            for p in plugins
-        ]
+    if not (_claude_cache and (now - _claude_cache_ts) < _CLAUDE_CACHE_TTL):
+        _claude_cache = await _fetch_claude_plugin_index(http_client)
         _claude_cache_ts = now
-        items = _claude_cache
 
+    items = _claude_cache
     if query:
         items = [s for s in items if _matches(query, s.name, s.description, *s.tags)]
     return items
