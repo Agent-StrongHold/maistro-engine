@@ -260,10 +260,13 @@ five are in.
 
 ### Phase 5 — release plumbing
 
-- CI workflow `release-installer.yml`: build + push pinned images to GHCR with
-  digests, render `get.sh`/`get.ps1` payload checksums, and run installer smoke
-  tests (Ubuntu, macOS, WSL2 matrix; Docker and Podman legs) using
-  `--answers-file` fixtures — no secrets required.
+- CI workflow `release-installer.yml` (tags + manual dispatch, not a per-PR
+  gate): build + push pinned images to GHCR (digests surfaced for the
+  `PINNED_IMAGES` map), publish a `SHA256SUMS` manifest for
+  `get.sh`/`get.ps1`/`install.sh`, and run the installer smoke test with
+  `--answers-file` + staged disposable credentials — no secrets required.
+  The initial smoke leg is Ubuntu + Docker; macOS (Colima), WSL2, and Podman
+  legs are follow-ups (hosted runners make them slow/awkward, not impossible).
 - `get.sh`/`get.ps1` verify the fetched `install.sh` against a published
   checksum before executing. Swap `DEFAULT_CURL_INSTALL_URL` to the production
   domain when DNS lands (single-constant change, unchanged behavior).
