@@ -114,3 +114,16 @@ def admin_client():
     r = client.post("/v1/auth/login", json={"username": "testadmin", "password": "adminpass"})
     assert r.status_code == 200
     return client
+
+
+@pytest.fixture(autouse=True)
+def _isolate_vault_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Redirect first-run vault provisioning to tmp_path so tests never write
+    age keys or vault files into the developer's real ~/.conductor."""
+    import routes.setup as setup_routes
+
+    monkeypatch.setattr(
+        setup_routes,
+        "_vault_paths",
+        lambda: (str(tmp_path / "secrets.age"), str(tmp_path / "admin.key")),
+    )

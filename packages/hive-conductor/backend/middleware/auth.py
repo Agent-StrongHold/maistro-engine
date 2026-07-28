@@ -103,9 +103,15 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         # Capability discovery + approval resolution (approving a destructive
         # infra action is high-stakes) — gate behind config.write.
         "/v1/capabilities": "config.write",
+        # Provider activation uses the LiteLLM master key, mutates the global
+        # model registry, and can trigger billed calls (SPEC-072726-3439).
+        "/v1/providers": "config.write",
     },
     "PUT": {
         "/v1/settings": "config.write",
+        # Storing a deployment-wide LLM key in the vault — same decision
+        # weight as activating it.
+        "/v1/providers": "config.write",
         "/v1/mcp/servers": "mcp.write",
         "/v1/agents": "agents.write",
         "/v1/skills": "skills.write",
@@ -180,6 +186,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
+        # The install wizard API is only useful before first-run provisioning,
+        # when no account exists yet to authenticate with. Public pre-setup;
+        # normal auth applies once setup completes (same one-shot boundary as
+        # /v1/setup/complete's 409 guard).
+        if _matches_public_prefix(path, "/v1/install/") and not self._setup_complete():
+            return await call_next(request)
+
         if request.method == "OPTIONS":
             return await call_next(request)
 
@@ -211,6 +224,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
 
         return await call_next(request)
+
+    def _setup_complete(self) -> bool:
+        try:
+            from routes.setup import _is_setup_complete
+
+            return _is_setup_complete()
+        except Exception:
+            # Fail closed: if setup state can't be read, require auth.
+            return True
 
     def _get_user(self, request: Request) -> dict | None:
         return resolve_principal(request.cookies, request.headers.get("Authorization"))

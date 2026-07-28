@@ -788,8 +788,32 @@ except Exception:
 PY
 }
 
+# Read the wizard's delivery mode from the materialized plan (empty when the
+# wizard was skipped). delivery.json is machine-written JSON, so a grep is safe.
+delivery_mode() {
+    local f="$PLAN_DIR/delivery.json"
+    [[ -f "$f" ]] || return 0
+    grep -o '"mode"[[:space:]]*:[[:space:]]*"[a-z_]*"' "$f" | head -1 | grep -o '[a-z_]*"$' | tr -d '"'
+}
+
 compose_files() {
     COMPOSE_FILES=(-f "$COMPOSE_FILE")
+    COMPOSE_UP_ARGS=(up -d --build)
+    local mode
+    mode="$(delivery_mode)"
+    if [[ "$mode" == "image_pull" ]]; then
+        if [[ "${MAISTRO_IMAGE_PULL_READY:-0}" == "1" && -f "$PLAN_DIR/compose.install.yml" ]]; then
+            # Standalone file: no build: keys anywhere, and no --build — pinned
+            # images only. --project-directory keeps .env interpolation and
+            # relative bind mounts anchored at the repo root.
+            COMPOSE_FILES=(--project-directory "$PWD" -f "$PLAN_DIR/compose.install.yml")
+            COMPOSE_UP_ARGS=(up -d)
+            info "Delivery: image_pull — pinned images from $PLAN_DIR/compose.install.yml (no local build)."
+        else
+            warn "delivery_mode=image_pull selected, but pinned images are not published yet."
+            warn "Falling back to source build (identical runtime behavior, longer install)."
+        fi
+    fi
     local override="$PLAN_DIR/compose.override.yml"
     if [[ -f "$override" ]]; then
         COMPOSE_FILES+=(-f "$override")
@@ -859,8 +883,8 @@ start_engine() {
     record_docker_sock
     report_arch
     compose_files
-    info "Starting maistro-engine from source..."
-    "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" up -d --build
+    info "Starting maistro-engine..."
+    "${COMPOSE_CMD[@]}" "${COMPOSE_FILES[@]}" "${COMPOSE_UP_ARGS[@]}"
 
     info "Waiting for engine health..."
     local attempts=0
@@ -883,6 +907,141 @@ start_engine() {
         sleep 2
     done
     ok "Conductor healthy."
+}
+
+# Best-effort secure delete for the staged credentials file: overwrite with
+# zeros, then unlink. Not a guarantee on journaling/COW filesystems, but it
+# beats leaving plaintext passwords recoverable after a plain rm.
+shred_file() {
+    local f="$1" size
+    [[ -f "$f" ]] || return 0
+    size="$(wc -c < "$f" | tr -d ' ')"
+    head -c "$size" /dev/zero > "$f" 2>/dev/null || true
+    rm -f "$f"
+}
+
+# First-run provisioning from the terminal (SPEC-072726-3439 Phase 3): POST
+# the wizard-staged credentials to /v1/setup/complete, show the mnemonic
+# once, then shred the file. A 409 (already provisioned) is terminal
+# consumption — shred there too; only pre-commit failures keep the file for
+# retry. Without a staged file, account setup continues in the web UI.
+bootstrap_first_run() {
+    local creds="${MAISTRO_BOOTSTRAP_CREDENTIALS_FILE:-$PLAN_DIR/bootstrap-credentials.json}"
+    local base="http://${BIND_HOST}:${HIVE_PORT:-8101}"
+
+    if [[ ! -f "$creds" ]]; then
+        info "No staged bootstrap credentials — account setup continues in the web UI."
+        return
+    fi
+    if [[ "$START_STACK" == "0" || "$START_STACK" == "false" ]]; then
+        warn "Stack not started; leaving $creds staged for the next run."
+        return
+    fi
+
+    ensure_python
+
+    if curl -sf "$base/v1/setup/status" 2>/dev/null | grep -q '"setup_complete"[[:space:]]*:[[:space:]]*true'; then
+        info "Setup already complete — shredding staged credentials (consumed)."
+        shred_file "$creds"
+        return
+    fi
+
+    info "Creating first-run accounts from staged credentials..."
+    local resp_file="$PLAN_DIR/.setup-response.json" http_code
+    http_code="$(curl -sS -o "$resp_file" -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        --data-binary "@$creds" \
+        "$base/v1/setup/complete" 2>/dev/null || echo 000)"
+
+    case "$http_code" in
+        200)
+            ok "Admin and daily-driver accounts created."
+            "${PYTHON_CMD[@]}" - "$resp_file" <<'PY'
+import json, sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    data = json.load(fh)
+config = data.get("config", {})
+if not config.get("vault_initialized", False):
+    print("[warn] vault was not initialized (age missing?) — secrets stay env-based.")
+mnemonic = data.get("mnemonic")
+if mnemonic:
+    words = mnemonic if isinstance(mnemonic, list) else str(mnemonic).split()
+    bar = "=" * 64
+    print()
+    print(bar)
+    print("  RECOVERY PHRASE — shown ONCE. Write these 24 words down now.")
+    print(bar)
+    for i in range(0, len(words), 6):
+        print("   " + "  ".join(f"{n+1:2}.{w}" for n, w in enumerate(words[i:i+6], start=i)))
+    print(bar)
+    if not config.get("identity_persisted", False):
+        print("  [warn] The seed was NOT persisted to the vault — this phrase")
+        print("  is the ONLY copy of your identity root.")
+    print()
+PY
+            if grep -q '"mnemonic"' "$resp_file" && [[ -t 0 || -r /dev/tty ]]; then
+                local confirmed=""
+                while [[ "$confirmed" != "yes" ]]; do
+                    if [[ -t 0 ]]; then
+                        read -r -p "Type 'yes' once you have written the phrase down: " confirmed
+                    else
+                        read -r -p "Type 'yes' once you have written the phrase down: " confirmed < /dev/tty
+                    fi
+                done
+            fi
+            shred_file "$resp_file"
+            shred_file "$creds"
+            ok "Staged credentials shredded. Log in to the UI with your admin or daily-driver account."
+            ;;
+        409)
+            info "Setup already complete (409) — shredding staged credentials (consumed)."
+            shred_file "$resp_file"
+            shred_file "$creds"
+            ;;
+        *)
+            warn "Bootstrap failed (HTTP $http_code). Credentials kept at $creds for retry."
+            warn "Response: $(cat "$resp_file" 2>/dev/null | head -c 400)"
+            warn "Retry with: curl -sS -H 'Content-Type: application/json' --data-binary @$creds $base/v1/setup/complete"
+            ;;
+    esac
+}
+
+# Write operator recovery commands next to the plan artifacts and echo the
+# path in print_success (SPEC-072726-3439 Phase 3).
+write_recovery_md() {
+    mkdir -p "$PLAN_DIR"
+    local compose_line="${COMPOSE_CMD[*]:-docker compose} ${COMPOSE_FILES[*]:--f $COMPOSE_FILE}"
+    cat > "$PLAN_DIR/RECOVERY.md" <<EOF
+# Maistro recovery & operations
+
+Generated by install.sh on $(date -u +"%Y-%m-%dT%H:%M:%SZ"). All commands run
+from the repo root: $PWD
+
+| Action   | Command |
+|----------|---------|
+| Status   | \`$compose_line ps\` |
+| Logs     | \`$compose_line logs -f --tail=200\` |
+| Restart  | \`$compose_line restart\` |
+| Stop     | \`$compose_line down\` |
+| Start    | \`$compose_line up -d\` |
+| Backup   | \`$compose_line exec postgres pg_dump -U maistro maistro > backup.sql\` |
+| Teardown | \`$compose_line down -v\`  (deletes all volumes/data) |
+
+A generated Makefile with the same targets lives at \`$PLAN_DIR/Makefile\`.
+
+## Identity recovery
+
+If crypto identity was enabled at setup, the 24-word recovery phrase shown
+once during install can re-materialize the identity root. Keep it offline.
+
+## Re-running the installer
+
+Re-running ./install.sh over a healthy install performs updates only — it
+will not overwrite accounts (setup is one-shot) and will not re-prompt for
+credentials.
+EOF
+    ok "Recovery commands written to $PLAN_DIR/RECOVERY.md"
 }
 
 # Install the host-side `maistro` CLI so `maistro builders` (the interactive
@@ -1023,6 +1182,8 @@ main() {
     run_feature_wizard
     sync_env_file
     start_engine
+    bootstrap_first_run
+    write_recovery_md
     install_cli
     print_success
     open_browser
