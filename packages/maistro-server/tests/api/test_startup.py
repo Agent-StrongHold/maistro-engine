@@ -25,7 +25,7 @@ class TestStartupValidation:
         _validate_startup(settings)  # Should not raise
 
 
-@pytest.mark.contract("config")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("unit")
 class TestWebhookSecretValidation:
     """Review finding C5, boot-time half.

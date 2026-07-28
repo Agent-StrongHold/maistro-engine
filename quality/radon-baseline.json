@@ -3,14 +3,14 @@
  "generated_from": "radon cc packages/maistro-core/src -j (2026-06-29)",
  "entries": [
   {
-   "key": "packages/maistro-core/src/maistro/agents/base.py::Agent.handle",
+   "key": "packages/maistro-core/src/maistro/agents/base.py::Agent._handle_traced",
    "path": "packages/maistro-core/src/maistro/agents/base.py",
-   "line": 214,
-   "name": "handle",
+   "line": 284,
+   "name": "_handle_traced",
    "classname": "Agent",
    "rank": "C",
-   "complexity": 19,
-   "rationale": "Phase 18 code-health sweep backlog; tracked under SPEC-264 pending a per-function remediation spec."
+   "complexity": 17,
+   "rationale": "Renamed from Agent.handle when H9 split the try/except/finally wrapper out into handle(); the 19 split into 17 here plus 10 in the new handle() wrapper, so this entry is the larger half rather than a net reduction. Still a Phase 18 code-health hotspot tracked under SPEC-264 - the ratchet is now set at 17."
   },
   {
    "key": "packages/maistro-core/src/maistro/agents/context_builder.py::ContextBuilder",
