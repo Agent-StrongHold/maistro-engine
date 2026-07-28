@@ -692,6 +692,45 @@ class TestHandleRcaAndLearningExtraction:
 
         assert learning_store.stored[0].learning == "untraced rca"
         assert learning_store.stored[0].agent_id == "tester"
+        # The untraced branch set only `agent_id`, so the RCA was stored at its
+        # default `org_id=""`. That is not a cosmetic gap: an unowned learning
+        # was readable by every org, so an analysis derived from this org's tool
+        # failures reached other orgs' system prompts. Tracing is an
+        # observability toggle and must not change what is persisted.
+        assert learning_store.stored[0].org_id == "org-1", (
+            "RCA stored without its org when tracing is disabled — it lands in "
+            "the unowned scope instead of this caller's"
+        )
+        assert learning_store.stored[0].team_id == "team-1"
+
+    async def test_rca_scope_does_not_depend_on_tracing(self) -> None:
+        """The traced and untraced branches must persist identical scope.
+
+        Pinning them against each other rather than against literals is what
+        keeps the two from drifting again — the defect was that one branch
+        acquired scope fields the other never did.
+        """
+        stored = []
+        for tracer in (_FakeTracer(), None):
+            learning_store = _FakeLearningStore()
+            agent = _make_agent(
+                _RecordingStrategy(
+                    ReasoningResult(
+                        response="done",
+                        tool_history=[{"tool_name": "x", "result": "Error: failed"}],
+                    )
+                ),
+                learning_store=learning_store,
+                rca_extractor=_FakeRcaExtractor(rca=_LearningRecord(learning="rca")),
+                tracer=tracer,
+            )
+            await agent.handle(messages=[{"role": "user", "content": "x"}], auth=_Auth())
+            rca = learning_store.stored[0]
+            stored.append((rca.agent_id, rca.org_id, rca.team_id))
+
+        assert stored[0] == stored[1], (
+            f"tracing changed the persisted scope: traced={stored[0]} untraced={stored[1]}"
+        )
 
     async def test_tool_failure_rca_traced_with_no_rca_found(self) -> None:
         tracer = _FakeTracer()
