@@ -41,7 +41,7 @@ A. Freeze & Triage ──────────────┐
 | WS | Name | Depends on | Exit criterion |
 |---|---|---|---|
 | **A** | Freeze & triage | — | All 5 open PRs dispositioned; 0 stranded branches without an explicit decision. Nothing lands on `develop` after A closes except items in this plan. |
-| **B** | Security must-fix | A (#270 first) | All 6 audit items + the 4 unauthenticated surfaces from PR #266 fixed; no route reachable without auth in the default deployment. |
+| **B** | Security must-fix | A (#270 first) | All 6 audit items + the 4 unauthenticated surfaces from PR #266 fixed; no **protected application** route reachable without auth in the default deployment. Deliberately public endpoints (health/liveness/readiness — also used by compose and image health checks — plus setup, login/register, and docs, per `backend/middleware/auth.py`) are enumerated in an approved-public list, and anything not on that list requires auth. |
 | **C** | CI & gating | A (#267/#268 first) | All ~616 orphaned tests execute in CI; coverage gate honest; required status checks configured on `develop`/`integration`/`main`; `registry.yml` covers `develop`. |
 | **D** | Truth-in-advertising & cuts | A (#266 is the evidence base) | No doc/spec/README claim contradicts the code; cut-list items deleted, demoted, or deferred with a tracking entry. |
 | **E** | Release engineering | A; E5 needs E1 | `release.yml` exists and dry-runs green on a `v1.0.0-rc1` tag; versions single-sourced; CHANGELOG drafted; installers pin to tag. |
@@ -83,10 +83,12 @@ ruling per PR.
 `claude/rsi-durable-memory` (+1860), `claude/mac-installer-x1sezm` (+1553).
 
 - [ ] Delete the 13 fully-contained branches (spot-check `git merge-tree` shows no unique hunks).
-- [ ] Close the 3 RSI mega-branches with comment: *superseded by the 07-26/27 RSI rewrite on
-      develop; anything still wanted gets a fresh spec post-v1.* Do **not** attempt to land —
-      they predate the rewrite and conflict heavily. (Evolve/RSI being v1 scope does not change
-      this: v1 ships the rewritten RSI, not the pre-rewrite branches.)
+- [ ] Retire the 3 RSI mega-branches: record the supersession rationale in the umbrella tracking
+      issue (bare branches have no close/comment mechanism — the issue is the ledger), then
+      delete the branch refs: *superseded by the 07-26/27 RSI rewrite on develop; anything still
+      wanted gets a fresh spec post-v1.* Do **not** attempt to land — they predate the rewrite
+      and conflict heavily. (Evolve/RSI being v1 scope does not change this: v1 ships the
+      rewritten RSI, not the pre-rewrite branches.)
 - [ ] Diff `fix/p2-installer-bugs` + `claude/mac-installer-x1sezm` against #269; cherry-pick only
       installer bug fixes not subsumed (deployability, allowed under freeze); close both.
 - [ ] Delete remaining residual branches.
@@ -151,8 +153,9 @@ default — container escape equals host root.
 registry silently offers maximally-privileged fake skills. `api/chat_completions.py:187` echoes
 upstream exception text in 502 bodies (the streaming branch is already sanitized).
 
-- [ ] Fixtures: delete or gate behind an explicit env flag + rename to obviously-fake names;
-      HTTP failure → error, never fixtures.
+- [ ] Delete the fixtures from the runtime path outright (anything needed for tests moves into
+      the test tree); HTTP failure → error, never fixtures. No runtime flag — a demo mode that
+      serves privileged-looking fake skills is not worth the footgun.
 - [ ] 502 path: mirror the streaming branch's sanitization; detail to server logs only.
 - [ ] Tests for both.
 
@@ -185,8 +188,10 @@ some of this; this item closes the remainder.
 - [ ] Fix or skip-with-tracking-link tests that fail on first real run (expect some).
 - [ ] Root `tests/` runs on every PR, not just doc paths.
 
-**AC:** static `def test_` inventory vs CI-collected count matches (± documented skips); all
-suites green on `develop`. **Blocks:** C3, G1.
+**AC:** every orphaned suite appears in a CI invocation; the expected inventory is generated with
+`pytest --collect-only -q` per suite (node IDs — not static `def test_` counts, which
+parametrization expands) and CI-collected node IDs match it (± documented skips); all suites
+green on `develop`. **Blocks:** C3, G1.
 
 ## C2 — Honest coverage gate + frontend tests in CI (M, dep C1)
 
@@ -255,7 +260,10 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 - [ ] SPEC-070226-b624 (LLMJudgeComparator; `ensemble.py:208` raises NotImplementedError) → same.
 - [ ] Dedupe the 3 duplicate spec pairs (shared-tool-call-cache, canvas-tool-action-contracts,
       skill-fixer-rule-pipeline); regenerate ADR-INDEX.
-- [ ] ADR-076: check now-true ACs; record the default negotiated API version (see E4).
+- [ ] ADR-076: record its actual state — content negotiation is **not implemented** (the only
+      negotiation code is canvas-specific/v2; business routes are mounted under the `/v1` path);
+      its ACs stay unchecked and implementation is deferred to v1.1 with a D5 tracking entry
+      (see E4 for what the release notes may truthfully claim).
 
 **AC:** registry gate green; no spec marked Implemented whose named feature raises
 NotImplementedError.
@@ -297,7 +305,8 @@ stability statement. **Rename blocks the tag.**
 
 - [ ] Enumerate shipped-but-degraded behaviors with a v1.1 tracking entry each: in-memory task
       queue (restart loses tasks, ADR-018), canvas jobs never advance without a runner
-      (SPEC-203), canvas publish/export 501s, conductor degraded modes (F3), Canvas Studio /v2.
+      (SPEC-203), canvas publish/export 501s, conductor degraded modes (F3), Canvas Studio /v2,
+      ADR-076 content negotiation unimplemented (`/v1` mount only — see D2/E4).
 - [ ] Feed verbatim into CHANGELOG "Known limitations" (E4).
 
 **AC:** every shipped-but-degraded behavior appears here or is fixed.
@@ -340,8 +349,11 @@ resolves `maistro-core`/`maistro-evolve`/`maistro-bootstrap` at `1.0.0`.
 cosign step is inert; the only image push is manual `deploy.sh` with git-SHA tags.
 
 - [ ] `.github/workflows/release.yml`, `on: push: tags: ['v*']`.
-- [ ] `guard`: tag commit is ancestor of `main` (rc: `integration`); tag == `VERSION` == every
-      package version; CHANGELOG has a matching heading.
+- [ ] `guard`: tag commit is ancestor of `main` (rc: `integration`); prerelease-aware version
+      check — a final tag `vX.Y.Z` must equal `VERSION` == every package version exactly, while
+      an rc tag `vX.Y.Z-rcN` must have base version `X.Y.Z` == `VERSION` (packages stay at the
+      final version; the rc suffix lives only in the tag); CHANGELOG has a heading matching the
+      base version.
 - [ ] `wheels`: sdist+wheel for the publish set — **maistro-core, maistro-canvas, maistro-evolve,
       maistro-rsi, maistro-bootstrap**; `twine check`; clean-venv install+import smoke.
 - [ ] `pypi`: trusted publishing (OIDC) gated by a `release` GitHub environment approval.
@@ -362,9 +374,11 @@ end-to-end with zero manual artifact handling.
       canvas, server, conductor, **evolve+RSI as headline features** (with the D3
       heuristic-fitness caveat), security hardening, CI.
 - [ ] "Known limitations" = D5 verbatim.
-- [ ] **ADR-076 statement (required):** the HTTP API is versioned by content negotiation
-      (`Accept: application/vnd.maistro.v1+json`); the default negotiated version in v1.0.0 is
-      **v1**; the API version axis is independent of the package version.
+- [ ] **API-version statement (required, and honest):** the stable HTTP surface in v1.0.0 is the
+      `/v1` route mount; ADR-076's content-negotiation scheme
+      (`Accept: application/vnd.maistro.vN+json`) is **not yet implemented** and is deferred to
+      v1.1 (D5 entry) — the release notes must describe the mount, not claim negotiation the
+      server doesn't perform; the API version axis remains independent of the package version.
 - [ ] Point to `docs/product/DEPLOYMENT-STANCE.md` as the supported-profile matrix.
 
 **AC:** release.yml guard finds the heading; notes reviewed against D4/D5.
@@ -413,6 +427,13 @@ unpackageable, outside the wheel-imports gate, and a second unlocked dependency 
       → submit a DAG over WS → real model call → results.
 - [ ] Fix what breaks (env plumbing, CORS/WS origin, image tags) — deployability fixes are
       allowed under freeze.
+- [ ] **Resolve the sandbox-backend gap first:** every DEPLOYMENT-STANCE profile lists
+      `maistro-sandbox-worker`, but no such package/service exists in the tree, and B3 removes
+      the docker.sock compatibility path — leaving the official install with no sandbox
+      execution backend. Either wire a real backend into the default compose (the `deploy/sbx`
+      kit / maistro-rsi sandbox backends are the candidates) and update DEPLOYMENT-STANCE's
+      component naming to match what ships, or amend DEPLOYMENT-STANCE to describe v1 without
+      the worker. This blocks profile verification.
 - [ ] Repeat for each `docs/product/DEPLOYMENT-STANCE.md` profile claiming conductor support;
       `deploy/scripts/backup.sh` + `verify-restore.sh` pass against the stack (v1 ships the
       compose story; K8s/Helm deferred via D5).
@@ -491,8 +512,9 @@ PyPI trusted publishers configured; branch protections live (C3).
    digests → GitHub release created with all artifacts and the ADR-076 API-version statement.
 4. Post-tag verification on a clean machine: `pip install maistro-core==1.0.0` (and
    `maistro-rsi==1.0.0`, which must resolve its siblings at 1.0.0) from real PyPI;
-   `MAISTRO_VERSION=v1.0.0 get.sh` → wizard → compose → DAG execution → RSI-via-UI loop (F2+F4
-   scripts verbatim); `cosign verify` both images from outside CI.
+   `MAISTRO_VERSION=v1.0.0 ./get.sh` (the downloaded installer invoked by path, as in E5's AC) →
+   wizard → compose → DAG execution → RSI-via-UI loop (F2+F4 scripts verbatim); `cosign verify`
+   both images from outside CI.
 5. Close out: back-merge `main` → `develop` if any delta; bump `develop` to `1.1.0.dev0`; lift
    the freeze; open the v1.1 tracking set seeded with D1 deferrals.
 6. Rollback plan: PyPI = yank (never delete); images = move `latest`/`1.0` tags back + advisory;
