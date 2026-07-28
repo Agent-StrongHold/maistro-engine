@@ -130,13 +130,17 @@ jobs:
       # C4 hardening has, so it has to actually run somewhere.
       #
       # `test:ci` deliberately EXCLUDES tests/renderingPipeline.test.js: 10 of
-      # its 11 tests fail on the current tree for reasons that predate this
-      # change (the Azure image-edit fallback chain does not behave as the test
-      # asserts, and two tests time out at 5s). Those are real, unrelated
-      # product defects in the image pipeline, not auth. They are named here so
-      # the exclusion is visible rather than implied by a green check — see the
-      # follow-up item in docs/reviews/2026-07-27-codebase-review.md. Fixing
-      # them should delete this script and restore plain `npm run test`.
+      # its 11 tests fail on the current tree for reasons that predate the auth
+      # work (the Azure image-edit fallback chain does not behave as the tests
+      # assert, and two time out at 5s). Those are real but unrelated product
+      # defects in the image pipeline. They are named here so the exclusion is
+      # visible rather than implied by a green check; fixing them should delete
+      # the `test:ci` script and restore plain `npm run test`.
+      #
+      # The script is a DENY-list, not an allow-list, and that matters: an
+      # allow-list of filenames silently drops every test file added later,
+      # which for a step whose entire purpose is "the canvas hardening needs a
+      # regression net" is a gate that decays open without ever going red.
       - run: npm ci && npm run test:ci
         working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt

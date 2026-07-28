@@ -31,7 +31,7 @@ async def _authenticate(websocket: WebSocket, permission: str | None = None) -> 
     # performs for HTTP has to be repeated here or any page the user visits can
     # open an authenticated socket against this server (cross-site WebSocket
     # hijacking). Non-browser callers send no Origin and are unaffected.
-    if not origin_allowed(websocket.headers.get("origin")):
+    if not origin_allowed(websocket.headers.get("origin"), websocket.headers.get("host")):
         await websocket.close(code=_POLICY_VIOLATION, reason="Origin not allowed")
         return None
     user = resolve_principal(websocket.cookies, websocket.headers.get("authorization"))

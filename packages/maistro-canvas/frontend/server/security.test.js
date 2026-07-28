@@ -42,6 +42,23 @@ describe("resolveSecurityConfig", () => {
     expect(cfg.maxExportPages).toBe(5);
     expect(cfg.maxConcurrentExports).toBe(1);
   });
+
+  it("falls back to the default rather than NaN on a malformed cap", () => {
+    // NaN would be the dangerous outcome: `pages.length > NaN` is false, so a
+    // typo would silently disable the cap instead of restoring it.
+    for (const bad of ["unlimited", "two", "0", "-1", "abc"]) {
+      const cfg = resolveSecurityConfig({
+        CANVAS_MAX_EXPORT_PAGES: bad,
+        CANVAS_MAX_CONCURRENT_EXPORTS: bad,
+      });
+      expect(cfg.maxExportPages).toBe(400);
+      expect(cfg.maxConcurrentExports).toBe(2);
+    }
+  });
+
+  it("truncates a fractional cap instead of comparing against a float", () => {
+    expect(resolveSecurityConfig({ CANVAS_MAX_CONCURRENT_EXPORTS: "2.9" }).maxConcurrentExports).toBe(2);
+  });
 });
 
 describe("isOriginAllowed", () => {

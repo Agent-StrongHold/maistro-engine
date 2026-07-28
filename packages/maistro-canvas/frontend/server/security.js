@@ -2,6 +2,21 @@ import { timingSafeEqual } from "crypto";
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
+// A plain `Number(env.X || fallback)` turns any non-numeric value into NaN, and
+// every `>`/`>=` comparison against NaN is false — so a typo (or "unlimited")
+// would silently REMOVE the cap it was meant to set, which is the worst
+// possible direction for a misconfiguration to fail. Fall back to the default
+// and say so instead.
+function positiveIntOr(raw, fallback) {
+  if (raw === undefined || raw === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) {
+    console.warn(`Ignoring invalid limit ${JSON.stringify(raw)}; using ${fallback}`);
+    return fallback;
+  }
+  return Math.floor(n);
+}
+
 export function resolveSecurityConfig(env = process.env) {
   const host = env.CANVAS_HOST || "127.0.0.1";
   const token = env.CANVAS_API_TOKEN || "";
@@ -9,8 +24,8 @@ export function resolveSecurityConfig(env = process.env) {
     "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174")
     .split(",").map(s => s.trim()).filter(Boolean);
   const bodyLimit = env.CANVAS_BODY_LIMIT || "200mb";
-  const maxExportPages = Number(env.CANVAS_MAX_EXPORT_PAGES || 400);
-  const maxConcurrentExports = Number(env.CANVAS_MAX_CONCURRENT_EXPORTS || 2);
+  const maxExportPages = positiveIntOr(env.CANVAS_MAX_EXPORT_PAGES, 400);
+  const maxConcurrentExports = positiveIntOr(env.CANVAS_MAX_CONCURRENT_EXPORTS, 2);
   const allowTruncate = env.CANVAS_ALLOW_TRUNCATE === "true";
   const exposed = !LOOPBACK.has(host);
   if (exposed && !token) {
