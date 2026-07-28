@@ -12,9 +12,11 @@ import hashlib
 import hmac
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from maistro.security.secret_equal import secret_equal
 
 
 class UsersTamperError(Exception):
@@ -62,7 +64,9 @@ class ElevationRequest:
 class ElevationGrant:
     scope: str
     user_public_key: str
-    admin_key: str
+    # Retained for grant/key-version correlation; excluded from repr so it
+    # cannot leak via logs or tracebacks.
+    admin_key: str = field(repr=False)
     created_at: float
     ttl_seconds: float
     _valid: bool = True
@@ -95,7 +99,9 @@ class ElevationGrant:
 @dataclass
 class _Policy:
     policy_id: str
-    admin_key: str
+    # Retained for grant/key-version correlation; excluded from repr so it
+    # cannot leak via logs or tracebacks.
+    admin_key: str = field(repr=False)
     user_public_key: str
     scope: str
     description: str
@@ -264,7 +270,7 @@ class PrivilegeGuard:
         admin_key: str,
         ttl_seconds: float = 900.0,
     ) -> ElevationGrant:
-        if admin_key != self._admin_key:
+        if not secret_equal(admin_key, self._admin_key):
             raise ElevationDeniedError("Only the admin can sign elevation requests")
         request = self._pending_elevations.pop(token, None)
         if request is None:
@@ -293,7 +299,7 @@ class PrivilegeGuard:
         return grant
 
     def rotate_admin_key(self, old_key: str, new_key: str) -> None:
-        if old_key != self._admin_key:
+        if not secret_equal(old_key, self._admin_key):
             raise ElevationDeniedError("old_key does not match current admin key")
         self._admin_key_version += 1
         self._admin_key = new_key
@@ -310,7 +316,7 @@ class PrivilegeGuard:
         scope: str,
         description: str,
     ) -> str:
-        if admin_key != self._admin_key:
+        if not secret_equal(admin_key, self._admin_key):
             raise ElevationDeniedError("Only admin can create policies")
         policy_id = hmac.new(
             os.urandom(32),
@@ -330,7 +336,7 @@ class PrivilegeGuard:
         return policy_id
 
     def revoke_policy(self, policy_id: str, admin_key: str) -> None:
-        if admin_key != self._admin_key:
+        if not secret_equal(admin_key, self._admin_key):
             raise ElevationDeniedError("Only admin can revoke policies")
         for p in self._policies:
             if p.policy_id == policy_id:
