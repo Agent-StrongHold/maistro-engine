@@ -99,7 +99,7 @@ async def test_propose_candidates_skips_candidate_when_llm_call_raises() -> None
 @pytest.mark.asyncio
 async def test_reflective_improve_returns_none_when_baseline_evaluation_yields_no_results() -> None:
     genome = _genome([_node("q1")], entry_node="q1", eval_scores={"ifeval": 0.4})
-    harness = EvalHarness(benchmark_fidelity="stub")
+    harness = EvalHarness()
 
     async def empty_runner(g: PipelineGenome, llm_call: Any) -> EvalResult:
         raise AssertionError("not reached: evaluate_genome filters unregistered benchmarks")
@@ -120,7 +120,7 @@ async def test_reflective_improve_returns_none_when_baseline_evaluation_yields_n
 @pytest.mark.asyncio
 async def test_reflective_improve_skips_candidate_with_no_evaluation_result() -> None:
     genome = _genome([_node("q1")], entry_node="q1", eval_scores={"ifeval": 0.4})
-    harness = EvalHarness(benchmark_fidelity="stub")
+    harness = EvalHarness()
     calls = {"count": 0}
 
     async def runner(g: PipelineGenome, llm_call: Any) -> EvalResult:

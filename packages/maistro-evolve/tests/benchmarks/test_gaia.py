@@ -6,7 +6,6 @@ import pytest
 
 from maistro_evolve.benchmarks.gaia import (
     _exact_match_score,
-    _heuristic_score,
     _judge_answer,
     run_gaia,
 )
@@ -48,31 +47,6 @@ class TestExactMatchScore:
         assert _exact_match_score("", "") == 1.0
 
 
-class TestHeuristicScore:
-    def test_level_1_base_score_with_zero_jitter(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {"level": 1}
-        assert _heuristic_score(sample) == 0.75
-
-    def test_level_other_base_score_with_zero_jitter(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {"level": 2}
-        assert _heuristic_score(sample) == 0.55
-
-    def test_missing_level_defaults_to_1(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample: dict[str, Any] = {}
-        assert _heuristic_score(sample) == 0.75
-
-    def test_clamped_to_upper_bound(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("random.uniform", lambda a, b: 100.0)
-        assert _heuristic_score({"level": 1}) == 0.95
-
-    def test_clamped_to_lower_bound(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("random.uniform", lambda a, b: -100.0)
-        assert _heuristic_score({"level": 1}) == 0.1
-
-
 class TestJudgeAnswer:
     async def test_returns_judge_score_on_success(self) -> None:
         async def fake_llm_call(messages: list[dict[str, str]], **kwargs: Any) -> str:
@@ -90,15 +64,10 @@ class TestJudgeAnswer:
 
 
 class TestRunGaia:
-    async def test_heuristic_path_when_llm_call_is_none(self) -> None:
+    async def test_llm_call_none_raises(self) -> None:
         genome = make_genome()
-        result = await run_gaia(genome, None)
-
-        assert result.benchmark == "gaia"
-        assert result.samples_evaluated == 15
-        assert result.metadata == {"total_samples": 15, "fidelity": "proxy"}
-        assert 0.1 <= result.score <= 0.95
-        assert result.cost_usd == 0.0
+        with pytest.raises(ValueError, match="requires an llm_call"):
+            await run_gaia(genome, None)
 
     async def test_exact_match_path_no_judge_call(self) -> None:
         genome = make_genome()

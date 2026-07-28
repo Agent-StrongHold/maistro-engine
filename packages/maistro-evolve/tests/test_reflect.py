@@ -70,7 +70,7 @@ _FAILURE_METADATA = {
 
 def _keyed_harness() -> EvalHarness:
     """Harness whose ifeval score depends on the entry prompt content."""
-    harness = EvalHarness(benchmark_fidelity="stub")
+    harness = EvalHarness()
 
     async def runner(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         prompt = genome.topology.nodes[0].system_prompt
@@ -158,10 +158,22 @@ class TestReflectiveImprove:
 
     @pytest.mark.asyncio
     async def test_stub_signal_never_accepted(self):
+        # No runner produces a "stub" fidelity today (SPEC-202: the tier is
+        # removed entirely) — but reflective_improve's guard is keyed on the
+        # per-result `metadata["stub"]` flag, not on EvalHarness.fidelity, so a
+        # runner can still (legitimately) flag an individual result as noise
+        # (e.g. a transient gateway failure). Verify that guard directly.
         g = _genome()
         g.eval_scores = {"ifeval": 0.4}
-        stub_harness = EvalHarness(benchmark_fidelity="stub")
-        outcome = await reflective_improve(g, stub_harness, _llm_improved)
+        harness = EvalHarness()
+        harness._benchmarks.clear()
+
+        async def stub_runner(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+            return EvalResult(benchmark="ifeval", score=0.9, metadata={"stub": True})
+
+        harness.register_benchmark("ifeval", stub_runner)
+
+        outcome = await reflective_improve(g, harness, _llm_improved)
         assert outcome is not None
         assert outcome.accepted is False
         assert outcome.reason == "stub_signal"
@@ -202,8 +214,9 @@ class TestIfevalFailureTraces:
 
     @pytest.mark.asyncio
     async def test_no_traces_without_llm(self):
-        result = await run_ifeval(_genome(), None)
-        assert result.metadata.get("failures") == []
+        # No stub/heuristic fallback: an llm_call is mandatory (SPEC-202).
+        with pytest.raises(ValueError, match="requires an llm_call"):
+            await run_ifeval(_genome(), None)
 
 
 class TestCycleIntegration:

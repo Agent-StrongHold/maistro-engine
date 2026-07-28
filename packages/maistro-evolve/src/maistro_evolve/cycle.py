@@ -396,11 +396,10 @@ class EvolutionCycle:
 
         if self.harness.fidelity != "real":
             logger.warning(
-                "evolve_cycle_fidelity: this run's fitness signal is '%s' — %s. See SPEC-202.",
+                "evolve_cycle_fidelity: this run's fitness signal is '%s' — "
+                "heuristic/lite scoring against handcrafted samples, not the "
+                "official benchmarks. See SPEC-202.",
                 self.harness.fidelity,
-                "pure random noise, not an evaluation"
-                if self.harness.fidelity == "stub"
-                else "heuristic scoring against handcrafted samples, not the official benchmarks",
             )
 
         await self._evaluate_unevaluated(population, cfg, llm_call)

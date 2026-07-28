@@ -130,6 +130,12 @@ async def _simulate_turns(
 
 
 async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    if llm_call is None:
+        raise ValueError(
+            "run_tau_bench requires an llm_call — there is no stub/heuristic "
+            "fallback (SPEC-202: never produce a fabricated score)"
+        )
+
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -152,23 +158,18 @@ async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         full_messages.insert(0, {"role": "system", "content": effective_system})
 
         try:
-            if llm_call is not None:
-                max_turns = sample.get("max_turns", 3)
-                response, cost = await _simulate_turns(
-                    sample, full_messages, llm_call, model_config, max_turns
-                )
-                total_cost += cost
+            max_turns = sample.get("max_turns", 3)
+            response, cost = await _simulate_turns(
+                sample, full_messages, llm_call, model_config, max_turns
+            )
+            total_cost += cost
 
-                all_responses = " ".join(
-                    m["content"] for m in full_messages if m["role"] == "assistant"
-                )
-                score = _score_tool_usage(all_responses or response, sample)
-                total_score += score
-                evaluated += 1
-            else:
-                score = _heuristic_score(sample)
-                total_score += score
-                evaluated += 1
+            all_responses = " ".join(
+                m["content"] for m in full_messages if m["role"] == "assistant"
+            )
+            score = _score_tool_usage(all_responses or response, sample)
+            total_score += score
+            evaluated += 1
         except (TimeoutError, Exception):
             evaluated += 1
 
@@ -183,11 +184,3 @@ async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         samples_evaluated=evaluated,
         metadata={"total_samples": samples, "fidelity": "proxy"},
     )
-
-
-def _heuristic_score(sample: dict[str, Any]) -> float:
-    import random
-
-    num_tools = len(sample.get("expected_tool_calls", []))
-    base = 0.7 if num_tools == 1 else 0.5 if num_tools == 2 else 0.35
-    return max(0.1, min(0.9, base + random.uniform(-0.05, 0.05)))

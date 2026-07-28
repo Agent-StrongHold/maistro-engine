@@ -29,25 +29,42 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
 
 ## Benchmark fidelity — stability statement (SPEC-202)
 
-**None of `ifeval`, `bfcl`, `swebench`, `tau_bench`, `gaia`, `ragas`, `terminalbench`, `osworld` run the
-official benchmark harness.** They score model output against a small set of handcrafted samples
-(`benchmarks/datasets.py`) using keyword-overlap and line-change heuristics, sometimes backstopped by an
-LLM-as-judge call. The names match the industry-standard evals; the implementations do not. This is shipped,
-supported v1 behavior — not a bug — but treat scores accordingly.
+**None of `ifeval`, `bfcl`, `swebench`, `tau_bench`, `gaia`, `ragas`, `terminalbench` run the official
+published benchmark harness against the official dataset.** They score real model output, against real
+criteria, at a lite/handcrafted scale (`benchmarks/datasets.py`) — a genuine but small-scale version of the
+real methodology, not the official harness. The names match the industry-standard evals; the *scale* does
+not. This exists to save time/money and produce Pareto (cost vs. quality) signal cheaply, and is shipped,
+supported v1 behavior. `osworld` is not implemented at all — see below.
 
-Three fidelity tiers, carried as `EvalResult.metadata["fidelity"]` and on `EvalHarness.fidelity`:
+**There is no `stub` tier.** A benchmark either evaluates a real model response against real criteria
+(`proxy`), or it does not run at all — every proxy runner raises `ValueError` if called with `llm_call=None`
+rather than falling back to keyword heuristics or a fabricated score. `EvalHarness(benchmark_fidelity="stub")`
+(or any value other than `"proxy"`/`"real"`) raises `ValueError`.
+
+Two fidelity tiers, carried as `EvalResult.metadata["fidelity"]` and on `EvalHarness.fidelity`:
 
 | Tier | What it means | Trust for promotion |
 |------|---------------|---------------------|
-| `stub` | `random.uniform()` — no evaluation occurred | Never. `reflective_improve()` and `hyper_mutate()` both refuse to verify against it. |
-| `proxy` | Heuristic/keyword scoring against handcrafted samples — **what every benchmark above ships today** | Development only. This is the default (`EvalHarness(benchmark_fidelity="proxy")`). |
+| `proxy` | Lite-scale but genuine scoring against handcrafted samples — real rule verification, exact-match, tool-call matching, or real sandboxed execution — **what every registered benchmark ships today** | Development only. This is the default (`EvalHarness(benchmark_fidelity="proxy")`). |
 | `real` | Official harness against the official dataset | Not implemented for any benchmark. `EvalHarness(benchmark_fidelity="real")` raises rather than silently downgrading. |
 
-`EvalHarness()` defaults to `"proxy"`; `EvolutionCycle.run_cycle()` logs a `WARNING` naming the tier on every
-call so a proxy-scored run is never mistaken for a real one. `PROXY_BENCHMARKS` (in `benchmarks/__init__.py`)
-is the honest name for the registry that `REAL_BENCHMARKS` used to be. Real adapters (official dataset +
-harness, `swebench`/`terminalbench`/`osworld` needing sandbox execution) are `docs/specs/SPEC-202` future work,
-not v1 scope.
+Per-benchmark methodology at the `proxy` tier:
+- **`ifeval`/`bfcl`/`ragas`/`tau_bench`**: real rule/keyword/tool-call verification against handcrafted samples.
+- **`gaia`**: exact-match against handcrafted Q&A, with an LLM-as-judge fallback.
+- **`swebench`**: candidate code actually executes in a real sandboxed subprocess (`benchmarks/sandbox_exec.py`
+  — `asyncio.create_subprocess_exec`, `start_new_session=True`, process-group kill on timeout) and is asserted
+  against the real expected value. Process-level isolation only — see that module's docstring before reusing
+  it elsewhere.
+- **`terminalbench`**: delegates to `executable_terminal.py`'s real tempdir-based filesystem-state verification
+  (a restricted JSON action language, not a real shell).
+- **`osworld`**: **not registered.** `run_osworld` raises `NotImplementedError` — no desktop-VM/GUI-automation
+  infrastructure exists in this repo. Reference task definitions remain in `datasets.py` for when that lands.
+
+`EvalHarness()` defaults to `"proxy"` and registers 7 benchmarks (`osworld` excluded);
+`EvolutionCycle.run_cycle()` logs a `WARNING` naming the tier on every call so a proxy-scored run is never
+mistaken for a real one. `PROXY_BENCHMARKS` (in `benchmarks/__init__.py`) is the honest name for the registry
+that `REAL_BENCHMARKS` used to be. Official-dataset/official-harness `real` adapters for any benchmark are
+`docs/specs/SPEC-202` future work, not v1 scope.
 
 ## Gotchas
 
@@ -55,9 +72,9 @@ not v1 scope.
   don't assert on exact offspring; assert on invariants/ranges.
 - **Hard fitness gates:** a genome failing any per-benchmark minimum threshold (e.g. ifeval 0.25, bfcl 0.20)
   cannot breed.
-- **Long-running:** cycles batch eval jobs (`eval_batch_size`, default 5). The `benchmarks` module is optional —
-  it falls back to stubs if import fails.
-- **Reflection and hyper-mutation refuse stub signal:** `reflective_improve()` returns `reason="stub_signal"`
-  and `hyper_mutate()` likewise declines to verify against a baseline carrying `metadata.stub=True` (SPEC-202
-  honesty — never verify against noise). Neither currently gates on `proxy` vs `real` — only `stub` is refused
-  today; see **Benchmark fidelity** above.
+- **Long-running:** cycles batch eval jobs (`eval_batch_size`, default 5).
+- **Reflection and hyper-mutation refuse noise-flagged signal:** `reflective_improve()` returns
+  `reason="stub_signal"` and `hyper_mutate()` likewise declines to verify against a baseline result carrying
+  `metadata["stub"] = True` (SPEC-202 honesty — never verify against noise). This is defensive: no shipped
+  runner sets that flag today (there is no `stub` tier), but a custom-registered runner still can, and the
+  guard stays in place for it.

@@ -8,7 +8,32 @@ from maistro_evolve.cycle import EvolutionConfig, EvolutionCycle
 from maistro_evolve.harness import EvalHarness
 from maistro_evolve.population import PopulationStore
 from maistro_evolve.tournament import EloTournament
-from maistro_evolve.types import DAGTopology, EvalWeights, NodeGenome, PipelineGenome
+from maistro_evolve.types import DAGTopology, EvalResult, EvalWeights, NodeGenome, PipelineGenome
+
+
+def _fake_harness(names: list[str]) -> EvalHarness:
+    """A harness registered with fast, deterministic fake runners (no real
+    scoring, no llm_call requirement) — for exercising EvolutionCycle's own
+    machinery (population growth, tournament, self-improve triggering)
+    without needing a real model call or the real proxy benchmarks."""
+    harness = EvalHarness()
+    harness._benchmarks.clear()
+    for name in names:
+
+        async def fake_runner(
+            genome: PipelineGenome, llm_call: object, _name: str = name
+        ) -> EvalResult:
+            return EvalResult(
+                benchmark=_name,
+                score=0.5,
+                cost_usd=0.0,
+                duration_seconds=0.0,
+                samples_evaluated=1,
+                metadata={"fidelity": "proxy"},
+            )
+
+        harness.register_benchmark(name, fake_runner)
+    return harness
 
 
 def _genome(name="test"):
@@ -126,7 +151,7 @@ class TestEvolutionCycle:
         for i in range(6):
             population.add(_genome(f"s{i}"))
 
-        harness = EvalHarness(benchmark_fidelity="stub")
+        harness = _fake_harness(["ifeval", "bfcl"])
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=10,
@@ -149,7 +174,7 @@ class TestEvolutionCycle:
             g.fitness_score = float(i) * 10
             population.add(g)
 
-        harness = EvalHarness(benchmark_fidelity="stub")
+        harness = _fake_harness(["ifeval", "bfcl"])
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=6,
@@ -173,7 +198,7 @@ class TestEvolutionCycle:
         for i in range(3):
             population.add(_genome(f"fill{i}"))
 
-        harness = EvalHarness(benchmark_fidelity="stub")
+        harness = _fake_harness(["ifeval", "bfcl", "gaia"])
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=5,
@@ -190,13 +215,9 @@ class TestEvolutionCycle:
 
 
 class TestEvalHarness:
-    def test_stub_harness(self):
-        harness = EvalHarness(benchmark_fidelity="stub")
-        assert len(harness._benchmarks) == 8
-
-    def test_real_harness(self):
+    def test_proxy_harness_registers_seven_benchmarks_not_osworld(self):
         harness = EvalHarness(benchmark_fidelity="proxy")
-        assert len(harness._benchmarks) == 8
+        assert len(harness._benchmarks) == 7
         for name in [
             "ifeval",
             "bfcl",
@@ -205,25 +226,28 @@ class TestEvalHarness:
             "tau_bench",
             "gaia",
             "ragas",
-            "osworld",
         ]:
             assert name in harness._benchmarks
+        assert "osworld" not in harness._benchmarks
 
     @pytest.mark.asyncio
-    async def test_evaluate_genome_stubs(self):
-        harness = EvalHarness(benchmark_fidelity="stub")
-        g = _genome("eval")
-        results = await harness.evaluate_genome(g)
-        assert len(results) == 8
-        for r in results:
-            assert 0.0 <= r.score <= 1.0
-            assert r.metadata.get("stub") is True
-
-    @pytest.mark.asyncio
-    async def test_evaluate_genome_real_no_llm(self):
+    async def test_evaluate_genome_without_llm_call_raises(self):
+        """No stub tier: evaluating a real proxy benchmark with no llm_call
+        is a hard error, not a fabricated score."""
         harness = EvalHarness(benchmark_fidelity="proxy")
         g = _genome("eval")
-        results = await harness.evaluate_genome(g, benchmarks=["ifeval", "gaia"])
+        with pytest.raises(ValueError, match="requires an llm_call"):
+            await harness.evaluate_genome(g, benchmarks=["ifeval"])
+
+    @pytest.mark.asyncio
+    async def test_evaluate_genome_with_llm_call_scores_real_benchmarks(self):
+        harness = EvalHarness(benchmark_fidelity="proxy")
+        g = _genome("eval")
+
+        async def llm_call(messages, **kwargs):
+            return "a plain response"
+
+        results = await harness.evaluate_genome(g, benchmarks=["ifeval", "gaia"], llm_call=llm_call)
         assert len(results) == 2
         for r in results:
             assert 0.0 <= r.score <= 1.0

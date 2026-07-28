@@ -133,6 +133,12 @@ async def _judge_rag_quality(
 
 
 async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    if llm_call is None:
+        raise ValueError(
+            "run_ragas requires an llm_call — there is no stub/heuristic "
+            "fallback (SPEC-202: never produce a fabricated score)"
+        )
+
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -156,41 +162,32 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         messages = build_messages(rag_system, user_msg)
 
         try:
-            if llm_call is not None:
-                response = await asyncio.wait_for(
-                    llm_call(
-                        messages,
-                        temperature=model_config.get("temperature", 0.1),
-                        max_tokens=model_config.get("max_tokens", 512),
-                    ),
-                    timeout=30.0,
-                )
-                total_cost += 0.001
+            response = await asyncio.wait_for(
+                llm_call(
+                    messages,
+                    temperature=model_config.get("temperature", 0.1),
+                    max_tokens=model_config.get("max_tokens", 512),
+                ),
+                timeout=30.0,
+            )
+            total_cost += 0.001
 
-                eval_type = sample.get("eval_type", "faithfulness")
-                if eval_type == "faithfulness":
-                    static = _score_faithfulness(
-                        response, sample["context"], sample["expected_answer"]
-                    )
-                else:
-                    static = _score_relevance(
-                        response, sample["question"], sample["expected_answer"]
-                    )
-
-                if static >= 0.6:
-                    total_score += static
-                else:
-                    judged = await _judge_rag_quality(
-                        sample["question"], sample["context"], response, eval_type, llm_call
-                    )
-                    total_score += max(static, judged)
-                    total_cost += 0.0005
-
-                evaluated += 1
+            eval_type = sample.get("eval_type", "faithfulness")
+            if eval_type == "faithfulness":
+                static = _score_faithfulness(response, sample["context"], sample["expected_answer"])
             else:
-                score = _heuristic_score(sample)
-                total_score += score
-                evaluated += 1
+                static = _score_relevance(response, sample["question"], sample["expected_answer"])
+
+            if static >= 0.6:
+                total_score += static
+            else:
+                judged = await _judge_rag_quality(
+                    sample["question"], sample["context"], response, eval_type, llm_call
+                )
+                total_score += max(static, judged)
+                total_cost += 0.0005
+
+            evaluated += 1
         except (TimeoutError, Exception):
             evaluated += 1
 
@@ -205,10 +202,3 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         samples_evaluated=evaluated,
         metadata={"total_samples": samples, "fidelity": "proxy"},
     )
-
-
-def _heuristic_score(sample: dict[str, Any]) -> float:
-    import random
-
-    base = 0.6 if sample.get("eval_type") == "faithfulness" else 0.55
-    return max(0.2, min(0.9, base + random.uniform(-0.08, 0.08)))
