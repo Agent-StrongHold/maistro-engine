@@ -8,6 +8,7 @@
     "server": "node server.js",
     "build": "vite build",
     "test": "vitest run",
+    "test:ci": "vitest run server/security.test.js tests/llmClient.test.js tests/refinementPass.test.js tests/templateEngine.test.js",
     "test:watch": "vitest",
     "lint": "eslint .",
     "preview": "vite preview"

@@ -130,6 +130,12 @@ class Settings(BaseSettings):
     )
     github_webhook_secret: str = ""
     ci_webhook_secret: str = ""
+    require_webhook_secrets: bool = Field(
+        default=False,
+        description="Refuse to start unless both webhook secrets are set. Off by "
+        "default because the webhook routes already reject unsigned requests; "
+        "turn it on to convert a runtime 503 into a boot failure.",
+    )
 
     cors_origins: list[str] = Field(
         default_factory=lambda: ["http://localhost:3080"],

@@ -137,6 +137,14 @@ def _registration_allowed() -> bool:
     return len(stores.users) > 0
 
 
+def _cookie_secure() -> bool:
+    """Read the Secure flag at call time, not import time, so tests and
+    deployments can set SESSION_COOKIE_SECURE without re-importing this module."""
+    from config import get_settings
+
+    return bool(get_settings().session_cookie_secure)
+
+
 def _username_taken(username: str) -> bool:
     import stores
 
@@ -161,6 +169,8 @@ def _issue_session(user: Any, response: Response) -> dict[str, Any]:
         max_age=_COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=_cookie_secure(),
+        path="/",
     )
     return {
         "ok": True,
@@ -251,7 +261,19 @@ def logout(response: Response, hive_session: str | None = Cookie(None)) -> dict[
         actor = user_info.get("username", "unknown") if user_info else "unknown"
         stores.sessions.pop(hive_session, None)
         log_audit("logout", actor)
-    response.delete_cookie(key=_SESSION_COOKIE)
+    # A cookie is only cleared when the delete matches the attributes it was set
+    # with. Dropping path/secure/samesite here left the original cookie in place
+    # on any deployment where they differed, so `logout` returned ok:true while
+    # the browser kept sending a session id the server had already discarded —
+    # harmless today only because `stores.sessions.pop` above invalidates it
+    # server-side too.
+    response.delete_cookie(
+        key=_SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(),
+    )
     return {"ok": True}
 
 
