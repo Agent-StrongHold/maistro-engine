@@ -73,7 +73,9 @@ def test_full_codebase_resolver_maps_sibling_package(module):
 
 
 def test_full_codebase_resolver_maps_external_registry_tests(module):
-    got = module.resolve_package_tests("packages/maistro-registry/src/maistro_registry/validator.py")
+    got = module.resolve_package_tests(
+        "packages/maistro-registry/src/maistro_registry/validator.py"
+    )
     assert got == Path("tests/tools/registry/test_validator.py")
 
 

@@ -80,17 +80,25 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     current = scores(args.rows)
     if not current:
-        print("::error::No mutation outcomes found; this is a configuration failure.", file=sys.stderr)
+        print(
+            "::error::No mutation outcomes found; this is a configuration failure.", file=sys.stderr
+        )
         return 1
     if args.write_baseline:
-        args.baseline.write_text(json.dumps(payload(current), indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        print(f"wrote candidate mutation baseline for {len(current)} source file(s): {args.baseline}")
+        args.baseline.write_text(
+            json.dumps(payload(current), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        print(
+            f"wrote candidate mutation baseline for {len(current)} source file(s): {args.baseline}"
+        )
         return 0
     if not args.baseline.is_file():
         print(f"::error::Missing mutation baseline: {args.baseline}", file=sys.stderr)
         return 1
     failures = enforce(current, json.loads(args.baseline.read_text(encoding="utf-8")))
-    print(f"mutation baseline summary: {len(current)} source file(s), {len(failures)} regression(s)")
+    print(
+        f"mutation baseline summary: {len(current)} source file(s), {len(failures)} regression(s)"
+    )
     for failure in failures:
         print(f"::error::{failure}", file=sys.stderr)
     return 1 if failures else 0

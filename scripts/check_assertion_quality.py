@@ -40,8 +40,12 @@ def _annotation_is_bool(annotation: ast.expr) -> bool:
     if isinstance(annotation, ast.Subscript) and isinstance(annotation.value, ast.Name):
         if annotation.value.id != "Literal":
             return False
-        values = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
-        return any(isinstance(value, ast.Constant) and isinstance(value.value, bool) for value in values)
+        values = (
+            annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+        )
+        return any(
+            isinstance(value, ast.Constant) and isinstance(value.value, bool) for value in values
+        )
     return False
 
 
@@ -81,7 +85,8 @@ def _has_raises_or_warns(node: ast.AST) -> bool:
     if not isinstance(node, ast.With | ast.AsyncWith):
         return False
     return any(
-        isinstance(item.context_expr, ast.Call) and _call_name(item.context_expr) in {"raises", "warns"}
+        isinstance(item.context_expr, ast.Call)
+        and _call_name(item.context_expr) in {"raises", "warns"}
         for item in node.items
     )
 
@@ -156,7 +161,9 @@ def findings_for_path(path: Path, bool_functions: set[str]) -> list[Finding]:
 
     findings: list[Finding] = []
     for fn in ast.walk(tree):
-        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) or not fn.name.startswith("test"):
+        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) or not fn.name.startswith(
+            "test"
+        ):
             continue
         assertions = [node for node in ast.walk(fn) if isinstance(node, ast.Assert)]
         raises_or_warns = any(_has_raises_or_warns(node) for node in ast.walk(fn))
@@ -168,7 +175,9 @@ def findings_for_path(path: Path, bool_functions: set[str]) -> list[Finding]:
             findings.append(Finding(code="no_recognized_oracle", **finding_prefix))
         if any(isinstance(assertion.test, ast.Constant) for assertion in assertions):
             findings.append(Finding(code="literal_constant_assert", **finding_prefix))
-        if assertions and all(_is_weak_assertion(assertion, bool_functions) for assertion in assertions):
+        if assertions and all(
+            _is_weak_assertion(assertion, bool_functions) for assertion in assertions
+        ):
             if not raises_or_warns and not assertion_call and not assertion_guard:
                 findings.append(Finding(code="weak_only_oracle", **finding_prefix))
 
@@ -177,7 +186,9 @@ def findings_for_path(path: Path, bool_functions: set[str]) -> list[Finding]:
             expression = assertion.test
             if not isinstance(expression, ast.Compare) or len(expression.ops) != 1:
                 continue
-            if not isinstance(expression.ops[0], ast.Eq | ast.NotEq) or len(expression.comparators) != 1:
+            if not isinstance(expression.ops[0], ast.Eq | ast.NotEq) or len(
+                expression.comparators
+            ) != 1:
                 continue
             left = _attribute(expression.left)
             right = _attribute(expression.comparators[0])
@@ -203,12 +214,16 @@ def scan(test_roots: Iterable[Path] = DEFAULT_TEST_ROOTS) -> list[Finding]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("paths", nargs="*", type=Path, help="Test roots to scan (defaults to repository tests).")
+    parser.add_argument(
+        "paths", nargs="*", type=Path, help="Test roots to scan (defaults to repository tests)."
+    )
     parser.add_argument("--json", action="store_true", help="Emit findings as JSON.")
     args = parser.parse_args()
     findings = scan(args.paths or DEFAULT_TEST_ROOTS)
     if args.json:
-        print(json.dumps([asdict(finding) | {"key": finding.key} for finding in findings], indent=2))
+        print(
+            json.dumps([asdict(finding) | {"key": finding.key} for finding in findings], indent=2)
+        )
     else:
         for finding in findings:
             print(f"{finding.key}")
