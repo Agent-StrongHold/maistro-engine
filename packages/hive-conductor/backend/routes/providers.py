@@ -201,6 +201,14 @@ def activate_provider(name: str) -> dict[str, Any]:
 
     from maistro.vault import SecretMissingError
 
+    # Key first: "store a key" is the actionable fix for the operator, and it
+    # should surface even when the gateway is misconfigured.
+    if not vault.has(p["env_key"]):
+        raise HTTPException(
+            status_code=409,
+            detail=f"No key stored for '{name}' — PUT /v1/providers/{name}/key first.",
+        )
+
     admin_base = _litellm_admin_base()
     master_key = _litellm_master_key()
     headers = {"Authorization": f"Bearer {master_key}"}
