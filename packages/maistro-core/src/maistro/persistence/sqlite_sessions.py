@@ -36,6 +36,12 @@ class SqliteSessionStore:
     async def ensure_schema(self) -> None:
         """Create the sessions table if it doesn't exist."""
         await self._conn.execute(_SCHEMA)
+        # Without this, the TTL purge is a full table scan on every append —
+        # which is how a retention sweep turns into a reason to disable the
+        # retention sweep.
+        await self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_timestamp ON sessions (timestamp)"
+        )
         await self._conn.commit()
 
     async def get_history(
@@ -83,6 +89,12 @@ class SqliteSessionStore:
                 next_seq += 1
         await self._conn.commit()
 
+        # Purge as part of normal operation rather than relying on a scheduled
+        # sweeper — there isn't one, which is exactly why the TTL never deleted
+        # anything. This mirrors security/pg_strikes.py, which clears its
+        # expired windows inline on every check.
+        await self.purge_expired()
+
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
         await self._conn.execute(
@@ -90,3 +102,26 @@ class SqliteSessionStore:
             (session_id,),
         )
         await self._conn.commit()
+
+    async def purge_expired(self, ttl_seconds: int | None = None) -> int:
+        """Delete messages older than the TTL. Returns the number removed.
+
+        TTL was enforced only as a read-time filter (`timestamp > ?` in
+        `get_history`), so expired conversation content was hidden but never
+        removed — the table grew without bound and retained user messages
+        indefinitely, which is a data-retention problem rather than a
+        performance one. The only DELETE was session-id-scoped and called by
+        nothing scheduled.
+
+        `security/pg_strikes.py` already had the right shape for this: delete
+        the expired window as part of normal operation rather than relying on
+        an external sweeper that does not exist.
+        """
+        ttl = ttl_seconds or self._ttl_seconds
+        cutoff = time.time() - ttl
+        cursor = await self._conn.execute(
+            "DELETE FROM sessions WHERE timestamp <= ?",
+            (cutoff,),
+        )
+        await self._conn.commit()
+        return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
