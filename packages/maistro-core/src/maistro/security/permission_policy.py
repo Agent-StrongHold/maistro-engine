@@ -13,12 +13,11 @@ before this module existed. The mechanism becomes *armable*, not armed.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 
+from maistro.security._types import PermissionTable
 from maistro.security.patterns import DANGEROUS_TOOL_NAMES
-
-if TYPE_CHECKING:
-    from maistro.security._types import PermissionTable
 
 # "none" is handled by absence (an empty table), not by an explicit entry
 # here -- see build_permission_table's default.
@@ -26,11 +25,26 @@ PERMISSION_PRESETS: dict[str, frozenset[str]] = {
     "dangerous_tools_admin": DANGEROUS_TOOL_NAMES,
 }
 
+#: Every accepted value of ``preset``. Membership is checked against this rather
+#: than comparing ``preset != "none"``: the mutation gate showed that comparison
+#: surviving as ``preset is not "none"``, which passes only because CPython
+#: interns the literal -- a caller building the string dynamically would have
+#: taken the other branch. A set membership test has no such identity trap.
+VALID_PRESETS: frozenset[str] = frozenset({"none", *PERMISSION_PRESETS})
+
+#: Immutable empty default. Not ``| None``: cosmic-ray mutates the ``|`` in a
+#: union annotation into every other binary operator, and because
+#: ``from __future__ import annotations`` means annotations are never evaluated,
+#: none of those mutants is killable by any test -- 11 unkillable survivors that
+#: dragged this file's kill rate to 63.9%. A single immutable sentinel says the
+#: same thing with no annotation-level operator to mutate.
+_NO_PERMISSIONS: Mapping[str, Sequence[str]] = MappingProxyType({})
+
 
 def build_permission_table(
     *,
     preset: str = "none",
-    permissions: dict[str, list[str]] | None = None,
+    permissions: Mapping[str, Sequence[str]] = _NO_PERMISSIONS,
 ) -> PermissionTable:
     """Build a ``PermissionTable`` from an optional preset plus explicit overrides.
 
@@ -47,18 +61,18 @@ def build_permission_table(
       *everyone* -- this is a deliberate hard deny, not a bug to "fix" into
       a no-op.
     """
+    if preset not in VALID_PRESETS:
+        valid = ", ".join(sorted(VALID_PRESETS))
+        msg = f"Unknown permission preset '{preset}'. Valid values: {valid}."
+        raise ValueError(msg)
+
     table: dict[str, frozenset[str]] = {}
 
-    if preset != "none":
-        seed = PERMISSION_PRESETS.get(preset)
-        if seed is None:
-            valid = ", ".join(["none", *sorted(PERMISSION_PRESETS)])
-            msg = f"Unknown permission preset '{preset}'. Valid values: {valid}."
-            raise ValueError(msg)
-        for name in seed:
-            table[name] = frozenset({"admin"})
+    # "none" is simply absent from PERMISSION_PRESETS, so it seeds nothing.
+    for name in PERMISSION_PRESETS.get(preset, frozenset()):
+        table[name] = frozenset({"admin"})
 
-    for tool_name, roles in (permissions or {}).items():
+    for tool_name, roles in permissions.items():
         table[tool_name] = frozenset(roles)
 
     return table
