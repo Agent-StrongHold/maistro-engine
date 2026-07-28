@@ -83,8 +83,10 @@ class _FakeCompositor:
     pass
 
 
-@pytest.fixture
-def client() -> Iterator[TestClient]:
+TEST_TOKEN = "test-canvas-token"
+
+
+def _make_app() -> FastAPI:
     store = _FakeStore()
     app = FastAPI()
     app.include_router(
@@ -95,7 +97,24 @@ def client() -> Iterator[TestClient]:
         ),
         prefix="/api/canvas",
     )
-    with TestClient(app, raise_server_exceptions=True) as c:
+    return app
+
+
+@pytest.fixture
+def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    monkeypatch.setenv("CANVAS_API_TOKEN", TEST_TOKEN)
+    with TestClient(
+        _make_app(),
+        raise_server_exceptions=True,
+        headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+def unconfigured_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    monkeypatch.delenv("CANVAS_API_TOKEN", raising=False)
+    with TestClient(_make_app(), raise_server_exceptions=True) as c:
         yield c
 
 
@@ -114,6 +133,42 @@ def test_create_canvas_authenticated_uses_org_id(client: TestClient) -> None:
     assert body["name"] == "My Canvas"
     # org_id must be populated from auth, proving auth.org_id resolved.
     assert "org_id" in body
+
+
+def test_missing_token_is_401(client: TestClient) -> None:
+    """A request without credentials must be rejected, never served as admin."""
+    r = client.get("/api/canvas", headers={"Authorization": ""})
+    assert r.status_code == 401, r.text
+
+
+def test_wrong_token_is_401(client: TestClient) -> None:
+    r = client.get("/api/canvas", headers={"Authorization": "Bearer wrong-token"})
+    assert r.status_code == 401, r.text
+
+
+def test_x_canvas_token_header_is_accepted(client: TestClient) -> None:
+    """The frontend's alternate X-Canvas-Token header must also authenticate."""
+    r = client.get(
+        "/api/canvas",
+        headers={"Authorization": "", "X-Canvas-Token": TEST_TOKEN},
+    )
+    assert r.status_code == 200, r.text
+
+
+def test_unconfigured_token_fails_closed_503(unconfigured_client: TestClient) -> None:
+    """CANVAS_API_TOKEN unset → 503, not silent admin access (audit 3.2)."""
+    r = unconfigured_client.get("/api/canvas", headers={"Authorization": "Bearer anything"})
+    assert r.status_code == 503, r.text
+
+
+def test_authenticated_user_is_not_admin(client: TestClient) -> None:
+    """The standalone principal must be a scoped user, not an implicit admin."""
+    import asyncio
+
+    from maistro_canvas.auth import get_current_user
+
+    user = asyncio.run(get_current_user(authorization=f"Bearer {TEST_TOKEN}", x_canvas_token=None))
+    assert "admin" not in user.roles
 
 
 def test_create_then_list_round_trip(client: TestClient) -> None:
