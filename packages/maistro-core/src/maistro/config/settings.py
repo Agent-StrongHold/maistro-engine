@@ -218,6 +218,13 @@ class SecurityConfig(BaseModel):
     sentinel_enabled: bool = True
     gate_query_improve: bool = True
     gate_model: str = "auto"
+    # NOTE: permission_preset / permissions / strike_tracking_enabled are
+    # deliberately NOT mirrored here. They live on maistro.types.config
+    # SecurityConfig, which is what create_container actually receives.
+    # Nothing reads MaistroYamlConfig.security -- the four fields above are
+    # already declared-but-inert -- so adding security knobs here would ship
+    # settings an operator could set in maistro.yaml and watch do nothing.
+    # Wire MaistroYamlConfig -> AgentConfig first; then mirror them.
 
 
 class CORSConfig(BaseModel):

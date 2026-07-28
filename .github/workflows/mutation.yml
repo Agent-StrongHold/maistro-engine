@@ -220,7 +220,12 @@ jobs:
           [cosmic-ray]
           module-path = "packages/maistro-core/src/maistro"
           timeout = 60.0
-          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git", "maistro.maistro-canvas", "maistro.maistro-turing"]
+          # "maistro.maistro-canvas" / "maistro.maistro-turing" were removed:
+          # neither is a submodule of maistro-core (both are separate top-level
+          # packages) nor a legal Python module path, so both excluded nothing.
+          # The PR job's list at :62 never carried them, so the two configs also
+          # silently disagreed.
+          excluded-modules = ["maistro.tools.pm_stubs", "maistro.skills", "maistro.tools.sandbox", "maistro.tools.git"]
           test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest packages/maistro-core/tests --timeout=20 -q"
 
           [cosmic-ray.distributor]

@@ -31,7 +31,7 @@ from maistro.security.gate import Gate
 from maistro.security.warden.detector import Warden
 from maistro.sessions.store import InMemorySessionStore
 from maistro.types.config import AgentConfig
-from maistro.types.errors import ConfigError
+from maistro.types.errors import AgentError, ConfigError
 
 if TYPE_CHECKING:
     import httpx
@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from maistro.resilience.p1 import ResiliencePolicyStore
     from maistro.security._types import AuditLog
     from maistro.security.sentinel.policy import Sentinel
+    from maistro.security.strikes import InMemoryStrikeTracker
     from maistro.skills.import_pipeline import (
         PolicyAttachmentStore,
         SkillImportRequest,
@@ -158,6 +159,9 @@ class Container:
     # OAuth (ADR-059): state + identity-link stores; clients via oauth_client().
     oauth_state_store: StateStore = None  # type: ignore[assignment]
     identity_linker: IdentityLinker = None  # type: ignore[assignment]
+    # Strike ladder (SPEC-012 / security/gate.py). None unless
+    # config.security.strike_tracking_enabled -- see create_container.
+    strike_tracker: InMemoryStrikeTracker | None = None
     durable_event_cursor: int = 0
 
     def __post_init__(self) -> None:
@@ -178,6 +182,35 @@ class Container:
         session_id: str | None = None,
         intent_hint: str = "",
     ) -> dict[str, Any]:
+        # An armed security control that cannot run is worse than an unarmed
+        # one: the operator believes it is enforcing. Both controls this
+        # container can arm are keyed on the caller's identity --
+        # Gate.process_input derives user_id from auth and skips every strike
+        # path when it is empty (security/gate.py:62,64,102), and the ReAct and
+        # Artificer strategies guard Sentinel.pre_call with `auth is not None`
+        # (agents/strategies/react.py:252). So with auth=None an armed
+        # permission table authorizes everything and an armed strike tracker
+        # records nothing, silently.
+        #
+        # Refusing here costs nothing at the shipped defaults (empty table, no
+        # tracker -> this never fires) and converts a silent no-op into an
+        # unmissable error for anyone who opts in. That is the same defect
+        # class this container's permission table was fixed for; it should not
+        # reappear one level up.
+        if auth is None and (self.sentinel._permission_table or self.strike_tracker):
+            armed = []
+            if self.sentinel._permission_table:
+                armed.append("sentinel permission table")
+            if self.strike_tracker:
+                armed.append("strike tracking")
+            msg = (
+                f"route_request() called without auth while {' and '.join(armed)} "
+                f"{'are' if len(armed) > 1 else 'is'} armed. These controls key on "
+                "the caller identity, so they would silently enforce nothing. "
+                "Pass an AuthContext, or disable them in config.security."
+            )
+            raise AgentError(msg)
+
         result: dict[str, Any] = await self.conduit.route_request(
             messages,
             auth=auth,
@@ -277,6 +310,7 @@ class Container:
         """Run the fail-closed skill import pipeline against the wired stores."""
         from maistro.skills.import_pipeline import import_skill
 
+        kwargs.setdefault("warden_scan", self.warden.scan)
         return await import_skill(
             request,
             registry=self.skill_registry,
@@ -376,14 +410,29 @@ async def create_container(
     classifier = ClassifierEngine()
     context_builder = ContextBuilder()
     intent_registry = build_intent_registry()
-    gate = Gate(warden=warden)
 
-    from maistro.security._types import PermissionTable
+    strike_tracker: InMemoryStrikeTracker | None = None
+    if config.security.strike_tracking_enabled:
+        from maistro.security.strikes import InMemoryStrikeTracker
+
+        strike_tracker = InMemoryStrikeTracker()
+        logger.info("Strike ladder armed (3-strike escalation via InMemoryStrikeTracker).")
+
+    gate = Gate(warden=warden, strike_tracker=strike_tracker)
+
+    from maistro.security.permission_policy import (
+        build_permission_table,
+        describe_permission_table,
+    )
     from maistro.security.sentinel.audit import InMemoryAuditLog
     from maistro.security.sentinel.policy import Sentinel
 
     audit_log = InMemoryAuditLog()
-    permission_table: PermissionTable = {}
+    permission_table = build_permission_table(
+        preset=config.security.permission_preset,
+        permissions=config.security.permissions,
+    )
+    logger.info("Sentinel permission table: %s", describe_permission_table(permission_table))
     sentinel = Sentinel(
         warden=warden,
         permission_table=permission_table,
@@ -499,6 +548,7 @@ async def create_container(
         session_store=session_store,
         warden=warden,
         gate=gate,
+        strike_tracker=strike_tracker,
         sentinel=sentinel,
         context_builder=context_builder,
         intent_registry=intent_registry,
