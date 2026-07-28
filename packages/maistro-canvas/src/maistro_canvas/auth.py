@@ -55,9 +55,11 @@ async def get_current_user(
         )
 
     supplied = ""
-    if authorization and authorization.startswith("Bearer "):
-        supplied = authorization[len("Bearer ") :]
-    elif x_canvas_token:
+    if authorization:
+        scheme, _, credentials = authorization.partition(" ")
+        if scheme.lower() == "bearer":
+            supplied = credentials.strip()
+    if not supplied and x_canvas_token:
         supplied = x_canvas_token
 
     if not supplied or not secret_equal(supplied, expected):

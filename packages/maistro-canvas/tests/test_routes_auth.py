@@ -146,6 +146,13 @@ def test_wrong_token_is_401(client: TestClient) -> None:
     assert r.status_code == 401, r.text
 
 
+def test_bearer_scheme_is_case_insensitive(client: TestClient) -> None:
+    """RFC 7235: the auth scheme token compares case-insensitively."""
+    for scheme in ("bearer", "BEARER", "BeArEr"):
+        r = client.get("/api/canvas", headers={"Authorization": f"{scheme} {TEST_TOKEN}"})
+        assert r.status_code == 200, (scheme, r.text)
+
+
 def test_x_canvas_token_header_is_accepted(client: TestClient) -> None:
     """The frontend's alternate X-Canvas-Token header must also authenticate."""
     r = client.get(

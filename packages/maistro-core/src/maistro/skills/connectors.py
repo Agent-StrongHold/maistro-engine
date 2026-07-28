@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import httpx
 
@@ -37,6 +38,61 @@ def _matches(query: str, *fields: str) -> bool:
         return True
     combined = " ".join(_normalize(f) for f in fields)
     return all(t in combined for t in terms)
+
+
+_T = TypeVar("_T")
+
+
+def _parse_items(raw: Any, build: Callable[[dict[str, Any]], _T], source: str) -> list[_T]:
+    """Validate a registry result container and build typed items.
+
+    ``raw`` must be a list (``{"items": null}``, scalars, etc. are unusable);
+    non-dict entries are skipped; any schema failure while building is
+    translated into the typed outage error so callers never see a raw
+    AttributeError/TypeError from a malformed 200 response.
+    """
+    if not isinstance(raw, list):
+        raise MarketplaceUnavailableError(f"{source} returned an unusable payload")
+    try:
+        return [build(item) for item in raw if isinstance(item, dict)]
+    except Exception as exc:
+        raise MarketplaceUnavailableError(f"{source} returned an unusable payload") from exc
+
+
+def _clawhub_skill(s: dict[str, Any]) -> SkillMetadata:
+    return SkillMetadata(
+        name=s.get("name", ""),
+        description=s.get("description", ""),
+        source_url=s.get("url", s.get("source_url", "")),
+        author=s.get("author", ""),
+        source_type="clawhub",
+        tags=tuple(s.get("tags", [])),
+        download_count=s.get("downloads", s.get("download_count", 0)),
+    )
+
+
+def _claude_plugin_skill(p: dict[str, Any]) -> SkillMetadata:
+    return SkillMetadata(
+        name=p.get("name", ""),
+        description=p.get("description", ""),
+        source_url=p.get("homepage", ""),
+        author=p.get("author", {}).get("name", "")
+        if isinstance(p.get("author"), dict)
+        else str(p.get("author", "")),
+        source_type="claude_plugins",
+        tags=tuple(p.get("tags", p.get("keywords", []))),
+    )
+
+
+def _gitagent_repo(r: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "name": r.get("name", ""),
+        "description": r.get("description", ""),
+        "repo_url": r.get("html_url", ""),
+        "author": r.get("owner", {}).get("login", ""),
+        "stars": r.get("stargazers_count", 0),
+        "source_type": "gitagent",
+    }
 
 
 _claude_cache: list[SkillMetadata] = []
@@ -76,23 +132,13 @@ async def search_clawhub(
     except Exception as exc:
         raise MarketplaceUnavailableError("ClawHub registry returned invalid JSON") from exc
 
-    results = (
-        data
-        if isinstance(data, list)
-        else data.get("items", data.get("results", data.get("skills", [])))
-    )
-    return [
-        SkillMetadata(
-            name=s.get("name", ""),
-            description=s.get("description", ""),
-            source_url=s.get("url", s.get("source_url", "")),
-            author=s.get("author", ""),
-            source_type="clawhub",
-            tags=tuple(s.get("tags", [])),
-            download_count=s.get("downloads", s.get("download_count", 0)),
-        )
-        for s in results[:per_page]
-    ]
+    if isinstance(data, list):
+        results: Any = data
+    elif isinstance(data, dict):
+        results = data.get("items", data.get("results", data.get("skills", [])))
+    else:
+        results = None
+    return _parse_items(results, _clawhub_skill, "ClawHub registry")[:per_page]
 
 
 async def _fetch_claude_plugin_index(
@@ -117,25 +163,14 @@ async def _fetch_claude_plugin_index(
         )
 
     try:
-        plugins = resp.json().get("plugins", [])
+        data = resp.json()
     except Exception as exc:
         raise MarketplaceUnavailableError(
             "Claude plugin marketplace returned invalid JSON"
         ) from exc
 
-    return [
-        SkillMetadata(
-            name=p.get("name", ""),
-            description=p.get("description", ""),
-            source_url=p.get("homepage", ""),
-            author=p.get("author", {}).get("name", "")
-            if isinstance(p.get("author"), dict)
-            else str(p.get("author", "")),
-            source_type="claude_plugins",
-            tags=tuple(p.get("tags", p.get("keywords", []))),
-        )
-        for p in plugins
-    ]
+    plugins = data.get("plugins", []) if isinstance(data, dict) else None
+    return _parse_items(plugins, _claude_plugin_skill, "Claude plugin marketplace")
 
 
 async def search_claude_plugins(
@@ -151,7 +186,9 @@ async def search_claude_plugins(
     global _claude_cache, _claude_cache_ts
 
     now = time.monotonic()
-    if not (_claude_cache and (now - _claude_cache_ts) < _CLAUDE_CACHE_TTL):
+    # _claude_cache_ts marks initialization — an empty index is a valid,
+    # cacheable answer, so the list itself must not gate the TTL check.
+    if not (_claude_cache_ts > 0.0 and (now - _claude_cache_ts) < _CLAUDE_CACHE_TTL):
         _claude_cache = await _fetch_claude_plugin_index(http_client)
         _claude_cache_ts = now
 
@@ -190,18 +227,9 @@ async def search_gitagent_repos(
         raise MarketplaceUnavailableError(f"GitHub search API returned HTTP {resp.status_code}")
 
     try:
-        repos = resp.json().get("items", [])
+        data = resp.json()
     except Exception as exc:
         raise MarketplaceUnavailableError("GitHub search API returned invalid JSON") from exc
 
-    return [
-        {
-            "name": r.get("name", ""),
-            "description": r.get("description", ""),
-            "repo_url": r.get("html_url", ""),
-            "author": r.get("owner", {}).get("login", ""),
-            "stars": r.get("stargazers_count", 0),
-            "source_type": "gitagent",
-        }
-        for r in repos
-    ]
+    repos = data.get("items", []) if isinstance(data, dict) else None
+    return _parse_items(repos, _gitagent_repo, "GitHub search API")

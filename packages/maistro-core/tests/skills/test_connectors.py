@@ -131,6 +131,26 @@ async def test_search_clawhub_raises_on_transport_error() -> None:
         await search_clawhub(http_client=client)
 
 
+async def test_search_clawhub_raises_on_scalar_payload() -> None:
+    """A 200 with an unusable shape is the typed error, not AttributeError."""
+    client = _FakeHttpClient(response=_FakeResponse(200, "not-a-container"))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
+
+
+async def test_search_clawhub_raises_on_null_items() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": None}))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
+
+
+async def test_search_clawhub_raises_on_malformed_entry_schema() -> None:
+    """A schema failure inside an entry (scalar tags) is the typed error."""
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": [{"name": "x", "tags": 7}]}))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
+
+
 # ── Claude plugins ───────────────────────────────────────────────
 
 
@@ -201,6 +221,21 @@ async def test_search_claude_plugins_raises_on_transport_error() -> None:
         await search_claude_plugins(http_client=client)
 
 
+async def test_search_claude_plugins_raises_on_non_dict_payload() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, ["not", "a", "dict"]))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_claude_plugins(http_client=client)
+
+
+async def test_search_claude_plugins_empty_index_is_cached() -> None:
+    """A valid empty index must be served from cache — one fetch, then a
+    clientless call returns [] instead of raising (Codex review on #306)."""
+    client = _FakeHttpClient(response=_FakeResponse(200, {"plugins": []}))
+    assert await search_claude_plugins(http_client=client) == []
+    assert await search_claude_plugins() == []
+    assert len(client.calls) == 1
+
+
 # ── GitAgent ─────────────────────────────────────────────────────
 
 
@@ -258,6 +293,18 @@ async def test_search_gitagent_repos_raises_on_transport_error() -> None:
     client = _FakeHttpClient(error=ConnectionError("api down"))
     with pytest.raises(MarketplaceUnavailableError):
         await search_gitagent_repos(query="agent", http_client=client)
+
+
+async def test_search_gitagent_repos_raises_on_non_list_items() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": "nope"}))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_gitagent_repos(query="agent", http_client=client)
+
+
+async def test_search_gitagent_repos_skips_non_dict_entries() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": ["junk", {"name": "ok"}]}))
+    results = await search_gitagent_repos(query="agent", http_client=client)
+    assert [r["name"] for r in results] == ["ok"]
 
 
 def test_no_adversarial_fixture_names_ship() -> None:
