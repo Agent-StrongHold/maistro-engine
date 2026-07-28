@@ -26,7 +26,7 @@ def anon_client() -> TestClient:
     return TestClient(app)
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_task_stream_rejects_anonymous(anon_client: TestClient) -> None:
     with (
@@ -36,7 +36,7 @@ def test_task_stream_rejects_anonymous(anon_client: TestClient) -> None:
         ws.receive_json()
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_dag_run_stream_rejects_anonymous(anon_client: TestClient) -> None:
     """The higher-stakes of the two: this socket runs the DAG."""
@@ -47,7 +47,7 @@ def test_dag_run_stream_rejects_anonymous(anon_client: TestClient) -> None:
         ws.receive_json()
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_dag_run_stream_rejects_authenticated_user_without_permission(
     authed_client: TestClient,
@@ -66,7 +66,7 @@ def test_dag_run_stream_rejects_authenticated_user_without_permission(
         ws.receive_json()
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_task_stream_accepts_authenticated_user(authed_client: TestClient) -> None:
     """The socket must still work for a legitimate caller.
@@ -82,7 +82,7 @@ def test_task_stream_accepts_authenticated_user(authed_client: TestClient) -> No
         ws.receive_json()
 
 
-@pytest.mark.contract("auth")
+@pytest.mark.contract("behavioral")
 @pytest.mark.scope("integration")
 def test_cross_site_origin_is_rejected(authed_client: TestClient) -> None:
     """Cross-site WebSocket hijacking.

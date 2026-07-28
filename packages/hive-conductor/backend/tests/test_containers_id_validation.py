@@ -40,7 +40,7 @@ _ACCEPTED = [
 ]
 
 
-@pytest.mark.contract("input-validation")
+@pytest.mark.contract("boundary")
 @pytest.mark.scope("unit")
 @pytest.mark.parametrize("bad", _REJECTED)
 def test_validator_rejects_non_identifiers(bad: str) -> None:
@@ -52,7 +52,7 @@ def test_validator_rejects_non_identifiers(bad: str) -> None:
     assert exc.value.status_code == 400
 
 
-@pytest.mark.contract("input-validation")
+@pytest.mark.contract("boundary")
 @pytest.mark.scope("unit")
 @pytest.mark.parametrize("good", _ACCEPTED)
 def test_validator_accepts_real_identifiers(good: str) -> None:
@@ -61,7 +61,7 @@ def test_validator_accepts_real_identifiers(good: str) -> None:
     assert _validate_container_id(good) == good
 
 
-@pytest.mark.contract("input-validation")
+@pytest.mark.contract("boundary")
 @pytest.mark.scope("integration")
 def test_get_container_rejects_bad_id_over_http(authed_client: TestClient) -> None:
     """400 rather than 503: the request is refused before Docker is consulted.
@@ -100,7 +100,7 @@ class _RecordingClient:
         return _FakeResponse()
 
 
-@pytest.mark.contract("input-validation")
+@pytest.mark.contract("boundary")
 @pytest.mark.scope("integration")
 def test_logs_tail_is_clamped(admin_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """`tail` is interpolated too; an unbounded value is a memory amplifier."""

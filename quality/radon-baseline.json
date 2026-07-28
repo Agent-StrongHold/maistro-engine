@@ -10,7 +10,7 @@
    "classname": "Agent",
    "rank": "C",
    "complexity": 17,
-   "rationale": "Renamed from Agent.handle when H9 split the try/except/finally wrapper out into handle(); complexity went 19 -> 17 in the process. Still a Phase 18 code-health hotspot tracked under SPEC-264 - the ratchet is now set at 17."
+   "rationale": "Renamed from Agent.handle when H9 split the try/except/finally wrapper out into handle(); the 19 split into 17 here plus 10 in the new handle() wrapper, so this entry is the larger half rather than a net reduction. Still a Phase 18 code-health hotspot tracked under SPEC-264 - the ratchet is now set at 17."
   },
   {
    "key": "packages/maistro-core/src/maistro/agents/context_builder.py::ContextBuilder",

@@ -6,6 +6,7 @@ handle() runs: Warden scan -> build context -> strategy.reason() -> post-turn.
 
 from __future__ import annotations
 
+import logging as _logging
 from typing import TYPE_CHECKING, Any
 
 from maistro.types.agent import AgentResponse
@@ -269,17 +270,22 @@ class Agent:
             )
             if trace:
                 trace.score("handle_error", 0.0, f"{type(exc).__name__}: {exc}")
-            return AgentResponse(
-                content="I encountered an internal error. Please try again.",
+            # `failed=True` is load-bearing, not decoration. Converting the
+            # exception into a response is what lets the finally below run in
+            # order, but a caller that branches on success would otherwise read
+            # this as an answer — the A2A broker maps "no exception" straight to
+            # TaskStatus.COMPLETED, so a failed delegation reported success.
+            return AgentResponse.error_response(
+                "I encountered an internal error. Please try again.",
                 agent_name=self.identity.name,
+                error=f"{type(exc).__name__}: {exc}",
             )
         finally:
             if trace:
                 try:
                     trace.end()
                 except Exception:  # pragma: no cover - telemetry must never mask a result
-                    _log2 = __import__("logging").getLogger("maistro.agent")
-                    _log2.warning("trace.end() failed", exc_info=True)
+                    _logging.getLogger("maistro.agent").warning("trace.end() failed", exc_info=True)
 
     async def _handle_traced(
         self,
@@ -329,9 +335,13 @@ class Agent:
             context_messages, model, tool_defs, strategy_kwargs, trace
         )
         if result is None:
-            return AgentResponse(
-                content="I encountered an internal error. Please try again.",
+            # `_run_strategy` already caught and logged; mark it failed so this
+            # is distinguishable from an answer by anything that branches on
+            # success rather than on the content string.
+            return AgentResponse.error_response(
+                "I encountered an internal error. Please try again.",
                 agent_name=self.identity.name,
+                error="strategy failed",
             )
 
         # Delegation: the strategy decided to route to a sub-agent. Resolve the

@@ -74,8 +74,19 @@ class State:
         return conn
 
     def submit(self, fn: Callable[[sqlite3.Connection], None]) -> None:
+        """Queue a write for the writer thread.
+
+        Raises rather than accepting work there is no thread to perform. Note
+        `fn` runs while the writer lock is held, so it must not call back into
+        `run_migration()`, `backup()` or `close()` — the lock is not reentrant
+        and doing so deadlocks the writer thread permanently. No current caller
+        does; `PersistedStore` only issues `conn.execute`.
+        """
         if not self._writer_open:
-            raise RuntimeError("open_writer must be called before submit")
+            raise RuntimeError(
+                "State writer is not open: call open_writer() first, or this "
+                "State has been closed and can no longer accept writes"
+            )
         try:
             self._tx_queue.put_nowait(fn)
         except queue.Full:
@@ -209,13 +220,36 @@ class State:
         else:
             self._shutdown.set()
 
+        # `submit()` must stop accepting work. Without this, `_writer_open`
+        # stayed True after close() and put() kept succeeding — the write was
+        # queued to a thread that would never run again and vanished silently,
+        # which is the exact fire-and-forget failure H7 exists to remove. The
+        # contract is "close() means the writes you handed me are on disk", and
+        # that has to include refusing writes handed over afterwards.
+        self._writer_open = False
+
         if self._writer is not None:
             # Take the lock: a migration or backup on another thread may still
-            # be mid-statement on this same connection.
-            with self._writer_lock:
-                if self._writer is not None:
-                    self._writer.close()
-                    self._writer = None
+            # be mid-statement on this same connection. Bounded, unlike the
+            # first version: every other wait in this method has a deadline and
+            # logs when it expires, and then a bare `with self._writer_lock`
+            # could block forever anyway — a shutdown racing a backup (which
+            # holds the lock across a full-database copy) would hang the
+            # process past all of them.
+            if self._writer_lock.acquire(timeout=timeout):
+                try:
+                    if self._writer is not None:
+                        self._writer.close()
+                        self._writer = None
+                finally:
+                    self._writer_lock.release()
+            else:
+                logger.error(
+                    "State.close: could not acquire the writer lock within %.1fs; "
+                    "leaving the connection open rather than closing it under another "
+                    "thread's statement",
+                    timeout,
+                )
 
     def _writer_loop(self) -> None:
         assert self._writer is not None
