@@ -28,9 +28,22 @@ WORKDIR /app
 ENV PATH="/app/venv/bin:$PATH"
 # age powers the SPEC-011 secrets vault (maistro/vault.py shells out to it);
 # first-run setup provisions the vault, so the runtime image must carry the
-# static binaries (SPEC-072726-3439 Phase 3).
+# static binaries (SPEC-072726-3439 Phase 3). The free Chainguard APK repo is
+# authenticated (apk add age fails without HTTP_AUTH), so fetch the official
+# static release with a pinned checksum instead.
+ARG TARGETARCH
+ARG AGE_VERSION=1.2.1
+ARG AGE_SHA256_AMD64=7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50
+ARG AGE_SHA256_ARM64=57fd79a7ece5fe501f351b9dd51a82fbee1ea8db65a8839db17f5c080245e99f
 USER root
-RUN apk add --no-cache age
+RUN set -e; \
+    arch="${TARGETARCH:-amd64}"; \
+    if [ "$arch" = "arm64" ]; then sha="$AGE_SHA256_ARM64"; else sha="$AGE_SHA256_AMD64"; fi; \
+    wget -qO /tmp/age.tgz "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${arch}.tar.gz"; \
+    echo "$sha  /tmp/age.tgz" | sha256sum -c -; \
+    tar -xzf /tmp/age.tgz -C /tmp; \
+    install -m 0755 /tmp/age/age /tmp/age/age-keygen /usr/local/bin/; \
+    rm -rf /tmp/age /tmp/age.tgz
 USER 65532
 RUN python -m venv /app/venv
 # Install the maistro library packages (non-editable) so the venv is fully
@@ -71,7 +84,7 @@ ENV PATH="/app/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 COPY --from=pybuild /app/venv /app/venv
-COPY --from=pybuild /usr/bin/age /usr/bin/age-keygen /usr/bin/
+COPY --from=pybuild /usr/local/bin/age /usr/local/bin/age-keygen /usr/bin/
 COPY packages/hive-conductor/backend/ /app/backend/
 COPY packages/hive-conductor/cage/ /app/cage/
 COPY packages/hive-conductor/eval/ /app/eval/
