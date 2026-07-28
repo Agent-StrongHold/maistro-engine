@@ -129,6 +129,35 @@ resolve_args_paths() {
     printf '%s\0' "${args[@]}"
 }
 
+# Verify the downloaded install.sh against a published SHA256SUMS manifest
+# before executing it (SPEC-072726-3439 Phase 5). Opt-in via
+# MAISTRO_SHA256SUMS_URL until the production release URL is wired in as a
+# default constant.
+verify_installer_checksum() {
+    [[ -n "${MAISTRO_SHA256SUMS_URL:-}" ]] || return 0
+    command -v curl >/dev/null 2>&1 || fail "curl is required for checksum verification."
+
+    local sha_cmd
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha_cmd="sha256sum"
+    elif command -v shasum >/dev/null 2>&1; then
+        sha_cmd="shasum -a 256"
+    else
+        fail "sha256sum or shasum is required for checksum verification."
+    fi
+
+    info "Verifying install.sh against $MAISTRO_SHA256SUMS_URL ..."
+    local sums expected actual
+    sums="$(curl -fsSL "$MAISTRO_SHA256SUMS_URL")" || fail "Could not fetch checksum manifest."
+    expected="$(printf '%s\n' "$sums" | awk '$NF == "install.sh" {print $1}' | head -1)"
+    [[ -n "$expected" ]] || fail "Checksum manifest has no entry for install.sh."
+    actual="$($sha_cmd "$INSTALL_DIR/install.sh" | awk '{print $1}')"
+    if [[ "$actual" != "$expected" ]]; then
+        fail "install.sh checksum mismatch (expected $expected, got $actual). Refusing to run it."
+    fi
+    ok "install.sh checksum verified."
+}
+
 run_installer() {
     local resolved=()
     if [[ $# -gt 0 ]]; then
@@ -161,6 +190,7 @@ main() {
     echo ""
 
     bootstrap_source
+    verify_installer_checksum
     run_installer "$@"
 }
 

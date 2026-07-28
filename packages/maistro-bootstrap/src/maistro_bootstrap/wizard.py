@@ -188,3 +188,44 @@ def collect_answers_interactive() -> InstallAnswersV1:
         "reactor_enabled": True,
     }
     return parse_answers_dict(raw)
+
+
+def _password_with_confirm(label: str, attempts: int = 3) -> str:
+    for _ in range(attempts):
+        pw = questionary.password(f"{label} password:").ask()
+        if pw is None:
+            _abort()
+        if not pw:
+            console.print("[yellow]Password must not be empty.[/yellow]")
+            continue
+        confirm = questionary.password(f"Confirm {label.lower()} password:").ask()
+        if confirm is None:
+            _abort()
+        if pw == confirm:
+            return str(pw)
+        console.print("[yellow]Passwords do not match — try again.[/yellow]")
+    console.print("[red]Too many mismatched attempts.[/red]")
+    _abort()
+    raise AssertionError("unreachable")
+
+
+def collect_bootstrap_credentials(answers: InstallAnswersV1) -> dict[str, Any]:
+    """Prompt for first-run account passwords (never stored in answers YAML).
+
+    Returns the /v1/setup/complete payload; the caller stages it 0600 via
+    credentials.write_bootstrap_credentials for one-shot consumption.
+    """
+    from maistro_bootstrap.credentials import build_bootstrap_credentials
+
+    console.print(
+        Panel.fit(
+            f"[bold]First-run accounts[/bold]\n"
+            f"Admin (break-glass, no chat): {answers.admin_user}\n"
+            f"Daily driver 1:               {answers.daily_driver_user}\n"
+            "Passwords are staged once, sent to the server at bring-up, then shredded.",
+            title="bootstrap credentials",
+        )
+    )
+    admin_pw = _password_with_confirm("Admin")
+    user_pw = _password_with_confirm("Daily driver")
+    return build_bootstrap_credentials(answers, admin_password=admin_pw, user_password=user_pw)
