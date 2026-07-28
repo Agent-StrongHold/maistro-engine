@@ -32,13 +32,13 @@ services:
       - CI_WEBHOOK_SECRET=${CI_WEBHOOK_SECRET:-}
       - SANDBOX_NETWORK_DISABLED=true
     volumes:
-      # Current builder sandbox compatibility path.
-      # Security warning: mounting the host Docker socket grants container control
-      # of the host Docker daemon. Replace with an isolated builder substrate
-      # before claiming production-grade sandbox isolation.
-      # MAISTRO_DOCKER_SOCK is detected by install.sh: Docker Desktop uses
-      # /var/run/docker.sock, but Colima exposes it under ~/.colima/.../docker.sock.
-      - ${MAISTRO_DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
+      # The host Docker socket is NOT mounted by default: it grants the
+      # container control of the host Docker daemon (container escape = host
+      # root; June audit 3.1 / HN-LAUNCH-AUDIT). If the builder sandbox needs
+      # it, opt in explicitly:
+      #   docker compose -f docker-compose.yml \
+      #     -f docker-compose.docker-sock.override.example.yml up
+      # (or copy that override into docker-compose.override.yml).
       - workspace-data:/repos
     depends_on:
       postgres:
