@@ -68,6 +68,13 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8101",
     ]
 
+    # Mark the session cookie Secure so browsers refuse to send it over plain
+    # HTTP. Off by default because the documented dev loop is
+    # http://localhost:8101 and a Secure cookie is silently dropped there,
+    # which would look like "login does nothing". Turn it on for any
+    # deployment reachable over TLS.
+    session_cookie_secure: bool = False
+
     hardware_preset: Literal["potato", "laptop", "desktop", "beast"] = "laptop"
     poc_mode: str = ""
     maistro_base_url: str = "http://localhost:8000"

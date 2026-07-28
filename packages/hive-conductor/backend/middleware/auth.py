@@ -8,6 +8,7 @@ Protected ops require elevation bound to a task — permissions die with the tas
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -140,6 +141,40 @@ def _matches_public_prefix(path: str, prefix: str) -> bool:
     return path == stripped or path.startswith(stripped + "/")
 
 
+def resolve_principal(cookies: Mapping[str, str], authorization: str | None) -> dict | None:
+    session_id = cookies.get("hive_session")
+    if not session_id:
+        auth_header = authorization or ""
+        if auth_header.startswith("Bearer "):
+            session_id = auth_header[7:]
+    if not session_id:
+        return None
+    try:
+        from routes.auth import get_current_user
+
+        return get_current_user(session_id)
+    except Exception:
+        return None
+
+
+def principal_has_permission(user: dict, perm: str) -> bool:
+    if user.get("role") == "admin":
+        return True
+    user_perms = user.get("permissions", [])
+    if perm not in user_perms:
+        return False
+    elevated = user.get("elevated_permissions", [])
+    return perm in elevated
+
+
+def origin_allowed(origin: str | None) -> bool:
+    if not origin:
+        return True
+    from config import get_settings
+
+    return origin in get_settings().cors_origins
+
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
@@ -200,19 +235,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return True
 
     def _get_user(self, request: Request) -> dict | None:
-        session_id = request.cookies.get("hive_session")
-        if not session_id:
-            auth_header = request.headers.get("Authorization", "")
-            if auth_header.startswith("Bearer "):
-                session_id = auth_header[7:]
-        if not session_id:
-            return None
-        try:
-            from routes.auth import get_current_user
-
-            return get_current_user(session_id)
-        except Exception:
-            return None
+        return resolve_principal(request.cookies, request.headers.get("Authorization"))
 
     def _is_chat(self, path: str) -> bool:
         return any(path.startswith(p) for p in _ADMIN_CHAT_BLOCKED)
@@ -232,10 +255,4 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return None
 
     def _check_permission(self, user: dict, perm: str) -> bool:
-        if user.get("role") == "admin":
-            return True
-        user_perms = user.get("permissions", [])
-        if perm not in user_perms:
-            return False
-        elevated = user.get("elevated_permissions", [])
-        return perm in elevated
+        return principal_has_permission(user, perm)

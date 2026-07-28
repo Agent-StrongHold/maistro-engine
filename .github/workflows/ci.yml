@@ -118,9 +118,27 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: packages/hive-conductor/frontend/package-lock.json
+          cache-dependency-path: |
+            packages/hive-conductor/frontend/package-lock.json
+            packages/maistro-canvas/frontend/package-lock.json
       - run: npm ci && npm run build
         working-directory: packages/hive-conductor/frontend
+      # The canvas book-maker frontend had no CI at all — no workflow built,
+      # linted or tested it — while `server.js` is a real network service that
+      # proxies operator LLM credentials and shells out to python3. Its vitest
+      # suite (including server/security.test.js) is the only regression net the
+      # C4 hardening has, so it has to actually run somewhere.
+      #
+      # `test:ci` deliberately EXCLUDES tests/renderingPipeline.test.js: 10 of
+      # its 11 tests fail on the current tree for reasons that predate this
+      # change (the Azure image-edit fallback chain does not behave as the test
+      # asserts, and two tests time out at 5s). Those are real, unrelated
+      # product defects in the image pipeline, not auth. They are named here so
+      # the exclusion is visible rather than implied by a green check — see the
+      # follow-up item in docs/reviews/2026-07-27-codebase-review.md. Fixing
+      # them should delete this script and restore plain `npm run test`.
+      - run: npm ci && npm run test:ci
+        working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
 
