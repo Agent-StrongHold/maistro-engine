@@ -43,7 +43,10 @@ VERSION_FILE = ROOT / "VERSION"
 
 _SEMVER_RE = re.compile(r"\d+\.\d+\.\d+")
 _PYPROJECT_VERSION_RE = re.compile(r'(?m)^version = "([^"]+)"$')
-_INIT_FALLBACK_RE = re.compile(r'__version__ = "([^"]+)-dev"')
+# Matches both the `__version__` fallback every package's __init__.py carries
+# and maistro-server/main.py's pre-existing `APP_VERSION` fallback (the two
+# names that already existed before this script — see the module docstring).
+_VERSION_FALLBACK_RE = re.compile(r'(?:__version__|APP_VERSION) = "([^"]+)-dev"')
 _DICT_VERSION_RE = re.compile(r'"version": "([^"]+)"')
 _KWARG_VERSION_RE = re.compile(r'version="([^"]+)"')
 
@@ -82,8 +85,8 @@ def _pyproject(rel_path: str) -> Site:
     return Site(ROOT / rel_path, _PYPROJECT_VERSION_RE, f"pyproject:{rel_path}")
 
 
-def _init(rel_path: str) -> Site:
-    return Site(ROOT / rel_path, _INIT_FALLBACK_RE, f"__init__ fallback:{rel_path}")
+def _version_fallback(rel_path: str) -> Site:
+    return Site(ROOT / rel_path, _VERSION_FALLBACK_RE, f"version fallback:{rel_path}")
 
 
 def _interpkg_dep(rel_path: str, pkg_expr: str) -> Site:
@@ -111,17 +114,24 @@ _PYPROJECT_SITES = [
     _pyproject("packages/maistro-bootstrap/pyproject.toml"),
 ]
 
-# Every package's `__version__` PackageNotFoundError fallback string.
-_INIT_SITES = [
-    _init("packages/maistro-core/src/maistro/__init__.py"),
-    _init("packages/maistro-canvas/src/maistro_canvas/__init__.py"),
-    _init("packages/maistro-server/src/maistro_server/__init__.py"),
-    _init("packages/maistro-turing/src/maistro_turing/__init__.py"),
-    _init("packages/maistro-evolve/src/maistro_evolve/__init__.py"),
-    _init("packages/maistro-rsi/src/maistro_rsi/__init__.py"),
-    _init("packages/maistro-design/src/maistro_design/__init__.py"),
-    _init("packages/maistro-bootstrap/src/maistro_bootstrap/__init__.py"),
-    _init("packages/maistro-registry/src/maistro_registry/__init__.py"),
+# Every package's `__version__`/`APP_VERSION` PackageNotFoundError fallback
+# string — the value returned when importlib.metadata can't find installed
+# dist-info (e.g. running straight off PYTHONPATH in dev, the exact scenario
+# the two health-endpoint tests exercise).
+_VERSION_FALLBACK_SITES = [
+    _version_fallback("packages/maistro-core/src/maistro/__init__.py"),
+    _version_fallback("packages/maistro-canvas/src/maistro_canvas/__init__.py"),
+    _version_fallback("packages/maistro-server/src/maistro_server/__init__.py"),
+    # main.py's pre-existing APP_VERSION fallback (used by /health's response
+    # and by both test_health.py's APP_VERSION-based assertions) — distinct
+    # from __init__.py's __version__ above, same fallback pattern.
+    _version_fallback("packages/maistro-server/src/maistro_server/main.py"),
+    _version_fallback("packages/maistro-turing/src/maistro_turing/__init__.py"),
+    _version_fallback("packages/maistro-evolve/src/maistro_evolve/__init__.py"),
+    _version_fallback("packages/maistro-rsi/src/maistro_rsi/__init__.py"),
+    _version_fallback("packages/maistro-design/src/maistro_design/__init__.py"),
+    _version_fallback("packages/maistro-bootstrap/src/maistro_bootstrap/__init__.py"),
+    _version_fallback("packages/maistro-registry/src/maistro_registry/__init__.py"),
 ]
 
 # Inter-package dependency LOWER bounds only — adding the `<2` upper bound is
@@ -146,7 +156,7 @@ _APP_LITERAL_SITES = [
     _app_literal("packages/maistro-canvas/frontend/server/lulu/service.py", _KWARG_VERSION_RE),
 ]
 
-ALL_SITES = _PYPROJECT_SITES + _INIT_SITES + _INTERPKG_SITES + _APP_LITERAL_SITES
+ALL_SITES = _PYPROJECT_SITES + _VERSION_FALLBACK_SITES + _INTERPKG_SITES + _APP_LITERAL_SITES
 
 
 def check() -> int:
