@@ -77,6 +77,10 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/optimizer": "dags.write",
         # A schedule is recurring autonomous execution.
         "/v1/schedules": "schedules.write",
+        # Creating a workspace tab (Persona/Workspace system) instantiates a
+        # persona's agent roster/tools for this user — same write-scope
+        # posture as agents.write, not left open to any authenticated caller.
+        "/v1/workspaces": "workspaces.write",
         # The evolution tournament is the self-improvement loop's other door.
         "/v1/evolution": "rsi.execute",
         # Executes GitHub/GitLab tools with stored credentials against real

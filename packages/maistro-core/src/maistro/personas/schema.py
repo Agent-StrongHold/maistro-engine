@@ -5,6 +5,11 @@ A persona template is one YAML file under a unified ``templates/`` root with a
 
 - ``kind: department`` — eval rubric only (replaces Python department files).
 - ``kind: author`` / ``kind: creator`` — voice + eval rubric + ``spawns:`` block.
+- ``kind: workspace`` — a persona a user adopts as a live Hive Conductor
+  workspace tab (e.g. "PM Fleet"): voice + eval rubric + ``spawns:`` (same
+  shape as author/creator) plus ``brand`` and ``ui_scope``, since a workspace
+  persona's identity is its brand, its voice, its relevant tools, and its
+  scoped UI, not just a content-generation voice.
 
 Department YAML files that predate the ``kind:`` field (bare ``department:`` +
 ``evals:``) are accepted and normalised to ``kind: department``.
@@ -57,15 +62,27 @@ class SpawnSpec(BaseModel):
     hard_gates: list[str] = Field(default_factory=list)
 
 
+class BrandSpec(BaseModel):
+    """A ``kind: workspace`` persona's product identity (workspace tab label/copy)."""
+
+    display_name: str = ""
+    tagline: str = ""
+    icon: str = ""
+
+
 class PersonaTemplate(BaseModel):
     """A full persona/department template loaded from one YAML file."""
 
-    kind: Literal["department", "author", "creator"] = "department"
+    kind: Literal["department", "author", "creator", "workspace"] = "department"
     id: str
     business_model: str = ""
     voice: VoiceSpec = Field(default_factory=VoiceSpec)
     evals: list[EvalSpec] = Field(default_factory=list)
     spawns: list[SpawnSpec] = Field(default_factory=list)
+    # `kind: workspace` only: workspace tab brand + the persona's declared nav
+    # scope (which pages/nav items are relevant when this persona is active).
+    brand: BrandSpec = Field(default_factory=BrandSpec)
+    ui_scope: list[str] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod

@@ -21,6 +21,7 @@ CASES = [
     ("delete", "/v1/dags/some-dag", "dags.write"),
     ("post", "/v1/optimizer/some-dag/run", "dags.write"),
     ("post", "/v1/schedules", "schedules.write"),
+    ("post", "/v1/workspaces", "workspaces.write"),
     ("put", "/v1/schedules/s1", "schedules.write"),
     ("delete", "/v1/schedules/s1", "schedules.write"),
     ("put", "/v1/credentials/jira", "credentials.write"),

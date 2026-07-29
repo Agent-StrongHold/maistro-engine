@@ -23,6 +23,7 @@ from maistro.personas.golden import (
 )
 from maistro.personas.rubric import EvalResult, RubricEval, load_evals, load_templates
 from maistro.personas.schema import (
+    BrandSpec,
     CriterionSpec,
     EvalSpec,
     PersonaTemplate,
@@ -32,6 +33,7 @@ from maistro.personas.schema import (
 from maistro.personas.scorer import DeepEvalScorer, RubricScorer, create_judge_scorer
 
 __all__ = [
+    "BrandSpec",
     "CriterionSpec",
     "DeepEvalScorer",
     "EvalResult",

@@ -31,6 +31,7 @@ from models.schemas import (
     SettingsModel,
     Skill,
 )
+from models.workspace import Workspace
 from services.model_store import JsonStore, ModelStore
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,8 @@ memory_entries: ModelStore = ModelStore("memory_entries", MemoryEntry)
 memory_namespaces: dict[str, MemoryNamespace] = {
     "default": MemoryNamespace(name="default", entry_count=1, size_bytes=1024)
 }
+# Persona/Workspace system — a user's live instantiations of adopted personas.
+workspaces: ModelStore = ModelStore("workspaces", Workspace)
 
 
 def _initial_settings() -> SettingsModel:
@@ -116,6 +119,7 @@ _all_model_stores: list[ModelStore] = [
     memory_entries,
     chat_sessions,
     users,
+    workspaces,
 ]
 _all_json_stores: list[JsonStore] = [
     mission_steps,
