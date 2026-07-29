@@ -50,6 +50,29 @@ def test_save_context_round_trips() -> None:
     assert again.interview_step == 3
 
 
+def test_two_workspaces_for_the_same_user_are_independent() -> None:
+    """Persona/Workspace Phase B: keyed by (user_id, project_id), not bare user_id."""
+    from services import program_store as prog
+
+    pm_ctx = prog.get_context("u1", "ws-pm")
+    canvas_ctx = prog.get_context("u1", "ws-canvas")
+    assert pm_ctx.project_id == "ws-pm"
+    assert canvas_ctx.project_id == "ws-canvas"
+
+    prog.save_context(pm_ctx.model_copy(update={"interview_step": 2}))
+    prog.save_context(canvas_ctx.model_copy(update={"interview_step": 5}))
+
+    assert prog.get_context("u1", "ws-pm").interview_step == 2
+    assert prog.get_context("u1", "ws-canvas").interview_step == 5
+
+
+def test_get_context_without_project_id_defaults_to_default_workspace() -> None:
+    from services import program_store as prog
+
+    ctx = prog.get_context("legacy-user")
+    assert ctx.project_id == "default"
+
+
 def test_context_dict_returns_model_dump() -> None:
     from services import program_store as prog
 

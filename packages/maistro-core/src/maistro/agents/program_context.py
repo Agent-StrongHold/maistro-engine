@@ -25,11 +25,18 @@ class ProgramProject(BaseModel):
 
 
 class ProgramContext(BaseModel):
-    """What the PM fleet knows about a user's program — grows via interview + guidance."""
+    """What a workspace's hyperagent knows about a user's program — grows via interview + guidance.
+
+    Scoped by (user_id, project_id): a user can run this interview independently
+    across multiple workspaces (Persona/Workspace system) rather than having
+    exactly one program per user. ``project_id`` defaults to ``"default"`` so
+    existing single-workspace callers are unaffected.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     user_id: str
+    project_id: str = "default"
     program_name: str = ""
     summary: str = ""
     goals: list[str] = Field(default_factory=list)
@@ -47,60 +54,102 @@ class ProgramContext(BaseModel):
     updated_at: str = ""
 
     @staticmethod
-    def empty(user_id: str) -> ProgramContext:
+    def empty(user_id: str, project_id: str = "default") -> ProgramContext:
         now = datetime.now(UTC).isoformat()
-        return ProgramContext(user_id=user_id, updated_at=now)
+        return ProgramContext(user_id=user_id, project_id=project_id, updated_at=now)
 
 
-# Intake-led interview — one question at a time until complete.
-INTERVIEW_STEPS: tuple[dict[str, str], ...] = (
-    {
-        "field": "program_name",
-        "agent": "intake",
-        "question": "What program or initiative are you accountable for? Name it in one line.",
-    },
-    {
-        "field": "goals",
-        "agent": "intake",
-        "question": "What outcomes must be true in the next 90 days? List the top 2-3.",
-    },
-    {
-        "field": "tools",
-        "agent": "intake",
-        "question": "Which systems does the team use daily? (e.g. Jira, GitHub, Confluence, Slack)",
-    },
-    {
-        "field": "constraints",
-        "agent": "risk_dependency",
-        "question": "What constraints or dependencies worry you most right now?",
-    },
-    {
-        "field": "stakeholders",
-        "agent": "program_manager",
-        "question": "Who are the key stakeholders you report to or coordinate with?",
-    },
-)
+# Per-persona (use_case) interview question sets — one question at a time
+# until complete. "pm_fleet" is today's fixed intake script, unchanged;
+# "_generic" is the fallback for any persona without its own template (e.g. a
+# newly-authored persona that hasn't defined interview questions yet).
+INTERVIEW_TEMPLATES: dict[str, tuple[dict[str, str], ...]] = {
+    "pm_fleet": (
+        {
+            "field": "program_name",
+            "agent": "intake",
+            "question": "What program or initiative are you accountable for? Name it in one line.",
+        },
+        {
+            "field": "goals",
+            "agent": "intake",
+            "question": "What outcomes must be true in the next 90 days? List the top 2-3.",
+        },
+        {
+            "field": "tools",
+            "agent": "intake",
+            "question": "Which systems does the team use daily? (e.g. Jira, GitHub, Confluence, Slack)",
+        },
+        {
+            "field": "constraints",
+            "agent": "risk_dependency",
+            "question": "What constraints or dependencies worry you most right now?",
+        },
+        {
+            "field": "stakeholders",
+            "agent": "program_manager",
+            "question": "Who are the key stakeholders you report to or coordinate with?",
+        },
+    ),
+    "_generic": (
+        {
+            "field": "program_name",
+            "agent": "intake",
+            "question": "What should we call this workspace?",
+        },
+        {
+            "field": "goals",
+            "agent": "intake",
+            "question": "What outcomes matter most here? List the top 2-3.",
+        },
+        {
+            "field": "tools",
+            "agent": "intake",
+            "question": "Which external systems or accounts does this involve?",
+        },
+        {
+            "field": "constraints",
+            "agent": "intake",
+            "question": "Anything this workspace must never do?",
+        },
+    ),
+}
+
+# Backward-compat alias: the fixed PM Fleet script, unchanged, for callers
+# that haven't been generalized to pass a use_case yet (e.g. maistro.agents.hyperagent).
+INTERVIEW_STEPS: tuple[dict[str, str], ...] = INTERVIEW_TEMPLATES["pm_fleet"]
 
 
-def current_interview_question(ctx: ProgramContext) -> dict[str, str] | None:
+def interview_steps_for(use_case: str) -> tuple[dict[str, str], ...]:
+    """Return the persona-specific interview script, or the generic fallback."""
+    return INTERVIEW_TEMPLATES.get(use_case, INTERVIEW_TEMPLATES["_generic"])
+
+
+def current_interview_question(
+    ctx: ProgramContext, use_case: str = "pm_fleet"
+) -> dict[str, str] | None:
     if ctx.interview_complete:
         return None
-    if ctx.interview_step >= len(INTERVIEW_STEPS):
+    steps = interview_steps_for(use_case)
+    if ctx.interview_step >= len(steps):
         return None
-    return INTERVIEW_STEPS[ctx.interview_step]
+    return steps[ctx.interview_step]
 
 
-def apply_interview_answer(ctx: ProgramContext, answer: str) -> ProgramContext:
+def apply_interview_answer(
+    ctx: ProgramContext, answer: str, use_case: str = "pm_fleet"
+) -> ProgramContext:
     """Record an interview answer and advance the script."""
     answer = answer.strip()
     if not answer or ctx.interview_complete:
         return ctx
 
+    steps = interview_steps_for(use_case)
     step_idx = ctx.interview_step
-    if step_idx >= len(INTERVIEW_STEPS):
+    if step_idx >= len(steps):
         return ctx.model_copy(update={"interview_complete": True})
 
-    step = INTERVIEW_STEPS[step_idx]
+    step = steps[step_idx]
     field = step["field"]
     now = datetime.now(UTC).isoformat()
     transcript = [
@@ -132,7 +181,7 @@ def apply_interview_answer(ctx: ProgramContext, answer: str) -> ProgramContext:
         updates["stakeholders"] = _split_lines(answer)
 
     next_ctx = ctx.model_copy(update=updates)
-    if next_ctx.interview_step >= len(INTERVIEW_STEPS):
+    if next_ctx.interview_step >= len(steps):
         summary = (
             f"Program: {next_ctx.program_name}. "
             f"Goals: {', '.join(next_ctx.goals[:3])}. "
