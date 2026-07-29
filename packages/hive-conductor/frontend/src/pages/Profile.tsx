@@ -43,7 +43,9 @@ export default function Profile() {
                 const e = JSON.parse(line.slice(6));
                 if (e.type === "token" || e.type === "content") acc += e.content || e.token || "";
                 else if (e.type === "done" && e.content && !acc) acc = e.content;
-              } catch {}
+              } catch {
+                // SSE chunk split a JSON payload mid-object — wait for the rest.
+              }
             }
             setSummary(acc);
           }

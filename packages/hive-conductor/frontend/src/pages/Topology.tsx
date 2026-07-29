@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiGet } from "../lib/api";
-import { PageHeader, Card, Hex, StatusDot, LoadingSpinner } from "../components/shared";
+import { PageHeader, Card, Hex, StatusDot, LoadingSpinner, useToast } from "../components/shared";
 
 type Agent = {
   id: string;
@@ -134,6 +134,7 @@ function mapStatus(s: string): "running" | "idle" | "error" | "busy" {
 
 export default function Topology() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [servers, setServers] = useState<MCPServer[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -152,9 +153,14 @@ export default function Topology() {
       setAgents(a);
       setServers(s);
       setSkills(sk);
-    } catch { }
+    } catch (e) {
+      // Promise.all means any one of the three endpoints failing produced a
+      // completely blank topology — and `setLoading(false)` below then renders
+      // that emptiness as the answer rather than as a failure.
+      toast(`Could not load topology: ${e instanceof Error ? e.message : String(e)}`, "error");
+    }
     setLoading(false);
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void loadData();
