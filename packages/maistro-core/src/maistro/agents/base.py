@@ -604,6 +604,12 @@ class Agent:
             rca = await self._rca_extractor.extract_rca(user_text, result.tool_history)
             if rca:
                 rca.agent_id = self.identity.name
+                # Scope exactly as the traced branch does. Omitting these left
+                # the RCA at its default `org_id=""` whenever tracing was off,
+                # so an analysis derived from one org's tool failures was
+                # stored unowned and became readable by every org.
+                rca.org_id = org_id
+                rca.team_id = team_id
                 await self._learning_store.store(rca)
 
     async def _extract_learnings(

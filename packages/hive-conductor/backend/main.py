@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib import import_module
 from pathlib import Path
 
 from config import get_settings
@@ -63,6 +65,26 @@ from services.ha_tools import get_all_confirms, get_pending_confirms, respond_co
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "frontend" / "dist"
+_log = logging.getLogger("hive.lifespan")
+
+
+def _include_optional_router(
+    app: FastAPI,
+    module_name: str,
+    *,
+    prefix: str = "",
+) -> None:
+    """Mount an optional feature router, making degraded startup observable."""
+    try:
+        module = import_module(module_name)
+        app.include_router(module.router, prefix=prefix)
+    except Exception as exc:
+        _log.warning(
+            "optional_router_unavailable: module=%s error=%s",
+            module_name,
+            exc,
+            exc_info=True,
+        )
 
 
 class ConfirmResponseBody(BaseModel):
@@ -236,45 +258,13 @@ def create_app() -> FastAPI:
     app.include_router(_confirms_router, prefix="/v1/confirms")
     app.include_router(design.router, prefix="/v1")
 
-    # Phase 6 — Canvas/Davinci DAG
-    try:
-        from routes.canvas import router as canvas_router
-
-        app.include_router(canvas_router)
-    except Exception:
-        pass
-
-    # Phase 7 — PM Fleet v2 (distillation, GitHub/GitLab tools, topK)
-    try:
-        from routes.pm_fleet_v2 import router as pm_fleet_v2_router
-
-        app.include_router(pm_fleet_v2_router)
-    except Exception:
-        pass
-
-    try:
-        from routes.evolution import router as evolution_router
-
-        app.include_router(evolution_router, prefix="/v1/evolution")
-    except Exception as exc:
-        import logging as _logging
-
-        _logging.getLogger("hive.lifespan").warning(
-            "evolution_router_unavailable: %s",
-            exc,
-        )
-
-    try:
-        from routes.rsi import router as rsi_router
-
-        app.include_router(rsi_router, prefix="/v1/rsi")
-    except Exception as exc:
-        import logging as _logging
-
-        _logging.getLogger("hive.lifespan").warning(
-            "rsi_router_unavailable: %s",
-            exc,
-        )
+    # Optional feature slices degrade explicitly: a missing dependency may keep
+    # the base API available, but it must never make an entire route family
+    # disappear without an actionable startup log.
+    _include_optional_router(app, "routes.canvas")
+    _include_optional_router(app, "routes.pm_fleet_v2")
+    _include_optional_router(app, "routes.evolution", prefix="/v1/evolution")
+    _include_optional_router(app, "routes.rsi", prefix="/v1/rsi")
 
     if STATIC_DIR.is_dir():
         from starlette.responses import FileResponse

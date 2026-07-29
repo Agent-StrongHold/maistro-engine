@@ -232,7 +232,7 @@ async def test_find_relevant_filters_by_agent_id_when_given(
 
     call = conn.calls[0]
     # $1 is now org_id (always bound); agent_id shifted to $2.
-    assert "AND (org_id = $1 OR org_id = '')" in call.query
+    assert "AND org_id = $1" in call.query
     assert "AND (agent_id = $2 OR agent_id = '')" in call.query
     assert call.args == ("", "scribe")
 
@@ -248,7 +248,7 @@ async def test_find_relevant_omits_agent_filter_when_agent_id_absent(
     assert "agent_id" not in call.query
     # The scope predicate is NOT optional — omitting org_id means global scope,
     # not "no filter". H8: this query previously had no scope predicate at all.
-    assert "AND (org_id = $1 OR org_id = '')" in call.query
+    assert "AND org_id = $1" in call.query
     assert call.args == ("",)
 
 
@@ -412,7 +412,7 @@ async def test_mark_outcome_success_increments_success_counter(
 
     call = conn.calls[0]
     assert "success_after_use = success_after_use + 1" in call.query
-    assert "AND (org_id = $2 OR org_id = '')" in call.query
+    assert "AND org_id = $2" in call.query
     assert call.args == ([5], "")
 
 
@@ -425,7 +425,7 @@ async def test_mark_outcome_failure_increments_failure_counter(
 
     call = conn.calls[0]
     assert "failure_after_use = failure_after_use + 1" in call.query
-    assert "AND (org_id = $2 OR org_id = '')" in call.query
+    assert "AND org_id = $2" in call.query
     assert call.args == ([5], "")
 
 
@@ -471,7 +471,7 @@ async def test_check_auto_promotions_promotes_rows_above_threshold(
     call = conn.calls[0]
     assert "UPDATE learnings SET status = 'promoted'" in call.query
     assert "hit_count >= $1" in call.query
-    assert "AND (org_id = $2 OR org_id = '')" in call.query
+    assert "AND org_id = $2" in call.query
     assert call.args == (5, "")
     assert len(results) == 1
     assert results[0].status == "promoted"
@@ -501,7 +501,7 @@ async def test_get_promoted_filters_by_task_type_when_given(
 
     call = conn.calls[0]
     assert "AND category = $2" in call.query
-    assert "AND (org_id = $1 OR org_id = '')" in call.query
+    assert "AND org_id = $1" in call.query
     assert call.args == ("", "coding")
 
 
@@ -514,7 +514,7 @@ async def test_get_promoted_omits_filter_when_task_type_absent(
 
     call = conn.calls[0]
     assert "category" not in call.query
-    assert "AND (org_id = $1 OR org_id = '')" in call.query
+    assert "AND org_id = $1" in call.query
     assert call.args == ("",)
 
 
@@ -531,9 +531,7 @@ async def test_list_all_orders_by_id_desc_with_limit(
     await store.list_all(limit=50)
 
     call = conn.calls[0]
-    assert call.query == (
-        "SELECT * FROM learnings WHERE (org_id = $1 OR org_id = '') ORDER BY id DESC LIMIT $2"
-    )
+    assert call.query == ("SELECT * FROM learnings WHERE org_id = $1 ORDER BY id DESC LIMIT $2")
     assert call.args == ("", 50)
 
 
