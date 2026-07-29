@@ -272,6 +272,10 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
       - run: uv sync --all-extras
+      # Hive Conductor is not a workspace package. Its BDD test dependency is
+      # declared in the backend requirements, not the root uv environment.
+      - name: Install Hive Conductor backend test dependencies
+        run: uv pip install -r packages/hive-conductor/backend/requirements.txt
 
       - name: Resolve this shard's complete source inventory
         run: |
