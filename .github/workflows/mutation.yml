@@ -38,6 +38,26 @@ on:
       # the ranking. A priority entry for a subtree the gate cannot see is a
       # claim about coverage that nothing delivers.
       - 'packages/maistro-core/src/maistro/policy/**'
+      # The mirrored TEST subtrees. A PR that only adds tests was invisible
+      # here: these paths were absent, and the changed-files filter below
+      # additionally stripped `/tests/`. So the one kind of PR whose entire
+      # purpose is killing surviving mutants never started the job that
+      # measures them. `sources_for_test` maps each changed test path back to
+      # the source it covers.
+      - 'packages/maistro-core/tests/graph/**'
+      - 'packages/maistro-core/tests/projects/**'
+      - 'packages/maistro-core/tests/memory/**'
+      - 'packages/maistro-core/tests/security/**'
+      - 'packages/maistro-core/tests/router/**'
+      - 'packages/maistro-core/tests/policy/**'
+      # The gate's own machinery. Editing the scoring logic did not trigger the
+      # workflow that runs it, so a change to how this gate decides could not be
+      # exercised by this gate. The unit suite in tests/test_mutation_viability.py
+      # is the real safety net for that logic; this at least runs the job
+      # end-to-end whenever a PR also touches a mutatable file.
+      - '.github/workflows/mutation.yml'
+      - 'scripts/mutation_targets.py'
+      - 'scripts/mutation_viability.py'
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
 
@@ -83,6 +103,10 @@ jobs:
           # that the TEST path exists, never the source, so a deleted module
           # whose test directory survives resolves happily, consumes a capped
           # slot, and hands cosmic-ray a module-path that is not there.
+          # Test paths are included, not stripped. `mutation_targets.py` maps
+          # each one back to the source files it covers; a changed source and
+          # its changed tests collapse to a single target rather than two.
+          # Stripping `/tests/` here is what made a test-only PR a no-op.
           CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- \
             'packages/maistro-core/src/maistro/graph/' \
             'packages/maistro-core/src/maistro/projects/' \
@@ -90,13 +114,19 @@ jobs:
             'packages/maistro-core/src/maistro/security/' \
             'packages/maistro-core/src/maistro/router/' \
             'packages/maistro-core/src/maistro/policy/' \
-            | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            'packages/maistro-core/tests/graph/' \
+            'packages/maistro-core/tests/projects/' \
+            'packages/maistro-core/tests/memory/' \
+            'packages/maistro-core/tests/security/' \
+            'packages/maistro-core/tests/router/' \
+            'packages/maistro-core/tests/policy/' \
+            | grep '\.py$' | grep -v '__pycache__' || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No load-bearing files changed; skipping mutation test."
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Resolve each changed file to its scoped tests
