@@ -398,19 +398,216 @@ def _emit(report: Report, json_out: Path | None) -> int:
     return 0
 
 
+def _group_by_line(verdicts: list[Verdict]) -> list[tuple[int, str, str, list[str]]]:
+    """Collapse verdicts to (line, source, mutated, [operators]).
+
+    A survivor list is read by a person deciding what test to write next, and
+    thirteen consecutive entries for one line answer that question no better
+    than one entry saying "this line, thirteen ways".
+    """
+    grouped: dict[int, tuple[str, str, list[str]]] = {}
+    for v in sorted(verdicts, key=lambda x: (x.row, x.col)):
+        src, mutated, ops = grouped.get(v.row, (v.source_line, v.mutated_line, []))
+        ops.append(v.operator.removeprefix("core/"))
+        grouped[v.row] = (src, mutated, ops)
+    return [(row, s, m, ops) for row, (s, m, ops) in sorted(grouped.items())]
+
+
+def _print_survivors(verdicts: list[Verdict], module: str) -> None:
+    """Actionable failure output: where, what changed, and how many ways."""
+    for row, source, mutated, ops in _group_by_line(verdicts):
+        plural = "mutant" if len(ops) == 1 else "mutants"
+        print(f"  {module}:{row}  ({len(ops)} surviving {plural})")
+        print(f"      - {source[:96]}")
+        print(f"      + {mutated[:96]}")
+        print(f"      via: {', '.join(sorted(set(ops)))[:150]}")
+        print()
+
+
+def gate(pairs: list[tuple[Path, str]], threshold: float, json_out: Path | None) -> int:
+    """Score every mutated module together and decide the build.
+
+    Replaces the inline aggregation the workflow used to carry. Three
+    properties from that version are preserved deliberately:
+
+      - no mutants at all is a configuration error, not a pass
+      - only `non_viable` leaves the denominator
+      - every exclusion is named, mirroring this workflow's existing promise
+        that a skipped file is "named explicitly in the log"
+
+    and one is added: a session with unfinished work refuses to score rather
+    than quietly reporting the rate of the jobs that happened to complete.
+    """
+    reports = [classify(session, module, Path(module)) for session, module in pairs]
+
+    incomplete = [r for r in reports if r.pending]
+    for r in incomplete:
+        print(f"::error::{r.module}: {r.pending} initialized mutants have no result.")
+    if incomplete:
+        print("::error::Refusing to score a partial sweep. Rerun `cosmic-ray exec`.")
+        return 1
+
+    total = sum(r.total for r in reports)
+    if total == 0:
+        print("::error::No mutants produced — config error, not a pass.")
+        return 1
+
+    killed = sum(r.killed for r in reports)
+    excluded = sum(len(r.non_viable) for r in reports)
+    denominator = total - excluded
+    if denominator == 0:
+        print("::error::Every mutant was classified non-viable — that is not a pass.")
+        return 1
+    rate = killed / denominator
+    raw_rate = killed / total
+
+    print(f"Mutation kill rate: {killed}/{denominator} = {rate:.1%} (gate: {threshold:.0%})")
+    print(f"  raw, before exclusions: {killed}/{total} = {raw_rate:.1%}")
+    print(f"  excluded as non-viable: {excluded}")
+    print()
+    for r in reports:
+        r_killed, r_denom, r_rate = r.adjusted()
+        print(f"  {r.module}: {r_killed}/{r_denom} = {r_rate:.1%}")
+    print()
+
+    if excluded:
+        _print_exclusions(reports)
+    if json_out:
+        _write_gate_json(json_out, reports, threshold, killed, denominator, total, rate)
+
+    if rate < threshold:
+        print(f"::error::Mutation kill rate {rate:.1%} is below the {threshold:.0%} gate.")
+        _print_failure_detail(reports)
+        return 1
+
+    print(f"Mutation gate passed (>={threshold:.0%})")
+    return 0
+
+
+def _print_exclusions(reports: list[Report]) -> None:
+    """Name every subtracted mutant.
+
+    Aggregating by operator would be shorter and would also make the claim
+    false: a reviewer cannot audit an exclusion they cannot locate.
+    """
+    print("::group::Excluded as non-viable (provably unkillable), named individually")
+    for r in reports:
+        for v in r.non_viable:
+            print(f"  {r.module}:{v.row}:{v.col} {v.operator} [{v.job_id[:8]}]")
+            print(f"      - {v.source_line[:96]}")
+            print(f"      + {v.mutated_line[:96]}")
+    print(
+        "\n  These mutate type annotations in modules carrying "
+        "`from __future__ import annotations`,\n  where annotations are "
+        "never evaluated. Assumption: nothing resolves hints at runtime\n"
+        "  for these modules (__annotations__ / inspect.signature / "
+        "typing.get_type_hints)."
+    )
+    print("::endgroup::")
+
+
+def _print_failure_detail(reports: list[Report]) -> None:
+    """Say where to look and what to write, not what the result rows contain."""
+    print()
+    print("Surviving mutants a test could kill — each is a behaviour nothing asserts:")
+    print()
+    for r in reports:
+        _print_survivors(r.viable, r.module)
+    for r in reports:
+        if r.invalid:
+            print(f"  {r.module}: {len(r.invalid)} mutants do not compile and still survived.")
+            print("      The scoped tests never import this module — that is the gap.")
+        if r.undetermined:
+            print(f"  {r.module}: {len(r.undetermined)} mutants could not be reconstructed;")
+            print("      they stay in the denominator rather than be assumed harmless.")
+    print(
+        "Tip: pick the line with the most survivors first. When the mutants are "
+        "arithmetic,\nassert an exact value from a base that separates them — "
+        "from 0, `x+1`, `x|1` and\n`x^1` all agree, so an assertion of 1 passes "
+        "against most of the mutants too."
+    )
+
+
+def _write_gate_json(
+    json_out: Path,
+    reports: list[Report],
+    threshold: float,
+    killed: int,
+    denominator: int,
+    total: int,
+    rate: float,
+) -> None:
+    json_out.write_text(
+        json.dumps(
+            {
+                "threshold": threshold,
+                "killed": killed,
+                "adjusted_total": denominator,
+                "raw_total": total,
+                "rate": rate,
+                "modules": [
+                    {
+                        "module": r.module,
+                        "killed": r.killed,
+                        "total": r.total,
+                        "non_viable": len(r.non_viable),
+                        "viable": len(r.viable),
+                    }
+                    for r in reports
+                ],
+            },
+            indent=2,
+        )
+    )
+
+
+def _read_pairs(path: Path) -> list[tuple[Path, str]]:
+    """Read the workflow's `session<TAB>module` manifest."""
+    pairs: list[tuple[Path, str]] = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        session, _, module = line.partition("\t")
+        if not module:
+            raise SystemExit(f"malformed manifest line (expected session<TAB>module): {line!r}")
+        pairs.append((Path(session), module))
+    if not pairs:
+        raise SystemExit(f"no sessions listed in {path}")
+    return pairs
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Classify surviving cosmic-ray mutants.")
-    parser.add_argument("session", type=Path, help="cosmic-ray session sqlite")
-    parser.add_argument("module", help="module_path as recorded in the session")
+    parser.add_argument("session", type=Path, nargs="?", help="cosmic-ray session sqlite")
+    parser.add_argument("module", nargs="?", help="module_path as recorded in the session")
     parser.add_argument(
         "--source",
         type=Path,
         default=None,
         help="read pristine text here instead of from MODULE (e.g. a git-show copy)",
     )
+    parser.add_argument(
+        "--sessions",
+        type=Path,
+        default=None,
+        help="gate mode: a TSV manifest of `session<TAB>module` lines to score together",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.90,
+        help="gate mode: minimum adjusted kill rate (default 0.90)",
+    )
     parser.add_argument("--json", type=Path, default=None, help="write a JSON report here")
     args = parser.parse_args(argv)
 
+    if args.sessions:
+        if args.session or args.module:
+            parser.error("--sessions is gate mode; do not also pass SESSION/MODULE")
+        return gate(_read_pairs(args.sessions), args.threshold, args.json)
+
+    if not (args.session and args.module):
+        parser.error("pass SESSION and MODULE for a single-module report, or --sessions to gate")
     report = classify(args.session, args.module, args.source or Path(args.module))
     return _emit(report, args.json)
 
