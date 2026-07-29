@@ -50,7 +50,7 @@ jobs:
         run: uv python install 3.12
 
       - name: uv sync (full dev deps)
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
 
       # formal/ imports maistro_evolve (RSI conformance suites); not a uv
       # workspace member, so `uv sync` alone doesn't install it.
@@ -63,7 +63,8 @@ jobs:
       - name: install age + age-keygen
         run: |
           set -e
-          sudo apt-get update && sudo apt-get install -y age || true
+          sudo apt-get update || true
+          sudo apt-get install -y age || true
           if ! command -v age-keygen &> /dev/null; then
             mkdir -p /tmp/age && cd /tmp/age
             curl -fsSL https://dl.filippo.io/age/latest/age-linux-amd64.tar.gz | tar xz

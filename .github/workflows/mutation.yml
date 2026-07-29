@@ -91,12 +91,14 @@ jobs:
             'packages/maistro-core/src/maistro/router/' \
             'packages/maistro-core/src/maistro/policy/' \
             | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          {
+            echo "files<<EOF"
+            echo "$CHANGED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No load-bearing files changed; skipping mutation test."
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Resolve each changed file to its scoped tests
