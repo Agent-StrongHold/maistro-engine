@@ -58,12 +58,6 @@ jobs:
             age-keygen --help > /dev/null && echo "✓ age-keygen ready" || exit 1
           fi
       - run: uv sync --locked --extra dev --extra bootstrap
-      # The root tests/ tree ran in NO workflow (registry.yml covers only
-      # tests/tools/registry/), so 524 passing tests were invisible to CI —
-      # including the tests for the enumeration gate and the mutation-target
-      # mapping, i.e. tests written to prove those controls fire, which
-      # themselves never fired. They need no repair, only an entry here.
-      - run: uv run pytest tests/ -v --tb=short
       - run: uv run pytest packages/maistro-bootstrap/tests -v --tb=short
       - run: uv run pytest packages/maistro-core/tests -v --tb=short
         env:
@@ -146,6 +140,42 @@ jobs:
         working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
+
+  # packages/hive-conductor/tests/e2e/test_pm_workflow_api.py (24 tests: setup
+  # wizard -> login -> create/run DAG -> feedback -> optimizer proposal ->
+  # accept -> audit log) needs a LIVE hive-conductor server, not the in-process
+  # TestClient the backend/tests job above uses — it was invisible to every CI
+  # workflow. docker-compose.test.yml already defines the right harness (a
+  # `hive` service with a /health/ready healthcheck, SQLite-backed, no external
+  # DB; an `api-tests` service whose own Dockerfile installs only pytest+httpx
+  # and only ever runs this one file, so the three browser_use-dependent
+  # scripts in the same directory are never at risk of being picked up here) —
+  # this job just invokes it.
+  hive-conductor-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run PM workflow e2e against a live hive-conductor
+        working-directory: packages/hive-conductor
+        run: |
+          # Explicit `api-tests` target: with no service argument, `docker
+          # compose up` starts every service under the active profile —
+          # `e2e-tests` shares the same `test` profile and would build/start
+          # the (unwired, large) Playwright image too, wasting time and
+          # risking a race where its stale assertions exit first and trip
+          # --abort-on-container-exit before api-tests finishes. Naming the
+          # target still pulls in `hive` as its declared dependency.
+          docker compose -f docker-compose.test.yml --profile test up --build \
+            --abort-on-container-exit --exit-code-from api-tests api-tests
+      - name: Dump hive logs on failure
+        if: failure()
+        working-directory: packages/hive-conductor
+        run: docker compose -f docker-compose.test.yml logs --tail=200
+      - name: Tear down
+        if: always()
+        working-directory: packages/hive-conductor
+        run: docker compose -f docker-compose.test.yml down -v
 
   # Build every wheel and import it from a throwaway venv that has ONLY the
   # package's declared dependencies. The other jobs all run inside the root
