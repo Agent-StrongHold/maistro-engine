@@ -59,11 +59,14 @@ def _session(
             "INSERT INTO work_results VALUES (?,?,?,?)",
             ("NORMAL", r.get("outcome", "SURVIVED"), r.get("diff", ""), f"job{i}"),
         )
-    # Specs with no matching result == an interrupted sweep.
+    # Specs with no matching result == an interrupted sweep. These must carry
+    # the same module as the rows above, or they attach to nothing and the
+    # pending count silently reads as zero.
+    pending_module = rows[0].get("module", "m.py") if rows else "m.py"
     for j in range(specs_only):
         conn.execute(
             "INSERT INTO mutation_specs VALUES (?,?,?,?,?)",
-            ("m.py", "core/Op", 3, 0, f"pending{j}"),
+            (pending_module, "core/Op", 3, 0, f"pending{j}"),
         )
     conn.commit()
     conn.close()
@@ -261,3 +264,144 @@ class TestStripperPrecision:
         b = "from __future__ import annotations\ndef f(x: str + None): pass\n"
 
         assert mv._normalized(a) == mv._normalized(b)
+
+
+class TestGate:
+    """`gate()` decides the build, so its refusals are the contract.
+
+    The properties below were carried by the inline heredoc this replaced, and
+    the point of moving the scoring into a script was to make them testable
+    rather than to change them.
+    """
+
+    def _module(self, tmp_path: Path, source: str = _DEFERRED) -> str:
+        path = tmp_path / "mod.py"
+        path.write_text(source)
+        return str(path)
+
+    def _manifest(self, tmp_path: Path, session: Path, module: str) -> Path:
+        path = tmp_path / "sessions.tsv"
+        path.write_text(f"{session}\t{module}\n")
+        return path
+
+    def test_a_rate_below_the_threshold_fails_the_build(self, mv, tmp_path: Path) -> None:
+        module = self._module(tmp_path)
+        session = _session(
+            tmp_path,
+            [{"module": module, "outcome": "KILLED"}] + [{"module": module}] * 3,
+        )
+
+        assert mv.gate([(session, module)], 0.90, None) == 1
+
+    def test_a_rate_above_the_threshold_passes(self, mv, tmp_path: Path) -> None:
+        module = self._module(tmp_path)
+        session = _session(tmp_path, [{"module": module, "outcome": "KILLED"}] * 10)
+
+        assert mv.gate([(session, module)], 0.90, None) == 0
+
+    def test_zero_mutants_is_an_error_not_a_pass(self, mv, tmp_path: Path) -> None:
+        """A config error that produces no mutants must never read as 100%.
+
+        This is the failure mode the gate exists to prevent: a broken
+        invocation is indistinguishable from a perfect score unless something
+        checks explicitly.
+        """
+        module = self._module(tmp_path)
+        session = _session(tmp_path, [{"module": "other.py", "outcome": "KILLED"}])
+
+        # No specs for the requested module at all.
+        with pytest.raises(SystemExit):
+            mv.gate([(session, module)], 0.90, None)
+
+    def test_an_incomplete_sweep_refuses_to_score(self, mv, tmp_path: Path) -> None:
+        """Unfinished work must not be scored on the jobs that happened to end.
+
+        Counting only completed results would shrink the denominator and
+        inflate the rate, so an interrupted run could pass a gate its finished
+        mutants had not earned.
+        """
+        module = self._module(tmp_path)
+        session = _session(tmp_path, [{"module": module, "outcome": "KILLED"}] * 10, specs_only=5)
+
+        assert mv.gate([(session, module)], 0.90, None) == 1
+
+    def test_excluding_everything_is_an_error_not_a_pass(self, mv, tmp_path: Path) -> None:
+        """If every mutant is non-viable the denominator is zero.
+
+        `0/0` must not be reported as success -- that would turn a file the
+        gate cannot meaningfully measure into a file that always passes.
+        """
+        module = self._module(tmp_path)
+        row = 3  # the `def f(...)` line of _DEFERRED
+        diff = _diff(
+            row, "def f(x: str | None = None) -> int:", "def f(x: str + None = None) -> int:"
+        )
+        session = _session(tmp_path, [{"module": module, "row": row, "diff": diff}])
+
+        assert mv.gate([(session, module)], 0.90, None) == 1
+
+    def test_the_threshold_is_honoured(self, mv, tmp_path: Path) -> None:
+        """Same session, two thresholds, two verdicts."""
+        module = self._module(tmp_path)
+        rows = [{"module": module, "outcome": "KILLED"}] * 8 + [{"module": module}] * 2
+        session = _session(tmp_path, rows)
+
+        assert mv.gate([(session, module)], 0.75, None) == 0
+        assert mv.gate([(session, module)], 0.90, None) == 1
+
+    def test_survivors_are_reported_grouped_by_line(self, mv, tmp_path: Path, capsys) -> None:
+        """Failure output must say where to look, not dump result rows.
+
+        The version this replaced printed a Python repr of each result dict,
+        which named neither the line nor the change.
+        """
+        module = self._module(tmp_path)
+        diff = _diff(4, "    return 1", "    return 2")
+        session = _session(
+            tmp_path,
+            [{"module": module, "row": 4, "diff": diff, "op": "core/NumberReplacer"}] * 3,
+        )
+
+        mv.gate([(session, module)], 0.90, None)
+
+        out = capsys.readouterr().out
+        assert f"{module}:4" in out
+        assert "3 surviving mutants" in out
+        assert "return 2" in out
+
+    def test_multiple_modules_are_scored_together(self, mv, tmp_path: Path) -> None:
+        """The gate is an aggregate across every mutated file, as before."""
+        a = tmp_path / "a.py"
+        a.write_text(_DEFERRED)
+        b = tmp_path / "b.py"
+        b.write_text(_DEFERRED)
+        sess_a = _session(tmp_path, [{"module": str(a), "outcome": "KILLED"}] * 10, name="a")
+        sess_b = _session(tmp_path, [{"module": str(b)}] * 10, name="b")
+
+        # 10 killed of 20 overall -> 50%, below the gate even though `a` alone
+        # would pass.
+        assert mv.gate([(sess_a, str(a)), (sess_b, str(b))], 0.90, None) == 1
+
+
+class TestManifest:
+    def test_a_malformed_line_is_rejected(self, mv, tmp_path: Path) -> None:
+        path = tmp_path / "m.tsv"
+        path.write_text("session-with-no-tab\n")
+
+        with pytest.raises(SystemExit):
+            mv._read_pairs(path)
+
+    def test_an_empty_manifest_is_rejected(self, mv, tmp_path: Path) -> None:
+        path = tmp_path / "m.tsv"
+        path.write_text("\n\n")
+
+        with pytest.raises(SystemExit):
+            mv._read_pairs(path)
+
+    def test_blank_lines_are_skipped(self, mv, tmp_path: Path) -> None:
+        path = tmp_path / "m.tsv"
+        path.write_text("s1.sqlite\tmod_a.py\n\ns2.sqlite\tmod_b.py\n")
+
+        pairs = mv._read_pairs(path)
+
+        assert [m for _s, m in pairs] == ["mod_a.py", "mod_b.py"]
