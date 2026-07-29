@@ -58,6 +58,9 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/credentials": "credentials.write",
         "/v1/dags": "dags.write",
         "/v1/schedules": "schedules.write",
+        # Removing a workspace member is the same write-scope decision as
+        # creating the workspace in the first place (Persona/Workspace Phase G).
+        "/v1/workspaces": "workspaces.write",
     },
     "POST": {
         "/v1/settings": "config.write",

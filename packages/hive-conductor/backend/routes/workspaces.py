@@ -3,8 +3,9 @@
 Phase A: manual create/list/get. Phase C adds the persona-template checklist
 endpoint (accept/modify tools/skills derived from the chosen persona's own
 declared spawns). Phase D adds the theme catalog + per-workspace tone
-override; the actual CSS/tab-bar wiring lands in Phase G. No interview
-wiring, no sticky tool bindings yet — those are later phases.
+override. Phase G adds member management (invite/remove, owner/editor/viewer
+roles) -- the actual tab-bar/share-control UI wiring is still deferred, there
+being no tab bar yet to host it.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from uuid import uuid4
 
 import stores
 from fastapi import APIRouter, HTTPException, Request
-from models.workspace import Workspace, WorkspaceMember
+from models.workspace import Workspace, WorkspaceMember, WorkspaceRole
 from pydantic import BaseModel, ConfigDict
 from services.themes import THEME_CATALOG, ThemeOption, is_valid_theme_id
 
@@ -35,6 +36,13 @@ def _user_id(request: Request) -> str:
 
 def _visible_to(user_id: str, workspace: Workspace) -> bool:
     return any(m.user_id == user_id for m in workspace.members)
+
+
+def _member_role(workspace: Workspace, user_id: str) -> WorkspaceRole | None:
+    for m in workspace.members:
+        if m.user_id == user_id:
+            return m.role
+    return None
 
 
 class PersonaChecklistResponse(BaseModel):
@@ -118,5 +126,56 @@ def create_workspace(body: CreateWorkspaceBody, request: Request) -> Workspace:
         created_at=t,
         updated_at=t,
     )
+    stores.workspaces[workspace_id] = workspace
+    return workspace
+
+
+class AddMemberBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    user_id: str
+    role: WorkspaceRole = "viewer"
+
+
+@router.post("/{workspace_id}/members", response_model=Workspace)
+def add_workspace_member(workspace_id: str, body: AddMemberBody, request: Request) -> Workspace:
+    """Invite/add a member. Only an existing owner may do this; re-adding an
+    already-present user_id updates their role rather than erroring."""
+    workspace = stores.workspaces.get(workspace_id)
+    requester = _user_id(request)
+    if workspace is None or not _visible_to(requester, workspace):
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if _member_role(workspace, requester) != "owner":
+        raise HTTPException(status_code=403, detail="only an owner can add workspace members")
+    members = [m for m in workspace.members if m.user_id != body.user_id]
+    members.append(WorkspaceMember(user_id=body.user_id, role=body.role))
+    workspace = workspace.model_copy(update={"members": members, "updated_at": _now()})
+    stores.workspaces[workspace_id] = workspace
+    return workspace
+
+
+@router.delete("/{workspace_id}/members/{user_id}", response_model=Workspace)
+def remove_workspace_member(workspace_id: str, user_id: str, request: Request) -> Workspace:
+    """Remove a member. An owner may remove anyone; anyone may remove
+    themselves. The workspace's last owner cannot be removed by anyone --
+    including themselves -- so a shared workspace never goes ownerless."""
+    workspace = stores.workspaces.get(workspace_id)
+    requester = _user_id(request)
+    if workspace is None or not _visible_to(requester, workspace):
+        raise HTTPException(status_code=404, detail="workspace not found")
+
+    target_role = _member_role(workspace, user_id)
+    if target_role is None:
+        raise HTTPException(status_code=404, detail="user is not a member of this workspace")
+
+    is_self_removal = requester == user_id
+    if _member_role(workspace, requester) != "owner" and not is_self_removal:
+        raise HTTPException(status_code=403, detail="only an owner can remove other members")
+
+    remaining = [m for m in workspace.members if m.user_id != user_id]
+    if target_role == "owner" and not any(m.role == "owner" for m in remaining):
+        raise HTTPException(status_code=400, detail="cannot remove the workspace's last owner")
+
+    workspace = workspace.model_copy(update={"members": remaining, "updated_at": _now()})
     stores.workspaces[workspace_id] = workspace
     return workspace

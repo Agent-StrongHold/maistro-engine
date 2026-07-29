@@ -202,3 +202,110 @@ class TestWorkspaceTheme:
         )
         assert r.status_code == 201
         assert r.json()["voice_tone_override"] == "playful and terse"
+
+
+def _set_members(workspace_id: str, roles: dict[str, str]) -> None:
+    """Test-only helper: overwrite one workspace's membership list directly,
+    so role-gating logic can be exercised for both owners and non-owners
+    without needing a second real login per role."""
+    from models.workspace import WorkspaceMember
+
+    workspace = stores.workspaces[workspace_id]
+    stores.workspaces[workspace_id] = workspace.model_copy(
+        update={"members": [WorkspaceMember(user_id=uid, role=role) for uid, role in roles.items()]}
+    )
+
+
+class TestWorkspaceMembers:
+    """Phase G: sharing via owner/editor/viewer membership."""
+
+    def _create(self, admin_client) -> str:
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    def test_owner_can_add_member(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.post(
+            f"/v1/workspaces/{ws_id}/members", json={"user_id": "user", "role": "editor"}
+        )
+        assert r.status_code == 200
+        roles = {m["user_id"]: m["role"] for m in r.json()["members"]}
+        assert roles == {"admin": "owner", "user": "editor"}
+
+    def test_re_adding_existing_member_updates_role_not_duplicates(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        admin_client.post(
+            f"/v1/workspaces/{ws_id}/members", json={"user_id": "user", "role": "viewer"}
+        )
+        r = admin_client.post(
+            f"/v1/workspaces/{ws_id}/members", json={"user_id": "user", "role": "editor"}
+        )
+        assert r.status_code == 200
+        members = r.json()["members"]
+        assert len(members) == 2
+        assert {m["user_id"]: m["role"] for m in members}["user"] == "editor"
+
+    def test_non_owner_cannot_add_member(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        _set_members(ws_id, {"admin": "editor"})
+        r = admin_client.post(
+            f"/v1/workspaces/{ws_id}/members", json={"user_id": "user", "role": "viewer"}
+        )
+        assert r.status_code == 403
+
+    def test_add_member_requires_workspaces_write_scope(self, admin_client, authed_client) -> None:
+        """The zero-permission daily account is refused at the middleware,
+        before ever reaching the per-workspace owner check."""
+        ws_id = self._create(admin_client)
+        r = authed_client.post(
+            f"/v1/workspaces/{ws_id}/members", json={"user_id": "someone", "role": "viewer"}
+        )
+        assert r.status_code == 403
+
+    def test_owner_can_remove_other_member(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        _set_members(ws_id, {"admin": "owner", "user": "editor"})
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}/members/user")
+        assert r.status_code == 200
+        assert {m["user_id"] for m in r.json()["members"]} == {"admin"}
+
+    def test_non_owner_cannot_remove_other_member(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        _set_members(ws_id, {"admin": "editor", "user": "viewer"})
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}/members/user")
+        assert r.status_code == 403
+
+    def test_member_can_remove_self_even_without_owner_role(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        # "user" holds the sole owner role here, so admin (an editor) removing
+        # themself doesn't orphan the workspace and must be allowed.
+        _set_members(ws_id, {"admin": "editor", "user": "owner"})
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}/members/admin")
+        assert r.status_code == 200
+        assert {m["user_id"] for m in r.json()["members"]} == {"user"}
+
+    def test_last_owner_cannot_remove_self(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}/members/admin")
+        assert r.status_code == 400
+
+    def test_removing_one_of_two_owners_is_allowed(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        _set_members(ws_id, {"admin": "owner", "user": "owner"})
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}/members/user")
+        assert r.status_code == 200
+        assert {m["user_id"] for m in r.json()["members"]} == {"admin"}
+
+    def test_remove_unknown_member_404s(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}/members/nobody")
+        assert r.status_code == 404
+
+    def test_add_member_to_unknown_workspace_404s(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces/does-not-exist/members", json={"user_id": "user", "role": "viewer"}
+        )
+        assert r.status_code == 404
