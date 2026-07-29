@@ -1,13 +1,13 @@
 [project]
 name = "maistro-design"
-version = "0.1.0"
+version = "1.0.0"
 description = "Composable design skills + design systems + canvas composition engine"
 requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
-    "maistro-core>=0.1",
-    "maistro-canvas>=0.1",
+    "maistro-core>=1.0.0",
+    "maistro-canvas>=1.0.0",
     "httpx>=0.28",
     "pydantic>=2.0",
     "pyyaml>=6.0",

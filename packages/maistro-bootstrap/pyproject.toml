@@ -1,6 +1,6 @@
 [project]
 name = "maistro-bootstrap"
-version = "0.1.0"
+version = "1.0.0"
 description = "Interactive and headless installer helper for maistro-engine feature slices and Copier templates"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -1,12 +1,12 @@
 [project]
 name = "maistro-canvas"
-version = "0.1.0"
+version = "1.0.0"
 description = "Standalone book builder — phased illustration pipeline with AI image generation"
 requires-python = ">=3.12"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 dependencies = [
-    "maistro-core>=0.1",
+    "maistro-core>=1.0.0",
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.34,<1",
     "sqlalchemy[asyncio]>=2.0,<3",

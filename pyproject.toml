@@ -1,6 +1,6 @@
 [project]
 name = "maistro-workspace"
-version = "0.0.0"
+version = "1.0.0"
 description = "Monorepo workspace root — all code lives in packages/"
 requires-python = ">=3.12"
 license = "Apache-2.0"

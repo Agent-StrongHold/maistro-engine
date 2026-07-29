@@ -1,6 +1,6 @@
 [project]
 name = "maistro-core"
-version = "0.1.0"
+version = "1.0.0"
 description = "Core library for the Maistro multi-agent AI platform — memory, security, classification, routing, agents, A2A, skills, builders"
 readme = "README.md"
 requires-python = ">=3.12"

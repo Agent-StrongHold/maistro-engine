@@ -25,7 +25,7 @@ client: LuluClient | None = None
 if CLIENT_KEY and CLIENT_SECRET:
     client = LuluClient(CLIENT_KEY, CLIENT_SECRET, contact_email=CONTACT_EMAIL, sandbox=SANDBOX)
 
-app = FastAPI(title="Lulu Print Service", version="0.1.0")
+app = FastAPI(title="Lulu Print Service", version="1.0.0")
 # CORS allow-list — set LULU_CORS_ORIGINS (comma-separated) in deployment.
 # Defaults to local-dev origins rather than a wildcard.
 _CORS_ORIGINS = [

@@ -188,7 +188,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="Hive Conductor", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Hive Conductor", version="1.0.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_settings().cors_origins,

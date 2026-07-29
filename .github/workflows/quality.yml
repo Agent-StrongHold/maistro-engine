@@ -95,6 +95,13 @@ jobs:
       - name: radon CC (report; the ratchet above is the gate)
         run: uv run radon cc packages/maistro-core/src --min B --total-average
 
+      # Single-sourced version (E1/#294): VERSION is the source of truth, and
+      # every package's pyproject.toml/__version__ fallback, inter-package
+      # dependency lower bound, and app-level FastAPI(version=...) literal
+      # must agree with it — catches drift before merge, not just at bump time.
+      - name: version consistency check (VERSION vs. every version site)
+        run: uv run python scripts/bump_version.py --check
+
       # Unlike the ratchets below, this one is a *count-free* ratchet: the
       # baseline names every tolerated gap, and a gap that gets fixed but left
       # in the file fails the build too. That asymmetry is the point — a count

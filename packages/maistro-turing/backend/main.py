@@ -19,7 +19,7 @@ from routes import admin, auth, chat, feed, health, state
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Turing Backend", version="0.1.0")
+    app = FastAPI(title="Turing Backend", version="1.0.0")
 
     app.add_middleware(
         CORSMiddleware,
