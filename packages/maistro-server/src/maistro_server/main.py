@@ -45,7 +45,7 @@ _runner: TaskRunner | None = None
 try:
     APP_VERSION = importlib.metadata.version("maistro-server")
 except importlib.metadata.PackageNotFoundError:
-    APP_VERSION = "0.1.0-dev"
+    APP_VERSION = "0.9.0-dev"
 
 # Graceful shutdown drain timeout (seconds)
 SHUTDOWN_DRAIN_TIMEOUT = 30.0
