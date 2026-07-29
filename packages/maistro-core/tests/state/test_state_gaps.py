@@ -103,12 +103,8 @@ class TestRunMigrationBranches:
         # not executed, since the migration name is already recorded
         state.run_migration("m1", up="THIS IS BAD SQL")
         assert state._writer is not None
-        assert state._writer.execute(
-            "SELECT name FROM schema_migrations"
-        ).fetchall() == [("m1",)]
-        assert state._writer.execute(
-            "SELECT name FROM sqlite_master WHERE name = 'foo'"
-        ).fetchone()
+        assert state._writer.execute("SELECT name FROM schema_migrations").fetchall() == [("m1",)]
+        assert state._writer.execute("SELECT name FROM sqlite_master WHERE name = 'foo'").fetchone()
         state.close()
 
     def test_auto_opens_writer_when_not_open(self, db_path: Path) -> None:

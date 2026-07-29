@@ -190,7 +190,10 @@ def _findings_for_test(
         expression = assertion.test
         if not isinstance(expression, ast.Compare) or len(expression.ops) != 1:
             continue
-        if not isinstance(expression.ops[0], ast.Eq | ast.NotEq) or len(expression.comparators) != 1:
+        if (
+            not isinstance(expression.ops[0], ast.Eq | ast.NotEq)
+            or len(expression.comparators) != 1
+        ):
             continue
         left = _attribute(expression.left)
         right = _attribute(expression.comparators[0])

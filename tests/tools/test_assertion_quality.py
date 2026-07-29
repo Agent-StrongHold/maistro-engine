@@ -33,15 +33,20 @@ def test_flags_literal_constant_assertion(tmp_path: Path) -> None:
 
 
 def test_accepts_bool_contract_and_mock_assertion(tmp_path: Path) -> None:
-    assert _findings(
-        tmp_path,
-        "def test_x(mock):\n    assert is_ready()\n    mock.assert_called_once()\n",
-        bool_functions={"is_ready"},
-    ) == set()
+    assert (
+        _findings(
+            tmp_path,
+            "def test_x(mock):\n    assert is_ready()\n    mock.assert_called_once()\n",
+            bool_functions={"is_ready"},
+        )
+        == set()
+    )
 
 
 def test_accepts_observable_none_contract(tmp_path: Path) -> None:
-    assert _findings(tmp_path, "def test_x(service):\n    assert service.fetch() is None\n") == set()
+    assert (
+        _findings(tmp_path, "def test_x(service):\n    assert service.fetch() is None\n") == set()
+    )
 
 
 def test_flags_test_without_recognized_oracle(tmp_path: Path) -> None:
