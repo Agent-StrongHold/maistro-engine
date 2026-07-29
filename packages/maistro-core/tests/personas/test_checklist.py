@@ -6,6 +6,7 @@ from pathlib import Path
 
 from maistro.personas.checklist import capability_checklist, default_checklist_ids
 from maistro.personas.rubric import load_template
+from maistro.personas.schema import PersonaTemplate, SpawnSpec
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -61,3 +62,28 @@ def test_same_tool_name_under_two_agents_produces_two_distinct_rows() -> None:
     # across agents (a synthetic check, since the fixture doesn't repeat one).
     items = capability_checklist(template)
     assert len({i.id for i in items}) == len(items)
+
+
+def test_duplicate_tool_within_one_spawn_deduplicates_to_one_row() -> None:
+    template = PersonaTemplate(
+        kind="workspace",
+        id="dup_tool",
+        spawns=[SpawnSpec(agent="intake", tools=["create_epic", "create_epic"], skills=[])],
+    )
+    items = capability_checklist(template)
+    assert [i.id for i in items] == ["intake.tool.create_epic"]
+
+
+def test_repeated_agent_name_across_spawns_deduplicates_by_id() -> None:
+    template = PersonaTemplate(
+        kind="workspace",
+        id="dup_agent",
+        spawns=[
+            SpawnSpec(agent="intake", tools=["create_epic"], skills=[]),
+            SpawnSpec(agent="intake", tools=["create_epic"], skills=["triage"]),
+        ],
+    )
+    items = capability_checklist(template)
+    ids = [i.id for i in items]
+    assert ids == ["intake.tool.create_epic", "intake.skill.triage"]
+    assert len(ids) == len(set(ids))

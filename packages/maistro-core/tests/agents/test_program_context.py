@@ -60,6 +60,38 @@ def test_pm_fleet_five_question_flow_is_unchanged() -> None:
     assert ctx.stakeholders == ["VP Eng", "Design Lead"]
 
 
+def test_generic_interview_finalization_uses_neutral_wording_not_pm_phrasing() -> None:
+    """A non-PM persona finishing the generic interview must not get PM-specific
+    'dependency'/'milestone' phrasing injected into its context."""
+    ctx = ProgramContext.empty("u1", project_id="ws-canvas")
+    for answer in ["My Workspace", "Ship the thing", "GitHub", "Never delete prod"]:
+        ctx = apply_interview_answer(ctx, answer, use_case="canvas_creative")
+    assert ctx.interview_complete is True
+    assert ctx.summary.startswith("Workspace: My Workspace.")
+    assert "Program:" not in ctx.summary
+    for q in ctx.open_questions:
+        assert "dependency" not in q.lower()
+        assert "milestone" not in q.lower()
+
+
+def test_pm_fleet_finalization_keeps_its_original_wording() -> None:
+    ctx = ProgramContext.empty("u1")
+    answers = [
+        "Q3 Platform Migration",
+        "Ship auth v2",
+        "Jira, GitHub, Slack",
+        "Vendor API rate limits",
+        "VP Eng, Design Lead",
+    ]
+    for answer in answers:
+        ctx = apply_interview_answer(ctx, answer)
+    assert ctx.summary.startswith("Program: Q3 Platform Migration.")
+    assert ctx.open_questions == [
+        "What is the single highest-risk dependency this month?",
+        "Which milestone should we protect first?",
+    ]
+
+
 def test_two_workspaces_for_one_user_track_independent_interview_progress() -> None:
     """Phase B acceptance bar: two personas for the same user run independently."""
     pm_ctx = ProgramContext.empty("u1", project_id="ws-pm")

@@ -25,11 +25,22 @@ def get_context(user_id: str, project_id: str = "default") -> ProgramContext:
 
     key = _key(user_id, project_id)
     raw = stores.program_contexts.get(key)
-    if raw is None:
-        ctx = ProgramContext.empty(user_id, project_id)
-        stores.program_contexts[key] = ctx.model_dump(mode="json")
-        return ctx
-    return ProgramContext.model_validate(raw)
+    if raw is not None:
+        return ProgramContext.model_validate(raw)
+
+    if project_id == "default":
+        # Pre-Phase-B installs persisted this bare-user_id-keyed -- migrate it
+        # forward once rather than silently presenting a blank context and
+        # orphaning the old record.
+        legacy = stores.program_contexts.pop(user_id, None)
+        if legacy is not None:
+            ctx = ProgramContext.model_validate(legacy)
+            stores.program_contexts[key] = ctx.model_dump(mode="json")
+            return ctx
+
+    ctx = ProgramContext.empty(user_id, project_id)
+    stores.program_contexts[key] = ctx.model_dump(mode="json")
+    return ctx
 
 
 def save_context(ctx: ProgramContext) -> ProgramContext:

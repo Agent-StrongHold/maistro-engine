@@ -119,6 +119,24 @@ INTERVIEW_TEMPLATES: dict[str, tuple[dict[str, str], ...]] = {
 # that haven't been generalized to pass a use_case yet (e.g. maistro.agents.hyperagent).
 INTERVIEW_STEPS: tuple[dict[str, str], ...] = INTERVIEW_TEMPLATES["pm_fleet"]
 
+# Per-use_case finalization wording -- pm_fleet keeps its original PM-flavored
+# summary label and open questions verbatim; any other use_case (including the
+# generic fallback) gets neutral wording instead of leaking PM-specific
+# "dependency"/"milestone" phrasing into e.g. a creative or author workspace.
+_SUMMARY_LABEL: dict[str, str] = {"pm_fleet": "Program"}
+_DEFAULT_SUMMARY_LABEL = "Workspace"
+
+_FINALIZATION_OPEN_QUESTIONS: dict[str, list[str]] = {
+    "pm_fleet": [
+        "What is the single highest-risk dependency this month?",
+        "Which milestone should we protect first?",
+    ],
+}
+_DEFAULT_FINALIZATION_OPEN_QUESTIONS: list[str] = [
+    "What's the most important thing to get right first?",
+    "What should we check in on regularly?",
+]
+
 
 def interview_steps_for(use_case: str) -> tuple[dict[str, str], ...]:
     """Return the persona-specific interview script, or the generic fallback."""
@@ -182,19 +200,20 @@ def apply_interview_answer(
 
     next_ctx = ctx.model_copy(update=updates)
     if next_ctx.interview_step >= len(steps):
+        label = _SUMMARY_LABEL.get(use_case, _DEFAULT_SUMMARY_LABEL)
         summary = (
-            f"Program: {next_ctx.program_name}. "
+            f"{label}: {next_ctx.program_name}. "
             f"Goals: {', '.join(next_ctx.goals[:3])}. "
             f"Tools: {', '.join(next_ctx.tools[:4])}."
+        )
+        open_questions = _FINALIZATION_OPEN_QUESTIONS.get(
+            use_case, _DEFAULT_FINALIZATION_OPEN_QUESTIONS
         )
         next_ctx = next_ctx.model_copy(
             update={
                 "interview_complete": True,
                 "summary": summary.strip(),
-                "open_questions": [
-                    "What is the single highest-risk dependency this month?",
-                    "Which milestone should we protect first?",
-                ],
+                "open_questions": list(open_questions),
             }
         )
     return next_ctx

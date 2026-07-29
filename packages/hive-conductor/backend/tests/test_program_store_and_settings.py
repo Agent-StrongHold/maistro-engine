@@ -73,6 +73,32 @@ def test_get_context_without_project_id_defaults_to_default_workspace() -> None:
     assert ctx.project_id == "default"
 
 
+def test_pre_phase_b_legacy_bare_user_id_key_migrates_to_default_project() -> None:
+    """Installs from before Phase B persisted this keyed by bare user_id. The
+    first read under the new (user_id, project_id) scheme must recover that
+    state, not silently return a blank context and orphan the old record."""
+    import stores
+    from services import program_store as prog
+
+    legacy_ctx = prog.get_context("legacy-user", "default")
+    legacy_ctx = legacy_ctx.model_copy(update={"interview_step": 3, "program_name": "Old Program"})
+    # Simulate a pre-Phase-B record: keyed by bare user_id, not "user_id:default".
+    stores.program_contexts.pop("legacy-user:default", None)
+    stores.program_contexts["legacy-user"] = legacy_ctx.model_dump(mode="json")
+
+    migrated = prog.get_context("legacy-user")
+    assert migrated.interview_step == 3
+    assert migrated.program_name == "Old Program"
+    assert migrated.project_id == "default"
+    # Migrated forward, not left duplicated under the old key.
+    assert "legacy-user" not in stores.program_contexts
+    assert "legacy-user:default" in stores.program_contexts
+
+    # Second read is stable (reads the migrated key directly).
+    again = prog.get_context("legacy-user")
+    assert again.interview_step == 3
+
+
 def test_context_dict_returns_model_dump() -> None:
     from services import program_store as prog
 

@@ -40,14 +40,23 @@ def capability_checklist(template: PersonaTemplate) -> list[CapabilityItem]:
     """One CapabilityItem per (agent, tool) and (agent, skill) declared in spawns.
 
     Order matches `spawns` order, tools before skills within each spawn --
-    deterministic, so a checklist UI renders stably across reloads.
+    deterministic, so a checklist UI renders stably across reloads. A
+    template that repeats a tool/skill within one spawn, or repeats an agent
+    name across spawns, would otherwise produce two rows sharing one `id`;
+    the first occurrence wins and later duplicates are skipped so every id
+    stays unique and independently accept/reject-able.
     """
     items: list[CapabilityItem] = []
+    seen_ids: set[str] = set()
     for spawn in template.spawns:
         for tool in spawn.tools:
+            item_id = f"{spawn.agent}.tool.{tool}"
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
             items.append(
                 CapabilityItem(
-                    id=f"{spawn.agent}.tool.{tool}",
+                    id=item_id,
                     agent=spawn.agent,
                     kind="tool",
                     name=tool,
@@ -55,9 +64,13 @@ def capability_checklist(template: PersonaTemplate) -> list[CapabilityItem]:
                 )
             )
         for skill in spawn.skills:
+            item_id = f"{spawn.agent}.skill.{skill}"
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
             items.append(
                 CapabilityItem(
-                    id=f"{spawn.agent}.skill.{skill}",
+                    id=item_id,
                     agent=spawn.agent,
                     kind="skill",
                     name=skill,
