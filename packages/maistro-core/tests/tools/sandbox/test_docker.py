@@ -244,7 +244,7 @@ async def test_destroy_logs_success_on_zero_exit() -> None:
     assert mock_exec.call_args.args == ("docker", "rm", "-f", "abc123def456")
 
 
-async def test_destroy_logs_warning_on_nonzero_exit() -> None:
+async def test_destroy_logs_warning_on_nonzero_exit(caplog: pytest.LogCaptureFixture) -> None:
     container = SandboxContainer("abc123", "/host")
     fake_proc = _FakeProc(stderr=b"no such container", returncode=1)
     with patch(
@@ -252,6 +252,8 @@ async def test_destroy_logs_warning_on_nonzero_exit() -> None:
         new=AsyncMock(return_value=fake_proc),
     ):
         await container.destroy()
+
+    assert "no such container" in caplog.text
 
 
 async def test_create_sandbox_builds_expected_docker_run_args(tmp_path: Any) -> None:
