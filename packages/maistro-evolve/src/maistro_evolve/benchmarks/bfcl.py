@@ -124,6 +124,12 @@ def _score_tool_call(
 
 
 async def run_bfcl(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    if llm_call is None:
+        raise ValueError(
+            "run_bfcl requires an llm_call — there is no stub/heuristic "
+            "fallback (SPEC-202: never produce a fabricated score)"
+        )
+
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -149,23 +155,18 @@ async def run_bfcl(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         messages = build_messages(system_prompt, user_msg)
 
         try:
-            if llm_call is not None:
-                response = await asyncio.wait_for(
-                    llm_call(
-                        messages,
-                        temperature=model_config.get("temperature", 0.1),
-                        max_tokens=model_config.get("max_tokens", 1024),
-                    ),
-                    timeout=30.0,
-                )
-                score = _score_tool_call(response, sample)
-                total_score += score
-                evaluated += 1
-                total_cost += 0.001
-            else:
-                score = _heuristic_score(sample)
-                total_score += score
-                evaluated += 1
+            response = await asyncio.wait_for(
+                llm_call(
+                    messages,
+                    temperature=model_config.get("temperature", 0.1),
+                    max_tokens=model_config.get("max_tokens", 1024),
+                ),
+                timeout=30.0,
+            )
+            score = _score_tool_call(response, sample)
+            total_score += score
+            evaluated += 1
+            total_cost += 0.001
         except (TimeoutError, Exception):
             evaluated += 1
 
@@ -178,15 +179,5 @@ async def run_bfcl(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real"},
+        metadata={"total_samples": samples, "fidelity": "proxy"},
     )
-
-
-def _heuristic_score(sample: dict[str, Any]) -> float:
-    import random
-
-    num_functions = len(sample.get("functions", []))
-    base = 0.6 if num_functions == 1 else 0.45
-    num_params = len(sample.get("expected_params", {}))
-    base -= num_params * 0.03
-    return max(0.1, min(0.9, base + random.uniform(-0.05, 0.05)))
