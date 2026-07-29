@@ -329,7 +329,7 @@ class TestActuallySpawned:
 
     def test_an_output_without_the_flags_defaults_to_spawned(self) -> None:
         """Kills `getattr(output, "success", True)` -> default False."""
-        result = NodeResult(success=True, output=_Out(text='x'))
+        result = NodeResult(success=True, output=_Out(text="x"))
 
         assert _actually_spawned("agent.synth_dag", result) is True
 
