@@ -159,7 +159,11 @@ A linter (`tools/lint_lifecycle.py`) validates:
 5. Cross-references: ADR at `Fully Specced` requires all `implements` specs to be ≥ `AC Defined`.
 6. Cross-references: ADR at `Implemented` requires all `implements` specs to be at `Implemented`.
 
-The linter runs in CI as a pre-merge gate.
+**Not yet true (D2/#290, 2026-07-29):** `tools/lint_lifecycle.py` exists but is
+not invoked by any GitHub Actions workflow today — `registry.yml`'s CI gate
+runs only `maistro_registry.cli lint`, which validates front-matter shape (see
+that tool's own schema) but not this ADR's forward-only-transition/AC-traceability
+rules. Enabling it as a CI gate remains open per the Migration section below.
 
 
 ### Acceptance Criteria → Test Traceability (AC-ID Convention)
