@@ -236,9 +236,7 @@ class TestTournamentDrawsFromIsland:
         tournament.record_battle("ifeval", "g0", "g1", 0.5, 0.6)
         tournament.record_battle("ifeval", "g1", "g2", 0.6, 0.7)
 
-        cycle = EvolutionCycle(
-            harness=EvalHarness(use_real_benchmarks=False), tournament=tournament
-        )
+        cycle = EvolutionCycle(harness=EvalHarness(), tournament=tournament)
         island_0_members_before = set(ip.get_members(0))
 
         cycle._breed_island(ip, 0, store, EvolutionConfig(population_size=9, island_count=3), cap=5)
@@ -337,9 +335,7 @@ class TestIslandCountOneDegeneracy:
             eval_batch_size=0,
             self_improve=False,
         )
-        cycle = EvolutionCycle(
-            harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
-        )
+        cycle = EvolutionCycle(harness=EvalHarness(), tournament=EloTournament())
         await cycle.run_cycle(store, llm_call=None, config=config)
 
         assert len(store.list_all()) > 4
@@ -357,9 +353,7 @@ class TestIslandCulling:
             store.add(g)
             ip.assign(g)  # round-robin: a→0, b→1
 
-        cycle = EvolutionCycle(
-            harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
-        )
+        cycle = EvolutionCycle(harness=EvalHarness(), tournament=EloTournament())
         # Cap = 1: island 0 already has 1 member (a) → no breeding needed.
         cycle._breed_island(ip, 0, store, EvolutionConfig(population_size=2, island_count=2), cap=1)
 
