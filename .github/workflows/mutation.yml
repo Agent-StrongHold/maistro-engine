@@ -38,6 +38,26 @@ on:
       # the ranking. A priority entry for a subtree the gate cannot see is a
       # claim about coverage that nothing delivers.
       - 'packages/maistro-core/src/maistro/policy/**'
+      # The mirrored TEST subtrees. A PR that only adds tests was invisible
+      # here: these paths were absent, and the changed-files filter below
+      # additionally stripped `/tests/`. So the one kind of PR whose entire
+      # purpose is killing surviving mutants never started the job that
+      # measures them. `sources_for_test` maps each changed test path back to
+      # the source it covers.
+      - 'packages/maistro-core/tests/graph/**'
+      - 'packages/maistro-core/tests/projects/**'
+      - 'packages/maistro-core/tests/memory/**'
+      - 'packages/maistro-core/tests/security/**'
+      - 'packages/maistro-core/tests/router/**'
+      - 'packages/maistro-core/tests/policy/**'
+      # The gate's own machinery. Editing the scoring logic did not trigger the
+      # workflow that runs it, so a change to how this gate decides could not be
+      # exercised by this gate. The unit suite in tests/test_mutation_viability.py
+      # is the real safety net for that logic; this at least runs the job
+      # end-to-end whenever a PR also touches a mutatable file.
+      - '.github/workflows/mutation.yml'
+      - 'scripts/mutation_targets.py'
+      - 'scripts/mutation_viability.py'
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
 
@@ -63,7 +83,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
-      - run: uv sync --all-extras
+      - run: uv sync --locked --all-extras
 
       - name: Identify changed Python files under load-bearing subtrees
         id: changed
@@ -83,6 +103,10 @@ jobs:
           # that the TEST path exists, never the source, so a deleted module
           # whose test directory survives resolves happily, consumes a capped
           # slot, and hands cosmic-ray a module-path that is not there.
+          # Test paths are included, not stripped. `mutation_targets.py` maps
+          # each one back to the source files it covers; a changed source and
+          # its changed tests collapse to a single target rather than two.
+          # Stripping `/tests/` here is what made a test-only PR a no-op.
           CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- \
             'packages/maistro-core/src/maistro/graph/' \
             'packages/maistro-core/src/maistro/projects/' \
@@ -90,13 +114,21 @@ jobs:
             'packages/maistro-core/src/maistro/security/' \
             'packages/maistro-core/src/maistro/router/' \
             'packages/maistro-core/src/maistro/policy/' \
-            | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            'packages/maistro-core/tests/graph/' \
+            'packages/maistro-core/tests/projects/' \
+            'packages/maistro-core/tests/memory/' \
+            'packages/maistro-core/tests/security/' \
+            'packages/maistro-core/tests/router/' \
+            'packages/maistro-core/tests/policy/' \
+            | grep '\.py$' | grep -v '__pycache__' || true)
+          {
+            echo "files<<EOF"
+            echo "$CHANGED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No load-bearing files changed; skipping mutation test."
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Resolve each changed file to its scoped tests
@@ -142,6 +174,7 @@ jobs:
         run: |
           set -uo pipefail
           : > mutation-rows.jsonl
+          : > mutation-sessions.tsv
           while IFS=$'\t' read -r src tests; do
             [ -z "$src" ] && continue
             echo "::group::mutate $src (tests: $tests)"
@@ -163,35 +196,31 @@ jobs:
             uv run cosmic-ray init cosmic-ray.toml "$session"
             uv run cosmic-ray exec cosmic-ray.toml "$session"
             uv run cosmic-ray dump "$session" >> mutation-rows.jsonl
+            printf '%s\t%s\n' "$session" "$src" >> mutation-sessions.tsv
             echo "::endgroup::"
           done < mutation-targets.tsv
 
-          uv run python -c "
-          import json, sys
-          # cosmic-ray dump prints one JSON array per line: [work_item, result_or_null].
-          rows = []
-          for line in open('mutation-rows.jsonl'):
-              line = line.strip()
-              if not line:
-                  continue
-              parsed = json.loads(line)
-              if isinstance(parsed, list) and len(parsed) == 2 and isinstance(parsed[1], dict):
-                  rows.append(parsed[1])
-          total = len(rows)
-          killed = sum(1 for r in rows if r.get('test_outcome') == 'killed')
-          if total == 0:
-              print('::error::No mutants produced — config error, not a pass.')
-              sys.exit(1)
-          rate = killed / total
-          print(f'Mutation kill rate: {killed}/{total} = {rate:.1%}')
-          if rate < 0.90:
-              print(f'::error::Mutation kill rate {rate:.1%} below the 90% gate. Survivors:')
-              for r in rows:
-                  if r.get('test_outcome') != 'killed':
-                      print(f'  - {r}')
-              sys.exit(1)
-          print('Mutation gate passed (>=90%)')
-          "
+          # Scoring moved out of an inline heredoc and into scripts/, where it
+          # is covered by tests/test_mutation_viability.py. The inline version
+          # scored `killed / total` over every mutant cosmic-ray produced, and
+          # that denominator is not all killable: an operator swap inside a
+          # type annotation cannot change behaviour in a module carrying
+          # `from __future__ import annotations`, because annotations are never
+          # evaluated there. cosmic-ray cannot mark those INCOMPETENT -- that
+          # status is for mutants which fail to compile, and these compile
+          # fine -- so they sat in the survivor list permanently. Measured on
+          # graph/durable_runs/executor.py: 66 of 139 survivors, enough to hold
+          # a fully-tested file ~7 points under the gate no matter what anyone
+          # wrote.
+          #
+          # Only provably non-viable mutants are subtracted, each one named in
+          # the log. Mutants that fail to compile, and mutants the classifier
+          # could not reconstruct, stay in the denominator -- a parse failure in
+          # our own tooling must never loosen this gate.
+          uv run python scripts/mutation_viability.py \
+            --sessions mutation-sessions.tsv \
+            --threshold 0.90 \
+            --json mutation-gate.json
 
       - name: Upload mutation report
         if: always() && steps.changed.outputs.skip != 'true'
@@ -202,6 +231,8 @@ jobs:
             session-*.sqlite
             mutation-rows.jsonl
             mutation-targets.tsv
+            mutation-sessions.tsv
+            mutation-gate.json
 
   mutation-nightly:
     name: Mutation testing (full sweep nightly)
@@ -212,7 +243,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
-      - run: uv sync --all-extras
+      - run: uv sync --locked --all-extras
 
       - name: Write cosmic-ray.toml for the full load-bearing substrate
         run: |

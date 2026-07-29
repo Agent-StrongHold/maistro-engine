@@ -227,3 +227,85 @@ class TestWorkflowDiffsAgainstItsOwnBase:
     def test_deletions_are_filtered_out_of_the_diff(self):
         workflow = self.WORKFLOW.read_text(encoding="utf-8")
         assert "--diff-filter=ACMR" in workflow
+
+
+# --- the inverse mapping: changed tests -> the sources they cover ------------
+#
+# A PR that only adds tests was invisible to the mutation gate: the workflow's
+# paths filter omitted the test subtrees and its changed-files filter stripped
+# `/tests/`, so the one kind of PR whose purpose is killing surviving mutants
+# never started the job that measures them.
+
+
+def test_a_mirror_test_maps_back_to_exactly_one_source(module):
+    got = module.sources_for_test("packages/maistro-core/tests/router/test_scorer.py")
+    assert got == ["packages/maistro-core/src/maistro/router/scorer.py"]
+
+
+def test_a_non_mirror_test_maps_to_its_whole_package(module):
+    """The case that actually occurs, and the reason a mirror-only inverse
+    would have been useless.
+
+    The file that motivated this is `test_executor_mutants.py`, which mirrors
+    to `executor_mutants.py` — a module that does not exist. Falling back to
+    the package the test directory covers is what makes the real PR resolve.
+    """
+    got = module.sources_for_test(
+        "packages/maistro-core/tests/graph/durable_runs/test_executor_mutants.py"
+    )
+
+    assert "packages/maistro-core/src/maistro/graph/durable_runs/executor.py" in got
+    assert len(got) > 1, "a non-mirror test should widen to its package"
+
+
+def test_dunder_init_is_never_a_target(module):
+    """`__init__.py` sorts ahead of every real module in its package.
+
+    Targets are ranked by (priority, path) and truncated at the cap, so
+    including it would spend a capped slot on re-exports while the module the
+    tests were written for went unmutated.
+    """
+    got = module.sources_for_test(
+        "packages/maistro-core/tests/graph/durable_runs/test_executor_mutants.py"
+    )
+
+    assert not any(p.endswith("__init__.py") for p in got)
+
+
+def test_a_source_and_its_tests_collapse_to_one_target(module):
+    """Changing both must not mutate the same file twice and burn two slots."""
+    got = module.expand(
+        [
+            "packages/maistro-core/src/maistro/graph/durable_runs/executor.py",
+            "packages/maistro-core/tests/graph/durable_runs/test_executor_mutants.py",
+        ]
+    )
+
+    executor = "packages/maistro-core/src/maistro/graph/durable_runs/executor.py"
+    assert got.count(executor) == 1
+    assert got[0] == executor, "the directly-changed source should keep its position"
+
+
+def test_a_non_core_path_passes_through_unchanged(module):
+    assert module.expand(["packages/maistro-server/src/x.py"]) == [
+        "packages/maistro-server/src/x.py"
+    ]
+
+
+def test_an_unknown_test_directory_resolves_to_nothing(module):
+    """Fail closed: an unmappable test path must not widen to a whole package
+    that happens to exist further up."""
+    assert module.sources_for_test("packages/maistro-core/tests/nope/test_x.py") == []
+
+
+def test_the_motivating_pr_now_produces_a_target(module):
+    """End-to-end regression for PR #320, which changed only a test file and
+    produced zero targets before this mapping existed."""
+    targets = module.expand(
+        ["packages/maistro-core/tests/graph/durable_runs/test_executor_mutants.py"]
+    )
+
+    resolved = [(s, module.resolve_tests(s)) for s in targets]
+    assert any(s.endswith("durable_runs/executor.py") and t is not None for s, t in resolved), (
+        "a test-only change still resolves to no mutatable target"
+    )
