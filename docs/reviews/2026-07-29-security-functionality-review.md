@@ -603,3 +603,18 @@ From the coverage map, weighted by what this review found:
 - **Authorization is now reviewed in full**, including the 240+ conductor routes and the OAuth flow. Areas still **not** covered by this review: the React frontends beyond the two XSS sinks noted (M-14), the `maistro-design` package (26 files, and its 156 tests run in no workflow per [#286]), `maistro-registry`, `maistro-bootstrap` beyond its sandbox modules, and dependency/CVE scanning (that is `security.yml`'s job, not this pass).
 - Severities are engineering judgment about this codebase's threat model — a homelab/personal Conductor plus a library consumed downstream — not CVSS. The canvas frontend is a POC slated for experimental designation; C-5's severity reflects that it ships in-repo and runs on the owner's machine, not an assumption of internet exposure.
 - No fix in this document has been implemented or tested. Line numbers are `develop` @ `08ef547` and will drift.
+
+---
+
+<!-- Issue reference definitions -->
+[#277]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/277
+[#285]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/285
+[#286]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/286
+[#289]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/289
+[#290]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/290
+[#291]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/291
+[#292]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/292
+[#293]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/293
+[#301]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/301
+[#303]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/303
+[#304]: https://github.com/BlakeMatthews-dev/maistro-engine/issues/304
