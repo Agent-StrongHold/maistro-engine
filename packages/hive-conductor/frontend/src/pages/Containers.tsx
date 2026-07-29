@@ -69,7 +69,6 @@ export default function Containers() {
   });
 
   const running = containers.filter((c) => c.status === "running").length;
-  const stopped = containers.length - running;
 
   return (
     <div style={{ display: logsFor ? "grid" : "block", gridTemplateColumns: logsFor ? "1fr 420px" : "1fr", gap: 0, minHeight: "calc(100vh - 60px)" }}>
