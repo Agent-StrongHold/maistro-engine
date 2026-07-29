@@ -24,6 +24,22 @@ _MASTER_KEY_ENV = "HIVE_CREDENTIALS_MASTER_KEY"
 _MASTER_KEY_FILENAME = "credential_master.key"
 _STORE_FILENAME = "user_credentials.enc"
 
+# Persona/Workspace system, Phase F: a credential is scoped by
+# (user_id, provider, workspace_id, connection_name), not just (user_id,
+# provider) -- so one workspace can hold two connections to the same
+# provider (e.g. two Jira accounts). The default scope maps onto the exact
+# bare-provider bucket key used before this phase, so every pre-Phase-F
+# on-disk record keeps resolving unchanged -- no migration needed.
+DEFAULT_WORKSPACE_ID = "default"
+DEFAULT_CONNECTION_NAME = "default"
+_SCOPE_SEPARATOR = "::"
+
+
+def _bucket_key(provider: str, workspace_id: str, connection_name: str) -> str:
+    if workspace_id == DEFAULT_WORKSPACE_ID and connection_name == DEFAULT_CONNECTION_NAME:
+        return provider
+    return f"{provider}{_SCOPE_SEPARATOR}{workspace_id}{_SCOPE_SEPARATOR}{connection_name}"
+
 
 class CredentialStoreError(Exception):
     """Base error for credential storage."""
@@ -97,46 +113,89 @@ class UserCredentialStore:
         self._store_path.write_bytes(self._fernet.encrypt(payload))
         os.chmod(self._store_path, 0o600)
 
-    def list_providers_for_user(self, user_id: str) -> dict[str, dict[str, Any]]:
-        """Return metadata only — never secret values."""
+    def list_providers_for_user(
+        self,
+        user_id: str,
+        *,
+        workspace_id: str = DEFAULT_WORKSPACE_ID,
+        connection_name: str = DEFAULT_CONNECTION_NAME,
+    ) -> dict[str, dict[str, Any]]:
+        """Return metadata only — never secret values — for one (workspace, connection) scope."""
         data = self._load()
         user_secrets = data.get(user_id, {})
+        if workspace_id == DEFAULT_WORKSPACE_ID and connection_name == DEFAULT_CONNECTION_NAME:
+            providers = [key for key in user_secrets if _SCOPE_SEPARATOR not in key]
+        else:
+            suffix = f"{_SCOPE_SEPARATOR}{workspace_id}{_SCOPE_SEPARATOR}{connection_name}"
+            providers = [key[: -len(suffix)] for key in user_secrets if key.endswith(suffix)]
         return {
             provider: {
                 "configured": True,
                 "updated_at": datetime.now(UTC).isoformat(),
             }
-            for provider in user_secrets
+            for provider in providers
         }
 
-    def set_secret(self, user_id: str, provider: str, secret: str) -> None:
+    def set_secret(
+        self,
+        user_id: str,
+        provider: str,
+        secret: str,
+        *,
+        workspace_id: str = DEFAULT_WORKSPACE_ID,
+        connection_name: str = DEFAULT_CONNECTION_NAME,
+    ) -> None:
         secret = secret.strip()
         if not secret:
             raise ValueError("Secret cannot be empty")
         data = self._load()
         bucket = data.setdefault(user_id, {})
-        bucket[provider] = secret
+        bucket[_bucket_key(provider, workspace_id, connection_name)] = secret
         self._persist()
 
-    def delete_secret(self, user_id: str, provider: str) -> bool:
+    def delete_secret(
+        self,
+        user_id: str,
+        provider: str,
+        *,
+        workspace_id: str = DEFAULT_WORKSPACE_ID,
+        connection_name: str = DEFAULT_CONNECTION_NAME,
+    ) -> bool:
         data = self._load()
         bucket = data.get(user_id, {})
-        if provider not in bucket:
+        key = _bucket_key(provider, workspace_id, connection_name)
+        if key not in bucket:
             return False
-        del bucket[provider]
+        del bucket[key]
         if not bucket:
             data.pop(user_id, None)
         self._persist()
         return True
 
-    def has_secret(self, user_id: str, provider: str) -> bool:
+    def has_secret(
+        self,
+        user_id: str,
+        provider: str,
+        *,
+        workspace_id: str = DEFAULT_WORKSPACE_ID,
+        connection_name: str = DEFAULT_CONNECTION_NAME,
+    ) -> bool:
         data = self._load()
-        return provider in data.get(user_id, {})
+        return _bucket_key(provider, workspace_id, connection_name) in data.get(user_id, {})
 
-    def use_secret(self, user_id: str, provider: str, callback: Callable[[str], T]) -> T:
+    def use_secret(
+        self,
+        user_id: str,
+        provider: str,
+        callback: Callable[[str], T],
+        *,
+        workspace_id: str = DEFAULT_WORKSPACE_ID,
+        connection_name: str = DEFAULT_CONNECTION_NAME,
+    ) -> T:
         """Pass decrypted secret to callback; never return it from this method."""
         data = self._load()
         bucket = data.get(user_id, {})
-        if provider not in bucket:
+        key = _bucket_key(provider, workspace_id, connection_name)
+        if key not in bucket:
             raise CredentialNotFound(f"No credential for provider {provider!r}")
-        return callback(bucket[provider])
+        return callback(bucket[key])
