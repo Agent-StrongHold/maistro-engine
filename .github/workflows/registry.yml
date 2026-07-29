@@ -18,7 +18,7 @@ on:
     branches:
       - main
       - integration
-      - research/pm-fleet-poc
+      - develop
 
 permissions:
   contents: read
