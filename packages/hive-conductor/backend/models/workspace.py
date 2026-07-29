@@ -48,6 +48,11 @@ class Workspace(BaseModel):
     checklist: list[str] = Field(default_factory=list)
     # Phase E: per-workspace overrides; empty = pure persona defaults.
     tool_bindings: list[AgentToolBinding] = Field(default_factory=list)
+    # Phase D: visual accent, one of services.themes.THEME_CATALOG's ids.
+    theme_id: str = "default"
+    # Phase D: overrides the persona's voice.tone for this workspace only;
+    # None means "use the persona's declared tone as-is".
+    voice_tone_override: str | None = None
     active: bool = True
     created_at: datetime
     updated_at: datetime

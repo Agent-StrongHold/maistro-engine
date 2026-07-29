@@ -2,8 +2,9 @@
 
 Phase A: manual create/list/get. Phase C adds the persona-template checklist
 endpoint (accept/modify tools/skills derived from the chosen persona's own
-declared spawns). No interview wiring, no theme, no sticky tool bindings yet
-— those are later phases.
+declared spawns). Phase D adds the theme catalog + per-workspace tone
+override; the actual CSS/tab-bar wiring lands in Phase G. No interview
+wiring, no sticky tool bindings yet — those are later phases.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import stores
 from fastapi import APIRouter, HTTPException, Request
 from models.workspace import Workspace, WorkspaceMember
 from pydantic import BaseModel, ConfigDict
+from services.themes import THEME_CATALOG, ThemeOption, is_valid_theme_id
 
 from maistro.personas.checklist import CapabilityItem, capability_checklist, default_checklist_ids
 from maistro.personas.rubric import load_templates
@@ -59,6 +61,11 @@ def get_persona_checklist(persona_id: str) -> PersonaChecklistResponse:
     )
 
 
+@router.get("/themes", response_model=list[ThemeOption])
+def list_themes() -> list[ThemeOption]:
+    return THEME_CATALOG
+
+
 @router.get("", response_model=list[Workspace])
 def list_workspaces(request: Request) -> list[Workspace]:
     user_id = _user_id(request)
@@ -83,10 +90,16 @@ class CreateWorkspaceBody(BaseModel):
     # list -- including [] -- is honored exactly, so a user can deliberately
     # start a workspace with zero enabled capabilities.
     checklist: list[str] | None = None
+    # Phase D: visual accent, one of GET /themes' ids. Invalid ids 422 rather
+    # than silently falling back, so a wizard can't produce an unrenderable tab.
+    theme_id: str = "default"
+    voice_tone_override: str | None = None
 
 
 @router.post("", response_model=Workspace, status_code=201)
 def create_workspace(body: CreateWorkspaceBody, request: Request) -> Workspace:
+    if not is_valid_theme_id(body.theme_id):
+        raise HTTPException(status_code=422, detail=f"unknown theme_id: {body.theme_id}")
     user_id = _user_id(request)
     workspace_id = str(uuid4())
     t = _now()
@@ -100,6 +113,8 @@ def create_workspace(body: CreateWorkspaceBody, request: Request) -> Workspace:
         name=body.name,
         members=[WorkspaceMember(user_id=user_id, role="owner")],
         checklist=checklist,
+        theme_id=body.theme_id,
+        voice_tone_override=body.voice_tone_override,
         created_at=t,
         updated_at=t,
     )

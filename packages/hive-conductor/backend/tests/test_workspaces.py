@@ -30,6 +30,8 @@ def test_create_workspace_persists_and_returns_it(admin_client) -> None:
     assert body["active"] is True
     assert body["checklist"] == []
     assert body["tool_bindings"] == []
+    assert body["theme_id"] == "default"
+    assert body["voice_tone_override"] is None
     assert len(stores.workspaces) == 1
 
 
@@ -163,3 +165,40 @@ class TestCreateWorkspaceChecklist:
         )
         assert r.status_code == 201
         assert r.json()["checklist"] == ["intake.tool.create_epic"]
+
+
+class TestWorkspaceTheme:
+    """Phase D: theme catalog + per-workspace tone override."""
+
+    def test_list_themes_returns_the_catalog(self, admin_client) -> None:
+        r = admin_client.get("/v1/workspaces/themes")
+        assert r.status_code == 200
+        ids = {t["id"] for t in r.json()}
+        assert ids == {"default", "fantasia", "dark"}
+
+    def test_create_workspace_honors_explicit_theme_id(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces",
+            json={"persona_template_id": "pm_fleet", "name": "PM Fleet", "theme_id": "fantasia"},
+        )
+        assert r.status_code == 201
+        assert r.json()["theme_id"] == "fantasia"
+
+    def test_create_workspace_rejects_unknown_theme_id(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces",
+            json={"persona_template_id": "pm_fleet", "name": "PM Fleet", "theme_id": "nope"},
+        )
+        assert r.status_code == 422
+
+    def test_create_workspace_honors_voice_tone_override(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces",
+            json={
+                "persona_template_id": "pm_fleet",
+                "name": "PM Fleet",
+                "voice_tone_override": "playful and terse",
+            },
+        )
+        assert r.status_code == 201
+        assert r.json()["voice_tone_override"] == "playful and terse"
