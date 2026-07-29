@@ -28,6 +28,9 @@ CORE_SRC = Path("packages/maistro-core/src/maistro")
 CORE_TESTS = Path("packages/maistro-core/tests")
 PACKAGES = Path("packages")
 EXTERNAL_TEST_ROOTS = {
+    # The package's own tests/ directory is external browser E2E coverage.
+    # Unit tests for its non-backend Python modules live at the repository root.
+    "hive-conductor": Path("tests/hive_conductor"),
     "maistro-registry": Path("tests/tools/registry"),
 }
 

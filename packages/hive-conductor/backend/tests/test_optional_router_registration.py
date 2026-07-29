@@ -33,6 +33,18 @@ def test_optional_router_is_mounted_with_its_prefix(monkeypatch: pytest.MonkeyPa
     assert "/v1/example/status" in app.openapi()["paths"]
 
 
+def test_application_openapi_operation_ids_are_unique() -> None:
+    paths = main.app.openapi()["paths"]
+    operation_ids = [
+        operation["operationId"]
+        for path in paths.values()
+        for operation in path.values()
+        if isinstance(operation, dict) and "operationId" in operation
+    ]
+
+    assert len(operation_ids) == len(set(operation_ids))
+
+
 @pytest.mark.parametrize("module_name", ["routes.canvas", "routes.pm_fleet_v2"])
 def test_optional_router_failure_is_logged_with_module_and_error(
     module_name: str,

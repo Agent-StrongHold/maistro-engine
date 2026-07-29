@@ -79,6 +79,12 @@ def test_full_codebase_resolver_maps_external_registry_tests(module):
     assert got == Path("tests/tools/registry/test_validator.py")
 
 
+def test_full_codebase_resolver_maps_hive_nonbackend_to_unit_tests(module):
+    got = module.resolve_package_tests("packages/hive-conductor/cage/permission_boundary.py")
+
+    assert got == Path("tests/hive_conductor")
+
+
 def test_every_production_source_has_a_mutation_test_scope(module):
     sources = module.production_sources()
     assert len(sources) >= 800
