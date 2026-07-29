@@ -21,17 +21,27 @@ owners:
   - '@BlakeMatthews-dev'
 history:
   - status: Proposed
+    date: 2026-05-30
   - status: Accepted
     date: 2026-06-10
-    date: 2026-05-30
 ---
 
 # ADR-076: HTTP API Versioning via content negotiation
 
-**Status:** Proposed
-**Date:** 2026-05-30
+**Status:** Accepted
+**Date:** 2026-06-10
 **Fixes the HTTP surface contract** so the API can evolve without forking the URL space, and so every
 client (TUI, web, third-party) talks to one canonical, fully-featured surface.
+
+**Implementation status (D2/#290, 2026-07-29):** the decision is Accepted, but no
+code implements this content-negotiation scheme. `maistro-server` and
+`hive-conductor` mount every business route under a plain `/v1` path prefix
+(`main.py` in each), not the `Accept: application/vnd.maistro.vN` / `api_version`
+mechanism described below. The only content-negotiation code anywhere in the
+tree is `maistro-server`'s `/v2/canvas` route, which checks a narrow,
+canvas-specific `application/vnd.canvas+json;version=2` media type — unrelated
+to this ADR's general scheme. None of the acceptance criteria below are met.
+Tracked as a v1.1 deferral in [KNOWN-GAPS.md](../../KNOWN-GAPS.md#http-api-content-negotiation).
 
 ---
 
