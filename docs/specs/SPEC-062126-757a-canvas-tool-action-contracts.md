@@ -10,7 +10,8 @@ substrate:
 related:
   - maistro-engine#SPEC-229
 implements: []
-supersedes: []
+supersedes:
+  - maistro-engine#SPEC-070126-a3f1
 blocks: []
 blocked-by: []
 contracts:
