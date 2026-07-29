@@ -1,19 +1,17 @@
 # Mutation testing (cosmic-ray) — Pillar 4 of the QA gate.
 #
-# Gate: ≥90% mutation kill rate on the files it mutates.
+# Gate: mutation_viability.py's viability-adjusted kill rate must clear 90% on
+# every file the PR changed.
 #
-# Scope is tiered by what the PR is gating, because a full per-file sweep costs
-# roughly six minutes per changed file and cannot fit a fast feedback loop:
-#
-#   - PR -> develop/integration : the MOST SECURITY-RELEVANT changed files
-#     (security/, policy/, router/, then graph/), capped at MUTATION_FILE_CAP.
-#     Fast feedback. Any file not mutated is named explicitly in the log —
-#     never silently dropped.
-#   - PR -> main (the release gate) : EVERY changed file, no cap. This is
-#     where develop's accumulated work is held to full coverage, and the long
-#     runtime is affordable because it happens once per release.
-#   - Nightly : one rotating four-shard batch. The bootstrap baseline is built
-#     only after all eight reviewed batch artifacts have been collected.
+#   - PR -> any branch (main/integration/develop) : every changed production
+#     Python file across ALL packages is mutated, no cap
+#     (MUTATION_FILE_CAP: '0') — a per-file budget that silently widened to
+#     the whole suite is how this job used to time out. Any file that fails to
+#     resolve a test scope is named explicitly in the log — never silently
+#     dropped.
+#   - Nightly : one rotating four-shard batch across the full codebase
+#     (mutation-nightly-full below). The reviewed per-file baseline
+#     (quality/mutation-baseline.json) is built from these shards' output.
 #
 # Surviving mutants are tracked in docs/MUTATION-SURVIVORS.md and are
 # treated as defects (test missed a real regression).
@@ -75,6 +73,14 @@ jobs:
         if: steps.baseline.outputs.ready == 'true'
       - run: uv sync --all-extras
         if: steps.baseline.outputs.ready == 'true'
+      # Hive Conductor is not a workspace package, so `uv sync` above doesn't
+      # cover it. The `packages/**/*.py` trigger above can resolve a changed
+      # file to `packages/hive-conductor/backend/tests`, whose BDD suite needs
+      # pytest_bdd from the backend's own requirements — matches the same
+      # install the sharded nightly job below already carries.
+      - name: Install Hive Conductor backend test dependencies
+        if: steps.baseline.outputs.ready == 'true'
+        run: uv pip install -r packages/hive-conductor/backend/requirements.txt
 
       - name: Identify every changed production Python file
         id: changed
@@ -91,17 +97,21 @@ jobs:
           # the precise phantom-gate shape this workflow exists to remove.
           git fetch --no-tags --depth=0 origin "$BASE_REF" 2>/dev/null \
             || git fetch --no-tags origin "$BASE_REF"
-          # Deletions are excluded because Cosmic Ray needs a source file. Any
-          # live package module without a test scope causes target resolution to
-          # fail rather than disappearing from the coverage claim.
+          # --diff-filter=ACMR excludes deletions: Cosmic Ray needs a source
+          # file, and a deleted module whose test directory survives would
+          # otherwise resolve happily and hand cosmic-ray a module-path that
+          # is not there. Test paths are INCLUDED, not stripped:
+          # `mutation_targets.py`'s expand()/sources_for_test() map a changed
+          # test path back to the source file(s) it covers, so a test-only PR
+          # still produces a mutation target instead of silently no-op'ing.
           CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- packages \
-            | grep '\.py$' | grep -v '__pycache__' | grep -v '/tests/' || true)
-          echo "files<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            | grep '\.py$' | grep -v '__pycache__' || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No production Python files changed; skipping mutation test."
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Resolve every changed file to its package test scope
@@ -146,6 +156,7 @@ jobs:
         run: |
           set -uo pipefail
           : > mutation-rows.jsonl
+          : > mutation-sessions.tsv
           while IFS=$'\t' read -r src tests; do
             [ -z "$src" ] && continue
             echo "::group::mutate $src (tests: $tests)"
@@ -167,37 +178,33 @@ jobs:
             uv run cosmic-ray init cosmic-ray.toml "$session"
             uv run cosmic-ray exec cosmic-ray.toml "$session"
             uv run cosmic-ray dump "$session" >> mutation-rows.jsonl
+            printf '%s\t%s\n' "$session" "$src" >> mutation-sessions.tsv
             echo "::endgroup::"
           done < mutation-targets.tsv
 
-          uv run python -c "
-          import json, sys
-          # cosmic-ray dump prints one JSON array per line: [work_item, result_or_null].
-          rows = []
-          for line in open('mutation-rows.jsonl'):
-              line = line.strip()
-              if not line:
-                  continue
-              parsed = json.loads(line)
-              if isinstance(parsed, list) and len(parsed) == 2 and isinstance(parsed[1], dict):
-                  rows.append(parsed[1])
-          total = len(rows)
-          killed = sum(1 for r in rows if r.get('test_outcome') == 'killed')
-          if total == 0:
-              print('::error::No mutants produced — config error, not a pass.')
-              sys.exit(1)
-          rate = killed / total
-          print(f'Mutation kill rate: {killed}/{total} = {rate:.1%}')
-          print('Mutation kill-rate report complete; baseline checker decides whether this is a gate.')
-          "
-          uv run python scripts/check_mutation_baseline.py mutation-rows.jsonl
-
-      - name: Build mergeable mutation baseline candidate
-        if: success() && steps.baseline.outputs.ready == 'true' && steps.changed.outputs.skip != 'true'
-        run: |
-          cp quality/mutation-baseline.json mutation-baseline-candidate.json
-          uv run python scripts/check_mutation_baseline.py mutation-rows.jsonl \
-            --baseline mutation-baseline-candidate.json --write-baseline
+          # Scoring uses scripts/mutation_viability.py's gate mode (tested in
+          # tests/test_mutation_viability.py), not a raw killed/total ratio:
+          # that denominator is not all killable -- an operator swap inside a
+          # type annotation cannot change behaviour in a module carrying
+          # `from __future__ import annotations`, because annotations are never
+          # evaluated there. cosmic-ray cannot mark those INCOMPETENT -- that
+          # status is for mutants which fail to compile, and these compile
+          # fine -- so they sat in the survivor list permanently. Measured on
+          # graph/durable_runs/executor.py: 66 of 139 survivors, enough to hold
+          # a fully-tested file ~7 points under the gate no matter what anyone
+          # wrote.
+          #
+          # Only provably non-viable mutants are subtracted, each one named in
+          # the log. Mutants that fail to compile, and mutants the classifier
+          # could not reconstruct, stay in the denominator -- a parse failure in
+          # our own tooling must never loosen this gate. The per-shard
+          # baseline-ratchet (scripts/check_mutation_baseline.py) is the
+          # nightly job's mechanism for tracking reviewed per-file rates over
+          # time; it does not replace this PR-time viability-adjusted gate.
+          uv run python scripts/mutation_viability.py \
+            --sessions mutation-sessions.tsv \
+            --threshold 0.90 \
+            --json mutation-gate.json
 
       - name: Upload mutation report
         if: always() && steps.baseline.outputs.ready == 'true' && steps.changed.outputs.skip != 'true'
@@ -208,7 +215,8 @@ jobs:
             session-*.sqlite
             mutation-rows.jsonl
             mutation-targets.tsv
-            mutation-baseline-candidate.json
+            mutation-sessions.tsv
+            mutation-gate.json
 
   mutation-nightly:
     name: Mutation testing (full sweep nightly)
