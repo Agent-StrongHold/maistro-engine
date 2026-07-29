@@ -21,7 +21,7 @@ packages/
 ├── maistro-rsi/       # Recursive self-improvement: autorun loop, quarantine gate, sandbox
 ├── maistro-design/    # Open Design integration (renderer registry, SSE ingest)
 ├── hive-conductor/    # Agent Conductor app (FastAPI backend + React frontend)
-└── maistro-bootstrap/ # Bootstrap stub (WIP)
+└── maistro-bootstrap/ # Bootstrap installer and planner
 ```
 
 ### Product relationship — contains vs. imports
@@ -40,7 +40,7 @@ maistro-engine (this monorepo)
 
 Agent Conductor ships **here**; the Canvas book-maker and Stronghold are downstream products that **import** the engine (Stronghold is a planned refactor, not yet done).
 
-**ADR-019** defines the canonical source split: maistro-core = product-agnostic shared runtime (no `org_id`); multi-tenancy/security-posture/feature-toggles live in the importing product (Stronghold). 64 ADRs (ADR-000 through ADR-057); notable: ADR-036 (ontology), ADR-038 (reliability), ADR-062 (graph execution protocol), ADR-057 (memory exposure mode).
+**ADR-019** defines the canonical source split: maistro-core = product-agnostic shared runtime (no `org_id`); multi-tenancy/security-posture/feature-toggles live in the importing product (Stronghold). Notable decisions include ADR-036 (ontology), ADR-038 (reliability), ADR-062 (graph execution protocol), and ADR-057 (memory exposure mode).
 
 ### Naming convention
 
@@ -55,7 +55,7 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 |-----------|--------|------|
 | **Memory** | `maistro.memory` | Learnings, episodic, scopes, outcomes |
 | **Security** | `maistro.security` | Warden (threat detection), Sentinel (policy), PII filter |
-| **Classifier** | `maistro.classifier` | 3-phase intent: keywords → LLM → complexity |
+| **Classifier** | `maistro.classifier` | Keyword classification, optional LLM fallback for ambiguous requests, then complexity estimation |
 | **Router** | `maistro.router` | Scoring formula + RouterEngine |
 | **Agents** | `maistro.agents` | Base class, factory, strategies, roster |
 | **Builders** | `maistro.builders` | Pipeline: spec → tests → code → review |
@@ -78,7 +78,7 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Identity** | `maistro.identity` | Identity management |
 | **Scheduling** | `maistro.scheduling` | Scheduling (distinct from the scheduler/ placeholder) |
 | **Prompts** | `maistro.prompts` | Prompt templates |
-| **Capabilities** | `maistro.capabilities` | Slots, providers, registry, discovery; self-repair governor (SPEC-184/188) |
+| **Capabilities** | `maistro.capabilities` | Slots, providers, registry, and discovery; SPEC-184/188 self-repair remains proposed |
 | **Credentials** | `maistro.credentials` | Per-user encrypted credentials for PM integrations |
 | **Projects** | `maistro.projects` | User workspaces: domains, meta-DAGs, PM Fleet, Canvas/Engineering |
 | **Testing** | `maistro.testing` | Shared test utilities/fixtures |
@@ -275,9 +275,8 @@ maistro-engine/
 │       └── frontend/            # React SPA
 │
 ├── formal/                      # Property-based conformance tests (Hypothesis); separate CI flow
-├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-057)
-├── docs/specs/                  # SPEC-NNN design specs (e.g. SPEC-184 capabilities, SPEC-188 self-repair)
+├── docs/adr/                    # Architecture Decision Records
+├── docs/specs/                  # Engine design specifications
 ├── specs/                       # Topical spec notes (channels, conductor, infra, intelligence, security, tools)
-├── src/maistro/                 # Old layout (agent spec/spawner/recipes + model pricing)
 └── pyproject.toml               # uv workspace root (uv.lock is source of truth)
 ```
