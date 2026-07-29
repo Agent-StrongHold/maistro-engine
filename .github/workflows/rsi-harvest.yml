@@ -57,7 +57,7 @@ jobs:
       - name: Install uv + Python
         uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
-      - run: uv sync --python 3.12 --frozen || uv sync --python 3.12
+      - run: uv sync --python 3.12 --locked
 
       # harvest --clone-url clones the repo fresh at pr_base (LF working tree) and
       # opens one PR per file. GH_TOKEN (the scoped built-in token) authenticates
