@@ -97,9 +97,8 @@ open a PR when tests pass **and** quarantine clears. Exit code 0 = tests
 passed.
 
 Useful flags: `--model` (hard model override), `--models m1 m2` (quota-burn
-pool; default = discover from the gateway), `--stub-benchmarks` (no scoring
-calls; loudly marked stub scores), `--keep-workspace` (keep the clone for
-debugging), `--max-turns N`.
+pool; default = discover from the gateway), `--keep-workspace` (keep the clone
+for debugging), `--max-turns N`.
 
 ## 5. Arbitrary codebases
 

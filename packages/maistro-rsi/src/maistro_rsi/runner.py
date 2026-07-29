@@ -23,7 +23,7 @@ from pathlib import Path as _Path
 
 import structlog
 
-from maistro_evolve.harness import EvalHarness
+from maistro_evolve.harness import BenchmarkFidelity, EvalHarness
 from maistro_evolve.tournament import EloTournament, GenomeBattle
 from maistro_evolve.types import EvalResult, PipelineGenome
 from maistro_rsi.benchmarks import RSI_BENCHMARKS
@@ -118,10 +118,10 @@ class RsiCycleResult:
         return self.branch_result.tests_passed and self.benchmarks_won > len(self.battles) / 2
 
 
-def build_harness(use_real_benchmarks: bool = True) -> EvalHarness:
+def build_harness(benchmark_fidelity: BenchmarkFidelity = "proxy") -> EvalHarness:
     """An `EvalHarness` carrying both maistro-evolve's stock benchmarks and
     the longer-horizon ones added here (e.g. SWE-Bench Pro)."""
-    harness = EvalHarness(use_real_benchmarks=use_real_benchmarks)
+    harness = EvalHarness(benchmark_fidelity=benchmark_fidelity)
     for name, runner in RSI_BENCHMARKS.items():
         harness.register_benchmark(name, runner)
     return harness
