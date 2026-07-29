@@ -95,13 +95,13 @@ request ──► conduit ──► classifier ──► orchestrator ──► 
 - **memory** — learning, episodic, outcome stores; pgvector-backed; decays without reinforcement
 - **security** — Warden (input), Sentinel (output), Gate (boundary), PII filter — all input is untrusted
 - **skills** — marketplace + Forge + canary
-- **graph** — DAG execution: nodes, executor, optimizer ([`ADR-042`](docs/adr/ADR-042-graph-execution-protocol.md))
+- **graph** — DAG execution: nodes, executor, optimizer ([`ADR-062`](docs/adr/ADR-062-graph-execution-protocol.md))
 - **observability** — traces, Prometheus metrics, structlog logs, domain events ([`ADR-037`](docs/adr/ADR-037-observability-taxonomy.md))
 - **resilience** — retries, circuit breakers, fallbacks ([`ADR-038`](docs/adr/ADR-038-reliability-taxonomy.md))
 
 ## ADRs and specs
 
-- All architectural decisions are recorded as ADRs under `docs/adr/` (ADR-000 through ADR-057).
+- All architectural decisions are recorded as ADRs under `docs/adr/`.
 - The cross-repo inventory of every ADR and spec lives at [`docs/INVENTORY-ADRS-SPECS.md`](docs/INVENTORY-ADRS-SPECS.md).
 - Front-matter and cross-reference conventions are defined in [`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md); acceptance criteria are layered contracts per [`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md).
 - **Legacy archives:** the former `potential-dead-code/` reference trees were **removed** once their behavior shipped under `packages/` ([`SPEC-178`](docs/specs/SPEC-178-legacy-snapshot-retention.md)); provenance remains in git history and the sibling repos.
@@ -110,7 +110,7 @@ request ──► conduit ──► classifier ──► orchestrator ──► 
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full author guide. The essentials:
 
-- Branch model is `feature/* → integration → main` — base feature work off `integration`, never open PRs against `main` directly ([`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
+- Branch model is `feature/* → develop → integration → main` — base feature work off `develop`, never open PRs against `main` directly ([`ADR-095`](docs/adr/ADR-095-four-tier-branch-model.md)).
 - ADRs live in `docs/adr/ADR-NNN-<slug>.md` with required front-matter ([`ADR-031`](docs/adr/ADR-031-front-matter-and-registry.md)); validate with `python -m maistro_registry.cli lint .`.
 - Tests carry `@pytest.mark.contract` and `@pytest.mark.scope(...)` ([`ADR-032`](docs/adr/ADR-032-contracts-as-acceptance-criteria.md)).
 - External-library adoption follows [`ADR-039`](docs/adr/ADR-039-external-library-adoption-policy.md): import / service-boundary / pattern-reference / reject.
@@ -120,7 +120,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full author guide. The essentia
 ```
 maistro-engine/
 ├── docs/
-│   ├── adr/                          # Architectural Decision Records (ADR-000 … ADR-057)
+│   ├── adr/                          # Architecture Decision Records
 │   ├── specs/                        # Numbered engine specs (SPEC-NNN)
 │   └── INVENTORY-ADRS-SPECS.md       # Cross-repo ADR/spec inventory
 ├── packages/

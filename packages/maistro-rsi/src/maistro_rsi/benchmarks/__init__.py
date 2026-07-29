@@ -3,7 +3,7 @@ from __future__ import annotations
 from maistro_rsi.benchmarks.swebench_pro import run_swebench_pro
 
 # Registered into `maistro_evolve.harness.EvalHarness` via `register_benchmark`
-# rather than `REAL_BENCHMARKS`, since these are RSI-specific additions on top
+# rather than `PROXY_BENCHMARKS`, since these are RSI-specific additions on top
 # of the 8 the harness already ships with.
 RSI_BENCHMARKS = {
     "swebench_pro": run_swebench_pro,
