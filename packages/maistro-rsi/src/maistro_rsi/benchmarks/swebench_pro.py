@@ -256,7 +256,7 @@ async def run_swebench_pro(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real", "dataset": "embedded_sample_v0"},
+        metadata={"total_samples": samples, "fidelity": "proxy", "dataset": "embedded_sample_v0"},
     )
 
 

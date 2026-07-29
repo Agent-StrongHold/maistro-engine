@@ -195,7 +195,6 @@ class TestCliWiringSmoke:
                 str(workspace_root),
                 "--models",
                 "fake/model-1",
-                "--stub-benchmarks",
                 "--allow-stub-llm",
                 "--json",
             ]
@@ -270,7 +269,6 @@ class TestCliNewWiring:
                 str(workspace_root),
                 "--models",
                 "fake/m",
-                "--stub-benchmarks",
                 "--open-prs",
                 "--json",
             ]
