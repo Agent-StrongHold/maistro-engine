@@ -26,6 +26,7 @@ on:
       - 'packages/**/*.py'
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
+  workflow_dispatch:
 
 jobs:
   mutation-pr:
@@ -255,7 +256,7 @@ jobs:
 
   mutation-nightly-full:
     name: Mutation testing (full codebase shard ${{ matrix.shard }})
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -318,7 +319,7 @@ jobs:
 
   mutation-nightly-baseline:
     name: Mutation baseline candidate
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: mutation-nightly-full
     runs-on: ubuntu-latest
     steps:
