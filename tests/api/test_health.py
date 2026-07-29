@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from maistro_server.main import app
+from maistro_server.main import APP_VERSION, app
 
 
 @pytest.fixture
@@ -24,9 +24,11 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "ok"
         assert data["service"] == "maistro-engine"
-        # Dev runs often resolve `maistro_server` from `PYTHONPATH` without a dist-info;
+        # Compare against the app's own computed version rather than a hardcoded
+        # literal (E1/#294): dev runs often resolve `maistro_server` from
+        # `PYTHONPATH` without a dist-info (APP_VERSION falls back to "X.Y.Z-dev"),
         # production images expose `importlib.metadata.version("maistro-server")`.
-        assert data["version"] == "0.1.0" or data["version"] == "0.1.0-dev"
+        assert data["version"] == APP_VERSION
         assert "uptime_seconds" in data
 
     def test_health_uptime_is_number(self, client: TestClient) -> None:

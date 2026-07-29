@@ -19,7 +19,14 @@ most idle free-tier headroom so unused allowances get exercised.
 
 from __future__ import annotations
 
+import importlib.metadata
 from typing import Any
+
+# Single source of truth for version — read from installed package metadata.
+try:
+    __version__ = importlib.metadata.version("maistro-rsi")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/unbuilt checkout
+    __version__ = "0.9.0-dev"
 
 from maistro_rsi.coordinator import (
     CoordinatorResult,
@@ -54,6 +61,7 @@ __all__ = [
     "RsiCycle",
     "RsiCycleConfig",
     "RsiCycleResult",
+    "__version__",
     "report_from_cycle_result",
 ]
 
