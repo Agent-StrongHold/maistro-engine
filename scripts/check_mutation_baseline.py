@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Ratchet Cosmic Ray kill rates per production source file.
 
-The committed baseline records the last reviewed full-codebase sweep. New files
-must clear the floor; existing files must clear both the floor and their prior
-rate. ``--write-baseline`` creates a candidate JSON file from a full sweep for
-human review and commit.
+The committed baseline records the last reviewed full-codebase sweep. A source
+without an entry is report-only and receives a mergeable candidate; an existing
+entry must clear both the 90% floor and its prior rate. ``--write-baseline``
+creates that candidate JSON for human review and commit.
 """
 
 from __future__ import annotations
