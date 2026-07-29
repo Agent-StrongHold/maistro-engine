@@ -112,6 +112,11 @@ def _has_assertion_guard(fn: ast.AST) -> bool:
     return False
 
 
+def _is_observable_value(expression: ast.expr) -> bool:
+    """Whether an expression reads behavior a test can reasonably contract on."""
+    return isinstance(expression, ast.Attribute | ast.Call)
+
+
 def _is_weak_assertion(assertion: ast.Assert, bool_functions: set[str]) -> bool:
     expression = assertion.test
     if _is_bool_contract(expression, bool_functions):
@@ -121,9 +126,13 @@ def _is_weak_assertion(assertion: ast.Assert, bool_functions: set[str]) -> bool:
     if isinstance(expression, ast.Compare):
         comparator = expression.comparators[0] if expression.comparators else None
         if isinstance(expression.ops[0], ast.Is | ast.IsNot):
-            return isinstance(comparator, ast.Constant) and comparator.value is None
+            if isinstance(comparator, ast.Constant) and comparator.value is None:
+                return not _is_observable_value(expression.left)
+            return False
         if isinstance(expression.ops[0], ast.Eq | ast.NotEq):
-            return isinstance(comparator, ast.Constant) and isinstance(comparator.value, bool)
+            if isinstance(comparator, ast.Constant) and isinstance(comparator.value, bool):
+                return not _is_bool_contract(expression.left, bool_functions)
+            return False
         return False
     if isinstance(expression, ast.Call):
         return _call_name(expression) not in {"isinstance", "hasattr", "issubclass"}
