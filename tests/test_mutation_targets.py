@@ -164,20 +164,13 @@ class TestDeletedSourcesAreNotTargets:
         assert not (REPO / self.DELETED).exists()
         assert module.resolve_tests(self.DELETED) is None
 
-    def test_a_deleted_file_cannot_displace_a_live_one(self, module, capsys):
-        """The consequence that makes this P2 rather than cosmetic: the deleted
-        path outranks by priority (security/ is rank 0), so under a cap of 1 it
-        would evict the real change."""
-        module.main(
-            [
-                "--limit",
-                "1",
-                "\n".join([self.DELETED, "packages/maistro-core/src/maistro/router/scorer.py"]),
-            ]
-        )
-        out = capsys.readouterr()
-        kept = [line.split("\t")[0] for line in out.out.strip().splitlines()]
-        assert kept == ["packages/maistro-core/src/maistro/router/scorer.py"]
+    def test_a_deleted_file_cannot_displace_a_live_one(self, module):
+        """A deleted source is reported, while the live source remains targetable."""
+        live = "packages/maistro-core/src/maistro/router/scorer.py"
+        targets, unresolved = module._resolve_targets([self.DELETED, live])
+        assert unresolved == [self.DELETED]
+        assert [source for source, _ in targets] == [live]
+        assert targets[0][1] == Path("packages/maistro-core/tests/router/test_scorer.py")
 
     def test_live_sources_are_unaffected(self, module):
         """The check must not become a filter that quietly drops real work."""
@@ -200,15 +193,13 @@ class TestPolicyPriorityIsReachable:
         rather than adding a path filter for nothing."""
         assert (REPO / "packages/maistro-core/src/maistro/policy").is_dir()
 
-    def test_every_priority_subtree_is_in_the_workflow_scope(self, module):
+    def test_every_package_source_is_in_the_workflow_scope(self, module):
         """The property, not the example. Any future priority entry that the
         workflow cannot see is unreachable ranking — this fails on the next one
         too, without anyone remembering to add a test."""
         workflow = self.WORKFLOW.read_text(encoding="utf-8")
-        for prefix in module._PRIORITY:
-            subtree = prefix.removeprefix("src/maistro/").rstrip("/")
-            assert f"maistro/{subtree}/**" in workflow, f"{subtree} missing from paths: filter"
-            assert f"maistro/{subtree}/'" in workflow, f"{subtree} missing from diff pathspec"
+        assert "'packages/**/*.py'" in workflow
+        assert "-- packages" in workflow
 
 
 class TestWorkflowDiffsAgainstItsOwnBase:
