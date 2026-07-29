@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --extra dev
+      - run: uv sync --locked --extra dev
       - run: bash scripts/verify-monorepo-layout.sh
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -46,7 +46,8 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: |
           set -e
-          sudo apt-get update && sudo apt-get install -y age || true
+          sudo apt-get update || true
+          sudo apt-get install -y age || true
           if ! command -v age-keygen &> /dev/null; then
             echo "Installing age-keygen from source..."
             mkdir -p /tmp/age && cd /tmp/age
@@ -56,7 +57,7 @@ jobs:
             echo "Verifying installation..."
             age-keygen --help > /dev/null && echo "✓ age-keygen ready" || exit 1
           fi
-      - run: uv sync --extra dev --extra bootstrap
+      - run: uv sync --locked --extra dev --extra bootstrap
       - run: uv run pytest packages/maistro-bootstrap/tests -v --tb=short
       - run: uv run pytest packages/maistro-core/tests -v --tb=short
         env:
@@ -245,7 +246,7 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync --extra dev
+      - run: uv sync --locked --extra dev
       - run: uv pip install pip-audit
       # Workspace-local editable packages aren't on PyPI — pip-audit --strict
       # refuses them, so audit the frozen third-party set only.
@@ -262,3 +263,35 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -t maistro-engine:test .
       - run: docker build -f packages/hive-conductor/Dockerfile . -t hive-conductor:ci
+
+  # CI configuration is the only code in this repo that nothing lints, and it
+  # is the code that decides whether everything else ships. actionlint checks
+  # workflow syntax, action versions and `${{ }}` expressions; with shellcheck
+  # it also checks every `run:` block, which is where the non-trivial logic
+  # lives (loops, heredocs, `$GITHUB_OUTPUT` writes).
+  #
+  # Baseline when this landed: zero findings across all ten workflows. That is
+  # the point — it is a guard against future drift, not a cleanup. Worth being
+  # precise about its limits: actionlint models syntax and shell, NOT intent,
+  # so it does not catch a `paths:` filter that fails to match the files it
+  # should. Two such trigger defects were found by hand the same week.
+  #
+  # Pinned tarball rather than a third-party action, matching how this repo
+  # already installs `age`: one fewer action with write access to the runner.
+  workflow-lint:
+    runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_VERSION: "1.7.7"
+      SHELLCHECK_VERSION: "0.10.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actionlint + shellcheck
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp actionlint
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
+            | tar xJ -C /tmp
+          install -m0755 "/tmp/shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /tmp/shellcheck-bin
+      - name: "actionlint (with shellcheck over run: blocks)"
+        run: /tmp/actionlint -no-color -oneline -shellcheck /tmp/shellcheck-bin

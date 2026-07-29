@@ -83,7 +83,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
-      - run: uv sync --all-extras
+      - run: uv sync --locked --all-extras
 
       - name: Identify changed Python files under load-bearing subtrees
         id: changed
@@ -121,9 +121,11 @@ jobs:
             'packages/maistro-core/tests/router/' \
             'packages/maistro-core/tests/policy/' \
             | grep '\.py$' | grep -v '__pycache__' || true)
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$CHANGED" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "files<<EOF"
+            echo "$CHANGED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No load-bearing files changed; skipping mutation test."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -241,7 +243,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
-      - run: uv sync --all-extras
+      - run: uv sync --locked --all-extras
 
       - name: Write cosmic-ray.toml for the full load-bearing substrate
         run: |
