@@ -34,7 +34,7 @@ def health() -> dict:
 
     return {
         "status": "ok",
-        "version": "1.0.0",
+        "version": "0.9.0",
         "pm_poc_mode": is_pm_poc_mode(),
         "uptime_seconds": uptime,
         "started_at": _STARTED_AT,

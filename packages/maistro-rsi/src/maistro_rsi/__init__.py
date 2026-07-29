@@ -26,7 +26,7 @@ from typing import Any
 try:
     __version__ = importlib.metadata.version("maistro-rsi")
 except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/unbuilt checkout
-    __version__ = "1.0.0-dev"
+    __version__ = "0.9.0-dev"
 
 from maistro_rsi.coordinator import (
     CoordinatorResult,
