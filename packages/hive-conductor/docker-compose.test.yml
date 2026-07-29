@@ -17,7 +17,9 @@ services:
       - HARDWARE_PRESET=beast
       - CONDUCTOR_DATA_DIR=/tmp/conductor
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8101/health/ready"]
+      # The Chainguard runtime intentionally ships without curl or a shell.
+      # Keep this override executable with the image's standard-library probe.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8101/health/ready', timeout=2).close()"]
       interval: 5s
       timeout: 3s
       start_period: 10s
