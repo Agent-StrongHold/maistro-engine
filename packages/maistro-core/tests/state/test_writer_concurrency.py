@@ -292,3 +292,6 @@ def test_close_is_idempotent(state: State) -> None:
     """`close()` is called from finalizers and shutdown hooks alike."""
     state.close()
     state.close()
+
+    assert state._writer is None
+    assert state._writer_open is False
