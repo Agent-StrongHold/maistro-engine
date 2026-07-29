@@ -142,6 +142,7 @@ jobs:
         run: |
           set -uo pipefail
           : > mutation-rows.jsonl
+          : > mutation-sessions.tsv
           while IFS=$'\t' read -r src tests; do
             [ -z "$src" ] && continue
             echo "::group::mutate $src (tests: $tests)"
@@ -163,35 +164,31 @@ jobs:
             uv run cosmic-ray init cosmic-ray.toml "$session"
             uv run cosmic-ray exec cosmic-ray.toml "$session"
             uv run cosmic-ray dump "$session" >> mutation-rows.jsonl
+            printf '%s\t%s\n' "$session" "$src" >> mutation-sessions.tsv
             echo "::endgroup::"
           done < mutation-targets.tsv
 
-          uv run python -c "
-          import json, sys
-          # cosmic-ray dump prints one JSON array per line: [work_item, result_or_null].
-          rows = []
-          for line in open('mutation-rows.jsonl'):
-              line = line.strip()
-              if not line:
-                  continue
-              parsed = json.loads(line)
-              if isinstance(parsed, list) and len(parsed) == 2 and isinstance(parsed[1], dict):
-                  rows.append(parsed[1])
-          total = len(rows)
-          killed = sum(1 for r in rows if r.get('test_outcome') == 'killed')
-          if total == 0:
-              print('::error::No mutants produced — config error, not a pass.')
-              sys.exit(1)
-          rate = killed / total
-          print(f'Mutation kill rate: {killed}/{total} = {rate:.1%}')
-          if rate < 0.90:
-              print(f'::error::Mutation kill rate {rate:.1%} below the 90% gate. Survivors:')
-              for r in rows:
-                  if r.get('test_outcome') != 'killed':
-                      print(f'  - {r}')
-              sys.exit(1)
-          print('Mutation gate passed (>=90%)')
-          "
+          # Scoring moved out of an inline heredoc and into scripts/, where it
+          # is covered by tests/test_mutation_viability.py. The inline version
+          # scored `killed / total` over every mutant cosmic-ray produced, and
+          # that denominator is not all killable: an operator swap inside a
+          # type annotation cannot change behaviour in a module carrying
+          # `from __future__ import annotations`, because annotations are never
+          # evaluated there. cosmic-ray cannot mark those INCOMPETENT -- that
+          # status is for mutants which fail to compile, and these compile
+          # fine -- so they sat in the survivor list permanently. Measured on
+          # graph/durable_runs/executor.py: 66 of 139 survivors, enough to hold
+          # a fully-tested file ~7 points under the gate no matter what anyone
+          # wrote.
+          #
+          # Only provably non-viable mutants are subtracted, each one named in
+          # the log. Mutants that fail to compile, and mutants the classifier
+          # could not reconstruct, stay in the denominator -- a parse failure in
+          # our own tooling must never loosen this gate.
+          uv run python scripts/mutation_viability.py \
+            --sessions mutation-sessions.tsv \
+            --threshold 0.90 \
+            --json mutation-gate.json
 
       - name: Upload mutation report
         if: always() && steps.changed.outputs.skip != 'true'
@@ -202,6 +199,8 @@ jobs:
             session-*.sqlite
             mutation-rows.jsonl
             mutation-targets.tsv
+            mutation-sessions.tsv
+            mutation-gate.json
 
   mutation-nightly:
     name: Mutation testing (full sweep nightly)
