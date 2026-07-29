@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Stage, Layer, Rect, Image as KImage, Text, Transformer, Group } from "react-konva";
-import Konva from "konva";
+import { Stage, Layer, Rect, Image as KImage, Text, Transformer } from "react-konva";
 
 const MIN_SCALE = 0.05;
 const MAX_SCALE = 4.0;
@@ -196,7 +195,7 @@ function TextNode({ layer, selected, onSelect, onDragEnd, onDoubleClick }) {
   );
 }
 
-function TextEditor({ layer, canvasEl, onSave, onCancel }) {
+function TextEditor({ layer, onSave, onCancel }) {
   const [text, setText] = useState(layer.text_content || "");
   const inputRef = useRef(null);
 

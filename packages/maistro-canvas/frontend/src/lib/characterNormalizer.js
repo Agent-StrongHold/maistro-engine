@@ -177,7 +177,17 @@ export async function normalizeCharacter(imageUrl, poseGeo, targetWidth = 1024, 
         const dh = silhouette.height_px * scale;
         const dx = (targetWidth - dw) / 2;
         const dy = targetHeight * 0.95 - dh;
-        outCtx.drawImage(srcCanvas, sx = silhouette.bounds.x * srcCanvas.width, silhouette.bounds.y * srcCanvas.height, silhouette.width_px, silhouette.height_px, dx, dy, dw, dh);
+        // `sx`/`sy` are declared here, not assigned inline. The previous form
+        // wrote `sx = ...` as an argument, but `sx` is `const`-scoped to the
+        // `if` branch above and does not exist here — and ESM is always strict
+        // mode, so that assignment raised `ReferenceError: sx is not defined`.
+        // This is the *fallback* path, taken exactly when `computeNormalization`
+        // returns nothing, so the branch that existed to degrade gracefully
+        // threw instead. eslint could not see it because a duplicate export in
+        // `api.js` made the whole file unparseable.
+        const sx = silhouette.bounds.x * srcCanvas.width;
+        const sy = silhouette.bounds.y * srcCanvas.height;
+        outCtx.drawImage(srcCanvas, sx, sy, silhouette.width_px, silhouette.height_px, dx, dy, dw, dh);
       }
 
       resolve({
