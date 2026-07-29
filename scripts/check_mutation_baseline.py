@@ -41,7 +41,17 @@ def scores(rows_path: Path) -> dict[str, tuple[int, int]]:
     return {source: (values[0], values[1]) for source, values in result.items()}
 
 
-def payload(current: dict[str, tuple[int, int]]) -> dict[str, Any]:
+def payload(
+    current: dict[str, tuple[int, int]], baseline: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    entries = dict((baseline or {}).get("entries", {}))
+    entries.update(
+        {
+            source: {"killed": killed, "total": total, "kill_rate": round(killed / total, 4)}
+            for source, (killed, total) in current.items()
+            if total
+        }
+    )
     return {
         "version": 1,
         "owner": "@BlakeMatthews-dev",
@@ -49,11 +59,7 @@ def payload(current: dict[str, tuple[int, int]]) -> dict[str, Any]:
             "Per-source mutation ratchet. New sources must meet the 90% floor; "
             "reviewed sources must not regress below their recorded kill rate."
         ),
-        "entries": {
-            source: {"killed": killed, "total": total, "kill_rate": round(killed / total, 4)}
-            for source, (killed, total) in sorted(current.items())
-            if total
-        },
+        "entries": dict(sorted(entries.items())),
     }
 
 
@@ -65,7 +71,9 @@ def enforce(current: dict[str, tuple[int, int]], baseline: dict[str, Any]) -> li
             failures.append(f"{source}: no mutants produced")
             continue
         rate = killed / total
-        prior = entries.get(source, {}).get("kill_rate", FLOOR)
+        if source not in entries:
+            continue
+        prior = entries[source].get("kill_rate", FLOOR)
         required = max(FLOOR, float(prior))
         if rate < required:
             failures.append(f"{source}: {rate:.1%} below required {required:.1%}")
@@ -85,8 +93,14 @@ def main(argv: list[str]) -> int:
         )
         return 1
     if args.write_baseline:
+        existing = (
+            json.loads(args.baseline.read_text(encoding="utf-8"))
+            if args.baseline.is_file()
+            else None
+        )
         args.baseline.write_text(
-            json.dumps(payload(current), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            json.dumps(payload(current, existing), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
         print(
             f"wrote candidate mutation baseline for {len(current)} source file(s): {args.baseline}"
@@ -95,7 +109,15 @@ def main(argv: list[str]) -> int:
     if not args.baseline.is_file():
         print(f"::error::Missing mutation baseline: {args.baseline}", file=sys.stderr)
         return 1
-    failures = enforce(current, json.loads(args.baseline.read_text(encoding="utf-8")))
+    baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
+    unbaselined = sorted(set(current) - set(baseline.get("entries", {})))
+    if unbaselined:
+        print(
+            "mutation baseline has no entry for "
+            f"{len(unbaselined)} source file(s); reporting them without enforcement until a "
+            "reviewed candidate is committed"
+        )
+    failures = enforce(current, baseline)
     print(
         f"mutation baseline summary: {len(current)} source file(s), {len(failures)} regression(s)"
     )

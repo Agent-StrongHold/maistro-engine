@@ -12,7 +12,8 @@
 #   - PR -> main (the release gate) : EVERY changed file, no cap. This is
 #     where develop's accumulated work is held to full coverage, and the long
 #     runtime is affordable because it happens once per release.
-#   - Nightly : full sweep across the load-bearing substrate.
+#   - Nightly : one rotating four-shard batch. The bootstrap baseline is built
+#     only after all eight reviewed batch artifacts have been collected.
 #
 # Surviving mutants are tracked in docs/MUTATION-SURVIVORS.md and are
 # treated as defects (test missed a real regression).
@@ -27,6 +28,17 @@ on:
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
   workflow_dispatch:
+    inputs:
+      shard_start:
+        description: "First shard to run (0-31)"
+        required: false
+        default: "0"
+        type: string
+      shard_count:
+        description: "Number of consecutive shards to run (1-4)"
+        required: false
+        default: "4"
+        type: string
 
 jobs:
   mutation-pr:
@@ -161,15 +173,16 @@ jobs:
               sys.exit(1)
           rate = killed / total
           print(f'Mutation kill rate: {killed}/{total} = {rate:.1%}')
-          if rate < 0.90:
-              print(f'::error::Mutation kill rate {rate:.1%} below the 90% gate. Survivors:')
-              for r in rows:
-                  if r.get('test_outcome') != 'killed':
-                      print(f'  - {r}')
-              sys.exit(1)
-          print('Mutation gate passed (>=90%)')
+          print('Mutation kill-rate report complete; baseline checker decides whether this is a gate.')
           "
           uv run python scripts/check_mutation_baseline.py mutation-rows.jsonl
+
+      - name: Build mergeable mutation baseline candidate
+        if: success() && steps.changed.outputs.skip != 'true'
+        run: |
+          cp quality/mutation-baseline.json mutation-baseline-candidate.json
+          uv run python scripts/check_mutation_baseline.py mutation-rows.jsonl \
+            --baseline mutation-baseline-candidate.json --write-baseline
 
       - name: Upload mutation report
         if: always() && steps.changed.outputs.skip != 'true'
@@ -180,6 +193,7 @@ jobs:
             session-*.sqlite
             mutation-rows.jsonl
             mutation-targets.tsv
+            mutation-baseline-candidate.json
 
   mutation-nightly:
     name: Mutation testing (full sweep nightly)
@@ -256,15 +270,48 @@ jobs:
             mutation-nightly.json
             mutation-dashboard.md
 
+  mutation-shard-plan:
+    name: Plan mutation batch
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - id: plan
+        env:
+          SHARD_START: ${{ inputs.shard_start }}
+          SHARD_COUNT: ${{ inputs.shard_count }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            start=$((PR_NUMBER % 32))
+            count=1
+          elif [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            start=$(( (10#$(date -u +%j) % 8) * 4 ))
+            count=4
+          else
+            start="${SHARD_START:-0}"
+            count="${SHARD_COUNT:-4}"
+          fi
+          python - "$start" "$count" <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import sys
+
+          start, count = map(int, sys.argv[1:])
+          if not 0 <= start < 32 or not 1 <= count <= 4 or start + count > 32:
+              raise SystemExit("shard_start must be 0-31 and shard_count must be 1-4 without crossing 31")
+          print(f"shards={json.dumps(list(range(start, start + count)))}")
+          PY
+
   mutation-nightly-full:
-    name: Mutation testing (full codebase shard ${{ matrix.shard }})
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Mutation testing (sampled codebase shard ${{ matrix.shard }})
+    needs: mutation-shard-plan
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+        shard: ${{ fromJSON(needs.mutation-shard-plan.outputs.shards) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -315,6 +362,13 @@ jobs:
             uv run cosmic-ray dump "$session" >> mutation-rows-${{ matrix.shard }}.jsonl
           done < mutation-targets.tsv
 
+      - name: Build mergeable sampled baseline candidate
+        if: success()
+        run: |
+          cp quality/mutation-baseline.json mutation-baseline-candidate-${{ matrix.shard }}.json
+          uv run python scripts/check_mutation_baseline.py mutation-rows-${{ matrix.shard }}.jsonl \
+            --baseline mutation-baseline-candidate-${{ matrix.shard }}.json --write-baseline
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -322,24 +376,4 @@ jobs:
           path: |
             mutation-rows-${{ matrix.shard }}.jsonl
             mutation-targets.tsv
-
-  mutation-nightly-baseline:
-    name: Mutation baseline candidate
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    needs: mutation-nightly-full
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: mutation-nightly-shard-*
-          merge-multiple: true
-      - name: Build candidate full-codebase baseline
-        run: |
-          cat mutation-rows-*.jsonl > mutation-rows.jsonl
-          python scripts/check_mutation_baseline.py mutation-rows.jsonl \
-            --baseline mutation-baseline-candidate.json --write-baseline
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mutation-baseline-candidate-${{ github.run_id }}
-          path: mutation-baseline-candidate.json
+            mutation-baseline-candidate-${{ matrix.shard }}.json

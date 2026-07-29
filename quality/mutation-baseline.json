@@ -1,6 +1,6 @@
 {
   "version": 1,
   "owner": "@BlakeMatthews-dev",
-  "policy": "Bootstrap placeholder. The first sharded full-codebase mutation sweep uploads a candidate baseline; review and commit that artifact before enabling regression enforcement.",
+  "policy": "Incremental per-source ratchet. A source is report-only until its reviewed candidate entry is committed; later runs of that source must not regress below its recorded kill rate.",
   "entries": {}
 }
