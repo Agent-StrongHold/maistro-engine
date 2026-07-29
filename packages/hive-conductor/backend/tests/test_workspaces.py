@@ -83,3 +83,83 @@ def test_workspaces_are_not_visible_to_other_users(authed_client, admin_client) 
     listed = authed_client.get("/v1/workspaces")
     assert listed.status_code == 200
     assert created["id"] not in {w["id"] for w in listed.json()}
+
+
+def _fake_pm_fleet_template():
+    from maistro.personas.schema import PersonaTemplate, SpawnSpec
+
+    return PersonaTemplate(
+        kind="workspace",
+        id="pm_fleet",
+        spawns=[SpawnSpec(agent="intake", tools=["create_epic"], skills=[])],
+    )
+
+
+class TestPersonaChecklist:
+    """Phase C: the checklist is derived from the persona's own declared spawns."""
+
+    def test_returns_declared_capabilities(self, admin_client, monkeypatch) -> None:
+        import routes.workspaces as workspaces_routes
+
+        monkeypatch.setattr(
+            workspaces_routes, "load_templates", lambda: {"pm_fleet": _fake_pm_fleet_template()}
+        )
+
+        r = admin_client.get("/v1/workspaces/persona-templates/pm_fleet/checklist")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["persona_template_id"] == "pm_fleet"
+        assert body["items"] == [
+            {
+                "id": "intake.tool.create_epic",
+                "agent": "intake",
+                "kind": "tool",
+                "name": "create_epic",
+                "label": "Create Epic",
+            }
+        ]
+        assert body["default_accepted"] == ["intake.tool.create_epic"]
+
+    def test_unknown_persona_404s(self, admin_client, monkeypatch) -> None:
+        import routes.workspaces as workspaces_routes
+
+        monkeypatch.setattr(workspaces_routes, "load_templates", lambda: {})
+        r = admin_client.get("/v1/workspaces/persona-templates/nope/checklist")
+        assert r.status_code == 404
+
+
+class TestCreateWorkspaceChecklist:
+    def test_explicit_checklist_is_honored(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces",
+            json={
+                "persona_template_id": "pm_fleet",
+                "name": "PM Fleet",
+                "checklist": ["intake.tool.create_epic"],
+            },
+        )
+        assert r.status_code == 201
+        assert r.json()["checklist"] == ["intake.tool.create_epic"]
+
+    def test_explicit_empty_checklist_is_honored_not_treated_as_missing(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces",
+            json={"persona_template_id": "pm_fleet", "name": "PM Fleet", "checklist": []},
+        )
+        assert r.status_code == 201
+        assert r.json()["checklist"] == []
+
+    def test_omitted_checklist_defaults_from_persona_when_resolvable(
+        self, admin_client, monkeypatch
+    ) -> None:
+        import routes.workspaces as workspaces_routes
+
+        monkeypatch.setattr(
+            workspaces_routes, "load_templates", lambda: {"pm_fleet": _fake_pm_fleet_template()}
+        )
+
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        )
+        assert r.status_code == 201
+        assert r.json()["checklist"] == ["intake.tool.create_epic"]

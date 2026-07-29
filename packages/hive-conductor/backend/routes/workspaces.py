@@ -1,8 +1,9 @@
 """Workspace tabs — Persona/Workspace system (replaces the hardcoded PM Fleet mode).
 
-Phase A: manual create/list/get only. No interview, no checklist derivation,
-no theme, no sticky tool bindings yet — those are later phases. A workspace
-just records which persona it instantiates and who owns it.
+Phase A: manual create/list/get. Phase C adds the persona-template checklist
+endpoint (accept/modify tools/skills derived from the chosen persona's own
+declared spawns). No interview wiring, no theme, no sticky tool bindings yet
+— those are later phases.
 """
 
 from __future__ import annotations
@@ -14,6 +15,9 @@ import stores
 from fastapi import APIRouter, HTTPException, Request
 from models.workspace import Workspace, WorkspaceMember
 from pydantic import BaseModel, ConfigDict
+
+from maistro.personas.checklist import CapabilityItem, capability_checklist, default_checklist_ids
+from maistro.personas.rubric import load_templates
 
 router = APIRouter(tags=["workspaces"])
 
@@ -29,6 +33,30 @@ def _user_id(request: Request) -> str:
 
 def _visible_to(user_id: str, workspace: Workspace) -> bool:
     return any(m.user_id == user_id for m in workspace.members)
+
+
+class PersonaChecklistResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    persona_template_id: str
+    items: list[CapabilityItem]
+    default_accepted: list[str]
+
+
+@router.get("/persona-templates/{persona_id}/checklist", response_model=PersonaChecklistResponse)
+def get_persona_checklist(persona_id: str) -> PersonaChecklistResponse:
+    """The checklist a workspace-creation wizard shows: every tool/skill the
+    chosen persona declares, derived from its own `spawns` -- not a separate
+    hardcoded catalog. `default_accepted` pre-checks everything; the wizard
+    lets the user uncheck what they don't want."""
+    template = load_templates().get(persona_id)
+    if template is None:
+        raise HTTPException(status_code=404, detail=f"unknown persona template: {persona_id}")
+    return PersonaChecklistResponse(
+        persona_template_id=persona_id,
+        items=capability_checklist(template),
+        default_accepted=default_checklist_ids(template),
+    )
 
 
 @router.get("", response_model=list[Workspace])
@@ -50,6 +78,11 @@ class CreateWorkspaceBody(BaseModel):
 
     persona_template_id: str
     name: str
+    # Accept/modify result from GET .../checklist. Omitted or null means
+    # "accept everything the persona declares" (if it resolves); an explicit
+    # list -- including [] -- is honored exactly, so a user can deliberately
+    # start a workspace with zero enabled capabilities.
+    checklist: list[str] | None = None
 
 
 @router.post("", response_model=Workspace, status_code=201)
@@ -57,11 +90,16 @@ def create_workspace(body: CreateWorkspaceBody, request: Request) -> Workspace:
     user_id = _user_id(request)
     workspace_id = str(uuid4())
     t = _now()
+    checklist = body.checklist
+    if checklist is None:
+        template = load_templates().get(body.persona_template_id)
+        checklist = default_checklist_ids(template) if template is not None else []
     workspace = Workspace(
         id=workspace_id,
         persona_template_id=body.persona_template_id,
         name=body.name,
         members=[WorkspaceMember(user_id=user_id, role="owner")],
+        checklist=checklist,
         created_at=t,
         updated_at=t,
     )

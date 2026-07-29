@@ -12,6 +12,11 @@ Public surface:
 
 from __future__ import annotations
 
+from maistro.personas.checklist import (
+    CapabilityItem,
+    capability_checklist,
+    default_checklist_ids,
+)
 from maistro.personas.expander import ExpandedAgent, ExpandedPersona, expand_persona
 from maistro.personas.golden import (
     EvidencedCriterion,
@@ -34,6 +39,7 @@ from maistro.personas.scorer import DeepEvalScorer, RubricScorer, create_judge_s
 
 __all__ = [
     "BrandSpec",
+    "CapabilityItem",
     "CriterionSpec",
     "DeepEvalScorer",
     "EvalResult",
@@ -51,7 +57,9 @@ __all__ = [
     "SourceEvidence",
     "SpawnSpec",
     "VoiceSpec",
+    "capability_checklist",
     "create_judge_scorer",
+    "default_checklist_ids",
     "expand_persona",
     "load_evals",
     "load_templates",
