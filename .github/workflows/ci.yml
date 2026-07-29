@@ -116,7 +116,14 @@ jobs:
           cache-dependency-path: |
             packages/hive-conductor/frontend/package-lock.json
             packages/maistro-canvas/frontend/package-lock.json
-      - run: npm ci && npm run build
+      # `npm run lint` existed here and no workflow ran it. Only `build` did —
+      # and build is `tsc --noEmit` twice, which type-checks but says nothing
+      # about dead code, swallowed errors or hook misuse. It ran clean over both
+      # empty `catch {}` blocks repaired in this PR.
+      #
+      # Lint runs BEFORE build: it is the faster of the two and the one more
+      # likely to fail, so a red run reports the cheaper failure first.
+      - run: npm ci && npm run lint && npm run build
         working-directory: packages/hive-conductor/frontend
       # The canvas book-maker frontend had no CI at all — no workflow built,
       # linted or tested it — while `server.js` is a real network service that
