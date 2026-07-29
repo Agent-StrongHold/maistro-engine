@@ -183,7 +183,9 @@ jobs:
 
   mutation-nightly:
     name: Mutation testing (full sweep nightly)
-    if: github.event_name == 'schedule'
+    # Superseded by the sharded all-package sweep below. Kept temporarily so
+    # prior run links remain recognizable, but never scheduled again.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
