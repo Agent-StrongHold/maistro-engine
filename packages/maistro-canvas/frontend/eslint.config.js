@@ -6,19 +6,31 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 // Environments are scoped per area rather than declared once for everything.
 //
-// The single `globals.browser` block below used to apply to every `.js`/`.jsx`
-// file in the package, including the Express server, the vitest suites and
-// `vite.config.js` — none of which run in a browser. That produced 30
-// `no-undef` reports for `process`, `Buffer` and `global`: all correct given
-// what the config claimed, and all meaningless.
+// `globals.browser` used to be declared on the base `**/*.{js,jsx}` block, so
+// it applied to every file in the package — including the Express server, the
+// vitest suites and `vite.config.js`, none of which run in a browser. That
+// produced 30 `no-undef` reports for `process`, `Buffer` and `global`: all
+// correct given what the config claimed, and all meaningless.
 //
 // That mattered more than the noise suggests. Those 30 were most of the
 // findings, so the real ones sat behind them — and the natural response to a
 // linter that is mostly wrong is to stop running it, which is what happened:
 // `npm run lint` existed and no workflow ever invoked it.
+//
+// Flat-config `languageOptions.globals` MERGE across every matching block —
+// they are not replaced by a later, narrower block. So it is not enough to add
+// `globals.node` to the server block on top of a browser-everywhere base: the
+// server would then have BOTH, and an accidental `document`/`window` in
+// `server.js` would pass `no-undef` and fail only at runtime. Browser globals
+// are therefore declared ONLY on the client tree (`src/`), which is the only
+// browser code here — everything else (`server.js`, `server/`, the config
+// files, the vitest suites) is Node and must not see `document`.
 export default defineConfig([
   globalIgnores(['dist']),
   {
+    // Base: recommended rulesets + the React plugins for every JS/JSX file, so
+    // `server.js` still gets `no-undef`, `no-unused-vars` and the rest. No
+    // environment globals here — those are declared per-area below.
     files: ['**/*.{js,jsx}'],
     extends: [
       js.configs.recommended,
@@ -26,9 +38,15 @@ export default defineConfig([
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+  },
+  {
+    // The React client is the only browser code; `index.html` loads `src/`.
+    // Browser globals live here and nowhere else, so a browser API referenced
+    // from Node code is a `no-undef` rather than a silent runtime crash.
+    files: ['src/**/*.{js,jsx}'],
+    languageOptions: { globals: { ...globals.browser } },
   },
   {
     // The Express server and the build config are Node, not browser.
