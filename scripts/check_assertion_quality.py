@@ -11,9 +11,9 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEST_ROOTS = (ROOT / "tests", ROOT / "formal", *ROOT.glob("packages/*/tests"))
@@ -63,9 +63,12 @@ def annotated_bool_functions(source_roots: Iterable[Path] = DEFAULT_SOURCE_ROOTS
             except SyntaxError:
                 continue
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.returns:
-                    if _annotation_is_bool(node.returns):
-                        names.add(node.name)
+                if (
+                    isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+                    and node.returns
+                    and _annotation_is_bool(node.returns)
+                ):
+                    names.add(node.name)
     return names
 
 
@@ -148,6 +151,46 @@ def _returned_call_names(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]
     return names
 
 
+def _findings_for_test(
+    fn: ast.FunctionDef | ast.AsyncFunctionDef,
+    relative_path: str,
+    bool_functions: set[str],
+) -> list[Finding]:
+    assertions = [node for node in ast.walk(fn) if isinstance(node, ast.Assert)]
+    raises_or_warns = any(_has_raises_or_warns(node) for node in ast.walk(fn))
+    assertion_call = _has_assertion_call(fn)
+    assertion_guard = _has_assertion_guard(fn)
+    finding_prefix = {"path": relative_path, "line": fn.lineno, "test": fn.name}
+    findings: list[Finding] = []
+
+    if not assertions and not raises_or_warns and not assertion_call and not assertion_guard:
+        findings.append(Finding(code="no_recognized_oracle", **finding_prefix))
+    if any(isinstance(assertion.test, ast.Constant) for assertion in assertions):
+        findings.append(Finding(code="literal_constant_assert", **finding_prefix))
+    if (
+        assertions
+        and all(_is_weak_assertion(assertion, bool_functions) for assertion in assertions)
+        and not raises_or_warns
+        and not assertion_call
+        and not assertion_guard
+    ):
+        findings.append(Finding(code="weak_only_oracle", **finding_prefix))
+
+    returned_names = _returned_call_names(fn)
+    for assertion in assertions:
+        expression = assertion.test
+        if not isinstance(expression, ast.Compare) or len(expression.ops) != 1:
+            continue
+        if not isinstance(expression.ops[0], ast.Eq | ast.NotEq) or len(expression.comparators) != 1:
+            continue
+        left = _attribute(expression.left)
+        right = _attribute(expression.comparators[0])
+        if left and right and left[0] in returned_names and left[1] == right[1]:
+            findings.append(Finding(code="return_fixture_alias_comparison", **finding_prefix))
+            break
+    return findings
+
+
 def findings_for_path(path: Path, bool_functions: set[str]) -> list[Finding]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
@@ -159,43 +202,12 @@ def findings_for_path(path: Path, bool_functions: set[str]) -> list[Finding]:
     except ValueError:
         relative_path = path.as_posix()
 
-    findings: list[Finding] = []
-    for fn in ast.walk(tree):
-        if not isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) or not fn.name.startswith(
-            "test"
-        ):
-            continue
-        assertions = [node for node in ast.walk(fn) if isinstance(node, ast.Assert)]
-        raises_or_warns = any(_has_raises_or_warns(node) for node in ast.walk(fn))
-        assertion_call = _has_assertion_call(fn)
-        assertion_guard = _has_assertion_guard(fn)
-        finding_prefix = {"path": relative_path, "line": fn.lineno, "test": fn.name}
-
-        if not assertions and not raises_or_warns and not assertion_call and not assertion_guard:
-            findings.append(Finding(code="no_recognized_oracle", **finding_prefix))
-        if any(isinstance(assertion.test, ast.Constant) for assertion in assertions):
-            findings.append(Finding(code="literal_constant_assert", **finding_prefix))
-        if assertions and all(
-            _is_weak_assertion(assertion, bool_functions) for assertion in assertions
-        ):
-            if not raises_or_warns and not assertion_call and not assertion_guard:
-                findings.append(Finding(code="weak_only_oracle", **finding_prefix))
-
-        returned_names = _returned_call_names(fn)
-        for assertion in assertions:
-            expression = assertion.test
-            if not isinstance(expression, ast.Compare) or len(expression.ops) != 1:
-                continue
-            if not isinstance(expression.ops[0], ast.Eq | ast.NotEq) or len(
-                expression.comparators
-            ) != 1:
-                continue
-            left = _attribute(expression.left)
-            right = _attribute(expression.comparators[0])
-            if left and right and left[0] in returned_names and left[1] == right[1]:
-                findings.append(Finding(code="return_fixture_alias_comparison", **finding_prefix))
-                break
-    return findings
+    return [
+        finding
+        for fn in ast.walk(tree)
+        if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) and fn.name.startswith("test")
+        for finding in _findings_for_test(fn, relative_path, bool_functions)
+    ]
 
 
 def scan(test_roots: Iterable[Path] = DEFAULT_TEST_ROOTS) -> list[Finding]:

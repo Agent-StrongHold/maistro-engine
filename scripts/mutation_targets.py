@@ -77,31 +77,38 @@ def resolve_package_tests(src: str) -> Path | None:
         return None
 
     package = Path(*path.parts[:2])
-    backend_tests = package / "backend" / "tests"
-    package_tests = package / "tests"
-    package_name = package.name
-    test_root = (
-        backend_tests
-        if "backend" in path.parts and (REPO / backend_tests).is_dir()
-        else EXTERNAL_TEST_ROOTS.get(package_name, package_tests)
-    )
+    test_root = _package_test_root(path, package)
     if not (REPO / test_root).is_dir():
         return None
 
-    source_root = package
-    if "src" in path.parts:
-        index = path.parts.index("src")
-        if len(path.parts) > index + 1:
-            source_root = Path(*path.parts[: index + 2])
-    elif "backend" in path.parts:
-        source_root = package / "backend"
-    elif "frontend" in path.parts and "server" in path.parts:
-        source_root = package / "frontend" / "server"
-
-    rel = path.relative_to(source_root)
+    rel = path.relative_to(_source_root(path, package))
     mirror = test_root / rel.parent / f"test_{rel.stem}.py"
     if (REPO / mirror).is_file():
         return mirror
+
+    return _nearest_test_scope(test_root, rel)
+
+
+def _package_test_root(path: Path, package: Path) -> Path:
+    backend_tests = package / "backend" / "tests"
+    if "backend" in path.parts and (REPO / backend_tests).is_dir():
+        return backend_tests
+    return EXTERNAL_TEST_ROOTS.get(package.name, package / "tests")
+
+
+def _source_root(path: Path, package: Path) -> Path:
+    if "src" in path.parts:
+        index = path.parts.index("src")
+        if len(path.parts) > index + 1:
+            return Path(*path.parts[: index + 2])
+    if "backend" in path.parts:
+        return package / "backend"
+    if "frontend" in path.parts and "server" in path.parts:
+        return package / "frontend" / "server"
+    return package
+
+
+def _nearest_test_scope(test_root: Path, rel: Path) -> Path:
 
     parent = rel.parent
     while True:
@@ -141,16 +148,22 @@ def priority(src: str) -> int:
     return len(_PRIORITY)
 
 
-def main(argv: list[str]) -> int:
+def _parse_args(argv: list[str]) -> tuple[int, list[str]]:
     limit = 0
     args = list(argv)
     if args and args[0] == "--limit":
         limit = int(args[1])
         args = args[2:]
+    return limit, args
 
-    files = production_sources() if args == ["--all"] else [
-        line.strip() for line in (args[0].splitlines() if args else sys.stdin)
-    ]
+
+def _requested_files(args: list[str]) -> list[str]:
+    if args == ["--all"]:
+        return production_sources()
+    return [line.strip() for line in (args[0].splitlines() if args else sys.stdin)]
+
+
+def _resolve_targets(files: list[str]) -> tuple[list[tuple[str, Path]], list[str]]:
     targets: list[tuple[str, Path]] = []
     unresolved: list[str] = []
     for src in files:
@@ -159,8 +172,34 @@ def main(argv: list[str]) -> int:
         tests = resolve_package_tests(src)
         if tests is None:
             unresolved.append(src)
-            continue
-        targets.append((src, tests))
+        else:
+            targets.append((src, tests))
+    return targets, unresolved
+
+
+def _apply_limit(targets: list[tuple[str, Path]], limit: int) -> list[tuple[str, Path]]:
+    if not limit or len(targets) <= limit:
+        return targets
+
+    dropped = targets[limit:]
+    targets = targets[:limit]
+    # Never a silent truncation: a gate that quietly covers less than it
+    # claims is the exact failure this whole workflow was rewritten to remove.
+    print(
+        f"::warning::mutation budget limit={limit}; "
+        f"{len(dropped)} changed file(s) NOT mutated in this run "
+        "(full sweep runs on the develop -> main gate and nightly):",
+        file=sys.stderr,
+    )
+    for src, _ in dropped:
+        print(f"  not mutated: {src}", file=sys.stderr)
+    return targets
+
+
+def main(argv: list[str]) -> int:
+    limit, args = _parse_args(argv)
+    files = _requested_files(args)
+    targets, unresolved = _resolve_targets(files)
 
     if unresolved:
         print("::error::mutation target(s) have no package test scope:", file=sys.stderr)
@@ -170,20 +209,7 @@ def main(argv: list[str]) -> int:
 
     targets.sort(key=lambda t: (priority(t[0]), t[0]))
 
-    if limit and len(targets) > limit:
-        dropped = targets[limit:]
-        targets = targets[:limit]
-        # Never a silent truncation: a gate that quietly covers less than it
-        # claims is the exact failure this whole workflow was rewritten to
-        # remove. Name every file that did not get mutated.
-        print(
-            f"::warning::mutation budget limit={limit}; "
-            f"{len(dropped)} changed file(s) NOT mutated in this run "
-            "(full sweep runs on the develop -> main gate and nightly):",
-            file=sys.stderr,
-        )
-        for src, _ in dropped:
-            print(f"  not mutated: {src}", file=sys.stderr)
+    targets = _apply_limit(targets, limit)
 
     for src, tests in targets:
         print(f"{src}\t{tests}")
