@@ -158,8 +158,15 @@ jobs:
       - name: Run PM workflow e2e against a live hive-conductor
         working-directory: packages/hive-conductor
         run: |
+          # Explicit `api-tests` target: with no service argument, `docker
+          # compose up` starts every service under the active profile —
+          # `e2e-tests` shares the same `test` profile and would build/start
+          # the (unwired, large) Playwright image too, wasting time and
+          # risking a race where its stale assertions exit first and trip
+          # --abort-on-container-exit before api-tests finishes. Naming the
+          # target still pulls in `hive` as its declared dependency.
           docker compose -f docker-compose.test.yml --profile test up --build \
-            --abort-on-container-exit --exit-code-from api-tests
+            --abort-on-container-exit --exit-code-from api-tests api-tests
       - name: Dump hive logs on failure
         if: failure()
         working-directory: packages/hive-conductor
