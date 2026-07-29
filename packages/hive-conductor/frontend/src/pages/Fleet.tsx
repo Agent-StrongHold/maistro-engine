@@ -65,7 +65,12 @@ export default function Fleet() {
   const [suggestions, setSuggestions] = useState<WorkItemSuggestion[]>([]);
   const [lastPulse, setLastPulse] = useState<PulseResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [invokingId, setInvokingId] = useState<string | null>(null);
+  // Permanently null, and honestly so: `handleInvoke` either opens the gated
+  // draft modal or does a full-page `window.location.href` navigation, so there
+  // is no async window to show a busy state in. AgentFleetCard implements
+  // `invoking` (disables the button, shows "Running…") and will light up on its
+  // own if invocation ever becomes an in-page request.
+  const [invokingId] = useState<string | null>(null);
   const [interviewAnswer, setInterviewAnswer] = useState("");
   const [guidance, setGuidance] = useState("");
   const [submittingInterview, setSubmittingInterview] = useState(false);

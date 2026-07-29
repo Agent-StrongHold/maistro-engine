@@ -164,8 +164,13 @@ export default function DagBuilder() {
   const loadAgents = useCallback(async () => {
     try {
       setAgents(await apiGet<Agent[]>("/v1/agents"));
-    } catch {}
-  }, []);
+    } catch (e) {
+      // Swallowing this left the node-type picker empty with no explanation:
+      // the builder renders fine, offers no agents, and looks like the fleet
+      // is empty rather than unreachable.
+      toast(`Could not load agents: ${e instanceof Error ? e.message : String(e)}`, "error");
+    }
+  }, [toast]);
 
   useEffect(() => {
     loadDags();

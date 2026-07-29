@@ -105,7 +105,7 @@ Current memories:\n${entries.slice(0, 15).map(e => `- [${e.namespace}] ${e.value
       const reader = res.body?.getReader(); const decoder = new TextDecoder(); let acc = "";
       if (reader) { while (true) { const { done, value } = await reader.read(); if (done) break;
         for (const line of decoder.decode(value, { stream: true }).split("\n")) { if (!line.startsWith("data: ")) continue;
-          try { const e = JSON.parse(line.slice(6)); if (e.type === "token" || e.type === "content") acc += e.content || e.token || ""; else if (e.type === "done" && e.content && !acc) acc = e.content; } catch {} }
+          try { const e = JSON.parse(line.slice(6)); if (e.type === "token" || e.type === "content") acc += e.content || e.token || ""; else if (e.type === "done" && e.content && !acc) acc = e.content; } catch { /* SSE chunk split a JSON payload mid-object — wait for the rest */ } }
         setChatHistory([...newHistory, { role: "assistant", content: acc }]); } }
       setChatHistory([...newHistory, { role: "assistant", content: acc || "No response" }]); load();
     } catch { setChatHistory([...newHistory, { role: "assistant", content: "Error — try again" }]); }
