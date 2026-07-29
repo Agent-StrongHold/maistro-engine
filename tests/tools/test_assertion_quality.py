@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import sys
+from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_assertion_quality.py"
