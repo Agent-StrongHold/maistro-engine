@@ -20,12 +20,17 @@ def _clear_workspaces():
 
 
 def test_create_workspace_persists_and_returns_it(admin_client) -> None:
+    # A persona id with no real template on disk -- this test is about basic
+    # create/persist behavior, deliberately independent of whether any
+    # specific persona (e.g. the real pm_fleet.yaml, Phase H) happens to be
+    # seeded, so the checklist-defaults-empty-when-unresolvable path stays
+    # exercised regardless.
     r = admin_client.post(
-        "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        "/v1/workspaces", json={"persona_template_id": "no_such_persona", "name": "PM Fleet"}
     )
     assert r.status_code == 201
     body = r.json()
-    assert body["persona_template_id"] == "pm_fleet"
+    assert body["persona_template_id"] == "no_such_persona"
     assert body["name"] == "PM Fleet"
     assert body["active"] is True
     assert body["checklist"] == []
@@ -165,6 +170,29 @@ class TestCreateWorkspaceChecklist:
         )
         assert r.status_code == 201
         assert r.json()["checklist"] == ["intake.tool.create_epic"]
+
+
+class TestRealPmFleetTemplate:
+    """Phase H: the real personas/templates/pm_fleet.yaml, resolved end-to-end
+    through the actual (unmocked) load_templates(), not the minimal fixture
+    other tests in this file monkeypatch in."""
+
+    def test_checklist_endpoint_no_longer_404s_for_pm_fleet(self, admin_client) -> None:
+        r = admin_client.get("/v1/workspaces/persona-templates/pm_fleet/checklist")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["persona_template_id"] == "pm_fleet"
+        assert len(body["items"]) > 0
+        assert body["default_accepted"] == [i["id"] for i in body["items"]]
+
+    def test_create_workspace_defaults_checklist_from_the_real_persona(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        )
+        assert r.status_code == 201
+        checklist = r.json()["checklist"]
+        assert "intake.skill.create_initiative" in checklist
+        assert "delivery.skill.poll_jira" in checklist
 
 
 class TestWorkspaceTheme:
