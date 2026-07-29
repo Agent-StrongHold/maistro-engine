@@ -3,7 +3,7 @@ id: SPEC-070226-b624
 title: "General task planner & orchestration: SuperPlanner waves as Repertoire ensemble"
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: In Progress
 created: 2026-07-02
 substrate:
   - maistro-engine#ADR-038
@@ -29,6 +29,11 @@ tests:
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-07-02
+  - status: In Progress
+    date: 2026-07-29
 ---
 
 # SPEC-070226-b624: General task planner & orchestration — SuperPlanner waves as Repertoire ensemble
@@ -256,6 +261,17 @@ emit("wave.started", wave_id=wave.id)
 emit("wave.completed", wave_id=wave.id, quality_score=result.quality_score)
 emit("waves.compared", task_id=task.id, winner=best_result.wave_id)
 ```
+
+## Implementation status (corrected 2026-07-29)
+
+Front matter was corrected from `Implemented` to `In Progress` (D2/#290):
+`LLMJudgeComparator.compare` (`packages/maistro-core/src/maistro/orchestrator/waves/ensemble.py`)
+unconditionally raises `NotImplementedError("LLMJudgeComparator is a Phase 2 stub
+(SPEC-070226-b624)")` — deliberately, per its own docstring. It is exported from
+the package's public surface but is not instantiated anywhere in production; the
+comparator that ships is the deterministic `QualityComparator` in the same file.
+No acceptance criterion below is checked off; none has been verified against
+running code.
 
 ## Acceptance criteria
 

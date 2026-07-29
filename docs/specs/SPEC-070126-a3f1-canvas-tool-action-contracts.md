@@ -3,7 +3,7 @@ id: SPEC-070126-a3f1
 title: "Canvas tool action contracts, upload correctness, and reference persistence ownership"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Superseded
 created: 2026-06-21
 substrate:
   - maistro-engine#SPEC-205
@@ -11,6 +11,8 @@ related:
   - maistro-engine#SPEC-229
 implements: []
 supersedes: []
+superseded-by:
+  - maistro-engine#SPEC-062126-757a
 blocks: []
 blocked-by: []
 contracts:
@@ -19,9 +21,20 @@ tests: []
 layer: Tools
 owners:
   - '@BlakeMatthews-dev'
+history:
+  - status: Proposed
+    date: 2026-06-21
+  - status: Superseded
+    date: 2026-07-29
 ---
 
 # SPEC-259: Canvas Tool Action Contracts
+
+> **Superseded by [SPEC-062126-757a](SPEC-062126-757a-canvas-tool-action-contracts.md).**
+> This file is a stale duplicate: the date-based-ID rename (ADR-062026-9b30)
+> renamed the original `SPEC-259` to `SPEC-062126-757a`, and a later, unrelated
+> commit accidentally reintroduced the pre-rename content verbatim under this
+> ID. Content is otherwise identical — see the canonical file for the live spec.
 
 ## Finding addressed
 
