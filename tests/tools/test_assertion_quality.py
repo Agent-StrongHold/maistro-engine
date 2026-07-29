@@ -32,6 +32,16 @@ def test_flags_literal_constant_assertion(tmp_path: Path) -> None:
     }
 
 
+def test_actionable_mode_excludes_intent_dependent_review_signals(tmp_path: Path) -> None:
+    module = _load_module()
+    path = tmp_path / "test_example.py"
+    path.write_text("def test_x():\n    do_work()\n", encoding="utf-8")
+
+    findings = module.findings_for_path(path, set())
+    assert {finding.code for finding in findings} == {"no_recognized_oracle"}
+    assert module.actionable_findings(findings) == []
+
+
 def test_accepts_bool_contract_and_mock_assertion(tmp_path: Path) -> None:
     assert (
         _findings(

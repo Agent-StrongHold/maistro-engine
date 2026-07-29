@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Classify per-test assertion-quality risks.
 
-This is intentionally a deterministic review queue, not a claim that syntax can
-prove behavioral coverage.  It catches mechanically identifiable test theater
-and emits stable reason codes for a reviewed baseline/rachet.
+The default report contains only high-confidence syntax defects. ``--review``
+adds lower-confidence heuristics for manual inspection. Syntax cannot certify
+behavioral coverage; the mutation ratchet supplies that evidence.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TEST_ROOTS = (ROOT / "tests", ROOT / "formal", *ROOT.glob("packages/*/tests"))
 DEFAULT_SOURCE_ROOTS = (ROOT / "packages", ROOT / "apps", ROOT / "hive-conductor", ROOT / "tools")
+ACTIONABLE_CODES = {"literal_constant_assert"}
 
 
 @dataclass(frozen=True)
@@ -236,14 +237,26 @@ def scan(test_roots: Iterable[Path] = DEFAULT_TEST_ROOTS) -> list[Finding]:
     return sorted(findings, key=lambda finding: (finding.path, finding.line, finding.code))
 
 
+def actionable_findings(findings: Iterable[Finding]) -> list[Finding]:
+    """Keep only syntax defects that do not depend on test-intent inference."""
+    return [finding for finding in findings if finding.code in ACTIONABLE_CODES]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "paths", nargs="*", type=Path, help="Test roots to scan (defaults to repository tests)."
     )
     parser.add_argument("--json", action="store_true", help="Emit findings as JSON.")
+    parser.add_argument(
+        "--review",
+        action="store_true",
+        help="Include lower-confidence no-oracle, weak-assertion, and alias signals.",
+    )
     args = parser.parse_args()
     findings = scan(args.paths or DEFAULT_TEST_ROOTS)
+    if not args.review:
+        findings = actionable_findings(findings)
     if args.json:
         print(
             json.dumps([asdict(finding) | {"key": finding.key} for finding in findings], indent=2)
@@ -251,7 +264,8 @@ def main() -> int:
     else:
         for finding in findings:
             print(f"{finding.key}")
-        print(f"assertion-quality findings: {len(findings)}")
+        report = "review signals" if args.review else "actionable findings"
+        print(f"assertion-quality {report}: {len(findings)}")
     return 0
 
 
