@@ -832,7 +832,9 @@ Containment aside, these are defects that stop the loop from doing what it says.
 
 The stated priority is **security → functionality → readability → maintainability**. For a self-improving system that ordering is not a style preference: the dimension weights *are* the reward function, so the ordering **is** the alignment target. Two things need saying before the menu, because both change what "security first" should mean mechanically.
 
-### 11.1 Priority is not weight — security must be a veto
+### 11.1 Priority is not weight — and security is both, split by severity
+
+*(Resolved in §11.6: **HIGH is a veto**, **MEDIUM is an allowed-but-penalised weighted cost**, **LOW is a much smaller one**. That split dissolves the tension this section describes — security gets an untradeable floor without making every minor finding a hard stop. The argument below is why the floor has to be a veto rather than a large weight.)*
 
 A high weight can be outvoted. If security carries 0.4 and everything else sums to 0.6, then a candidate that is slightly worse on security and much better on five other dimensions **wins** — and a ratcheting loop will find that trade and take it repeatedly. Weighting expresses *"this matters a lot"*; it cannot express *"this is not for sale."*
 
@@ -918,34 +920,92 @@ Every one is a one-line lie, and each costs the operator their model of the syst
 
 Mechanically, a partial check is cheap: flag any diff that adds a hardcoded success literal in a function whose name contains `check`/`verify`/`scan`/`stop`/`validate`, or that adds a docstring assertion (`"prevents"`, `"ensures"`, `"cannot"`, `"never"`, `"fails closed"`) without a corresponding assertion or test. It will not catch everything. It would have caught most of the list above.
 
-### 11.6 Where the ordering lives
+**Status in the decided model (§11.6): not a veto.** It is a heuristic, and heuristics that false-positive make poor vetoes — the check would fire on legitimate code and the operator would learn to override it, which is worse than not having it. Two better homes: fold it into the `fail_closed` weighted dimension (they are the same failure mode — a control that reports success it did not earn), and run the docstring-assertion half as a **non-blocking CI advisory** on every PR, human-reviewed. Worth building even at low authority, because every item on the list above cost the operator their model of the system, and for a self-improving loop *appearing* correct is a rewardable strategy.
 
-The ordering is itself a **Tier A operator parameter** (§9.6) and should be stored, inspectable, and versioned — not implied by constants scattered across `scorecard.py`. Something like:
+### 11.6 The decided model
+
+Settled with the operator. **Decided** marks their call; **proposed** marks my placement of a dimension they did not explicitly rank, which the §9.6 Phase-4 elicitation should set properly from real examples rather than in the abstract.
+
+#### Veto tier — lexicographic, no partial credit, no trade
+
+| # | Veto | Rule | Status |
+|---|---|---|---|
+| **V1** | Security | **No newly-introduced HIGH.** Baseline-delta, not absolute — a true ratchet, the count can only go down. | **decided** |
+| **V2** | Containment (sensitive paths only) | Any diff touching the protected-path denylist. Other capability growth (new sinks, deps, network destinations) is **weighted**, not vetoed. | **decided** |
+| **V3** | Scope discipline | `changed_files ⊆ {target, its test file}`. Mechanically exact, so cheap and unambiguous as a veto. | proposed |
+| **V4** | Reversibility | Writes outside the worktree, mutates persistent state, adds a migration, or creates a durable artifact. | proposed |
+
+**V1's HIGH is the union of all four sources** (decided — the tools' severity labels don't agree, so this has to be enumerated):
+
+1. `bandit` HIGH
+2. `semgrep` ERROR **and** any custom repo rule
+3. **Any** secret detected (`gitleaks` / `trivy`) — a committed credential vetoes regardless of scanner label
+4. **A newly-introduced dangerous sink, by AST diff** — new `eval`/`exec`, `shell=True`, `subprocess` without `env=`, new network destination. Not a scanner finding; a structural check. This is the one that would have caught several findings in this review, and it is the one no existing tool provides.
+
+**Baseline integrity is a requirement, not a preference.** Baseline-delta means there is now a baseline, and if the candidate can write it the veto edits itself — the same defect as `users.toml` signing itself with a key from inside `users.toml` (H-9). The baseline must be computed from the base ref by the supervisor and stored outside the candidate's write reach, exactly like the gate-config pinning in H-11.
+
+**Unmeasured → block, for vetoes** (decided). A veto scorer that times out, fails to parse, or finds its tool missing **rejects the candidate**. This makes §11.2's trap structurally unavailable in the tier where it matters most: the loop can never profit from breaking a security scanner, because breaking it is indistinguishable from failing it.
+
+**A vetoed candidate is held and flagged, with loud warnings naming the reason** (decided). Not silently discarded — it goes into the same queue as an RLPHD-uncertain candidate (§9.5), carrying the veto reason prominently rather than buried in a log line. Two reasons this is the right call: a wrongly-vetoed good change is recoverable rather than lost, and the flagged set is the only way to detect an over-aggressive veto. It also composes with the three-band design instead of bolting a second disposition path beside it.
+
+#### Weighted tier — ranked, and these genuinely trade
+
+Order as decided: functionality first, **fail-closed error handling second, above readability**, maintainability last.
 
 ```toml
-[quality.vetoes]           # order irrelevant; all must pass
-enabled = ["security", "containment", "scope", "reversibility", "no_false_assurance"]
+[quality.vetoes]                 # all must pass; unmeasured => block
+security_new_high  = true        # bandit HIGH | semgrep ERROR/custom | any secret | new AST sink
+containment_paths  = true        # protected-path denylist
+scope_discipline   = true
+reversibility      = true
 
-[quality.weights]         # must sum to 1.0; every entry must have a fail-closed scorer
-functionality      = 0.30
-fail_closed        = 0.20
-observability      = 0.12
-test_quality       = 0.12
-api_stability      = 0.08
-resource_safety    = 0.06
-readability        = 0.06
-maintainability    = 0.06
+[quality.weights]                # sum 1.0; unmeasured => score 0 for that dimension
+functionality      = 0.28        # decided: first
+fail_closed        = 0.18        # decided: second, above readability
+observability      = 0.10        # proposed
+test_quality       = 0.10        # proposed
+containment_soft   = 0.10        # proposed - new sinks/deps/network, non-sensitive paths
+resource_safety    = 0.06        # proposed
+api_stability      = 0.06        # proposed
+determinism        = 0.04        # proposed
+readability        = 0.05        # decided: third
+dependency_hygiene = 0.02        # proposed
+maintainability    = 0.01        # decided: last
+
+[quality.security_penalty]       # subtractive, saturating, capped (decided)
+medium_cap         = 0.25        # first MEDIUM costs most; the 20th adds ~nothing
+medium_k           = 2.0
+low_cap            = 0.04        # "a lot less"
+low_k              = 5.0
 
 [quality.enforcement]
-unmeasured_dimension = "block"   # never "pass" — see §11.2
-mandatory = ["functionality", "fail_closed", "test_quality"]
+unmeasured_veto     = "block"       # decided
+unmeasured_weighted = "worst_case"  # decided: score 0, keep running
+mandatory           = ["functionality", "fail_closed", "test_quality"]
 ```
 
-Two properties this buys: the operator's priority becomes a single reviewable artifact rather than an emergent property of scattered floats, and `unmeasured_dimension = "block"` makes §11.2's trap structurally unavailable rather than a thing to remember.
+**The MEDIUM/LOW penalty is subtractive, not a positive weight** — "punish mediums but allow" is a cost, not a dimension to score well on. Saturating and capped (decided):
 
-Those numbers are a starting proposal, not a recommendation — the weights are exactly the kind of thing §9.6's Phase-4 confusion-matrix elicitation should set, from real examples, rather than being picked in the abstract.
+```
+penalty = medium_cap * (1 − exp(−n_med / medium_k))
+        + low_cap    * (1 − exp(−n_low / low_k))
+composite = weighted_sum − penalty
+```
 
----
+Saturating matters for a specific reason: with an uncapped linear penalty, a legacy-dirty file makes every candidate in it score identically bad, which **removes the incentive to improve it at all**. Saturating keeps the first finding expensive and the marginal one cheap, so cleanup still pays.
+
+And the trap applies here too: `n_med` must never default to `0` on a scanner failure. Under `unmeasured_veto = "block"` a failed security scan rejects the candidate outright, so `n_med = 0` can only ever mean *"measured, and there were none."*
+
+#### What this changes about the current state
+
+Against this model, the shipped scorecard is inverted relative to the intent (§11.4): security is a single HIGH-only gate that vanishes on timeout, containment has no representation at all, and 0.85 of the reward sits on two forgeable spec signals. The model above makes security's floor a veto that *cannot* silently disappear, gives containment real weight in both tiers, and puts the operator's stated ordering in one reviewable artifact instead of leaving it implicit in constants scattered across `scorecard.py`.
+
+**On the denylist choice.** The operator chose to keep and expand the protected-path denylist rather than invert to an allowlist. The known weakness is that a denylist lags an adversary that reads it, and `check_enumerations.py` has already been patched reactively twice for exactly that. Two things make the choice hold, and both should land with it:
+
+1. **Extend `check_enumerations.py`'s authority lists to the gate substrate** — `candidate_fitness.py`, `local_loop.py`, `regression_judge.py`, `promotion_review.py`, `spec_tracker.py`, `merge.py`, `harvest.py`, `scout.py`, all of `maistro_evolve/`, `builders/`, `conftest.py`, `pyproject.toml`, `tools/`. That script is genuinely well built — it probes through the real matcher, detects dead patterns, and fails on stale baseline entries so the list cannot decay into an allowlist. Its weakness is scope, not construction.
+2. **Protect the script itself.** `scripts/` matches no pattern in `SENSITIVE_PATH_PATTERNS` today, so a candidate can edit the ratchet and the list it guards in one diff and leave CI green. The ratchet has to be inside the surface it protects.
+
+With those two, an expanded denylist plus a mechanically-enforced completeness ratchet is a defensible posture. Without them it is the same shape as the control that let K-3 survive: a list that looks rigorously maintained while nothing checks that it is reachable.
 
 ## 12. Limits of this review
 
