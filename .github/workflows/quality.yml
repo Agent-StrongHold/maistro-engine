@@ -116,6 +116,16 @@ jobs:
       - name: enumeration coverage (derived control lists — ratchet)
         run: uv run python scripts/check_enumerations.py
 
+      # The vendored IFEval grader and corpus are the *exam* the RSI loop is
+      # scored against, so they must stay byte-comparable to what Google
+      # published. This verifies the committed tree still matches its pinned
+      # content hashes and that no upstream import survived the documented
+      # rewrite — i.e. that nobody (human or loop) hand-edited the grader into
+      # something more forgiving while keeping the official name on it.
+      # Offline by design: it checks invariants, it does not re-fetch.
+      - name: vendored benchmark provenance (IFEval grader + corpus)
+        run: uv run python scripts/vendor_ifeval.py --check
+
       # Ratchet, not a 0-baseline: full backlog (77 ERROR blocks measured
       # 2026-06-29) is too large to clear in one PR (Phase 18 code-health
       # sweep). Hard-fails on REGRESSION (new violations beyond the

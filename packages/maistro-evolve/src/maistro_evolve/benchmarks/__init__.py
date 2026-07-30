@@ -3,6 +3,7 @@ from __future__ import annotations
 from .bfcl import run_bfcl
 from .gaia import run_gaia
 from .ifeval import run_ifeval
+from .ifeval_real import IFEvalUnavailableError, run_ifeval_real
 from .osworld import run_osworld
 from .ragas import run_ragas
 from .swebench import run_swebench
@@ -32,4 +33,22 @@ PROXY_BENCHMARKS = {
     "ragas": run_ragas,
 }
 
-__all__ = ["PROXY_BENCHMARKS", "run_osworld"]
+# Official dataset + official harness (SPEC-202's `real` tier). One entry, not
+# seven: a name only belongs here once its score is comparable to a published
+# one. IFEval qualified first because its grader is deterministic Python over
+# response text — no container, no reference solution, no judge model — so the
+# entire cost of making it real was 541 LLM calls. See ifeval_real.py.
+#
+# Registration is not the same as availability: the real IFEval adapter needs
+# the `ifeval` extra installed and its vendored corpus intact, and raises
+# IFEvalUnavailableError rather than downgrading if either is missing.
+REAL_BENCHMARKS = {
+    "ifeval": run_ifeval_real,
+}
+
+__all__ = [
+    "PROXY_BENCHMARKS",
+    "REAL_BENCHMARKS",
+    "IFEvalUnavailableError",
+    "run_osworld",
+]

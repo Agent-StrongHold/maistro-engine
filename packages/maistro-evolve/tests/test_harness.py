@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import pytest
@@ -74,11 +75,45 @@ def test_proxy_fidelity_registers_proxy_benchmarks() -> None:
     assert harness.fidelity == "proxy"
 
 
-def test_real_fidelity_raises_no_adapter_exists() -> None:
-    """SPEC-202: requesting 'real' with no adapter is a hard error, never a
-    silent downgrade to proxy."""
-    with pytest.raises(ValueError, match="real"):
-        EvalHarness(benchmark_fidelity="real")
+def test_real_fidelity_registers_only_real_adapters() -> None:
+    """A real harness must not backfill missing adapters from the proxy registry.
+
+    Mixing tiers behind one `fidelity` label is the dishonesty SPEC-202's
+    two-tier model exists to prevent: a caller that reads
+    `harness.fidelity == "real"` off a harness whose swebench score came from 8
+    handcrafted samples has been misled by the object it asked.
+    """
+    from maistro_evolve.benchmarks import PROXY_BENCHMARKS, REAL_BENCHMARKS
+
+    harness = EvalHarness(benchmark_fidelity="real")
+    assert harness.fidelity == "real"
+    assert set(harness._benchmarks) == set(REAL_BENCHMARKS)
+    # Strictly fewer benchmarks than proxy — the point, not an oversight.
+    assert set(harness._benchmarks) < set(PROXY_BENCHMARKS)
+
+
+def test_real_fidelity_refuses_a_benchmark_with_no_real_adapter() -> None:
+    """Skipping silently would make a short result list look like a clean run.
+
+    At proxy tier an unknown name is harmlessly skipped. At real tier the likely
+    cause is "no real adapter exists for this yet", and swallowing that lets
+    compute_fitness score a genome on fewer benchmarks than the caller asked for
+    without anyone noticing.
+    """
+    harness = EvalHarness(benchmark_fidelity="real")
+
+    async def llm_call(messages: object, **kwargs: object) -> str:
+        return "x"
+
+    with pytest.raises(ValueError, match="no real-fidelity adapter for benchmark 'swebench'"):
+        asyncio.run(harness.evaluate_genome(_genome(), ["swebench"], llm_call))
+
+
+def test_proxy_fidelity_still_skips_unknown_benchmarks() -> None:
+    """The stricter real-tier behaviour above must not leak into proxy."""
+    harness = EvalHarness()
+    results = asyncio.run(harness.evaluate_genome(_genome(), ["not_a_benchmark"], None))
+    assert results == []
 
 
 def test_no_stub_fidelity_option_exists() -> None:

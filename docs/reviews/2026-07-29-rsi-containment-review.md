@@ -1216,7 +1216,25 @@ Three pieces of steps 2–3 were small enough to do inline rather than schedule.
 | Measurement surface protection (step 2) | `SENSITIVE_PATH_PATTERNS` gained `maistro_evolve/benchmarks/`, `maistro_evolve/fitness.py`, `maistro_evolve/scorecard.py`, `maistro_rsi/candidate_fitness.py`, `maistro_rsi/harvest.py`, and `scripts/check_enumerations.py` (the ratchet, previously outside the surface it guards — §11.6's second mitigation). `SENSITIVE_ROOTS` / `SENSITIVE_FILES` in `check_enumerations.py` were extended to match, so the ratchet holds them. | Escalation-to-adversarial-review is the mechanism, and it is **still unwired on the shipped path** (K-3). Protection here means "flagged when the gate runs", not "blocked". |
 | `get_leaderboard` (§10.5 / §11.14 blocker) | Battle counts are now summed across the matched per-benchmark ratings instead of read from a phantom `"overall"` rating, and the read no longer mutates `_ratings` — the mutation was silently dragging `get_avg_elo` toward the 1200 default, i.e. corrupting the number that feeds `compute_fitness`'s elo component. Verified: `avg_elo` was moving 1216.0 → 1210.67 on a bare read. | `_record_cycle_battles` still passes `score_a=a.composite`, a candidate-influenced number (§10, F14). |
 
-None of these pay a bonus on their own; all three are on the blocking path to one.
+Then step 4 itself landed. **IFEval is real.**
+
+| Piece | What landed |
+|-------|-------------|
+| Corpus | The official 541-prompt corpus, vendored at `benchmarks/third_party/ifeval/data/input_data.jsonl` and pinned by sha256. 25 instruction types, matching the published counts. Not a reconstruction — the bytes from `google-research/instruction_following_eval`. |
+| Grader | Google Research's own verifier (`instructions.py`, `instructions_registry.py`, `instructions_util.py`, `evaluation_lib.py`), vendored unmodified apart from one documented import rewrite. Verified running over all 541 prompts / 834 instructions with zero errors. |
+| Provenance | `scripts/vendor_ifeval.py` reproduces the tree from pinned hashes; `--check` verifies the committed tree offline and runs in `quality.yml`. Confirmed it catches an appended prompt. The vendored tree is excluded from ruff/mypy so it stays byte-comparable — reformatting it would make it *our* grader wearing the official grader's name. |
+| Adapter | `run_ifeval_real` reports all four official metrics, `fidelity: "real"`, and an `errors` count. `score` is prompt-level strict. Grader discrimination pinned by test: a compliant response scores 1.0 and a non-compliant one 0.0 on lowercase-only prompts. |
+| Holdout (step 1, for this benchmark) | An **enforced** split, unlike terminalbench's reported-only one: 411 train / 130 holdout, a true partition, hashed by prompt key so all 25 instruction types appear on both sides. A positional split would have tested different *skills* on each side, making any gap measure the split rather than memorization. |
+| Honesty guard | `official_comparable` is True only for a full, unsampled, unsplit, error-free run. Sampling (the cost control — 541 calls is real money) and splitting both set it False, so a cheap run cannot be quoted against a leaderboard. |
+
+Two things I want to be explicit about rather than let a reader infer:
+
+1. **The checksum is verified on every load, not just in CI.** The corpus sits on the loop's own writable tree and `--check` only runs in CI, so without a load-time check a candidate could append easy prompts between CI runs and inflate its own score with no diff to review. There is also deliberately **no** `corpus_override=` argument — a public way to say "grade me against this list instead" would make the checksum decorative. Tests monkeypatch; production code offers no bypass.
+2. **The split does not defend against pretraining contamination, and nothing can.** IFEval is public and is in every base model's weights. It happens barely to matter here, and that is why IFEval was the right first choice: the task is mechanical constraint satisfaction — "use no commas", "write 300+ words" — so having memorized the prompt does not help you satisfy it. The grader counts commas in the response actually produced. Contamination inflates a knowledge benchmark; it does not move this one. The split defends against a different failure: the loop overfitting *this corpus* through the harness.
+
+Still open on the real-benchmark track: steps 5–9 (revive `_HARD_GATE_THRESHOLDS` per-benchmark, SWE-bench Lite, Terminal-Bench, BFCL AST subset, and the rename/drop cleanup), plus the supervisor-side scoring and `--network=none` pieces of steps 2–3. **A real harness is also not fitness-comparable to a proxy one** — it registers one benchmark, so `compute_fitness` sees one score instead of seven. That is recorded in the package guide; wiring the capability bonus must not compare across tiers.
+
+Of the items above, only the IFEval adapter is bonus-eligible, and only on a full clean run.
 
 ### 11.10 Custom rubric evals — pairwise A/B, and why absolute rubric scores are the wrong instrument
 

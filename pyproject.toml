@@ -106,6 +106,12 @@ line-length = 100
 exclude = [
     "packages/maistro-bootstrap/mutants",
     "packages/maistro-evolve/mutants",
+    # Vendored upstream benchmark graders, reproduced by scripts/vendor_*.py and
+    # pinned by content hash. Deliberately NOT reformatted: the whole value of a
+    # vendored grader is that it is byte-comparable to the published one, and
+    # `vendor_ifeval.py --check` enforces that. Reformatting would quietly make
+    # it our grader wearing the official grader's name.
+    "packages/*/src/*/benchmarks/third_party",
 ]
 src = [
     "packages/maistro-core/src",
@@ -187,6 +193,22 @@ ignore_missing_imports = true
 # install — drop it if bip-utils ever ships types.
 [[tool.mypy.overrides]]
 module = ["bip_utils"]
+ignore_missing_imports = true
+
+# Vendored upstream benchmark graders (see the ruff exclude above and each
+# subpackage's NOTICE). Untyped Google research code, kept byte-comparable to
+# upstream on purpose, so it is neither annotated nor annotatable by us.
+# `follow_imports = skip` keeps our own adapters strict while not demanding
+# types from code we must not edit.
+[[tool.mypy.overrides]]
+module = ["maistro_evolve.benchmarks.third_party.*"]
+ignore_errors = true
+follow_imports = "skip"
+
+# The vendored IFEval verifier's own third-party deps, behind the `ifeval`
+# extra. Absent unless that extra is installed, which is the normal case.
+[[tool.mypy.overrides]]
+module = ["nltk", "nltk.*", "langdetect", "langdetect.*", "immutabledict", "absl", "absl.*"]
 ignore_missing_imports = true
 
 [tool.uv.sources]
