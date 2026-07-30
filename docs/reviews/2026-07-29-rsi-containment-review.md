@@ -1337,6 +1337,42 @@ Six risks, ordered by consequence. Two are correctness bugs in the flow as descr
 
 **One structural suggestion: rank with Elo, not "better than the other two."** Over many generations, beating the last two is a weak and sample-noisy ordering — a lucky artifact wins once and gets kept. `EloTournament` already maintains ratings per `(genome, benchmark)`; keying it per `(DAG, rubric_version)` instead gives a stable ranking across the whole history, makes "is this DAG actually better" answerable over dozens of comparisons rather than two, and naturally handles the ties that step 3 will produce often. It also makes the rubric-version attribution from risk 1 load-bearing in a useful way: ratings under different rubric versions simply do not pool.
 
+### 11.15 Elo for the rubric loop — concrete spec
+
+Agreed as the ranking mechanism. `EloTournament` is closer to fit-for-purpose than expected: draws are native (`GenomeRating.draws`, and `win_rate` counts them as 0.5), `k_factor` is already a constructor argument, `total_battles` is tracked, and **`record_battle`'s `benchmark` parameter is a free-form string** — so it can carry the rubric version with no schema change.
+
+**Players are DAGs, not artifacts.** An artifact is a *sample* from a DAG; ranking artifacts would rank luck. Each pairwise comparison is a battle between the two DAGs that produced the artifacts.
+
+**Keying — the one-line change that makes versioning load-bearing.** Pass the rubric version through the existing `benchmark` field:
+
+```python
+tournament.record_battle(
+    benchmark=f"rubric:{rubric_id}@v{rubric_version}",   # ratings cannot pool across versions
+    genome_a_id=dag_a.id, genome_b_id=dag_b.id,
+    score_a=1.0, score_b=0.0,                            # verdict encoded; 0.5/0.5 for a tie
+)
+```
+
+That makes §11.14 risk 1's versioning do real work: when the hyperagent changes the rubric, ratings under the old version simply stop accumulating rather than being silently contaminated. No migration, no lost history.
+
+**Why Elo beats "better than the other two", concretely.** Transitivity. A new DAG battled only against the current champion gets a rating comparable to *every* historical DAG, so "is generation 40 better than generation 12" is answerable without ever having compared them. "Beats the last two" cannot answer that, and it lets a single lucky artifact promote a DAG permanently.
+
+Five additions, in order of value:
+
+**1 — Weight the update by evidence source.** A human verdict and a judge verdict are not equally informative, and `record_battle` currently applies one `k_factor` to both. Pass a per-battle `k`: human ≈ 32, judge ≈ 8–12. One parameter, and it stops a chatty judge from outvoting the person whose preferences are the actual target.
+
+**2 — Keep two rating tracks and watch them diverge.** Record the same battle under both `rubric:X@v2#human` and `rubric:X@v2#judge`. Then **judge-Elo vs human-Elo divergence is a continuous, free judge-calibration metric** — it delivers §11.10's safeguard 5 (inter-judge agreement) without spending extra comparisons, and it degrades gracefully: if the judge tracks the human, lean on the judge and spend less human time; if it drifts, the judge's K should fall or the rubric needs work. This is the strongest argument for Elo here after transitivity.
+
+**3 — Pin an anchor DAG.** With a closed population and no fixed reference, ratings drift and cross-generation comparison becomes meaningless — you can rank within a generation but cannot answer "did 100 cycles improve anything." Fix: designate the original baseline DAG as an anchor at 1500 and **exclude it from rating updates**. Every other rating then has absolute meaning over time. A few lines in `_update_ratings`.
+
+**4 — Treat low-`n` ratings as provisional.** `total_battles` already exists; below a threshold (≈5) a rating is not evidence and the DAG should not be promoted on it. This is the §9.5 problem one level up, and the cheap version costs nothing. If you want the uncertainty to *compose* with the RLPHD band rather than being a separate rule, **Glicko-2** is the natural upgrade — it carries a rating deviation, which is exactly the interval the band already reasons in, and it makes "this DAG might be good, we don't know yet" expressible rather than inferred from a count.
+
+**5 — The supervisor samples the task, not the loop.** A DAG that can choose which artifact task it is judged on will drift toward easy ones and inflate its rating without improving. Same inversion as the baseline exam in §11.7 — the loop supplies the DAG, never the task.
+
+**Two existing defects to fix first, both already in this review.** `get_leaderboard(benchmark=None)` looks up ratings under the literal `"overall"`, a key battles are never recorded under, so it reports fabricated zeros and pollutes `_ratings` with a spurious entry (§10.5) — that has to work before any leaderboard means anything. And `_record_cycle_battles` passes `score_a=a.composite`, a candidate-influenced number (§10, F14); for rubric battles the score must be the human's or judge's verdict, never the candidate's own composite.
+
+**What this replaces.** Step 6 of §11.14 becomes: record the battle, and keep the DAG if its rating rises *and* is no longer provisional — rather than "if the new artifact beats the other two." Slower to promote, dramatically harder to fool, and it produces the one thing "beats the last two" never can: a defensible answer to whether the loop is getting better at all.
+
 ---
 
 ## 12. Limits of this review
