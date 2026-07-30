@@ -348,18 +348,41 @@ outside prose about the real benchmarks; 955/955 tests pass across both packages
 **AC:** `scripts/bump_version.py 1.0.0` touches all version sites; consistency check green.
 **Blocks:** E2, E3, F1, G2.
 
-## E2 — Fix dependency bounds + uv workspace table (M, dep E1, F1)
+## E2 — Fix dependency bounds + uv workspace table (M, dep E1, F1) — 2 of 3 done, #295, PRs #331 + #334
 
 **Context:** inter-package deps (`maistro-core>=0.1.0` etc.) have never resolved from a real
 index; 8 of 11 packages have uncapped third-party upper bounds (core/canvas are the properly
 capped template); no `[tool.uv.workspace]` members table exists.
 
-- [ ] Inter-package bounds → `>=1.0.0,<2` (maintained by the E1 bump script).
-- [ ] Cap uncapped third-party deps in the 8 packages; regenerate `uv.lock`.
-- [ ] Add `[tool.uv.workspace]` members = `packages/*` (incl. hive-conductor once F1 lands).
+- [ ] **BLOCKED on E1, not startable.** Inter-package bounds → `>=1.0.0,<2` (maintained by the
+      E1 bump script). Every package is at `0.9.0` (root `VERSION`), so a `>=1.0.0` floor is
+      unsatisfiable today — `uv lock` would fail outright. This lands with the E1 version bump,
+      not before. (Same finding recorded on F1.)
+- [x] Third-party deps capped across all packages (#334), following core's convention
+      (semver → next major, `0.x` → `<1`, CalVer → year bound). **Caps were derived from what
+      `uv.lock` actually resolves, not from semver intuition — because two of them would
+      otherwise have broken the build:** `langfuse` resolves at 4.14.2 (a "next major" `<3` cap
+      makes the workspace unsatisfiable) and `fastmcp` at 3.2.4 (same trap). Now that F1's
+      members table makes every package resolve together, a too-tight cap anywhere breaks
+      everything.
+      Scope was wider than this plan stated: **`core`/`canvas` are the "properly capped
+      template" only for `[project].dependencies`** — their extras were entirely uncapped —
+      and **`maistro-evolve` was uncapped and missing from the item's file list**.
+      `hive-conductor/backend/requirements.txt` carries the same caps, since it remains the
+      Docker/CI install path.
+- [x] `[tool.uv.workspace]` members = `packages/*` — landed with F1 (#331), including
+      hive-conductor.
 
-**AC:** `uv lock` clean; in the E3 dry-run, `pip install maistro-rsi==1.0.0` from an index
-resolves `maistro-core`/`maistro-evolve`/`maistro-bootstrap` at `1.0.0`.
+**AC:** `uv lock` clean ✅ (198 packages; the lock diff is metadata-only — 79 changed lines, all
+`specifier =` fields, zero resolved versions moved). The second half of the AC — the E3 dry-run
+resolving `1.0.0` from an index — cannot be evaluated until E1 bumps versions and E3 exists.
+
+**Not capped, deliberately:** the root `maistro-workspace` meta-package. It is unpublished, not
+one of the "8 packages", and irrelevant to the index-install AC. Mechanical if wanted later.
+
+**Noted while capping, not changed:** `regex>=2024.5.15,<2027` is locked at `2026.5.9`, so that
+pre-existing cap starts blocking upgrades in ~5 months; `cryptography>=48.0.1,<49` is locked at
+exactly `48.0.1`, leaving only patch headroom.
 
 ## E3 — Create release.yml — tag-triggered build/publish pipeline (L, dep E1+E2)
 
