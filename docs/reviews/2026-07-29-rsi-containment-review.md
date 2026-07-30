@@ -828,7 +828,126 @@ Containment aside, these are defects that stop the loop from doing what it says.
 
 ---
 
-## 11. Limits of this review
+## 11. A quality model — what to rate code on, and in what order
+
+The stated priority is **security → functionality → readability → maintainability**. For a self-improving system that ordering is not a style preference: the dimension weights *are* the reward function, so the ordering **is** the alignment target. Two things need saying before the menu, because both change what "security first" should mean mechanically.
+
+### 11.1 Priority is not weight — security must be a veto
+
+A high weight can be outvoted. If security carries 0.4 and everything else sums to 0.6, then a candidate that is slightly worse on security and much better on five other dimensions **wins** — and a ratcheting loop will find that trade and take it repeatedly. Weighting expresses *"this matters a lot"*; it cannot express *"this is not for sale."*
+
+If security is genuinely #1 in the sense you mean, it belongs in a **lexicographic veto tier**, not at the top of a weighted sum:
+
+```
+if any veto fails      -> reject. No score computed, no trade considered.
+else                   -> rank surviving candidates by the weighted sum.
+```
+
+The good news is that this shape already exists — `Scorecard.accepted` is `gates_passed`, and `composite` only *ranks* among accepted candidates. So the architecture is right; the population of the veto tier is wrong (§11.4).
+
+The same argument applies to **containment** and **scope discipline** for this system specifically. "This change expands what the loop can reach" is not something to trade against test coverage.
+
+### 11.2 The trap: a weighted dimension that is unmeasured pays full marks
+
+This is the one that would bite immediately, and the codebase already demonstrates it. From §10.7: `_cost_efficiency` and `_latency_efficiency` return **1.0** when the value is `≤ 0`, and the live RSI path never sets either — so every genome collects 25 of a possible 65 points for dimensions nobody measured. Failing pays 28% of what a perfect score pays, and *not being measured* is what pays.
+
+Now apply that to your priority: add `security: 0.4` whose scorer returns 1.0 when bandit times out or its JSON fails to parse (which is exactly what `candidate_fitness.py:465-474` does today), and you have told the loop, in the most direct possible way, **to make the security scanner fail.** Under G-1 the gate does not even fail — it *ceases to exist*, and `accepted` is computed over whichever gates happened to show up.
+
+So the rule is unconditional:
+
+> **Every weighted dimension must fail closed when unmeasured, or it must be a veto. A dimension that scores 1.0 on "no data" is an instruction to destroy its own measurement.**
+
+Concretely: `unavailable ≠ passed`. Emit a failing result or an explicit `INDETERMINATE` that blocks promotion, and assert a mandatory-dimension census so a missing scorer is a hard error rather than a silently shorter sum.
+
+### 11.3 The menu
+
+Ordered as you specified, with the additions I'd argue for, and — more usefully — **what it would take to measure each one in this repo today.** A dimension you cannot measure is a dimension you cannot weight (§11.2), so measurability is the gating question, not desirability.
+
+**Veto tier — pass/fail, never traded, no partial credit**
+
+| # | Dimension | What it asks | Measurable here? |
+|---|---|---|---|
+| V1 | **Security** | No new HIGH/critical finding; no new dangerous sink; no secret introduced; no auth/authz weakened | **Yes, partly** — bandit + semgrep + gitleaks exist and run in CI. Needs: fail-closed on tool error (G-1), MEDIUM included not just HIGH, and an AST check for newly-introduced sinks (`eval`, `shell=True`, `subprocess` without `env=`) |
+| V2 | **Containment / blast radius** | Does this expand what the loop can *reach*? New network destination, new subprocess, wider env access, new persistent artifact, new dependency, touched sensitive path | **Yes, needs building** — `quarantine.matches_sensitive_pattern` already exists and is correct; add an AST diff for new sinks and a dependency-delta check. This is arguably co-#1 for an RSI harness: distinct from "security" in the CVE sense, it is *capability growth* |
+| V3 | **Scope discipline** | Did the diff stay inside its declared target? | **Yes, trivially** — G-2's `changed_files ⊆ {target, its test}` check |
+| V4 | **Reversibility** | Can this be cleanly undone? Does it write outside the worktree, mutate persistent state, add a migration, create a durable artifact? | **Yes, needs building** — path-based, plus a check for new writes to `report_dir`/state/DB. Load-bearing here given O-5 and P-5 |
+| V5 | **No false assurance** | Does the change *claim* something it does not do? | **Partly** — this is the hardest and highest-value one. See §11.5 |
+
+**Weighted tier — these genuinely trade against each other**
+
+| # | Dimension | Rationale for the position | Measurable here? |
+|---|---|---|---|
+| W1 | **Functionality / correctness** | Your #2. Tests, coverage-not-dropped, mutation score, red-green evidence | **Yes** — this is most of what the scorecard already does |
+| W2 | **Fail-closed error handling** | I would put this *second*, above readability, and it is not on your list. It is the single most recurring defect class in this entire review (§6.1: verdicts computed and discarded; gates that pass on error; `except` handlers that return success). For this codebase it predicts real harm better than any other measurable property | **Yes, needs building** — AST-detectable: new `except` that returns a success value, new default-allow branch, new bare `except`, verdict computed and not branched on |
+| W3 | **Observability** | Does the change stay auditable? New branches carry logging; no log line removed; no exception swallow widened | **Yes, needs building** — log-line delta on new branches, `except: pass` delta. Given O-6/O-7, high value here |
+| W4 | **Test quality** (distinct from W1) | Assertion strength, oracle quality, no coverage theater. #314 is already on this | **Partly** — `assertion_strength` and the mutation probe exist; #314 tracks making them per-test and reason-coded |
+| W5 | **API / contract stability** | Breaks a public symbol, a Protocol, or a serialized format — acute pre-1.0 | **Yes, needs building** — public-symbol diff plus Protocol conformance. Would have caught the `protocols/memory.py` drift in the general audit |
+| W6 | **Resource safety** | Unbounded loop, unbounded allocation, missing timeout, missing limit | **Yes, needs building** — AST patterns. Would have caught several findings in this review |
+| W7 | **Determinism / reproducibility** | Introduces randomness, wall-clock, or iteration-order dependence — matters when the gates themselves must be reproducible | **Yes, needs building** — AST scan for `random`/`time`/set iteration in scoring paths |
+| W8 | **Dependency hygiene** | New deps, unpinned bounds, license, transitive growth | **Yes** — `deptry`, `pip-audit`, `osv-scanner` already in the toolchain |
+| W9 | **Performance / efficiency** | Runtime, memory, token cost | **Partly, and currently a trap** — the scorers exist and return 1.0 unmeasured (§11.2). Measure or delete |
+| W10 | **Readability** | Your #3 | **Partly** — complexity/nesting via radon/xenon in the code-health skill; naming and clarity are not mechanically measurable and are honestly LLM-judge territory |
+| W11 | **Maintainability** | Your #4 | **Partly** — duplication (`pylint R0801`), god functions (`lizard`), dead code (`vulture`), docstring coverage (`interrogate`) — all already available |
+| W12 | **Documentation truthfulness** | Not "has docstrings" but "docstrings match behaviour" | **Weakly** — `doc_regression` measures docstring *shrinkage* only. Claim-vs-behaviour is LLM-judge work. But see §11.5 — this review found many false docstrings, and each one cost the operator their model of the system |
+
+### 11.4 What this says about the current state
+
+Reading the shipped scorecard against your stated priority produces an uncomfortable result:
+
+- **Security is your #1 priority and is currently the single most fragile signal in the system.** It is one gate (`no_bandit_high`), HIGH-severity only, which **vanishes** on a 120-second timeout or a missing module and **passes** on malformed JSON (G-1). There is no security *dimension* in the weighted sum at all.
+- **Containment (V2) has no representation in the scorecard whatsoever**, while the launcher points the loop at `quarantine.py` (E-1).
+- **The two largest weights are `spec_completion` (0.45) and `spec_proposed` (0.40)** — together 0.85 — and both are forgeable (G-3: `proposed_specs` never consults the baseline; `new_ac_coverage` credits a marker on a test that may never run). So 85% of the reward is currently claimable by a string literal and a whitespace edit, while your top priority is one timeout away from being unenforced.
+- Readability and maintainability — your #3 and #4 — are represented by `code_quality` and lint gates, i.e. **more robustly than security is.** The ordering is currently inverted relative to the intent.
+
+That inversion is not a small thing for a system that optimizes against these numbers.
+
+### 11.5 The dimension I would add that is not on anyone's list
+
+**V5 — no false assurance.** This review's most dangerous findings are not the broken things; they are the things that *report* being unbroken:
+
+- `stop_run` returns `"stopped"` without stopping (K-1)
+- the PR body asserts gates that never ran (G-1)
+- `rlphd_updated: True` is a hardcoded literal (R-2)
+- `quota_burn`'s docstring claims a budget cap that does not exist (K-1a)
+- `container_sandbox` claims ADR-093 compliance while passing none of the flags (§1)
+- `SECURITY.md:37` names an enforcement layer with no implementation and no callers
+- `scan_server` returns hardcoded `{"status": "clean"}`
+- an emptied audit log refills itself with fabricated `gate_block` events (O-2)
+
+Every one is a one-line lie, and each costs the operator their model of the system — which is strictly worse than a visible failure, because it removes the signal that something needs attention. For a self-improving system it is worse still: a loop rewarded for *appearing* correct will learn to appear correct.
+
+Mechanically, a partial check is cheap: flag any diff that adds a hardcoded success literal in a function whose name contains `check`/`verify`/`scan`/`stop`/`validate`, or that adds a docstring assertion (`"prevents"`, `"ensures"`, `"cannot"`, `"never"`, `"fails closed"`) without a corresponding assertion or test. It will not catch everything. It would have caught most of the list above.
+
+### 11.6 Where the ordering lives
+
+The ordering is itself a **Tier A operator parameter** (§9.6) and should be stored, inspectable, and versioned — not implied by constants scattered across `scorecard.py`. Something like:
+
+```toml
+[quality.vetoes]           # order irrelevant; all must pass
+enabled = ["security", "containment", "scope", "reversibility", "no_false_assurance"]
+
+[quality.weights]         # must sum to 1.0; every entry must have a fail-closed scorer
+functionality      = 0.30
+fail_closed        = 0.20
+observability      = 0.12
+test_quality       = 0.12
+api_stability      = 0.08
+resource_safety    = 0.06
+readability        = 0.06
+maintainability    = 0.06
+
+[quality.enforcement]
+unmeasured_dimension = "block"   # never "pass" — see §11.2
+mandatory = ["functionality", "fail_closed", "test_quality"]
+```
+
+Two properties this buys: the operator's priority becomes a single reviewable artifact rather than an emergent property of scattered floats, and `unmeasured_dimension = "block"` makes §11.2's trap structurally unavailable rather than a thing to remember.
+
+Those numbers are a starting proposal, not a recommendation — the weights are exactly the kind of thing §9.6's Phase-4 confusion-matrix elicitation should set, from real examples, rather than being picked in the abstract.
+
+---
+
+## 12. Limits of this review
 
 - Seven agents; every Critical was re-verified by hand or by execution. K-6's sub-findings were **executed** against real pytest/ruff/coverage; K-3, K-3a, and the `_seed_audit_log`/`stop_run`/`git_push`/`release-installer`/`litellm_config` findings were read directly at the cited lines.
 - **Agents initially disagreed about "the default path."** That disagreement was real and is resolved in §1: three entry points, three different containment postures. Statements about "no containment" apply to the direct-CLI and conductor paths, **not** to `run_rsi_isolated.sh`.
