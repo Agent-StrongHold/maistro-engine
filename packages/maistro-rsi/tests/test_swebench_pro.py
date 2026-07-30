@@ -52,6 +52,19 @@ class TestRunSwebenchPro:
 
         assert result.benchmark == "swebench_pro"
         assert result.samples_evaluated == len(SWEBENCH_PRO_SAMPLES)
+        assert result.metadata["stub"] is False
+
+    @pytest.mark.asyncio
+    async def test_no_llm_call_falls_back_to_a_flagged_stub_score(self):
+        """A candidate-independent random score (no model available) must carry
+        metadata["stub"] = True — maistro_evolve's reflect.py/hyper_mutator.py
+        both refuse to verify against a stub-flagged result ("a stub score is
+        noise"), so an unflagged fabricated score here would silently be
+        treated as real signal by anything sharing this EvalHarness."""
+        result = await run_swebench_pro(FakeGenome(), None)
+
+        assert result.metadata["stub"] is True
+        assert result.metadata["fidelity"] == "proxy"
 
 
 class TestScoreMultiFileFix:
