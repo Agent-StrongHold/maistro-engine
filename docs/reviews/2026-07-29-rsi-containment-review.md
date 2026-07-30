@@ -1249,6 +1249,61 @@ Ranked for *this* product rather than for a generic model. I am naming benchmark
 
 Item 5 deserves a note for being backwards from the rest: building it *reduces* total reward, because it replaces 15 unearned points with a measured score. That is a feature. Every dimension in §11.6 that pays without measuring is a small standing instruction to keep it unmeasured.
 
+### 11.12 Correction — item 6 is DAG hill climbing, and it has no signal at all
+
+**Operator correction:** item 6 is not RSI multi-agent coordination; it is an **evolve** feature — hill climbing on DAG topology. That makes the gap considerably worse than "no benchmark for it", and it is the most consequential finding in this section.
+
+**Verified:** `maistro-evolve/src` contains **zero** references to `run_graph`, `GraphRun`, `execute_dag`, or `maistro.graph`. No eval path executes a genome's DAG as a graph. `EvalHarness.evaluate_genome` (`harness.py:58-72`) dispatches to a per-benchmark runner, and every runner reaches for exactly two helpers:
+
+```python
+# benchmarks/prompt_builder.py:8-13
+def build_system_prompt(genome, role=None):
+    if genome.topology.nodes:
+        for node in genome.topology.nodes:
+            if role is None or node.role == role:
+                return node.system_prompt          # ONE node
+        return genome.topology.nodes[0].system_prompt
+```
+
+`build_model_config` does the same for `model`/`temperature`/`max_tokens`, from that same single node. Then the runner makes **one** `llm_call`.
+
+So `topology.edges`, node count, `max_cycles`, and `beam_width` are **invisible to every benchmark score**. The consequences:
+
+- **`eval_score` carries 0.65 of fitness and cannot see topology at all.**
+- The only topology-sensitive term is `diversity_bonus` at **0.05**, and `trait_vector` (which includes `node_count`, `edge_count`, `max_cycles`, `beam_width`) feeds *diversity* — a reward for being **different**, not for being **better**.
+- Any apparent topology improvement is an artefact: adding or reordering nodes changes which node sorts first, changing the prompt and model actually used, which moves the score for reasons unrelated to graph structure.
+- `architecture_fit.py` is a genuine LLM head-to-head judge and slots into Elo — but it judges *code changes against the ADR corpus*, not DAG quality. It is not the missing signal.
+
+**Hill climbing on a blind objective is a random walk with a novelty prize.** This also explains the §10 finding that topology mutation can create self-loops and that nothing in evolve validates DAG-ness: an invalid graph costs nothing, because no graph is ever run.
+
+#### Three prerequisites, in dependency order
+
+1. **The graph substrate has to pass data between nodes first.** The general audit's L-1 found `strategy.update_blackboard()` is **never called** on the `graph/run.py` path, so `node_annotations` is `{}` even when every node succeeds. Until that is fixed, a multi-node DAG is functionally *N independent single calls* — and **no topology can outperform any other**, so no eval could produce a topology signal even if one existed. This is the root blocker and it is already a known bug.
+2. **An eval that actually executes the DAG.** The executor exists: `maistro.graph.run_graph`, and `graph/nodes/agent_synth_dag.py:231` already runs LLM-synthesised `GraphConfig`s. The bridge from `EvalHarness` to it is the missing wiring, not missing capability. Note this pulls the L-1 fan-in/duplicate-execution findings onto the eval path, so those want fixing alongside.
+3. **Tasks a multi-node DAG can genuinely beat a single node on.** This is the actual missing benchmark, and it is not any of the seven. Single-turn instruction following, function-call matching and one-shot patch repair are all tasks where one good call is optimal — a plan→execute→review DAG cannot beat a single node at IFEval, so hill climbing would correctly conclude that one node is best. What discriminates topology is work requiring **decomposition, verification, or retry**: multi-step tasks with checkable intermediate state, tasks where a reviewer node catches an error the author node made, tasks long enough that a single context degrades.
+
+Only after all three does DAG hill climbing have anything to climb. And the ordering matters: building (3) before (1) produces a benchmark on which every topology scores identically, which would read as "topology doesn't matter" rather than "the substrate is unwired."
+
+### 11.13 What item 7 means — trajectory quality, not final-answer correctness
+
+SWE-bench asks one question: **does the final patch pass the tests?** One shot, one patch, binary. It says nothing about *how* the agent got there.
+
+For a product that runs multi-cycle loops with agents making many tool calls, the trajectory is most of what matters:
+
+| Property | Question | Why it matters here |
+|---|---|---|
+| **Steps to solution** | 4 tool calls or 40? | Directly the token cost the fitness function is supposed to price (§11.11 item 5) |
+| **Recovery from failure** | After a test fails, does it diagnose or thrash? | The RSI loop's whole premise is iterating after a failure |
+| **Long-horizon degradation** | Does quality fall off after N turns? | `agent_turns` defaults to **6**, and #256 was literally *"the max-turns sentinel made every model quit mid-work"* — long-horizon behaviour is a known pain point here with no measurement |
+| **Loop detection** | Does it get stuck repeating an action? | An unbounded RSI loop that thrashes silently burns the budget K-1a says is uncapped |
+| **Tool-call efficiency** | Right file first, or twelve wrong reads? | Distinguishes a competent agent from a lucky one at identical pass rates |
+
+Two agents can score identically on SWE-bench while one solves in 5 confident steps and the other stumbles through 40 with three recoveries. For selecting a *genome* — a prompt/model/topology configuration — that difference is the signal, and pass/fail discards it.
+
+**The cheap version needs no new benchmark.** You are already going to run real SWE-bench (§11.9 step 6). Instrument those runs: record steps, tool calls, failed-then-recovered transitions, and tokens-to-solution alongside the pass/fail. That converts a binary into a trajectory metric at near-zero marginal cost, and it is the same instrumentation that makes `cost_efficiency` real instead of the free 15 points. Public families worth looking at if you want a purpose-built suite — SWE-agent-style trajectory evals, multi-file/polyglot edit suites, long-horizon agentic benchmarks — but the in-house instrumentation gets most of the value first.
+
+**And it is the natural discriminator for §11.12.** Trajectory metrics are exactly where a multi-node DAG should show an advantage: a reviewer node that catches the author's error shows up as *fewer failed-then-recovered cycles*, not as a higher final pass rate. So item 7's instrumentation is also the most likely source of the topology signal item 6 needs — which is a good reason to build it before the bespoke DAG benchmark.
+
 ---
 
 ## 12. Limits of this review
