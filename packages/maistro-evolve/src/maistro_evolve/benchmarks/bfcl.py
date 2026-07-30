@@ -124,13 +124,19 @@ def _score_tool_call(
 
 
 async def run_bfcl(genome: PipelineGenome, llm_call: Any) -> EvalResult:
-    """Score function-calling by matching the parsed call against the expected one.
+    """Score function-calling — structural when a call parses, text-mention otherwise.
 
     Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
-    official BFCL corpus. But the check is structural — the response's
-    function name and parameters are extracted (``extract_json_from_response``)
-    and compared field-by-field against the expected call
-    (``function_call_match``), not scored by keyword overlap.
+    official BFCL corpus. The primary path is structural: the response's
+    function call is extracted (``extract_json_from_response``) and its name
+    and parameters compared field-by-field against the expected call
+    (``function_call_match``). But two real fallbacks are NOT structural: if
+    no call can be extracted at all, ``_score_tool_call`` still awards 0.25
+    for the expected function name merely appearing in prose; and within a
+    parsed call, ``_score_single_param`` awards 0.5 for a missing
+    parameter's value appearing anywhere in the raw response text. Because
+    the fitness hard-gate for this benchmark is 0.20, a response that never
+    produces a real function call can still clear it.
     """
     if llm_call is None:
         raise ValueError(

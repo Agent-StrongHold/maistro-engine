@@ -130,14 +130,17 @@ async def _simulate_turns(
 
 
 async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
-    """Score tool-use conversations by recall of the expected tool calls.
+    """Score tool-use conversations by name-mention, not verified invocation.
 
     Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
-    official tau-bench corpus. The check extracts which tools the response
-    actually invoked (``_extract_tool_calls_from_response`` plus a
-    name-mention scan) and computes recall against the sample's
-    ``expected_tool_calls`` — a structural match on *which* tools were
-    called, not a keyword-overlap score of response content.
+    official tau-bench corpus. ``_score_tool_usage`` is NOT a check of what
+    the response actually invoked: alongside real JSON/regex-extracted tool
+    calls, ``mentioned_tools`` treats ANY available tool's name appearing
+    anywhere in the response text as a "call" — including inside a negation
+    ("I cannot invoke refund_order" scores identically to actually invoking
+    it). The final score is ``recall * 0.7 + precision * 0.3`` over that
+    mention set, not recall alone, and both terms inherit the same
+    mention-detection weakness.
     """
     if llm_call is None:
         raise ValueError(
