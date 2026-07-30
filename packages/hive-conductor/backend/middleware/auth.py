@@ -285,6 +285,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # contains "/invoke" elsewhere (e.g. "/v1/agents/invoke-history").
         if path.endswith("/invoke"):
             return None
+        # Thumbs +/- feedback (POST /v1/dag-runs/{id}/feedback,
+        # POST /v1/workspaces/{id}/feedback) is a low-stakes reaction, not a
+        # mutating operation on the thing itself — any authenticated member
+        # can leave it, same posture as dag-runs' pre-existing unrestricted
+        # feedback route. The route itself still checks workspace membership.
+        if path.endswith("/feedback"):
+            return None
         for prefix, perm in method_perms.items():
             if path.startswith(prefix):
                 return perm

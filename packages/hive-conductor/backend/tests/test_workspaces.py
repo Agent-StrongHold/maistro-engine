@@ -19,6 +19,15 @@ def _clear_workspaces():
         stores.workspaces.pop(key, None)
 
 
+@pytest.fixture(autouse=True)
+def _clear_persona_feedback():
+    for key in list(stores.persona_feedback.keys()):
+        stores.persona_feedback.pop(key, None)
+    yield
+    for key in list(stores.persona_feedback.keys()):
+        stores.persona_feedback.pop(key, None)
+
+
 def test_create_workspace_persists_and_returns_it(admin_client) -> None:
     # A persona id with no real template on disk -- this test is about basic
     # create/persist behavior, deliberately independent of whether any
@@ -337,3 +346,71 @@ class TestWorkspaceMembers:
             "/v1/workspaces/does-not-exist/members", json={"user_id": "user", "role": "viewer"}
         )
         assert r.status_code == 404
+
+
+class TestPersonaFeedback:
+    """Phase I: thumbs +/- + comment feedback, aggregated per-persona."""
+
+    def _create(self, admin_client, persona_template_id: str = "pm_fleet") -> str:
+        r = admin_client.post(
+            "/v1/workspaces",
+            json={"persona_template_id": persona_template_id, "name": "PM Fleet"},
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    def test_submit_feedback_persists_against_the_workspaces_persona(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.post(
+            f"/v1/workspaces/{ws_id}/feedback",
+            json={"thumb": "up", "comment": "Nailed the summary"},
+        )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["persona_template_id"] == "pm_fleet"
+        assert body["workspace_id"] == ws_id
+        assert body["thumb"] == "up"
+        assert body["comment"] == "Nailed the summary"
+        assert body["user_id"] == "admin"
+
+    def test_feedback_on_unknown_workspace_404s(self, admin_client) -> None:
+        r = admin_client.post("/v1/workspaces/does-not-exist/feedback", json={"thumb": "down"})
+        assert r.status_code == 404
+
+    def test_feedback_requires_workspace_membership(self, admin_client, authed_client) -> None:
+        ws_id = self._create(admin_client)
+        r = authed_client.post(f"/v1/workspaces/{ws_id}/feedback", json={"thumb": "up"})
+        assert r.status_code == 404
+
+    def test_two_workspaces_of_the_same_persona_aggregate_into_one_summary(
+        self, admin_client
+    ) -> None:
+        ws_a = self._create(admin_client)
+        ws_b = self._create(admin_client)
+        admin_client.post(f"/v1/workspaces/{ws_a}/feedback", json={"thumb": "up"})
+        admin_client.post(f"/v1/workspaces/{ws_b}/feedback", json={"thumb": "up"})
+        admin_client.post(f"/v1/workspaces/{ws_b}/feedback", json={"thumb": "down"})
+
+        r = admin_client.get("/v1/workspaces/persona-templates/pm_fleet/feedback")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["persona_template_id"] == "pm_fleet"
+        assert body["thumbs_up"] == 2
+        assert body["thumbs_down"] == 1
+        assert {row["workspace_id"] for row in body["recent"]} == {ws_a, ws_b}
+
+    def test_feedback_for_a_persona_with_no_feedback_yet_is_zeroed(self, admin_client) -> None:
+        r = admin_client.get("/v1/workspaces/persona-templates/never_used/feedback")
+        assert r.status_code == 200
+        body = r.json()
+        assert body == {
+            "persona_template_id": "never_used",
+            "thumbs_up": 0,
+            "thumbs_down": 0,
+            "recent": [],
+        }
+
+    def test_invalid_thumb_value_422s(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.post(f"/v1/workspaces/{ws_id}/feedback", json={"thumb": "sideways"})
+        assert r.status_code == 422

@@ -4,8 +4,10 @@ Phase A: manual create/list/get. Phase C adds the persona-template checklist
 endpoint (accept/modify tools/skills derived from the chosen persona's own
 declared spawns). Phase D adds the theme catalog + per-workspace tone
 override. Phase G adds member management (invite/remove, owner/editor/viewer
-roles) -- the actual tab-bar/share-control UI wiring is still deferred, there
-being no tab bar yet to host it.
+roles). Phase I adds thumbs +/- + comment feedback, persisted per-persona so
+it aggregates across every workspace instantiating that persona -- the
+actual tab-bar/share-control UI wiring is still deferred, there being no
+tab bar yet to host it.
 """
 
 from __future__ import annotations
@@ -15,8 +17,10 @@ from uuid import uuid4
 
 import stores
 from fastapi import APIRouter, HTTPException, Request
+from models.persona_feedback import PersonaFeedback, Thumb
 from models.workspace import Workspace, WorkspaceMember, WorkspaceRole
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+from services.persona_feedback import PersonaFeedbackSummary, summarize
 from services.themes import THEME_CATALOG, ThemeOption, is_valid_theme_id
 
 from maistro.personas.checklist import CapabilityItem, capability_checklist, default_checklist_ids
@@ -72,6 +76,14 @@ def get_persona_checklist(persona_id: str) -> PersonaChecklistResponse:
 @router.get("/themes", response_model=list[ThemeOption])
 def list_themes() -> list[ThemeOption]:
     return THEME_CATALOG
+
+
+@router.get("/persona-templates/{persona_id}/feedback", response_model=PersonaFeedbackSummary)
+def get_persona_feedback(persona_id: str) -> PersonaFeedbackSummary:
+    """Aggregated thumbs +/- across every workspace instantiating this
+    persona -- not scoped to one workspace, since the whole point is that
+    feedback steers the persona itself, wherever it's adopted."""
+    return summarize(persona_id, list(stores.persona_feedback.values()))
 
 
 @router.get("", response_model=list[Workspace])
@@ -179,3 +191,41 @@ def remove_workspace_member(workspace_id: str, user_id: str, request: Request) -
     workspace = workspace.model_copy(update={"members": remaining, "updated_at": _now()})
     stores.workspaces[workspace_id] = workspace
     return workspace
+
+
+class WorkspaceFeedbackBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    thumb: Thumb
+    comment: str = Field(default="", max_length=2000)
+    # Optional pointers back to a specific DAG run, if this feedback is about
+    # one -- purely for traceability alongside services/feedback_service.py's
+    # separate, DAG-scoped signal. Neither is required.
+    dag_run_id: str = ""
+    node_id: str = ""
+
+
+@router.post("/{workspace_id}/feedback", response_model=PersonaFeedback, status_code=201)
+def submit_workspace_feedback(
+    workspace_id: str, body: WorkspaceFeedbackBody, request: Request
+) -> PersonaFeedback:
+    """Any member (including a viewer) may give feedback -- it's persisted
+    against the workspace's persona, not the workspace itself, so it
+    aggregates across every workspace instantiating that persona."""
+    workspace = stores.workspaces.get(workspace_id)
+    user_id = _user_id(request)
+    if workspace is None or not _visible_to(user_id, workspace):
+        raise HTTPException(status_code=404, detail="workspace not found")
+    feedback = PersonaFeedback(
+        id=str(uuid4()),
+        persona_template_id=workspace.persona_template_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
+        thumb=body.thumb,
+        comment=body.comment,
+        dag_run_id=body.dag_run_id,
+        node_id=body.node_id,
+        created_at=_now(),
+    )
+    stores.persona_feedback[feedback.id] = feedback
+    return feedback
