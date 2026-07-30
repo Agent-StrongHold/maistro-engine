@@ -1142,6 +1142,70 @@ Ordered by whether it blocks payment:
 
 Until (1) and (2) land, the honest capability bonus is **zero on all seven** — and that is not a reason to delay the rest of the model. The vetoes, the saturating security penalty, and the weighted tier all work today and are what stop the loop doing harm. The bonus is what makes it worth running, and it should switch on the moment its measurement can be trusted, one benchmark at a time as each earns a holdout.
 
+### 11.9 Making the benchmarks real — feasibility, and the two leaks that must close first
+
+The operator's target is real benchmarks with real holdouts. Under §11.7's fidelity ladder that is also what unlocks `real_max` rather than the capped `proxy_max`, so it is the highest-value engineering work in the reward model. Two pieces of good news and two hard problems.
+
+**Good news 1: the container infrastructure already exists.** `deploy/sbx/template/Dockerfile` builds on `docker/sandbox-templates:shell-docker` — *"WITH a private Docker daemon inside the microVM"* — and nested-container images are **preseeded at template build time**. Real SWE-bench and real Terminal-Bench both need one container per task instance, and that capability is present in the sbx path today. It is not present in the `--isolation local` or conductor paths (§1), which is one more reason those should not be the default.
+
+**Good news 2: no registry egress is a feature here.** Because images are preseeded and the allowlist omits registries, official datasets have to be **vendored at build time** rather than fetched at runtime. That is exactly what you want for reproducibility *and* for holdout integrity — a benchmark that downloads its corpus at scoring time is a benchmark whose corpus can change under you.
+
+#### Leak 1 — GitHub egress hands the loop the answers
+
+`deploy/sbx/kit/spec.yaml:26-29` allows `github.com`, `api.github.com`, **`codeload.github.com`**, and **`objects.githubusercontent.com`**.
+
+SWE-bench task instances are derived from real merged PRs, and **the gold patch is a commit in the upstream repository's history.** Terminal-Bench tasks live in a public repo with solutions. So with that allowlist, the cheapest way to raise a SWE-bench score is not to fix the bug — it is to fetch the fix. This is not a hypothetical gaming strategy; it is the obvious one, and it is currently permitted.
+
+**Fix:** benchmark scoring runs in a nested container with `--network=none`. The infrastructure supports this — `tools/sandbox/docker.py` already defaults `network_disabled=True` and passes `--network=none`. The benchmark corpus and any repo checkouts are materialised *before* scoring, by the supervisor, from preseeded content. The scored process gets no egress at all.
+
+#### Leak 2 — public answers are already in the base model's weights
+
+This one cannot be fixed by network policy. Every public benchmark with published answers is plausibly in the training data of any frontier model the loop routes to. So even a *perfectly executed* official SWE-bench or IFEval score is contaminated as a measure of capability — it partly measures recall.
+
+That produces the design conclusion, and it is the important one:
+
+> **The official split is for comparability. A private, locally-authored, never-published holdout is what pays the bonus.**
+
+Two different jobs, two different corpora:
+
+| corpus | purpose | published? | pays bonus? |
+|---|---|---|---|
+| **Official split** (IFEval 541, SWE-bench Verified 500 / Lite 300, Terminal-Bench ~100) | "where do we stand versus the world" — comparability, reporting, and the `real` fidelity claim | yes, by definition | **no** — contaminated |
+| **Private holdout** (locally authored, ideally post-cutoff, stored encrypted or outside the repo) | the only uncontaminated capability signal | **never** | **yes** |
+
+Add a canary string to the private set. If a model ever reproduces it, that set is burned and must be regenerated — that is the standard contamination tripwire and it costs nothing to include.
+
+#### Per-benchmark feasibility
+
+| benchmark | real target | verdict | what it needs |
+|---|---|---|---|
+| **IFEval** | `google/IFEval`, 541 prompts | **Genuinely real, achievable now** | Vendor the dataset **and the official verifier** — verification is deterministic Python (word counts, JSON-ness, forbidden tokens) requiring **no model and no container**. Highest ROI in the set by a wide margin |
+| **SWE-bench** | Verified (500) or Lite (300) | **Real, achievable via sbx** | One preseeded image per repo, checkout at commit, run the repo's own test suite, `--network=none`. Highest weight and highest fidelity → biggest bonus unlock. Start with Lite |
+| **Terminal-Bench** | ~100 tasks | **Real, achievable via sbx** | Docker per task + the tmux harness. Replaces today's 6-task JSON-action proxy — a ~16× corpus increase |
+| **BFCL** | Gorilla AST-match categories | **Real for the deterministic subset** | Vendor dataset + AST matcher. Exclude or separately label the *executable* categories, which need live API calls |
+| **τ-bench** | retail + airline, pass^k | **Real but noisy and expensive** | Needs an LLM user simulator, so it is non-deterministic and token-costly. Under §11.8's sub-tiers the simulator puts it in **judged**, not **executed** — so it earns least per point. Worth doing last, or not at all |
+| **GAIA** | validation split (165 public answers) | **Poor fit — recommend dropping** | Most tasks require real web browsing and file handling. In a network-denied scoring container the majority are unanswerable, and enabling browsing to score it reopens Leak 1. Honest answer: this harness's constraints and GAIA's requirements are incompatible |
+| **RAGAS** | — | **Reframe, do not chase** | RAGAS is a **metrics library** (faithfulness, answer relevancy, context precision), not a leaderboard benchmark. There is no "real RAGAS score" to reach. Rename it to what it is — a RAG-quality metric suite over a local corpus — and stop counting it as a benchmark. This is a [#291] naming fix, not engineering |
+| **OSWorld** | 369 VM/GUI tasks | **Out of scope, keep unimplemented** | Needs real VMs plus GUI automation and an accessibility tree. `NotImplementedError` is the correct and honest state. Delete its `eval_weight` (0.05) and hard-gate floor (§11.8) |
+
+So of the eight: **three become genuinely real** (IFEval, SWE-bench, Terminal-Bench), **one becomes real for a well-defined subset** (BFCL), **one is real-but-noisy and low-value** (τ-bench), **one should be dropped** (GAIA), **one should be renamed rather than built** (RAGAS), **one stays unimplemented** (OSWorld).
+
+That is a considerably more honest portfolio than seven names implying seven leaderboard scores — and it collapses the measurement surface from 95 handcrafted samples to roughly **900+ official instances plus a private holdout**, which is what makes a large bonus defensible in the first place.
+
+#### Staged plan, ordered by bonus unlocked per unit of work
+
+1. **Private holdouts for every benchmark that will pay a bonus**, plus the canary. Cheap, needs no infra, and it **gates all bonus payment** (§11.8) — so nothing else pays until this exists. Do it first even though it is the least exciting.
+2. **Veto-protect `maistro_evolve/benchmarks/**` and move scoring to the supervisor** using the baseline's exam (§11.7 conditions 1–2). Also cheap, also blocking.
+3. **Network-deny the scoring container** (`--network=none`), closing Leak 1. One flag; the code already defaults to it elsewhere.
+4. **IFEval → real.** No container, no model, deterministic verifier, 541 prompts. This is the first benchmark that can legitimately claim `real` fidelity and therefore the first that can pay `real_max`.
+5. **Revive `_HARD_GATE_THRESHOLDS`** by scoring per-benchmark instead of folding to `code_rsi` (§11.8) — the no-regression floor is already written and inert.
+6. **SWE-bench Lite → real.** Highest weight × highest fidelity, so the largest single bonus unlock. Needs preseeded images; start at 300 instances, not 2,294.
+7. **Terminal-Bench → real.** ~16× the current corpus, and it retires the 6-task proxy the operator originally asked to bonus on.
+8. **BFCL AST subset → real.** Straightforward once the vendoring pattern from step 4 exists.
+9. **Cleanup:** rename RAGAS, drop GAIA, delete OSWorld's weight and floor, and decide τ-bench on cost.
+
+Steps 1–3 are prerequisites and unlock nothing on their own — which is precisely why they are easy to skip and must not be. Step 4 is the first point at which a real bonus can honestly be paid, and it is reachable without touching container infrastructure at all.
+
 ---
 
 ## 12. Limits of this review
