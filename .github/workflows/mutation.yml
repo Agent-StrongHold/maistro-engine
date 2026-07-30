@@ -359,7 +359,7 @@ jobs:
       - name: Baseline each unmutated test command
         run: |
           set -euo pipefail
-          while IFS=$'\t' read -r src tests; do
+          while IFS=$'\t' read -r _ tests; do
             env PYTHONPATH="$(find packages -type d -name src -printf '%p:')" uv run pytest "$tests" --timeout=20 -q -x
           done < mutation-targets.tsv
 
