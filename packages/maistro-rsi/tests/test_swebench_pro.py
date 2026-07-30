@@ -50,7 +50,7 @@ class TestRunSwebenchPro:
 
         result = await run_swebench_pro(FakeGenome(), llm_call)
 
-        assert result.benchmark == "swebench_pro"
+        assert result.benchmark == "proxy_swebench_pro"
         assert result.samples_evaluated == len(SWEBENCH_PRO_SAMPLES)
         assert result.metadata["stub"] is False
 

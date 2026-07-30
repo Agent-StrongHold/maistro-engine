@@ -69,15 +69,15 @@ _FAILURE_METADATA = {
 
 
 def _keyed_harness() -> EvalHarness:
-    """Harness whose ifeval score depends on the entry prompt content."""
+    """Harness whose proxy_ifeval score depends on the entry prompt content."""
     harness = EvalHarness()
 
     async def runner(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         prompt = genome.topology.nodes[0].system_prompt
         score = 0.9 if "improved" in prompt else 0.4
-        return EvalResult(benchmark="ifeval", score=score, metadata=dict(_FAILURE_METADATA))
+        return EvalResult(benchmark="proxy_ifeval", score=score, metadata=dict(_FAILURE_METADATA))
 
-    harness.register_benchmark("ifeval", runner)
+    harness.register_benchmark("proxy_ifeval", runner)
     return harness
 
 
@@ -104,7 +104,7 @@ class TestReflectHelpers:
         g = _genome(prompt="be helpful")
         node = g.topology.nodes[0]
         feedback = summarize_failures(_FAILURE_METADATA)
-        prompt = build_reflection_prompt(g, node, "ifeval", 0.4, feedback, "Be concise.")
+        prompt = build_reflection_prompt(g, node, "proxy_ifeval", 0.4, feedback, "Be concise.")
         assert "be helpful" in prompt  # current prompt included
         assert "instruction following" in prompt  # benchmark summary grounding
         assert "queen/react" in prompt  # topology grounding
@@ -113,7 +113,7 @@ class TestReflectHelpers:
 
     def test_spawn_challenger_lineage_and_reset(self):
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         g.fitness_score = 50.0
         child = spawn_challenger(g, "q1", "improved prompt")
         assert child.id != g.id
@@ -132,16 +132,16 @@ class TestReflectiveImprove:
     @pytest.mark.asyncio
     async def test_accepts_verified_better_candidate(self):
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4, "bfcl": 0.8}
+        g.eval_scores = {"proxy_ifeval": 0.4, "proxy_bfcl": 0.8}
         outcome = await reflective_improve(
-            g, _keyed_harness(), _llm_improved, benchmarks=["ifeval", "bfcl"]
+            g, _keyed_harness(), _llm_improved, benchmarks=["proxy_ifeval", "proxy_bfcl"]
         )
         assert outcome is not None
-        assert outcome.benchmark == "ifeval"  # weakest selected
+        assert outcome.benchmark == "proxy_ifeval"  # weakest selected
         assert outcome.accepted is True
         assert outcome.challenger is not None
         assert outcome.challenger.parent_a_id == g.id
-        assert outcome.challenger.eval_scores["ifeval"] == 0.9
+        assert outcome.challenger.eval_scores["proxy_ifeval"] == 0.9
         assert outcome.best_candidate_score == 0.9
         # parent prompt never mutated in place
         assert g.topology.nodes[0].system_prompt == "test"
@@ -149,7 +149,7 @@ class TestReflectiveImprove:
     @pytest.mark.asyncio
     async def test_rejects_candidate_that_does_not_beat_baseline(self):
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         outcome = await reflective_improve(g, _keyed_harness(), _llm_worse)
         assert outcome is not None
         assert outcome.accepted is False
@@ -164,14 +164,14 @@ class TestReflectiveImprove:
         # runner can still (legitimately) flag an individual result as noise
         # (e.g. a transient gateway failure). Verify that guard directly.
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         harness = EvalHarness()
         harness._benchmarks.clear()
 
         async def stub_runner(genome: PipelineGenome, llm_call: Any) -> EvalResult:
-            return EvalResult(benchmark="ifeval", score=0.9, metadata={"stub": True})
+            return EvalResult(benchmark="proxy_ifeval", score=0.9, metadata={"stub": True})
 
-        harness.register_benchmark("ifeval", stub_runner)
+        harness.register_benchmark("proxy_ifeval", stub_runner)
 
         outcome = await reflective_improve(g, harness, _llm_improved)
         assert outcome is not None
@@ -189,7 +189,7 @@ class TestReflectiveImprove:
     @pytest.mark.asyncio
     async def test_outcome_summary_excludes_challenger(self):
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         outcome = await reflective_improve(g, _keyed_harness(), _llm_improved)
         assert outcome is not None
         summary = outcome.summary()
@@ -225,16 +225,16 @@ class TestCycleIntegration:
         population = PopulationStore()
         top = _genome("top")
         # all benchmarks above hard gates so the genome can be self-improved;
-        # ifeval is the weakest among target benchmarks
+        # proxy_ifeval is the weakest among target benchmarks
         top.eval_scores = {
-            "ifeval": 0.4,
-            "bfcl": 0.6,
-            "swebench": 0.6,
-            "tau_bench": 0.6,
-            "gaia": 0.6,
-            "ragas": 0.6,
-            "terminalbench": 0.6,
-            "osworld": 0.6,
+            "proxy_ifeval": 0.4,
+            "proxy_bfcl": 0.6,
+            "proxy_swebench": 0.6,
+            "proxy_tau_bench": 0.6,
+            "proxy_gaia": 0.6,
+            "proxy_ragas": 0.6,
+            "proxy_terminalbench": 0.6,
+            "proxy_osworld": 0.6,
         }
         top.fitness_score = 60.0
         population.add(top)
@@ -243,7 +243,7 @@ class TestCycleIntegration:
 
         config = EvolutionConfig(
             population_size=5,
-            target_benchmarks=["ifeval"],
+            target_benchmarks=["proxy_ifeval"],
             self_improve=True,
             self_improve_top_n=1,
             self_improve_candidates=1,
@@ -261,7 +261,7 @@ class TestCycleIntegration:
         assert surviving_top.topology.nodes[0].system_prompt == "test"
         reflection = surviving_top.harness_params["last_optimization"]["reflection"]
         assert reflection["accepted"] is True
-        assert reflection["benchmark"] == "ifeval"
+        assert reflection["benchmark"] == "proxy_ifeval"
 
 
 class TestOproHistory:
@@ -269,7 +269,7 @@ class TestOproHistory:
         g = _genome(prompt="base prompt")
         node = g.topology.nodes[0]
         history = [("old prompt A", 0.3), ("old prompt B", 0.6)]
-        prompt = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.", history)
+        prompt = build_reflection_prompt(g, node, "proxy_ifeval", 0.4, "", "Be concise.", history)
         assert "## Prior attempts" in prompt
         assert "score=0.300" in prompt
         assert "score=0.600" in prompt
@@ -279,8 +279,8 @@ class TestOproHistory:
     def test_history_absent_on_first_cycle(self):
         g = _genome(prompt="base prompt")
         node = g.topology.nodes[0]
-        prompt_no_hist = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.")
-        prompt_empty = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.", [])
+        prompt_no_hist = build_reflection_prompt(g, node, "proxy_ifeval", 0.4, "", "Be concise.")
+        prompt_empty = build_reflection_prompt(g, node, "proxy_ifeval", 0.4, "", "Be concise.", [])
         assert "## Prior attempts" not in prompt_no_hist
         assert "## Prior attempts" not in prompt_empty
 
@@ -289,7 +289,7 @@ class TestOproHistory:
         node = g.topology.nodes[0]
         # Provide history out of order — prompt must sort worst → best.
         history = [("best", 0.9), ("worst", 0.1), ("mid", 0.5)]
-        prompt = build_reflection_prompt(g, node, "ifeval", 0.4, "", "Be concise.", history)
+        prompt = build_reflection_prompt(g, node, "proxy_ifeval", 0.4, "", "Be concise.", history)
         idx_worst = prompt.index("score=0.100")
         idx_mid = prompt.index("score=0.500")
         idx_best = prompt.index("score=0.900")
@@ -298,7 +298,7 @@ class TestOproHistory:
     @pytest.mark.asyncio
     async def test_excerpt_set_on_accepted_outcome(self):
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         outcome = await reflective_improve(g, _keyed_harness(), _llm_improved)
         assert outcome is not None
         assert outcome.accepted is True
@@ -308,7 +308,7 @@ class TestOproHistory:
     @pytest.mark.asyncio
     async def test_excerpt_set_even_when_rejected(self):
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         outcome = await reflective_improve(g, _keyed_harness(), _llm_worse)
         assert outcome is not None
         assert outcome.accepted is False
@@ -320,14 +320,14 @@ class TestOproHistory:
         population = PopulationStore()
         top = _genome("top")
         top.eval_scores = {
-            "ifeval": 0.4,
-            "bfcl": 0.6,
-            "swebench": 0.6,
-            "tau_bench": 0.6,
-            "gaia": 0.6,
-            "ragas": 0.6,
-            "terminalbench": 0.6,
-            "osworld": 0.6,
+            "proxy_ifeval": 0.4,
+            "proxy_bfcl": 0.6,
+            "proxy_swebench": 0.6,
+            "proxy_tau_bench": 0.6,
+            "proxy_gaia": 0.6,
+            "proxy_ragas": 0.6,
+            "proxy_terminalbench": 0.6,
+            "proxy_osworld": 0.6,
         }
         top.fitness_score = 60.0
         population.add(top)
@@ -338,7 +338,7 @@ class TestOproHistory:
 
         config = EvolutionConfig(
             population_size=5,
-            target_benchmarks=["ifeval"],
+            target_benchmarks=["proxy_ifeval"],
             self_improve=True,
             self_improve_top_n=1,
             self_improve_candidates=1,
@@ -361,19 +361,19 @@ class TestOproHistory:
         population = PopulationStore()
         top = _genome("top")
         top.eval_scores = {
-            "ifeval": 0.4,
-            "bfcl": 0.6,
-            "swebench": 0.6,
-            "tau_bench": 0.6,
-            "gaia": 0.6,
-            "ragas": 0.6,
-            "terminalbench": 0.6,
-            "osworld": 0.6,
+            "proxy_ifeval": 0.4,
+            "proxy_bfcl": 0.6,
+            "proxy_swebench": 0.6,
+            "proxy_tau_bench": 0.6,
+            "proxy_gaia": 0.6,
+            "proxy_ragas": 0.6,
+            "proxy_terminalbench": 0.6,
+            "proxy_osworld": 0.6,
         }
         top.fitness_score = 60.0
         # Pre-seed with 5 entries (at the window limit) in (benchmark, excerpt, score) format.
         top.harness_params["reflection_history"] = [
-            ("ifeval", f"old prompt {i}", 0.3 + i * 0.01) for i in range(5)
+            ("proxy_ifeval", f"old prompt {i}", 0.3 + i * 0.01) for i in range(5)
         ]
         population.add(top)
         # Fill genomes (no eval_scores) fail the hard gate and score 0,
@@ -383,7 +383,7 @@ class TestOproHistory:
 
         config = EvolutionConfig(
             population_size=5,
-            target_benchmarks=["ifeval"],
+            target_benchmarks=["proxy_ifeval"],
             self_improve=True,
             self_improve_top_n=1,
             self_improve_candidates=1,
@@ -443,7 +443,7 @@ class TestTextGradAttribution:
     async def test_attribution_targets_downstream_node_from_traces(self):
         """When LLM names the downstream node, the challenger mutates that node."""
         g = _two_node_genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
 
         # LLM: attribution returns "n2" (downstream), proposal returns improved text.
         call_log: list[str] = []
@@ -457,7 +457,7 @@ class TestTextGradAttribution:
             return "improved downstream prompt"
 
         outcome = await reflective_improve(
-            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=True
+            g, _keyed_harness(), llm, benchmarks=["proxy_ifeval"], node_attribution=True
         )
         assert outcome is not None
         assert outcome.target_node_id == "n2"
@@ -471,7 +471,7 @@ class TestTextGradAttribution:
     async def test_attribution_falls_back_on_unrecognised_response(self):
         """Unrecognised node id from attribution → entry node used, no error."""
         g = _two_node_genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
 
         async def llm(prompt: Any, **_: Any) -> str:
             if "most responsible" in str(prompt):
@@ -479,7 +479,7 @@ class TestTextGradAttribution:
             return "improved prompt"
 
         outcome = await reflective_improve(
-            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=True
+            g, _keyed_harness(), llm, benchmarks=["proxy_ifeval"], node_attribution=True
         )
         assert outcome is not None
         assert outcome.target_node_id == "n1"  # fallback to entry node
@@ -488,7 +488,7 @@ class TestTextGradAttribution:
     async def test_attribution_skipped_when_disabled(self):
         """node_attribution=False → attribution LLM call never made."""
         g = _two_node_genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         attribution_called = False
 
         async def llm(prompt: Any, **_: Any) -> str:
@@ -499,7 +499,7 @@ class TestTextGradAttribution:
             return "improved prompt"
 
         outcome = await reflective_improve(
-            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=False
+            g, _keyed_harness(), llm, benchmarks=["proxy_ifeval"], node_attribution=False
         )
         assert outcome is not None
         assert not attribution_called
@@ -509,7 +509,7 @@ class TestTextGradAttribution:
     async def test_attribution_skipped_for_single_node_genome(self):
         """Single-node pipeline → attribution skipped; entry node used."""
         g = _genome()
-        g.eval_scores = {"ifeval": 0.4}
+        g.eval_scores = {"proxy_ifeval": 0.4}
         attribution_called = False
 
         async def llm(prompt: Any, **_: Any) -> str:
@@ -520,7 +520,7 @@ class TestTextGradAttribution:
             return "improved prompt"
 
         outcome = await reflective_improve(
-            g, _keyed_harness(), llm, benchmarks=["ifeval"], node_attribution=True
+            g, _keyed_harness(), llm, benchmarks=["proxy_ifeval"], node_attribution=True
         )
         assert outcome is not None
         assert not attribution_called
