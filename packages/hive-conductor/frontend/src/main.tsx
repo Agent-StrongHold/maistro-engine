@@ -2,6 +2,12 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "./index.css";
+// Persona/Workspace theme variants -- scoped by [data-theme="..."] on
+// <html>, set by WorkspaceContext when a workspace's theme_id isn't
+// "default"; harmless to load unconditionally since nothing without that
+// attribute matches these selectors.
+import "./themes/dark.css";
+import "./fantasia-theme.css";
 import App from "./App";
 
 // When Vite is built with VITE_BASE_PATH=/pm/, the browser is at /pm/ but

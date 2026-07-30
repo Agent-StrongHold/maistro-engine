@@ -2,6 +2,7 @@ import { type ReactNode, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useUser } from "../App";
 import { ModeToggle } from "./ModeToggle";
+import { WorkspaceTabs } from "./WorkspaceTabs";
 import { usePmPoc } from "../context/PocMode";
 import {
   PM_NAV_CREDENTIALS,
@@ -200,6 +201,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
         </button>
       </nav>
       <main className="main-content">
+        <WorkspaceTabs />
         {children ?? <Outlet />}
       </main>
     </div>

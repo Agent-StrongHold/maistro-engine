@@ -700,3 +700,60 @@ button:hover, .suggestion-button:hover {
 
 /* Dashboard.tsx pass 2 */
 .overview-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+
+/* Persona/Workspace system: tab strip for switching between a user's
+   workspaces. */
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
+/* .workspace-tabs .workspace-tab (not just .workspace-tab): this file has
+   accumulated several auto-generated `button:not([class*="..."])` rules
+   whose :not() argument counts as a selector for specificity purposes, so a
+   bare single class here loses the cascade to them. The doubled-up selector
+   safely outranks any single-class-plus-element combination. */
+.workspace-tabs .workspace-tab {
+  padding: 4px 10px !important;
+  border-radius: 4px !important;
+  border: 1px solid var(--rule) !important;
+  background: var(--paper-2) !important;
+  color: var(--pencil) !important;
+  font-family: var(--sans);
+  font-size: 12px !important;
+  cursor: pointer;
+  box-shadow: none !important;
+  transform: none !important;
+}
+.workspace-tabs .workspace-tab:hover {
+  border-color: var(--accent) !important;
+  color: var(--ink) !important;
+  transform: none !important;
+}
+.workspace-tabs .workspace-tab.active {
+  background: var(--accent-light) !important;
+  border-color: var(--accent) !important;
+  color: var(--ink) !important;
+  font-weight: 600;
+}
+.workspace-tab-add {
+  font-weight: 700;
+  line-height: 1;
+}
+.workspace-tab-new-form input {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  font-family: var(--sans);
+  min-width: 140px;
+}
+.workspace-tab-error {
+  font-size: 11px;
+  color: var(--danger);
+  font-family: var(--mono);
+}
