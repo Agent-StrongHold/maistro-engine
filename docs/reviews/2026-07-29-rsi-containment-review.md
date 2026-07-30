@@ -588,7 +588,8 @@ Two principles behind these, each violated somewhere above:
 16d. **Build `maistro-rsi review bootstrap`** (§9.3) — harvest `kept/`+`flagged/` history for real labeled feature vectors, cover the gaps with a designed diff set presented *as diffs*, fit `beta` **and** `Sigma` by replaying labels through the shipped update rule, and pick θ *and* `z` from a displayed confusion matrix instead of `COLD_START_THETA`. With 16a in place this is an accelerator, not a prerequisite.
 16e. **R-5 and R-8** — stop feeding the model the fabricated `0.7` judge default (add an explicit `judge_unavailable` feature), and add at least one feature the judged party cannot forge.
 16f. **R-6** — clamp θ and bound weights on load; HMAC the state file under a key the gate-time child never sees.
-16g. Then restore `--promotion-review` as the launcher default — the E-1 half that depends on all of the above actually working.
+16g. **Two-tier parameters (§9.6)** — split `rlphd_state.json` into `operator_weights` (locked; training must not overwrite a hand-set weight — it currently would) and `learned_weights` (with provenance: N, discovery date, exemplars). Add `latent_budget` as an operator parameter and clamp the latent contribution to it. Stage Tier B activation above a threshold N, pin cluster centroids, and version any re-clustering. Ship the exemplar view so a latent dimension is exhibitable, plus veto/freeze and the graduate-by-naming path.
+16h. Then restore `--promotion-review` as the launcher default — the E-1 half that depends on all of the above actually working.
 
 **Tier 1d — correctness that invalidates evolve's results (§10.1-7).** These gate any claim about evolve's behaviour, including [#291]'s renaming work and [#303]'s v1 feature verification: the breeding loop that produces half the requested children, the cull-to-zero with `emergency_spawn` never called, `trait_vector`'s 8-vs-11 length crash, self-crossover, the fabricated leaderboard zeros, the unfireable hard gate, and unmeasured cost/latency paying 25 of 65 points unconditionally.
 
@@ -728,7 +729,62 @@ The cost is that a held candidate may conflict when later approved — the same 
 
 **Consequent changes to the §9.3 interview.** It stays, with two adjustments: Phase 3 fits `Sigma` as well as `beta` (the 5×5 covariance is 15 more human-readable numbers in `rlphd_state.json`), and Phase 4's confusion-matrix sweep picks `theta` **and** `z` — where `z` is the operator's stated tolerance for automation-vs-oversight, shown as "at z=1.64 Ralph decides 58% of these itself; at z=2.33 it decides 41% and asks you about the rest."
 
-### 9.6 What "working as intended" should mean, stated testably
+### 9.6 Two parameter tiers: operator-set and explainable vs. learned and merely exhibitable
+
+The five current features are all in the first tier and that is the right instinct — but a five-dimensional hand-specified model will plateau, because most of what makes a promotion good or bad is not expressible as `judge_score × composite × kind`. The intended shape is two tiers with **different provenance, different regularization, and different authority**.
+
+**Tier A — operator-set, explainable.** Named, hand-editable, small in number, and the operator can reason about each one. Today's five plus the decision parameters:
+
+| Parameter | Meaning to the operator | Set by |
+|---|---|---|
+| `judge_score`, `composite`, `is_spec_completion`, `is_feature`, `bias` | "how much should the LLM judge's opinion count", etc. | operator seeds; training may refine |
+| `theta` | the approve/deny line | operator, from §9.5 Phase 4's confusion matrix |
+| `z` | oversight appetite — how wide the flagged band is | operator ("decide 58% yourself" vs "41%") |
+| `latent_budget` | **the cap on how much unexplainable signal may contribute** | operator |
+
+**Tier B — learned, latent, unnamable.** Embed each promotion (diff text + objective + target path), project or cluster into a small fixed number of coordinates, and let those become additional features whose weights are learned. These capture exactly what you describe — *"these are alike in some way when embedded but we can't explain them."* The model finds real structure the operator never articulated; the honest position is that it has found a pattern, not that we know what the pattern is.
+
+**The design rules that make Tier B safe to have in a gate:**
+
+1. **Bounded authority — `latent_budget`.** Clamp the total latent contribution to the logit: `|Σ_latent w_i x_i| ≤ latent_budget`. With a modest budget an unexplainable factor can *move* a decision near the line but can never *override* a strong explicit signal. This is the single most important rule; without it the gate stops being glass-box in any meaningful sense, whatever the JSON says.
+2. **Asymmetric regularization.** Light or no penalty on Tier A (the operator asserted these matter); strong L2 on Tier B, so a latent dimension only earns weight if it genuinely explains residual variance the explicit features cannot. Emergence should have to pay for itself.
+3. **Exhibit rather than explain.** A latent weight is not interpretable, but it *is* characterizable: for each latent dimension, store the 3–5 nearest real historical promotions. The UI then says *"Ralph has noticed a pattern — here are five promotions that share it; it currently pushes toward **deny** with weight −0.8, learned from 34 decisions."* The operator cannot read the feature but can read the exemplars, and that is enough to trust or distrust it.
+4. **Graduation.** When the operator recognizes an exhibited pattern, let them **name** it — promoting a latent dimension into Tier A with a label and, from then on, a hand-editable weight. The model discovers, the human names, it graduates. That is the mechanism by which the explainable tier grows over time instead of staying frozen at five.
+5. **Veto and freeze.** The operator can zero or pin any latent weight. A discovered pattern they distrust must be refusable without disabling the whole tier.
+6. **Provenance separation in the state file.** `rlphd_state.json` splits into `operator_weights` and `learned_weights`, and **training must never silently overwrite Tier A**. Today it would: `record_decision` updates every key in `features` indiscriminately, so an operator's hand-set weight is quietly gradient-descended away. "Hand-editable" is a false claim while that is true — a Tier-A weight needs an explicit `locked: true` that the updater respects.
+7. **Pinned centroids, versioned re-clustering.** If clusters are re-derived each run, latent dimension 3 means something different next week and its learned weight becomes nonsense. Store the centroids; assign new candidates to *existing* ones. Re-clustering is an explicit, versioned event that resets Tier B weights and says so.
+8. **Staged activation.** Tier B cannot be discovered from 20 labels. Keep it inactive below a threshold N, then introduce it with the weights shrunk toward zero. Cold start stays a Tier-A-only problem, which §9.5 already handles.
+
+**Why this composes with the uncertainty band rather than complicating it.** Include the latent coordinates in the design matrix and the Laplace covariance does something valuable for free: a candidate whose latent coordinates sit far from anything in the training set has a large `xᵀΣx`, hence a wide interval, hence it **lands in the flagged band automatically**. *"I have never seen a promotion like this"* becomes a first-class, computed reason to ask the human — behaviour a safety gate should have on novel input, and which the current five hand-picked features cannot express at all.
+
+`scripts/rlphd_two_tier_sim.py` demonstrates all three properties. The operator's simulated true preference deliberately includes a latent topic effect the explicit five cannot see (one topic is disliked regardless of its scores), which is exactly the structure Tier B should discover.
+
+**Tier B earns its place — and the trade is not the one you'd guess:**
+
+| model | auto-decided | accuracy on auto-decided |
+|---|---|---|
+| Tier A only (explicit 5) | 76.3% | 85.4% |
+| Tier A + Tier B | 70.5% | **95.0%** |
+
+Adding the latent tier **lowered** the automation rate and **raised** accuracy by ten points. That is the better outcome, and worth understanding: the latent coordinates let the model recognise cases it should be *unsure* about, so it stops confidently deciding things it was previously getting wrong. More automation at 85% is worse than less automation at 95% for a gate.
+
+**Novelty is flagged for free:**
+
+| candidate | flagged | mean p | mean band half-width |
+|---|---|---|---|
+| familiar topic 0 | 32% | 0.577 | 0.543 |
+| familiar topic 2 | 22% | 0.373 | 0.636 |
+| **unseen topic 4** | **92%** | **0.882** | **3.610** |
+
+Look at the unseen row carefully: the point estimate is `p = 0.882` — **confidently approve** — while the interval half-width is 3.61, so it is flagged. A single-threshold model would have auto-approved this novel thing at p=0.88 with no hesitation. The interval catches precisely what the point estimate cannot see. This is the strongest single argument for §9.5's change.
+
+**`latent_budget` bounds unexplainable authority:** on a candidate with a strong explicit signal (`eta = +3.726`) whose latent coordinates sit in the disliked region (raw latent contribution `−2.875`), the clamp to `±1.5` leaves `eta = +2.226`, `p = 0.903`. The unexplainable factor moved the decision but could not overturn it. Raising the budget trades explainability for accuracy — and that trade should be the operator's to make, explicitly.
+
+**And the exemplar mechanism works:** the simulation's third latent dimension learns weight `−3.178`, and its top-contributing exemplars are drawn entirely from the disliked topic. The model found the pattern; we cannot name it; but we can show the operator five real promotions that share it and let them trust it, veto it, or name it.
+
+**The security caveat, stated plainly.** Tier B features are derived from **candidate-authored text**, so they are candidate-influenceable — this is R-8's concern generalized. A loop that runs long enough could, in principle, learn which latent region gets approved and write its diffs to land there. Embedding is not instruction-following, so this is far weaker than the prompt-injection channels in §5, but it is not nothing. Three mitigations, all of which are things this design wants anyway: `latent_budget` bounds the payoff, the pre-merge band (§9.5) means a candidate that games its way to *confident-approve* still had to pass every fitness gate, and at least one Tier-A feature must be **unforgeable** by the candidate — diff size, files touched, whether a sensitive path was touched, or whether any gate was absent (R-8). A gate whose every input the judged party controls is not a gate.
+
+### 9.7 What "working as intended" should mean, stated testably
 
 So this can be verified rather than asserted:
 
