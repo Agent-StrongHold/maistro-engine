@@ -214,36 +214,56 @@ jobs:
           fi
 
       # ----- Pillar 1: coverage (line + branch ≥95% on touched files) -----
+      # C2/#287: measured over the PyPI publish set (core, canvas, evolve, rsi,
+      # bootstrap — docs/product/V1-RELEASE-PLAN.md's "Decisions of record"),
+      # not maistro-core alone. Each package runs as its own `coverage run
+      # --append` invocation rather than one combined pytest call: an earlier
+      # attempt at a single `pytest packages/maistro-core/tests
+      # packages/maistro-canvas/tests ...` invocation broke an unrelated
+      # maistro-rsi test (structlog's capture_logs() picks up stale global
+      # config when another package's tests configure structlog first) — the
+      # same cross-package state-pollution risk ci.yml's `test` job already
+      # avoids by giving every package its own pytest step.
       - name: pytest with coverage (line + branch)
         env:
-          PYTHONPATH: packages/maistro-core/src
+          PYTHONPATH: >-
+            packages/maistro-core/src:packages/maistro-canvas/src:
+            packages/maistro-rsi/src:packages/maistro-evolve/src
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
         run: |
           uv run coverage erase
           uv run coverage run --branch --source=packages/maistro-core/src/maistro \
             -m pytest packages/maistro-core/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-canvas/src/maistro_canvas \
+            -m pytest packages/maistro-canvas/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-evolve/src/maistro_evolve \
+            -m pytest packages/maistro-evolve/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-rsi/src/maistro_rsi \
+            -m pytest packages/maistro-rsi/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-bootstrap/src/maistro_bootstrap \
+            -m pytest packages/maistro-bootstrap/tests --timeout=30 -q
           uv run coverage report -m --skip-covered
 
-      - name: Coverage gate (project-wide floor, 95%)
+      - name: Coverage gate (publish-set floor, 88%)
         env:
           PYTHONPATH: packages/maistro-core/src
         run: |
-          # Renamed and re-floored. The step was called "95% line + 95% branch on
-          # touched files" while enforcing --fail-under=20 against a measured 97%
-          # — a 77-point tolerance. It also cited docs/QA-BASELINE.md and a
-          # "separate matrix job (changed-files filter)"; neither exists anywhere
-          # in this repo, so both references were removed rather than left to
-          # imply protection that isn't there.
-          #
-          # 95 is a deliberate floor, not the measured value: maistro-core is at
-          # 97% (782 missed of 24,904 statements), so this leaves ~500 statements
-          # of headroom for in-flight work while still catching a real regression.
-          # Raise toward 97 once the touched-files gate below actually exists.
+          # Re-floored for C2/#287: extending the measured scope from
+          # maistro-core alone (97%) to the full 5-package publish set drops the
+          # combined number, because canvas/evolve/rsi/bootstrap don't carry
+          # core's coverage discipline yet — measured 2026-07-29: 89.63%
+          # (3,152 missed of 35,656 statements + branches). 88 is a deliberate
+          # floor below that, not the measured value, leaving headroom for
+          # in-flight work while still catching a real regression — same
+          # philosophy as the previous core-only 95-vs-97 gap. Raise as the
+          # newer packages' coverage improves.
           #
           # TODO(touched-files): implement per-file enforcement with diff-cover
           # against origin/${{ github.base_ref }}; until then this project-wide
           # floor is the only coverage gate.
-          uv run coverage report --fail-under=95 || \
-            (echo "::error::project-wide coverage below the 95% floor" && exit 1)
+          uv run coverage report --fail-under=88 || \
+            (echo "::error::publish-set coverage below the 88% floor" && exit 1)
 
       # ----- Pillar 2: Hypothesis property tests -----
       # The property suite lives in formal/ (also run by formal-conformance.yml

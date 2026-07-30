@@ -101,7 +101,7 @@ build-backend = "hatchling.build"
 bypass-selection = true
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100
 exclude = [
     "packages/maistro-bootstrap/mutants",
@@ -121,7 +121,16 @@ src = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "C90", "C4"]
-ignore = ["E501"]
+# UP046/UP047 (PEP 695 type-parameter syntax) only fire once target-version
+# reaches py312 (C2/#287). The 9 existing TypeVar/Generic[T] sites they'd flag
+# (maistro.credentials.rotation, maistro.graph.executor/nodes.base,
+# maistro.repertoire.run, maistro.skills.connectors, maistro_rsi.merge) are
+# correct pre-3.12-style generics, not new debt — rewriting them to `def
+# foo[T](...)`/`class Foo[T]:` is a real, separate change with its own mypy
+# --strict + pydantic interaction risk across public API signatures, not a
+# side effect of a floor-alignment PR. Tracked as follow-up, not silently
+# dropped.
+ignore = ["E501", "UP046", "UP047"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
