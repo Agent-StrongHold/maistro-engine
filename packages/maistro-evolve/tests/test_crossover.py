@@ -159,20 +159,20 @@ def test_crossover_drops_edges_whose_to_node_was_not_mapped() -> None:
 
 def test_crossover_averages_eval_weights_and_takes_max_topology_settings() -> None:
     parent_a = _genome("a", [_node("a-entry")], [], entry_node="a-entry", generation=1)
-    parent_a.eval_weights = EvalWeights(ifeval=0.1)
+    parent_a.eval_weights = EvalWeights(proxy_ifeval=0.1)
     parent_a.topology.max_cycles = 2
     parent_a.topology.beam_width = 1
     parent_a.topology.use_scout = False
 
     parent_b = _genome("b", [_node("b-entry")], [], entry_node="b-entry", generation=3)
-    parent_b.eval_weights = EvalWeights(ifeval=0.3)
+    parent_b.eval_weights = EvalWeights(proxy_ifeval=0.3)
     parent_b.topology.max_cycles = 5
     parent_b.topology.beam_width = 4
     parent_b.topology.use_scout = True
 
     child = crossover(parent_a, parent_b)
 
-    assert child.eval_weights.ifeval == 0.2
+    assert child.eval_weights.proxy_ifeval == 0.2
     assert child.topology.max_cycles == 5
     assert child.topology.beam_width == 4
     assert child.topology.use_scout is True

@@ -204,7 +204,11 @@ def assertion_strength_signal(strength: object, weight: float) -> SignalScore:
 
 
 def capability_signal(
-    baseline_score: float, candidate_score: float, weight: float, *, benchmark: str = "swebench"
+    baseline_score: float,
+    candidate_score: float,
+    weight: float,
+    *,
+    benchmark: str = "proxy_swebench",
 ) -> SignalScore:
     """Benchmark capability (a *derived* measure): candidate's absolute score,
     with the delta vs. baseline in the rationale."""

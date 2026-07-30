@@ -23,13 +23,13 @@ from .terminalbench import run_terminalbench
 # this repo. run_osworld raises rather than producing any score — see
 # osworld.py.
 PROXY_BENCHMARKS = {
-    "ifeval": run_ifeval,
-    "bfcl": run_bfcl,
-    "swebench": run_swebench,
-    "terminalbench": run_terminalbench,
-    "tau_bench": run_tau_bench,
-    "gaia": run_gaia,
-    "ragas": run_ragas,
+    "proxy_ifeval": run_ifeval,
+    "proxy_bfcl": run_bfcl,
+    "proxy_swebench": run_swebench,
+    "proxy_terminalbench": run_terminalbench,
+    "proxy_tau_bench": run_tau_bench,
+    "proxy_gaia": run_gaia,
+    "proxy_ragas": run_ragas,
 }
 
 __all__ = ["PROXY_BENCHMARKS", "run_osworld"]

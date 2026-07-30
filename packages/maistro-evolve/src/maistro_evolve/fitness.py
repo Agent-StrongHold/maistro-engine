@@ -3,14 +3,14 @@ from __future__ import annotations
 from .types import FitnessComponents, PipelineGenome
 
 _HARD_GATE_THRESHOLDS: dict[str, float] = {
-    "ifeval": 0.25,
-    "bfcl": 0.20,
-    "swebench": 0.15,
-    "tau_bench": 0.20,
-    "gaia": 0.30,
-    "ragas": 0.25,
-    "terminalbench": 0.20,
-    "osworld": 0.15,
+    "proxy_ifeval": 0.25,
+    "proxy_bfcl": 0.20,
+    "proxy_swebench": 0.15,
+    "proxy_tau_bench": 0.20,
+    "proxy_gaia": 0.30,
+    "proxy_ragas": 0.25,
+    "proxy_terminalbench": 0.20,
+    "proxy_osworld": 0.15,
 }
 
 _FITNESS_WEIGHTS = {
