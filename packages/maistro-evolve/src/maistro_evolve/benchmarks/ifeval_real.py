@@ -101,6 +101,43 @@ class IFEvalUnavailableError(RuntimeError):
     """
 
 
+def available() -> tuple[bool, str]:
+    """Can the real IFEval adapter run in this environment? ``(ok, reason)``.
+
+    Real benchmarks are **optional includes**: a machine without the ``ifeval``
+    extra installed simply doesn't get this benchmark considered — the harness
+    skips it at registration, loudly, and everything else still works. A
+    machine with the resources and the deps runs it. The probe checks
+    *availability* (deps present, corpus present), not *integrity* — a corpus
+    that is present but tampered with still probes available and then fails
+    hard at load time, which is the correct severity ordering: "can't run" is
+    an environment fact to route around; "exam was edited" is an alarm that
+    must never be routed around.
+    """
+    if not _CORPUS.is_file():
+        return False, f"corpus missing at {_CORPUS} — run `python3 scripts/vendor_ifeval.py`"
+    try:
+        from .third_party.ifeval import evaluation_lib  # noqa: F401
+    except ImportError as exc:
+        return False, (
+            f"grader dependencies missing ({exc}) — install with "
+            "`uv pip install 'maistro-evolve[ifeval]'`"
+        )
+    try:
+        import nltk
+
+        nltk.data.find("tokenizers/punkt")
+    except LookupError:
+        return False, (
+            "nltk `punkt` tokenizer data missing — pre-fetch with "
+            "`python3 -c \"import nltk; nltk.download('punkt')\"` "
+            "(the scoring container is network-denied, so it cannot self-download)"
+        )
+    except ImportError as exc:  # pragma: no cover - caught by the import above
+        return False, f"nltk unavailable ({exc})"
+    return True, ""
+
+
 def load_corpus(split: Split = "all") -> list[dict[str, Any]]:
     """The official 541 prompts, checksum-verified, optionally split.
 

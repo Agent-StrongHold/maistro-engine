@@ -1236,6 +1236,18 @@ Still open on the real-benchmark track: steps 5–9 (revive `_HARD_GATE_THRESHOL
 
 Of the items above, only the IFEval adapter is bonus-eligible, and only on a full clean run.
 
+Then step 8 landed. **BFCL's Python-AST track is real**, and the real tier became **availability-probed optional includes** (operator decision, 2026-07-30).
+
+| Piece | What landed |
+|-------|-------------|
+| Corpus + grader | The official BFCL v4 Python-AST track — `simple_python` 400, `multiple` 200, `parallel` 200, `parallel_multiple` 200, with official `possible_answer` ground truth — and the leaderboard's own `ast_checker`, vendored from the `bfcl-eval` 2026.3.23 PyPI wheel. Pinned by the wheel's sha256 (matching PyPI's published digest) plus a sha256 per extracted member; `scripts/vendor_bfcl.py --check` runs in `quality.yml`. |
+| The one semantic substitution | Upstream's checker imports a model registry (every vendor SDK) to decide which models get the `.`→`_` function-name accommodation. `_model_config_shim.py` answers "no accommodation" for every model — strictly harsher than upstream, so a score under it never overstates. The shim itself is byte-pinned; editing it fails CI. |
+| Verified discrimination | Oracle built from ground truth scores 98.75% on an 80-instance sample; a wrong-function, wrong-value, or wrong-call-count answer scores 0 with the official error types; prose scores 0 as `unparseable` — counted separately from wrong answers because formatting and reasoning failures need different fixes. |
+| Optional includes | Each real adapter now exposes `available() -> (ok, reason)`; a `real` harness registers only what passes and records the rest on `unavailable_real` with install hints. Skipped ≠ downgraded: nothing unavailable is ever swapped for its proxy namesake, and explicitly requesting one raises with the hint. BFCL's checker is stdlib-only, so a real harness is never empty. This is the pattern the heavy adapters (SWE-bench Lite, Terminal-Bench — container images, real cores) plug into: a homelab box skips them; a 32-core/256GB box runs everything; the operator picks by installing. |
+| Split | 761 train / 239 holdout hashed by instance id, all four categories on both sides. Same caveat as IFEval — the split detects harness-level overfitting, not pretraining contamination — but weighted differently: memorized (question, call) pairs help more on BFCL than memorized prompts help on IFEval, because here the answer *is* the artifact. A holdout bonus should weight BFCL gains below IFEval gains. |
+
+One comparability rule this adds: **real-harness numbers are only comparable under the same set of installed extras.** `compute_fitness` sees only what ran, so genomes must be compared under the same harness on the same machine. Recorded in the package guide.
+
 ### 11.10 Custom rubric evals — pairwise A/B, and why absolute rubric scores are the wrong instrument
 
 Not every capability worth improving maps onto a public benchmark. "Get better at writing ADRs", "get better at PM-fleet handoffs", "get better at canvas prompt construction" are all legitimate targets with no leaderboard. So custom evals are necessary — and they are also the most gameable thing in the whole reward model, because a rubric is scored by an LLM judge and §11.8 puts judges in the **lowest** trust sub-tier for good reason.

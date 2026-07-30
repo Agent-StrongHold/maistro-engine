@@ -29,12 +29,14 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
 
 ## Benchmark fidelity — stability statement (SPEC-202)
 
-**Exactly one benchmark runs the official harness against the official dataset: `ifeval`, via the separate
-`run_ifeval_real` adapter** (`benchmarks/ifeval_real.py` — the published 541-prompt corpus graded by Google
-Research's own vendored verifier). It is reached through `EvalHarness(benchmark_fidelity="real")`, **not** by
-the default `ifeval` entry, which remains proxy. See "Real tier" below.
+**Exactly two benchmarks run the official harness against the official dataset: `ifeval` and `bfcl`, via the
+separate `run_ifeval_real` / `run_bfcl_real` adapters** (`benchmarks/ifeval_real.py` — the published
+541-prompt corpus graded by Google Research's own vendored verifier; `benchmarks/bfcl_real.py` — the
+1,000-instance BFCL v4 Python-AST track graded by the leaderboard's own vendored `ast_checker`). They are
+reached through `EvalHarness(benchmark_fidelity="real")`, **not** by the default entries, which remain proxy.
+See "Real tier" below.
 
-**`bfcl`, `swebench`, `tau_bench`, `gaia`, `ragas`, `terminalbench` — and the default `ifeval` — do not.**
+**`swebench`, `tau_bench`, `gaia`, `ragas`, `terminalbench` — and the default `ifeval`/`bfcl` — do not.**
 They score real model output, against real criteria, at a lite/handcrafted scale (`benchmarks/datasets.py`) —
 a genuine but small-scale version of the real methodology, not the official harness. The names match the
 industry-standard evals; the *scale* does not. This exists to save time/money and produce Pareto (cost vs.
@@ -51,7 +53,7 @@ Two fidelity tiers, carried as `EvalResult.metadata["fidelity"]` and on `EvalHar
 | Tier | What it means | Trust for promotion |
 |------|---------------|---------------------|
 | `proxy` | Lite-scale but genuine scoring against handcrafted samples — real rule verification, exact-match, tool-call matching, or real sandboxed execution — **what every registered benchmark ships today** | Development only. This is the default (`EvalHarness(benchmark_fidelity="proxy")`). |
-| `real` | Official harness against the official dataset | **`ifeval` only.** `EvalHarness(benchmark_fidelity="real")` registers the real registry *and nothing else* — one benchmark, not seven. It does not backfill the remaining six from the proxy registry, and asking it for one of them raises. |
+| `real` | Official harness against the official dataset | **`ifeval` and `bfcl`.** `EvalHarness(benchmark_fidelity="real")` registers the *available* members of the real registry and nothing else. It does not backfill the rest from the proxy registry, and asking it for one of them raises. |
 
 Per-benchmark methodology at the `proxy` tier:
 - **`ifeval`/`bfcl`/`ragas`/`tau_bench`**: real rule/keyword/tool-call verification against handcrafted samples.
@@ -70,13 +72,35 @@ Per-benchmark methodology at the `proxy` tier:
 - **`osworld`**: **not registered.** `run_osworld` raises `NotImplementedError` — no desktop-VM/GUI-automation
   infrastructure exists in this repo. Reference task definitions remain in `datasets.py` for when that lands.
 
-### Real tier — `ifeval` only (`benchmarks/ifeval_real.py`)
+### Real tier — `ifeval` + `bfcl` (`benchmarks/ifeval_real.py`, `benchmarks/bfcl_real.py`)
+
+**Real benchmarks are optional includes.** Each adapter has an `available()` probe (deps installed, corpus
+vendored; later: container images present), and `EvalHarness(benchmark_fidelity="real")` registers only the
+ones that pass — the rest are recorded on `harness.unavailable_real` with an install hint and *skipped*, never
+silently swapped for their proxy namesake. A bare install runs whatever is stdlib-clean (`bfcl` today, so a
+real harness is never empty); a big box with every extra installed runs everything. Explicitly requesting an
+unavailable one raises with the reason — an explicit ask gets an explicit answer. When the heavy adapters land
+(SWE-bench Lite, Terminal-Bench: container images, tens of GB, real cores), they follow this same contract:
+installed → considered, not installed → visibly skipped, and the operator picks by installing.
 
 ```bash
-uv pip install 'maistro-evolve[ifeval]'                   # absl-py, immutabledict, nltk, langdetect
+# bfcl-real: no install needed — the vendored ast_checker is stdlib-only.
+uv pip install 'maistro-evolve[ifeval]'                   # ifeval-real: absl-py, immutabledict, nltk, langdetect
 python3 -c "import nltk; nltk.download('punkt')"          # pre-fetch: the scoring container is network-denied
-python3 scripts/vendor_ifeval.py --check                  # verify the grader/corpus match their pinned hashes
+python3 scripts/vendor_ifeval.py --check                  # verify grader/corpus match their pinned hashes
+python3 scripts/vendor_bfcl.py --check                    # same for the BFCL checker/corpus
 ```
+
+**BFCL specifics** (`bfcl_real.py`): the v4 Python-AST track — `simple_python` (400), `multiple` (200),
+`parallel` (200), `parallel_multiple` (200) — with official `possible_answer` ground truth, graded by the
+official `ast_checker` vendored from the `bfcl-eval` PyPI wheel (pinned by wheel + per-member sha256,
+`scripts/vendor_bfcl.py`). NOT all of BFCL: live/multi-turn/agentic tracks and java/js corpora are out of
+scope. `metadata["accuracy_by_category"]` holds the leaderboard-comparable numbers; the headline `score` is
+the instance-weighted aggregate across the four categories, which is ours. The one semantic divergence from
+upstream is `_model_config_shim.py`: no model gets the `.`→`_` function-name accommodation, which is strictly
+harsher than upstream, never more lenient. `metadata["unparseable_responses"]` separates formatting failures
+from reasoning failures — they need different fixes. Train/holdout: 761/239 hashed by instance id, all four
+categories on both sides.
 
 The official corpus and verifier are **vendored** under `benchmarks/third_party/ifeval/` (Apache 2.0, see its
 `NOTICE`), reproduced by `scripts/vendor_ifeval.py` and pinned by sha256. They live in git rather than being
@@ -112,12 +136,14 @@ Things to know before quoting a number from it:
 `EvalHarness()` defaults to `"proxy"` and registers 7 benchmarks (`osworld` excluded);
 `EvolutionCycle.run_cycle()` logs a `WARNING` naming the tier on every call so a proxy-scored run is never
 mistaken for a real one. `benchmarks/__init__.py` holds two registries: `PROXY_BENCHMARKS` (7 entries) and
-`REAL_BENCHMARKS` (1 — `ifeval`). A name earns a place in the latter only once its score is comparable to a
-published one; the remaining six real adapters are `docs/specs/SPEC-202` future work.
+`REAL_BENCHMARKS` (2 — `ifeval`, `bfcl`), plus `available_real_benchmarks()` which splits the latter into
+(runnable here, unavailable-with-reason). A name earns a place in `REAL_BENCHMARKS` only once its score is
+comparable to a published one; the remaining real adapters are `docs/specs/SPEC-202` future work.
 
-**A real-harness fitness number is not comparable to a proxy-harness one.** A real harness registers one
-benchmark, so `compute_fitness` sees one `eval_scores` entry instead of seven, and the per-benchmark hard
-gates below only fire for benchmarks that ran.
+**A real-harness fitness number is not comparable to a proxy-harness one** — or to a real-harness number from
+a machine with different extras installed. `compute_fitness` sees only the benchmarks that ran, and the
+per-benchmark hard gates below only fire for benchmarks that ran. When comparing genomes, compare them under
+the same harness on the same machine.
 
 ## Gotchas
 

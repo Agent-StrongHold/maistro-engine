@@ -126,6 +126,9 @@ jobs:
       - name: vendored benchmark provenance (IFEval grader + corpus)
         run: uv run python scripts/vendor_ifeval.py --check
 
+      - name: vendored benchmark provenance (BFCL checker + corpus)
+        run: uv run python scripts/vendor_bfcl.py --check
+
       # Ratchet, not a 0-baseline: full backlog (77 ERROR blocks measured
       # 2026-06-29) is too large to clear in one PR (Phase 18 code-health
       # sweep). Hard-fails on REGRESSION (new violations beyond the

@@ -62,6 +62,26 @@ def pin_corpus(monkeypatch: pytest.MonkeyPatch):
     return pin
 
 
+class TestAvailability:
+    def test_probe_matches_this_environment(self) -> None:
+        """`available()` is the optional-includes gate: True where the ifeval
+        extra + punkt data are installed, False with an actionable hint where
+        not. Environment-agnostic assertion on purpose — CI without the extra
+        and a dev box with it must both pass this test."""
+        ok, reason = ifeval_real.available()
+        assert isinstance(ok, bool)
+        if ok:
+            assert reason == ""
+        else:
+            assert "maistro-evolve[ifeval]" in reason or "punkt" in reason
+
+    def test_missing_corpus_probes_unavailable(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.setattr(ifeval_real, "_CORPUS", tmp_path / "absent.jsonl")
+        ok, reason = ifeval_real.available()
+        assert ok is False
+        assert "vendor_ifeval.py" in reason
+
+
 # --------------------------------------------------------------------------- #
 # corpus + provenance — always checked, never skipped
 # --------------------------------------------------------------------------- #

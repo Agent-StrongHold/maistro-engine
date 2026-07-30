@@ -14,12 +14,13 @@ exact-match, tool-call matching, real execution + assertion/state checks),
 never fabricated noise; ``real`` is the official benchmark harness against
 the official dataset.
 
-``real`` is implemented for **ifeval only** (``benchmarks/ifeval_real.py``:
-the official 541-prompt corpus, graded by Google Research's own vendored
-verifier). Every other name in the proxy registry remains proxy-tier. A
-``real`` harness therefore registers one benchmark, not seven, and
-deliberately does not backfill the rest — see
-``EvalHarness._register_real_benchmarks``.
+``real`` is implemented for **ifeval** (``benchmarks/ifeval_real.py``: the
+official 541-prompt corpus, graded by Google Research's own vendored verifier)
+and **bfcl** (``benchmarks/bfcl_real.py``: the official 1,000-instance
+Python-AST track, graded by the leaderboard's own vendored ``ast_checker``).
+Every other name in the proxy registry remains proxy-tier. A ``real`` harness
+therefore registers two benchmarks, not seven, and deliberately does not
+backfill the rest — see ``EvalHarness._register_real_benchmarks``.
 
 There is deliberately no ``stub`` tier: a benchmark either evaluates a real
 model response against real criteria (``proxy``), or it does not run at all.
@@ -32,6 +33,10 @@ signal — see SPEC-202 and the evolve CLAUDE.md stability statement.
 class EvalHarness:
     def __init__(self, benchmark_fidelity: BenchmarkFidelity = "proxy") -> None:
         self._benchmarks: dict[str, BenchmarkRunner] = {}
+        # Real adapters that exist but cannot run in this environment, mapped to
+        # the human-actionable reason (missing extra, missing vendored corpus,
+        # later: missing docker images). Always {} for a proxy harness.
+        self.unavailable_real: dict[str, str] = {}
         self.fidelity: BenchmarkFidelity
         if benchmark_fidelity == "real":
             self._register_real_benchmarks()
@@ -62,7 +67,7 @@ class EvalHarness:
         """Register only official-dataset/official-harness adapters.
 
         A ``real`` harness registers a **strict subset** of a proxy harness's
-        benchmarks — one, currently — and does not backfill the rest from the
+        benchmarks — two, currently — and does not backfill the rest from the
         proxy registry. Mixing the tiers behind one ``fidelity`` label is the
         specific dishonesty SPEC-202's two-tier model exists to prevent: a
         caller reading ``harness.fidelity == "real"`` off a harness whose
@@ -73,15 +78,26 @@ class EvalHarness:
         evaluates fewer benchmarks, so ``compute_fitness`` sees fewer
         ``eval_scores``. Do not compare a real-harness fitness number to a
         proxy-harness one.
-        """
-        from .benchmarks import REAL_BENCHMARKS
 
-        if not REAL_BENCHMARKS:
+        Real adapters are **optional includes**: each has an availability probe
+        (deps installed, corpus vendored, later: container images present), and
+        only the ones that pass are registered. The rest land in
+        ``self.unavailable_real`` with an install hint — skipped, visible, and
+        never replaced by their proxy namesake. A box with everything installed
+        runs everything; a bare install runs whatever is stdlib-clean (BFCL
+        today) and says exactly why the others sat out.
+        """
+        from .benchmarks import available_real_benchmarks
+
+        runners, self.unavailable_real = available_real_benchmarks()
+        if not runners:
+            reasons = "; ".join(f"{n}: {r}" for n, r in self.unavailable_real.items()) or "none"
             raise ValueError(
                 "benchmark_fidelity='real' requested but no real-benchmark "
-                "adapters are registered (SPEC-202). Use 'proxy' (default)."
+                f"adapter can run in this environment ({reasons}). Install the "
+                "missing pieces, or use 'proxy' (default)."
             )
-        for name, runner in REAL_BENCHMARKS.items():
+        for name, runner in runners.items():
             self.register_benchmark(name, runner)
 
     async def evaluate_genome(
@@ -98,10 +114,19 @@ class EvalHarness:
                 if self.fidelity == "real":
                     # Silently skipping is tolerable at proxy tier (a caller
                     # naming an unknown benchmark gets fewer results and no
-                    # false ones). At real tier it is not: the likely cause is
-                    # "this benchmark has no real adapter yet", and returning a
-                    # short list makes that look like a clean run over
-                    # everything asked for. Say which ones are missing.
+                    # false ones). At real tier it is not: returning a short
+                    # list makes a partial run look like a clean run over
+                    # everything asked for. Two distinct cases, two messages —
+                    # "doesn't exist yet" and "exists, not installed here".
+                    if name in self.unavailable_real:
+                        raise ValueError(
+                            f"real adapter for benchmark {name!r} exists but is "
+                            f"unavailable in this environment: "
+                            f"{self.unavailable_real[name]}. Unavailable real "
+                            "benchmarks are skipped when unnamed, but an "
+                            "explicit request gets an explicit answer — and "
+                            "never a silent downgrade to proxy."
+                        )
                     available = ", ".join(sorted(self._benchmarks)) or "none"
                     raise ValueError(
                         f"no real-fidelity adapter for benchmark {name!r}; "
