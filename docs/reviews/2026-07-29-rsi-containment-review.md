@@ -1007,6 +1007,77 @@ Against this model, the shipped scorecard is inverted relative to the intent (§
 
 With those two, an expanded denylist plus a mechanically-enforced completeness ratchet is a defensible posture. Without them it is the same shape as the control that let K-3 survive: a list that looks rigorously maintained while nothing checks that it is reachable.
 
+### 11.7 The capability bonus — a large positive reward for real benchmark gains
+
+The operator wants a **huge bonus for raising benchmark scores** (terminalbench named specifically). This is the most important addition to the model, and the instinct is right: everything in §11.6 is defensive — vetoes and penalties — and a purely defensive reward function produces a loop that takes no risks and delivers no value. A ratchet needs something to ratchet *toward*.
+
+It is also the most gameable thing that can be added to a self-improving loop, because the measurement currently sits inside the optimizer's write surface. Both facts are true, and the design below resolves them rather than choosing between them.
+
+#### What `terminalbench` is in this repo, precisely
+
+| Property | Reality |
+|---|---|
+| Task count | **6** — `TRAINING_TASKS` (3) + `HOLDOUT_TASKS` (3), `executable_terminal.py:59`,`:111` |
+| Mechanism | A restricted JSON action language verified against tempdir filesystem state — *not* a real shell, *not* the official Terminal-Bench corpus |
+| Fidelity | `proxy`. The package's own `CLAUDE.md` rates proxy as **"Development only"** for promotion trust |
+| Holdout | **Collapsed.** `terminalbench.py:15` — `_TASKS = TRAINING_TASKS + HOLDOUT_TASKS` |
+| Protected? | **No.** `maistro_evolve/benchmarks/` appears nowhere in `SENSITIVE_PATH_PATTERNS`; no scope gate (G-2); quarantine unwired on the shipped path (K-3) |
+| In the improvement roster? | `$E/harness.py` is in `TARGETS` directly; `benchmarks/` is reachable because nothing restricts scope |
+
+Credit where due: the scoring *is* genuine (real state verification, and `run_terminalbench` raises rather than fabricating a score when `llm_call is None` — SPEC-202 honesty, correctly implemented). The split exists because someone saw the leak coming. The defect is narrower than "the benchmark is fake": **the anti-memorization mechanism was built and then unioned away in the path that feeds fitness.**
+
+At 6 tasks, each is ~16.7% of the score. A "huge bonus" on that, with the tasks editable and the holdout collapsed, rewards memorizing or editing one task file far more efficiently than it rewards getting better at terminals. That is Goodhart with the ruler inside the optimizer.
+
+#### Five conditions that make the bonus safe to pay
+
+1. **Benchmark code and task definitions become veto-protected.** Add `maistro_evolve/benchmarks/**` and `executable_terminal.py` to the denylist (§11.6). The loop may improve the *agent*; it may not touch the *exam*.
+2. **The supervisor scores, using the baseline's exam.** Run the **baseline ref's** harness and task definitions against the **candidate's** code — the same inversion as H-11's gate-config pinning. The candidate supplies what is measured, never the measurement.
+3. **Restore the holdout, and pay only on it.** Revert `_TASKS` to `TRAINING_TASKS` for anything the loop can see, and compute the bonus from `HOLDOUT_TASKS` scored by the supervisor. This is what the split was built for; it just needs wiring. A separately-reported holdout score is also the cheapest possible memorization detector: **training up while holdout is flat is the signature**, and it is worth an explicit alarm.
+4. **Grow the task count before raising the weight.** Six tasks cannot support a large weight — the variance alone will dominate, and one memorized task is a jackpot. The weight should scale with the corpus, not ahead of it.
+5. **Never pay on an unmeasured or degraded run.** Per §11.6, unmeasured is worst-case for weighted dimensions; for a *bonus* that means zero, never a default. A benchmark that errors must not pay.
+
+#### The resolution: scale the bonus by fidelity
+
+This is the part that gives the operator what they asked for without the trap. Make the bonus magnitude a function of **how trustworthy the measurement is**, not just the score:
+
+```toml
+[quality.capability_bonus]        # additive, on top of the weighted sum
+metric        = "holdout_delta"  # supervisor-scored, baseline exam, holdout split only
+proxy_max     = 0.10             # lite-scale handcrafted corpus  (today's terminalbench)
+real_max      = 0.40             # official harness + official dataset (SPEC-202)
+require_holdout_split = true
+min_corpus    = 20               # below this, cap at proxy_max regardless of fidelity
+pay_on_unmeasured = 0.0          # never a default
+```
+
+Two properties follow, and both are what you want:
+
+- **The "huge bonus" is real and available** — `real_max = 0.40` dwarfs every other weighted dimension in §11.6, so genuine capability gain is unambiguously the highest-reward move in the system.
+- **The way to unlock it is to make the measurement real.** Building the official Terminal-Bench adapter (SPEC-202 future work today) becomes the single most valuable thing the loop or a human can do. The incentive points at *improving the exam's fidelity*, which is exactly the direction you want a self-improving system pushed — rather than at improving a 6-task proxy score, which is the direction it currently points.
+
+That inverts the failure mode. Under a flat huge bonus, the cheapest path to reward is editing the exam. Under a fidelity-scaled bonus, the cheapest path to the *large* reward is making the exam trustworthy, and the exam is veto-protected so the loop cannot shortcut it.
+
+#### Honest naming is load-bearing here, not cosmetic
+
+[#291] tracks renaming the pseudo-benchmarks, and this is where it stops being a documentation nicety. If the operator's dashboard reads `terminalbench +0.25`, they will believe a Terminal-Bench score moved. What moved is a 6-task JSON-action-language proxy. A capability bonus attached to a misleading name is the §11.5 no-false-assurance failure applied to the reward function itself — and for a self-improving loop, a metric the operator misreads is worse than no metric, because it buys the loop credibility it did not earn.
+
+So the config key must name what it measures (`heuristic_terminal_holdout_delta`, or similar), and the fidelity tier must be displayed next to every score. `EvolutionCycle.run_cycle()` already logs a WARNING naming the tier on every call — that instinct is right and should extend to anything that pays a bonus.
+
+#### Where this lands in the model
+
+The capability bonus is **additive on top of** §11.6's weighted sum, and it is **subordinate to the veto tier** — no benchmark gain buys a newly-introduced HIGH, a sensitive-path touch, or a scope violation. Ordering, stated plainly:
+
+```
+if any veto fails                 -> hold + flag, loudly, with the reason
+else composite = weighted_sum
+                 - security_penalty(medium, low)      # saturating, capped
+                 + capability_bonus(fidelity, holdout_delta)
+```
+
+That is the whole reward function. Security is a floor that cannot be bought, quality is a trade, and capability gain is the thing worth optimizing — with the size of the prize tied to whether the measurement can be trusted.
+
+---
+
 ## 12. Limits of this review
 
 - Seven agents; every Critical was re-verified by hand or by execution. K-6's sub-findings were **executed** against real pytest/ruff/coverage; K-3, K-3a, and the `_seed_audit_log`/`stop_run`/`git_push`/`release-installer`/`litellm_config` findings were read directly at the cited lines.
