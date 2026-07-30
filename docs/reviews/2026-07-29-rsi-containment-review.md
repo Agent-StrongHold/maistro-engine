@@ -1206,6 +1206,49 @@ That is a considerably more honest portfolio than seven names implying seven lea
 
 Steps 1–3 are prerequisites and unlock nothing on their own — which is precisely why they are easy to skip and must not be. Step 4 is the first point at which a real bonus can honestly be paid, and it is reachable without touching container infrastructure at all.
 
+### 11.10 Custom rubric evals — pairwise A/B, and why absolute rubric scores are the wrong instrument
+
+Not every capability worth improving maps onto a public benchmark. "Get better at writing ADRs", "get better at PM-fleet handoffs", "get better at canvas prompt construction" are all legitimate targets with no leaderboard. So custom evals are necessary — and they are also the most gameable thing in the whole reward model, because a rubric is scored by an LLM judge and §11.8 puts judges in the **lowest** trust sub-tier for good reason.
+
+**The infrastructure is half-built already.** `orchestrator/waves/ensemble.py:200-208` — `LLMJudgeComparator` — is a stub whose docstring reads *"Phase 2 (SPEC-070226-b624 non-goal for phase 1) — intentionally not implemented; wire an LLM client and implement pairwise judging here."* And `EloTournament` already maintains win/loss/Elo per `(genome, benchmark)` pair. So pairwise judging is spec'd, stubbed, and has a rating system waiting for it.
+
+**Pairwise A/B, not absolute scoring — and this is the substantive design point.** Asking a judge "rate this 1–10 against the rubric" is the weakest available instrument: absolute scales drift between calls, are anchored by nothing, and compress toward the middle. Asking "here are two outputs for the same task, which better satisfies the rubric" is dramatically more reliable, and it produces a **delta** — exactly what §11.7's `holdout_delta` bonus wants. The B side should be the **baseline's** output on the same task, so every comparison answers the only question that matters: *did this change make it better?*
+
+Six safeguards, each closing a known failure mode:
+
+1. **The rubric is veto-protected and operator-authored.** A rubric the loop can edit is not a rubric. If the loop may *propose* rubrics, they route through the same hold-and-flag path as an uncertain promotion (§11.6) and require human approval before they can ever pay. Otherwise the loop writes its own exam, grades itself on it, and collects — a closed loop with no external referent.
+2. **Blind and position-randomised.** Judges have measurable position bias, and a model shown its own output alongside a competitor's exhibits self-preference. Strip provenance, randomise A/B order per comparison, and record which position won so bias is measurable rather than assumed absent.
+3. **The judge must not be the model under test.** Today `local_loop.py:2102` resolves the regression judge as `scout_model or model` — so the judge **can be the same model that wrote the patch**. For rubric A/B that is disqualifying. Require a distinct judge, and prefer a different family.
+4. **Gold anchors in every rubric.** Include one known-good and one known-bad output. If the judge ever ranks the known-bad above the known-good, the judge is broken and that run pays nothing. This is the cheapest possible judge-drift detector and it costs two extra comparisons.
+5. **Inter-judge agreement is measured, and gates payment.** Run a sample of pairs past N distinct judges. Below an agreement threshold the rubric is noise and pays zero — a rubric nobody can apply consistently is not a measurement, and paying on it rewards variance.
+6. **Ties must be expressible.** Most changes are neutral. A judge forced to pick a winner manufactures signal, and a bonus paid on manufactured signal is a random-walk reward — which a loop will happily exploit by making many neutral changes.
+
+**Payout ceiling.** Rubric A/B is `judged` tier, so under §11.8 it earns the least per point — well below `verified`, far below a real `executed` benchmark. That ordering is deliberate: if a custom rubric could pay like SWE-bench, the cheapest capability gain in the system becomes "author an easy rubric." Keep the rubric bonus small enough that it guides direction without being worth farming, and keep the large prize attached to the measurements that can't be talked into a favourable answer.
+
+**What it's genuinely good for**: the direction-setting that benchmarks can't express. The operator wants the loop working on PM-fleet coordination this month; a rubric A/B says "better than baseline at this" with enough fidelity to rank candidates, without pretending to be a capability score. Used that way — as a *steering* signal with a small weight rather than a *reward* signal with a large one — it is exactly the right tool.
+
+### 11.11 Which benchmarks are missing — and the portfolio is off-target, not just small
+
+The sharper problem is not that seven benchmarks is few. It is that **the seven measure generic LLM capability, and almost none measure what this product uniquely claims.** maistro-engine's headline claims are secure agent execution, policy-gated tool calls, prompt-injection defence at every trust boundary, and durable decaying memory. The eval portfolio measures none of those.
+
+Most concretely: **there is no security evaluation of any kind.** A repo-wide search across `maistro-evolve` for injection/security eval content returns nothing. Security is the operator's stated #1 priority, it is a veto tier in §11.6, and it has **zero representation in the capability measurement**. Meanwhile §5 and the general audit found real, working evasions of Warden — combining-accent and encoded payloads pass today — and nothing in the eval suite would ever have surfaced that.
+
+Ranked for *this* product rather than for a generic model. I am naming benchmark families and what they measure; exact suitability and current best-in-class need checking before adoption, and several of these are newer than my reliable knowledge.
+
+| # | Missing capability | Benchmark family | Why it matters *here* |
+|---|---|---|---|
+| **1** | **Prompt-injection robustness for tool-using agents** | AgentDojo-style suites | This is the product's core security claim. An agent with tools, an untrusted input channel, and a policy gate is precisely what these measure. My review found live Warden evasions; this is the eval that would have caught them, and it would make Warden's normalisation gap a *scored regression* rather than a review finding |
+| **2** | **Insecure code generation** | CyberSecEval / secure-coding suites | Directly measures V1's concern: does the model write vulnerable code? Security is priority #1 and currently measured only by bandit-on-the-diff, which is a linter, not a capability eval |
+| **3** | **Harmful / unsafe agentic action refusal** | AgentHarm-style | Measures Sentinel's actual job — does the agent *attempt* dangerous tool calls. Sentinel is a headline subsystem whose C-1 finding is that argument validation never blocks anything; an eval here turns that from a code review into a number |
+| **4** | **Long-context and memory quality** | RULER / LongBench-style | `maistro.memory` ships decay, tiers, promotion, and scope resolution, and has **no eval coverage at all**. Also the subsystem where the general audit found WISDOM is an undecayable one-way ratchet |
+| **5** | **Token efficiency at fixed quality** | Pareto-style, easy to build in-house | Makes `cost_efficiency` real. Today it returns 1.0 unmeasured and pays 15 of 65 points for nothing (§10.7) — so this is the rare case where building the measurement *removes* free reward |
+| **6** | **Multi-agent coordination / handoff** | thin public options | A2A delegation, PM Fleet, and graph DAG execution have no eval. Public benchmarks are weak here, which makes this **the best case for §11.10's custom rubric A/B** — a genuine capability with no leaderboard |
+| **7** | **Agentic trajectory coding** (beyond single-patch repair) | SWE-agent-style trajectories, polyglot edit suites | SWE-bench measures one bug, one patch. This product runs multi-cycle self-improvement, which single-shot repair does not measure |
+
+**The recommendation, given security is #1.** Items 1–3 should come before growing any existing benchmark's corpus. The reasoning is the same one that produced §11.2: a priority you do not measure is a priority you have expressed only as an intention. Right now security is a veto (which correctly blocks harm) and a linter (which catches known patterns) — but nothing in the system can tell you whether the agent is getting *better or worse* at resisting injection, refusing unsafe actions, or writing secure code. For a self-improving system that is the gap that matters most: the loop can only optimise what it can see, and it currently cannot see the thing the operator cares about most.
+
+Item 5 deserves a note for being backwards from the rest: building it *reduces* total reward, because it replaces 15 unearned points with a measured score. That is a feature. Every dimension in §11.6 that pays without measuring is a small standing instruction to keep it unmeasured.
+
 ---
 
 ## 12. Limits of this review
