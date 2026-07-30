@@ -57,6 +57,29 @@ class PersonaChecklistResponse(BaseModel):
     default_accepted: list[str]
 
 
+class PersonaTemplateOption(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str
+    display_name: str
+    tagline: str
+
+
+@router.get("/persona-templates", response_model=list[PersonaTemplateOption])
+def list_persona_templates() -> list[PersonaTemplateOption]:
+    """Every persona a workspace-creation picker can offer -- "unlimited
+    personas" means unlimited YAML files under personas/templates/, not a
+    hardcoded catalog here."""
+    return [
+        PersonaTemplateOption(
+            id=template.id,
+            display_name=template.brand.display_name or template.id,
+            tagline=template.brand.tagline,
+        )
+        for template in load_templates().values()
+    ]
+
+
 @router.get("/persona-templates/{persona_id}/checklist", response_model=PersonaChecklistResponse)
 def get_persona_checklist(persona_id: str) -> PersonaChecklistResponse:
     """The checklist a workspace-creation wizard shows: every tool/skill the

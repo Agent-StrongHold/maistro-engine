@@ -111,6 +111,63 @@ def _fake_pm_fleet_template():
     )
 
 
+class TestListPersonaTemplates:
+    """Persona picker slice: GET /v1/workspaces/persona-templates."""
+
+    def test_returns_one_option_per_loaded_template(self, admin_client, monkeypatch) -> None:
+        import routes.workspaces as workspaces_routes
+
+        from maistro.personas.schema import BrandSpec, PersonaTemplate
+
+        monkeypatch.setattr(
+            workspaces_routes,
+            "load_templates",
+            lambda: {
+                "pm_fleet": PersonaTemplate(
+                    kind="workspace",
+                    id="pm_fleet",
+                    brand=BrandSpec(display_name="PM Fleet", tagline="Ship the program"),
+                ),
+                "content_creator": PersonaTemplate(
+                    kind="workspace",
+                    id="content_creator",
+                    brand=BrandSpec(display_name="Content Studio", tagline="Plan your posts"),
+                ),
+            },
+        )
+        r = admin_client.get("/v1/workspaces/persona-templates")
+        assert r.status_code == 200
+        body = r.json()
+        assert {opt["id"] for opt in body} == {"pm_fleet", "content_creator"}
+        pm_fleet = next(opt for opt in body if opt["id"] == "pm_fleet")
+        assert pm_fleet["display_name"] == "PM Fleet"
+        assert pm_fleet["tagline"] == "Ship the program"
+
+    def test_falls_back_to_id_when_brand_display_name_is_empty(
+        self, admin_client, monkeypatch
+    ) -> None:
+        import routes.workspaces as workspaces_routes
+
+        from maistro.personas.schema import PersonaTemplate
+
+        monkeypatch.setattr(
+            workspaces_routes,
+            "load_templates",
+            lambda: {"nameless": PersonaTemplate(kind="workspace", id="nameless")},
+        )
+        r = admin_client.get("/v1/workspaces/persona-templates")
+        assert r.status_code == 200
+        assert r.json() == [{"id": "nameless", "display_name": "nameless", "tagline": ""}]
+
+    def test_empty_when_no_templates_resolve(self, admin_client, monkeypatch) -> None:
+        import routes.workspaces as workspaces_routes
+
+        monkeypatch.setattr(workspaces_routes, "load_templates", lambda: {})
+        r = admin_client.get("/v1/workspaces/persona-templates")
+        assert r.status_code == 200
+        assert r.json() == []
+
+
 class TestPersonaChecklist:
     """Phase C: the checklist is derived from the persona's own declared spawns."""
 
@@ -202,6 +259,12 @@ class TestRealPmFleetTemplate:
         checklist = r.json()["checklist"]
         assert "intake.skill.create_initiative" in checklist
         assert "delivery.skill.poll_jira" in checklist
+
+    def test_persona_template_list_includes_both_real_personas(self, admin_client) -> None:
+        r = admin_client.get("/v1/workspaces/persona-templates")
+        assert r.status_code == 200
+        ids = {opt["id"] for opt in r.json()}
+        assert {"pm_fleet", "content_creator"} <= ids
 
 
 class TestWorkspaceTheme:
