@@ -580,6 +580,17 @@ Two principles behind these, each violated somewhere above:
 15. `permissions: contents: read` on the four workflows; repo default read-only; cage-guard covers itself and the gate substrate (E-2).
 16. Delete `_seed_audit_log`; persist and hash-chain the audit log; audit every RSI lifecycle action (O-2).
 
+**Tier 1c — make the human gate exist (§9).** *This is not optional cleanup: RLPHD is the human gate, it is off, and the reason it is off is a correctness defect. Turning containment back on without this re-creates the choice the operator already made once.*
+
+16a. **Fix the three review-path bugs (R-1, R-2, R-3)** — approvals must survive the checkpoint, reach the manifest, actually train the model, and a corrupt state file must fail loudly instead of silently cold-starting. Until these land, no amount of human reviewing teaches Ralph anything.
+16b. **Add `rlphd_mode: off | shadow | acting`, defaulting to `shadow`** — so the failure mode is "learned nothing yet," not "reverted everything."
+16c. **Build `maistro-rsi review bootstrap`** (§9.3): harvest `kept/`+`flagged/` history, cover the gaps with a designed diff set, fit by replaying labels through `record_decision`, and choose θ from a displayed confusion matrix instead of `COLD_START_THETA`.
+16d. **R-5 and R-8** — stop feeding the model the fabricated `0.7` judge default, and add at least one feature the judged party cannot forge.
+16e. **R-7 / R-9** — review per-promotion rather than per-checkpoint so supersession stops eating the label stream.
+16f. Then restore `--promotion-review` as the launcher default (the E-1 half that depends on this working).
+
+**Tier 1d — correctness that invalidates evolve's results (§10.1-7).** These gate any claim about evolve's behaviour, including [#291]'s renaming work and [#303]'s v1 feature verification: the breeding loop that produces half the requested children, the cull-to-zero with `emergency_spawn` never called, `trait_vector`'s 8-vs-11 length crash, self-crossover, the fabricated leaderboard zeros, the unfireable hard gate, and unmeasured cost/latency paying 25 of 65 points unconditionally.
+
 **Tier 2 — record integrity, honesty, and the long tail.**
 
 17. Signed chained trace notes; `write_trace_note` failure blocks promotion (O-8). Report renders after the review pass with a flagged/reverted section (O-4). Revert failure flags and excludes; supersession queued not skipped (O-5).
@@ -592,11 +603,117 @@ Two principles behind these, each violated somewhere above:
 24. `report_dir` outside `work_root` with startup validation; forward `isolation` from the conductor route; confine or delete the duplicate `local_loop.LocalSandbox`.
 25. **Correct the documentation that will cause misplaced trust:** `SECURITY.md:37` (names a layer with no implementation and no callers), ADR-093's status vs. the `local` default, `container_sandbox.py`'s ADR-093 claim, `security/patterns.py:56-58` (cites ADR-058, which is A2A delegation, not sandboxing), and `quota_burn.py:96-97`'s nonexistent budget cap.
 
+**Tier 2 also carries §10.8-13** — the quota accounting blind to its largest cost category, the spec-tracker reward forgeries, the pruned-cursor pagination, the unreachable `MemoryScope.SESSION`, the learning-dedup scope bug, and the discarded `Outcome` feedback fields.
+
 **Structural, and the one that outlasts the list:** the containment decision is currently made by code inside the mutable tree, reading untracked host state (`os.environ`, `os.path.exists`). No pattern-list tuning closes that. **Move the tier decision to a host-side supervisor the loop cannot edit or observe** — one that chooses the backend, injects an unforgeable attestation, and starts the loop already inside the boundary. And **invert the sensitive-path list**: a denylist will always lag an adversary that reads it; compute the boundary-relevant set from a manifest covered by `cage-guard.yml`-style hard rejection, and treat any diff outside an explicit allowed-to-edit list as sensitive.
 
 ---
 
-## 9. Limits of this review
+## 9. Correctness — making RLPHD actually work
+
+Containment fixes are worth little here without this one, because RLPHD **is** the human gate. It is currently disabled in the shipped launcher (E-1), and the reason given in the code is accurate: a cold model *"emits a constant p=0.5 that reverts 100% of promotions to flagged/ … without actually discriminating."* So the operator's choice was between a gate that reverts everything and no gate at all, and they correctly picked the one that lets work happen. **Fixing containment while leaving RLPHD off just re-runs that choice.**
+
+### 9.1 The cold-start death spiral, quantified
+
+`RlphdModel.predict` sums over its **own** weight dict, which starts empty — so a cold model returns `sigmoid(0) = 0.5` for every input, regardless of features. `COLD_START_THETA = 0.7`. Therefore `p < theta` always, and **every** promotion is reverted and flagged on a fresh state file. The `bias: 1.0` term in `extract_features` is documented as being there *"so the sigmoid isn't forced through the origin"*, but on a cold model there is no weight for `bias` either, so it is inert until the first update.
+
+I simulated the shipped constants (`DEFAULT_LEARNING_RATE=0.1`, `DEFAULT_CONF_GAP_FLOOR=0.1`, `_THETA_SURPRISE_GAIN=0.03`) on a typical promotion (`judge_score=0.7, composite=0.6, is_feature=1`):
+
+| approvals | p | θ | auto-keeps? |
+|---|---|---|---|
+| 0 | 0.5000 | 0.7000 | no |
+| 4 | 0.5364 | 0.6418 | no |
+| 8 | 0.5589 | 0.5873 | no |
+| **10** | 0.5663 | 0.5609 | **yes** |
+
+**Ten consecutive human approvals to escape cold start.** Three things about that number matter more than the number:
+
+1. **It escapes by lowering the bar, not by learning.** θ falls 0.70→0.56 while p rises only 0.50→0.57. The model that begins auto-keeping is still almost uninformative; it just has a lower threshold. It has learned "approve" rather than "approve things with these characteristics."
+2. **It has seen ten positives and zero negatives.** A model fit on one class has no discriminative power, by construction. The first genuinely bad promotion after cycle 10 gets auto-kept.
+3. **A discriminating reviewer converges *slower*.** On a deny, `update_theta`'s delta is `gain * (p − 0)` — **positive** — so θ rises and the gate tightens. An operator who mixes approvals and denials (i.e. one doing the job properly) can stay gated indefinitely.
+
+And the ten approvals must be delivered through a review path that is broken three independent ways: the approved patch is deleted by the next checkpoint's `export_promotions(clear=True)` (P-6), `manifest.json` is never updated so harvest never sees it (P-6), and `routes/rsi.py:206-235` returns a hardcoded `rlphd_updated: True` while swallowing any exception from `record_decision` — writing the `.decision.json` sidecar regardless, which permanently marks the review resolved (O-3 area). So the operator can rule on fifty promotions, have all fifty marked settled, teach the model nothing, and be told "Ralph updated" every time.
+
+**That is the whole failure: a learned gate whose only training channel is broken, whose cold start reverts everything, and whose escape path yields a permissive rather than a calibrated model.**
+
+### 9.2 Why the fix requires an interview
+
+The online path cannot produce a calibrated model, for a structural reason independent of the bugs: **RLPHD only ever receives labels for promotions it already flagged** (`p < theta`), and once it starts auto-keeping, `kept/` items are labeled only if a human bothers to override. The training distribution is therefore selected by the model's own current belief — the classic bandit-feedback bias — and at these gains it cannot span the feature space inside a single run.
+
+A preference model with no labels cannot bootstrap itself. The only source of labels is the operator. So the fix is to **manufacture a spanning, balanced label set before the first unattended run**, rather than extracting a biased trickle from a live 150-cycle run.
+
+### 9.3 The bootstrap interview — proposed design
+
+A new `maistro-rsi review bootstrap` subcommand. Five phases; nothing here needs new math.
+
+**Phase 1 — Harvest real history first.** `kept/` and `flagged/` already contain, per sha, a `.json` with the exact `features`, `predicted_p`, and `theta` plus the `.patch`. Any repo that has run the loop already holds a labelable corpus with *real* feature vectors. Present each as a diff and collect approve/deny. Real patches beat synthetic ones because the operator is judging code, not numbers.
+
+**Phase 2 — Cover the gaps with a designed scenario set.** The space is effectively four free dimensions: `judge_score ∈ [0,1]`, `composite ∈ [0,1]`, and three kind states (SPEC / FEATURE / other). A 2-level factorial with midpoints is ~18–24 cells — a 20-minute interview that spans the space. Critically, **present concrete diffs, never feature vectors**: no operator can calibrate "judge_score = 0.45, composite = 0.6". Select real historical patches whose features land in each cell, and hand-write a small number of archetypes only for cells history does not reach (notably the *low*-quality cells, which a ratcheting loop rarely produces).
+
+**Phase 3 — Fit by replaying the labels through `record_decision()`.** Several shuffled epochs over the interview set, using the shipped update rule. Two reasons to prefer this over a direct logistic solve: it cannot diverge from `RlphdModel.predict`, and it produces exactly the `rlphd_state.json` the loop already reads. (A 5-parameter logistic fit is also perfectly tractable — but it adds a second code path that must agree with the predictor, and disagreement there would be silent.) Report the fitted weights back to the operator in `explain_prediction` form — the glass-box property is the whole point, and this is the moment it pays off.
+
+**Phase 4 — Choose θ from the operator's risk posture, not a constant.** After fitting, sweep θ over [0,1] and show the confusion matrix on the interview set at each point: *"at θ=0.62, Ralph auto-keeps 8 of the 12 you approved and 1 of the 18 you denied."* Let the operator pick the operating point. **This is what makes θ mean something**, and it replaces `COLD_START_THETA = 0.7` — a number that is currently just above the structurally-guaranteed cold p of 0.5, which is why it reverts everything.
+
+**Phase 5 — Shadow mode before it is allowed to act.** Add an explicit `rlphd_mode: off | shadow | acting`, defaulting to **`shadow`**. In shadow, Ralph predicts and records but never reverts. After one run, report calibration — Brier score, a reliability curve, and the disagreement set (what it would have reverted that the fitness gates accepted, and vice versa). Promote to `acting` only when calibration clears a stated bar. This follows the doc's own principle: **never assert a control works; observe it.** It also makes the failure mode "we have learned nothing yet" rather than "we reverted everything" or "we approved everything."
+
+### 9.4 RLPHD correctness fixes needed regardless of the interview
+
+Without these, the interview is the only training data Ralph will ever get — and the state file it produces is neither durable nor trustworthy.
+
+| # | Defect | Fix |
+|---|---|---|
+| R-1 | Approved patch deleted by the next checkpoint's `clear=True`; `manifest.json` never updated, so harvest never sees it (P-6) | Write approvals to `export_dir/approved/` which `clear` does not touch, and append to the manifest; have `_load_saved_patches` read both |
+| R-2 | `routes/rsi.py:206-235` returns hardcoded `rlphd_updated: True` and writes `.decision.json` even when `record_decision` threw | Catch narrowly, propagate the real outcome, and do **not** write the sidecar unless the update succeeded |
+| R-3 | `_load` swallows `OSError`/`JSONDecodeError` and returns — a corrupt state file **silently becomes a cold start**, discarding the interview | Fail loudly; refuse to run in `acting` mode without a validly loaded model |
+| R-4 | `{"thetas": {}, "models": {}, "decisions": 0}` is what both "never trained" and "corrupt" look like in the UI | Expose `state_loaded`, `decisions_recorded`, and `mode` so they are distinguishable |
+| R-5 | `judge_score` defaults to **0.7 when the judge is unavailable** — the same value as a genuine good score (G-1), so Ralph is trained on fabricated evidence | Pass `None` through and add an explicit `judge_unavailable: 1.0` feature so the model can learn what a missing judge is worth |
+| R-6 | θ is not clamped to [0,1] on load and weights are unbounded, in a file that is hand-editable by design and writable by candidate code (K-5) | Clamp on load; HMAC the file under a key the gate-time child never sees; refuse to load on mismatch |
+| R-7 | Supersession means most promotions are never reviewed at all (O-5), so the label stream is biased toward early cycles | Queue superseded promotions for decision *without* reverting, so the model still sees them |
+| R-8 | Every feature (`composite`, `judge_score`) is candidate-influenced — the model learns over signals the judged party can move | Add at least one unforgeable feature: diff size, files touched, whether a sensitive path was touched, whether any gate was absent |
+| R-9 | Reviewing per-checkpoint batch creates the supersession window in the first place | Review per-promotion at promotion time; the window disappears |
+
+### 9.5 What "working as intended" should mean, stated testably
+
+So this can be verified rather than asserted:
+
+- A fresh install with no history runs `review bootstrap`, and afterwards `rlphd_state.json` contains non-empty weights for all five features and a θ chosen from a displayed confusion matrix.
+- With that state, a *typical* promotion predicts `p ≥ θ` and an *archetypally bad* one predicts `p < θ` — i.e. the model discriminates on day one, which today it cannot do at any point.
+- `rlphd_mode` defaults to `shadow`; a run in shadow mode reverts nothing and emits a calibration report.
+- A human decision through the UI durably changes `rlphd_state.json`, survives the next checkpoint, and the approved patch reaches harvest. Assert this end-to-end — it is the loop that is currently broken in three places.
+- A corrupt or absent state file refuses to run in `acting` mode rather than silently cold-starting.
+
+---
+
+## 10. Correctness — the rest of the list
+
+Containment aside, these are defects that stop the loop from doing what it says. Ranked by whether they invalidate results.
+
+**Invalidate evolve's output outright** (from the general audit; all on files identical or near-identical on `develop`):
+
+1. **`cycle.py:215` breeds roughly half the requested children** — `range(0, min(needed, len(parent_ids) - 1), 2)` collects `needed*2` parents but iterates only `needed` slots. Islands never refill after `cull_bottom` removes 30%, so the population shrinks generation over generation.
+2. **The population can be culled to zero with no recovery** — `population.py:230` `cutoff = max(1, …)` removes at least one genome even from a singleton, and `diversity.py:151` `emergency_spawn()` — the only respawn path — is **never called from production code**. After reaching zero, `run_cycle` is a permanent silent no-op.
+3. **`diversity.py:28-31` returns `[0.0]*8` for empty topologies while `:54-66` builds 11 elements**, and `_euclidean` uses `zip(..., strict=True)`. One genome with `topology.nodes == []` raises `ValueError` and crashes fitness computation for the **whole population**.
+4. **Self-crossover** — `cycle.py:206` selects parents independently with no de-dup and `crossover.py:25` has no self-pairing guard, so a genome breeds with itself and duplicates its own nodes instead of combining two parents.
+5. **`tournament.py:139-151` `get_leaderboard(benchmark=None)` reports fabricated zeros** — it looks up ratings under the literal `"overall"`, a name battles are never recorded under, so every aggregate row shows `total_battles=0, win_rate=0.0` and the read pollutes `_ratings` with a spurious entry.
+6. **`fitness.py`'s hard gate cannot fire for the RSI benchmark** — `_HARD_GATE_THRESHOLDS` lists eight benchmarks; the live loop folds under `"code_rsi"`, and `_check_hard_gate` only checks `if bench in scores`. Decorative here.
+7. **Unmeasured cost and latency are free fitness** — `_cost_efficiency`/`_latency_efficiency` return **1.0** when the value is `≤ 0`, and the live RSI path never sets either. Every genome collects 25 points unconditionally against a maximum of 65 from real work, so **failing pays 28% of what a perfect score pays** — and *not being measured* is what pays.
+
+**Make the loop mis-account or lose work:**
+
+8. **RSI quota accounting is blind to its largest cost category** (general audit M-32) — `record_attempt` has one call site fed only by benchmark-scoring calls; both production apply-patch wirings report nothing, so `next_model()` keeps re-picking a model it believes is idle.
+9. **`spec_tracker` credits ACs by presence, not execution** (G-3/F6) — and `proposed_specs` never consults `baseline_ref` despite its docstring, so editing an existing spec earns the 0.40 weight.
+10. **`tasks/queue.py:196-226` pagination breaks on a pruned cursor** — the caller gets an empty page and concludes pagination finished while later tasks exist.
+11. **`MemoryScope.SESSION` is unreachable** — `scopes.py:8-24` never emits a SESSION filter, so any memory stored with that scope is permanently invisible to retrieval.
+12. **Learning dedup ignores agent scope and uses containment where ADR-015 specifies Jaccard** (general audit M-23) — verified against the real SQLite store: one agent's learning is silently discarded as a duplicate of another's, and the survivor's `hit_count` is inflated, which can auto-promote the wrong learning roster-wide.
+13. **`Outcome` fields are silently discarded by both DB backends** (M-24) — `project_id`, `dag_id`, `thumb`, `thumb_comment` are in neither DDL nor INSERT, so the conductor's entire thumbs-feedback payload is thrown away.
+
+**Structural correctness in the graph substrate** (general audit L-1): `strategy.update_blackboard()` is **never called** on the `run.py` path, so the graph propagates no inter-node data at all and `node_annotations` is `{}` even when every node succeeds; the join node executes **twice** on any asymmetric diamond; `success` reports `True` for a run truncated by `max_cycles`; and `execute_dag_streaming` is permanently broken by a signature mismatch its own tests monkeypatch around.
+
+**Where these belong in the plan:** items 1–7 gate any claim about evolve's behaviour and should land before [#291]'s honest-naming work and before [#303] treats evolve+RSI as a verified v1 feature — a renamed scorer over a population that halves every generation is still not a result. Items 8–13 are ordinary bug fixes for Tier 2. The graph items are already tracked in the general audit.
+
+---
+
+## 11. Limits of this review
 
 - Seven agents; every Critical was re-verified by hand or by execution. K-6's sub-findings were **executed** against real pytest/ruff/coverage; K-3, K-3a, and the `_seed_audit_log`/`stop_run`/`git_push`/`release-installer`/`litellm_config` findings were read directly at the cited lines.
 - **Agents initially disagreed about "the default path."** That disagreement was real and is resolved in §1: three entry points, three different containment postures. Statements about "no containment" apply to the direct-CLI and conductor paths, **not** to `run_rsi_isolated.sh`.
