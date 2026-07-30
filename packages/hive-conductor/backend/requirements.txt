@@ -1,23 +1,23 @@
-pyyaml>=6.0.0
-fastapi>=0.115.0
-uvicorn[standard]>=0.32.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-python-multipart>=0.0.9
-httpx>=0.27.0
+pyyaml>=6.0.0,<7
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.32.0,<1
+pydantic>=2.0.0,<3
+pydantic-settings>=2.0.0,<3
+python-multipart>=0.0.9,<1
+httpx>=0.27.0,<1
 # Starlette 1.x TestClient uses httpx2; httpx above remains the application
 # HTTP client. Keeping both prevents test-only deprecation warnings.
-httpx2>=2.0.0
-langfuse>=3.9.3
-argon2-cffi>=23.1.0
-bcrypt>=4.0.0
-cryptography>=43.0.0
-structlog>=24.1.0
-pytest>=8.0.0
-pytest-asyncio>=0.25
-pytest-bdd>=8.0.0
-hypothesis>=6.0.0
-sqlalchemy[asyncio]>=2.0.0
+httpx2>=2.0.0,<3
+langfuse>=3.9.3,<5
+argon2-cffi>=23.1.0,<25
+bcrypt>=4.0.0,<6
+cryptography>=43.0.0,<49
+structlog>=24.1.0,<26
+pytest>=8.0.0,<10
+pytest-asyncio>=0.25,<2
+pytest-bdd>=8.0.0,<9
+hypothesis>=6.0.0,<7
+sqlalchemy[asyncio]>=2.0.0,<3
 # maistro-core is consumed via sys.path (conftest), not pip-installed, so its
 # hard deps must be restated here. `regex` powers Warden's per-search ReDoS
 # timeout: before it became an unconditional import, this environment silently
