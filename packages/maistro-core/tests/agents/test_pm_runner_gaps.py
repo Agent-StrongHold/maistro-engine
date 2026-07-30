@@ -42,13 +42,18 @@ async def test_experience_context_swallows_store_exception(monkeypatch):
 @pytest.mark.asyncio
 async def test_emit_pm_event_swallows_bus_exception(monkeypatch):
     class BoomBus:
+        attempts = 0
+
         async def emit(self, event):
+            self.attempts += 1
             raise RuntimeError("bus unavailable")
 
-    pm_runner.set_pm_event_bus(BoomBus())
+    bus = BoomBus()
+    pm_runner.set_pm_event_bus(bus)
     try:
-        # Must not raise even though the bus blows up.
         await pm_runner._emit_pm_event("pm_node_started", {"role": "intake"})
+
+        assert bus.attempts == 1
     finally:
         pm_runner.set_pm_event_bus(None)
 
