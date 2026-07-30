@@ -55,7 +55,7 @@ async def test_run_tournament_battles_returns_early_with_fewer_than_two_genomes(
 async def test_run_tournament_battles_returns_early_with_fewer_than_two_scored_genomes() -> None:
     population = PopulationStore()
     g1 = _genome("a")
-    g1.eval_scores = {"ifeval": 0.5}
+    g1.eval_scores = {"proxy_ifeval": 0.5}
     g2 = _genome("b")
     population.add(g1)
     population.add(g2)
@@ -111,7 +111,7 @@ async def test_run_cycle_uses_breeding_pool_path_when_tournament_has_few_rated_g
     config = EvolutionConfig(
         population_size=8,
         eval_batch_size=0,
-        target_benchmarks=["ifeval"],
+        target_benchmarks=["proxy_ifeval"],
         self_improve=False,
     )
 
@@ -133,7 +133,7 @@ async def test_run_cycle_breeding_pool_fallback_with_fewer_than_two_candidates()
     config = EvolutionConfig(
         population_size=4,
         eval_batch_size=0,
-        target_benchmarks=["ifeval"],
+        target_benchmarks=["proxy_ifeval"],
         self_improve=False,
         cull_pct=1.0,
     )

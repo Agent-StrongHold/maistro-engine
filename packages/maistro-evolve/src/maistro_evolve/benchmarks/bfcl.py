@@ -188,7 +188,7 @@ async def run_bfcl(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="bfcl",
+        benchmark="proxy_bfcl",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),

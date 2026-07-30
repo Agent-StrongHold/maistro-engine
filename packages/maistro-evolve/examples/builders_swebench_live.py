@@ -8,8 +8,8 @@ Real pieces, no mocks:
 - Scoring = real pytest runs against handwritten tests per SWE-bench sample
 
 Disclosed fudge: the fitness hard gate requires all 8 benchmark scores, so the
-7 non-target benchmarks are seeded at 0.6 on every genome. swebench is the only
-evolved, real signal.
+7 non-target benchmarks are seeded at 0.6 on every genome. proxy_swebench is the
+only evolved, real signal.
 """
 
 from __future__ import annotations
@@ -52,7 +52,15 @@ from maistro_evolve.types import (  # noqa: E402
 MODEL = os.environ.get("MAISTRO_DEMO_MODEL", "claude-haiku-4-5")
 PYBIN = sys.executable
 TRIMMED = SWEBENCH_SAMPLES[:3]
-OTHER_BENCHES = ["ifeval", "bfcl", "tau_bench", "gaia", "ragas", "terminalbench", "osworld"]
+OTHER_BENCHES = [
+    "proxy_ifeval",
+    "proxy_bfcl",
+    "proxy_tau_bench",
+    "proxy_gaia",
+    "proxy_ragas",
+    "proxy_terminalbench",
+    "proxy_osworld",
+]
 
 TESTS = {
     "swe_01": (
@@ -235,7 +243,7 @@ async def run_swebench_builders(genome: PipelineGenome, llm_call) -> EvalResult:
         f"      [builders/swebench] {genome.name}: {' '.join(per_sample)} -> {avg:.3f}", flush=True
     )
     return EvalResult(
-        benchmark="swebench",
+        benchmark="proxy_swebench",
         score=round(avg, 4),
         duration_seconds=round(time.monotonic() - t0, 1),
         samples_evaluated=len(TRIMMED),
@@ -294,7 +302,7 @@ def show(population: PopulationStore, title: str) -> None:
         print(
             f"  {g.id:<18} gen={g.generation} parent={g.parent_a_id or '-':<18} "
             f"fitness={g.fitness_score if g.fitness_score is not None else '—':<8} "
-            f"swebench={g.eval_scores.get('swebench', '—')} "
+            f"proxy_swebench={g.eval_scores.get('proxy_swebench', '—')} "
             f"origin={g.harness_params.get('origin', 'seed')}",
             flush=True,
         )
@@ -311,14 +319,14 @@ def show(population: PopulationStore, title: str) -> None:
 async def main() -> None:
     t0 = time.monotonic()
     harness = EvalHarness(benchmark_fidelity="proxy")
-    harness.register_benchmark("swebench", run_swebench_builders)
+    harness.register_benchmark("proxy_swebench", run_swebench_builders)
     cycle = EvolutionCycle(harness=harness, tournament=EloTournament())
     config = EvolutionConfig(
         population_size=3,
         mutation_rate=0.3,
         cull_pct=0.34,
         eval_batch_size=5,
-        target_benchmarks=["swebench"],
+        target_benchmarks=["proxy_swebench"],
         diversity_threshold=0.0,  # no random emergency spawns in this demo
         self_improve=True,
         self_improve_top_n=1,
@@ -349,7 +357,8 @@ async def main() -> None:
 
     champ = population.get_champion()
     print(
-        f"\nchampion: {champ.id} ({champ.name}) swebench={champ.eval_scores.get('swebench')} "
+        f"\nchampion: {champ.id} ({champ.name}) "
+        f"proxy_swebench={champ.eval_scores.get('proxy_swebench')} "
         f"lineage={[g.id for g in population.get_lineage(champ.id)]}",
         flush=True,
     )
