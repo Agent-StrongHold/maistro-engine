@@ -272,7 +272,7 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 **AC:** registry gate green; no spec marked Implemented whose named feature raises
 NotImplementedError. Verified: `maistro_registry.cli lint . --strict` — 0 errors.
 
-## D3 — Rename evolve pseudo-benchmarks honestly; evolve/rsi ship as v1 (M)
+## D3 — Rename evolve pseudo-benchmarks honestly; evolve/rsi ship as v1 (M) — done, #291, PRs #327 + #329
 
 **Context:** `packages/maistro-evolve` scorers named `swebench` / `gaia` / `tau_bench` / `osworld`
 / `ifeval` / `bfcl` / `ragas` / `terminalbench` are keyword-overlap heuristics, not the named
@@ -280,15 +280,29 @@ benchmarks, and drive 0.65 of fitness weight (SPEC-202 Proposed). Evolve+RSI are
 which makes honest naming more important, not less: shipping fake scorers under real benchmark
 names as a *supported* feature is the single worst credibility exposure in the tree.
 
-- [ ] Rename scorers to `heuristic_*` (or `*_style_heuristic`) with docstrings stating they are
-      keyword-overlap proxies for the named benchmark, not the benchmark; update fitness config
-      keys. Real benchmark adapters = v1.1 (SPEC-202).
-- [ ] Replace any "experimental" framing with a v1 stability statement for both packages: what
-      the API/CLI contract guarantees vs what is best-effort (e.g. specific genome model rosters).
-- [ ] Confirm both are in the PyPI publish set (E3) and the v1 supported surface (F4).
+**Correction to the context above (verified against the code in #327):** the premise that all
+eight are "keyword-overlap heuristics" was significantly overstated. `swebench`/`terminalbench`
+run real sandboxed execution and assert a real outcome; `ifeval` runs real per-instruction rule
+verification. Only `ragas` is primarily keyword overlap. `bfcl`/`gaia`/`tau_bench` are
+structurally-checked but each carries a real text-mention or fuzzy-substring fallback that
+materially weakens it. What *is* uniformly true — and what the AC actually needed — is that none
+of them run the official corpus/harness. The fix reflects that reality rather than the original
+blanket claim.
+
+- [x] Scorers renamed — to `proxy_*` rather than `heuristic_*`, because "heuristic" would have
+      been its own inaccuracy for the five non-heuristic scorers (see correction above).
+      `EvalResult.benchmark` values, `PROXY_BENCHMARKS`/`RSI_BENCHMARKS` registry keys, fitness
+      hard-gate keys, `EvalWeights` fields, and `cycle`/`runner` default lists all moved in
+      lockstep (#329). Per-benchmark docstrings stating exactly what each one does — including
+      the degenerate cases — landed in #327. Real benchmark adapters remain v1.1 (SPEC-202).
+- [x] v1 stability statement for both packages (#327, `__init__.py` of each). Notes the
+      unresolved ADR-088 governance conflict rather than silently overriding an Accepted ADR.
+- [x] Both already named in E3's PyPI publish set below; F4/#303 tracks the supported-surface
+      integration.
 
 **AC:** no identifier or docstring claims a real benchmark is being run; both packages carry a
-stability statement. **Rename blocks the tag.**
+stability statement. ✅ Verified: repo-wide grep for the 8 bare identifiers returns zero hits
+outside prose about the real benchmarks; 955/955 tests pass across both packages.
 
 ## D4 — Documentation accuracy sweep (M, dep D1+D2)
 
