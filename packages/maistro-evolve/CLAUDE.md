@@ -30,11 +30,14 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src pytest packages
 ## Benchmark fidelity — stability statement (SPEC-202)
 
 **None of `ifeval`, `bfcl`, `swebench`, `tau_bench`, `gaia`, `ragas`, `terminalbench` run the official
-published benchmark harness against the official dataset.** They score real model output, against real
-criteria, at a lite/handcrafted scale (`benchmarks/datasets.py`) — a genuine but small-scale version of the
-real methodology, not the official harness. The names match the industry-standard evals; the *scale* does
-not. This exists to save time/money and produce Pareto (cost vs. quality) signal cheaply, and is shipped,
-supported v1 behavior. `osworld` is not implemented at all — see below.
+published benchmark harness against the official dataset.** Six of the seven score real model output
+against real, structural criteria (rule checks, exact-match, tool-call recall, or real sandboxed
+execution) at a lite/handcrafted scale (`benchmarks/datasets.py`) — a genuine but small-scale version of
+the real methodology, not the official harness. **`ragas` is the exception**: its primary score is a
+keyword/word-overlap heuristic, not a structural check — see its entry below. The names match the
+industry-standard evals; the *scale* (and for `ragas`, the *methodology*) does not. This exists to save
+time/money and produce Pareto (cost vs. quality) signal cheaply, and is shipped, supported v1 behavior.
+`osworld` is not implemented at all — see below.
 
 **There is no `stub` tier.** A benchmark either evaluates a real model response against real criteria
 (`proxy`), or it does not run at all — every proxy runner raises `ValueError` if called with `llm_call=None`
@@ -45,12 +48,22 @@ Two fidelity tiers, carried as `EvalResult.metadata["fidelity"]` and on `EvalHar
 
 | Tier | What it means | Trust for promotion |
 |------|---------------|---------------------|
-| `proxy` | Lite-scale but genuine scoring against handcrafted samples — real rule verification, exact-match, tool-call matching, or real sandboxed execution — **what every registered benchmark ships today** | Development only. This is the default (`EvalHarness(benchmark_fidelity="proxy")`). |
+| `proxy` | Lite-scale scoring against handcrafted samples — real rule verification, exact-match, tool-call matching, or real sandboxed execution for six of seven registered benchmarks; `ragas` scores primarily by keyword overlap (see below) | Development only. This is the default (`EvalHarness(benchmark_fidelity="proxy")`). |
 | `real` | Official harness against the official dataset | Not implemented for any benchmark. `EvalHarness(benchmark_fidelity="real")` raises rather than silently downgrading. |
 
 Per-benchmark methodology at the `proxy` tier:
-- **`ifeval`/`bfcl`/`ragas`/`tau_bench`**: real rule/keyword/tool-call verification against handcrafted samples.
-- **`gaia`**: exact-match against handcrafted Q&A, with an LLM-as-judge fallback.
+- **`ifeval`**: real per-instruction rule verification (`contains`, `exact_match`, `sentence_count`,
+  `word_count`, `valid_json`, ...) against handcrafted samples.
+- **`bfcl`**: the response's function call is extracted and its name/parameters compared field-by-field
+  against the expected call — structural matching, not keyword overlap.
+- **`tau_bench`**: recall of *which* tools the response actually invoked against the sample's expected
+  tool calls — a structural match on tool identity, not on response content.
+- **`ragas`**: **the one genuine keyword-overlap heuristic in this package.** Its primary score is
+  word-set overlap between the response and the expected answer/context; it escalates to a real
+  LLM-as-judge call only when that static score falls below 0.6, and even then takes the max of the
+  two — so a response can score highly on word overlap alone. Treat it as the least reliable proxy-tier
+  signal here.
+- **`gaia`**: exact-match against handcrafted Q&A, with an LLM-as-judge fallback below a 0.7 threshold.
 - **`swebench`**: candidate code actually executes in a real sandboxed subprocess (`benchmarks/sandbox_exec.py`
   — `asyncio.create_subprocess_exec`, `start_new_session=True`, process-group kill on timeout) and is asserted
   against the real expected value. Process-level isolation only — see that module's docstring before reusing

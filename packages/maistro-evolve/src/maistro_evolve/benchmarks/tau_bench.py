@@ -130,6 +130,15 @@ async def _simulate_turns(
 
 
 async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score tool-use conversations by recall of the expected tool calls.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official tau-bench corpus. The check extracts which tools the response
+    actually invoked (``_extract_tool_calls_from_response`` plus a
+    name-mention scan) and computes recall against the sample's
+    ``expected_tool_calls`` — a structural match on *which* tools were
+    called, not a keyword-overlap score of response content.
+    """
     if llm_call is None:
         raise ValueError(
             "run_tau_bench requires an llm_call — there is no stub/heuristic "

@@ -15,6 +15,16 @@ Wires together three things that already exist in the monorepo:
 `maistro_rsi.quota_burn` adds a scheduler that spreads cycles across whatever
 models the connected LiteLLM instance exposes, favoring the ones with the
 most idle free-tier headroom so unused allowances get exercised.
+
+v1 stability statement (SPEC-202): this package's public API/CLI contract
+guarantees a self-branch → sandbox → patch → benchmark → quarantine-gate
+cycle. Fitness scoring inherits `maistro_evolve`'s proxy-tier benchmarks (see
+that package's stability statement) plus this package's own `swebench_pro`
+adapter, which ships a small embedded sample set "in the spirit of" the real
+SWE-Bench Pro corpus (arXiv:2509.16941) rather than the full held-out split —
+see `benchmarks/swebench_pro.py` for exactly what is and isn't fetched.
+Best-effort, not guaranteed: specific sample sets, sandbox backend choice
+(ADR pending), and which model rosters are exercised in CI.
 """
 
 from __future__ import annotations
