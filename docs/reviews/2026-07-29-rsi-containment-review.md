@@ -1076,6 +1076,72 @@ else composite = weighted_sum
 
 That is the whole reward function. Security is a floor that cannot be bought, quality is a trade, and capability gain is the thing worth optimizing — with the size of the prize tied to whether the measurement can be trusted.
 
+### 11.8 The bonus is a portfolio, not a scalar
+
+There are seven runnable benchmarks, not one, and they differ enough that a single bonus term over their average would be actively misleading. Measured state:
+
+| benchmark | corpus | `eval_weight` | hard floor | verification mechanism | holdout |
+|---|---|---|---|---|---|
+| `ifeval` | 20 | 0.15 | 0.25 | deterministic rule verification | ✗ |
+| `bfcl` | 20 | 0.15 | 0.20 | tool-call matching | ✗ |
+| **`swebench`** | **10** | **0.20** | 0.15 | **real sandboxed subprocess execution** | ✗ |
+| `tau_bench` | 12 | 0.15 | 0.20 | rule/keyword verification | ✗ |
+| `gaia` | 15 | 0.10 | 0.30 | exact-match, **LLM-judge fallback** | ✗ |
+| `ragas` | 12 | 0.10 | 0.25 | rule/keyword verification | ✗ |
+| `terminalbench` | **6** | 0.10 | 0.20 | tempdir filesystem-state verification | ✓ *(collapsed, §11.7)* |
+| `osworld` | 10 samples | **0.05** | 0.15 | **`NotImplementedError` — not registered** | — |
+
+`eval_weights` sums to 1.00 including `osworld`, and `_weighted_eval_score` renormalises over only the benchmarks that ran — that part is correct and well built. Five observations that shape the design:
+
+1. **The entire capability measurement surface is 95 samples.** That is the whole basis on which a "huge bonus" would be paid. Each `swebench` sample is 2% of total eval score; each `terminalbench` task is 1.67%.
+2. **The highest weight sits on the smallest real corpus.** `swebench` is the most trustworthy mechanism here — candidate code genuinely executes in a sandboxed subprocess and is asserted against a real expected value — and it has **10 samples** carrying **0.20**. High trust, high weight, high variance, cheap to memorise. All three at once.
+3. **Only `terminalbench` has a holdout, and it is collapsed.** The other six have no train/test split, so all 95 samples are visible to the loop. **A bonus paid on them is a bonus paid on training data**, which measures memorisation as readily as capability.
+4. **Fidelity is not uniform across the "proxy" tier**, and the differences are mechanical, not cosmetic. Three genuinely distinct trust levels are already present.
+5. **`osworld` carries a weight (0.05) and a hard-gate floor (0.15) for something that raises `NotImplementedError`.** Renormalisation makes it harmless arithmetically, but it is dead config that reads as live — and per §11.5 that is its own category of problem. Delete the weight and the threshold, or register the benchmark.
+
+#### Sub-tiers within `proxy`, by actual mechanism
+
+The single `proxy_max` in §11.7 is too coarse once there are seven. What the code actually does splits three ways:
+
+| sub-tier | benchmarks | why it earns more or less |
+|---|---|---|
+| **executed** | `swebench`, `terminalbench` | Real execution / real end-state verification. The candidate cannot satisfy these by producing plausible text — something has to actually work |
+| **verified** | `ifeval`, `bfcl`, `tau_bench`, `ragas`, `gaia`-exact | Deterministic checks (rules, tool-call shape, exact match). Trustworthy but satisfiable by pattern-matching the handcrafted corpus |
+| **judged** | `gaia`'s LLM-judge fallback | Lowest trust. An LLM judge is influenceable by the content it judges — G-6 demonstrates exactly that against the regression judge, and the same argument applies here |
+
+So the per-point payout should be `executed > verified > judged`, with `real` (official harness, official dataset — none today) far above all three. That makes `swebench` the most valuable benchmark to improve *and* the most valuable to convert to a real adapter, which is the right ordering on both counts.
+
+#### Aggregation: three mechanisms doing three different jobs
+
+A summed bonus over seven deltas invites specialisation — the loop finds the cheapest benchmark to move and pours everything into it, and worse, it can *trade* a regression on `swebench` for a gain on `ifeval` and still collect. Three constraints, each addressing a distinct failure:
+
+```
+bonus = capability_max
+      * fidelity_multiplier(sub_tier)
+      * Σ_b  min( w_b * holdout_delta_b , per_bench_cap )     # capped: no single benchmark carries it
+      subject to:  ∀b  score_b ≥ floor_b                       # no-regression: nothing may be traded away
+      and:         corpus_b ≥ min_corpus_b                     # else that benchmark pays 0
+```
+
+- **Per-benchmark contribution cap** (≈1.5× its weight share) stops one cheap-to-game benchmark from carrying the whole bonus. This is the anti-specialisation term.
+- **No-regression floor** stops cross-benchmark trading. And this mechanism **already exists**: `_HARD_GATE_THRESHOLDS` in `fitness.py:5-14` is exactly the right table. It is currently inert — the live loop folds everything under `"code_rsi"`, which is not a key in that dict, and `_check_hard_gate` only tests `if bench in scores`, so the only reachable failure is "no benchmarks evaluated" (§10.6). Reviving it is the single cheapest part of this whole design: the floors are written, they just never fire.
+- **Corpus minimum, per benchmark** stops a 6-task or 10-sample benchmark from paying a large bonus at all. Below the minimum it pays zero rather than paying at a reduced rate — a bonus is exactly where "some signal is better than none" is false.
+
+I considered paying on `min(deltas)` instead, which is maximally gaming-resistant since the only way to earn is to lift the weakest benchmark. It is too brittle in practice — one genuinely hard benchmark zeroes all reward and the loop stops trying. The capped-weighted-mean plus a hard floor gets most of the robustness without the deadlock.
+
+#### What has to be built before any of this pays
+
+Ordered by whether it blocks payment:
+
+1. **A holdout split for each of the six benchmarks that lack one**, and un-collapse `terminalbench`'s. Until a benchmark has a supervisor-scored holdout, its bonus is **zero**, not reduced. This is the load-bearing prerequisite — everything else is tuning.
+2. **Veto-protect `maistro_evolve/benchmarks/**`** including `datasets.py` and `executable_terminal.py` (§11.7 condition 1). Currently unprotected.
+3. **Revive `_HARD_GATE_THRESHOLDS`** by scoring per-benchmark rather than folding to `code_rsi`, so the no-regression floor can fire.
+4. **Grow the corpora**, `swebench` first — highest weight, highest fidelity, smallest corpus, so it has the worst variance-per-weight in the portfolio.
+5. **Delete `osworld`'s weight and threshold**, or register it.
+6. **Display the sub-tier next to every score.** `EvolutionCycle.run_cycle()` already logs a WARNING naming the fidelity tier on every call; extend that to per-benchmark sub-tier anywhere a bonus is paid, per §11.7's naming argument.
+
+Until (1) and (2) land, the honest capability bonus is **zero on all seven** — and that is not a reason to delay the rest of the model. The vetoes, the saturating security penalty, and the weighted tier all work today and are what stop the loop doing harm. The bonus is what makes it worth running, and it should switch on the moment its measurement can be trusted, one benchmark at a time as each earns a holdout.
+
 ---
 
 ## 12. Limits of this review
