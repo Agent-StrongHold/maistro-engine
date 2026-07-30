@@ -56,7 +56,12 @@ Per-benchmark methodology at the `proxy` tier:
   against the real expected value. Process-level isolation only — see that module's docstring before reusing
   it elsewhere.
 - **`terminalbench`**: delegates to `executable_terminal.py`'s real tempdir-based filesystem-state verification
-  (a restricted JSON action language, not a real shell).
+  (a restricted JSON action language, not a real shell). Its train/holdout split is **reported, not enforced**:
+  `_TASKS` is `TRAINING_TASKS + HOLDOUT_TASKS`, so the headline `score` is contaminated by construction and is
+  **not eligible for a capability bonus**. What you get is observability — `metadata` carries `train_score`,
+  `holdout_score`, `train_samples`, `holdout_samples` and `generalization_gap`, so *train rising while holdout
+  stays flat* (the memorization signature) shows up instead of being averaged away. Withholding the holdout
+  from fitness waits on a corpus big enough to drive a cycle from 3 tasks' worth of signal.
 - **`osworld`**: **not registered.** `run_osworld` raises `NotImplementedError` — no desktop-VM/GUI-automation
   infrastructure exists in this repo. Reference task definitions remain in `datasets.py` for when that lands.
 

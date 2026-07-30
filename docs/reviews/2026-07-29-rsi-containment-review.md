@@ -1206,6 +1206,18 @@ That is a considerably more honest portfolio than seven names implying seven lea
 
 Steps 1–3 are prerequisites and unlock nothing on their own — which is precisely why they are easy to skip and must not be. Step 4 is the first point at which a real bonus can honestly be paid, and it is reachable without touching container infrastructure at all.
 
+#### Landed in this branch
+
+Three pieces of steps 2–3 were small enough to do inline rather than schedule. Recorded here so the staged plan above reads against the current tree, not the tree as reviewed.
+
+| Item | What landed | What is still open |
+|------|-------------|--------------------|
+| Terminal-Bench holdout (step 7's prerequisite) | `terminalbench.py` now scores `TRAINING_TASKS` and `HOLDOUT_TASKS` separately and reports `train_score` / `holdout_score` / `train_samples` / `holdout_samples` / `generalization_gap` in `EvalResult.metadata`, plus an `errors` count so a degraded gateway is distinguishable from a bad genome. The docstring states the combined `score` is not bonus-eligible. | The holdout is **reported, not withheld** — `_TASKS` is still the union, so fitness still sees it. Withholding it waits on a corpus that can drive a cycle from more than 3 tasks (step 7). |
+| Measurement surface protection (step 2) | `SENSITIVE_PATH_PATTERNS` gained `maistro_evolve/benchmarks/`, `maistro_evolve/fitness.py`, `maistro_evolve/scorecard.py`, `maistro_rsi/candidate_fitness.py`, `maistro_rsi/harvest.py`, and `scripts/check_enumerations.py` (the ratchet, previously outside the surface it guards — §11.6's second mitigation). `SENSITIVE_ROOTS` / `SENSITIVE_FILES` in `check_enumerations.py` were extended to match, so the ratchet holds them. | Escalation-to-adversarial-review is the mechanism, and it is **still unwired on the shipped path** (K-3). Protection here means "flagged when the gate runs", not "blocked". |
+| `get_leaderboard` (§10.5 / §11.14 blocker) | Battle counts are now summed across the matched per-benchmark ratings instead of read from a phantom `"overall"` rating, and the read no longer mutates `_ratings` — the mutation was silently dragging `get_avg_elo` toward the 1200 default, i.e. corrupting the number that feeds `compute_fitness`'s elo component. Verified: `avg_elo` was moving 1216.0 → 1210.67 on a bare read. | `_record_cycle_battles` still passes `score_a=a.composite`, a candidate-influenced number (§10, F14). |
+
+None of these pay a bonus on their own; all three are on the blocking path to one.
+
 ### 11.10 Custom rubric evals — pairwise A/B, and why absolute rubric scores are the wrong instrument
 
 Not every capability worth improving maps onto a public benchmark. "Get better at writing ADRs", "get better at PM-fleet handoffs", "get better at canvas prompt construction" are all legitimate targets with no leaderboard. So custom evals are necessary — and they are also the most gameable thing in the whole reward model, because a rubric is scored by an LLM judge and §11.8 puts judges in the **lowest** trust sub-tier for good reason.

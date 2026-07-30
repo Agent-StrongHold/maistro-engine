@@ -66,6 +66,25 @@ SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     # itself. Matched at directory granularity: the whole package persists
     # depth state, so `executor.py` alone left its siblings uncovered.
     "maistro/graph/durable_runs/",
+    # --- the measurement surface -------------------------------------------
+    # Everything above protects what the loop is *allowed* to do. These
+    # protect how the loop is *scored*, which is the same problem wearing a
+    # different hat: a candidate that edits its own exam passes trivially, and
+    # nothing else in this list notices. `benchmarks/` holds the task corpora,
+    # the graders, and the train/holdout split; `fitness.py` holds the breeding
+    # thresholds; `scorecard.py`, `candidate_fitness.py` and `harvest.py` decide
+    # what gets promoted and what opens a PR. All of them were listed as
+    # improvement targets while being unprotected.
+    "maistro_evolve/benchmarks/",
+    "maistro_evolve/fitness.py",
+    "maistro_evolve/scorecard.py",
+    "maistro_rsi/candidate_fitness.py",
+    "maistro_rsi/harvest.py",
+    # The ratchet that asserts this very tuple covers the containment surface.
+    # `scripts/` matched no pattern, so a diff could edit the checker and the
+    # list it guards together and still leave CI green — the guard has to be
+    # inside the surface it guards.
+    "scripts/check_enumerations.py",
 )
 
 

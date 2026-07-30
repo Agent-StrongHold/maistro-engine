@@ -62,6 +62,10 @@ SENSITIVE_ROOTS = (
     "packages/maistro-core/src/maistro/tools/sandbox/",
     "packages/maistro-core/src/maistro/graph/durable_runs/",
     "packages/maistro-rsi/src/maistro_rsi/sandbox/",
+    # The measurement surface: task corpora, graders, and the train/holdout
+    # split the loop is scored against. Editing your own exam is a containment
+    # failure even though it touches no sandbox or security code.
+    "packages/maistro-evolve/src/maistro_evolve/benchmarks/",
     ".github/workflows/",
     "quality/",
     "sbx/",
@@ -82,6 +86,15 @@ SENSITIVE_FILES = (
     "packages/maistro-core/src/maistro/graph/depth.py",
     "packages/maistro-core/src/maistro/graph/nodes/agent_synth_dag.py",
     "packages/maistro-core/src/maistro/graph/nodes/agent_spawn_harness.py",
+    # Promotion gates and the PR-opening path — what decides that a candidate
+    # is good enough to keep, and what turns "kept" into a pull request.
+    "packages/maistro-evolve/src/maistro_evolve/fitness.py",
+    "packages/maistro-evolve/src/maistro_evolve/scorecard.py",
+    "packages/maistro-rsi/src/maistro_rsi/candidate_fitness.py",
+    "packages/maistro-rsi/src/maistro_rsi/harvest.py",
+    # This file. A ratchet outside the surface it protects can be edited in the
+    # same diff as the list it checks, and the build stays green.
+    "scripts/check_enumerations.py",
 )
 
 # maistro subpackages intentionally absent from CORE_PUBLIC_SURFACE, because they
