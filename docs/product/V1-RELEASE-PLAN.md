@@ -253,20 +253,24 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 
 **AC:** every line has a merged PR, a closed branch, or a v1.1 tracking entry.
 
-## D2 — Correct spec/ADR statuses that contradict code (S)
+## D2 — Correct spec/ADR statuses that contradict code (S) — done, #290, PR #318
 
-- [ ] SPEC-183 (OAuth identity linking; `auth/oauth.py:519` is a Phase-2 stub) → Partial with a
-      shipped-subset note.
-- [ ] SPEC-070226-b624 (LLMJudgeComparator; `ensemble.py:208` raises NotImplementedError) → same.
-- [ ] Dedupe the 3 duplicate spec pairs (shared-tool-call-cache, canvas-tool-action-contracts,
-      skill-fixer-rule-pipeline); regenerate ADR-INDEX.
-- [ ] ADR-076: record its actual state — content negotiation is **not implemented** (the only
+- [x] SPEC-183 (OAuth identity linking; `auth/oauth.py:519` is a Phase-2 stub) → status corrected
+      `Implemented` → `In Progress` with a shipped-subset note (Phases 1-2 real and tested;
+      Phase 3 hive-conductor routes and Phase 4 audit wiring are follow-up).
+- [x] SPEC-070226-b624 (LLMJudgeComparator; `ensemble.py:208` raises NotImplementedError) →
+      status corrected `Implemented` → `In Progress` with an implementation-status note.
+- [x] Deduped the 3 duplicate spec pairs (shared-tool-call-cache, canvas-tool-action-contracts,
+      skill-fixer-rule-pipeline) — the stale `SPEC-070126-*` trio marked Superseded by their real
+      `SPEC-062126-*` counterparts; ADR-INDEX regenerated (also gained ADR-076's previously-missing
+      row).
+- [x] ADR-076: recorded its actual state — content negotiation is **not implemented** (the only
       negotiation code is canvas-specific/v2; business routes are mounted under the `/v1` path);
-      its ACs stay unchecked and implementation is deferred to v1.1 with a D5 tracking entry
-      (see E4 for what the release notes may truthfully claim).
+      its ACs stay unchecked and implementation is deferred to v1.1, cross-linked to
+      `KNOWN-GAPS.md` (see E4 for what the release notes may truthfully claim).
 
 **AC:** registry gate green; no spec marked Implemented whose named feature raises
-NotImplementedError.
+NotImplementedError. Verified: `maistro_registry.cli lint . --strict` — 0 errors.
 
 ## D3 — Rename evolve pseudo-benchmarks honestly; evolve/rsi ship as v1 (M)
 

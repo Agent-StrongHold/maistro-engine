@@ -190,6 +190,8 @@ class TestEmitMoodEvent:
         turing = TuringIntegration()
         await turing.emit_mood_event({"mood": "happy"})
 
+        assert turing._bus is None
+
     @pytest.mark.asyncio
     async def test_emits_event_with_mood_data(self) -> None:
         bus = AsyncMock()
@@ -208,6 +210,8 @@ class TestEmitWritingEvent:
     async def test_noop_when_no_bus(self) -> None:
         turing = TuringIntegration()
         await turing.emit_writing_event("blog", "Title")
+
+        assert turing._bus is None
 
     @pytest.mark.asyncio
     async def test_emits_event_with_truncated_preview(self) -> None:
@@ -327,7 +331,12 @@ class TestHandleHaEvent:
     async def test_binary_sensor_entity_sends_chat_message(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        import json
+
+        captured: dict[str, object] = {}
+
         def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.read())
             return httpx.Response(200, json={"response": "ok"})
 
         _patched_client(monkeypatch, handler)
@@ -338,10 +347,17 @@ class TestHandleHaEvent:
             payload={"entity_id": "binary_sensor.door", "state": "open"},
         )
         await turing.handle_ha_event(event)
+        assert "binary_sensor.door" in captured["body"]["message"]  # type: ignore[index]
+        assert "open" in captured["body"]["message"]  # type: ignore[index]
 
     @pytest.mark.asyncio
     async def test_weather_entity_sends_chat_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import json
+
+        captured: dict[str, object] = {}
+
         def handler(request: httpx.Request) -> httpx.Response:
+            captured["body"] = json.loads(request.read())
             return httpx.Response(200, json={"response": "ok"})
 
         _patched_client(monkeypatch, handler)
@@ -352,6 +368,8 @@ class TestHandleHaEvent:
             payload={"entity_id": "weather.home", "state": "sunny"},
         )
         await turing.handle_ha_event(event)
+        assert "weather.home" in captured["body"]["message"]  # type: ignore[index]
+        assert "sunny" in captured["body"]["message"]  # type: ignore[index]
 
     @pytest.mark.asyncio
     async def test_falls_back_to_entity_id_when_no_friendly_name(

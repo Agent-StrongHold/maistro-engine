@@ -294,7 +294,10 @@ async def test_execute_dag_builds_config_and_returns_shape(
 
     # Stub _build_llm_call to return a coroutine that returns a response string.
     # n1 → n2 (two waves), so cycles == 2.
+    calls: list[list[dict]] = []
+
     async def _stub_llm(messages: list[dict], **kw: Any) -> str:
+        calls.append(messages)
         return "stub response"
 
     monkeypatch.setattr(gr, "_build_llm_call", lambda *a, **kw: _stub_llm)
@@ -304,8 +307,18 @@ async def test_execute_dag_builds_config_and_returns_shape(
             "name": "test",
             "description": "test dag",
             "nodes": [
-                {"id": "n1", "role": "worker", "name": "Worker"},
-                {"id": "n2", "role": "scout", "name": "Scout"},
+                {
+                    "id": "n1",
+                    "role": "worker",
+                    "name": "Worker",
+                    "config": {"execution_tier": "safe"},
+                },
+                {
+                    "id": "n2",
+                    "role": "scout",
+                    "name": "Scout",
+                    "config": {"execution_tier": "safe"},
+                },
             ],
             "edges": [{"from_node": "n1", "to_node": "n2"}],
             "entry_node": "n1",
@@ -315,6 +328,7 @@ async def test_execute_dag_builds_config_and_returns_shape(
     assert out["cycles"] == 2  # wave 1: n1, wave 2: n2
     assert set(out["node_results"]) == {"n1", "n2"}
     assert out["node_results"]["n1"]["role"] == "worker"
+    assert len(calls) == 2
 
 
 async def test_execute_dag_entry_node_fallback_to_first_node(
@@ -323,7 +337,10 @@ async def test_execute_dag_entry_node_fallback_to_first_node(
     """Single-node DAG with no entry_node runs to completion (1 wave, 1 cycle)."""
     import services.graph_runner as gr
 
+    calls: list[list[dict]] = []
+
     async def _stub_llm(messages: list[dict], **kw: Any) -> str:
+        calls.append(messages)
         return "ok"
 
     monkeypatch.setattr(gr, "_build_llm_call", lambda *a, **kw: _stub_llm)
@@ -331,7 +348,14 @@ async def test_execute_dag_entry_node_fallback_to_first_node(
     out = await gr.execute_dag(
         {
             "name": "x",
-            "nodes": [{"id": "first-id", "role": "worker", "name": "F"}],
+            "nodes": [
+                {
+                    "id": "first-id",
+                    "role": "worker",
+                    "name": "F",
+                    "config": {"execution_tier": "safe"},
+                }
+            ],
             "edges": [],
             # entry_node missing — wave executor needs no explicit entry; any
             # node with no inbound edges is a start node
@@ -340,6 +364,7 @@ async def test_execute_dag_entry_node_fallback_to_first_node(
     assert out["status"] == "completed"
     assert out["cycles"] == 1
     assert "first-id" in out["node_results"]
+    assert len(calls) == 1
 
 
 # --- genome_to_dag ----------------------------------------------------

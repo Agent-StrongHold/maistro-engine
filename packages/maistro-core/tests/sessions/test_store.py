@@ -146,3 +146,6 @@ class TestDeleteSession:
     async def test_delete_nonexistent_session_is_noop(self) -> None:
         store = InMemorySessionStore()
         await store.delete_session("missing")
+
+        assert store._sessions == {}
+        assert store._next_seq == {}
