@@ -582,12 +582,13 @@ Two principles behind these, each violated somewhere above:
 
 **Tier 1c — make the human gate exist (§9).** *This is not optional cleanup: RLPHD is the human gate, it is off, and the reason it is off is a correctness defect. Turning containment back on without this re-creates the choice the operator already made once.*
 
-16a. **Fix the three review-path bugs (R-1, R-2, R-3)** — approvals must survive the checkpoint, reach the manifest, actually train the model, and a corrupt state file must fail loudly instead of silently cold-starting. Until these land, no amount of human reviewing teaches Ralph anything.
-16b. **Add `rlphd_mode: off | shadow | acting`, defaulting to `shadow`** — so the failure mode is "learned nothing yet," not "reverted everything."
-16c. **Build `maistro-rsi review bootstrap`** (§9.3): harvest `kept/`+`flagged/` history, cover the gaps with a designed diff set, fit by replaying labels through `record_decision`, and choose θ from a displayed confusion matrix instead of `COLD_START_THETA`.
-16d. **R-5 and R-8** — stop feeding the model the fabricated `0.7` judge default, and add at least one feature the judged party cannot forge.
-16e. **R-7 / R-9** — review per-promotion rather than per-checkpoint so supersession stops eating the label stream.
-16f. Then restore `--promotion-review` as the launcher default (the E-1 half that depends on this working).
+16a. **Implement the three-band decision (§9.5)** — carry the 5×5 Laplace covariance alongside the weights, flag when the interval straddles θ, and evaluate the band **pre-merge** in `_fitness_decision` so uncertain candidates are *held* rather than merged-then-reverted. This is the load-bearing change: it makes cold behaviour "ask" rather than "revert", makes the automation rate measurable, shrinks the uncertainty window with no gain to tune, and **subsumes R-7, R-9, O-4, and O-5's revert-failure and supersession defects** rather than patching them.
+16b. **Add `rlphd_mode: off | shadow | acting`, defaulting to `shadow`** — so the failure mode is "learned nothing yet."
+16c. **Fix the three review-path bugs (R-1, R-2, R-3)** — approvals must survive the checkpoint, reach the manifest, actually train the model, and a corrupt state file must fail loudly instead of silently cold-starting. Until these land, no amount of human reviewing teaches Ralph anything.
+16d. **Build `maistro-rsi review bootstrap`** (§9.3) — harvest `kept/`+`flagged/` history for real labeled feature vectors, cover the gaps with a designed diff set presented *as diffs*, fit `beta` **and** `Sigma` by replaying labels through the shipped update rule, and pick θ *and* `z` from a displayed confusion matrix instead of `COLD_START_THETA`. With 16a in place this is an accelerator, not a prerequisite.
+16e. **R-5 and R-8** — stop feeding the model the fabricated `0.7` judge default (add an explicit `judge_unavailable` feature), and add at least one feature the judged party cannot forge.
+16f. **R-6** — clamp θ and bound weights on load; HMAC the state file under a key the gate-time child never sees.
+16g. Then restore `--promotion-review` as the launcher default — the E-1 half that depends on all of the above actually working.
 
 **Tier 1d — correctness that invalidates evolve's results (§10.1-7).** These gate any claim about evolve's behaviour, including [#291]'s renaming work and [#303]'s v1 feature verification: the breeding loop that produces half the requested children, the cull-to-zero with `emergency_spawn` never called, `trait_vector`'s 8-vs-11 length crash, self-crossover, the fabricated leaderboard zeros, the unfireable hard gate, and unmeasured cost/latency paying 25 of 65 points unconditionally.
 
@@ -636,7 +637,9 @@ And the ten approvals must be delivered through a review path that is broken thr
 
 **That is the whole failure: a learned gate whose only training channel is broken, whose cold start reverts everything, and whose escape path yields a permissive rather than a calibrated model.**
 
-### 9.2 Why the fix requires an interview
+### 9.2 Why the online path alone cannot calibrate
+
+*(Forward pointer: this section argues the interview is necessary. §9.5 revises that — once cold behaviour is "ask" rather than "revert", the interview becomes a strong **accelerator** rather than a prerequisite. Both conclusions rest on the argument below; only the urgency changes.)*
 
 The online path cannot produce a calibrated model, for a structural reason independent of the bugs: **RLPHD only ever receives labels for promotions it already flagged** (`p < theta`), and once it starts auto-keeping, `kept/` items are labeled only if a human bothers to override. The training distribution is therefore selected by the model's own current belief — the classic bandit-feedback bias — and at these gains it cannot span the feature space inside a single run.
 
@@ -672,15 +675,71 @@ Without these, the interview is the only training data Ralph will ever get — a
 | R-8 | Every feature (`composite`, `judge_score`) is candidate-influenced — the model learns over signals the judged party can move | Add at least one unforgeable feature: diff size, files touched, whether a sensitive path was touched, whether any gate was absent |
 | R-9 | Reviewing per-checkpoint batch creates the supersession window in the first place | Review per-promotion at promotion time; the window disappears |
 
-### 9.5 What "working as intended" should mean, stated testably
+### 9.5 The intended design, and why a point estimate cannot express it
+
+**Correction to §9.1–9.4:** those sections evaluate RLPHD as a binary gate, because that is what is implemented. The *intended* design is a three-band system — decide confidently on a measurable share, guess-and-flag *with a confidence value* on the rest, and let human decisions shrink the uncertain band over time. Read against that intent, the shipped implementation is not merely untrained; it is missing the mechanism that would let it express uncertainty at all.
+
+**The architectural gap.** `RlphdModel.predict` returns a single `p`, and one threshold over one number cannot distinguish *"I don't know"* from *"I'm confident this is bad."* Concretely: `p = 0.5` from an empty model and `p = 0.5` from a well-trained model on a genuinely borderline candidate are **the same number**. So `p < theta` collapses two different states into one action, and the action chosen is *revert*. That, not the learning rate, is why a cold model reverts everything — it has no way to say "ask me later."
+
+There is no amount of gain-tuning that fixes this. A point estimate has no width.
+
+**The fix: carry a variance alongside the weights and decide on an interval.** For a 5-parameter logistic this is closed-form and stays glass-box:
+
+```
+eta      = x · beta                        # the logit
+Sigma    = (Xᵀ W X + lambda·I)⁻¹           # Laplace covariance / inverse Fisher information
+se(eta)  = sqrt(xᵀ Sigma x)
+flag iff |eta − logit(theta)| < z · se(eta)
+```
+
+One rule produces all three behaviours you described:
+
+| Band | Condition | Action |
+|---|---|---|
+| **Confident approve** | interval entirely above `theta` | auto-keep |
+| **Confident deny** | interval entirely below `theta` | auto-revert (or hold — see below) |
+| **Uncertain** | interval **straddles** `theta` | flag, and report `se` as the confidence |
+
+And the band shrinks **automatically**: it is `± z·se(eta)` wide in logit space, `se` falls as ~`1/√N`, so every human decision narrows it with no gain to tune. The automation rate becomes a first-class, reportable number rather than an emergent property of two drifting constants.
+
+`scripts/rlphd_band_sim.py` implements this in pure Python (5 parameters do not justify a numeric dependency, and the operator can read the arithmetic) and measures it against a synthetic operator preference:
+
+| N labels | auto-decided | flagged | band half-width |
+|---|---|---|---|
+| 0 | **0%** | **100%** | ∞ |
+| 20 | 28.7% | 71.3% | 2.35 |
+| 40 | 58.0% | 42.0% | 1.84 |
+| 80 | 51.2% | 48.8% | 1.00 |
+| 160 | 69.0% | 31.0% | 0.75 |
+| 320 | 76.8% | 23.2% | 0.52 |
+
+**Note the N=0 row — this is the important one.** With no data, `se` is unbounded, every interval straddles `theta`, so everything is **flagged and nothing is auto-reverted**. Cold behaviour becomes *"I don't know, ask the human"* instead of *"revert everything."* That is the correct default, and it is what makes the bootstrap interview (§9.3) an **accelerator rather than a prerequisite** — the interview buys a useful automation rate on day one instead of week three, but the system is safe and honest without it.
+
+Two honesty notes on that table, both in the script's output: the automation **rate** is monotone only in expectation (the fitted `beta` moves as labels arrive, which can push candidates back toward `theta` — hence the dip at N=80; only the band **width** is monotone), and the 100% accuracy figure is flattering because the simulation scores against a noiseless ground truth of the same functional form the model fits. Real accuracy will be lower — which is precisely what Phase 5's shadow-mode calibration report exists to measure before auto-acting is enabled.
+
+**A second, larger win: predict *before* the merge, not after.** Today the flow is merge → checkpoint → maybe revert. If the band is evaluated in `_fitness_decision` (per-promotion, pre-merge), an uncertain candidate is simply **not merged** — it is held. That eliminates a whole class of the defects in this review rather than patching them:
+
+- **O-5's revert-failure immunity disappears** — there is nothing to revert, so a candidate cannot engineer a conflict to make its own revert fail.
+- **Supersession disappears** (O-5, R-7) — nothing was merged, so nothing can be superseded, and the label stream stops being biased toward early cycles.
+- **The label is collected on the actual candidate**, not on a possibly-superseded descendant.
+- **O-4's report-ordering bug becomes moot** — there is no post-hoc revert to omit from the report.
+
+The cost is that a held candidate may conflict when later approved — the same cost the existing `flagged/` + resume path already pays, and it is paid on far fewer items once the band narrows.
+
+**Consequent changes to the §9.3 interview.** It stays, with two adjustments: Phase 3 fits `Sigma` as well as `beta` (the 5×5 covariance is 15 more human-readable numbers in `rlphd_state.json`), and Phase 4's confusion-matrix sweep picks `theta` **and** `z` — where `z` is the operator's stated tolerance for automation-vs-oversight, shown as "at z=1.64 Ralph decides 58% of these itself; at z=2.33 it decides 41% and asks you about the rest."
+
+### 9.6 What "working as intended" should mean, stated testably
 
 So this can be verified rather than asserted:
 
-- A fresh install with no history runs `review bootstrap`, and afterwards `rlphd_state.json` contains non-empty weights for all five features and a θ chosen from a displayed confusion matrix.
-- With that state, a *typical* promotion predicts `p ≥ θ` and an *archetypally bad* one predicts `p < θ` — i.e. the model discriminates on day one, which today it cannot do at any point.
-- `rlphd_mode` defaults to `shadow`; a run in shadow mode reverts nothing and emits a calibration report.
-- A human decision through the UI durably changes `rlphd_state.json`, survives the next checkpoint, and the approved patch reaches harvest. Assert this end-to-end — it is the loop that is currently broken in three places.
-- A corrupt or absent state file refuses to run in `acting` mode rather than silently cold-starting.
+- **Cold behaviour is "ask", not "revert".** With no state file, 100% of promotions land in the flagged band and **zero** are auto-reverted. This is a one-line assertion and it is the single most important test in this section.
+- **The three bands are reachable and reported.** A run emits an automation rate — `auto-approved / auto-denied / flagged` — and the flagged items each carry a confidence (`se`, or the interval width). "A measurable percentage" is measurable.
+- **The band narrows with evidence.** Given N and then 2N labeled decisions, the mean band half-width strictly decreases, and the automation rate increases *in expectation* (not necessarily monotonically — see §9.5).
+- **It discriminates on day one after `review bootstrap`.** A *typical* promotion auto-approves and an *archetypally bad* one auto-denies, with the interview set's confusion matrix reproducible from the stored `beta` and `Sigma`.
+- **A human decision is durable end-to-end** — it changes `rlphd_state.json`, survives the next checkpoint, and the approved patch reaches harvest. Assert the whole chain; it is currently broken in three places (R-1, R-2).
+- **`rlphd_mode` defaults to `shadow`**; a shadow run reverts nothing and emits Brier score plus a reliability curve.
+- **A corrupt or absent state file refuses `acting` mode** rather than silently cold-starting (R-3).
+- **Uncertain candidates are held, not merged-then-reverted** — after a run, no sha appears in both the baseline history and the flagged queue.
 
 ---
 
