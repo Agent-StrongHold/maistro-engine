@@ -66,8 +66,29 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Inline IIFE (matches context/PocMode.tsx's fetch-on-mount shape)
+    // rather than calling the named `refresh` function directly, which
+    // avoids react-hooks/set-state-in-effect flagging a top-level effect
+    // call that eventually setStates.
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await apiGet<Workspace[]>("/v1/workspaces");
+        if (cancelled) return;
+        setWorkspaces(list);
+        setActiveWorkspaceId((current) => {
+          if (current && list.some((w) => w.id === current)) return current;
+          return list[0]?.id ?? null;
+        });
+      } catch {
+        if (!cancelled) setWorkspaces([]);
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -117,6 +138,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Same established shape as context/PocMode.tsx (provider + hook, one file).
+// eslint-disable-next-line react-refresh/only-export-components
 export function useWorkspaces(): WorkspaceCtxValue {
   return useContext(WorkspaceCtx);
 }
