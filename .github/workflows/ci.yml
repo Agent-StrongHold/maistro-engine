@@ -145,6 +145,30 @@ jobs:
       # regression net" is a gate that decays open without ever going red.
       - run: npm ci && npm run test:ci
         working-directory: packages/maistro-canvas/frontend
+      # `lint` and `build` for canvas, neither of which any workflow ran.
+      #
+      # The missing `build` is not a hygiene gap — it is how a real defect
+      # stayed hidden. `src/lib/api.js` exported `IMAGE_MODELS` twice, which is
+      # invalid ESM. Vite tolerates it so nothing failed, but eslint could not
+      # parse the file at all, leaving the entire API client unlinted; the
+      # `no-undef` that exposed a `ReferenceError` in
+      # `characterNormalizer.js`'s fallback path was invisible behind it.
+      #
+      # `lint` caps react-hooks warnings at the current 13 (see
+      # eslint.config.js): those are real and deferred, and the cap means the
+      # count can shrink but never grow, while every other rule fails outright.
+      - run: npm run lint
+        working-directory: packages/maistro-canvas/frontend
+      - run: npm run build
+        working-directory: packages/maistro-canvas/frontend
+      # No JS dependency auditing existed anywhere, while security.yml has run
+      # pip-audit for Python since day one — and `server.js` is a real network
+      # service that proxies operator LLM credentials and shells out to python3.
+      # The tree was carrying 7 advisories (4 high, all in vite); `npm audit
+      # fix` cleared them within the existing semver ranges, so this starts at
+      # zero rather than needing a baseline.
+      - run: npm audit --audit-level=high
+        working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
 

@@ -23,12 +23,6 @@ function SortableLayerItem({ layer, selected, onSelect, onToggle, onDelete }) {
     transition,
   };
 
-  const statusClass = !layer.image_path && !layer.image_url
-    ? "empty"
-    : layer._generating
-      ? "generating"
-      : "ready";
-
   return (
     <div
       ref={setNodeRef}
@@ -86,7 +80,6 @@ export default function LayerPanel({
   layers,
   selectedLayerId,
   onSelectLayer,
-  onUpdateLayer,
   onDeleteLayer,
   onReorderLayers,
   onAddLayer,

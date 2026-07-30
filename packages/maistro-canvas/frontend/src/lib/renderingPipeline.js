@@ -3,10 +3,6 @@
 // Characters are normalized after generation: silhouette detect → scale → anchor snap.
 
 import {
-  buildBackgroundPrompt,
-  buildCharacterPrompt,
-  buildPropPrompt,
-  generateScenePlan,
 } from "./templateEngine";
 import { normalizeCharacter, buildFaceMask } from "./characterNormalizer";
 import { pipelineImage, editImage } from "./llmClient";
@@ -217,7 +213,6 @@ export async function compositeScene(renderedScene, pageDims) {
 }
 
 async function compositeAnchoredCharacter(ctx, img, layer, pageW, pageH) {
-  const geo = layer.pose.geo;
   const slot = layer.slot || { x: 0.3, y: 0.2, w: 0.4, h: 0.7 };
 
   const slotPx = {
@@ -515,7 +510,7 @@ export async function renderLayerDraft(prompt, onProgress, referenceImage, layer
   if (referenceImage) {
     try {
       url = await azureImageEdit(referenceImage, prompt, "1024x1024", "low", 0.5);
-    } catch {}
+    } catch { /* edit endpoint unavailable; fall through to the generate path */ }
   }
   if (!url) {
     try {
@@ -533,7 +528,7 @@ export async function renderLayerDraft(prompt, onProgress, referenceImage, layer
     onProgress?.("Removing background...");
     try {
       url = await removeBackground(url);
-    } catch {}
+    } catch { /* background removal is an enhancement; keep the original url */ }
   }
   return url;
 }
@@ -570,7 +565,7 @@ export async function renderLayerFinal(prompt, onProgress, referenceImage, layer
     onProgress?.("Removing background...");
     try {
       url = await removeBackground(url);
-    } catch {}
+    } catch { /* background removal is an enhancement; keep the original url */ }
   }
   return url;
 }
@@ -646,7 +641,7 @@ export async function renderCharacterReferences(characterDesign, styleToken, onP
         finalDesign = buildPhotoDerivedDesign(photoFeatures, characterDesign);
         onProgress?.(`Detected: ${photoFeatures.description}`);
       }
-    } catch (err) {
+    } catch {
       onProgress?.(`Photo analysis failed, using text description only`);
     }
   }
