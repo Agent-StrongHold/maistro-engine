@@ -235,7 +235,10 @@ BEHAVIOR:
               } else if (event.type === "done") {
                 if (event.content && !accumulated) accumulated = event.content;
               }
-            } catch {}
+            } catch {
+              // Deliberate: an SSE chunk can split a JSON payload mid-object,
+              // so a parse failure here means "wait for the rest", not an error.
+            }
           }
         }
       }
@@ -245,15 +248,16 @@ BEHAVIOR:
       const updates = content.match(/```widget_update\n([\s\S]*?)```/g);
       if (updates) {
         let current = [...widgets];
-        let needsConfirm = false;
-        let pendingRemoves: string[] = [];
+        // `needsConfirm` was tracked alongside this and never read: it was set
+        // true exactly when a push happened, so `pendingRemoves.length > 0`
+        // below is the same predicate. The confirm prompt was always wired.
+        const pendingRemoves: string[] = [];
         for (const block of updates) {
           try {
             const json = block.replace(/```widget_update\n?/, "").replace(/```/, "");
             const cmd = JSON.parse(json);
             if (cmd.action === "remove") {
               pendingRemoves.push(cmd.id);
-              needsConfirm = true;
             } else if (cmd.action === "update" && cmd.id) {
               current = current.map(w => w.id === cmd.id ? { ...w, ...cmd.changes } : w);
             }
@@ -299,7 +303,9 @@ BEHAVIOR:
 
 // ─── Widget Renderers ───────────────────────────────────────────────────────
 
-function KpiWidget({ title, config, agents, metrics }: { title: string; config?: Record<string, any>; agents: any[]; metrics: any }) {
+// No `title` prop: WidgetCard's header already renders `widget.title`, and this
+// body never read the copy it was passed.
+function KpiWidget({ config, agents, metrics }: { config?: Record<string, any>; agents: any[]; metrics: any }) {
   const field = config?.field || "";
   let value: string | number = "—";
 
@@ -856,9 +862,12 @@ function AirtableCascade({ cfgTable, setCfgTable, cfgGroupBy, setCfgGroupBy, cfg
   </>);
 }
 
-function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUpdate }: {
+// `onResize` used to be threaded in here and was never called: the config
+// panel's size slider (`cfgSize`) already saves through `onUpdate`, so resizing
+// has one working path and had a second, dead one.
+function WidgetCard({ widget, agents, metrics, editing, onRemove, onUpdate }: {
   widget: Widget; agents: any[]; metrics: any; editing: boolean;
-  onRemove: () => void; onResize: (s: Widget["size"]) => void; onUpdate: (w: Widget) => void;
+  onRemove: () => void; onUpdate: (w: Widget) => void;
 }) {
   const [configOpen, setConfigOpen] = useState(false);
   const span = { "1": "span 1", "2": "span 2", "3": "span 3", "4": "span 4", "5": "span 5", "6": "1 / -1" };
@@ -883,9 +892,15 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
   }, [cfgTable]);
   const [cfgField, setCfgField] = useState(widget.config?.field || "");
   const [cfgSub, setCfgSub] = useState(widget.config?.sub || "");
-  const [cfgEndpoint, setCfgEndpoint] = useState(widget.config?.endpoint || "");
+  // Read-only on purpose, for now: the legacy-custom-widget `endpoint`/`query`
+  // fields are loaded from the saved config and written straight back at save
+  // time (see `config.endpoint = cfgEndpoint` below), but the config panel
+  // renders no input bound to either, so nothing can call a setter. Dropping
+  // the setters says that plainly; dropping the state would stop round-tripping
+  // the values and silently erase them on the next save.
+  const [cfgEndpoint] = useState(widget.config?.endpoint || "");
   const [cfgDisplay, setCfgDisplay] = useState(widget.config?.display || "auto");
-  const [cfgQuery, setCfgQuery] = useState(widget.config?.query || "");
+  const [cfgQuery] = useState(widget.config?.query || "");
   const [cfgProject, setCfgProject] = useState(widget.config?.project || "");
   const [cfgStatus, setCfgStatus] = useState(widget.config?.status || "");
   const [cfgDays, setCfgDays] = useState(widget.config?.days || "7");
@@ -923,7 +938,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onResize, onUp
 
   let content;
   switch (widget.type) {
-    case "kpi": content = <KpiWidget title={widget.title} config={widget.config} agents={agents} metrics={metrics} />; break;
+    case "kpi": content = <KpiWidget config={widget.config} agents={agents} metrics={metrics} />; break;
     case "jira": content = widget.config?.source === "airtable" ? <UnknownWidget widget={widget} /> : <JiraWidget widget={widget} />; break;
     case "agent-orbs": content = <AgentOrbsWidget agents={agents} />; break;
     case "invocations": content = <InvocationsWidget metrics={metrics} />; break;
@@ -1214,7 +1229,6 @@ export default function Dashboard() {
   };
   const addWidget = (type: string, size: Widget["size"], config?: any, title?: string) => update([...widgets, { id: `w-${Date.now()}`, type, title: title || CATALOG.find(c => c.type === type)?.label || type, size, config }]);
   const removeWidget = (id: string) => update(widgets.filter(w => w.id !== id));
-  const resizeWidget = (id: string, size: Widget["size"]) => update(widgets.map(w => w.id === id ? { ...w, size } : w));
   const updateWidget = (id: string, w: Widget) => update(widgets.map(x => x.id === id ? w : x));
 
   return (
@@ -1272,7 +1286,6 @@ export default function Dashboard() {
         {widgets.map(w => (
           <WidgetCard key={w.id} widget={w} agents={agents} metrics={metrics} editing={editing}
             onRemove={() => removeWidget(w.id)}
-            onResize={(s) => resizeWidget(w.id, s)}
             onUpdate={(updated) => updateWidget(w.id, updated)} />
         ))}
         {editing && <AddWidget onAdd={addWidget} />}

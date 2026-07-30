@@ -50,7 +50,7 @@ jobs:
         run: uv python install 3.12
 
       - name: uv sync (full dev deps)
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
 
       # formal/ imports maistro_evolve (RSI conformance suites); not a uv
       # workspace member, so `uv sync` alone doesn't install it.
@@ -63,7 +63,8 @@ jobs:
       - name: install age + age-keygen
         run: |
           set -e
-          sudo apt-get update && sudo apt-get install -y age || true
+          sudo apt-get update || true
+          sudo apt-get install -y age || true
           if ! command -v age-keygen &> /dev/null; then
             mkdir -p /tmp/age && cd /tmp/age
             curl -fsSL https://dl.filippo.io/age/latest/age-linux-amd64.tar.gz | tar xz
@@ -94,6 +95,13 @@ jobs:
 
       - name: radon CC (report; the ratchet above is the gate)
         run: uv run radon cc packages/maistro-core/src --min B --total-average
+
+      # Single-sourced version (E1/#294): VERSION is the source of truth, and
+      # every package's pyproject.toml/__version__ fallback, inter-package
+      # dependency lower bound, and app-level FastAPI(version=...) literal
+      # must agree with it — catches drift before merge, not just at bump time.
+      - name: version consistency check (VERSION vs. every version site)
+        run: uv run python scripts/bump_version.py --check
 
       # Unlike the ratchets below, this one is a *count-free* ratchet: the
       # baseline names every tolerated gap, and a gap that gets fixed but left

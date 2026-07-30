@@ -71,7 +71,7 @@ jobs:
         if: steps.baseline.outputs.ready == 'true'
       - run: uv python install 3.12
         if: steps.baseline.outputs.ready == 'true'
-      - run: uv sync --all-extras
+      - run: uv sync --locked --all-extras
         if: steps.baseline.outputs.ready == 'true'
       # Hive Conductor is not a workspace package, so `uv sync` above doesn't
       # cover it. The `packages/**/*.py` trigger above can resolve a changed
@@ -106,9 +106,11 @@ jobs:
           # still produces a mutation target instead of silently no-op'ing.
           CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- packages \
             | grep '\.py$' | grep -v '__pycache__' || true)
-          echo "files<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$CHANGED" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "files<<EOF"
+            echo "$CHANGED"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
             echo "No production Python files changed; skipping mutation test."
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -229,7 +231,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
-      - run: uv sync --all-extras
+      - run: uv sync --locked --all-extras
 
       - name: Write cosmic-ray.toml for the full load-bearing substrate
         run: |
@@ -341,7 +343,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
       - run: uv python install 3.12
-      - run: uv sync --all-extras
+      - run: uv sync --locked --all-extras
       # Hive Conductor is not a workspace package. Its BDD test dependency is
       # declared in the backend requirements, not the root uv environment.
       - name: Install Hive Conductor backend test dependencies
