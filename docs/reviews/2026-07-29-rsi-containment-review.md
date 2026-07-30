@@ -1249,7 +1249,9 @@ Ranked for *this* product rather than for a generic model. I am naming benchmark
 
 Item 5 deserves a note for being backwards from the rest: building it *reduces* total reward, because it replaces 15 unearned points with a measured score. That is a feature. Every dimension in §11.6 that pays without measuring is a small standing instruction to keep it unmeasured.
 
-### 11.12 Correction — item 6 is DAG hill climbing, and it has no signal at all
+### 11.12 Correction — item 6 is DAG hill climbing, and the *benchmark* path has no signal
+
+*(Superseded in scope by §11.14. The analysis below is correct **for the benchmark-driven path** and that is where it applies. The DAG hill climber's actual design is rubric-and-human-driven and does not route through `EvalHarness` at all, so its topology signal is real — see §11.14. Read this section as "benchmarks cannot supply a topology signal", not as "the hill climber has no signal".)*
 
 **Operator correction:** item 6 is not RSI multi-agent coordination; it is an **evolve** feature — hill climbing on DAG topology. That makes the gap considerably worse than "no benchmark for it", and it is the most consequential finding in this section.
 
@@ -1303,6 +1305,37 @@ Two agents can score identically on SWE-bench while one solves in 5 confident st
 **The cheap version needs no new benchmark.** You are already going to run real SWE-bench (§11.9 step 6). Instrument those runs: record steps, tool calls, failed-then-recovered transitions, and tokens-to-solution alongside the pass/fail. That converts a binary into a trajectory metric at near-zero marginal cost, and it is the same instrumentation that makes `cost_efficiency` real instead of the free 15 points. Public families worth looking at if you want a purpose-built suite — SWE-agent-style trajectory evals, multi-file/polyglot edit suites, long-horizon agentic benchmarks — but the in-house instrumentation gets most of the value first.
 
 **And it is the natural discriminator for §11.12.** Trajectory metrics are exactly where a multi-node DAG should show an advantage: a reviewer node that catches the author's error shows up as *fewer failed-then-recovered cycles*, not as a higher final pass rate. So item 7's instrumentation is also the most likely source of the topology signal item 6 needs — which is a good reason to build it before the bespoke DAG benchmark.
+
+### 11.14 The DAG hill climber as actually designed — rubric + human + hyperagent
+
+**Correcting §11.12's framing.** I modelled the hill climber as benchmark-driven and concluded its signal was blind. That is right about `EvalHarness` and wrong about the design. As intended, the loop is:
+
+1. A DAG built around a **persona** produces an **artifact** — code, a book, an image.
+2. The DAG **mutates**; it generates again.
+3. The two artifacts are compared **pairwise against a rubric**.
+4. The **user provides feedback** on that comparison.
+5. A **hyperagent** receives both artifacts, the rubric, the feedback, and both DAGs, then decides in order: (a) does the **rubric** need adjusting given the feedback, (b) does the **topology** need modifying, (c) which **single** agent's prompt / tools / parameters / model to change.
+6. Generate again. If the new artifact beats both predecessors, **keep the DAG** — and now there are three data points from which the hyperagent improves **its own guidelines for modifying that DAG**.
+
+Topology is fully visible to this signal, because the entire DAG runs to produce the artifact. §11.12's critique applies only to the benchmark path. Worth noting the convergence: §11.10 independently argued for pairwise-against-baseline over absolute rubric scoring, which is what step 3 already does.
+
+**More of this exists than I credited.** `FixerGenome`'s `persona` plus its five sibling slots *is* the persona builder; `hyper_mutate`/`_hyper_propose` is the hyperagent; `HYPER_TIPS` is its modification guidelines; `learned_successes`/`learned_failures` are the accumulated lessons it writes and later reads; `slot_lineage` (ancestors worst→best) is the evidence feed; `EloTournament` is the ranking substrate; and `LLMJudgeComparator` is the empty seat for the pairwise judge. What is missing is the rubric as a first-class versioned object, artifact production and comparison, the feedback capture, and the ordered decision sequence.
+
+Six risks, ordered by consequence. Two are correctness bugs in the flow as described; the rest are containment.
+
+**1 — The rubric-adjustment step is the reward-hacking surface, and it is step (a).** Letting the hyperagent adjust the rubric from user feedback is genuinely right — feedback often reveals the rubric was wrong, not the output. It is also the cheapest possible path to "my outputs score better." And because it runs *every* iteration, the definition of success is the most frequently modified object in the loop. Resolution that preserves the intent: the hyperagent **proposes** rubric changes and the user **confirms** — the same hold-and-flag path as §11.6 — and the rubric is **versioned**, with every score permanently attributed to a rubric version.
+
+**2 — Comparing three artifacts across a rubric change is invalid, and the flow as described does exactly that.** Step (a) may change the rubric; step 6 then asks whether the new artifact "beats the other two." But artifacts 1 and 2 were scored under the *old* rubric. That comparison is not sound, and it silently biases toward whatever the new rubric favours — which the hyperagent just chose. Two clean fixes: re-score the predecessors under the new rubric before comparing (cheap, since the artifacts are already produced), or forbid a rubric change and a topology/slot change in the same iteration. The first is better; it keeps iteration speed and makes rubric changes cost one re-scoring pass.
+
+**3 — "One change per iteration" is excellent experimental design, and a shipped tip contradicts it.** Single-variable change is what makes the resulting data point *attributable* — it is the difference between evidence and anecdote. But `HYPER_TIPS[4]` is *"Be bold: change several slots at once toward what the best ancestor did."* If four things change and the artifact improves, the loop has learned nothing about which one helped, and step 6's meta-learning will confidently extract a false guideline from it. Recommend: drop that tip, or gate it behind "only after N single-variable iterations have plateaued", and **record the change-set size on every data point** so the meta-learner can discount multi-change evidence rather than treating it as equal.
+
+**4 — Three data points is the right shape and the wrong *n*.** With a human in the loop and genuinely noisy artifact quality, three comparisons will produce confident nonsense — this is the same overfitting §9.5 addressed for RLPHD, one level up. Two mitigations, both cheap: require a minimum evidence count before a guideline is written at all (§11.8's `min_corpus` idea), and store guidelines as **hypotheses with counts** rather than assertions — *"prefer higher edge_focus for illustration tasks (3 wins / 1 loss)"*, not *"always prefer higher edge_focus."* A guideline carrying its own evidence count is self-invalidating as data accumulates, and it is inspectable, which is the same glass-box property §9.6 wants.
+
+**5 — The guidelines *are* the P-1 channel, so this design depends on P-1 being fixed.** `learned_successes`/`learned_failures` are text the hyperagent writes, persisted to `population.db` on a writable host mount, rendered into the **system prompt** behind a preamble instructing the model to *"treat them as facts, not suggestions"* — unscanned, uncapped, inherited by every descendant, and surviving revert. That is P-1 exactly. The difference is that here it is not an incidental channel to be hardened; it is **the mechanism the design runs on**. So P-1's fixes (length bound, Warden scan on write *and* read, delimiter isolation, drop the "treat as facts" preamble, HMAC the store) move from hardening items to prerequisites.
+
+**6 — The human is ground truth and therefore the bottleneck — which is where §9.5's band belongs.** Not every comparison needs a person. When the pairwise rubric comparison is confident, auto-decide; surface only the close ones. That is precisely the "decide on a measurable percentage, flag the rest, and the window shrinks as you rule" behaviour asked for earlier — the RLPHD band and this loop are the *same mechanism at two levels*, and the band's covariance term does the extra work of flagging artifacts unlike anything previously judged.
+
+**One structural suggestion: rank with Elo, not "better than the other two."** Over many generations, beating the last two is a weak and sample-noisy ordering — a lucky artifact wins once and gets kept. `EloTournament` already maintains ratings per `(genome, benchmark)`; keying it per `(DAG, rubric_version)` instead gives a stable ranking across the whole history, makes "is this DAG actually better" answerable over dozens of comparisons rather than two, and naturally handles the ties that step 3 will produce often. It also makes the rubric-version attribution from risk 1 load-bearing in a useful way: ratings under different rubric versions simply do not pool.
 
 ---
 
