@@ -268,6 +268,8 @@ def create_app() -> FastAPI:
     if STATIC_DIR.is_dir():
         from starlette.responses import FileResponse
 
+        static_root = STATIC_DIR.resolve()
+
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
             # Do not return the SPA shell for unknown API paths (avoids JSON parse errors in the UI).
@@ -275,10 +277,21 @@ def create_app() -> FastAPI:
                 from starlette.responses import JSONResponse
 
                 return JSONResponse(status_code=404, content={"detail": "Not Found"})
-            fp = STATIC_DIR / full_path
-            if fp.is_file():
+            # SECURITY: this route is UNAUTHENTICATED — AuthMiddleware only gates
+            # paths starting with "/v1/" (middleware/auth.py), and this catch-all
+            # matches everything else. So `full_path` is fully attacker-controlled
+            # and must be contained to static_root before anything is served.
+            #
+            # Containment cannot be done by inspecting the string: `Path.__truediv__`
+            # DISCARDS the left operand when the right one is absolute, so
+            # `STATIC_DIR / "/etc/passwd"` is `/etc/passwd` — no dot-segments needed,
+            # and the "v1/" guard above never fires for such a path. `..` traversal
+            # is the other half. resolve() collapses both (and any symlink escape),
+            # and is_relative_to() is the actual boundary check.
+            fp = (static_root / full_path).resolve()
+            if fp.is_relative_to(static_root) and fp.is_file():
                 return FileResponse(fp)
-            return FileResponse(STATIC_DIR / "index.html")
+            return FileResponse(static_root / "index.html")
 
     return app
 
