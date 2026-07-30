@@ -99,8 +99,10 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      # maistro-rsi + maistro-evolve aren't workspace-root deps (no uv.lock
-      # entry), so put their src trees on PYTHONPATH — the same pattern the
+      # maistro-rsi + maistro-evolve are workspace members (so they DO have
+      # uv.lock entries as of F1/#300) but they are not root dependencies, so
+      # `uv sync` above does not install them into the root env. Put their src
+      # trees on PYTHONPATH — the same pattern the
       # root CLAUDE.md documents for local runs. Their third-party deps
       # (httpx, pydantic, structlog, fastmcp via the root env) are already
       # installed by `uv sync` above.
@@ -262,8 +264,12 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
-      # Not `uv build --all-packages`: there is no [tool.uv.workspace] members
-      # table, so that only builds the (deliberately empty) root wheel.
+      # A [tool.uv.workspace] members table exists as of F1 (#300), so `uv build
+      # --all-packages` would now work. The explicit loop is kept deliberately:
+      # it builds exactly what is on disk under packages/, so a new package is
+      # enrolled in this gate the moment it grows a pyproject.toml — without
+      # also depending on someone remembering to add it to the members table.
+      # It also excludes the root wheel, which is empty by design.
       - name: Build every package wheel
         run: |
           set -euo pipefail
