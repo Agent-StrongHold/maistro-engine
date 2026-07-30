@@ -95,6 +95,27 @@ ARTIFACTS: list[tuple[str, str, str]] = [
     ),
 ]
 
+# sha256 of each *rendered* vendored file — the bytes actually on disk, header
+# and rewrites included. Data files are byte-identical to upstream so their
+# entry equals the upstream pin; source files differ by the provenance header.
+#
+# This is the pin that matters, and its absence was a real hole: the first
+# version of `--check` verified only that a file's header quoted the right
+# upstream hash and that no un-rewritten import survived. Neither touches the
+# function bodies, so editing the grader's logic passed CI. Demonstrated, not
+# theorised: replacing one line of `test_instruction_following_strict` with
+# `if True:` moved a lazy model's IFEval score from 0.1 to 1.0 while
+# `vendor_ifeval.py --check` still printed "vendored IFEval tree OK".
+#
+# Regenerate with `--update-hashes` after a deliberate upstream bump.
+RENDERED_SHA256: dict[str, str] = {
+    "instructions.py": "038b0d9b7b2c74341d477113de63513d1f2090abe6e437e444a88df7b8af11e1",
+    "instructions_registry.py": "f1d7a33a7f5aceae06a693b022ab81a8c9a320c0b41ec5bf0375e6970214bb9a",
+    "instructions_util.py": "975f7de82f9002374a2a592e057ea8e29bdc7e995211abe3196095237521acca",
+    "evaluation_lib.py": "7a1c3806f42a702e936381d8056b6515f80b2ab4a6d330d25f4d1a55d5182361",
+    "data/input_data.jsonl": "67ffeee0fcb87c317c5b08a2de85557b4a7e96ada6178aa645b4954fe4b53d49",
+}
+
 # The complete set of modifications applied to upstream source. Keep this list
 # minimal and mechanical — every entry is a claim `--check` has to be able to
 # verify, and every entry is a divergence a reviewer has to evaluate.
@@ -160,7 +181,7 @@ declared as the `ifeval` extra of maistro-evolve. nltk additionally needs the
 `punkt` tokenizer data, which must be pre-fetched (the scoring container is
 network-denied by design):
 
-    python3 -c "import nltk; nltk.download('punkt')"
+    python3 -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
 
 Why these are not shimmed away: the nltk word tokenizer is trivially
 replaceable (RegexpTokenizer(r"\\w+") == re.findall(r"\\w+")), but the punkt
@@ -216,6 +237,7 @@ def main() -> int:
 
     failures: list[str] = []
     pins: list[str] = []
+    rendered_pins: list[str] = []
     for upstream_path, vendored_path, expected_sha in ARTIFACTS:
         raw = _fetch(upstream_path)
         actual = hashlib.sha256(raw).hexdigest()
@@ -231,7 +253,20 @@ def main() -> int:
             continue
         out = VENDOR_DIR / vendored_path
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_bytes(_render(upstream_path, raw, actual))
+        rendered = _render(upstream_path, raw, actual)
+        out.write_bytes(rendered)
+        rendered_sha = hashlib.sha256(rendered).hexdigest()
+        rendered_pins.append(f'    "{vendored_path}": "{rendered_sha}",')
+        # Catches header-template drift: if the template changes, every rendered
+        # digest moves and RENDERED_SHA256 must be re-pinned in the same commit,
+        # or CI would fail on a tree this script itself just produced.
+        if not args.update_hashes and RENDERED_SHA256.get(vendored_path) != rendered_sha:
+            failures.append(
+                f"{vendored_path}: rendered output does not match RENDERED_SHA256\n"
+                f"  pinned:   {RENDERED_SHA256.get(vendored_path)}\n"
+                f"  produced: {rendered_sha}\n"
+                "  The render template changed. Re-pin with --update-hashes."
+            )
         print(f"  wrote {out.relative_to(REPO)}")
 
     if failures:
@@ -245,43 +280,55 @@ def main() -> int:
     )
     print(f"  wrote {(VENDOR_DIR / 'NOTICE').relative_to(REPO)}")
     if args.update_hashes:
-        print("\nNew pins:\n" + "\n".join(pins))
+        print("\nUpstream pins (ARTIFACTS):\n" + "\n".join(pins))
+        print("\nRendered pins (RENDERED_SHA256):\n" + "\n".join(rendered_pins))
     return 0
 
 
 def _check_artifact(vendored_path: str, sha: str) -> list[str]:
-    """Problems found with one vendored artifact; empty list means it is intact."""
+    """Problems found with one vendored artifact; empty list means it is intact.
+
+    The rendered-bytes digest is the actual guarantee. The header/import checks
+    below it are kept only because they turn "digest mismatch" into a specific
+    diagnosis when the cause is a stale regeneration rather than an edit.
+    """
     path = VENDOR_DIR / vendored_path
     if not path.is_file():
         return [f"{vendored_path}: missing — run scripts/vendor_ifeval.py"]
-    if not vendored_path.endswith(".py"):
-        # Data files are byte-identical to upstream, so the hash is exact.
-        actual = hashlib.sha256(path.read_bytes()).hexdigest()
-        if actual != sha:
-            return [f"{vendored_path}: data file edited\n  pinned: {sha}\n  actual: {actual}"]
+
+    expected_rendered = RENDERED_SHA256.get(vendored_path)
+    if expected_rendered is None:
+        return [f"{vendored_path}: no rendered-bytes pin — refusing to vouch for it"]
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual == expected_rendered:
         return []
-    # Source files carry a provenance header, so their bytes differ from
-    # upstream by construction; check the invariants instead of the hash.
-    text = path.read_text(encoding="utf-8")
-    problems: list[str] = []
-    if f"Upstream sha256: {sha}" not in text:
-        problems.append(f"{vendored_path}: provenance header missing or names a different sha")
-    problems.extend(
-        f"{vendored_path}: un-rewritten upstream import {old!r}"
-        for old, _new in _REWRITES
-        if old in text
-    )
+
+    problems = [
+        f"{vendored_path}: content does not match its pinned rendered digest\n"
+        f"  pinned: {expected_rendered}\n  actual: {actual}\n"
+        "  The vendored grader/corpus was edited. Restore with "
+        "`python3 scripts/vendor_ifeval.py`, or re-pin with --update-hashes "
+        "if this is a deliberate upstream bump."
+    ]
+    if vendored_path.endswith(".py"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if f"Upstream sha256: {sha}" not in text:
+            problems.append(f"  · {vendored_path}: provenance header also missing/mismatched")
+        problems.extend(
+            f"  · {vendored_path}: un-rewritten upstream import {old!r}"
+            for old, _new in _REWRITES
+            if old in text
+        )
     return problems
 
 
 def _check() -> int:
-    """Verify the committed tree is what the pinned bytes derive to. No network.
+    """Verify the committed tree is byte-identical to what the pins derive to.
 
-    This is the guard that makes the "unmodified except for imports" claim
-    checkable. It cannot re-fetch (CI may be offline and upstream may have
-    moved), so it verifies the *invariants* the transform guarantees instead:
-    the vendored bytes' provenance header names the pinned sha, no upstream
-    import form survives the rewrite, and no file is missing.
+    No network: CI may be offline and upstream may have moved, so this compares
+    the files on disk against ``RENDERED_SHA256`` — the digest of the exact
+    bytes this script produces from the pinned upstream bytes. Any edit to the
+    grader, the corpus, or the provenance header fails.
     """
     pinned = {v: sha for _u, v, sha in ARTIFACTS}
     problems: list[str] = []

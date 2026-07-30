@@ -40,7 +40,7 @@ declared as the `ifeval` extra of maistro-evolve. nltk additionally needs the
 `punkt` tokenizer data, which must be pre-fetched (the scoring container is
 network-denied by design):
 
-    python3 -c "import nltk; nltk.download('punkt')"
+    python3 -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
 
 Why these are not shimmed away: the nltk word tokenizer is trivially
 replaceable (RegexpTokenizer(r"\w+") == re.findall(r"\w+")), but the punkt

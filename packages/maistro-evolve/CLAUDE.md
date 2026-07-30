@@ -86,7 +86,7 @@ installed → considered, not installed → visibly skipped, and the operator pi
 ```bash
 # bfcl-real: no install needed — the vendored ast_checker is stdlib-only.
 uv pip install 'maistro-evolve[ifeval]'                   # ifeval-real: absl-py, immutabledict, nltk, langdetect
-python3 -c "import nltk; nltk.download('punkt')"          # pre-fetch: the scoring container is network-denied
+python3 -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"          # pre-fetch: the scoring container is network-denied
 python3 scripts/vendor_ifeval.py --check                  # verify grader/corpus match their pinned hashes
 python3 scripts/vendor_bfcl.py --check                    # same for the BFCL checker/corpus
 ```

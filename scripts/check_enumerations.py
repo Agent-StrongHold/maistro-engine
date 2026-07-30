@@ -92,9 +92,19 @@ SENSITIVE_FILES = (
     "packages/maistro-evolve/src/maistro_evolve/scorecard.py",
     "packages/maistro-rsi/src/maistro_rsi/candidate_fitness.py",
     "packages/maistro-rsi/src/maistro_rsi/harvest.py",
-    # This file. A ratchet outside the surface it protects can be edited in the
+    # Score administration: which runners register, how results fold into
+    # eval_scores, how scores become Elo, and the per-benchmark weights. Each
+    # can move a score without touching the exam.
+    "packages/maistro-evolve/src/maistro_evolve/harness.py",
+    "packages/maistro-evolve/src/maistro_evolve/cycle.py",
+    "packages/maistro-evolve/src/maistro_evolve/tournament.py",
+    "packages/maistro-evolve/src/maistro_evolve/types.py",
+    # This file, and the vendoring scripts holding the vendored graders' pinned
+    # digests. A ratchet outside the surface it protects can be edited in the
     # same diff as the list it checks, and the build stays green.
     "scripts/check_enumerations.py",
+    "scripts/vendor_ifeval.py",
+    "scripts/vendor_bfcl.py",
 )
 
 # maistro subpackages intentionally absent from CORE_PUBLIC_SURFACE, because they

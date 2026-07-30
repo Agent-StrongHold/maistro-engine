@@ -135,8 +135,8 @@ def test_unavailable_real_adapter_is_skipped_by_default_but_explicit_ask_raises(
     results = asyncio.run(harness.evaluate_genome(_genome(), None, None))
     assert [r.benchmark for r in results] == ["bfcl"]
 
-    # Named: explicit ask, explicit answer.
-    with pytest.raises(ValueError, match="exists but is unavailable"):
+    # Named: explicit ask, explicit answer — with the install hint attached.
+    with pytest.raises(ValueError, match="unavailable in this environment"):
         asyncio.run(harness.evaluate_genome(_genome(), ["ifeval"], None))
 
 
@@ -171,8 +171,64 @@ def test_real_fidelity_refuses_a_benchmark_with_no_real_adapter() -> None:
     async def llm_call(messages: object, **kwargs: object) -> str:
         return "x"
 
-    with pytest.raises(ValueError, match="no real-fidelity adapter for benchmark 'swebench'"):
+    with pytest.raises(ValueError, match="no real-fidelity adapter for: swebench"):
         asyncio.run(harness.evaluate_genome(_genome(), ["swebench"], llm_call))
+
+
+def test_unrunnable_benchmarks_are_rejected_before_any_runner_spends_money(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Validation covers the whole list up front, not lazily per benchmark.
+
+    Lazily, a real harness asked for EvolutionConfig's default
+    ["ifeval", "bfcl", "swebench", "tau_bench"] would run ~1,500 paid LLM calls
+    for the first two and only then raise on the third — folding and persisting
+    nothing. The cost is unrecoverable, so the check has to happen before the
+    first call.
+    """
+    import maistro_evolve.benchmarks as bench_pkg
+
+    ran: list[str] = []
+
+    async def spy(genome: PipelineGenome, llm_call: object) -> EvalResult:
+        ran.append("ifeval")
+        return _fake_runner_result("ifeval")
+
+    monkeypatch.setattr(bench_pkg, "available_real_benchmarks", lambda: ({"ifeval": spy}, {}))
+    harness = EvalHarness(benchmark_fidelity="real")
+
+    with pytest.raises(ValueError, match="Nothing was evaluated"):
+        asyncio.run(harness.evaluate_genome(_genome(), ["ifeval", "bfcl", "swebench"], None))
+    assert ran == [], "a runner executed before validation rejected the request"
+
+
+def test_real_harness_refuses_to_register_a_proxy_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The tier invariant's last open door.
+
+    EvalHarness picks its own registrations carefully, but register_benchmark
+    let any caller bolt a proxy runner onto a real harness — which then still
+    reported fidelity=="real" while returning handcrafted-sample scores.
+    maistro_rsi.runner.build_harness did exactly that with swebench_pro.
+    """
+    import maistro_evolve.benchmarks as bench_pkg
+
+    async def proxy_runner(genome: PipelineGenome, llm_call: object) -> EvalResult:
+        return _fake_runner_result("swebench_pro")
+
+    monkeypatch.setattr(
+        bench_pkg,
+        "available_real_benchmarks",
+        lambda: ({"bfcl": proxy_runner}, {}),
+    )
+    harness = EvalHarness(benchmark_fidelity="real")
+    with pytest.raises(ValueError, match="cannot register proxy-fidelity benchmark"):
+        harness.register_benchmark("swebench_pro", proxy_runner)
+
+    # A genuinely real runner is fine, and so is anything on a proxy harness.
+    harness.register_benchmark("swebench_pro", proxy_runner, fidelity="real")
+    EvalHarness().register_benchmark("swebench_pro", proxy_runner)
 
 
 def test_proxy_fidelity_still_skips_unknown_benchmarks() -> None:

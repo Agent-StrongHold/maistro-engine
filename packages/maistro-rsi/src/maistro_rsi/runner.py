@@ -119,9 +119,25 @@ class RsiCycleResult:
 
 
 def build_harness(benchmark_fidelity: BenchmarkFidelity = "proxy") -> EvalHarness:
-    """An `EvalHarness` carrying both maistro-evolve's stock benchmarks and
-    the longer-horizon ones added here (e.g. SWE-Bench Pro)."""
+    """An `EvalHarness` carrying maistro-evolve's stock benchmarks plus the
+    longer-horizon ones added here (e.g. SWE-Bench Pro).
+
+    ``RSI_BENCHMARKS`` are all proxy-tier, so at ``benchmark_fidelity="real"``
+    they are **omitted**, not registered. Adding them would leave a harness that
+    reports ``fidelity == "real"`` while returning handcrafted-sample scores —
+    and RSI results feed promotion evidence, which is the worst place for a
+    proxy number wearing a real label. ``EvalHarness.register_benchmark`` also
+    rejects this independently; the explicit skip here is so the caller gets a
+    working real harness instead of an exception.
+    """
     harness = EvalHarness(benchmark_fidelity=benchmark_fidelity)
+    if benchmark_fidelity == "real":
+        logger.info(
+            "rsi_benchmarks_omitted_at_real_fidelity",
+            omitted=sorted(RSI_BENCHMARKS),
+            reason="proxy-tier runners cannot be registered on a real harness",
+        )
+        return harness
     for name, runner in RSI_BENCHMARKS.items():
         harness.register_benchmark(name, runner)
     return harness

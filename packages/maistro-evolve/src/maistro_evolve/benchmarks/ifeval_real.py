@@ -84,7 +84,7 @@ _HOLDOUT_PCT = 20
 _DEPS_HINT = (
     "The official IFEval verifier needs its real dependencies: install the "
     "extra (`uv pip install 'maistro-evolve[ifeval]'`) and pre-fetch the nltk "
-    "tokenizer (`python3 -c \"import nltk; nltk.download('punkt')\"`). They are "
+    "tokenizer (`python3 -c \"import nltk; nltk.download('punkt'); nltk.download('punkt_tab')\"`). They are "
     "not shimmed away on purpose — an approximate grader must not be labelled "
     "'real'. See the NOTICE in benchmarks/third_party/ifeval/."
 )
@@ -126,12 +126,25 @@ def available() -> tuple[bool, str]:
     try:
         import nltk
 
-        nltk.data.find("tokenizers/punkt")
-    except LookupError:
+        # BOTH are required, and `punkt` alone is the trap. Since nltk 3.9 the
+        # pickle loader resolves through `punkt_tab`, so
+        # `nltk.data.load("nltk:tokenizers/punkt/english.pickle")` — the exact
+        # call the vendored grader makes — raises LookupError('punkt_tab') on a
+        # machine that downloaded only `punkt`. Verified against nltk 3.10.
+        #
+        # Probing both here is what keeps that failure cheap. The grader runs
+        # *after* every LLM call, so a missing resource discovered at grade time
+        # burns the entire cost of the run (541 calls) and returns nothing.
+        for resource in ("tokenizers/punkt", "tokenizers/punkt_tab"):
+            nltk.data.find(resource)
+    except LookupError as exc:
+        missing = str(exc).split("Resource")[-1].split("not found")[0].strip().strip("'[93m ")
         return False, (
-            "nltk `punkt` tokenizer data missing — pre-fetch with "
-            "`python3 -c \"import nltk; nltk.download('punkt')\"` "
-            "(the scoring container is network-denied, so it cannot self-download)"
+            f"nltk tokenizer data missing ({missing or 'punkt/punkt_tab'}) — pre-fetch with "
+            "`python3 -c \"import nltk; nltk.download('punkt'); nltk.download('punkt_tab')\"`. "
+            "Both are needed: since nltk 3.9 the punkt pickle loader resolves "
+            "through punkt_tab. The scoring container is network-denied, so it "
+            "cannot self-download."
         )
     except ImportError as exc:  # pragma: no cover - caught by the import above
         return False, f"nltk unavailable ({exc})"
@@ -255,6 +268,7 @@ class _Totals:
     inst_loose_ok: int = 0
     inst_total: int = 0
     errors: int = 0
+    grader_errors: int = 0
     cost_usd: float = 0.0
     failures_by_instruction: dict[str, list[int]] = field(default_factory=dict)
     failure_traces: list[dict[str, Any]] = field(default_factory=list)
@@ -270,6 +284,16 @@ def _aggregate(
     is deliberate: an error means the response followed none of them, and
     excluding it would quietly raise instruction-level accuracy when the gateway
     misbehaves — a degraded run would look like a better one.
+
+    Grader exceptions are caught per prompt rather than allowed to propagate.
+    Grading happens *after* every LLM call, so one unhandled grader error threw
+    away a fully paid-for run (541 calls) and returned nothing — the worst
+    possible failure mode, since the money is spent either way. The realistic
+    trigger is a missing nltk resource, which ``available()`` now pre-checks;
+    this is the backstop for whatever it doesn't anticipate. Such prompts score
+    zero and are counted in ``grader_errors``, kept distinct from ``errors``
+    (gateway) and from genuine failures, because "the grader broke" and "the
+    model was wrong" call for completely different responses.
     """
     t = _Totals()
     for record, response, error in responses:
@@ -283,7 +307,19 @@ def _aggregate(
             continue
         t.cost_usd += 0.001
 
-        verdict = _grade(evaluation_lib, record, response or "")
+        try:
+            verdict = _grade(evaluation_lib, record, response or "")
+        except Exception as exc:
+            t.grader_errors += 1
+            if len(t.failure_traces) < _MAX_FAILURE_TRACES:
+                t.failure_traces.append(
+                    {
+                        "key": record["key"],
+                        "error": f"grader failed: {type(exc).__name__}: {exc}",
+                        "failed_instructions": [],
+                    }
+                )
+            continue
         t.prompt_strict += int(verdict.prompt_strict)
         t.prompt_loose += int(verdict.prompt_loose)
         t.inst_strict_ok += sum(verdict.inst_strict)
@@ -409,8 +445,14 @@ async def run_ifeval_real(
             "requested_prompts": max_prompts,
             # True only for a full run over the whole corpus. Any split or
             # sample covers a subset and is not a published-score comparable.
-            "official_comparable": split == "all" and not sampled and errors == 0,
+            "official_comparable": (
+                split == "all" and not sampled and errors == 0 and totals.grader_errors == 0
+            ),
             "errors": errors,
+            # Grader failures, distinct from gateway failures above and from
+            # genuine wrong answers. Non-zero means the score understates the
+            # genome: those prompts counted as zero without being graded.
+            "grader_errors": totals.grader_errors,
             "failures_by_instruction": {
                 iid: len(keys) for iid, keys in sorted(per_instruction_failures.items())
             },

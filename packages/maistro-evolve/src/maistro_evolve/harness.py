@@ -37,12 +37,7 @@ class EvalHarness:
         # the human-actionable reason (missing extra, missing vendored corpus,
         # later: missing docker images). Always {} for a proxy harness.
         self.unavailable_real: dict[str, str] = {}
-        self.fidelity: BenchmarkFidelity
-        if benchmark_fidelity == "real":
-            self._register_real_benchmarks()
-            self.fidelity = "real"
-            return
-        if benchmark_fidelity != "proxy":
+        if benchmark_fidelity not in ("proxy", "real"):
             # Explicitly reject anything else — including the removed "stub"
             # tier — rather than silently falling through to proxy for an
             # unrecognized value.
@@ -51,10 +46,49 @@ class EvalHarness:
                 "valid values are 'proxy' (default) or 'real'. There is no "
                 "'stub' tier — see BenchmarkFidelity's docstring."
             )
-        self._register_proxy_benchmarks()
-        self.fidelity = "proxy"
+        # Set before registering: register_benchmark enforces the tier against
+        # this attribute, so it has to be true of the harness from the first
+        # registration onward, not merely by the time __init__ returns.
+        self.fidelity: BenchmarkFidelity = benchmark_fidelity
+        if benchmark_fidelity == "real":
+            self._register_real_benchmarks()
+        else:
+            self._register_proxy_benchmarks()
 
-    def register_benchmark(self, name: str, runner_fn: BenchmarkRunner) -> None:
+    def register_benchmark(
+        self,
+        name: str,
+        runner_fn: BenchmarkRunner,
+        *,
+        fidelity: BenchmarkFidelity = "proxy",
+    ) -> None:
+        """Add a runner, refusing any registration that would break the tier.
+
+        ``fidelity`` declares what tier ``runner_fn`` actually is, and defaults
+        to ``"proxy"`` because that is what a custom runner almost always is —
+        a caller with a genuine official-harness adapter has to say so.
+
+        A proxy runner on a real harness is rejected. Without this the
+        invariant leaked through the one door left open: ``EvalHarness`` picked
+        its own registrations carefully, then any caller could
+        ``register_benchmark`` a proxy runner onto a real harness and the object
+        would still report ``fidelity == "real"`` while returning a
+        handcrafted-sample score. ``maistro_rsi.runner.build_harness`` did
+        exactly that with proxy-tier ``swebench_pro``, which could have put a
+        proxy number into promotion evidence labelled real.
+
+        The reverse (a real runner on a proxy harness) is allowed: it makes the
+        harness *better* than it claims, and ``EvalResult.metadata["fidelity"]``
+        still tells the truth per result.
+        """
+        if self.fidelity == "real" and fidelity != "real":
+            raise ValueError(
+                f"cannot register {fidelity}-fidelity benchmark {name!r} on a "
+                "real-fidelity harness: the harness would keep reporting "
+                "fidelity=='real' while returning a proxy score. Either pass "
+                "fidelity='real' if this runner really is an official-harness "
+                "adapter, or build the harness with benchmark_fidelity='proxy'."
+            )
         self._benchmarks[name] = runner_fn
 
     def _register_proxy_benchmarks(self) -> None:
@@ -98,7 +132,46 @@ class EvalHarness:
                 "missing pieces, or use 'proxy' (default)."
             )
         for name, runner in runners.items():
-            self.register_benchmark(name, runner)
+            self.register_benchmark(name, runner, fidelity="real")
+
+    def _reject_unrunnable(self, bench_list: list[str]) -> None:
+        """Raise if any requested benchmark cannot run, before any runner starts.
+
+        Proxy tier keeps its permissive behaviour: an unknown name is skipped,
+        which yields fewer results and no false ones. Real tier refuses, because
+        a short result list there looks indistinguishable from a clean run over
+        everything requested — and the two reasons a real name can be missing
+        ("no adapter exists yet" vs "exists, not installed here") need different
+        answers from the operator.
+        """
+        if self.fidelity != "real":
+            return
+        missing = [n for n in bench_list if n not in self._benchmarks]
+        if not missing:
+            return
+        unavailable = [n for n in missing if n in self.unavailable_real]
+        unimplemented = [n for n in missing if n not in self.unavailable_real]
+        parts: list[str] = []
+        if unavailable:
+            parts.append(
+                "real adapters that exist but are unavailable in this "
+                "environment: "
+                + "; ".join(f"{n} ({self.unavailable_real[n]})" for n in unavailable)
+            )
+        if unimplemented:
+            runnable = ", ".join(sorted(self._benchmarks)) or "none"
+            parts.append(
+                f"no real-fidelity adapter for: {', '.join(unimplemented)} "
+                f"(runnable at real fidelity: {runnable}; real adapters are "
+                "never backfilled from the proxy registry)"
+            )
+        raise ValueError(
+            "cannot evaluate the requested benchmarks at real fidelity — "
+            + "; ".join(parts)
+            + ". Nothing was evaluated, so no cost was incurred. Narrow "
+            "target_benchmarks to what this environment can run, install the "
+            "missing pieces, or use benchmark_fidelity='proxy'."
+        )
 
     async def evaluate_genome(
         self,
@@ -107,33 +180,17 @@ class EvalHarness:
         llm_call: Any = None,
     ) -> list[EvalResult]:
         bench_list = benchmarks or list(self._benchmarks.keys())
+        # Validate the WHOLE list before invoking any runner. Validating lazily
+        # inside the loop meant a real harness asked for
+        # ["ifeval", "bfcl", "swebench", "tau_bench"] — EvolutionConfig's
+        # default — would complete ~1,500 paid LLM calls for the first two and
+        # only then raise on the third, folding and persisting nothing. The
+        # money is gone either way; failing first at least leaves it unspent.
+        self._reject_unrunnable(bench_list)
         results: list[EvalResult] = []
         for name in bench_list:
             runner = self._benchmarks.get(name)
             if runner is None:
-                if self.fidelity == "real":
-                    # Silently skipping is tolerable at proxy tier (a caller
-                    # naming an unknown benchmark gets fewer results and no
-                    # false ones). At real tier it is not: returning a short
-                    # list makes a partial run look like a clean run over
-                    # everything asked for. Two distinct cases, two messages —
-                    # "doesn't exist yet" and "exists, not installed here".
-                    if name in self.unavailable_real:
-                        raise ValueError(
-                            f"real adapter for benchmark {name!r} exists but is "
-                            f"unavailable in this environment: "
-                            f"{self.unavailable_real[name]}. Unavailable real "
-                            "benchmarks are skipped when unnamed, but an "
-                            "explicit request gets an explicit answer — and "
-                            "never a silent downgrade to proxy."
-                        )
-                    available = ", ".join(sorted(self._benchmarks)) or "none"
-                    raise ValueError(
-                        f"no real-fidelity adapter for benchmark {name!r}; "
-                        f"available at real fidelity: {available}. Real adapters "
-                        "are not backfilled from the proxy registry — see "
-                        "EvalHarness._register_real_benchmarks."
-                    )
                 continue
             result = await runner(genome, llm_call)
             results.append(result)
