@@ -426,18 +426,38 @@ expressible.
 
 # Workstream F — Conductor deployability
 
-## F1 — hive-conductor pyproject.toml; join workspace + wheel gate (M, dep E1)
+## F1 — hive-conductor pyproject.toml; join workspace + wheel gate (M, dep E1) — done, #300, PR #331
 
 **Context:** `packages/hive-conductor` is a bare `requirements.txt` + Vite frontend —
 unpackageable, outside the wheel-imports gate, and a second unlocked dependency resolution.
 
-- [ ] Add `pyproject.toml` (hatchling; version from the E1 scheme); translate requirements.txt
-      into bounded deps; maistro deps `>=1.0.0,<2`.
-- [ ] Join `[tool.uv.workspace]` (E2) and the wheel-imports CI job. Not in the PyPI set —
-      packaging is for build hygiene and image builds.
-- [ ] Frontend build artifacts stay in the Docker image, not the wheel.
+- [x] `packages/hive-conductor/pyproject.toml` (hatchling, `0.9.0` from root `VERSION`);
+      requirements.txt translated with bounds and its load-bearing comments preserved
+      (the `httpx2`/Starlette note, the `regex`/Warden-ReDoS note); test-only deps moved to a
+      `dev` extra. **`maistro-core` is `>=0.9.0,<2`, not the `>=1.0.0,<2` written above** —
+      nothing in the repo is at 1.0.0 yet, so that bound does not resolve today. Flagged
+      in-file to tighten at tag time.
+- [x] `[tool.uv.workspace]` members added to the root pyproject — it had **none**, only
+      `[tool.uv.sources]` path entries, so a package file alone would not have created
+      membership. Sources converted to the canonical `{ workspace = true }` form and completed
+      for every member (uv requires a source entry for any member another member depends on;
+      `maistro-rsi` → `maistro-evolve` is the live case). Enrolled in wheel-imports. Not in the
+      PyPI set.
+- [x] Frontend build artifacts excluded from the wheel — it ships `backend/` sources only.
 
-**AC:** the package builds; wheel-imports covers it; `uv.lock` includes it.
+**AC:** the package builds; wheel-imports covers it; `uv.lock` includes it. ✅ All 10 package
+wheels build; `verify-wheel-imports.py` exits 0; `uv lock --check` clean (198 packages);
+hive-conductor present in `uv.lock`.
+
+**One caveat recorded deliberately:** the wheel builds but is **not importable**.
+`backend/` is a flat module layout with no package root, and the app imports itself
+top-level-relative (`from config import ...`), resolved by putting `backend/` on `sys.path`
+(the Dockerfile's `PYTHONPATH`, `conftest.py`'s `sys.path[0]` shim). Making it genuinely
+importable means rewriting every intra-app import plus the Dockerfile and conftest — a
+refactor, not a packaging change. So it is registered in `verify-wheel-imports.py`'s
+`SKIPPED_DISTS` with the structural reason and what would lift it; that mechanism prints the
+skip and refuses to let reduced coverage read as a pass. **`requirements.txt` remains the
+install path** the Dockerfile and CI use — a dependency change must land in both.
 
 ## F2 — Verify Conductor end-to-end on a clean machine (L, dep B5, E5, F1, F3)
 
