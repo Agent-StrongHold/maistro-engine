@@ -1,12 +1,20 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { apiGet, apiPost } from "../lib/api";
 
+export type WorkspaceRole = "owner" | "editor" | "viewer";
+
+export type WorkspaceMember = {
+  user_id: string;
+  role: WorkspaceRole;
+};
+
 export type Workspace = {
   id: string;
   persona_template_id: string;
   name: string;
   theme_id: string;
   voice_tone_override: string | null;
+  members: WorkspaceMember[];
   active: boolean;
 };
 

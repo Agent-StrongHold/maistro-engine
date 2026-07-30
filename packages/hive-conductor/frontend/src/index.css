@@ -703,14 +703,21 @@ button:hover, .suggestion-button:hover {
 
 /* Persona/Workspace system: tab strip for switching between a user's
    workspaces. */
+.workspace-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--rule);
+}
 .workspace-tabs {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--rule);
+  flex: 1;
 }
 /* .workspace-tabs .workspace-tab (not just .workspace-tab): this file has
    accumulated several auto-generated `button:not([class*="..."])` rules
@@ -771,4 +778,89 @@ button:hover, .suggestion-button:hover {
   font-size: 11px;
   color: var(--danger);
   font-family: var(--mono);
+}
+
+/* Share/invite panel for the active workspace. */
+.workspace-share {
+  position: relative;
+  flex-shrink: 0;
+}
+.workspace-share-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 220px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 10px;
+}
+.workspace-share-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pencil);
+  margin-bottom: 6px;
+}
+.workspace-share-members {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.workspace-share-members li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.workspace-share-member-id {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-share-role {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--pencil);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--paper-2);
+}
+.workspace-share-panel button.workspace-share-remove {
+  padding: 0 4px !important;
+  font-size: 11px !important;
+  color: var(--danger) !important;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+.workspace-share-invite-form {
+  display: flex;
+  gap: 4px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+}
+.workspace-share-invite-form input,
+.workspace-share-invite-form select {
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  font-family: var(--sans);
+  min-width: 0;
+  flex: 1;
+}
+.workspace-share-panel button[type="submit"] {
+  padding: 3px 8px !important;
+  font-size: 12px !important;
+}
+.workspace-share-error {
+  font-size: 11px;
+  color: var(--danger);
+  margin-top: 6px;
 }
