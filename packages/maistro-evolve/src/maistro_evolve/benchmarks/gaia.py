@@ -74,6 +74,14 @@ async def _judge_answer(
 
 
 async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score Q&A responses by exact-match, with an LLM-judge fallback.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official GAIA corpus. Each response is first checked for an exact match
+    against the expected answer (``_exact_match_score``); on a near-miss it
+    falls to a real LLM-as-judge call (``_judge_answer``) rather than being
+    scored by keyword overlap.
+    """
     if llm_call is None:
         raise ValueError(
             "run_gaia requires an llm_call — there is no stub/heuristic "

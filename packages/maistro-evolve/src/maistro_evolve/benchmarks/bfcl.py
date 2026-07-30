@@ -124,6 +124,14 @@ def _score_tool_call(
 
 
 async def run_bfcl(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score function-calling by matching the parsed call against the expected one.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official BFCL corpus. But the check is structural — the response's
+    function name and parameters are extracted (``extract_json_from_response``)
+    and compared field-by-field against the expected call
+    (``function_call_match``), not scored by keyword overlap.
+    """
     if llm_call is None:
         raise ValueError(
             "run_bfcl requires an llm_call — there is no stub/heuristic "
