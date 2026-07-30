@@ -113,7 +113,7 @@ packages/maistro-canvas/
 
 ### maistro-turing (autonoetic self-model)
 
-Implementation in progress: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security. Note: tests/ now has suites (protocols, reactor, tiers, types); CI type-checks turing's src, but ci.yml's pytest matrix doesn't run its suite.
+Implementation in progress: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security. `tests/` has suites (protocols, reactor, tiers, types) and `backend/tests` is a second FastAPI service's suite (its own auth lanes); both run in `ci.yml`'s pytest matrix alongside the src type-check.
 
 ---
 

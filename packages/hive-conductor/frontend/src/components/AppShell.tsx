@@ -5,7 +5,6 @@ import { ModeToggle } from "./ModeToggle";
 import { usePmPoc } from "../context/PocMode";
 import {
   PM_NAV_CREDENTIALS,
-  PM_NAV_DRAFTS,
   PM_NAV_INTEGRATIONS,
   PM_NAV_MISSIONS,
   PM_NAV_PROGRAM,

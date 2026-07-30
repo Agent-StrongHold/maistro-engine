@@ -16,20 +16,17 @@ services:
       - PYTHONUNBUFFERED=1
       - HARDWARE_PRESET=beast
       - CONDUCTOR_DATA_DIR=/tmp/conductor
-    # Hive's runtime image is Chainguard/Wolfi with no curl/shell (see
-    # packages/hive-conductor/Dockerfile's own HEALTHCHECK comment) — a
-    # curl-based probe here overrides the image's working HEALTHCHECK with one
-    # that always fails, so `hive` never reports healthy and neither
-    # api-tests nor e2e-tests (both gated on `condition: service_healthy`)
-    # ever starts (Codex finding on #319). Same Python probe as the image's
-    # own instruction, just with this compose block's faster poll cadence.
+    # No curl/shell in the `hive` runtime image (Chainguard/Wolfi, near-zero
+    # CVEs — see Dockerfile). Its own HEALTHCHECK already uses Python's
+    # urllib for exactly this reason; mirror that here rather than `curl`,
+    # which silently fails every check and never reports healthy.
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8101/health/ready', timeout=4).status==200 else 1)",
+          "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8101/health/ready', timeout=3).status==200 else 1)",
         ]
       interval: 5s
       timeout: 3s
