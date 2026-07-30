@@ -63,7 +63,9 @@ export function WorkspaceTabs() {
 
   return (
     <div className="workspace-tabs" role="tablist" aria-label="Workspaces">
-      {workspaces.map((w) => (
+      {workspaces
+        .filter((w) => w.active !== false)
+        .map((w) => (
         <button
           key={w.id}
           type="button"

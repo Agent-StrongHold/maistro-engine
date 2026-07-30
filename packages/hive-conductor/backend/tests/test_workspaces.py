@@ -477,3 +477,79 @@ class TestPersonaFeedback:
         ws_id = self._create(admin_client)
         r = admin_client.post(f"/v1/workspaces/{ws_id}/feedback", json={"thumb": "sideways"})
         assert r.status_code == 422
+
+
+class TestArchiveWorkspace:
+    """Delete/archive slice: PATCH .../active toggles archive state."""
+
+    def _create(self, admin_client) -> str:
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    def test_owner_can_archive_and_unarchive(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.patch(f"/v1/workspaces/{ws_id}", json={"active": False})
+        assert r.status_code == 200
+        assert r.json()["active"] is False
+
+        r = admin_client.patch(f"/v1/workspaces/{ws_id}", json={"active": True})
+        assert r.status_code == 200
+        assert r.json()["active"] is True
+
+    def test_omitted_active_leaves_it_unchanged(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.patch(f"/v1/workspaces/{ws_id}", json={})
+        assert r.status_code == 200
+        assert r.json()["active"] is True
+
+    def test_non_owner_cannot_archive(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        _set_members(ws_id, {"admin": "editor"})
+        r = admin_client.patch(f"/v1/workspaces/{ws_id}", json={"active": False})
+        assert r.status_code == 403
+
+    def test_archive_unknown_workspace_404s(self, admin_client) -> None:
+        r = admin_client.patch("/v1/workspaces/does-not-exist", json={"active": False})
+        assert r.status_code == 404
+
+    def test_archive_requires_workspaces_write_scope(self, admin_client, authed_client) -> None:
+        ws_id = self._create(admin_client)
+        r = authed_client.patch(f"/v1/workspaces/{ws_id}", json={"active": False})
+        assert r.status_code == 403
+
+
+class TestDeleteWorkspace:
+    """Delete/archive slice: DELETE permanently removes a workspace."""
+
+    def _create(self, admin_client) -> str:
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    def test_owner_can_delete_workspace(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}")
+        assert r.status_code == 204
+        assert admin_client.get(f"/v1/workspaces/{ws_id}").status_code == 404
+
+    def test_non_owner_cannot_delete(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        _set_members(ws_id, {"admin": "editor"})
+        r = admin_client.delete(f"/v1/workspaces/{ws_id}")
+        assert r.status_code == 403
+        assert admin_client.get(f"/v1/workspaces/{ws_id}").status_code == 200
+
+    def test_delete_unknown_workspace_404s(self, admin_client) -> None:
+        r = admin_client.delete("/v1/workspaces/does-not-exist")
+        assert r.status_code == 404
+
+    def test_delete_requires_workspaces_write_scope(self, admin_client, authed_client) -> None:
+        ws_id = self._create(admin_client)
+        r = authed_client.delete(f"/v1/workspaces/{ws_id}")
+        assert r.status_code == 403
+        assert admin_client.get(f"/v1/workspaces/{ws_id}").status_code == 200

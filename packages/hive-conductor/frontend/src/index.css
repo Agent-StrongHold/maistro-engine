@@ -864,3 +864,26 @@ button:hover, .suggestion-button:hover {
   color: var(--danger);
   margin-top: 6px;
 }
+
+.workspace-share-danger-zone {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-top: 1px solid var(--rule);
+  margin-top: 8px;
+  padding-top: 8px;
+}
+.workspace-share-panel .workspace-share-danger-zone button {
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+}
+.workspace-share-panel .workspace-share-danger-zone button.workspace-share-delete,
+.workspace-share-panel .workspace-share-danger-zone button.workspace-share-delete-confirm {
+  color: var(--danger) !important;
+  border-color: var(--danger) !important;
+}
+.workspace-share-confirm-text {
+  font-size: 11px;
+  color: var(--danger);
+}

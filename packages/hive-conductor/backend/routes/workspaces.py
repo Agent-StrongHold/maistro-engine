@@ -252,3 +252,44 @@ def submit_workspace_feedback(
     )
     stores.persona_feedback[feedback.id] = feedback
     return feedback
+
+
+class UpdateWorkspaceBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    # Archive/unarchive. Omitted means "no change" -- distinct from an
+    # explicit value, so this endpoint can later grow other patchable
+    # fields without every caller having to resend `active`.
+    active: bool | None = None
+
+
+@router.patch("/{workspace_id}", response_model=Workspace)
+def update_workspace(workspace_id: str, body: UpdateWorkspaceBody, request: Request) -> Workspace:
+    """Archive/unarchive a workspace (soft, reversible) -- only an owner may
+    change workspace-level settings."""
+    workspace = stores.workspaces.get(workspace_id)
+    requester = _user_id(request)
+    if workspace is None or not _visible_to(requester, workspace):
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if _member_role(workspace, requester) != "owner":
+        raise HTTPException(status_code=403, detail="only an owner can update this workspace")
+
+    updates: dict[str, object] = {"updated_at": _now()}
+    if body.active is not None:
+        updates["active"] = body.active
+    workspace = workspace.model_copy(update=updates)
+    stores.workspaces[workspace_id] = workspace
+    return workspace
+
+
+@router.delete("/{workspace_id}", status_code=204)
+def delete_workspace(workspace_id: str, request: Request) -> None:
+    """Permanently remove a workspace -- only an owner may do this. Unlike
+    archiving (PATCH .../active=false, reversible), this is not."""
+    workspace = stores.workspaces.get(workspace_id)
+    requester = _user_id(request)
+    if workspace is None or not _visible_to(requester, workspace):
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if _member_role(workspace, requester) != "owner":
+        raise HTTPException(status_code=403, detail="only an owner can delete this workspace")
+    stores.workspaces.pop(workspace_id, None)

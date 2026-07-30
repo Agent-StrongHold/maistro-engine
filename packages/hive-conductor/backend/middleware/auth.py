@@ -132,6 +132,9 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/capabilities": "config.write",
         # Toggling a skill changes what every future agent run may do.
         "/v1/skills": "skills.write",
+        # Archiving a workspace is the same write-scope decision as creating
+        # or deleting one (Persona/Workspace system).
+        "/v1/workspaces": "workspaces.write",
     },
 }
 

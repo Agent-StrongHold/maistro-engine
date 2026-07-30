@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { apiGet, apiPost } from "../lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "../lib/api";
 
 export type WorkspaceRole = "owner" | "editor" | "viewer";
 
@@ -30,6 +30,8 @@ type WorkspaceCtxValue = {
   ready: boolean;
   selectWorkspace: (id: string) => void;
   createWorkspace: (input: CreateWorkspaceInput) => Promise<Workspace>;
+  archiveWorkspace: (id: string, active: boolean) => Promise<void>;
+  deleteWorkspace: (id: string) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -42,10 +44,23 @@ const WorkspaceCtx = createContext<WorkspaceCtxValue>({
   ready: false,
   selectWorkspace: noop,
   createWorkspace: () => Promise.reject(new Error("WorkspaceProvider not mounted")),
+  archiveWorkspace: () => Promise.reject(new Error("WorkspaceProvider not mounted")),
+  deleteWorkspace: () => Promise.reject(new Error("WorkspaceProvider not mounted")),
   refresh: () => Promise.resolve(),
 });
 
 const ACTIVE_WORKSPACE_KEY = "hive_active_workspace_id";
+
+/** Keep the current selection if it's still present and not archived;
+ * otherwise fall back to the first non-archived workspace. Archiving the
+ * currently-active workspace must not leave the tab bar pointing at a tab
+ * that no longer renders. */
+function nextActiveId(current: string | null, list: Workspace[]): string | null {
+  if (current && list.some((w) => w.id === current && w.active !== false)) {
+    return current;
+  }
+  return list.find((w) => w.active !== false)?.id ?? null;
+}
 
 /** A user's live Workspace tabs (Persona/Workspace system). Mount this only
  * once authenticated -- GET /v1/workspaces requires a session. */
@@ -60,10 +75,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     try {
       const list = await apiGet<Workspace[]>("/v1/workspaces");
       setWorkspaces(list);
-      setActiveWorkspaceId((current) => {
-        if (current && list.some((w) => w.id === current)) return current;
-        return list[0]?.id ?? null;
-      });
+      setActiveWorkspaceId((current) => nextActiveId(current, list));
     } catch {
       // No workspaces yet, or the account can't reach the route -- the tab
       // bar degrades to "no tabs" rather than breaking the app shell.
@@ -84,10 +96,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         const list = await apiGet<Workspace[]>("/v1/workspaces");
         if (cancelled) return;
         setWorkspaces(list);
-        setActiveWorkspaceId((current) => {
-          if (current && list.some((w) => w.id === current)) return current;
-          return list[0]?.id ?? null;
-        });
+        setActiveWorkspaceId((current) => nextActiveId(current, list));
       } catch {
         if (!cancelled) setWorkspaces([]);
       } finally {
@@ -129,6 +138,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setActiveWorkspaceId(id);
   }
 
+  async function archiveWorkspace(id: string, active: boolean): Promise<void> {
+    await apiPatch<Workspace>(`/v1/workspaces/${id}`, { active });
+    await refresh();
+  }
+
+  async function deleteWorkspace(id: string): Promise<void> {
+    await apiDelete(`/v1/workspaces/${id}`);
+    await refresh();
+  }
+
   return (
     <WorkspaceCtx.Provider
       value={{
@@ -138,6 +157,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         ready,
         selectWorkspace,
         createWorkspace,
+        archiveWorkspace,
+        deleteWorkspace,
         refresh,
       }}
     >

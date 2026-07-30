@@ -15,12 +15,13 @@ function myRole(workspace: Workspace, userId: string | undefined): WorkspaceRole
  * policy exactly, including refusing to remove the last owner). */
 export function WorkspaceShare() {
   const user = useUser();
-  const { activeWorkspace, refresh } = useWorkspaces();
+  const { activeWorkspace, refresh, archiveWorkspace, deleteWorkspace } = useWorkspaces();
   const [open, setOpen] = useState(false);
   const [inviteUserId, setInviteUserId] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("viewer");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   if (!activeWorkspace) return null;
   const role = myRole(activeWorkspace, user?.id);
@@ -55,6 +56,35 @@ export function WorkspaceShare() {
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove member");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleArchive() {
+    if (busy || !activeWorkspace) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await archiveWorkspace(activeWorkspace.id, false);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to archive workspace");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (busy || !activeWorkspace) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteWorkspace(activeWorkspace.id);
+      setOpen(false);
+      setConfirmingDelete(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete workspace");
     } finally {
       setBusy(false);
     }
@@ -115,6 +145,38 @@ export function WorkspaceShare() {
                 Add
               </button>
             </form>
+          )}
+          {isOwner && (
+            <div className="workspace-share-danger-zone">
+              <button type="button" disabled={busy} onClick={() => void handleArchive()}>
+                Archive workspace
+              </button>
+              {confirmingDelete ? (
+                <>
+                  <span className="workspace-share-confirm-text">Delete permanently?</span>
+                  <button
+                    type="button"
+                    className="workspace-share-delete-confirm"
+                    disabled={busy}
+                    onClick={() => void handleDelete()}
+                  >
+                    Yes, delete
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => setConfirmingDelete(false)}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="workspace-share-delete"
+                  disabled={busy}
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  Delete workspace
+                </button>
+              )}
+            </div>
           )}
           {error && <div className="workspace-share-error">{error}</div>}
         </div>
