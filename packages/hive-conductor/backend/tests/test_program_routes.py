@@ -13,11 +13,16 @@ import stores
 @pytest.fixture(autouse=True)
 def _pm_poc_mode_on(monkeypatch: pytest.MonkeyPatch):
     """The whole /v1/program surface 404s outside PM POC mode
-    (require_pm_poc) -- unrelated to this slice, and deliberately not
-    touched here (that's Phase H's call-site migration)."""
+    (require_pm_poc). Patch the legacy global flag at both places it's
+    actually read from: services.program_hyperagent (guidance/pulse's bare
+    require_pm_poc() calls) and services.workspace_mode (where
+    is_workspace_request_authorized's own module-level import resolves it,
+    used as the fallback for no/unresolvable/non-member workspace_id)."""
     import services.program_hyperagent as ph
+    import services.workspace_mode as wm
 
     monkeypatch.setattr(ph, "is_pm_poc_mode", lambda: True)
+    monkeypatch.setattr(wm, "is_pm_poc_mode", lambda: True)
 
 
 @pytest.fixture(autouse=True)

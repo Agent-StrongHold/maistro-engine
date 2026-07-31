@@ -8,8 +8,10 @@ pm_fleet workspace alongside a content_creator one) gets two independent
 interviews instead of one shared global one. Omitting `workspace_id` --
 every caller before this change, and any caller not yet workspace-aware --
 keeps the exact pre-existing behavior: project_id="default",
-use_case="pm_fleet". Guidance/pulse remain on the global "default" project;
-scoping those to a workspace is out of scope here.
+use_case="pm_fleet". The `require_pm_poc()` gate on these two routes is also
+now workspace-aware (membership-checked against the real workspace), same
+fallback. Guidance/pulse remain on the global "default" project and the
+global gate; scoping those to a workspace is out of scope here.
 """
 
 from __future__ import annotations
@@ -52,8 +54,8 @@ def _resolve_program_scope(user_id: str, workspace_id: str | None) -> tuple[str,
 @router.get("/context")
 @router.get("/cpntext")  # common typo alias
 def get_program_context(request: Request, workspace_id: str | None = None) -> dict[str, Any]:
-    require_pm_poc()
     uid = user_id_from_request(request)
+    require_pm_poc(user_id=uid, workspace_id=workspace_id, require_pm_fleet_persona=False)
     project_id, use_case = _resolve_program_scope(uid, workspace_id)
     ctx = prog.get_context(uid, project_id)
     return {
@@ -72,8 +74,8 @@ class InterviewAnswerBody(BaseModel):
 async def post_interview_answer(
     body: InterviewAnswerBody, request: Request, workspace_id: str | None = None
 ) -> dict[str, Any]:
-    require_pm_poc()
     uid = user_id_from_request(request)
+    require_pm_poc(user_id=uid, workspace_id=workspace_id, require_pm_fleet_persona=False)
     project_id, use_case = _resolve_program_scope(uid, workspace_id)
     ctx = prog.get_context(uid, project_id)
     ctx = apply_interview_answer(ctx, body.answer, use_case=use_case)
