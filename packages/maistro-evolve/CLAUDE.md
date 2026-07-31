@@ -149,8 +149,15 @@ the same harness on the same machine.
 
 - **Randomness is unseeded** (`random.uniform`, `uuid4` in mutate/crossover) — no seed control is exposed, so
   don't assert on exact offspring; assert on invariants/ranges.
-- **Hard fitness gates:** a genome failing any per-benchmark minimum threshold (e.g. ifeval 0.25, bfcl 0.20)
-  cannot breed.
+- **Hard fitness gates are fail-closed.** A genome failing any per-benchmark minimum cannot breed. The gate
+  iterates the genome's *scores*, so a subset run is never penalised for benchmarks it skipped — but every
+  benchmark it *did* run is gated, using `_HARD_GATE_THRESHOLDS` (e.g. ifeval 0.25, bfcl 0.20) or
+  `_DEFAULT_GATE_FLOOR` (0.01) for anything without a tuned entry. That default is what makes `code_rsi`,
+  `swebench_pro`, and custom-registered benchmarks gated at all; previously the gate iterated the threshold
+  dict and waved through anything absent from it, so the RSI loop — which scores only `code_rsi` — was
+  entirely ungated, and a genome whose fix was *rejected* (`code_rsi` collapses to exactly 0.0) bred on
+  cost/latency/diversity alone. Add a tuned entry when you have distribution evidence; the floor only claims
+  that a score of zero is a total failure.
 - **Long-running:** cycles batch eval jobs (`eval_batch_size`, default 5).
 - **Reflection and hyper-mutation refuse noise-flagged signal:** `reflective_improve()` returns
   `reason="stub_signal"` and `hyper_mutate()` likewise declines to verify against a baseline result carrying

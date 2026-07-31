@@ -40,6 +40,17 @@ class DAGTopology(BaseModel):
 
 
 class EvalWeights(BaseModel):
+    """Relative weight of each benchmark in the weighted eval score.
+
+    `osworld` was removed: `run_osworld` raises `NotImplementedError` and is not
+    registered, so its 0.05 could never be applied to a real score. Weights are
+    renormalised over the benchmarks that actually ran
+    (`fitness._weighted_eval_score`), so removing an unusable entry changes no
+    computed value — it just stops the model from advertising a benchmark this
+    repo cannot run. Persisted genomes carrying an `osworld` key still load;
+    pydantic ignores the extra field.
+    """
+
     ifeval: float = 0.15
     bfcl: float = 0.15
     swebench: float = 0.20
@@ -47,7 +58,6 @@ class EvalWeights(BaseModel):
     tau_bench: float = 0.15
     gaia: float = 0.10
     ragas: float = 0.10
-    osworld: float = 0.05
 
 
 class PipelineGenome(BaseModel):

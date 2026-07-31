@@ -67,19 +67,51 @@ class TestHardGate:
         assert not passed
         assert any("ifeval" in f for f in failures)
 
-    def test_gate_thresholds_cover_all_8_benchmarks(self):
-        assert len(_HARD_GATE_THRESHOLDS) == 8
-        expected = {
-            "ifeval",
-            "bfcl",
-            "swebench",
-            "terminalbench",
-            "tau_bench",
-            "gaia",
-            "ragas",
-            "osworld",
-        }
-        assert set(_HARD_GATE_THRESHOLDS.keys()) == expected
+    def test_gate_thresholds_cover_every_registered_proxy_benchmark(self):
+        """Derived from the registry, not hand-listed.
+
+        The previous version asserted a hardcoded set of 8 including `osworld`,
+        which cannot produce a score at all (`run_osworld` raises and is not
+        registered). That made the enumeration look complete while gating a
+        benchmark that never runs — and it would not have noticed a newly
+        registered benchmark arriving with no threshold.
+        """
+        from maistro_evolve.benchmarks import PROXY_BENCHMARKS
+
+        assert set(PROXY_BENCHMARKS) <= set(_HARD_GATE_THRESHOLDS)
+
+    def test_unrunnable_osworld_is_not_gated(self):
+        from maistro_evolve.benchmarks import PROXY_BENCHMARKS
+
+        assert "osworld" not in PROXY_BENCHMARKS
+        assert "osworld" not in _HARD_GATE_THRESHOLDS
+
+    def test_benchmark_without_a_tuned_threshold_still_gets_gated(self):
+        """The fail-open hole: the gate used to iterate the threshold dict and
+        test `if bench in scores`, so any benchmark absent from that dict passed
+        unconditionally — including `code_rsi`, the only one the RSI loop scores.
+        """
+        passed, failures = _check_hard_gate(_genome(eval_scores={"code_rsi": 0.0}))
+        assert not passed
+        assert any("code_rsi" in f and "default floor" in f for f in failures)
+
+    def test_rejected_rsi_fix_cannot_breed(self):
+        """`code_rsi` collapses to exactly 0.0 when the fix is rejected or the
+        test signal is stubbed. Such a genome used to pass the gate and compete
+        on cost/latency/diversity alone."""
+        genome = _genome(eval_scores={"code_rsi": 0.0})
+        assert compute_fitness(genome, [genome]).total == 0.0
+
+    def test_a_real_rsi_score_still_passes(self):
+        """Fail-closed must not mean fail-always: a subset run scoring one
+        genuine benchmark still breeds."""
+        passed, failures = _check_hard_gate(_genome(eval_scores={"code_rsi": 0.636}))
+        assert passed and failures == []
+
+    def test_subset_runs_are_not_penalised_for_skipped_benchmarks(self):
+        """The property the old implementation got right, preserved."""
+        passed, failures = _check_hard_gate(_genome(eval_scores={"ifeval": 0.9}))
+        assert passed and failures == []
 
 
 class TestWeightedEvalScore:
