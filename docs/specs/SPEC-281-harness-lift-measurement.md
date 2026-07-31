@@ -96,6 +96,46 @@ nothing to say about harness lift and must be reported as `gap_closure: null`,
 never as `0.0` or `1.0`. A benchmark where the models are indistinguishable is
 a benchmark that cannot measure this.
 
+### 1a. The baseline harness is a pinned artifact, not a convention
+
+Both `W_base` and `F_base` are measured against a *baseline harness*, and every
+number this spec produces is denominated in it. A weak baseline inflates `lift`
+and `gap_closure` without any genome improving, which makes the baseline the
+single easiest place for this measurement to quietly become marketing. It is
+therefore defined as a frozen, checksum-pinned artifact with the same treatment
+as a benchmark corpus (SPEC-202 §3a), not as a default that drifts with the code.
+
+**`BASELINE_GENOME`** — the deliberately unhelpful harness:
+
+- exactly one node; no multi-agent topology, no scout, no beam search
+  (`max_cycles = 1`, `beam_width = 1`, `use_scout = False`)
+- a generic system prompt that names the role and nothing else — no task
+  strategy, no output-format coaching, no few-shot examples
+- no tools beyond those the benchmark itself requires
+- no retries, no self-critique, no verification pass, no reflection
+- default sampling parameters; harness settings (§5) at provider defaults
+
+This is the "plain harness" the product claim compares against: a model given
+the task and nothing else. It is not a *bad* harness — it is the *absent* one,
+which is what makes it the honest denominator.
+
+Three rules keep it honest:
+
+1. **Pinned and protected.** Serialized to a corpus-like file, checksum-verified
+   at load, and covered by `SENSITIVE_PATH_PATTERNS`. The loop may not edit its
+   own denominator any more than it may edit its own exam.
+2. **Versioned, and comparisons never cross versions.** Any change mints a new
+   `baseline_version`; results carry it, and comparing a `gap_closure` computed
+   under one version to one computed under another is an error, not a caveat.
+   Changing the baseline reprices every historical claim.
+3. **The same baseline for both models.** `W_base` and `F_base` must use the
+   identical genome; the only difference between those two cells is the model
+   id. If the frontier model gets a different (better) baseline, `gap` is
+   measuring two things at once and `gap_closure` is meaningless.
+
+Reporting a `gap_closure` without a `baseline_version` alongside it is not a
+partial result — it is an uninterpretable one.
+
 ### 2. Transfer is part of fitness, not a post-hoc report
 
 A genome's fitness must include the frontier cell, because an optimizer only
@@ -146,10 +186,31 @@ this repository is such a task, and unlike every public corpus it costs nothing
 to obtain and gets *fresher* over time instead of saturating.
 
 **Task construction.** Walk `git log` for commits that (a) touch at least one
-file under `packages/*/src/`, (b) touch at least one test file, and (c) whose
-parent commit fails the touched tests while the commit itself passes. That last
-condition is the whole game — it is verified by execution, not inferred from the
-commit message, so "fix" commits that fix nothing are excluded automatically.
+file under `packages/*/src/`, (b) touch at least one test file, and (c) pass the
+fail-to-pass check below. That last condition is the whole game — it is verified
+by execution, not inferred from the commit message, so "fix" commits that fix
+nothing are excluded automatically.
+
+The check follows SWE-bench's construction, and the detail matters: a commit
+that *adds* a test cannot simply be run against its parent, because the test
+does not exist there. The commit's diff is therefore split in two.
+
+```
+test_patch  = the commit's changes to test files only
+gold_patch  = the commit's changes to everything else (the fix)
+
+check out parent in a scratch worktree
+apply test_patch                    -> run the named tests, they MUST FAIL
+apply gold_patch on top             -> run the named tests, they MUST PASS
+```
+
+A commit where the tests already pass before `gold_patch` is not a bug fix (it
+is a refactor, a docs change, or a test-only commit) and is dropped. A commit
+where they still fail afterward is broken or environment-dependent and is
+dropped. Only the fail→pass transition, observed by execution, admits a task.
+
+At scoring time the genome sees `repo_state + test_patch` and the issue text; it
+never sees `gold_patch`.
 
 Each surviving commit yields:
 
@@ -216,6 +277,10 @@ corpus coverage; harness configuration needs the same treatment.
   from them sets `official_comparable`.
 - `AC-8` Harness configuration appears in `EvalResult.metadata` for every real
   adapter.
+- `AC-9` The baseline genome is checksum-verified at load and carries a
+  `baseline_version`; `W_base` and `F_base` differ only in model id.
+- `AC-10` Any reported `gap_closure` carries its `baseline_version`, and
+  combining values across versions raises rather than warns.
 
 ## Out of scope
 
