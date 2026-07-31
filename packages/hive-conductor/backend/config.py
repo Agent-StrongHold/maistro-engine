@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     chat_default_model: str = "gemini/gemini-2.5-flash"
     llm_http_variant: Literal["auto", "responses", "chat_completions"] = "auto"
 
+    # F3 (loud degraded modes): with no LLM gateway configured the graph runner
+    # refuses to run rather than handing back a success-shaped stub answer.
+    # Set ALLOW_STUB_LLM=true to opt in to stub responses — they are then
+    # labelled `"stub": true` in the payload so nothing downstream can mistake
+    # one for a real result (same noise flag maistro-evolve uses,
+    # SPEC-202 signal honesty). Same vocabulary as `maistro-rsi --allow-stub-llm`.
+    allow_stub_llm: bool = False
+
     maistro_router_api_key: str | None = None
     maistro_agents_dir: str = "agents"
     maistro_llm_base_url: str | None = None
