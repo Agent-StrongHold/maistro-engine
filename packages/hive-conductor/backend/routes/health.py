@@ -13,6 +13,22 @@ _STARTED_AT = datetime.now(UTC).isoformat()
 router = APIRouter(tags=["health"])
 
 
+def _llm_state() -> tuple[bool, bool]:
+    """`(llm_configured, allow_stub_llm)` — the F3 degraded-mode signal.
+
+    Lazy + defensive on purpose: /health is a public liveness probe (compose
+    and the image healthcheck hit it), so it must never fail because a
+    settings import blew up. An unreadable state is reported as "degraded",
+    never as healthy.
+    """
+    try:
+        from services.graph_runner import llm_gateway_configured, stub_llm_allowed
+
+        return llm_gateway_configured(), stub_llm_allowed()
+    except Exception:
+        return False, False
+
+
 @router.get("/health")
 def health() -> dict:
     settings = get_settings()
@@ -32,6 +48,8 @@ def health() -> dict:
         reactor_available = False
     from settings_defaults import is_pm_poc_mode
 
+    llm_configured, allow_stub_llm = _llm_state()
+
     return {
         "status": "ok",
         "version": "0.9.0",
@@ -43,6 +61,11 @@ def health() -> dict:
         "state_enabled": state_enabled,
         "privilege_enabled": privilege_available,
         "reactor_enabled": reactor_available,
+        # F3: report degradation, do not become an outage. `status` stays "ok"
+        # and this endpoint stays 200 — it is the liveness probe.
+        "llm_configured": llm_configured,
+        "allow_stub_llm": allow_stub_llm,
+        "degraded": not llm_configured,
     }
 
 
@@ -61,4 +84,7 @@ def ready() -> ReadyResponse:
         }
     except RuntimeError:
         checks = {"api": True, "vault": False, "state": False, "privilege": False, "reactor": False}
+    # Informational only: `ready` stays keyed on "api" so a missing LLM gateway
+    # degrades the conductor without taking it out of rotation.
+    checks["llm"] = _llm_state()[0]
     return ReadyResponse(ready=checks["api"], checks=checks)
