@@ -8,6 +8,12 @@ export type WorkspaceMember = {
   role: WorkspaceRole;
 };
 
+export type AgentToolBinding = {
+  agent_id: string;
+  tools: string[];
+  prompt_fragment: string;
+};
+
 export type Workspace = {
   id: string;
   persona_template_id: string;
@@ -15,6 +21,7 @@ export type Workspace = {
   theme_id: string;
   voice_tone_override: string | null;
   members: WorkspaceMember[];
+  tool_bindings: AgentToolBinding[];
   active: boolean;
 };
 

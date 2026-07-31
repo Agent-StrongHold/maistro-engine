@@ -887,3 +887,188 @@ button:hover, .suggestion-button:hover {
   font-size: 11px;
   color: var(--danger);
 }
+
+/* Per-workspace tool-binding settings screen (services/tool_binding.py). */
+.workspace-tool-bindings {
+  position: relative;
+  flex-shrink: 0;
+}
+.workspace-tool-bindings-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 280px;
+  max-width: 340px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workspace-tool-bindings-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pencil);
+}
+.workspace-tool-bindings-empty {
+  font-size: 12px;
+  color: var(--pencil);
+}
+.workspace-tool-bindings-agent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid var(--rule);
+  padding-top: 8px;
+}
+.workspace-tool-bindings-agent-name {
+  font-size: 12px;
+  font-weight: 600;
+}
+.workspace-tool-bindings-agent-role {
+  font-weight: 400;
+  color: var(--pencil);
+}
+.workspace-tool-bindings-defaults {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+.workspace-tool-bindings-defaults label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.workspace-tool-bindings-agent input,
+.workspace-tool-bindings-agent textarea {
+  font-size: 12px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  font-family: var(--sans);
+}
+.workspace-tool-bindings-agent textarea {
+  resize: vertical;
+  min-height: 40px;
+}
+.workspace-tool-bindings-error {
+  font-size: 11px;
+  color: var(--danger);
+}
+
+/* PersonaWizard: in-app persona authoring, a step-by-step modal. */
+.persona-wizard-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.persona-wizard-panel {
+  width: min(480px, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 16px;
+}
+.persona-wizard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--hand);
+  font-size: 18px;
+  margin-bottom: 12px;
+}
+.persona-wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--pencil);
+  margin-bottom: 12px;
+}
+.persona-wizard-step.active {
+  color: var(--ink);
+  font-weight: 600;
+}
+.persona-wizard-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.persona-wizard-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--pencil);
+}
+.persona-wizard-fields input {
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  font-family: var(--sans);
+}
+.persona-wizard-agents {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.persona-wizard-agent {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 4px;
+}
+.persona-wizard-agent input {
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  font-family: var(--sans);
+  min-width: 0;
+}
+.persona-wizard-review {
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.persona-wizard-review-title {
+  font-size: 15px;
+}
+.persona-wizard-review ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.persona-wizard-error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 8px;
+}
+.persona-wizard-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  border-top: 1px solid var(--rule);
+  padding-top: 12px;
+}
+.persona-wizard-success {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}

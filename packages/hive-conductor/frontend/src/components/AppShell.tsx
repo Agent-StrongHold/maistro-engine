@@ -4,6 +4,8 @@ import { useUser } from "../App";
 import { ModeToggle } from "./ModeToggle";
 import { WorkspaceTabs } from "./WorkspaceTabs";
 import { WorkspaceShare } from "./WorkspaceShare";
+import { WorkspaceToolBindings } from "./WorkspaceToolBindings";
+import { PersonaWizard } from "./PersonaWizard";
 import { usePmPoc } from "../context/PocMode";
 import {
   PM_NAV_CREDENTIALS,
@@ -205,6 +207,8 @@ export function AppShell({ children }: { children?: ReactNode }) {
         <div className="workspace-toolbar">
           <WorkspaceTabs />
           <WorkspaceShare />
+          <WorkspaceToolBindings />
+          <PersonaWizard />
         </div>
         {children ?? <Outlet />}
       </main>

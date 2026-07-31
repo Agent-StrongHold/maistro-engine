@@ -121,7 +121,7 @@ class TestListPersonaTemplates:
 
         monkeypatch.setattr(
             workspaces_routes,
-            "load_templates",
+            "all_persona_templates",
             lambda: {
                 "pm_fleet": PersonaTemplate(
                     kind="workspace",
@@ -152,7 +152,7 @@ class TestListPersonaTemplates:
 
         monkeypatch.setattr(
             workspaces_routes,
-            "load_templates",
+            "all_persona_templates",
             lambda: {"nameless": PersonaTemplate(kind="workspace", id="nameless")},
         )
         r = admin_client.get("/v1/workspaces/persona-templates")
@@ -162,7 +162,7 @@ class TestListPersonaTemplates:
     def test_empty_when_no_templates_resolve(self, admin_client, monkeypatch) -> None:
         import routes.workspaces as workspaces_routes
 
-        monkeypatch.setattr(workspaces_routes, "load_templates", lambda: {})
+        monkeypatch.setattr(workspaces_routes, "all_persona_templates", lambda: {})
         r = admin_client.get("/v1/workspaces/persona-templates")
         assert r.status_code == 200
         assert r.json() == []
@@ -175,7 +175,9 @@ class TestPersonaChecklist:
         import routes.workspaces as workspaces_routes
 
         monkeypatch.setattr(
-            workspaces_routes, "load_templates", lambda: {"pm_fleet": _fake_pm_fleet_template()}
+            workspaces_routes,
+            "all_persona_templates",
+            lambda: {"pm_fleet": _fake_pm_fleet_template()},
         )
 
         r = admin_client.get("/v1/workspaces/persona-templates/pm_fleet/checklist")
@@ -196,7 +198,7 @@ class TestPersonaChecklist:
     def test_unknown_persona_404s(self, admin_client, monkeypatch) -> None:
         import routes.workspaces as workspaces_routes
 
-        monkeypatch.setattr(workspaces_routes, "load_templates", lambda: {})
+        monkeypatch.setattr(workspaces_routes, "all_persona_templates", lambda: {})
         r = admin_client.get("/v1/workspaces/persona-templates/nope/checklist")
         assert r.status_code == 404
 
@@ -228,7 +230,9 @@ class TestCreateWorkspaceChecklist:
         import routes.workspaces as workspaces_routes
 
         monkeypatch.setattr(
-            workspaces_routes, "load_templates", lambda: {"pm_fleet": _fake_pm_fleet_template()}
+            workspaces_routes,
+            "all_persona_templates",
+            lambda: {"pm_fleet": _fake_pm_fleet_template()},
         )
 
         r = admin_client.post(
@@ -553,3 +557,168 @@ class TestDeleteWorkspace:
         r = authed_client.delete(f"/v1/workspaces/{ws_id}")
         assert r.status_code == 403
         assert admin_client.get(f"/v1/workspaces/{ws_id}").status_code == 200
+
+
+class TestPersonaAgents:
+    """Tool-binding settings slice: GET .../persona-templates/{id}/agents lists
+    the agents a binding screen can offer, derived from the persona's spawns."""
+
+    def test_returns_one_option_per_spawn(self, admin_client, monkeypatch) -> None:
+        import routes.workspaces as workspaces_routes
+
+        monkeypatch.setattr(
+            workspaces_routes,
+            "all_persona_templates",
+            lambda: {"pm_fleet": _fake_pm_fleet_template()},
+        )
+        r = admin_client.get("/v1/workspaces/persona-templates/pm_fleet/agents")
+        assert r.status_code == 200
+        assert r.json() == [
+            {
+                "agent_id": "intake",
+                "role": "",
+                "default_tools": ["create_epic"],
+                "default_skills": [],
+            }
+        ]
+
+    def test_unknown_persona_404s(self, admin_client, monkeypatch) -> None:
+        import routes.workspaces as workspaces_routes
+
+        monkeypatch.setattr(workspaces_routes, "all_persona_templates", lambda: {})
+        r = admin_client.get("/v1/workspaces/persona-templates/nope/agents")
+        assert r.status_code == 404
+
+
+class TestWorkspaceToolBindings:
+    """Tool-binding settings slice: PUT .../tool-bindings sets a workspace's
+    sticky per-agent overrides (services/tool_binding.py, Phase E) -- the
+    first route that lets anyone actually write them."""
+
+    def _create(self, admin_client) -> str:
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    def test_owner_can_set_tool_bindings(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.put(
+            f"/v1/workspaces/{ws_id}/tool-bindings",
+            json={
+                "bindings": [
+                    {
+                        "agent_id": "intake",
+                        "tools": ["create_epic", "close_epic"],
+                        "prompt_fragment": "Be terse.",
+                    }
+                ]
+            },
+        )
+        assert r.status_code == 200
+        bindings = r.json()["tool_bindings"]
+        assert bindings == [
+            {
+                "agent_id": "intake",
+                "tools": ["create_epic", "close_epic"],
+                "prompt_fragment": "Be terse.",
+            }
+        ]
+
+    def test_empty_tools_list_is_honored_not_treated_as_missing(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        r = admin_client.put(
+            f"/v1/workspaces/{ws_id}/tool-bindings",
+            json={"bindings": [{"agent_id": "intake", "tools": []}]},
+        )
+        assert r.status_code == 200
+        assert r.json()["tool_bindings"][0]["tools"] == []
+
+    def test_replaces_bindings_wholesale(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        admin_client.put(
+            f"/v1/workspaces/{ws_id}/tool-bindings",
+            json={"bindings": [{"agent_id": "intake", "tools": ["create_epic"]}]},
+        )
+        r = admin_client.put(f"/v1/workspaces/{ws_id}/tool-bindings", json={"bindings": []})
+        assert r.status_code == 200
+        assert r.json()["tool_bindings"] == []
+
+    def test_non_owner_cannot_set_tool_bindings(self, admin_client) -> None:
+        ws_id = self._create(admin_client)
+        _set_members(ws_id, {"admin": "editor"})
+        r = admin_client.put(f"/v1/workspaces/{ws_id}/tool-bindings", json={"bindings": []})
+        assert r.status_code == 403
+
+    def test_unknown_workspace_404s(self, admin_client) -> None:
+        r = admin_client.put("/v1/workspaces/does-not-exist/tool-bindings", json={"bindings": []})
+        assert r.status_code == 404
+
+    def test_requires_workspaces_write_scope(self, admin_client, authed_client) -> None:
+        ws_id = self._create(admin_client)
+        r = authed_client.put(f"/v1/workspaces/{ws_id}/tool-bindings", json={"bindings": []})
+        assert r.status_code == 403
+
+
+class TestCreatePersonaTemplate:
+    """PersonaWizard slice: POST .../persona-templates authors a brand-new
+    persona in-app, instead of hand-editing a YAML file."""
+
+    def _body(self, **overrides) -> dict:
+        body = {
+            "id": "book_club",
+            "display_name": "Book Club",
+            "tagline": "Pick a book, run the discussion",
+            "archetype": "an enthusiastic reader",
+            "audience": "a small reading group",
+            "tone": "warm",
+            "ui_scope": ["Picks", "Discussion"],
+            "agents": [
+                {
+                    "agent": "curator",
+                    "role": "Suggests the next pick",
+                    "tools": [],
+                    "skills": ["suggest_book"],
+                }
+            ],
+        }
+        body.update(overrides)
+        return body
+
+    def test_creates_and_immediately_lists_the_new_persona(self, admin_client) -> None:
+        r = admin_client.post("/v1/workspaces/persona-templates", json=self._body())
+        assert r.status_code == 201
+        assert r.json() == {
+            "id": "book_club",
+            "display_name": "Book Club",
+            "tagline": "Pick a book, run the discussion",
+        }
+
+        listed = admin_client.get("/v1/workspaces/persona-templates")
+        assert "book_club" in {opt["id"] for opt in listed.json()}
+
+    def test_new_persona_is_immediately_usable_to_create_a_workspace(self, admin_client) -> None:
+        admin_client.post("/v1/workspaces/persona-templates", json=self._body())
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "book_club", "name": "My Club"}
+        )
+        assert r.status_code == 201
+        assert "curator.skill.suggest_book" in r.json()["checklist"]
+
+    def test_rejects_persona_with_no_agents(self, admin_client) -> None:
+        r = admin_client.post("/v1/workspaces/persona-templates", json=self._body(agents=[]))
+        assert r.status_code == 422
+
+    def test_rejects_invalid_id(self, admin_client) -> None:
+        r = admin_client.post("/v1/workspaces/persona-templates", json=self._body(id="Not Valid"))
+        assert r.status_code == 422
+
+    def test_rejects_id_colliding_with_an_existing_persona(self, admin_client) -> None:
+        admin_client.post("/v1/workspaces/persona-templates", json=self._body())
+        r = admin_client.post("/v1/workspaces/persona-templates", json=self._body())
+        assert r.status_code == 409
+
+    def test_requires_workspaces_write_scope(self, admin_client, authed_client) -> None:
+        r = authed_client.post("/v1/workspaces/persona-templates", json=self._body())
+        assert r.status_code == 403

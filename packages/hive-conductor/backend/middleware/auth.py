@@ -125,6 +125,10 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/credentials": "credentials.write",
         "/v1/dags": "dags.write",
         "/v1/schedules": "schedules.write",
+        # Setting a workspace's sticky per-agent tool bindings changes what
+        # tools that agent may call — same write-scope posture as every
+        # other workspace-settings mutation (Persona/Workspace system).
+        "/v1/workspaces": "workspaces.write",
     },
     "PATCH": {
         "/v1/settings": "config.write",
