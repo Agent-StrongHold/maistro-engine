@@ -108,3 +108,47 @@ def test_two_workspaces_for_one_user_track_independent_interview_progress() -> N
     assert pm_ctx.project_id == "ws-pm"
     assert canvas_ctx.project_id == "ws-canvas"
     assert pm_ctx.user_id == canvas_ctx.user_id == "u1"
+
+
+class TestCustomInterviewSteps:
+    """A persona's own declared interview script (PersonaTemplate.interview,
+    threaded through as `custom_steps`) takes priority over both the canned
+    use_case scripts and the generic fallback -- PersonaWizard's authoring
+    slice."""
+
+    _CUSTOM = (
+        {"field": "program_name", "agent": "host", "question": "What's this workspace for?"},
+        {"field": "vibe", "agent": "host", "question": "What vibe are we going for?"},
+    )
+
+    def test_custom_steps_win_over_the_generic_fallback(self) -> None:
+        assert interview_steps_for("brand_new_persona", self._CUSTOM) == self._CUSTOM
+
+    def test_custom_steps_win_over_a_known_use_cases_canned_script(self) -> None:
+        assert interview_steps_for("pm_fleet", self._CUSTOM) == self._CUSTOM
+
+    def test_empty_custom_steps_falls_back_to_use_case_resolution(self) -> None:
+        assert interview_steps_for("pm_fleet", ()) == INTERVIEW_TEMPLATES["pm_fleet"]
+        assert interview_steps_for("pm_fleet", None) == INTERVIEW_TEMPLATES["pm_fleet"]
+
+    def test_current_interview_question_uses_custom_steps(self) -> None:
+        ctx = ProgramContext.empty("u1", project_id="ws-1")
+        q = current_interview_question(ctx, use_case="brand_new_persona", custom_steps=self._CUSTOM)
+        assert q == self._CUSTOM[0]
+
+    def test_apply_interview_answer_advances_through_custom_steps(self) -> None:
+        ctx = ProgramContext.empty("u1", project_id="ws-1")
+        ctx = apply_interview_answer(
+            ctx, "A dinner party planner", use_case="brand_new_persona", custom_steps=self._CUSTOM
+        )
+        assert ctx.interview_step == 1
+        assert ctx.program_name == "A dinner party planner"  # known field -> typed capture
+
+        ctx = apply_interview_answer(
+            ctx, "Warm and playful", use_case="brand_new_persona", custom_steps=self._CUSTOM
+        )
+        assert ctx.interview_step == 2
+        assert ctx.interview_complete is True
+        # "vibe" isn't a known ProgramContext field -- still captured as a
+        # freeform fact rather than silently dropped.
+        assert any("vibe" in f and "Warm and playful" in f for f in ctx.facts)

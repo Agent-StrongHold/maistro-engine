@@ -21,7 +21,13 @@ import yaml
 from config import get_settings
 
 from maistro.personas.rubric import load_templates
-from maistro.personas.schema import BrandSpec, PersonaTemplate, SpawnSpec, VoiceSpec
+from maistro.personas.schema import (
+    BrandSpec,
+    InterviewQuestionSpec,
+    PersonaTemplate,
+    SpawnSpec,
+    VoiceSpec,
+)
 
 # Filename-safe and matches the id patterns already used by shipped personas
 # (pm_fleet, content_creator) — enforced here rather than left to the
@@ -62,11 +68,16 @@ def create_persona_template(
     tone: str,
     ui_scope: list[str],
     spawns: list[SpawnSpec],
+    interview: list[InterviewQuestionSpec] | None = None,
 ) -> PersonaTemplate:
     """Validate and persist a new, wizard-authored `kind: workspace` persona
     template as a YAML file, exactly like a hand-authored one — so every
     existing reader (`load_templates()`, the persona picker, the checklist
-    route) picks it up with no changes on its side."""
+    route) picks it up with no changes on its side. `interview` (optional)
+    is this persona's own onboarding interview script -- omitted or empty
+    means "no custom script", and routes/program.py falls back to the
+    generic one, same as any hand-authored persona that never declared
+    `interview:` in its YAML."""
     if not PERSONA_ID_PATTERN.fullmatch(id):
         raise ValueError(
             "id must start with a lowercase letter and contain only lowercase "
@@ -82,6 +93,7 @@ def create_persona_template(
         voice=VoiceSpec(archetype=archetype, audience=audience, tone=tone),
         ui_scope=ui_scope,
         spawns=spawns,
+        interview=interview or [],
     )
 
     directory = user_templates_dir()

@@ -138,31 +138,45 @@ _DEFAULT_FINALIZATION_OPEN_QUESTIONS: list[str] = [
 ]
 
 
-def interview_steps_for(use_case: str) -> tuple[dict[str, str], ...]:
-    """Return the persona-specific interview script, or the generic fallback."""
+def interview_steps_for(
+    use_case: str, custom_steps: tuple[dict[str, str], ...] | None = None
+) -> tuple[dict[str, str], ...]:
+    """Return a persona's own declared interview script (`custom_steps`,
+    e.g. from a `PersonaTemplate.interview` -- Persona/Workspace system)
+    when one is given and non-empty; otherwise the persona-specific canned
+    script if `use_case` has one; otherwise the generic fallback. Callers
+    that don't resolve a `PersonaTemplate` (every caller before this
+    parameter existed) get the exact old behavior."""
+    if custom_steps:
+        return custom_steps
     return INTERVIEW_TEMPLATES.get(use_case, INTERVIEW_TEMPLATES["_generic"])
 
 
 def current_interview_question(
-    ctx: ProgramContext, use_case: str = "pm_fleet"
+    ctx: ProgramContext,
+    use_case: str = "pm_fleet",
+    custom_steps: tuple[dict[str, str], ...] | None = None,
 ) -> dict[str, str] | None:
     if ctx.interview_complete:
         return None
-    steps = interview_steps_for(use_case)
+    steps = interview_steps_for(use_case, custom_steps)
     if ctx.interview_step >= len(steps):
         return None
     return steps[ctx.interview_step]
 
 
 def apply_interview_answer(
-    ctx: ProgramContext, answer: str, use_case: str = "pm_fleet"
+    ctx: ProgramContext,
+    answer: str,
+    use_case: str = "pm_fleet",
+    custom_steps: tuple[dict[str, str], ...] | None = None,
 ) -> ProgramContext:
     """Record an interview answer and advance the script."""
     answer = answer.strip()
     if not answer or ctx.interview_complete:
         return ctx
 
-    steps = interview_steps_for(use_case)
+    steps = interview_steps_for(use_case, custom_steps)
     step_idx = ctx.interview_step
     if step_idx >= len(steps):
         return ctx.model_copy(update={"interview_complete": True})

@@ -722,3 +722,28 @@ class TestCreatePersonaTemplate:
     def test_requires_workspaces_write_scope(self, admin_client, authed_client) -> None:
         r = authed_client.post("/v1/workspaces/persona-templates", json=self._body())
         assert r.status_code == 403
+
+    def test_custom_interview_script_is_persisted(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces/persona-templates",
+            json=self._body(
+                interview=[
+                    {"field": "program_name", "agent": "curator", "question": "What's the club?"},
+                    {"field": "vibe", "question": "Cozy or intense?"},
+                ]
+            ),
+        )
+        assert r.status_code == 201
+
+        from services.persona_authoring import all_persona_templates
+
+        template = all_persona_templates()["book_club"]
+        assert [q.field for q in template.interview] == ["program_name", "vibe"]
+        assert template.interview[1].agent == "intake"  # default
+
+    def test_omitted_interview_defaults_to_no_custom_script(self, admin_client) -> None:
+        admin_client.post("/v1/workspaces/persona-templates", json=self._body())
+
+        from services.persona_authoring import all_persona_templates
+
+        assert all_persona_templates()["book_club"].interview == []

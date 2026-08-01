@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from maistro.personas.rubric import load_template
-from maistro.personas.schema import BrandSpec, PersonaTemplate
+from maistro.personas.schema import BrandSpec, InterviewQuestionSpec, PersonaTemplate
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -19,6 +19,26 @@ def test_brand_and_ui_scope_default_empty() -> None:
     template = PersonaTemplate(kind="department", id="x")
     assert template.brand == BrandSpec()
     assert template.ui_scope == []
+
+
+def test_interview_defaults_empty() -> None:
+    template = PersonaTemplate(kind="workspace", id="x")
+    assert template.interview == []
+
+
+def test_interview_accepts_a_custom_question_script() -> None:
+    template = PersonaTemplate(
+        kind="workspace",
+        id="dinner_party",
+        interview=[
+            {"field": "program_name", "agent": "host", "question": "What's the occasion?"},
+            {"field": "vibe", "question": "What vibe are we going for?"},
+        ],
+    )
+    assert template.interview == [
+        InterviewQuestionSpec(field="program_name", agent="host", question="What's the occasion?"),
+        InterviewQuestionSpec(field="vibe", agent="intake", question="What vibe are we going for?"),
+    ]
 
 
 def test_loads_workspace_template_with_brand_and_ui_scope() -> None:

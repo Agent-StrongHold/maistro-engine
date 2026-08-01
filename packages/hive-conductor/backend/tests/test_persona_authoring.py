@@ -16,7 +16,7 @@ from services.persona_authoring import (
 )
 
 from maistro.personas.rubric import load_templates
-from maistro.personas.schema import SpawnSpec
+from maistro.personas.schema import InterviewQuestionSpec, SpawnSpec
 
 
 def _spawn() -> list[SpawnSpec]:
@@ -110,6 +110,47 @@ def test_rejects_invalid_id_formats(bad_id: str) -> None:
             ui_scope=[],
             spawns=_spawn(),
         )
+
+
+def test_interview_defaults_to_no_custom_script() -> None:
+    template = create_persona_template(
+        id="no_interview",
+        display_name="No Interview",
+        tagline="",
+        archetype="",
+        audience="",
+        tone="",
+        ui_scope=[],
+        spawns=_spawn(),
+    )
+    assert template.interview == []
+
+
+def test_interview_script_is_persisted_and_resolvable() -> None:
+    from services import persona_authoring
+
+    template = create_persona_template(
+        id="dinner_party_with_interview",
+        display_name="Dinner Party",
+        tagline="",
+        archetype="",
+        audience="",
+        tone="",
+        ui_scope=[],
+        spawns=_spawn(),
+        interview=[
+            InterviewQuestionSpec(
+                field="program_name", agent="host", question="What's the occasion?"
+            ),
+            InterviewQuestionSpec(field="vibe", question="What vibe are we going for?"),
+        ],
+    )
+    assert [q.field for q in template.interview] == ["program_name", "vibe"]
+
+    on_disk = load_templates(directory=persona_authoring.user_templates_dir())
+    resolved = on_disk["dinner_party_with_interview"]
+    assert resolved.interview[0].question == "What's the occasion?"
+    assert resolved.interview[1].agent == "intake"  # default, round-trips through YAML
 
 
 def test_user_templates_dir_is_under_conductor_data_dir(monkeypatch, tmp_path) -> None:

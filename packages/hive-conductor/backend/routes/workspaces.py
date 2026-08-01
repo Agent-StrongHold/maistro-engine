@@ -31,7 +31,7 @@ from services.persona_feedback import PersonaFeedbackSummary, summarize
 from services.themes import THEME_CATALOG, ThemeOption, is_valid_theme_id
 
 from maistro.personas.checklist import CapabilityItem, capability_checklist, default_checklist_ids
-from maistro.personas.schema import SpawnSpec
+from maistro.personas.schema import InterviewQuestionSpec, SpawnSpec
 
 router = APIRouter(tags=["workspaces"])
 
@@ -124,6 +124,14 @@ class SpawnAgentSpec(BaseModel):
     skills: list[str] = Field(default_factory=list)
 
 
+class InterviewQuestionBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    field: str
+    agent: str = "intake"
+    question: str
+
+
 class CreatePersonaTemplateBody(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -135,6 +143,10 @@ class CreatePersonaTemplateBody(BaseModel):
     tone: str = ""
     ui_scope: list[str] = Field(default_factory=list)
     agents: list[SpawnAgentSpec] = Field(default_factory=list)
+    # Optional custom onboarding-interview script for this persona -- empty
+    # means "no custom script", same as a hand-authored persona that never
+    # declared `interview:` in its YAML (falls back to the generic one).
+    interview: list[InterviewQuestionBody] = Field(default_factory=list)
 
 
 @router.post("/persona-templates", response_model=PersonaTemplateOption, status_code=201)
@@ -157,6 +169,10 @@ def create_persona_template_route(body: CreatePersonaTemplateBody) -> PersonaTem
             spawns=[
                 SpawnSpec(agent=a.agent, role=a.role, tools=a.tools, skills=a.skills)
                 for a in body.agents
+            ],
+            interview=[
+                InterviewQuestionSpec(field=q.field, agent=q.agent, question=q.question)
+                for q in body.interview
             ],
         )
     except PersonaTemplateIdConflict as exc:

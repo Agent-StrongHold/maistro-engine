@@ -133,3 +133,49 @@ def test_answer_uses_the_workspaces_persona_specific_field_mapping(admin_client)
     )
     assert r.status_code == 200
     assert r.json()["context"]["program_name"] == "Garden Channel"
+
+
+def test_wizard_authored_persona_drives_the_interview_with_its_own_script(admin_client) -> None:
+    """A PersonaWizard-authored persona with a custom interview script wins
+    over the generic fallback -- end to end from POST .../persona-templates
+    through the actual interview routes, not a unit test of the resolver
+    alone."""
+    r = admin_client.post(
+        "/v1/workspaces/persona-templates",
+        json={
+            "id": "dinner_party",
+            "display_name": "Dinner Party",
+            "agents": [{"agent": "host", "role": "Greets guests", "skills": ["plan_menu"]}],
+            "interview": [
+                {"field": "program_name", "agent": "host", "question": "What's the occasion?"},
+                {"field": "vibe", "question": "What vibe are we going for?"},
+            ],
+        },
+    )
+    assert r.status_code == 201
+
+    ws_id = _create_workspace(admin_client, "dinner_party")
+    r = admin_client.get(f"/v1/program/context?workspace_id={ws_id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["interview"]["total_steps"] == 2
+    assert body["interview"]["agent"] == "host"
+    assert body["interview"]["question"] == "What's the occasion?"
+
+    r = admin_client.post(
+        f"/v1/program/interview/answer?workspace_id={ws_id}",
+        json={"answer": "A birthday dinner"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["context"]["program_name"] == "A birthday dinner"
+    assert body["interview"]["question"] == "What vibe are we going for?"
+
+    r = admin_client.post(
+        f"/v1/program/interview/answer?workspace_id={ws_id}",
+        json={"answer": "Warm and playful"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["interview"]["complete"] is True
+    assert any("vibe" in f and "Warm and playful" in f for f in body["context"]["facts"])

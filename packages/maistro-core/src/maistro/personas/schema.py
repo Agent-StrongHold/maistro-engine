@@ -70,6 +70,21 @@ class BrandSpec(BaseModel):
     icon: str = ""
 
 
+class InterviewQuestionSpec(BaseModel):
+    """One question in a ``kind: workspace`` persona's own onboarding
+    interview script (``maistro.agents.program_context``). ``field`` names
+    matching a known ``ProgramContext`` attribute (``program_name``,
+    ``goals``, ``tools``, ``constraints``, ``stakeholders``) get typed
+    capture there; any other name is still recorded, just as a freeform
+    fact rather than a typed field. Optional -- a persona with no
+    ``interview:`` block falls back to the generic 4-question script,
+    exactly as before this field existed."""
+
+    field: str
+    agent: str = "intake"
+    question: str
+
+
 class PersonaTemplate(BaseModel):
     """A full persona/department template loaded from one YAML file."""
 
@@ -83,6 +98,9 @@ class PersonaTemplate(BaseModel):
     # scope (which pages/nav items are relevant when this persona is active).
     brand: BrandSpec = Field(default_factory=BrandSpec)
     ui_scope: list[str] = Field(default_factory=list)
+    # `kind: workspace` only: this persona's own onboarding interview script.
+    # Empty means "no custom script" -- callers fall back to the generic one.
+    interview: list[InterviewQuestionSpec] = Field(default_factory=list)
 
     @model_validator(mode="before")
     @classmethod

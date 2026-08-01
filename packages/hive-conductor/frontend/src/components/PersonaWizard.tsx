@@ -8,6 +8,12 @@ type WizardAgent = {
   skillsText: string;
 };
 
+type WizardInterviewQuestion = {
+  field: string;
+  agent: string;
+  question: string;
+};
+
 function parseCommaList(value: string): string[] {
   return value
     .split(",")
@@ -19,7 +25,11 @@ function emptyAgent(): WizardAgent {
   return { agent: "", role: "", toolsText: "", skillsText: "" };
 }
 
-const STEPS = ["Basics", "Voice", "Scope", "Agents", "Review"] as const;
+function emptyInterviewQuestion(): WizardInterviewQuestion {
+  return { field: "", agent: "intake", question: "" };
+}
+
+const STEPS = ["Basics", "Voice", "Scope", "Agents", "Interview", "Review"] as const;
 
 /** In-app persona authoring. Every persona was previously a hand-authored
  * YAML file (maistro.personas.schema.PersonaTemplate) -- this walks a user
@@ -39,6 +49,10 @@ export function PersonaWizard() {
   const [tone, setTone] = useState("");
   const [uiScopeText, setUiScopeText] = useState("");
   const [agents, setAgents] = useState<WizardAgent[]>([emptyAgent()]);
+  // Optional -- an empty list means "no custom script", and the persona
+  // falls back to the generic 4-question interview, same as a hand-authored
+  // persona that never declares `interview:` in its YAML.
+  const [interviewQuestions, setInterviewQuestions] = useState<WizardInterviewQuestion[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<string | null>(null);
@@ -53,6 +67,7 @@ export function PersonaWizard() {
     setTone("");
     setUiScopeText("");
     setAgents([emptyAgent()]);
+    setInterviewQuestions([]);
     setError(null);
     setCreated(null);
   }
@@ -74,7 +89,22 @@ export function PersonaWizard() {
     setAgents((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
   }
 
+  function updateInterviewQuestion(index: number, patch: Partial<WizardInterviewQuestion>) {
+    setInterviewQuestions((prev) => prev.map((q, i) => (i === index ? { ...q, ...patch } : q)));
+  }
+
+  function addInterviewQuestion() {
+    setInterviewQuestions((prev) => [...prev, emptyInterviewQuestion()]);
+  }
+
+  function removeInterviewQuestion(index: number) {
+    setInterviewQuestions((prev) => prev.filter((_, i) => i !== index));
+  }
+
   const validAgents = agents.filter((a) => a.agent.trim());
+  const validInterviewQuestions = interviewQuestions.filter(
+    (q) => q.field.trim() && q.question.trim(),
+  );
   const basicsComplete = Boolean(id.trim() && displayName.trim());
   const canFinish = basicsComplete && validAgents.length > 0;
 
@@ -97,6 +127,11 @@ export function PersonaWizard() {
           role: a.role.trim(),
           tools: parseCommaList(a.toolsText),
           skills: parseCommaList(a.skillsText),
+        })),
+        interview: validInterviewQuestions.map((q) => ({
+          field: q.field.trim(),
+          agent: q.agent.trim() || "intake",
+          question: q.question.trim(),
         })),
       });
       setCreated(id.trim());
@@ -269,6 +304,47 @@ export function PersonaWizard() {
             )}
 
             {step === 4 && (
+              <div className="persona-wizard-agents">
+                <p className="persona-wizard-hint">
+                  Optional -- the questions this persona asks when a user first adopts it as a
+                  workspace. Leave empty to use the generic 4-question fallback.
+                </p>
+                {interviewQuestions.map((q, i) => (
+                  <div key={i} className="persona-wizard-interview-question">
+                    <input
+                      value={q.field}
+                      onChange={(e) => updateInterviewQuestion(i, { field: e.target.value })}
+                      placeholder="field, e.g. program_name"
+                      aria-label={`Interview question ${i + 1} field`}
+                    />
+                    <input
+                      value={q.agent}
+                      onChange={(e) => updateInterviewQuestion(i, { agent: e.target.value })}
+                      placeholder="asking agent"
+                      aria-label={`Interview question ${i + 1} agent`}
+                    />
+                    <input
+                      value={q.question}
+                      onChange={(e) => updateInterviewQuestion(i, { question: e.target.value })}
+                      placeholder="question text"
+                      aria-label={`Interview question ${i + 1} text`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeInterviewQuestion(i)}
+                      aria-label={`Remove interview question ${i + 1}`}
+                    >
+                      &#x2715;
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={addInterviewQuestion}>
+                  + Add question
+                </button>
+              </div>
+            )}
+
+            {step === 5 && (
               <div className="persona-wizard-review">
                 <div className="persona-wizard-review-title">
                   <strong>{displayName || id}</strong>
@@ -288,6 +364,18 @@ export function PersonaWizard() {
                     </li>
                   ))}
                 </ul>
+                {validInterviewQuestions.length > 0 && (
+                  <>
+                    <div className="persona-wizard-review-title">Interview</div>
+                    <ul>
+                      {validInterviewQuestions.map((q, i) => (
+                        <li key={i}>
+                          [{q.field}] {q.question} ({q.agent || "intake"})
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </div>
             )}
 

@@ -1040,6 +1040,24 @@ button:hover, .suggestion-button:hover {
   font-family: var(--sans);
   min-width: 0;
 }
+.persona-wizard-hint {
+  font-size: 12px;
+  color: var(--pencil);
+  margin: 0 0 8px;
+}
+.persona-wizard-interview-question {
+  display: grid;
+  grid-template-columns: 1fr 1fr 2fr auto;
+  gap: 4px;
+}
+.persona-wizard-interview-question input {
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  font-family: var(--sans);
+  min-width: 0;
+}
 .persona-wizard-review {
   font-size: 13px;
   display: flex;

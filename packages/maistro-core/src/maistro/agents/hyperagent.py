@@ -52,13 +52,20 @@ class WorkItemSuggestion:
         }
 
 
-def interview_status(ctx: ProgramContext, *, use_case: str = "pm_fleet") -> dict[str, Any]:
+def interview_status(
+    ctx: ProgramContext,
+    *,
+    use_case: str = "pm_fleet",
+    custom_steps: tuple[dict[str, str], ...] | None = None,
+) -> dict[str, Any]:
     """`use_case` selects which persona's interview script `total_steps` and
     the next question are drawn from (Persona/Workspace system) -- callers
     that never resolve a specific persona (the pre-Phase-B majority) keep
-    getting the pm_fleet script via the default, unchanged."""
-    steps = interview_steps_for(use_case)
-    q = current_interview_question(ctx, use_case=use_case)
+    getting the pm_fleet script via the default, unchanged. `custom_steps`
+    (a persona's own declared `PersonaTemplate.interview`) takes priority
+    over `use_case`'s canned script when given and non-empty."""
+    steps = interview_steps_for(use_case, custom_steps)
+    q = current_interview_question(ctx, use_case=use_case, custom_steps=custom_steps)
     if ctx.interview_complete:
         return {
             "complete": True,
