@@ -391,3 +391,67 @@ class TestLaneReservation:
         dispatcher without a lane to release against."""
         runner = TaskRunner(TaskQueue(), success_executor)
         assert runner._schedule_of("does-not-exist") == (Lane.BACKGROUND, "P2")
+
+
+class TestDispatcherDoesNotHeadOfLineBlock:
+    """The dispatcher used to `await gate.acquire(...)` inline, which meant the
+    single loop blocked on whatever was at the head of the FIFO. A later
+    LIVE/P0 task could not overtake it even with LIVE reservations sitting
+    free, and the gate never held more than one waiter, so its tier heap had
+    nothing to order. These assert the behaviour the lanes exist to provide.
+    """
+
+    @pytest.mark.asyncio
+    async def test_live_task_overtakes_a_blocked_background_queue(self) -> None:
+        started: list[str] = []
+        release = asyncio.Event()
+
+        async def slow_executor(request: TaskCreate) -> ConductorOutput:
+            started.append(request.description)
+            if request.description.startswith("bg"):
+                await release.wait()
+            return ConductorOutput(success=True, final_answer="ok")
+
+        queue = TaskQueue()
+        runner = TaskRunner(queue, slow_executor, max_workers=4)
+        await runner.start()
+        try:
+            # Saturate everything BACKGROUND is allowed to touch (floor +
+            # shared), then queue one more that cannot be admitted.
+            for i in range(3):
+                await queue.submit(TaskCreate(description=f"bg{i}"))
+            await asyncio.sleep(0.15)
+            await queue.submit(TaskCreate(description="live", lane=Lane.LIVE, priority_tier="P0"))
+            # The LIVE task must start on its reserved floor while the extra
+            # BACKGROUND task is still waiting.
+            for _ in range(50):
+                if "live" in started:
+                    break
+                await asyncio.sleep(0.02)
+            assert "live" in started, f"LIVE never started; started={started}"
+        finally:
+            release.set()
+            await runner.stop(drain_timeout=2.0)
+
+    @pytest.mark.asyncio
+    async def test_queued_tasks_become_concurrent_waiters_on_the_gate(self) -> None:
+        """Tier ordering can only work if more than one task waits at once."""
+        release = asyncio.Event()
+
+        async def blocking_executor(_request: TaskCreate) -> ConductorOutput:
+            await release.wait()
+            return ConductorOutput(success=True, final_answer="ok")
+
+        queue = TaskQueue()
+        runner = TaskRunner(queue, blocking_executor, max_workers=4)
+        await runner.start()
+        try:
+            for i in range(10):
+                await queue.submit(TaskCreate(description=f"t{i}"))
+            await asyncio.sleep(0.25)
+            assert runner._gate is not None
+            waiting = runner._gate.stats()["waiting"]
+            assert waiting > 1, f"expected several concurrent waiters, got {waiting}"
+        finally:
+            release.set()
+            await runner.stop(drain_timeout=2.0)

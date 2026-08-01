@@ -225,3 +225,82 @@ class TestEndToEnd:
 
         # Never worse than two call-times: at most one wait for a floor slot.
         assert max(live_latencies) < CALL * 2.5, live_latencies
+
+
+class TestRegressions:
+    """Each of these reproduces a defect that shipped in the first version of
+    this gate and was caught in review. They are written as the failure, not
+    as the fix."""
+
+    async def test_cancel_after_handoff_does_not_permanently_hold_the_permit(self):
+        """`_wake_one` increments `_held` *before* resolving the future, so a
+        waiter cancelled in that window already owns a counted permit. The
+        original handler incremented again and released once, leaving one
+        permit held forever — silent, cumulative, and eventually total."""
+        gate = LaneGate(1, live_reserved=0, background_reserved=0)
+        await gate.acquire(Lane.BACKGROUND)
+
+        waiter = asyncio.create_task(gate.acquire(Lane.BACKGROUND))
+        await asyncio.sleep(0.02)  # waiter is queued
+        gate.release(Lane.BACKGROUND)  # hands the permit to waiter
+        waiter.cancel()  # cancel before it resumes
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        await asyncio.sleep(0.02)
+
+        assert gate.held(Lane.BACKGROUND) == 0
+        # And the capacity is genuinely reusable, not just counted as free.
+        await asyncio.wait_for(gate.acquire(Lane.BACKGROUND), timeout=0.5)
+
+    async def test_repeated_cancel_after_handoff_does_not_erode_capacity(self):
+        """Cancelling right after a hand-off races by nature: the waiter may
+        already have resumed. Either outcome is legal — what must hold is that
+        the permit count reflects reality afterwards, every time."""
+        gate = LaneGate(2, live_reserved=0, background_reserved=0)
+        for _ in range(15):
+            await gate.acquire(Lane.BACKGROUND)  # held = 1
+            w = asyncio.create_task(gate.acquire(Lane.BACKGROUND))
+            await asyncio.sleep(0.01)
+            gate.release(Lane.BACKGROUND)  # hands off; held = 1 (the waiter's)
+            w.cancel()
+            try:
+                await w
+                acquired = True  # cancel lost the race; waiter holds a permit
+            except asyncio.CancelledError:
+                acquired = False  # cancel won; the permit must have gone back
+            await asyncio.sleep(0)
+            assert gate.held(Lane.BACKGROUND) == (1 if acquired else 0)
+            if acquired:
+                gate.release(Lane.BACKGROUND)
+
+        assert gate.held(Lane.BACKGROUND) == 0
+        # Full capacity is genuinely reusable, not merely counted as free.
+        for _ in range(2):
+            await asyncio.wait_for(gate.acquire(Lane.BACKGROUND), timeout=0.5)
+
+    def test_a_lane_that_could_never_be_admitted_is_refused(self):
+        """floors=0 with an empty shared pool is a deadlock, not a throttle:
+        the lane can never be admitted even on a completely idle gate."""
+        with pytest.raises(ValueError, match="could never be admitted"):
+            LaneGate(1, live_reserved=0, background_reserved=1)
+        with pytest.raises(ValueError, match="could never be admitted"):
+            LaneGate(2, live_reserved=2, background_reserved=0)
+
+    async def test_both_lanes_are_admissible_on_an_idle_gate(self):
+        for total in range(1, 9):
+            live = min(2, max(0, total - 1))
+            background = min(1, max(0, total - 1 - live))
+            gate = LaneGate(total, live_reserved=live, background_reserved=background)
+            for lane in (Lane.LIVE, Lane.BACKGROUND):
+                fresh = LaneGate(total, live_reserved=live, background_reserved=background)
+                await asyncio.wait_for(fresh.acquire(lane), timeout=0.5), (total, lane)
+            del gate
+
+    def test_lane_is_the_canonical_enum_not_a_second_one(self):
+        """A divergent copy would fail validation the moment an AgentSpec lane
+        was propagated into a TaskCreate."""
+        from maistro.agents.spec.agent_spec import Lane as CanonicalLane
+
+        assert Lane is CanonicalLane
+        assert Lane.LIVE.value == "live-chat"
+        assert Lane.BACKGROUND.value == "background-task"

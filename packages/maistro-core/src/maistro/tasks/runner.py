@@ -57,15 +57,19 @@ class TaskRunner:
         # strictly. Only the DEFAULTS adapt to max_workers — a runner built
         # with max_workers=2 predates lanes entirely and must keep working,
         # so the defaults shrink rather than raising on someone else's config.
+        #
+        # One permit is always held back for the shared pool. Without that,
+        # max_workers=1 produced live=0/background=1/shared=0, and a LIVE task
+        # could never be admitted even on a completely idle runner — it blocked
+        # the dispatcher forever and took every later task with it.
+        shareable = max(0, max_workers - 1)
         self._live_slots = (
-            live_slots
-            if live_slots is not None
-            else min(DEFAULT_LIVE_SLOTS, max(0, max_workers - 1))
+            live_slots if live_slots is not None else min(DEFAULT_LIVE_SLOTS, shareable)
         )
         self._background_slots = (
             background_slots
             if background_slots is not None
-            else min(DEFAULT_BACKGROUND_SLOTS, max(0, max_workers - self._live_slots))
+            else min(DEFAULT_BACKGROUND_SLOTS, max(0, shareable - self._live_slots))
         )
         self._gate: LaneGate | None = None
         self._worker_task: asyncio.Task[None] | None = None
@@ -94,10 +98,13 @@ class TaskRunner:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._worker_task
 
-        # Drain in-progress tasks with timeout
-        if self._active_tasks:
-            await logger.ainfo("draining_active_tasks", count=len(self._active_tasks))
-            _, pending = await asyncio.wait(self._active_tasks, timeout=drain_timeout)
+        # Drain in-progress tasks with timeout. Snapshot first: the done
+        # callback discards from the live set, so it can empty between the
+        # check and the wait — and `asyncio.wait([])` raises ValueError.
+        active = set(self._active_tasks)
+        if active:
+            await logger.ainfo("draining_active_tasks", count=len(active))
+            _, pending = await asyncio.wait(active, timeout=drain_timeout)
             for t in pending:
                 t.cancel()
             if pending:
@@ -116,8 +123,10 @@ class TaskRunner:
             "task_runner_draining", timeout=timeout, active_count=len(self._active_tasks)
         )
 
-        if self._active_tasks:
-            _, pending = await asyncio.wait(self._active_tasks, timeout=timeout)
+        # Snapshot — see the note in `stop()`.
+        active = set(self._active_tasks)
+        if active:
+            _, pending = await asyncio.wait(active, timeout=timeout)
             for t in pending:
                 t.cancel()
             if pending:
@@ -135,7 +144,20 @@ class TaskRunner:
         await logger.ainfo("task_runner_stopped")
 
     async def _dispatcher_loop(self) -> None:
-        """Dispatch tasks to workers, limited by semaphore."""
+        """Dequeue continuously; each task waits for its own lane permit.
+
+        Admission is *not* awaited here. It used to be, and that quietly
+        defeated the whole point of the gate: the loop blocked on whatever
+        happened to be at the head of the FIFO, so a P0 LIVE task sat in
+        ``TaskQueue._pending`` behind an ineligible BACKGROUND one even with
+        LIVE reservations free. It also meant the gate never held more than a
+        single waiter, so its tier heap had nothing to order.
+
+        Spawning the wait per task makes every queued task a concurrent waiter,
+        which is what lets tier ordering and the reserved floors actually
+        decide who runs next. The waiters are cheap; the gate still bounds how
+        many of them execute at once.
+        """
         while self._running:
             try:
                 task_id = await asyncio.wait_for(
@@ -146,12 +168,24 @@ class TaskRunner:
             except asyncio.CancelledError:
                 break
 
-            assert self._gate is not None
             lane, tier = self._schedule_of(task_id)
-            await self._gate.acquire(lane, tier)
-            t = asyncio.create_task(self._run_with_permit(task_id, lane))
+            t = asyncio.create_task(self._admit_and_run(task_id, lane, tier))
             self._active_tasks.add(t)
             t.add_done_callback(self._active_tasks.discard)
+
+    async def _admit_and_run(self, task_id: str, lane: Lane, tier: str) -> None:
+        """Wait for a permit in ``lane``, then execute.
+
+        Cancellation while still waiting (shutdown) is clean: ``acquire``
+        returns the permit if it had already been handed one, and no task
+        state is touched because execution never began.
+        """
+        assert self._gate is not None
+        try:
+            await self._gate.acquire(lane, tier)
+        except asyncio.CancelledError:
+            return
+        await self._run_with_permit(task_id, lane)
 
     def _schedule_of(self, task_id: str) -> tuple[Lane, str]:
         """The task's lane and tier, defaulting to BACKGROUND/P2 (ADR-010).

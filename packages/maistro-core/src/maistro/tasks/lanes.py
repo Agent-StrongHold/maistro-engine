@@ -49,7 +49,14 @@ import heapq
 import itertools
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from enum import StrEnum
+
+# The canonical scheduling lane, already defined by ADR-004's agent-spec
+# envelope with the serialized values `live-chat` / `background-task`. It is
+# re-exported here rather than redefined: a second `Lane` with different
+# values would fail validation the moment an `AgentSpec.lane` was propagated
+# into a `TaskCreate.lane`, and would put two incompatible spellings of the
+# same axis on the public API.
+from maistro.agents.spec.agent_spec import Lane
 
 # Lower number sorts first. Mirrors Stronghold's orchestrator/engine.py
 # `_TIER_PRIORITY`, which is the one place this scheme is already wired to a
@@ -58,12 +65,7 @@ TIER_PRIORITY: dict[str, int] = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4, "P
 
 _DEFAULT_TIER = "P2"
 
-
-class Lane(StrEnum):
-    """Scheduling lane (ADR-010). ``BACKGROUND`` is the default everywhere."""
-
-    LIVE = "live"
-    BACKGROUND = "background"
+__all__ = ["TIER_PRIORITY", "Lane", "LaneGate"]
 
 
 class LaneGate:
@@ -100,6 +102,19 @@ class LaneGate:
                 f"exceed total ({total}). Every lane could then be blocked while permits "
                 "sit unusable — the misconfiguration is refused rather than silently clamped."
             )
+        shared = total - live_reserved - background_reserved
+        # A lane with no floor and no shared pool can never be admitted, even
+        # on a completely idle gate. That is not a throttle, it is a deadlock:
+        # the caller waits forever and, if it is a dispatcher, takes every
+        # later task down with it. Refuse the configuration.
+        for name, reserved in (("live", live_reserved), ("background", background_reserved)):
+            if reserved == 0 and shared == 0:
+                raise ValueError(
+                    f"lane {name!r} has no reserved floor and the shared pool is empty "
+                    f"(total={total}, live={live_reserved}, background={background_reserved}), "
+                    "so it could never be admitted even when idle. Leave at least one "
+                    "shared permit, or give the lane a floor."
+                )
         self._total = total
         self._reserved = {Lane.LIVE: live_reserved, Lane.BACKGROUND: background_reserved}
         self._shared = total - live_reserved - background_reserved
@@ -163,10 +178,12 @@ class LaneGate:
             await fut
         except asyncio.CancelledError:
             # A cancelled waiter may already have been handed a permit by
-            # release(); if so, give it back rather than leaking it. Without
-            # this the gate silently loses capacity on every cancelled task.
+            # `_wake_one`, which increments `_held` *before* resolving the
+            # future. That permit is therefore already counted — releasing is
+            # enough, and incrementing first would leave it held forever.
+            # Without this branch the gate silently loses capacity on every
+            # such cancellation, which is cumulative and eventually total.
             if fut.done() and not fut.cancelled():
-                self._held[lane] += 1
                 self.release(lane)
             raise
 
