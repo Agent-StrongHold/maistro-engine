@@ -11,6 +11,7 @@ from maistro.protocols.feedback import FeedbackExtractor, ViolationStore
 from maistro.protocols.llm import LLMClient
 from maistro.protocols.memory import (
     AuditLog,
+    DecayableEpisodicStore,
     EpisodicStore,
     LearningExtractor,
     LearningStore,
@@ -35,6 +36,7 @@ __all__ = [
     "AuditLog",
     "AuthProvider",
     "CodeStructureIndex",
+    "DecayableEpisodicStore",
     "EmbeddingClient",
     "EpisodicStore",
     "FeedbackExtractor",
