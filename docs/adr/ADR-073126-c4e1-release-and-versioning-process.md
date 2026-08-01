@@ -149,23 +149,18 @@ yet, and this section is the honest inventory:
 | Annotated tags on `main` | **No tags exist at all** |
 | Installers pinned to tags | **Not yet** (E5, #298) |
 
-## An unresolved conflict in ADR-095, named rather than silently inherited
+## Relationship to `main`'s protection
 
-ADR-095 specifies **0 required approving reviews on `develop`** (1 only on
-`main`). The enforced protection currently requires an approving review on
-`develop`. Because this is a single-maintainer repository and GitHub does not
-permit approving one's own pull request, that requirement **cannot be satisfied**:
-auto-merge never fires, and every merge to `develop` proceeds by admin bypass.
+§2 makes `main` the only branch a final release tag may point at, and §3 makes
+`release.yml` the only publisher. Together those move `main`'s branch protection
+from a code-review control to a **release** control: the 1-approval requirement
+ADR-095 places on `main` is now also what stands between a change and a
+published artifact.
 
-This matters here because §4 above places a real gate on the `release`
-environment. A gate is only meaningful if the surrounding rules are the ones
-actually enforced; a repository where every merge is already an admin bypass has
-trained everyone that bypass is routine.
-
-**This ADR does not resolve it** — the fix is either to set `develop` to 0
-approvals (matching ADR-095 as written) or to amend ADR-095 to describe
-bypass-driven merges as the intended model. That is a maintainer decision, not
-one to make inside a release-process ADR. Tracked as #288.
+That is the intended design — the `release` environment approval in §4 is a
+second, independent gate, not a substitute for the first. Anything that weakens
+`main`'s protection weakens the release process by the same amount, and should
+be evaluated on those terms.
 
 ## References
 
