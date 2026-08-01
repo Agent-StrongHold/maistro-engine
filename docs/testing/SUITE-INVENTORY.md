@@ -38,7 +38,13 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
   uv run pytest formal --collect-only -q | tail -3
 ```
 
-## Counts as of `develop` @ F3 (#336)
+## Counts as of `develop` @ #352
+
+Refreshed after #341, #347, #348, #351 and #352 landed. Each added tests but
+predated this gate, so none refreshed the table on the way in and the baseline
+drifted +89 (maistro-core +61, hive-conductor +28). Both moved *upward* and
+every other suite matched exactly, which is the added-tests case, not the
+silently-stopped-collecting case the gate exists to catch.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
