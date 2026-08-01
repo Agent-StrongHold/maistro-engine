@@ -173,6 +173,19 @@ jobs:
         working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
+      # C1/#286's remaining acceptance criterion: CI-collected node IDs must
+      # match docs/testing/SUITE-INVENTORY.md. Nothing enforced that before, so
+      # a suite could silently stop collecting and every job above would still
+      # go green — "0 tests collected" is not a pytest failure.
+      #
+      # LAST step in this job on purpose: it collects EVERY suite, including
+      # `packages/hive-conductor/*` under bare python, so it needs the
+      # backend requirements installed by the step above. The script itself
+      # only needs stdlib; it shells out to `uv run pytest` or bare
+      # `python -m pytest` per suite (see its module docstring for the two
+      # invocation traps it has to honor).
+      - name: Suite inventory matches collected node IDs (C1/#286)
+        run: python scripts/check-suite-inventory.py
 
   # packages/hive-conductor/tests/e2e/pm-workflow.spec.ts (Playwright UI
   # walkthrough: setup wizard -> login -> dashboard -> DAG create/run ->
