@@ -155,6 +155,8 @@ def repair_interrupted_rotation(data_dir: str | Path) -> bool:
         return False
 
     if not _key_reads_store(pending_key, store_path):
+        # stdlib logger — keyword args raise TypeError. Use % formatting.
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs the data dir and three module-level FILENAME constants, never key material
         logger.error(
             "credential_rotation_unrecoverable dir=%s — neither %s nor %s decrypts %s",
             str(path),
