@@ -78,6 +78,7 @@ if TYPE_CHECKING:
     from maistro.providers.protocols import LLMProviderRegistry, LLMRouter
     from maistro.resilience.p1 import ResiliencePolicyStore
     from maistro.security._types import AuditLog
+    from maistro.security.sentinel.elevation import ElevationStore
     from maistro.security.sentinel.policy import Sentinel
     from maistro.security.strikes import InMemoryStrikeTracker
     from maistro.skills.import_pipeline import (
@@ -159,6 +160,10 @@ class Container:
     # OAuth (ADR-059): state + identity-link stores; clients via oauth_client().
     oauth_state_store: StateStore = None  # type: ignore[assignment]
     identity_linker: IdentityLinker = None  # type: ignore[assignment]
+    # Elevation grants (SPEC-247 / ADR-068 §D). Held here as well as inside
+    # Sentinel so a future request/confirm surface has somewhere to persist a
+    # cleared grant; Sentinel reads the same instance.
+    elevation_store: ElevationStore = None  # type: ignore[assignment]
     # Strike ladder (SPEC-012 / security/gate.py). None unless
     # config.security.strike_tracking_enabled -- see create_container.
     strike_tracker: InMemoryStrikeTracker | None = None
@@ -425,6 +430,7 @@ async def create_container(
         describe_permission_table,
     )
     from maistro.security.sentinel.audit import InMemoryAuditLog
+    from maistro.security.sentinel.elevation import InMemoryElevationStore
     from maistro.security.sentinel.policy import Sentinel
 
     audit_log = InMemoryAuditLog()
@@ -433,10 +439,18 @@ async def create_container(
         permissions=config.security.permissions,
     )
     logger.info("Sentinel permission table: %s", describe_permission_table(permission_table))
+    # SPEC-247 / ADR-068 §D. Without this, Sentinel._check_elevation_grant is a
+    # permanent no-op, so a grant a human/owner already cleared could never be
+    # honoured. Starts empty, and is only consulted AFTER the capability check,
+    # the budget check and the BLOCKED check have all already passed -- a grant
+    # can therefore never flip authorized False -> True, only needs
+    # "self_elevation"/"scoped_2fa" -> "none".
+    elevation_store = InMemoryElevationStore()
     sentinel = Sentinel(
         warden=warden,
         permission_table=permission_table,
         audit_log=audit_log,
+        elevation_store=elevation_store,
     )
 
     from maistro.capabilities.bootstrap import default_capability_registry
@@ -550,6 +564,7 @@ async def create_container(
         gate=gate,
         strike_tracker=strike_tracker,
         sentinel=sentinel,
+        elevation_store=elevation_store,
         context_builder=context_builder,
         intent_registry=intent_registry,
         capabilities=capabilities,
