@@ -86,7 +86,17 @@ DEFAULT_OUTPUT = (
 )
 
 _SRC_RE = re.compile(r"^packages/[^/]+/(src|backend)/.*\.py$")
-_TEST_RE = re.compile(r"(^|/)tests?/.*/?test_[^/]*\.py$|(^|/)tests?/conftest\.py$")
+# Test files, at any depth under a tests/ directory.
+#
+# The earlier form anchored conftest directly under tests/ (`tests?/conftest\.py$`),
+# so a NESTED conftest — `tests/benchmarks/conftest.py` — classified as source.
+# That is not cosmetic: an unclassified conftest lands in the gold patch, which
+# means applying test_patch alone omits the fixtures the new tests need. The
+# tests then fail for a missing-fixture reason rather than the actual bug, the
+# gold patch restores the conftest, and the commit registers a fail->pass
+# transition it did not earn. The generator would admit the task and score
+# genomes against a bug that was never there.
+_TEST_RE = re.compile(r"(^|/)tests?/(.*/)?(test_[^/]*|conftest)\.py$")
 
 # Generation is the expensive step (two pytest runs per candidate), so it is
 # bounded and checkpointed rather than assumed to finish in one sitting.
@@ -105,6 +115,40 @@ _DEFAULT_TIMEOUT_S = 300
 # consumer knows how it was filtered rather than having to infer it.
 _DEFAULT_MAX_PATCH_LINES = 300
 _DEFAULT_MAX_SRC_FILES = 5
+
+# The issue text is the entire problem statement a genome gets. Below some
+# length it is not a task, it is a guess: the first corpus admitted a merge
+# commit whose complete issue text was "Develop (#243)", which measures
+# clairvoyance rather than debugging.
+#
+# Deliberately low. The aim is to exclude commits carrying no statement at all,
+# not to impose a house style — a terse but specific subject like
+# "fix(rsi): trim resumed transcripts to fit the smallest context" is a perfectly
+# good task and is well under any threshold that would start rejecting real work.
+_DEFAULT_MIN_ISSUE_CHARS = 40
+
+# ...and an upper bound, which turned out to be the one that mattered. The first
+# corpus admitted `Develop (#243)`, a squash-merge whose issue text is 72,263
+# characters of changelog covering dozens of unrelated PRs. It was originally
+# diagnosed here as having *no* problem statement — that was a misreading of a
+# truncated display; the real defect is the opposite. Either way it is not a
+# task: a genome handed a wall of text describing thirty changes and asked to
+# produce one specific fix is being tested on extraction, not debugging.
+#
+# A genuine bug report in this repo runs a few hundred to a couple of thousand
+# characters. 4,000 leaves generous room for a detailed one while excluding
+# anything that is plainly an aggregated changelog.
+_DEFAULT_MAX_ISSUE_CHARS = 4000
+
+# Commits authored by the RSI loop itself. Excluded for INDEPENDENCE, not for
+# quality — they are genuine fail-to-pass transitions with real messages, so no
+# length or size filter catches them. Scoring the loop on bugs it introduced and
+# then fixed is measuring it against its own homework: the fix is drawn from the
+# same distribution as the failure, so a genome that shares its predecessor's
+# blind spots is flattered rather than tested.
+_SELF_AUTHORED_RE = re.compile(
+    r"^(RSI cycle \d+|\[?spawn-[0-9a-f]+|autorun cycle)\b", re.IGNORECASE
+)
 
 
 @dataclass
@@ -273,14 +317,34 @@ def _apply(worktree: Path, patch: str) -> bool:
 _Prepared = tuple[list[str], list[str], str, str, int]
 
 
+def _issue_text(sha: str) -> str:
+    return _git("log", "-1", "--format=%s%n%n%b", sha).strip()
+
+
 def _prepare(
-    sha: str, max_patch_lines: int, max_src_files: int
+    sha: str,
+    max_patch_lines: int,
+    max_src_files: int,
+    min_issue_chars: int = _DEFAULT_MIN_ISSUE_CHARS,
+    max_issue_chars: int = _DEFAULT_MAX_ISSUE_CHARS,
+    allow_self_authored: bool = False,
 ) -> tuple[_Prepared | None, Rejection | None]:
     """Cheap checks and patch construction, before any pytest run.
 
     Split out so a commit that cannot yield a usable task is rejected without
     paying for two test runs — and so ``validate`` stays readable.
     """
+    issue = _issue_text(sha)
+    subject = issue.splitlines()[0] if issue else ""
+    if not allow_self_authored and _SELF_AUTHORED_RE.match(subject):
+        return None, Rejection(sha, "authored by the RSI loop (independence)")
+    if len(issue) < min_issue_chars:
+        return None, Rejection(sha, f"issue text too thin ({len(issue)} < {min_issue_chars} chars)")
+    if len(issue) > max_issue_chars:
+        return None, Rejection(
+            sha, f"issue text is an aggregated changelog ({len(issue)} > {max_issue_chars} chars)"
+        )
+
     files = _changed_files(sha)
     src_files, test_files = _classify(files)
     if not src_files or not test_files:
@@ -312,9 +376,19 @@ def validate(
     timeout_s: int,
     max_patch_lines: int = _DEFAULT_MAX_PATCH_LINES,
     max_src_files: int = _DEFAULT_MAX_SRC_FILES,
+    min_issue_chars: int = _DEFAULT_MIN_ISSUE_CHARS,
+    max_issue_chars: int = _DEFAULT_MAX_ISSUE_CHARS,
+    allow_self_authored: bool = False,
 ) -> tuple[Task | None, Rejection | None]:
     """Admit ``sha`` as a task iff its tests flip fail -> pass. Executes both runs."""
-    prepared, rejection = _prepare(sha, max_patch_lines, max_src_files)
+    prepared, rejection = _prepare(
+        sha,
+        max_patch_lines,
+        max_src_files,
+        min_issue_chars,
+        max_issue_chars,
+        allow_self_authored,
+    )
     if prepared is None:
         return None, rejection
     src_files, test_files, test_patch, gold_patch, gold_lines = prepared
@@ -345,13 +419,12 @@ def validate(
                     sha, f"tests still fail after gold patch :: {_gist(out_after)}"
                 )
 
-            subject = _git("log", "-1", "--format=%s%n%n%b", sha).strip()
             return (
                 Task(
                     task_id=sha,
                     repo_state=parent,
                     commit_date=_git("log", "-1", "--format=%cI", sha).strip(),
-                    issue_text=subject,
+                    issue_text=_issue_text(sha),
                     failing_tests=test_files,
                     test_patch=test_patch,
                     gold_patch=gold_patch,
@@ -418,6 +491,23 @@ def main() -> int:
         help="reject fixes larger than this (default %(default)s)",
     )
     ap.add_argument(
+        "--min-issue-chars",
+        type=int,
+        default=_DEFAULT_MIN_ISSUE_CHARS,
+        help="reject commits whose problem statement is shorter (default %(default)s)",
+    )
+    ap.add_argument(
+        "--max-issue-chars",
+        type=int,
+        default=_DEFAULT_MAX_ISSUE_CHARS,
+        help="reject aggregated-changelog commits above this size (default %(default)s)",
+    )
+    ap.add_argument(
+        "--allow-self-authored",
+        action="store_true",
+        help="include commits the RSI loop authored (excluded by default: independence)",
+    )
+    ap.add_argument(
         "--max-src-files",
         type=int,
         default=_DEFAULT_MAX_SRC_FILES,
@@ -454,6 +544,9 @@ def main() -> int:
         {
             "max_patch_lines": args.max_patch_lines,
             "max_src_files": args.max_src_files,
+            "min_issue_chars": args.min_issue_chars,
+            "max_issue_chars": args.max_issue_chars,
+            "allow_self_authored": int(args.allow_self_authored),
         },
     )
     shown = args.output
