@@ -318,7 +318,7 @@ function KpiWidget({ config, agents, metrics }: { config?: Record<string, any>; 
 
   return (
     <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", height: "100%", position: "relative", paddingLeft: 10 }}>
-      <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2, background: "var(--accent)" }} />
+      <div style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2, background: "var(--accent-gradient)" }} />
       <div style={{ fontSize: "2.2rem", fontWeight: 800, color: "var(--ink)", fontVariantNumeric: "tabular-nums", lineHeight: 1, letterSpacing: "-0.02em" }}>{typeof value === "number" ? value.toLocaleString() : value}</div>
       <div style={{ fontSize: "0.62rem", color: "var(--pencil)", marginTop: 6, letterSpacing: "0.02em", fontWeight: 500 }}>{config?.sub || field}</div>
     </div>
@@ -656,7 +656,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 6, justifyContent: "center", height: "100%" }}>
           <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--ink)" }}>{pct}%</div>
           <div style={{ height: 10, background: "rgba(0,0,0,0.06)", borderRadius: 6, overflow: "hidden" }}>
-            <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent)", borderRadius: 6 }} />
+            <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent-gradient)", borderRadius: 6, transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)" }} />
           </div>
           <div style={{ fontSize: "0.58rem", color: "var(--pencil)" }}>{achieved} / {target}</div>
         </div>
@@ -948,7 +948,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onUpdate }: {
   }
 
   return (
-    <div style={{ gridColumn: span[widget.size], background: "var(--paper)", border: `1px solid ${editing ? C.gold : "var(--rule)"}`, borderRadius: 16, padding: "0.8rem", position: "relative", transition: "all 0.2s ease", maxHeight: 320, display: "flex", flexDirection: "column", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+    <div className="dashboard-widget-card" style={{ gridColumn: span[widget.size], background: "var(--paper)", border: `1px solid ${editing ? C.gold : "var(--rule)"}`, borderRadius: 16, padding: "0.8rem", position: "relative", maxHeight: 320, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <span style={{ fontSize: "0.62rem", fontWeight: 600, color: "var(--pencil)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{widget.title}</span>
         {editing && <button onClick={() => setConfigOpen(true)} style={{ background: "none", border: "none", color: C.muted, cursor: "pointer", fontSize: "0.9rem" }}>⋯</button>}
@@ -1233,13 +1233,16 @@ export default function Dashboard() {
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: "'Inter', -apple-system, system-ui, sans-serif", padding: "1.5rem 2rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.1rem" }}>
         <div>
-          <h1 style={{ fontSize: "1.3rem", fontWeight: 700, margin: 0 }}>Live Operations</h1>
-          <p style={{ fontSize: "0.7rem", color: C.muted, margin: "2px 0 0" }}>Real-time visibility into your orchestration</p>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 800, letterSpacing: "-0.02em", margin: 0 }}>Live Operations</h1>
+          <p style={{ fontSize: "0.72rem", color: C.muted, margin: "3px 0 0" }}>Real-time visibility into your orchestration</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: "0.63rem", padding: "4px 10px", borderRadius: 12, background: "rgba(34,197,94,0.1)", color: C.ok, fontWeight: 600 }}>● Operational</span>
+        <div className="dashboard-header-actions" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span className="dashboard-status-pill">
+            <span className="dashboard-status-dot" />
+            Operational
+          </span>
           <button onClick={() => window.location.reload()} style={{ padding: "4px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontSize: "0.63rem", cursor: "pointer" }}>↻ Refresh</button>
           {editing && (<>
             <button onClick={undo} disabled={history.length === 0} style={{ padding: "4px 8px", borderRadius: 8, border: `1px solid ${C.border}`, background: history.length ? C.card : "transparent", color: history.length ? C.ink : C.dim, fontSize: "0.7rem", cursor: history.length ? "pointer" : "default", opacity: history.length ? 1 : 0.4 }}>← Undo</button>
