@@ -31,15 +31,26 @@ history:
 
 # ADR-046: Scheduler — Recurring agent tasks
 
-**Implementation status (D1/#289, 2026-08-01):** the decision remains **Accepted**, but nothing
-below is built. `maistro/scheduler/` was a 0-byte `__init__.py` placeholder with zero importers
-repo-wide, and it was removed from the tree under the v1.0.0 cut list — no `Schedule` model, no
-APScheduler wiring, no `/v1/schedules` routes, no migration. None of the acceptance criteria are
-met. Deleting the empty placeholder is a tree-hygiene change, **not** a reversal of this decision:
-when the scheduler is built it recreates the package. (Distinct from `maistro.scheduling`, which
-is real and ships.)
+**Implementation status (2026-08-01, #343):** this decision is **not implemented**, and a
+*different* scheduler ships in its place. `routes/schedules.py` (`/v1/schedules`),
+`services/scheduler.py`, and `maistro/scheduling/store.py` provide recurring tasks, but
+diverge from this ADR on every material axis: an in-memory dict rather than Postgres +
+Alembic (so **schedules do not survive a restart**), a hand-rolled cron matcher rather than
+APScheduler, no `max_runs`, no `maistro_schedule_fires_total` counter, no `schedule.fire`
+span, and a different field set. **None of the acceptance criteria below are met.**
 
----
+This is unrecorded drift, not a superseded decision — the divergent implementation landed in
+commit `d1b85b14` (a coverage PR) eighteen days after this ADR was accepted, citing nothing.
+Per the governance rule that an implementation contradicting an ADR is either drift (fix the
+code) or intentional (write a superseding ADR), the maintainer has decided to **keep this ADR
+as the target** and correct the code post-v1. The status therefore stays `Accepted`; it is
+deliberately not moved to `Deferred` or `Superseded`.
+
+Tracking: [SPEC-080126-3a7c](../specs/SPEC-080126-3a7c-durable-scheduler.md); the restart-loss
+behaviour is recorded in [KNOWN-GAPS.md](../../KNOWN-GAPS.md).
+
+The empty `maistro/scheduler/` placeholder referenced in the Context below was removed in
+D1/#289 — it was a husk, distinct from the real `maistro/scheduling/` package.
 
 ## Context
 
