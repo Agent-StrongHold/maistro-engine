@@ -25,7 +25,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5732 | `ci.yml` |
+| `packages/maistro-core/tests` | 5758 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 528 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -36,7 +36,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 599 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1042 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1047 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"

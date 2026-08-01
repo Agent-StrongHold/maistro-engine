@@ -66,3 +66,27 @@ class TestSharedImplementation:
         with caplog.at_level("WARNING"):
             assert validate_cors_origins(["http://internal.corp"]) == ["http://internal.corp"]
         assert "not HTTPS" in caplog.text
+
+
+class TestOpaqueOrigin:
+    """Browsers serialize opaque origins as the literal string `null`:
+    sandboxed iframes, `file:` pages, `data:` documents, some redirect chains.
+    They are mutually indistinguishable, so there is no such thing as trusting
+    one of them — paired with credentials, allowing `null` grants them all
+    credentialed access."""
+
+    @pytest.mark.parametrize("value", ["null", "NULL", "Null"])
+    def test_null_origin_is_refused(self, value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CORS_ORIGINS", f'["{value}"]')
+        with pytest.raises(ValueError, match="must not contain 'null'"):
+            Settings()
+
+    def test_null_mixed_with_real_origins_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CORS_ORIGINS", '["https://app.example","null"]')
+        with pytest.raises(ValueError, match="must not contain 'null'"):
+            Settings()
+
+    def test_hostname_containing_null_is_still_allowed(self) -> None:
+        """Only the exact opaque-origin token is refused, not any host that
+        happens to contain those letters."""
+        assert validate_cors_origins(["https://nullable.example"]) == ["https://nullable.example"]

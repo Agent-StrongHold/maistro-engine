@@ -39,6 +39,19 @@ def validate_cors_origins(origins: list[str]) -> list[str]:
                 "site a permitted credentialed origin."
             )
             raise ValueError(msg)
+        if origin.lower() == "null":
+            # Browsers serialize *opaque* origins as the literal string
+            # "null": sandboxed iframes, file: pages, data: documents, and
+            # some redirect chains all send `Origin: null`. Allowing it with
+            # credentials grants every one of them credentialed access, and
+            # they are mutually indistinguishable — there is no such thing as
+            # trusting one opaque origin.
+            msg = (
+                "CORS origins must not contain 'null' — every sandboxed frame, "
+                "file: page and data: document shares that origin, so allowing "
+                "it grants them all credentialed access."
+            )
+            raise ValueError(msg)
         if origin.startswith("javascript:") or origin.startswith("data:"):
             msg = f"CORS origins contains unsafe origin: {origin!r}"
             raise ValueError(msg)
