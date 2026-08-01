@@ -64,7 +64,7 @@ uv run alembic upgrade head           # apply DB migrations (needs Postgres)
 docker compose up -d                  # full local stack (Postgres + LiteLLM + Langfuse)
 ```
 
-The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker) and the planned **`apps/maistro-gateway-node-flutter`** native node (see [`SPEC-179`](docs/specs/SPEC-179-flutter-gateway-node.md)).
+The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker).
 
 | Package / tree | Purpose |
 |---|---|
@@ -76,7 +76,6 @@ The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hiv
 | `maistro-bootstrap` | `maistro-install` TUI and answers-file planner (`uv sync --extra bootstrap`) |
 | `maistro-registry` | Front-matter validation, link checks, registry generation |
 | `packages/hive-conductor/` | Agent Conductor reference app: React frontend, FastAPI backend, Docker |
-| `apps/maistro-gateway-node-flutter/` | Flutter gateway node (bootstrap with `flutter create`; see app README) |
 
 ## Architecture at a glance
 
@@ -132,8 +131,6 @@ maistro-engine/
 │   ├── maistro-bootstrap/            # maistro-install planner
 │   ├── maistro-registry/             # Registry / front-matter CI helpers
 │   └── hive-conductor/               # Agent Conductor reference app (frontend + backend + Docker)
-├── apps/
-│   └── maistro-gateway-node-flutter/ # Native gateway node (Flutter; see SPEC-179)
 ├── formal/                           # Property-based conformance tests (Hypothesis; separate CI)
 ├── templates/                        # Copier templates (per ADR-033)
 ├── scripts/                          # Repo maintenance scripts

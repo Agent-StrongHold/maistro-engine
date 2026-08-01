@@ -31,9 +31,19 @@ history:
 
 # ADR-046: Scheduler — Recurring agent tasks
 
+**Implementation status (D1/#289, 2026-08-01):** the decision remains **Accepted**, but nothing
+below is built. `maistro/scheduler/` was a 0-byte `__init__.py` placeholder with zero importers
+repo-wide, and it was removed from the tree under the v1.0.0 cut list — no `Schedule` model, no
+APScheduler wiring, no `/v1/schedules` routes, no migration. None of the acceptance criteria are
+met. Deleting the empty placeholder is a tree-hygiene change, **not** a reversal of this decision:
+when the scheduler is built it recreates the package. (Distinct from `maistro.scheduling`, which
+is real and ships.)
+
+---
+
 ## Context
 
-`src/maistro/scheduler/` exists as an empty package. Product repos (Project_mAIstro household automations, AgentTuring autonoetic-loop reflections) need recurring agent invocations — "every weekday at 7am, run the morning briefing", "every 15 min, poll the inbox". Today they would have to roll their own cron-runner per product, duplicating queue-submission, retry, and observability code that already lives in `TaskQueue` / `conductor.py`.
+`src/maistro/scheduler/` (removed — see the implementation-status note above) existed as an empty package. Product repos (Project_mAIstro household automations, AgentTuring autonoetic-loop reflections) need recurring agent invocations — "every weekday at 7am, run the morning briefing", "every 15 min, poll the inbox". Today they would have to roll their own cron-runner per product, duplicating queue-submission, retry, and observability code that already lives in `TaskQueue` / `conductor.py`.
 
 Hermes-desktop ships this as a first-class user feature: `src/renderer/src/screens/Schedules/Schedules.tsx` + `src/main/cronjobs.ts` give frequency presets (minutes / hourly / daily / weekly / custom cron), pause/resume/trigger-now, `last_status`, `last_error`, repeat counter, and per-job skill selection. The patterns transfer cleanly to a substrate API.
 
@@ -105,7 +115,7 @@ class Schedule(Base):
 
 - `hermes-desktop:src/renderer/src/screens/Schedules/Schedules.tsx` — UX surface (frequency presets, pause/resume/trigger-now, repeat counter, last_error)
 - `hermes-desktop:src/main/cronjobs.ts` — in-process cron runner
-- `maistro-engine:src/maistro/scheduler/` — empty target package
+- `maistro-engine:packages/maistro-core/src/maistro/scheduler/` — target package (the empty placeholder was removed; recreate on implementation)
 - `maistro-engine:src/maistro/tasks/runner.py`, `tasks/queue.py` — reused submission path
 
 ## Out of scope
