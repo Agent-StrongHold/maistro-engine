@@ -111,7 +111,7 @@ class TestRunSwebench:
             return _CORRECT_FIX
 
         result = await run_swebench(genome, llm_call)
-        assert result.benchmark == "swebench"
+        assert result.benchmark == "proxy_swebench"
         assert result.samples_evaluated == 1
         assert result.score == 1.0
         assert result.cost_usd > 0.0

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
@@ -130,11 +131,8 @@ def test_has_any_scope_no_intersection(member, nonmember):
 
 def test_frozen_identity_immutable():
     identity = ServiceIdentity(name="svc", scopes=frozenset({Scope.CHAT_COMPLETIONS}))
-    try:
+    with pytest.raises((AttributeError, TypeError)):
         identity.name = "other"
-        assert False, "Should not be able to set attribute"
-    except (AttributeError, TypeError):
-        pass
 
 
 @given(

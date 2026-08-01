@@ -6,6 +6,7 @@ get, delete, contains, list_all, put_raw, get_raw, list_all_raw)."""
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 import time
 from pathlib import Path
@@ -38,7 +39,10 @@ class TestSubmitGuard:
 class TestCheckpointGuard:
     def test_checkpoint_without_writer_is_noop(self, db_path: Path) -> None:
         state = State(db_path=str(db_path))
-        state.checkpoint()  # must not raise
+        state.checkpoint()
+
+        assert state._writer is None
+        assert not db_path.exists()
 
 
 class TestBackupGuard:
@@ -71,6 +75,8 @@ class TestWriterLoop:
         state = State(db_path=str(db_path))
         state.open_writer()
         time.sleep(0.3)  # let the writer thread idle-poll past its 0.1s timeout
+        assert state._writer_thread is not None
+        assert state._writer_thread.is_alive()
         state.close()
 
     def test_transaction_exception_is_caught_and_rolled_back(self, db_path: Path) -> None:
@@ -79,12 +85,13 @@ class TestWriterLoop:
         w.execute("CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT)")
         w.commit()
 
-        def boom(conn: object) -> None:
+        def boom(conn: sqlite3.Connection) -> None:
+            conn.execute("INSERT INTO kv (k, v) VALUES ('failed', 'value')")
             raise ValueError("transaction failed")
 
         state.submit(boom)
         state.flush(timeout=2.0)
-        time.sleep(0.2)
+        assert w.execute("SELECT * FROM kv WHERE k = 'failed'").fetchone() is None
         state.close()
 
 
@@ -95,6 +102,9 @@ class TestRunMigrationBranches:
         # second call with a deliberately broken statement must be skipped,
         # not executed, since the migration name is already recorded
         state.run_migration("m1", up="THIS IS BAD SQL")
+        assert state._writer is not None
+        assert state._writer.execute("SELECT name FROM schema_migrations").fetchall() == [("m1",)]
+        assert state._writer.execute("SELECT name FROM sqlite_master WHERE name = 'foo'").fetchone()
         state.close()
 
     def test_auto_opens_writer_when_not_open(self, db_path: Path) -> None:
@@ -114,7 +124,11 @@ class TestRunMigrationBranches:
 class TestClose:
     def test_close_without_open_writer_is_noop(self, db_path: Path) -> None:
         state = State(db_path=str(db_path))
-        state.close()  # must not raise
+        state.close()
+
+        assert state._writer is None
+        assert state._writer_open is False
+        assert state._shutdown.is_set()
 
     def test_close_after_open_writer_closes_connection(self, db_path: Path) -> None:
         state = State(db_path=str(db_path))
@@ -136,7 +150,12 @@ class TestPersistedStore:
         state = State(db_path=str(db_path))
         state.open_writer()
         store = PersistedStore(state)
-        store.initialize()  # must not raise on double-open
+        store.initialize()
+
+        assert state._writer is not None
+        assert state._writer.execute("SELECT name FROM schema_migrations").fetchall() == [
+            ("kv_store_001",)
+        ]
         state.close()
 
     def test_put_and_get_roundtrip(self, db_path: Path) -> None:

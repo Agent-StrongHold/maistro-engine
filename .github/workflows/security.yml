@@ -81,7 +81,7 @@ jobs:
             --config p/secrets \
             --exclude 'packages/hive-conductor/eval' \
             --exclude 'packages/hive-conductor/cage' \
-            --error packages/ apps/ tests/ 2>&1 | tee semgrep-report.txt
+            --error packages/ tests/ 2>&1 | tee semgrep-report.txt
 
       - name: gitleaks (full-history scan on main; commit-range on PR)
         uses: gitleaks/gitleaks-action@v2

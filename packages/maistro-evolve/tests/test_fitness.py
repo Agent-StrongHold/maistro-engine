@@ -61,11 +61,11 @@ class TestHardGate:
 
     def test_one_below_gate_fails(self):
         scores = {k: v + 0.1 for k, v in _HARD_GATE_THRESHOLDS.items()}
-        scores["ifeval"] = 0.1
+        scores["proxy_ifeval"] = 0.1
         g = _genome(eval_scores=scores)
         passed, failures = _check_hard_gate(g)
         assert not passed
-        assert any("ifeval" in f for f in failures)
+        assert any("proxy_ifeval" in f for f in failures)
 
     def test_gate_thresholds_cover_every_registered_proxy_benchmark(self):
         """Derived from the registry, not hand-listed.
@@ -81,10 +81,14 @@ class TestHardGate:
         assert set(PROXY_BENCHMARKS) <= set(_HARD_GATE_THRESHOLDS)
 
     def test_unrunnable_osworld_is_not_gated(self):
+        """Both spellings: the registry uses `proxy_`-prefixed identifiers
+        (SPEC-202), so asserting only the bare name would pass vacuously while
+        a `proxy_osworld` entry sat in the threshold dict gating nothing."""
         from maistro_evolve.benchmarks import PROXY_BENCHMARKS
 
-        assert "osworld" not in PROXY_BENCHMARKS
-        assert "osworld" not in _HARD_GATE_THRESHOLDS
+        for name in ("osworld", "proxy_osworld"):
+            assert name not in PROXY_BENCHMARKS
+            assert name not in _HARD_GATE_THRESHOLDS
 
     def test_benchmark_without_a_tuned_threshold_still_gets_gated(self):
         """The fail-open hole: the gate used to iterate the threshold dict and
@@ -130,7 +134,7 @@ class TestWeightedEvalScore:
         assert _weighted_eval_score(g) == 0.0
 
     def test_partial_scores(self):
-        scores = {"ifeval": 0.8, "bfcl": 0.6}
+        scores = {"proxy_ifeval": 0.8, "proxy_bfcl": 0.6}
         g = _genome(eval_scores=scores)
         score = _weighted_eval_score(g)
         assert 0.0 < score < 1.0
@@ -165,7 +169,7 @@ class TestLatencyEfficiency:
 
 class TestComputeFitness:
     def test_failed_hard_gate_zero_fitness(self):
-        g = _genome(eval_scores={"ifeval": 0.1})
+        g = _genome(eval_scores={"proxy_ifeval": 0.1})
         fitness = compute_fitness(g, [g])
         assert fitness.total == 0.0
         assert not fitness.passed_hard_gate

@@ -12,7 +12,7 @@ function extractJSON(text) {
   if (codeBlock) {
     try {
       return JSON.parse(codeBlock[1].trim());
-    } catch {}
+    } catch { /* fenced block was not JSON; fall through to the other strategies */ }
   }
   // Try to find outermost { ... }
   const firstBrace = text.indexOf("{");
@@ -23,8 +23,8 @@ function extractJSON(text) {
       return JSON.parse(candidate);
     } catch {
       // Truncated JSON — try to fix by closing open brackets
-      const opens = (candidate.match(/[\[\{]/g) || []).length;
-      const closes = (candidate.match(/[\]\}]/g) || []).length;
+      const opens = (candidate.match(/[[{]/g) || []).length;
+      const closes = (candidate.match(/[\]}]/g) || []).length;
       const missing = opens - closes;
       if (missing > 0 && missing < 20) {
         // Count which brackets are open
@@ -41,7 +41,7 @@ function extractJSON(text) {
         candidate = candidate.replace(/,\s*\{[^}]*$/, "");
         try {
           return JSON.parse(candidate);
-        } catch {}
+        } catch { /* not valid JSON; try the next candidate */ }
       }
     }
   }
@@ -320,7 +320,6 @@ export async function generateScene(storyId, sceneId, onProgress) {
   if (!scene) throw new Error("Scene not found");
 
   const contract = story.style_contract;
-  const aspect = "16:9";
 
   onProgress?.(`Creating canvas for "${scene.title}"...`);
   const canvas = {

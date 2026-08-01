@@ -9,13 +9,13 @@ from maistro_evolve.harness import EvalHarness
 from maistro_evolve.types import DAGTopology, EvalResult, EvalWeights, NodeGenome, PipelineGenome
 
 PROXY_NAMES = [
-    "ifeval",
-    "bfcl",
-    "swebench",
-    "terminalbench",
-    "tau_bench",
-    "gaia",
-    "ragas",
+    "proxy_ifeval",
+    "proxy_bfcl",
+    "proxy_swebench",
+    "proxy_terminalbench",
+    "proxy_tau_bench",
+    "proxy_gaia",
+    "proxy_ragas",
 ]
 
 
@@ -71,7 +71,7 @@ def test_proxy_fidelity_registers_proxy_benchmarks() -> None:
 
     assert set(PROXY_BENCHMARKS.keys()) == set(harness._benchmarks.keys())
     assert set(harness._benchmarks.keys()) == set(PROXY_NAMES)
-    assert "osworld" not in harness._benchmarks
+    assert "proxy_osworld" not in harness._benchmarks
     assert harness.fidelity == "proxy"
 
 
@@ -104,7 +104,10 @@ def test_real_fidelity_registers_only_available_real_adapters() -> None:
     # correct checkout — a real harness is never empty.
     assert "bfcl" in harness._benchmarks
     # Strictly fewer benchmarks than proxy — the point, not an oversight.
-    assert set(harness._benchmarks) < set(PROXY_BENCHMARKS)
+    # Asserted on count, not set-subset: the two registries are disjoint by
+    # construction (real uses bare `ifeval`/`bfcl`, proxy the `proxy_`-prefixed
+    # names per SPEC-202), so `<` would compare namespaces rather than breadth.
+    assert 0 < len(harness._benchmarks) < len(PROXY_BENCHMARKS)
 
 
 def test_unavailable_real_adapter_is_skipped_by_default_but_explicit_ask_raises(
@@ -261,11 +264,13 @@ async def test_evaluate_genome_skips_unregistered_benchmark_name() -> None:
     harness._benchmarks.clear()
 
     async def fake_ifeval(genome: PipelineGenome, llm_call: object) -> EvalResult:
-        return _fake_runner_result("ifeval")
+        return _fake_runner_result("proxy_ifeval")
 
-    harness.register_benchmark("ifeval", fake_ifeval)
-    results = await harness.evaluate_genome(_genome(), benchmarks=["ifeval", "not-registered"])
-    assert [r.benchmark for r in results] == ["ifeval"]
+    harness.register_benchmark("proxy_ifeval", fake_ifeval)
+    results = await harness.evaluate_genome(
+        _genome(), benchmarks=["proxy_ifeval", "not-registered"]
+    )
+    assert [r.benchmark for r in results] == ["proxy_ifeval"]
 
 
 @pytest.mark.asyncio

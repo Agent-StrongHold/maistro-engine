@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -110,6 +111,30 @@ async def respond_to_confirm(confirm_id: str, body: ConfirmResponseBody):
     return await respond_confirm(confirm_id, body.response)
 
 
+async def _shutdown_background_services() -> None:
+    """Stop the optional background services, one bad stop never blocking the rest.
+
+    Extracted from `lifespan` so adding a service does not push that function past
+    the complexity gate; the ordering here mirrors the order they were started in.
+    """
+    # (service_module, stop_attr) — imported inside the loop so a module that
+    # fails to import only skips its own stop, as when each had its own try.
+    stoppers: tuple[tuple[str, str], ...] = (
+        ("services.design_service", "stop_design_service"),
+        ("services.evolution", "stop_evolution"),
+        ("services.scheduler", "stop_scheduler"),
+        ("services.memory_decay", "stop_memory_decay"),
+    )
+    for module_name, attr in stoppers:
+        name = module_name.rsplit(".", 1)[-1]
+        try:
+            result = getattr(import_module(module_name), attr)()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:
+            _log.warning("%s_stop_failed: %s", name, exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -158,30 +183,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         _lifespan_log.warning("scheduler_start_failed: %s", exc, exc_info=True)
     try:
+        # SPEC-080126-9e42: the episodic decay cadence. A process-lifetime task,
+        # not a /v1/schedules record — decay is a system cadence and should live
+        # exactly as long as the process does.
+        from services.memory_decay import start_memory_decay
+
+        await start_memory_decay(get_settings())
+    except Exception as exc:
+        _lifespan_log.warning("memory_decay_start_failed: %s", exc, exc_info=True)
+    try:
         from services.evolution import start_evolution
 
         await start_evolution()
     except Exception as exc:
         _lifespan_log.warning("evolution_start_failed: %s", exc, exc_info=True)
     yield
-    try:
-        from services.design_service import stop_design_service
-
-        await stop_design_service()
-    except Exception as exc:
-        _lifespan_log.warning("design_service_stop_failed: %s", exc)
-    try:
-        from services.evolution import stop_evolution
-
-        await stop_evolution()
-    except Exception as exc:
-        _lifespan_log.warning("evolution_stop_failed: %s", exc)
-    try:
-        from services.scheduler import stop_scheduler
-
-        stop_scheduler()
-    except Exception as exc:
-        _lifespan_log.warning("scheduler_stop_failed: %s", exc)
+    await _shutdown_background_services()
     await engine_service.stop_engine()
     await foundation_service.stop_foundation()
 
@@ -234,7 +251,6 @@ def create_app() -> FastAPI:
     app.include_router(daily_report_v2.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
     app.include_router(dashboard_layout.router)
-    app.include_router(widgets.router, prefix="/v1/widgets")
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
     # Phase 5 Signal #4: thumbs feedback piggybacks on /v1/dag-runs path
     # space so the SSE stream + feedback live together for the client.
@@ -269,6 +285,8 @@ def create_app() -> FastAPI:
     if STATIC_DIR.is_dir():
         from starlette.responses import FileResponse
 
+        static_root = STATIC_DIR.resolve()
+
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
             # Do not return the SPA shell for unknown API paths (avoids JSON parse errors in the UI).
@@ -276,10 +294,21 @@ def create_app() -> FastAPI:
                 from starlette.responses import JSONResponse
 
                 return JSONResponse(status_code=404, content={"detail": "Not Found"})
-            fp = STATIC_DIR / full_path
-            if fp.is_file():
+            # SECURITY: this route is UNAUTHENTICATED — AuthMiddleware only gates
+            # paths starting with "/v1/" (middleware/auth.py), and this catch-all
+            # matches everything else. So `full_path` is fully attacker-controlled
+            # and must be contained to static_root before anything is served.
+            #
+            # Containment cannot be done by inspecting the string: `Path.__truediv__`
+            # DISCARDS the left operand when the right one is absolute, so
+            # `STATIC_DIR / "/etc/passwd"` is `/etc/passwd` — no dot-segments needed,
+            # and the "v1/" guard above never fires for such a path. `..` traversal
+            # is the other half. resolve() collapses both (and any symlink escape),
+            # and is_relative_to() is the actual boundary check.
+            fp = (static_root / full_path).resolve()
+            if fp.is_relative_to(static_root) and fp.is_file():
                 return FileResponse(fp)
-            return FileResponse(STATIC_DIR / "index.html")
+            return FileResponse(static_root / "index.html")
 
     return app
 

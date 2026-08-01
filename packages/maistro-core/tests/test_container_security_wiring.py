@@ -18,7 +18,7 @@ import pytest
 from maistro.container import Container, create_container
 from maistro.security._types import AuthContext, WardenVerdict
 from maistro.security.patterns import DANGEROUS_TOOL_NAMES
-from maistro.security.sentinel.authz_types import Principal
+from maistro.security.sentinel.authz_types import Principal, Tier
 from maistro.security.strikes import InMemoryStrikeTracker
 from maistro.skills.import_pipeline import ImportSource, SkillImportRequest
 from maistro.types.config import AgentConfig, SecurityConfig
@@ -316,3 +316,116 @@ async def test_route_request_allows_no_auth_at_shipped_defaults() -> None:
     # itself needs no agents for this call to get past the guard.
     with contextlib.suppress(Exception):
         await container.route_request([{"role": "user", "content": "hi"}])
+
+
+# --- Elevation store wiring (issue #346) -------------------------------------
+#
+# Sentinel._check_elevation_grant short-circuits on `self._elevation_store is
+# None`, and create_container never passed one -- so in every production
+# container the branch was unreachable and a grant a human/owner had already
+# cleared could never be honoured. These tests go through create_container()
+# specifically: constructing Sentinel directly with an elevation_store (as
+# tests/security/test_elevation_grants.py does) never caught the gap.
+
+
+@pytest.mark.contract("behavioral")
+@pytest.mark.scope("integration")
+async def test_container_wires_an_elevation_store_into_sentinel() -> None:
+    container = await _container()
+
+    assert container.elevation_store is not None
+    # Same instance, so a grant written through the container is the grant
+    # Sentinel reads. A second store would look wired and deny anyway.
+    assert container.sentinel._elevation_store is container.elevation_store
+
+
+@pytest.mark.contract("behavioral")
+@pytest.mark.scope("integration")
+async def test_elevation_check_is_reachable_in_a_wired_container() -> None:
+    """End-to-end proof the branch runs: a stored grant changes the decision."""
+    from datetime import UTC, datetime
+
+    from maistro.security.sentinel.elevation import ElevationGrant
+
+    container = await _container()
+    principal = Principal(id="human1", kind="human")
+
+    before = await container.sentinel.authorize(
+        "delete_prod_db", principal, reversibility="irreversible"
+    )
+    assert before.tier is Tier.SELF_ELEVATION
+    assert before.needs == "self_elevation"
+
+    await container.elevation_store.store(
+        ElevationGrant(
+            principal_id="human1",
+            action_class="delete_prod_db",
+            kind="self_elevation",
+            granted_at=datetime.now(UTC),
+            ttl_seconds=300,
+            signed_by="human1",
+        )
+    )
+
+    after = await container.sentinel.authorize(
+        "delete_prod_db", principal, reversibility="irreversible"
+    )
+    assert after.needs == "none"
+    assert after.reason == "cleared by a prior elevation grant"
+
+
+@pytest.mark.contract("behavioral")
+@pytest.mark.scope("integration")
+async def test_empty_elevation_store_is_behaviourally_identical_to_unwired() -> None:
+    """The wiring must be a no-op until someone actually clears a grant."""
+    container = await _container()
+
+    decision = await container.sentinel.authorize(
+        "delete_prod_db", Principal(id="human1", kind="human"), reversibility="irreversible"
+    )
+    assert decision.needs == "self_elevation"
+    assert decision.reason == ""
+
+
+@pytest.mark.contract("boundary")
+@pytest.mark.scope("integration")
+async def test_elevation_grant_cannot_clear_a_denied_capability() -> None:
+    """A grant must never flip authorized False -> True.
+
+    _check_elevation_grant runs only after the capability check, the budget
+    check and the BLOCKED check have all passed, so wiring the store can only
+    relax `needs`, never `authorized`. Pinned because this is the property
+    that makes the wiring safe.
+    """
+    from datetime import UTC, datetime
+
+    from maistro.security.sentinel.elevation import ElevationGrant
+
+    container = await _container(permission_preset="dangerous_tools_admin")
+    principal = Principal(id="human1", kind="human", roles=("user",))
+    action = next(iter(DANGEROUS_TOOL_NAMES))
+
+    await container.elevation_store.store(
+        ElevationGrant(
+            principal_id="human1",
+            action_class=action,
+            kind="self_elevation",
+            granted_at=datetime.now(UTC),
+            ttl_seconds=300,
+            signed_by="human1",
+        )
+    )
+
+    decision = await container.sentinel.authorize(action, principal, reversibility="irreversible")
+    assert decision.authorized is False
+    assert "lacks capability" in decision.reason
+
+    # Same for over-budget: a grant does not buy budget.
+    over = await container.sentinel.authorize(
+        "some_unlisted_action",
+        principal,
+        reversibility="irreversible",
+        within_budget=False,
+    )
+    assert over.authorized is False
+    assert over.reason == "over budget"

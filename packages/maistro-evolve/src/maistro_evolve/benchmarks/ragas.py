@@ -133,6 +133,19 @@ async def _judge_rag_quality(
 
 
 async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score RAG faithfulness/relevance — and be honest that this one IS keyword overlap.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official RAGAS methodology. Unlike this package's other proxy scorers,
+    the *primary* mechanism here (``_score_faithfulness`` / `_score_relevance`)
+    genuinely is word-set overlap between the response and the expected
+    answer/context — not a structural check. It escalates to a real
+    LLM-as-judge call (``_judge_rag_quality``) only when that static score
+    falls below 0.6, and even then takes ``max(static, judged)`` — so a
+    response can score highly on word overlap alone without ever reaching
+    the judge. Treat `proxy_ragas` scores as the least reliable proxy-tier signal
+    in this package for exactly that reason.
+    """
     if llm_call is None:
         raise ValueError(
             "run_ragas requires an llm_call — there is no stub/heuristic "
@@ -195,7 +208,7 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="ragas",
+        benchmark="proxy_ragas",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),

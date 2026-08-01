@@ -99,9 +99,11 @@ tracked work.
 ## A3 — Freeze policy + PR template + tracking hygiene (S)
 
 - [ ] Enable GitHub Issues on the repo; file this plan as milestone `v1.0.0` + umbrella issue +
-      one issue per item here.
-- [ ] Pin the freeze rule (what merges: tracked items only; where: `develop`).
-- [ ] Add minimal `.github/PULL_REQUEST_TEMPLATE.md` with a "v1 tracked item? / workstream?"
+      one issue per item here. **Not doable from the tree** — needs the GitHub web UI/API;
+      the only remaining A3 task.
+- [x] Pin the freeze rule (what merges: tracked items only; where: `develop`) — `CONTRIBUTING.md`
+      §Feature freeze, above the branch model. Says to delete the section when the tag lands.
+- [x] Add minimal `.github/PULL_REQUEST_TEMPLATE.md` with a "v1 tracked item? / workstream?"
       checklist to stop freeze leaks.
 
 **AC:** plan converted to issues; template merged; policy pinned.
@@ -187,6 +189,10 @@ some of this; this item closes the remainder.
 - [ ] Post-#268 gap audit; wire each remaining suite into `ci.yml`/`quality.yml`.
 - [ ] Fix or skip-with-tracking-link tests that fail on first real run (expect some).
 - [ ] Root `tests/` runs on every PR, not just doc paths.
+- [x] Enforce the inventory: `scripts/check-suite-inventory.py` collects all 13 suites and fails
+      on drift from `docs/testing/SUITE-INVENTORY.md`; run as the last step of `ci.yml`'s `test`
+      job. Compares counts (not node-ID sets) — rationale in the script docstring. Drift is
+      repaired with `--update`, named in the failure message.
 
 **AC:** every orphaned suite appears in a CI invocation; the expected inventory is generated with
 `pytest --collect-only -q` per suite (node IDs — not static `def test_` counts, which
@@ -215,9 +221,14 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 - [ ] Branch protection per ADR-095: `develop` (0 approvals + required checks), `integration`
       (0 approvals + required checks + formal-conformance), `main` (1 approval + required checks);
       linear history, squash/rebase only.
-- [ ] Add `develop`/`integration` to `registry.yml`; audit the other workflows' branch filters
-      for `integration`.
-- [ ] Check off the ADR-095 ACs.
+- [x] Add `develop`/`integration` to `registry.yml`; audit the other workflows' branch filters
+      for `integration`. **This item's premise was stale**: `registry.yml` already pushes on
+      `main`/`integration`/`develop` and no longer lists `research/pm-fleet-poc`. The full audit
+      of all 10 workflows found **no `integration` gap anywhere** — table recorded in ADR-095. No
+      trigger filters were changed.
+- [x] Check off the ADR-095 ACs — the CONTRIBUTING AC, which is genuinely true. The
+      required-status-checks AC stays **unchecked**: it is only verifiable in GitHub
+      branch-protection settings, not from the tree.
 
 **AC:** a red PR is mechanically blocked on every tier; ADR-095 ACs checked.
 
@@ -228,11 +239,23 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 ## D1 — [CUT LIST] Remove or demote non-v1 surface area (L, dep A1)
 
 **DELETE from the tree:**
-- [ ] `maistro.scheduler` — 0-byte package (ADR-046 still Proposed). Delete; mark ADR-046
-      Deferred/Rejected. (Distinct from `maistro.scheduling`, which is real and ships.)
-- [ ] `apps/maistro-gateway-node-flutter` — README-only shell (SPEC-179 → Deferred).
-- [ ] `maistro-turing` Astro frontend (0 tests). The turing *library* ships; the turing backend
-      stays only if its 26 tests pass under C1.
+- [x] `maistro.scheduler` — 0-byte package, 0 importers. Deleted, plus its entry in
+      `scripts/verify-wheel-imports.py`'s `CORE_PUBLIC_SURFACE`.
+      **ADR-046's status was deliberately NOT changed.** This plan said "mark ADR-046
+      Deferred/Rejected"; the ADR is `status: Accepted`, and `Accepted → Deferred` is a *backward*
+      transition that ADR-097's forward-only state machine does not permit. Deleting an empty
+      placeholder is tree hygiene, not a reversal of the decision. ADR-046 instead carries a
+      factual implementation-status note (same shape as ADR-076's) recording that the placeholder
+      is gone and nothing is built. Flipping an Accepted ADR is a maintainer call.
+      (Distinct from `maistro.scheduling`, which is real and ships.)
+- [x] `apps/maistro-gateway-node-flutter` — README-only shell. Deleted (the whole `apps/` tree is
+      now gone), with its references cleaned out of `scripts/verify-monorepo-layout.sh`,
+      `security.yml`'s semgrep target list, `README.md` and `AGENTS.md`.
+      SPEC-179 → **Deferred** (`Proposed → Deferred` is a valid ADR-097 forward transition) with a
+      rationale note and a bootstrap recipe for recreating the app root.
+- [x] `maistro-turing` Astro frontend (17 files, 0 tests, referenced by no workflow, Dockerfile or
+      compose file). Deleted; `packages/maistro-turing/README.md` updated. The turing *library*
+      ships; the turing backend stays (its 26 tests are in `ci.yml` and green).
 - [ ] The 13 fully-contained remote branches (executed in A2; recorded here).
 
 **MARK EXPERIMENTAL (ships, no stability contract, not on PyPI):**
@@ -253,22 +276,26 @@ exist unrun). Python-version messaging is inconsistent (`.python-version`=3.13, 
 
 **AC:** every line has a merged PR, a closed branch, or a v1.1 tracking entry.
 
-## D2 — Correct spec/ADR statuses that contradict code (S)
+## D2 — Correct spec/ADR statuses that contradict code (S) — done, #290, PR #318
 
-- [ ] SPEC-183 (OAuth identity linking; `auth/oauth.py:519` is a Phase-2 stub) → Partial with a
-      shipped-subset note.
-- [ ] SPEC-070226-b624 (LLMJudgeComparator; `ensemble.py:208` raises NotImplementedError) → same.
-- [ ] Dedupe the 3 duplicate spec pairs (shared-tool-call-cache, canvas-tool-action-contracts,
-      skill-fixer-rule-pipeline); regenerate ADR-INDEX.
-- [ ] ADR-076: record its actual state — content negotiation is **not implemented** (the only
+- [x] SPEC-183 (OAuth identity linking; `auth/oauth.py:519` is a Phase-2 stub) → status corrected
+      `Implemented` → `In Progress` with a shipped-subset note (Phases 1-2 real and tested;
+      Phase 3 hive-conductor routes and Phase 4 audit wiring are follow-up).
+- [x] SPEC-070226-b624 (LLMJudgeComparator; `ensemble.py:208` raises NotImplementedError) →
+      status corrected `Implemented` → `In Progress` with an implementation-status note.
+- [x] Deduped the 3 duplicate spec pairs (shared-tool-call-cache, canvas-tool-action-contracts,
+      skill-fixer-rule-pipeline) — the stale `SPEC-070126-*` trio marked Superseded by their real
+      `SPEC-062126-*` counterparts; ADR-INDEX regenerated (also gained ADR-076's previously-missing
+      row).
+- [x] ADR-076: recorded its actual state — content negotiation is **not implemented** (the only
       negotiation code is canvas-specific/v2; business routes are mounted under the `/v1` path);
-      its ACs stay unchecked and implementation is deferred to v1.1 with a D5 tracking entry
-      (see E4 for what the release notes may truthfully claim).
+      its ACs stay unchecked and implementation is deferred to v1.1, cross-linked to
+      `KNOWN-GAPS.md` (see E4 for what the release notes may truthfully claim).
 
 **AC:** registry gate green; no spec marked Implemented whose named feature raises
-NotImplementedError.
+NotImplementedError. Verified: `maistro_registry.cli lint . --strict` — 0 errors.
 
-## D3 — Rename evolve pseudo-benchmarks honestly; evolve/rsi ship as v1 (M)
+## D3 — Rename evolve pseudo-benchmarks honestly; evolve/rsi ship as v1 (M) — done, #291, PRs #327 + #329
 
 **Context:** `packages/maistro-evolve` scorers named `swebench` / `gaia` / `tau_bench` / `osworld`
 / `ifeval` / `bfcl` / `ragas` / `terminalbench` are keyword-overlap heuristics, not the named
@@ -276,15 +303,29 @@ benchmarks, and drive 0.65 of fitness weight (SPEC-202 Proposed). Evolve+RSI are
 which makes honest naming more important, not less: shipping fake scorers under real benchmark
 names as a *supported* feature is the single worst credibility exposure in the tree.
 
-- [ ] Rename scorers to `heuristic_*` (or `*_style_heuristic`) with docstrings stating they are
-      keyword-overlap proxies for the named benchmark, not the benchmark; update fitness config
-      keys. Real benchmark adapters = v1.1 (SPEC-202).
-- [ ] Replace any "experimental" framing with a v1 stability statement for both packages: what
-      the API/CLI contract guarantees vs what is best-effort (e.g. specific genome model rosters).
-- [ ] Confirm both are in the PyPI publish set (E3) and the v1 supported surface (F4).
+**Correction to the context above (verified against the code in #327):** the premise that all
+eight are "keyword-overlap heuristics" was significantly overstated. `swebench`/`terminalbench`
+run real sandboxed execution and assert a real outcome; `ifeval` runs real per-instruction rule
+verification. Only `ragas` is primarily keyword overlap. `bfcl`/`gaia`/`tau_bench` are
+structurally-checked but each carries a real text-mention or fuzzy-substring fallback that
+materially weakens it. What *is* uniformly true — and what the AC actually needed — is that none
+of them run the official corpus/harness. The fix reflects that reality rather than the original
+blanket claim.
+
+- [x] Scorers renamed — to `proxy_*` rather than `heuristic_*`, because "heuristic" would have
+      been its own inaccuracy for the five non-heuristic scorers (see correction above).
+      `EvalResult.benchmark` values, `PROXY_BENCHMARKS`/`RSI_BENCHMARKS` registry keys, fitness
+      hard-gate keys, `EvalWeights` fields, and `cycle`/`runner` default lists all moved in
+      lockstep (#329). Per-benchmark docstrings stating exactly what each one does — including
+      the degenerate cases — landed in #327. Real benchmark adapters remain v1.1 (SPEC-202).
+- [x] v1 stability statement for both packages (#327, `__init__.py` of each). Notes the
+      unresolved ADR-088 governance conflict rather than silently overriding an Accepted ADR.
+- [x] Both already named in E3's PyPI publish set below; F4/#303 tracks the supported-surface
+      integration.
 
 **AC:** no identifier or docstring claims a real benchmark is being run; both packages carry a
-stability statement. **Rename blocks the tag.**
+stability statement. ✅ Verified: repo-wide grep for the 8 bare identifiers returns zero hits
+outside prose about the real benchmarks; 955/955 tests pass across both packages.
 
 ## D4 — Documentation accuracy sweep (M, dep D1+D2)
 
@@ -330,18 +371,41 @@ stability statement. **Rename blocks the tag.**
 **AC:** `scripts/bump_version.py 1.0.0` touches all version sites; consistency check green.
 **Blocks:** E2, E3, F1, G2.
 
-## E2 — Fix dependency bounds + uv workspace table (M, dep E1, F1)
+## E2 — Fix dependency bounds + uv workspace table (M, dep E1, F1) — 2 of 3 done, #295, PRs #331 + #334
 
 **Context:** inter-package deps (`maistro-core>=0.1.0` etc.) have never resolved from a real
 index; 8 of 11 packages have uncapped third-party upper bounds (core/canvas are the properly
 capped template); no `[tool.uv.workspace]` members table exists.
 
-- [ ] Inter-package bounds → `>=1.0.0,<2` (maintained by the E1 bump script).
-- [ ] Cap uncapped third-party deps in the 8 packages; regenerate `uv.lock`.
-- [ ] Add `[tool.uv.workspace]` members = `packages/*` (incl. hive-conductor once F1 lands).
+- [ ] **BLOCKED on E1, not startable.** Inter-package bounds → `>=1.0.0,<2` (maintained by the
+      E1 bump script). Every package is at `0.9.0` (root `VERSION`), so a `>=1.0.0` floor is
+      unsatisfiable today — `uv lock` would fail outright. This lands with the E1 version bump,
+      not before. (Same finding recorded on F1.)
+- [x] Third-party deps capped across all packages (#334), following core's convention
+      (semver → next major, `0.x` → `<1`, CalVer → year bound). **Caps were derived from what
+      `uv.lock` actually resolves, not from semver intuition — because two of them would
+      otherwise have broken the build:** `langfuse` resolves at 4.14.2 (a "next major" `<3` cap
+      makes the workspace unsatisfiable) and `fastmcp` at 3.2.4 (same trap). Now that F1's
+      members table makes every package resolve together, a too-tight cap anywhere breaks
+      everything.
+      Scope was wider than this plan stated: **`core`/`canvas` are the "properly capped
+      template" only for `[project].dependencies`** — their extras were entirely uncapped —
+      and **`maistro-evolve` was uncapped and missing from the item's file list**.
+      `hive-conductor/backend/requirements.txt` carries the same caps, since it remains the
+      Docker/CI install path.
+- [x] `[tool.uv.workspace]` members = `packages/*` — landed with F1 (#331), including
+      hive-conductor.
 
-**AC:** `uv lock` clean; in the E3 dry-run, `pip install maistro-rsi==1.0.0` from an index
-resolves `maistro-core`/`maistro-evolve`/`maistro-bootstrap` at `1.0.0`.
+**AC:** `uv lock` clean ✅ (198 packages; the lock diff is metadata-only — 79 changed lines, all
+`specifier =` fields, zero resolved versions moved). The second half of the AC — the E3 dry-run
+resolving `1.0.0` from an index — cannot be evaluated until E1 bumps versions and E3 exists.
+
+**Not capped, deliberately:** the root `maistro-workspace` meta-package. It is unpublished, not
+one of the "8 packages", and irrelevant to the index-install AC. Mechanical if wanted later.
+
+**Noted while capping, not changed:** `regex>=2024.5.15,<2027` is locked at `2026.5.9`, so that
+pre-existing cap starts blocking upgrades in ~5 months; `cryptography>=48.0.1,<49` is locked at
+exactly `48.0.1`, leaving only patch headroom.
 
 ## E3 — Create release.yml — tag-triggered build/publish pipeline (L, dep E1+E2)
 
@@ -408,18 +472,38 @@ expressible.
 
 # Workstream F — Conductor deployability
 
-## F1 — hive-conductor pyproject.toml; join workspace + wheel gate (M, dep E1)
+## F1 — hive-conductor pyproject.toml; join workspace + wheel gate (M, dep E1) — done, #300, PR #331
 
 **Context:** `packages/hive-conductor` is a bare `requirements.txt` + Vite frontend —
 unpackageable, outside the wheel-imports gate, and a second unlocked dependency resolution.
 
-- [ ] Add `pyproject.toml` (hatchling; version from the E1 scheme); translate requirements.txt
-      into bounded deps; maistro deps `>=1.0.0,<2`.
-- [ ] Join `[tool.uv.workspace]` (E2) and the wheel-imports CI job. Not in the PyPI set —
-      packaging is for build hygiene and image builds.
-- [ ] Frontend build artifacts stay in the Docker image, not the wheel.
+- [x] `packages/hive-conductor/pyproject.toml` (hatchling, `0.9.0` from root `VERSION`);
+      requirements.txt translated with bounds and its load-bearing comments preserved
+      (the `httpx2`/Starlette note, the `regex`/Warden-ReDoS note); test-only deps moved to a
+      `dev` extra. **`maistro-core` is `>=0.9.0,<2`, not the `>=1.0.0,<2` written above** —
+      nothing in the repo is at 1.0.0 yet, so that bound does not resolve today. Flagged
+      in-file to tighten at tag time.
+- [x] `[tool.uv.workspace]` members added to the root pyproject — it had **none**, only
+      `[tool.uv.sources]` path entries, so a package file alone would not have created
+      membership. Sources converted to the canonical `{ workspace = true }` form and completed
+      for every member (uv requires a source entry for any member another member depends on;
+      `maistro-rsi` → `maistro-evolve` is the live case). Enrolled in wheel-imports. Not in the
+      PyPI set.
+- [x] Frontend build artifacts excluded from the wheel — it ships `backend/` sources only.
 
-**AC:** the package builds; wheel-imports covers it; `uv.lock` includes it.
+**AC:** the package builds; wheel-imports covers it; `uv.lock` includes it. ✅ All 10 package
+wheels build; `verify-wheel-imports.py` exits 0; `uv lock --check` clean (198 packages);
+hive-conductor present in `uv.lock`.
+
+**One caveat recorded deliberately:** the wheel builds but is **not importable**.
+`backend/` is a flat module layout with no package root, and the app imports itself
+top-level-relative (`from config import ...`), resolved by putting `backend/` on `sys.path`
+(the Dockerfile's `PYTHONPATH`, `conftest.py`'s `sys.path[0]` shim). Making it genuinely
+importable means rewriting every intra-app import plus the Dockerfile and conftest — a
+refactor, not a packaging change. So it is registered in `verify-wheel-imports.py`'s
+`SKIPPED_DISTS` with the structural reason and what would lift it; that mechanism prints the
+skip and refuses to let reduced coverage read as a pass. **`requirements.txt` remains the
+install path** the Dockerfile and CI use — a dependency change must land in both.
 
 ## F2 — Verify Conductor end-to-end on a clean machine (L, dep B5, E5, F1, F3)
 

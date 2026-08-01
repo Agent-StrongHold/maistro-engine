@@ -84,7 +84,7 @@ def _config(**overrides) -> RsiCycleConfig:
     base = {
         "repo_url": "https://github.com/org/repo.git",
         "test_command": "pytest -q",
-        "benchmarks": ["swebench", "swebench_pro"],
+        "benchmarks": ["proxy_swebench", "proxy_swebench_pro"],
     }
     base.update(overrides)
     return RsiCycleConfig(**base)
@@ -145,11 +145,11 @@ class TestRsiCycleRun:
     ):
         """runner-1: both genomes are evaluated on exactly RsiCycleConfig.benchmarks."""
         scores = {
-            "baseline": {"swebench": 0.4, "swebench_pro": 0.2},
-            "candidate": {"swebench": 0.6, "swebench_pro": 0.5},
+            "baseline": {"proxy_swebench": 0.4, "proxy_swebench_pro": 0.2},
+            "candidate": {"proxy_swebench": 0.6, "proxy_swebench_pro": 0.5},
         }
         cycle = RsiCycle(
-            _config(benchmarks=["swebench", "swebench_pro"]),
+            _config(benchmarks=["proxy_swebench", "proxy_swebench_pro"]),
             FakeHarness(scores),
             EloTournament(),
             FakeScheduler(),
@@ -158,8 +158,14 @@ class TestRsiCycleRun:
 
         result = await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
 
-        assert {r.benchmark for r in result.baseline_results} == {"swebench", "swebench_pro"}
-        assert {r.benchmark for r in result.candidate_results} == {"swebench", "swebench_pro"}
+        assert {r.benchmark for r in result.baseline_results} == {
+            "proxy_swebench",
+            "proxy_swebench_pro",
+        }
+        assert {r.benchmark for r in result.candidate_results} == {
+            "proxy_swebench",
+            "proxy_swebench_pro",
+        }
 
     @pytest.mark.asyncio
     async def test_battles_only_recorded_for_benchmarks_present_in_both_result_sets(
@@ -169,11 +175,11 @@ class TestRsiCycleRun:
     ):
         """runner-2: a benchmark missing from either side is skipped, not battled with a missing score."""
         scores = {
-            "baseline": {"swebench": 0.4, "swebench_pro": 0.2},
-            "candidate": {"swebench": 0.6},  # no swebench_pro score for the candidate
+            "baseline": {"proxy_swebench": 0.4, "proxy_swebench_pro": 0.2},
+            "candidate": {"proxy_swebench": 0.6},  # no proxy_swebench_pro score for the candidate
         }
         cycle = RsiCycle(
-            _config(benchmarks=["swebench", "swebench_pro"]),
+            _config(benchmarks=["proxy_swebench", "proxy_swebench_pro"]),
             FakeHarness(scores),
             EloTournament(),
             FakeScheduler(),
@@ -183,7 +189,7 @@ class TestRsiCycleRun:
         result = await cycle.run(_genome("baseline"), _genome("candidate"), ["openai/gpt-5"])
 
         assert len(result.battles) == 1
-        assert result.battles[0].benchmark == "swebench"
+        assert result.battles[0].benchmark == "proxy_swebench"
 
     @pytest.mark.asyncio
     async def test_benchmarks_won_counts_only_outright_candidate_wins(
@@ -257,13 +263,15 @@ class TestRsiCycleRun:
         self, patched_sandbox, patched_self_branch
     ):
         """A caller-supplied llm_call is threaded to evaluate_genome for both genomes."""
-        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+        harness = FakeHarness(
+            {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
+        )
 
         async def injected(messages, *, temperature=0.2, max_tokens=2048):
             return "x"
 
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             harness,
             EloTournament(),
             FakeScheduler(),
@@ -279,9 +287,11 @@ class TestRsiCycleRun:
     ):
         """No injected llm_call + a scheduler model -> a real (non-None) call is built and used,
         instead of the heuristic (near-noise) fallback the runner used before."""
-        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+        harness = FakeHarness(
+            {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
+        )
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             harness,
             EloTournament(),
             FakeScheduler("chat"),
@@ -294,9 +304,11 @@ class TestRsiCycleRun:
     @pytest.mark.asyncio
     async def test_no_model_leaves_scoring_heuristic(self, patched_sandbox, patched_self_branch):
         """If the scheduler yields no model, llm_call stays None (explicit heuristic fallback)."""
-        harness = FakeHarness({"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}})
+        harness = FakeHarness(
+            {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
+        )
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             harness,
             EloTournament(),
             FakeScheduler(None),
@@ -310,7 +322,7 @@ class TestRsiCycleRun:
         self, patched_sandbox, monkeypatch
     ):
         """runner-5: the sandbox is torn down even when the cycle fails mid-way."""
-        scores = {"baseline": {"swebench": 0.5}, "candidate": {"swebench": 0.5}}
+        scores = {"baseline": {"proxy_swebench": 0.5}, "candidate": {"proxy_swebench": 0.5}}
 
         async def boom_patch(sandbox, workspace, model=None):
             raise RuntimeError("agent crashed mid-patch")
@@ -333,7 +345,7 @@ class TestRsiCycleRun:
         )
 
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             FakeHarness(scores),
             EloTournament(),
             FakeScheduler(),
@@ -368,7 +380,7 @@ class TestModelAndLlmCallThreading:
         """The quota-burn pick must reach the patching agent via ApplyPatchFn's
         third argument (scoring gets it separately: run() bakes it into the
         gateway-built llm_call)."""
-        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        scores = {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
         seen_models: list[str | None] = []
 
         async def recording_patch(sandbox, workspace, model=None):
@@ -376,7 +388,7 @@ class TestModelAndLlmCallThreading:
 
         harness = SpyHarness(scores)
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             harness,
             EloTournament(),
             FakeScheduler(model="groq/kimi-k2"),
@@ -393,7 +405,7 @@ class TestModelAndLlmCallThreading:
     ):
         """Quota-burn loop closure: cumulative usage on the llm_call is recorded
         via scheduler.record_attempt after the cycle."""
-        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        scores = {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
 
         async def fake_llm(messages, **kwargs):
             return "text"
@@ -408,7 +420,7 @@ class TestModelAndLlmCallThreading:
                 recorded.append((model, input_tokens, output_tokens))
 
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             SpyHarness(scores),
             EloTournament(),
             RecordingScheduler(model="groq/kimi-k2"),
@@ -420,14 +432,14 @@ class TestModelAndLlmCallThreading:
 
     @pytest.mark.asyncio
     async def test_llm_call_reaches_evaluate_genome(self, patched_sandbox, patched_self_branch):
-        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        scores = {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
 
         async def fake_llm(messages, **kwargs):
             return "text"
 
         harness = SpyHarness(scores)
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             harness,
             EloTournament(),
             FakeScheduler(),
@@ -445,20 +457,22 @@ class TestWorkspaceCleanup:
     async def test_workspace_removed_by_default_and_kept_on_flag(
         self, patched_sandbox, patched_self_branch, tmp_path, monkeypatch
     ):
-        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        scores = {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
         removed: list[str] = []
         monkeypatch.setattr(
             "maistro_rsi.runner.shutil.rmtree",
             lambda path, ignore_errors=False: removed.append(str(path)),
         )
 
-        base = _config(benchmarks=["swebench"], workspace_root=str(tmp_path))
+        base = _config(benchmarks=["proxy_swebench"], workspace_root=str(tmp_path))
         cycle = RsiCycle(base, FakeHarness(scores), EloTournament(), FakeScheduler(), _noop_patch)
         result = await cycle.run(_genome("baseline"), _genome("candidate"), ["m"])
         assert removed == [f"{tmp_path}/{result.run_id}"]
 
         removed.clear()
-        keep = _config(benchmarks=["swebench"], workspace_root=str(tmp_path), keep_workspace=True)
+        keep = _config(
+            benchmarks=["proxy_swebench"], workspace_root=str(tmp_path), keep_workspace=True
+        )
         cycle2 = RsiCycle(keep, FakeHarness(scores), EloTournament(), FakeScheduler(), _noop_patch)
         await cycle2.run(_genome("baseline"), _genome("candidate"), ["m"])
         assert removed == []
@@ -469,7 +483,7 @@ class TestQuarantineThreading:
     async def test_quarantine_check_reaches_run_self_branch_attempt(
         self, patched_sandbox, monkeypatch
     ):
-        scores = {"baseline": {"swebench": 0.4}, "candidate": {"swebench": 0.6}}
+        scores = {"baseline": {"proxy_swebench": 0.4}, "candidate": {"proxy_swebench": 0.6}}
         received: dict = {}
 
         async def capturing_attempt(
@@ -493,7 +507,7 @@ class TestQuarantineThreading:
             raise AssertionError("not called in this test")
 
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"]),
+            _config(benchmarks=["proxy_swebench"]),
             FakeHarness(scores),
             EloTournament(),
             FakeScheduler(),
@@ -575,9 +589,11 @@ class TestProbeFromCommands:
 
         monkeypatch.setattr("maistro_rsi.runner.run_self_branch_attempt", fake_run_attempt)
 
-        harness = FakeHarness({"baseline": {"swebench": 0.9}, "candidate": {"swebench": 0.1}})
+        harness = FakeHarness(
+            {"baseline": {"proxy_swebench": 0.9}, "candidate": {"proxy_swebench": 0.1}}
+        )
         cycle = RsiCycle(
-            _config(benchmarks=["swebench"], benchmark_commands={"lint": "ruff check ."}),
+            _config(benchmarks=["proxy_swebench"], benchmark_commands={"lint": "ruff check ."}),
             harness,
             EloTournament(),
             FakeScheduler(),

@@ -120,7 +120,7 @@ async def run_terminalbench(genome: PipelineGenome, llm_call: Any) -> EvalResult
     )
 
     return EvalResult(
-        benchmark="terminalbench",
+        benchmark="proxy_terminalbench",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),

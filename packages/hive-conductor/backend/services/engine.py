@@ -45,6 +45,17 @@ class EngineService:
             self._capabilities = default_capability_registry()
         return self._capabilities
 
+    @property
+    def episodic_store(self) -> Any:
+        """The core Container's EpisodicStore, or None in stub/unconfigured mode.
+
+        The memory-decay driver (SPEC-080126-9e42) sweeps this. None is a real
+        answer, not an error: without the bridge there is no episodic memory in
+        this process, so there is nothing to decay — and the driver says so.
+        """
+        container = getattr(self._agent_port, "container", None)
+        return getattr(container, "episodic_store", None)
+
     async def start(self, settings: Settings) -> None:
         from adapters.maistro_core import MaistroCoreBridge, StubAgentPort
 

@@ -315,7 +315,7 @@ class TestRunTauBench:
 
         result = await run_tau_bench(genome, llm_call)
 
-        assert result.benchmark == "tau_bench"
+        assert result.benchmark == "proxy_tau_bench"
         assert result.samples_evaluated == 12
         assert result.metadata == {"total_samples": 12, "fidelity": "proxy"}
         assert result.cost_usd > 0.0

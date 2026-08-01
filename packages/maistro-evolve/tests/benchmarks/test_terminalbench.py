@@ -110,7 +110,7 @@ class TestRunTerminalbench:
             return _GOOD_PLAN
 
         result = await run_terminalbench(genome, llm_call)
-        assert result.benchmark == "terminalbench"
+        assert result.benchmark == "proxy_terminalbench"
         assert result.samples_evaluated == 1
         assert result.score == 1.0
         assert result.cost_usd > 0.0

@@ -40,7 +40,7 @@ from maistro_rsi.selfbranch import (
 
 logger = structlog.get_logger()
 
-DEFAULT_BENCHMARKS = ["swebench", "swebench_pro", "terminalbench"]
+DEFAULT_BENCHMARKS = ["proxy_swebench", "proxy_swebench_pro", "proxy_terminalbench"]
 
 # Not a hardcoded /tmp literal (bandit B108): resolved via tempfile.gettempdir()
 # so it honors $TMPDIR / the platform temp dir instead of assuming /tmp exists

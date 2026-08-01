@@ -10,13 +10,21 @@ from .types import FitnessComponents, PipelineGenome
 # the entry could never fire — a gate for a benchmark that cannot produce a
 # score is decoration, and it made the list look more complete than it was.
 _HARD_GATE_THRESHOLDS: dict[str, float] = {
+    "proxy_ifeval": 0.25,
+    "proxy_bfcl": 0.20,
+    "proxy_swebench": 0.15,
+    "proxy_tau_bench": 0.20,
+    "proxy_gaia": 0.30,
+    "proxy_ragas": 0.25,
+    "proxy_terminalbench": 0.20,
+    # The real tier reports under bare identifiers (`REAL_BENCHMARKS` in
+    # benchmarks/__init__.py), not the `proxy_`-prefixed ones, and the gate keys
+    # off `EvalResult.benchmark`. Without these two entries a real ifeval/bfcl
+    # run would fall through to `_DEFAULT_GATE_FLOOR` (0.01) — nominally gated,
+    # effectively ungated — which is the same fail-open shape this gate exists
+    # to close. Same thresholds as their proxy counterparts.
     "ifeval": 0.25,
     "bfcl": 0.20,
-    "swebench": 0.15,
-    "tau_bench": 0.20,
-    "gaia": 0.30,
-    "ragas": 0.25,
-    "terminalbench": 0.20,
 }
 
 # Floor applied to any benchmark that was scored but has no tuned threshold —

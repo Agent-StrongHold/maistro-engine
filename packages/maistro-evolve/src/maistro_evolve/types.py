@@ -51,13 +51,24 @@ class EvalWeights(BaseModel):
     pydantic ignores the extra field.
     """
 
+    # Field names double as the benchmark identifiers looked up by-name from
+    # `EvalResult.benchmark` / `genome.eval_scores` keys (see fitness.py's
+    # `getattr(weights, bench, None)`) — must stay in lockstep with the
+    # `proxy_`-prefixed identifiers in `benchmarks/__init__.py` (SPEC-202).
+    proxy_ifeval: float = 0.15
+    proxy_bfcl: float = 0.15
+    proxy_swebench: float = 0.20
+    proxy_terminalbench: float = 0.10
+    proxy_tau_bench: float = 0.15
+    proxy_gaia: float = 0.10
+    proxy_ragas: float = 0.10
+
+    # The real tier registers under bare identifiers (`REAL_BENCHMARKS`), so a
+    # real run's `EvalResult.benchmark` is `ifeval`/`bfcl`. Without these the
+    # lookup misses and falls back to `_DEFAULT_BENCH_WEIGHT`, silently weighting
+    # the official-harness scores differently from their proxy counterparts.
     ifeval: float = 0.15
     bfcl: float = 0.15
-    swebench: float = 0.20
-    terminalbench: float = 0.10
-    tau_bench: float = 0.15
-    gaia: float = 0.10
-    ragas: float = 0.10
 
 
 class PipelineGenome(BaseModel):

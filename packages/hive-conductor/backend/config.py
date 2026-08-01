@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     chat_default_model: str = "gemini/gemini-2.5-flash"
     llm_http_variant: Literal["auto", "responses", "chat_completions"] = "auto"
 
+    # F3 (loud degraded modes): with no LLM gateway configured the graph runner
+    # refuses to run rather than handing back a success-shaped stub answer.
+    # Set ALLOW_STUB_LLM=true to opt in to stub responses — they are then
+    # labelled `"stub": true` in the payload so nothing downstream can mistake
+    # one for a real result (same noise flag maistro-evolve uses,
+    # SPEC-202 signal honesty). Same vocabulary as `maistro-rsi --allow-stub-llm`.
+    allow_stub_llm: bool = False
+
     maistro_router_api_key: str | None = None
     maistro_agents_dir: str = "agents"
     maistro_llm_base_url: str | None = None
@@ -91,6 +99,15 @@ class Settings(BaseSettings):
     infra_autonomy: Literal["approve_all", "auto_safe", "detect_only"] = "auto_safe"
     # self_repair (SPEC-188) cadence; <=0 disables the periodic loop (API still works).
     self_repair_interval_s: int = 90
+
+    # Episodic memory-decay cadence (SPEC-080126-9e42). This is what makes
+    # README's "decays without reinforcement" and CLAUDE.md decision #5 true at
+    # runtime — the decay primitives had no production caller before it (#344).
+    # <=0 disables the driver, and per the F3 precedent that is a *loud* degraded
+    # mode: startup logs a warning and /health reports `degraded: true` with
+    # `memory_decay.state == "disabled"`. A silent off switch here would look
+    # exactly like the bug this closes.
+    memory_decay_interval_s: int = 3600
 
 
 @lru_cache

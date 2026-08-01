@@ -96,7 +96,11 @@ async def test_ntfy_client_skips_when_no_topic() -> None:
 
 @pytest.mark.asyncio
 async def test_ntfy_client_swallows_transport_errors() -> None:
+    attempts = 0
+
     def boom(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
         raise httpx.ConnectError("refused", request=request)
 
     client = _mock_client(boom)
@@ -104,6 +108,8 @@ async def test_ntfy_client_swallows_transport_errors() -> None:
     await ntfy.send(Notification(message="x"))
     await ntfy.aclose()
     await client.aclose()
+
+    assert attempts == 1
 
 
 def test_ntfy_client_satisfies_protocol() -> None:
@@ -171,7 +177,7 @@ async def test_ntfy_action_posts_formatted_message(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
-async def test_ntfy_action_noop_without_url_or_topic() -> None:
+async def test_ntfy_action_noop_without_url_or_topic(caplog: pytest.LogCaptureFixture) -> None:
     trigger = Trigger(
         name="x",
         event_types=["t"],
@@ -180,3 +186,5 @@ async def test_ntfy_action_noop_without_url_or_topic() -> None:
     )
     event = Event(category=EventCategory.AGENT, event_type="t", source="s", payload={})
     await ntfy_action(trigger, event)
+
+    assert "missing ntfy_url or topic" in caplog.text

@@ -111,8 +111,12 @@ class TestDelete:
 
     def test_delete_missing_key_is_noop(self, state_with_store) -> None:
         state, store = state_with_store
+        store.put("items", "present", SampleModel(id="present", name="kept"))
+        state.flush()
         store.delete("items", "nonexistent")
         state.flush()
+
+        assert store.get("items", "present", SampleModel) == SampleModel(id="present", name="kept")
 
 
 class TestContains:

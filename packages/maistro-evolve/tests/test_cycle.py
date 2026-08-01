@@ -97,10 +97,10 @@ class TestPopulationStore:
         store = PopulationStore()
         g1 = _genome("a")
         g1.fitness_score = 50.0
-        g1.eval_scores = {"ifeval": 0.8, "bfcl": 0.7}
+        g1.eval_scores = {"proxy_ifeval": 0.8, "proxy_bfcl": 0.7}
         g2 = _genome("b")
         g2.fitness_score = 80.0
-        g2.eval_scores = {"ifeval": 0.9, "bfcl": 0.8}
+        g2.eval_scores = {"proxy_ifeval": 0.9, "proxy_bfcl": 0.8}
         store.add(g1)
         store.add(g2)
         champ = store.get_champion()
@@ -151,12 +151,12 @@ class TestEvolutionCycle:
         for i in range(6):
             population.add(_genome(f"s{i}"))
 
-        harness = _fake_harness(["ifeval", "bfcl"])
+        harness = _fake_harness(["proxy_ifeval", "proxy_bfcl"])
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=10,
             eval_batch_size=2,
-            target_benchmarks=["ifeval", "bfcl"],
+            target_benchmarks=["proxy_ifeval", "proxy_bfcl"],
             self_improve=False,
         )
 
@@ -170,15 +170,15 @@ class TestEvolutionCycle:
         population = PopulationStore()
         for i in range(4):
             g = _genome(f"s{i}")
-            g.eval_scores = {"ifeval": 0.5 + i * 0.1, "bfcl": 0.4 + i * 0.1}
+            g.eval_scores = {"proxy_ifeval": 0.5 + i * 0.1, "proxy_bfcl": 0.4 + i * 0.1}
             g.fitness_score = float(i) * 10
             population.add(g)
 
-        harness = _fake_harness(["ifeval", "bfcl"])
+        harness = _fake_harness(["proxy_ifeval", "proxy_bfcl"])
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=6,
-            target_benchmarks=["ifeval", "bfcl"],
+            target_benchmarks=["proxy_ifeval", "proxy_bfcl"],
             self_improve=False,
         )
 
@@ -192,17 +192,17 @@ class TestEvolutionCycle:
     async def test_cycle_with_self_improve(self):
         population = PopulationStore()
         g = _genome("top")
-        g.eval_scores = {"ifeval": 0.8, "bfcl": 0.7, "gaia": 0.6}
+        g.eval_scores = {"proxy_ifeval": 0.8, "proxy_bfcl": 0.7, "proxy_gaia": 0.6}
         g.fitness_score = 60.0
         population.add(g)
         for i in range(3):
             population.add(_genome(f"fill{i}"))
 
-        harness = _fake_harness(["ifeval", "bfcl", "gaia"])
+        harness = _fake_harness(["proxy_ifeval", "proxy_bfcl", "proxy_gaia"])
         tournament = EloTournament()
         config = EvolutionConfig(
             population_size=5,
-            target_benchmarks=["ifeval", "bfcl"],
+            target_benchmarks=["proxy_ifeval", "proxy_bfcl"],
             self_improve=True,
             self_improve_top_n=1,
         )
@@ -219,16 +219,16 @@ class TestEvalHarness:
         harness = EvalHarness(benchmark_fidelity="proxy")
         assert len(harness._benchmarks) == 7
         for name in [
-            "ifeval",
-            "bfcl",
-            "swebench",
-            "terminalbench",
-            "tau_bench",
-            "gaia",
-            "ragas",
+            "proxy_ifeval",
+            "proxy_bfcl",
+            "proxy_swebench",
+            "proxy_terminalbench",
+            "proxy_tau_bench",
+            "proxy_gaia",
+            "proxy_ragas",
         ]:
             assert name in harness._benchmarks
-        assert "osworld" not in harness._benchmarks
+        assert "proxy_osworld" not in harness._benchmarks
 
     @pytest.mark.asyncio
     async def test_evaluate_genome_without_llm_call_raises(self):
@@ -237,7 +237,7 @@ class TestEvalHarness:
         harness = EvalHarness(benchmark_fidelity="proxy")
         g = _genome("eval")
         with pytest.raises(ValueError, match="requires an llm_call"):
-            await harness.evaluate_genome(g, benchmarks=["ifeval"])
+            await harness.evaluate_genome(g, benchmarks=["proxy_ifeval"])
 
     @pytest.mark.asyncio
     async def test_evaluate_genome_with_llm_call_scores_real_benchmarks(self):
@@ -247,7 +247,9 @@ class TestEvalHarness:
         async def llm_call(messages, **kwargs):
             return "a plain response"
 
-        results = await harness.evaluate_genome(g, benchmarks=["ifeval", "gaia"], llm_call=llm_call)
+        results = await harness.evaluate_genome(
+            g, benchmarks=["proxy_ifeval", "proxy_gaia"], llm_call=llm_call
+        )
         assert len(results) == 2
         for r in results:
             assert 0.0 <= r.score <= 1.0
