@@ -115,6 +115,9 @@ async def test_update_progress_missing_task_is_noop(queue: TaskQueue):
 
     queue.update_progress("nonexistent-id", TaskProgress())
 
+    assert queue.get("nonexistent-id") is None
+    assert queue._tasks == {}
+
 
 async def test_update_progress_existing_task_notifies(queue: TaskQueue):
     from maistro.tasks.models import TaskProgress
@@ -126,6 +129,9 @@ async def test_update_progress_existing_task_notifies(queue: TaskQueue):
 
 async def test_set_result_missing_task_is_noop(queue: TaskQueue):
     queue.set_result("nonexistent-id", TaskResult(error="boom"))
+
+    assert queue.get("nonexistent-id") is None
+    assert queue._tasks == {}
 
 
 async def test_set_result_existing_task_sets_value(queue: TaskQueue):

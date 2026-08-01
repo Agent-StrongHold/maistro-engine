@@ -26,6 +26,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 CORE_SRC = Path("packages/maistro-core/src/maistro")
 CORE_TESTS = Path("packages/maistro-core/tests")
+PACKAGES = Path("packages")
+EXTERNAL_TEST_ROOTS = {
+    # The package's own tests/ directory is external browser E2E coverage.
+    # Unit tests for its non-backend Python modules live at the repository root.
+    "hive-conductor": Path("tests/hive_conductor"),
+    "maistro-registry": Path("tests/tools/registry"),
+}
 
 
 def resolve_tests(src: str) -> Path | None:
@@ -60,6 +67,69 @@ def resolve_tests(src: str) -> Path | None:
             return candidate
         parent = parent.parent
     return None
+
+
+def resolve_package_tests(src: str) -> Path | None:
+    """Resolve every production package file to its closest package test scope."""
+    path = Path(src)
+    if not (REPO / path).is_file() or path.suffix != ".py" or "tests" in path.parts:
+        return None
+    try:
+        path.relative_to(PACKAGES)
+    except ValueError:
+        return None
+
+    package = Path(*path.parts[:2])
+    test_root = _package_test_root(path, package)
+    if not (REPO / test_root).is_dir():
+        return None
+
+    rel = path.relative_to(_source_root(path, package))
+    mirror = test_root / rel.parent / f"test_{rel.stem}.py"
+    if (REPO / mirror).is_file():
+        return mirror
+
+    return _nearest_test_scope(test_root, rel)
+
+
+def _package_test_root(path: Path, package: Path) -> Path:
+    backend_tests = package / "backend" / "tests"
+    if "backend" in path.parts and (REPO / backend_tests).is_dir():
+        return backend_tests
+    return EXTERNAL_TEST_ROOTS.get(package.name, package / "tests")
+
+
+def _source_root(path: Path, package: Path) -> Path:
+    if "src" in path.parts:
+        index = path.parts.index("src")
+        if len(path.parts) > index + 1:
+            return Path(*path.parts[: index + 2])
+    if "backend" in path.parts:
+        return package / "backend"
+    if "frontend" in path.parts and "server" in path.parts:
+        return package / "frontend" / "server"
+    return package
+
+
+def _nearest_test_scope(test_root: Path, rel: Path) -> Path:
+
+    parent = rel.parent
+    while True:
+        candidate = test_root / parent
+        if (REPO / candidate).is_dir():
+            return candidate
+        if parent == Path("."):
+            return test_root
+        parent = parent.parent
+
+
+def production_sources() -> list[str]:
+    """All executable package Python files, excluding tests and caches."""
+    return sorted(
+        path.relative_to(REPO).as_posix()
+        for path in (REPO / PACKAGES).rglob("*.py")
+        if "tests" not in path.parts and "__pycache__" not in path.parts
+    )
 
 
 def sources_for_test(test_path: str) -> list[str]:
@@ -148,42 +218,72 @@ def priority(src: str) -> int:
     return len(_PRIORITY)
 
 
-def main(argv: list[str]) -> int:
+def _parse_args(argv: list[str]) -> tuple[int, list[str]]:
     limit = 0
     args = list(argv)
     if args and args[0] == "--limit":
         limit = int(args[1])
         args = args[2:]
+    return limit, args
 
-    files = expand(
-        [line.strip() for line in (args[0].splitlines() if args else sys.stdin) if line.strip()]
-    )
+
+def _requested_files(args: list[str]) -> list[str]:
+    if args == ["--all"]:
+        return production_sources()
+    return [line.strip() for line in (args[0].splitlines() if args else sys.stdin) if line.strip()]
+
+
+def _resolve_targets(files: list[str]) -> tuple[list[tuple[str, Path]], list[str]]:
+    # expand() first: a test-only change (PR #320) must still resolve to a
+    # mutatable target, by mapping the test path back to the source(s) it
+    # covers before the source->test-scope resolution below runs.
+    files = expand(files)
     targets: list[tuple[str, Path]] = []
+    unresolved: list[str] = []
     for src in files:
         if not src:
             continue
-        tests = resolve_tests(src)
+        tests = resolve_package_tests(src)
         if tests is None:
-            print(f"skip (no scoped tests found): {src}", file=sys.stderr)
-            continue
-        targets.append((src, tests))
+            unresolved.append(src)
+        else:
+            targets.append((src, tests))
+    return targets, unresolved
+
+
+def _apply_limit(targets: list[tuple[str, Path]], limit: int) -> list[tuple[str, Path]]:
+    if not limit or len(targets) <= limit:
+        return targets
+
+    dropped = targets[limit:]
+    targets = targets[:limit]
+    # Never a silent truncation: a gate that quietly covers less than it
+    # claims is the exact failure this whole workflow was rewritten to remove.
+    print(
+        f"::warning::mutation budget limit={limit}; "
+        f"{len(dropped)} changed file(s) NOT mutated in this run "
+        "(full sweep runs on the develop -> main gate and nightly):",
+        file=sys.stderr,
+    )
+    for src, _ in dropped:
+        print(f"  not mutated: {src}", file=sys.stderr)
+    return targets
+
+
+def main(argv: list[str]) -> int:
+    limit, args = _parse_args(argv)
+    files = _requested_files(args)
+    targets, unresolved = _resolve_targets(files)
+
+    if unresolved:
+        print("::error::mutation target(s) have no package test scope:", file=sys.stderr)
+        for src in unresolved:
+            print(f"  unresolvable: {src}", file=sys.stderr)
+        return 1
 
     targets.sort(key=lambda t: (priority(t[0]), t[0]))
 
-    if limit and len(targets) > limit:
-        dropped = targets[limit:]
-        targets = targets[:limit]
-        # Never a silent truncation: a gate that quietly covers less than it
-        # claims is the exact failure this whole workflow was rewritten to
-        # remove. Name every file that did not get mutated.
-        print(
-            f"::warning::mutation budget limit={limit}; "
-            f"{len(dropped)} changed file(s) NOT mutated in this run "
-            "(full sweep runs on the develop -> main gate and nightly):",
-            file=sys.stderr,
-        )
-        for src, _ in dropped:
-            print(f"  not mutated: {src}", file=sys.stderr)
+    targets = _apply_limit(targets, limit)
 
     for src, tests in targets:
         print(f"{src}\t{tests}")

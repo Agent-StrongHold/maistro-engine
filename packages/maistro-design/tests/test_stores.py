@@ -28,12 +28,13 @@ from maistro_design.types import (
 def make_mock_session_factory():
     """Create a callable that returns an async context manager for a mock session."""
 
+    mock_session = AsyncMock()
+
     @asynccontextmanager
     async def factory():
-        mock_session = AsyncMock()
         yield mock_session
 
-    return factory
+    return factory, mock_session
 
 
 @pytest.fixture
@@ -163,45 +164,61 @@ def test_pg_store_instantiation():
 @pytest.mark.asyncio
 async def test_create_returns_project_with_id(sample_project):
     """Test that create() returns a project with an assigned ID."""
-    mock_factory = make_mock_session_factory()
+    mock_factory, _session = make_mock_session_factory()
     store = PgDesignProjectStore(session_factory=mock_factory)
     result = await store.create(sample_project)
 
     assert result.id is not None
     assert result.id != "test-project-1"  # Should have new UUID
     assert len(result.id) == 36  # UUID format
-    assert result.name == sample_project.name
-    assert result.org_id == sample_project.org_id
-    assert result.team_id == sample_project.team_id
+    assert result.name == "Login Flow (Default)"
+    assert result.org_id == "org-123"
+    assert result.team_id == "team-456"
 
 
 @pytest.mark.asyncio
 async def test_create_calls_execute_for_project_and_outputs(sample_project):
     """Test that create() calls session.execute for project and outputs."""
-    mock_factory = make_mock_session_factory()
+    mock_factory, session = make_mock_session_factory()
     store = PgDesignProjectStore(session_factory=mock_factory)
     await store.create(sample_project)
-    # If no exception was raised, the test passed
-    assert True
+
+    assert session.execute.await_count == 1 + len(sample_project.outputs)
+    project_call, output_call = session.execute.await_args_list
+    assert "INSERT INTO design_projects" in str(project_call.args[0])
+    assert project_call.args[1]["name"] == "Login Flow (Default)"
+    assert project_call.args[1]["org_id"] == "org-123"
+    assert "INSERT INTO design_outputs" in str(output_call.args[0])
+    assert output_call.args[1]["content"] == "export default function LoginFlow() { ... }"
+    assert output_call.args[1]["project_id"] != "test-project-1"
+    session.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_update_modifies_project(sample_project):
-    """Test that update() can be called and modifies a project."""
-    mock_factory = make_mock_session_factory()
+    """Test that update() persists the changed fields and commits."""
+    mock_factory, session = make_mock_session_factory()
     store = PgDesignProjectStore(session_factory=mock_factory)
     sample_project.name = "Updated Name"
     result = await store.update(sample_project)
 
-    assert result.name == "Updated Name"
-    assert result.id == sample_project.id
+    execute_call = session.execute.await_args
+    assert "UPDATE design_projects" in str(execute_call.args[0])
+    assert execute_call.args[1]["id"] == "test-project-1"
+    assert execute_call.args[1]["name"] == "Updated Name"
+    session.commit.assert_awaited_once()
+    assert result is sample_project
 
 
 @pytest.mark.asyncio
 async def test_delete_project(sample_project):
-    """Test that delete() can be called successfully."""
-    mock_factory = make_mock_session_factory()
+    """Test that delete() issues the project delete and commits."""
+    mock_factory, session = make_mock_session_factory()
     store = PgDesignProjectStore(session_factory=mock_factory)
 
-    # Should not raise an exception
     await store.delete("proj-123")
+
+    execute_call = session.execute.await_args
+    assert "DELETE FROM design_projects" in str(execute_call.args[0])
+    assert execute_call.args[1] == {"id": "proj-123"}
+    session.commit.assert_awaited_once()

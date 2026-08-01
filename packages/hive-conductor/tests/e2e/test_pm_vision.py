@@ -17,12 +17,35 @@ import os
 
 import pytest
 import pytest_asyncio
-from browser_use import Agent, Browser, ChatGoogle
+
+# C1 (#286): collect-and-skip rather than error at import. `browser_use` is
+# deliberately absent from the default image — the browser surface lives in
+# `Dockerfile.research` (see the main Dockerfile's header) — and these tests
+# additionally need a live conductor at HIVE_URL plus a real GOOGLE_API_KEY.
+# Importing it unguarded made the whole module an ImportError at collection,
+# so these tests were invisible rather than reported. Now they enumerate with
+# a stated reason.
+_browser_use = pytest.importorskip(
+    "browser_use",
+    reason="browser-use not installed (research image only — see Dockerfile.research)",
+)
+Agent = _browser_use.Agent
+Browser = _browser_use.Browser
+ChatGoogle = _browser_use.ChatGoogle
 
 HIVE_URL = os.environ.get("HIVE_URL", "http://localhost:8101")
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-preview")
 
-pytestmark = pytest.mark.asyncio
+# Both marks apply to every test here: they drive a real browser against a live
+# conductor. `importorskip` above already covers the missing-dependency case;
+# this covers "dependency present but no credentials / no running stack".
+pytestmark = [
+    pytest.mark.asyncio,
+    pytest.mark.skipif(
+        not os.environ.get("GOOGLE_API_KEY"),
+        reason="needs a live conductor at HIVE_URL and a real GOOGLE_API_KEY (#286)",
+    ),
+]
 
 
 @pytest_asyncio.fixture(scope="module")

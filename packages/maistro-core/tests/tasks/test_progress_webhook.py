@@ -96,7 +96,11 @@ async def test_progress_webhook_notifier_posts_json() -> None:
 @pytest.mark.asyncio
 @pytest.mark.ac("SPEC-175/AC-3")
 async def test_progress_webhook_notifier_swallows_errors() -> None:
+    attempts = 0
+
     def boom(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
         raise httpx.ConnectError("refused", request=request)
 
     transport = httpx.MockTransport(boom)
@@ -108,6 +112,8 @@ async def test_progress_webhook_notifier_swallows_errors() -> None:
     await notifier.notify(ConductorProgressPayload(task_id="x", status="failed"))
     await notifier.aclose()
     await client.aclose()
+
+    assert attempts == 1
 
 
 @pytest.mark.contract("behavioral")

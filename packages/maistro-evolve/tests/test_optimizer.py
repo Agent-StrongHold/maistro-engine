@@ -44,36 +44,36 @@ def test_extract_signal_empty_results_returns_no_eval_results_default() -> None:
 
 def test_extract_signal_picks_worst_scoring_benchmark() -> None:
     results = [
-        EvalResult(benchmark="ifeval", score=0.8),
-        EvalResult(benchmark="bfcl", score=0.3),
+        EvalResult(benchmark="proxy_ifeval", score=0.8),
+        EvalResult(benchmark="proxy_bfcl", score=0.3),
     ]
     signal = extract_signal(_genome(), results)
-    assert signal["weakest_benchmark"] == "bfcl"
+    assert signal["weakest_benchmark"] == "proxy_bfcl"
     assert signal["score"] == 0.3
-    assert "bfcl" in signal["suggestion"]
+    assert "proxy_bfcl" in signal["suggestion"]
     assert signal["weakest_node_id"] == "q1"
 
 
 def test_extract_signal_falls_back_to_first_node_when_entry_node_missing() -> None:
     genome = _genome(node_id="other", entry_node="missing-entry")
-    signal = extract_signal(genome, [EvalResult(benchmark="ifeval", score=0.1)])
+    signal = extract_signal(genome, [EvalResult(benchmark="proxy_ifeval", score=0.1)])
     assert signal["weakest_node_id"] == "other"
 
 
 def test_extract_signal_no_nodes_yields_none_weakest_node_id() -> None:
     genome = _genome()
     genome.topology.nodes = []
-    signal = extract_signal(genome, [EvalResult(benchmark="ifeval", score=0.1)])
+    signal = extract_signal(genome, [EvalResult(benchmark="proxy_ifeval", score=0.1)])
     assert signal["weakest_node_id"] is None
 
 
 @pytest.mark.asyncio
 async def test_optimize_topology_uses_llm_call_when_provided() -> None:
     async def llm_call(prompt: str) -> str:
-        assert "ifeval" in prompt
+        assert "proxy_ifeval" in prompt
         return "llm suggestion"
 
-    signal = {"score": 0.3, "weakest_benchmark": "ifeval", "suggestion": "improve it"}
+    signal = {"score": 0.3, "weakest_benchmark": "proxy_ifeval", "suggestion": "improve it"}
     result = await optimize_topology(_genome(), signal, llm_call=llm_call)
     assert result == {"suggestion": "llm suggestion", "source": "llm"}
 
@@ -83,10 +83,10 @@ async def test_optimize_topology_falls_back_to_heuristic_when_llm_call_raises() 
     async def llm_call(prompt: str) -> str:
         raise RuntimeError("boom")
 
-    signal = {"score": 0.3, "weakest_benchmark": "ifeval"}
+    signal = {"score": 0.3, "weakest_benchmark": "proxy_ifeval"}
     result = await optimize_topology(_genome(), signal, llm_call=llm_call)
     assert result["source"] == "heuristic"
-    assert "ifeval" in result["suggestion"]
+    assert "proxy_ifeval" in result["suggestion"]
 
 
 @pytest.mark.asyncio

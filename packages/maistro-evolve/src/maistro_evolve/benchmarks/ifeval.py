@@ -113,6 +113,14 @@ def _score_response(response: str, rules: list[dict[str, Any]]) -> float:
 
 
 async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score instruction-following by checking real, per-instruction rules.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official IFEval corpus. But each check is a genuine structural rule
+    (``contains``, ``exact_match``, ``sentence_count``, ``word_count``,
+    ``valid_json``, ...) evaluated against the actual response — not scored
+    by keyword overlap.
+    """
     if llm_call is None:
         raise ValueError(
             "run_ifeval requires an llm_call — there is no stub/heuristic "
@@ -171,7 +179,7 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="ifeval",
+        benchmark="proxy_ifeval",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),

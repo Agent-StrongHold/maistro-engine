@@ -251,12 +251,29 @@ async def run_swebench_pro(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="swebench_pro",
+        benchmark="proxy_swebench_pro",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "fidelity": "proxy", "dataset": "embedded_sample_v0"},
+        metadata={
+            "total_samples": samples,
+            "fidelity": "proxy",
+            "dataset": "embedded_sample_v0",
+            # Unlike every maistro_evolve proxy scorer (which raises rather than
+            # fabricate a score), this adapter falls back to a candidate-independent
+            # random score (_heuristic_score) when no model is available — a
+            # deliberate choice per runner.py's own comment, so the RSI autorun
+            # loop degrades rather than halts when idle-quota headroom is
+            # temporarily exhausted. `stub` is maistro_evolve's established,
+            # already-consumed noise flag (see reflect.py/hyper_mutator.py:
+            # "SPEC-202 honesty: a stub score is noise — never verify against
+            # it"). Before this fix it was never set here, so a fabricated
+            # score was silently eligible to be treated as real signal by
+            # anything sharing this EvalHarness — exactly the gap that flag
+            # exists to close.
+            "stub": llm_call is None,
+        },
     )
 
 

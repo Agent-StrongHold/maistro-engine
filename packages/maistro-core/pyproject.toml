@@ -29,7 +29,8 @@ maistro = "maistro.cli:main"
 
 [project.optional-dependencies]
 llm = [
-    "fastmcp>=2.0",
+    # Resolves at 3.x in the workspace lock; >=2.0 remains the true floor.
+    "fastmcp>=2.0,<4",
 ]
 # The sandbox tool drives the `docker` CLI via subprocess, not the Python SDK,
 # so it needs no pip dependency. Kept as an explicit (empty) extra for clarity.
@@ -38,22 +39,22 @@ sandbox = []
 # API directly (see observability/tracing.py); installing this extra + setting an OTLP
 # endpoint routes spans to any backend (Arize/Phoenix, Langfuse, Honeycomb, Jaeger).
 observability = [
-    "opentelemetry-api>=1.30",
-    "opentelemetry-sdk>=1.30",
-    "opentelemetry-exporter-otlp>=1.30",
+    "opentelemetry-api>=1.30,<2",
+    "opentelemetry-sdk>=1.30,<2",
+    "opentelemetry-exporter-otlp>=1.30,<2",
 ]
 tui = [
-    "typer>=0.12",
-    "rich>=13.0",
+    "typer>=0.12,<1",
+    "rich>=13.0,<16",
 ]
 builders = [
-    "textual>=0.61",
-    "anthropic>=0.28",
+    "textual>=0.61,<9",
+    "anthropic>=0.28,<1",
     "maistro-bootstrap[builders]",
 ]
 # Homelab/single-instance persistence backend (no Postgres server required).
 sqlite = [
-    "aiosqlite>=0.20",
+    "aiosqlite>=0.20,<1",
 ]
 # BIP39/BIP32 HD root of trust for maistro.identity (ADR-021): Ed25519 signing
 # plus secp256k1 derivation for the BTC/ETH coin types.
@@ -81,11 +82,11 @@ all = [
     "maistro-core[llm,sandbox,observability,tui,builders,sqlite,asgi,identity]",
 ]
 dev = [
-    "pytest>=8.3",
-    "pytest-asyncio>=0.25",
-    "pytest-cov>=6.0",
-    "ruff>=0.9",
-    "mypy>=1.14",
+    "pytest>=8.3,<10",
+    "pytest-asyncio>=0.25,<2",
+    "pytest-cov>=6.0,<8",
+    "ruff>=0.9,<1",
+    "mypy>=1.14,<2",
 ]
 
 [build-system]

@@ -99,8 +99,10 @@ jobs:
         env:
           REQUIRE_AUTH: "false"
           MAISTRO_DRY_RUN: "1"
-      # maistro-rsi + maistro-evolve aren't workspace-root deps (no uv.lock
-      # entry), so put their src trees on PYTHONPATH — the same pattern the
+      # maistro-rsi + maistro-evolve are workspace members (so they DO have
+      # uv.lock entries as of F1/#300) but they are not root dependencies, so
+      # `uv sync` above does not install them into the root env. Put their src
+      # trees on PYTHONPATH — the same pattern the
       # root CLAUDE.md documents for local runs. Their third-party deps
       # (httpx, pydantic, structlog, fastmcp via the root env) are already
       # installed by `uv sync` above.
@@ -145,8 +147,67 @@ jobs:
       # regression net" is a gate that decays open without ever going red.
       - run: npm ci && npm run test:ci
         working-directory: packages/maistro-canvas/frontend
+      # `lint` and `build` for canvas, neither of which any workflow ran.
+      #
+      # The missing `build` is not a hygiene gap — it is how a real defect
+      # stayed hidden. `src/lib/api.js` exported `IMAGE_MODELS` twice, which is
+      # invalid ESM. Vite tolerates it so nothing failed, but eslint could not
+      # parse the file at all, leaving the entire API client unlinted; the
+      # `no-undef` that exposed a `ReferenceError` in
+      # `characterNormalizer.js`'s fallback path was invisible behind it.
+      #
+      # `lint` caps react-hooks warnings at the current 13 (see
+      # eslint.config.js): those are real and deferred, and the cap means the
+      # count can shrink but never grow, while every other rule fails outright.
+      - run: npm run lint
+        working-directory: packages/maistro-canvas/frontend
+      - run: npm run build
+        working-directory: packages/maistro-canvas/frontend
+      # No JS dependency auditing existed anywhere, while security.yml has run
+      # pip-audit for Python since day one — and `server.js` is a real network
+      # service that proxies operator LLM credentials and shells out to python3.
+      # The tree was carrying 7 advisories (4 high, all in vite); `npm audit
+      # fix` cleared them within the existing semver ranges, so this starts at
+      # zero rather than needing a baseline.
+      - run: npm audit --audit-level=high
+        working-directory: packages/maistro-canvas/frontend
       - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
       - run: python -m pytest packages/hive-conductor/backend/tests -v --tb=short
+
+  # packages/hive-conductor/tests/e2e/pm-workflow.spec.ts (Playwright UI
+  # walkthrough: setup wizard -> login -> dashboard -> DAG create/run ->
+  # feedback -> optimizer -> audit log) is already wired into
+  # docker-compose.test.yml's `e2e-tests` service (same live-`hive`-container
+  # harness the API e2e suite uses) but no workflow had ever invoked it (C2/#287).
+  #
+  # continue-on-error: non-blocking for now, matching the v1 plan's own note
+  # that this job "may start non-blocking; blocking by G1". The spec's DAG
+  # mutation steps (tests 05-08) predate the task-scoped permission-elevation
+  # model (middleware/auth.py's _PROTECTED_OPS): they expect `POST /v1/dags` to
+  # return 201, but that route now requires an explicit `dags.write` elevate
+  # call the spec never makes, so it returns 403 — the same auth gap C1/#286
+  # already found and cited for 12 of the API e2e suite's tests. This job
+  # reports that failure (logs/status visible on the PR) without gating merges
+  # until the gap is closed; flip continue-on-error off at G1 once it is.
+  hive-conductor-e2e-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run PM workflow Playwright UI e2e against a live hive-conductor
+        working-directory: packages/hive-conductor
+        run: |
+          docker compose -f docker-compose.test.yml --profile test up --build \
+            --abort-on-container-exit --exit-code-from e2e-tests e2e-tests
+      - name: Dump hive logs on failure
+        if: failure()
+        working-directory: packages/hive-conductor
+        run: docker compose -f docker-compose.test.yml logs --tail=200
+      - name: Tear down
+        if: always()
+        working-directory: packages/hive-conductor
+        run: docker compose -f docker-compose.test.yml down -v
 
   # packages/hive-conductor/tests/e2e/test_pm_workflow_api.py (24 tests: setup
   # wizard -> login -> create/run DAG -> feedback -> optimizer proposal ->
@@ -203,8 +264,12 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v4
-      # Not `uv build --all-packages`: there is no [tool.uv.workspace] members
-      # table, so that only builds the (deliberately empty) root wheel.
+      # A [tool.uv.workspace] members table exists as of F1 (#300), so `uv build
+      # --all-packages` would now work. The explicit loop is kept deliberately:
+      # it builds exactly what is on disk under packages/, so a new package is
+      # enrolled in this gate the moment it grows a pyproject.toml — without
+      # also depending on someone remembering to add it to the members table.
+      # It also excludes the root wheel, which is empty by design.
       - name: Build every package wheel
         run: |
           set -euo pipefail

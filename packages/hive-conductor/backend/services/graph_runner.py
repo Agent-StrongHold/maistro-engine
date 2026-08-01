@@ -19,6 +19,53 @@ logger = logging.getLogger(__name__)
 OnResponseHook = Callable[[dict[str, Any], httpx.Response], None]
 
 
+class StubLLMNotAllowedError(RuntimeError):
+    """No LLM gateway is configured and the stub opt-in is off.
+
+    F3 (loud degraded modes): the graph runner used to hand back a
+    success-shaped `{"response": "stub: no LLM configured", "done": true}`
+    whenever `LITELLM_*` was unset, so a misconfigured deployment produced
+    fake successes. It now refuses instead.
+    """
+
+
+#: Actionable message for `StubLLMNotAllowedError` — names what is unset and
+#: both ways forward (configure a real gateway, or opt in to labelled stubs).
+STUB_LLM_REFUSAL = (
+    "No LLM gateway is configured: neither LITELLM_API_BASE nor LITELLM_PROXY_URL "
+    "is set. Refusing to run against a stub LLM, because a stub answer is noise "
+    "and would look like a real result. Either set LITELLM_API_BASE (with "
+    "LITELLM_API_KEY) to a real gateway, or set ALLOW_STUB_LLM=true "
+    "(Settings.allow_stub_llm) to explicitly opt in to clearly-labelled stub "
+    "responses."
+)
+
+
+def llm_gateway_configured() -> bool:
+    """True when a real LLM gateway base URL is configured.
+
+    The single source of truth for "is this conductor degraded?" — used by
+    `_build_llm_call` to decide whether to refuse, and by the health endpoint
+    to report `degraded`.
+    """
+    return bool(os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL"))
+
+
+def stub_llm_allowed() -> bool:
+    """True when the operator explicitly opted in to stub LLM responses.
+
+    Fails closed: if settings cannot be loaded at all, the opt-in is off and
+    `_build_llm_call` refuses rather than silently stubbing.
+    """
+    try:
+        from config import get_settings
+
+        return bool(get_settings().allow_stub_llm)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("allow_stub_llm_settings_unavailable: %s", exc)
+        return False
+
+
 # Static subprocess body. All untrusted values (system prompt, task description,
 # parent context) are read from environment variables at runtime — NEVER
 # templated into this source — so triple-quotes, backslashes and newlines in a
@@ -565,9 +612,19 @@ def _build_llm_call(on_response: OnResponseHook | None = None):
     model = os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash")
 
     if not base:
+        # F3: hard-fail by default. A stub answer dressed up as a success is
+        # worse than no answer — refuse unless the operator opted in.
+        if not stub_llm_allowed():
+            logger.error("llm_not_configured_refusing_stub")
+            raise StubLLMNotAllowedError(STUB_LLM_REFUSAL)
 
         async def _stub_llm(messages: list[dict], **kwargs: Any) -> str:
-            return json.dumps({"response": "stub: no LLM configured", "done": True})
+            logger.warning("llm_stub_response_emitted (ALLOW_STUB_LLM opt-in is on)")
+            # `response`/`done` keep the shape callers already parse; `stub`
+            # is the unambiguous marker (same flag maistro-evolve refuses to
+            # verify against, SPEC-202 signal honesty) so a stub result can
+            # never be mistaken for a real one downstream.
+            return json.dumps({"response": "stub: no LLM configured", "done": True, "stub": True})
 
         return _stub_llm
 
@@ -662,11 +719,12 @@ async def execute_dag_streaming(dag_data: dict, *, on_response: OnResponseHook |
         task_objective=dag_data.get("name", "Unnamed DAG"),
         workspace=dag_data.get("workspace", "/tmp/maistro-workspace"),  # nosec B108
     )
-    llm_call = _build_llm_call(on_response)
-
     yield {"status": "started", "node_count": len(nodes_cfg), "entry": entry_node}
 
     try:
+        # Inside the try so an unconfigured LLM (F3) surfaces as a structured
+        # `failed` event on the stream instead of raising out of the generator.
+        llm_call = _build_llm_call(on_response)
         result = await run_graph(
             task=dag_data.get("description", dag_data.get("name", "")),
             config=config,

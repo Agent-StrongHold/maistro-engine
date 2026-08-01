@@ -233,8 +233,8 @@ class TestTournamentDrawsFromIsland:
 
         # Record ELO so tournament path fires in _breed_island.
         tournament = EloTournament()
-        tournament.record_battle("ifeval", "g0", "g1", 0.5, 0.6)
-        tournament.record_battle("ifeval", "g1", "g2", 0.6, 0.7)
+        tournament.record_battle("proxy_ifeval", "g0", "g1", 0.5, 0.6)
+        tournament.record_battle("proxy_ifeval", "g1", "g2", 0.6, 0.7)
 
         cycle = EvolutionCycle(harness=EvalHarness(), tournament=tournament)
         island_0_members_before = set(ip.get_members(0))

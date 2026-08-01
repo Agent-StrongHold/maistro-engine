@@ -8,18 +8,18 @@ license-files = ["LICENSE"]
 dependencies = [
     "maistro-core>=0.9.0",
     "maistro-canvas>=0.9.0",
-    "httpx>=0.28",
-    "pydantic>=2.0",
-    "pyyaml>=6.0",
+    "httpx>=0.28,<1",
+    "pydantic>=2.0,<3",
+    "pyyaml>=6.0,<7",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3",
-    "pytest-asyncio>=0.25",
-    "hypothesis>=6.130",
-    "ruff>=0.9",
-    "mypy>=1.14",
+    "pytest>=8.3,<10",
+    "pytest-asyncio>=0.25,<2",
+    "hypothesis>=6.130,<7",
+    "ruff>=0.9,<1",
+    "mypy>=1.14,<2",
 ]
 
 [build-system]

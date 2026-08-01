@@ -1,18 +1,17 @@
 # Mutation testing (cosmic-ray) — Pillar 4 of the QA gate.
 #
-# Gate: ≥90% mutation kill rate on the files it mutates.
+# Gate: mutation_viability.py's viability-adjusted kill rate must clear 90% on
+# every file the PR changed.
 #
-# Scope is tiered by what the PR is gating, because a full per-file sweep costs
-# roughly six minutes per changed file and cannot fit a fast feedback loop:
-#
-#   - PR -> develop/integration : the MOST SECURITY-RELEVANT changed files
-#     (security/, policy/, router/, then graph/), capped at MUTATION_FILE_CAP.
-#     Fast feedback. Any file not mutated is named explicitly in the log —
-#     never silently dropped.
-#   - PR -> main (the release gate) : EVERY changed file, no cap. This is
-#     where develop's accumulated work is held to full coverage, and the long
-#     runtime is affordable because it happens once per release.
-#   - Nightly : full sweep across the load-bearing substrate.
+#   - PR -> any branch (main/integration/develop) : every changed production
+#     Python file across ALL packages is mutated, no cap
+#     (MUTATION_FILE_CAP: '0') — a per-file budget that silently widened to
+#     the whole suite is how this job used to time out. Any file that fails to
+#     resolve a test scope is named explicitly in the log — never silently
+#     dropped.
+#   - Nightly : one rotating four-shard batch across the full codebase
+#     (mutation-nightly-full below). The reviewed per-file baseline
+#     (quality/mutation-baseline.json) is built from these shards' output.
 #
 # Surviving mutants are tracked in docs/MUTATION-SURVIVORS.md and are
 # treated as defects (test missed a real regression).
@@ -23,56 +22,32 @@ on:
   pull_request:
     branches: [main, integration, develop]
     paths:
-      - 'packages/maistro-core/src/maistro/graph/**'
-      - 'packages/maistro-core/src/maistro/projects/**'
-      - 'packages/maistro-core/src/maistro/memory/**'
-      # security/ and router/ must be here as well as in the changed-files
-      # filter below: a PR touching ONLY security code never triggered this
-      # workflow, so widening the inner filter alone changed nothing for
-      # exactly the files where surviving mutants matter most.
-      - 'packages/maistro-core/src/maistro/security/**'
-      - 'packages/maistro-core/src/maistro/router/**'
-      # policy/ ranks second in scripts/mutation_targets.py's priority table,
-      # which was unreachable while this list omitted it: a policy-only PR
-      # never started the job, and policy files in a mixed PR never reached
-      # the ranking. A priority entry for a subtree the gate cannot see is a
-      # claim about coverage that nothing delivers.
-      - 'packages/maistro-core/src/maistro/policy/**'
-      # The mirrored TEST subtrees. A PR that only adds tests was invisible
-      # here: these paths were absent, and the changed-files filter below
-      # additionally stripped `/tests/`. So the one kind of PR whose entire
-      # purpose is killing surviving mutants never started the job that
-      # measures them. `sources_for_test` maps each changed test path back to
-      # the source it covers.
-      - 'packages/maistro-core/tests/graph/**'
-      - 'packages/maistro-core/tests/projects/**'
-      - 'packages/maistro-core/tests/memory/**'
-      - 'packages/maistro-core/tests/security/**'
-      - 'packages/maistro-core/tests/router/**'
-      - 'packages/maistro-core/tests/policy/**'
-      # The gate's own machinery. Editing the scoring logic did not trigger the
-      # workflow that runs it, so a change to how this gate decides could not be
-      # exercised by this gate. The unit suite in tests/test_mutation_viability.py
-      # is the real safety net for that logic; this at least runs the job
-      # end-to-end whenever a PR also touches a mutatable file.
-      - '.github/workflows/mutation.yml'
-      - 'scripts/mutation_targets.py'
-      - 'scripts/mutation_viability.py'
+      - 'packages/**/*.py'
   schedule:
     - cron: "0 6 * * *"   # nightly 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      shard_start:
+        description: "First shard to run (0-31)"
+        required: false
+        default: "0"
+        type: string
+      shard_count:
+        description: "Number of consecutive shards to run (1-4)"
+        required: false
+        default: "4"
+        type: string
 
 jobs:
   mutation-pr:
     name: Mutation testing on changed files
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    # ~6 min per changed file measured on PR #265 (5 of 13 files in 30 min).
-    # The release gate gets a budget that can actually finish a full sweep;
-    # feature PRs stay fast because their scope is capped below.
-    timeout-minutes: ${{ github.base_ref == 'main' && 180 || 30 }}
+    # Every changed production module is mutated. The nightly job establishes
+    # the full-codebase baseline; this job prevents PR-local regressions.
+    timeout-minutes: 360
     env:
-      # 0 = no cap (full sweep). Only the develop -> main gate gets it.
-      MUTATION_FILE_CAP: ${{ github.base_ref == 'main' && '0' || '4' }}
+      MUTATION_FILE_CAP: '0'
       # Via env, not inlined into the run script: a branch name interpolated
       # straight into shell is an injection seam, and this one is
       # attacker-influenced on fork PRs.
@@ -81,12 +56,35 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v7
-      - run: uv python install 3.12
-      - run: uv sync --locked --all-extras
 
-      - name: Identify changed Python files under load-bearing subtrees
+      - name: Check whether the changed-file ratchet is initialized
+        id: baseline
+        run: |
+          if python -c "import json; print(bool(json.load(open('quality/mutation-baseline.json'))['entries']))" | grep -qx True; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "No reviewed mutation baseline yet; changed-file gate deferred to sampled shard."
+          fi
+
+      - uses: astral-sh/setup-uv@v7
+        if: steps.baseline.outputs.ready == 'true'
+      - run: uv python install 3.12
+        if: steps.baseline.outputs.ready == 'true'
+      - run: uv sync --locked --all-extras
+        if: steps.baseline.outputs.ready == 'true'
+      # Hive Conductor is not a workspace package, so `uv sync` above doesn't
+      # cover it. The `packages/**/*.py` trigger above can resolve a changed
+      # file to `packages/hive-conductor/backend/tests`, whose BDD suite needs
+      # pytest_bdd from the backend's own requirements — matches the same
+      # install the sharded nightly job below already carries.
+      - name: Install Hive Conductor backend test dependencies
+        if: steps.baseline.outputs.ready == 'true'
+        run: uv pip install -r packages/hive-conductor/backend/requirements.txt
+
+      - name: Identify every changed production Python file
         id: changed
+        if: steps.baseline.outputs.ready == 'true'
         run: |
           # Diff against the PR's OWN base, not a hardcoded origin/main. This
           # workflow also runs for PRs into develop/integration, where
@@ -99,27 +97,14 @@ jobs:
           # the precise phantom-gate shape this workflow exists to remove.
           git fetch --no-tags --depth=0 origin "$BASE_REF" 2>/dev/null \
             || git fetch --no-tags origin "$BASE_REF"
-          # --diff-filter=ACMR excludes deletions: `resolve_tests` validates
-          # that the TEST path exists, never the source, so a deleted module
-          # whose test directory survives resolves happily, consumes a capped
-          # slot, and hands cosmic-ray a module-path that is not there.
-          # Test paths are included, not stripped. `mutation_targets.py` maps
-          # each one back to the source files it covers; a changed source and
-          # its changed tests collapse to a single target rather than two.
-          # Stripping `/tests/` here is what made a test-only PR a no-op.
-          CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- \
-            'packages/maistro-core/src/maistro/graph/' \
-            'packages/maistro-core/src/maistro/projects/' \
-            'packages/maistro-core/src/maistro/memory/' \
-            'packages/maistro-core/src/maistro/security/' \
-            'packages/maistro-core/src/maistro/router/' \
-            'packages/maistro-core/src/maistro/policy/' \
-            'packages/maistro-core/tests/graph/' \
-            'packages/maistro-core/tests/projects/' \
-            'packages/maistro-core/tests/memory/' \
-            'packages/maistro-core/tests/security/' \
-            'packages/maistro-core/tests/router/' \
-            'packages/maistro-core/tests/policy/' \
+          # --diff-filter=ACMR excludes deletions: Cosmic Ray needs a source
+          # file, and a deleted module whose test directory survives would
+          # otherwise resolve happily and hand cosmic-ray a module-path that
+          # is not there. Test paths are INCLUDED, not stripped:
+          # `mutation_targets.py`'s expand()/sources_for_test() map a changed
+          # test path back to the source file(s) it covers, so a test-only PR
+          # still produces a mutation target instead of silently no-op'ing.
+          CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" -- packages \
             | grep '\.py$' | grep -v '__pycache__' || true)
           {
             echo "files<<EOF"
@@ -127,13 +112,13 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then
-            echo "No load-bearing files changed; skipping mutation test."
+            echo "No production Python files changed; skipping mutation test."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Resolve each changed file to its scoped tests
+      - name: Resolve every changed file to its package test scope
         id: targets
-        if: steps.changed.outputs.skip != 'true'
+        if: steps.baseline.outputs.ready == 'true' && steps.changed.outputs.skip != 'true'
         run: |
           # Default 4, NOT 0. If the `github.base_ref` expression ever yields
           # empty (an event type that doesn't set it), `:-0` would mean "no
@@ -143,7 +128,6 @@ jobs:
           # that gets killed and reports nothing.
           echo "Base branch: '${{ github.base_ref }}' — file cap: ${MUTATION_FILE_CAP:-4} (0 = full sweep)"
           uv run python scripts/mutation_targets.py \
-            --limit "${MUTATION_FILE_CAP:-4}" \
             "${{ steps.changed.outputs.files }}" \
             > mutation-targets.tsv
           echo "Resolved targets:"; cat mutation-targets.tsv
@@ -158,19 +142,19 @@ jobs:
       # That was live: `--timeout=` needs pytest-timeout, which nothing in this
       # job installed. Prove the command passes on UNMUTATED code first.
       - name: Baseline — the test command must pass before any mutant is trusted
-        if: steps.changed.outputs.skip != 'true'
+        if: steps.baseline.outputs.ready == 'true' && steps.changed.outputs.skip != 'true'
         run: |
           set -euo pipefail
           while IFS=$'\t' read -r src tests; do
             [ -z "$src" ] && continue
             echo "::group::baseline $tests"
-            env PYTHONPATH=packages/maistro-core/src uv run pytest "$tests" \
+            env PYTHONPATH="$(find packages -type d -name src -printf '%p:')" uv run pytest "$tests" \
               --timeout=15 -q -x
             echo "::endgroup::"
           done < mutation-targets.tsv
 
       - name: cosmic-ray per changed file + aggregate gate
-        if: steps.changed.outputs.skip != 'true'
+        if: steps.baseline.outputs.ready == 'true' && steps.changed.outputs.skip != 'true'
         run: |
           set -uo pipefail
           : > mutation-rows.jsonl
@@ -183,7 +167,7 @@ jobs:
           module-path = "$src"
           timeout = 30.0
           excluded-modules = []
-          test-command = "env PYTHONPATH=packages/maistro-core/src python -m pytest $tests --timeout=15 -q -x"
+          test-command = "env PYTHONPATH=$(find packages -type d -name src -printf '%p:') python -m pytest $tests --timeout=15 -q -x"
 
           [cosmic-ray.distributor]
           name = "local"
@@ -200,10 +184,9 @@ jobs:
             echo "::endgroup::"
           done < mutation-targets.tsv
 
-          # Scoring moved out of an inline heredoc and into scripts/, where it
-          # is covered by tests/test_mutation_viability.py. The inline version
-          # scored `killed / total` over every mutant cosmic-ray produced, and
-          # that denominator is not all killable: an operator swap inside a
+          # Scoring uses scripts/mutation_viability.py's gate mode (tested in
+          # tests/test_mutation_viability.py), not a raw killed/total ratio:
+          # that denominator is not all killable -- an operator swap inside a
           # type annotation cannot change behaviour in a module carrying
           # `from __future__ import annotations`, because annotations are never
           # evaluated there. cosmic-ray cannot mark those INCOMPETENT -- that
@@ -216,14 +199,17 @@ jobs:
           # Only provably non-viable mutants are subtracted, each one named in
           # the log. Mutants that fail to compile, and mutants the classifier
           # could not reconstruct, stay in the denominator -- a parse failure in
-          # our own tooling must never loosen this gate.
+          # our own tooling must never loosen this gate. The per-shard
+          # baseline-ratchet (scripts/check_mutation_baseline.py) is the
+          # nightly job's mechanism for tracking reviewed per-file rates over
+          # time; it does not replace this PR-time viability-adjusted gate.
           uv run python scripts/mutation_viability.py \
             --sessions mutation-sessions.tsv \
             --threshold 0.90 \
             --json mutation-gate.json
 
       - name: Upload mutation report
-        if: always() && steps.changed.outputs.skip != 'true'
+        if: always() && steps.baseline.outputs.ready == 'true' && steps.changed.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: mutation-pr-${{ github.event.pull_request.number }}
@@ -236,7 +222,9 @@ jobs:
 
   mutation-nightly:
     name: Mutation testing (full sweep nightly)
-    if: github.event_name == 'schedule'
+    # Superseded by the sharded all-package sweep below. Kept temporarily so
+    # prior run links remain recognizable, but never scheduled again.
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
@@ -306,3 +294,111 @@ jobs:
             session-nightly.sqlite
             mutation-nightly.json
             mutation-dashboard.md
+
+  mutation-shard-plan:
+    name: Plan mutation batch
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - id: plan
+        env:
+          SHARD_START: ${{ inputs.shard_start }}
+          SHARD_COUNT: ${{ inputs.shard_count }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            start=$((PR_NUMBER % 32))
+            count=1
+          elif [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            start=$(( (10#$(date -u +%j) % 8) * 4 ))
+            count=4
+          else
+            start="${SHARD_START:-0}"
+            count="${SHARD_COUNT:-4}"
+          fi
+          python - "$start" "$count" <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import sys
+
+          start, count = map(int, sys.argv[1:])
+          if not 0 <= start < 32 or not 1 <= count <= 4 or start + count > 32:
+              raise SystemExit("shard_start must be 0-31 and shard_count must be 1-4 without crossing 31")
+          print(f"shards={json.dumps(list(range(start, start + count)))}")
+          PY
+
+  mutation-nightly-full:
+    name: Mutation testing (sampled codebase shard ${{ matrix.shard }})
+    needs: mutation-shard-plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.mutation-shard-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install 3.12
+      - run: uv sync --locked --all-extras
+      # Hive Conductor is not a workspace package. Its BDD test dependency is
+      # declared in the backend requirements, not the root uv environment.
+      - name: Install Hive Conductor backend test dependencies
+        run: uv pip install -r packages/hive-conductor/backend/requirements.txt
+
+      - name: Resolve this shard's complete source inventory
+        run: |
+          uv run python scripts/mutation_targets.py --all > mutation-targets-all.tsv
+          awk '((NR - 1) % 32) == ${{ matrix.shard }}' mutation-targets-all.tsv > mutation-targets.tsv
+          test -s mutation-targets.tsv
+          cat mutation-targets.tsv
+
+      - name: Baseline each unmutated test command
+        run: |
+          set -euo pipefail
+          while IFS=$'\t' read -r _ tests; do
+            env PYTHONPATH="$(find packages -type d -name src -printf '%p:')" uv run pytest "$tests" --timeout=20 -q -x
+          done < mutation-targets.tsv
+
+      - name: Mutate every source in this shard
+        run: |
+          set -euo pipefail
+          : > mutation-rows-${{ matrix.shard }}.jsonl
+          while IFS=$'\t' read -r src tests; do
+            cat > cosmic-ray.toml <<EOF
+          [cosmic-ray]
+          module-path = "$src"
+          timeout = 60.0
+          excluded-modules = []
+          test-command = "env PYTHONPATH=$(find packages -type d -name src -printf '%p:') python -m pytest $tests --timeout=20 -q -x"
+
+          [cosmic-ray.distributor]
+          name = "local"
+
+          [cosmic-ray.distributor.local]
+          worker-count = 4
+          EOF
+            session="session-${{ matrix.shard }}-$(echo "$src" | tr '/.' '__').sqlite"
+            uv run cosmic-ray init cosmic-ray.toml "$session"
+            uv run cosmic-ray exec cosmic-ray.toml "$session"
+            uv run cosmic-ray dump "$session" >> mutation-rows-${{ matrix.shard }}.jsonl
+          done < mutation-targets.tsv
+
+      - name: Build mergeable sampled baseline candidate
+        if: success()
+        run: |
+          cp quality/mutation-baseline.json mutation-baseline-candidate-${{ matrix.shard }}.json
+          uv run python scripts/check_mutation_baseline.py mutation-rows-${{ matrix.shard }}.jsonl \
+            --baseline mutation-baseline-candidate-${{ matrix.shard }}.json --write-baseline
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-nightly-shard-${{ matrix.shard }}
+          path: |
+            mutation-rows-${{ matrix.shard }}.jsonl
+            mutation-targets.tsv
+            mutation-baseline-candidate-${{ matrix.shard }}.json

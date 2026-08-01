@@ -354,13 +354,17 @@ async def test_emit_swallows_callback_exception() -> None:
     from maistro.graph.events import graph_started
 
     run = _run()
+    attempts = 0
 
     async def boom(event):
+        nonlocal attempts
+        attempts += 1
         raise RuntimeError("callback exploded")
 
     run.event_callbacks.append(boom)
-    # Must not raise even though the callback blows up.
     await run._emit(graph_started(run.run_id, nodes=[], entry="planner", model="m"))
+
+    assert attempts == 1
 
 
 # --- start() / _execute() control flow -------------------------------------------

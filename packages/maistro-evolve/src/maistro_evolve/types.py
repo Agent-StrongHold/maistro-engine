@@ -40,14 +40,18 @@ class DAGTopology(BaseModel):
 
 
 class EvalWeights(BaseModel):
-    ifeval: float = 0.15
-    bfcl: float = 0.15
-    swebench: float = 0.20
-    terminalbench: float = 0.10
-    tau_bench: float = 0.15
-    gaia: float = 0.10
-    ragas: float = 0.10
-    osworld: float = 0.05
+    # Field names double as the benchmark identifiers looked up by-name from
+    # `EvalResult.benchmark` / `genome.eval_scores` keys (see fitness.py's
+    # `getattr(weights, bench, None)`) — must stay in lockstep with the
+    # `proxy_`-prefixed identifiers in `benchmarks/__init__.py` (SPEC-202).
+    proxy_ifeval: float = 0.15
+    proxy_bfcl: float = 0.15
+    proxy_swebench: float = 0.20
+    proxy_terminalbench: float = 0.10
+    proxy_tau_bench: float = 0.15
+    proxy_gaia: float = 0.10
+    proxy_ragas: float = 0.10
+    proxy_osworld: float = 0.05
 
 
 class PipelineGenome(BaseModel):

@@ -32,6 +32,45 @@ def test_health_ready() -> None:
     assert "checks" in body
 
 
+def test_health_reports_degraded_when_no_llm_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F3: no LLM gateway → `degraded: true`, but still a 200 "ok".
+
+    /health is the liveness probe compose and the image healthcheck hit, so
+    degradation must be reported, never turned into an outage.
+    """
+    monkeypatch.delenv("LITELLM_API_BASE", raising=False)
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+
+    r = client.get("/health")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ok"
+    assert data["degraded"] is True
+    assert data["llm_configured"] is False
+
+
+def test_health_not_degraded_when_llm_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LITELLM_API_BASE", "http://gateway.example")
+
+    data = client.get("/health").json()
+    assert data["llm_configured"] is True
+    assert data["degraded"] is False
+
+
+def test_health_ready_reports_llm_check_without_flipping_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The LLM check is visible in `checks`, but readiness stays keyed on the API."""
+    monkeypatch.delenv("LITELLM_API_BASE", raising=False)
+    monkeypatch.delenv("LITELLM_PROXY_URL", raising=False)
+
+    body = client.get("/health/ready").json()
+    assert body["checks"]["llm"] is False
+    assert body["ready"] is True
+
+
 def test_unauthenticated_api_returns_401() -> None:
     r = client.get("/v1/tasks")
     assert r.status_code == 401

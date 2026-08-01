@@ -17,7 +17,7 @@ export default function CompositePreview({ canvas, onClose }) {
         try {
           const latest = await api.getLatestComposite(canvas.id);
           setImage(latest.image_url || latest.image_b64);
-        } catch {}
+        } catch { /* no composite yet; the placeholder stays until one exists */ }
       } finally {
         setLoading(false);
       }

@@ -61,23 +61,23 @@ class TestHardGate:
 
     def test_one_below_gate_fails(self):
         scores = {k: v + 0.1 for k, v in _HARD_GATE_THRESHOLDS.items()}
-        scores["ifeval"] = 0.1
+        scores["proxy_ifeval"] = 0.1
         g = _genome(eval_scores=scores)
         passed, failures = _check_hard_gate(g)
         assert not passed
-        assert any("ifeval" in f for f in failures)
+        assert any("proxy_ifeval" in f for f in failures)
 
     def test_gate_thresholds_cover_all_8_benchmarks(self):
         assert len(_HARD_GATE_THRESHOLDS) == 8
         expected = {
-            "ifeval",
-            "bfcl",
-            "swebench",
-            "terminalbench",
-            "tau_bench",
-            "gaia",
-            "ragas",
-            "osworld",
+            "proxy_ifeval",
+            "proxy_bfcl",
+            "proxy_swebench",
+            "proxy_terminalbench",
+            "proxy_tau_bench",
+            "proxy_gaia",
+            "proxy_ragas",
+            "proxy_osworld",
         }
         assert set(_HARD_GATE_THRESHOLDS.keys()) == expected
 
@@ -98,7 +98,7 @@ class TestWeightedEvalScore:
         assert _weighted_eval_score(g) == 0.0
 
     def test_partial_scores(self):
-        scores = {"ifeval": 0.8, "bfcl": 0.6}
+        scores = {"proxy_ifeval": 0.8, "proxy_bfcl": 0.6}
         g = _genome(eval_scores=scores)
         score = _weighted_eval_score(g)
         assert 0.0 < score < 1.0
@@ -133,7 +133,7 @@ class TestLatencyEfficiency:
 
 class TestComputeFitness:
     def test_failed_hard_gate_zero_fitness(self):
-        g = _genome(eval_scores={"ifeval": 0.1})
+        g = _genome(eval_scores={"proxy_ifeval": 0.1})
         fitness = compute_fitness(g, [g])
         assert fitness.total == 0.0
         assert not fitness.passed_hard_gate
