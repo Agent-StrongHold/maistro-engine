@@ -719,14 +719,19 @@ button:hover, .suggestion-button:hover {
   flex-wrap: wrap;
   flex: 1;
 }
-/* .workspace-tabs .workspace-tab (not just .workspace-tab): this file has
+/* .workspace-toolbar .workspace-tab (not just .workspace-tab): this file has
    accumulated several auto-generated `button:not([class*="..."])` rules
    whose :not() argument counts as a selector for specificity purposes, so a
    bare single class here loses the cascade to them. The doubled-up selector
-   safely outranks any single-class-plus-element combination. */
-.workspace-tabs .workspace-tab {
+   safely outranks any single-class-plus-element combination.
+   Scoped to `.workspace-toolbar` (not the narrower `.workspace-tabs`) so it
+   also reaches the Share/Tools/New-persona toggle buttons -- they reuse the
+   `workspace-tab` class but render as `.workspace-tabs`' siblings, not its
+   descendants, so the narrower selector silently missed them and let all
+   four buttons in the toolbar look inconsistent with each other. */
+.workspace-toolbar .workspace-tab {
   padding: 4px 10px !important;
-  border-radius: 4px !important;
+  border-radius: 6px !important;
   border: 1px solid var(--rule) !important;
   background: var(--paper-2) !important;
   color: var(--pencil) !important;
@@ -736,12 +741,12 @@ button:hover, .suggestion-button:hover {
   box-shadow: none !important;
   transform: none !important;
 }
-.workspace-tabs .workspace-tab:hover {
+.workspace-toolbar .workspace-tab:hover {
   border-color: var(--accent) !important;
   color: var(--ink) !important;
   transform: none !important;
 }
-.workspace-tabs .workspace-tab.active {
+.workspace-toolbar .workspace-tab.active {
   background: var(--accent-light) !important;
   border-color: var(--accent) !important;
   color: var(--ink) !important;
@@ -760,7 +765,7 @@ button:hover, .suggestion-button:hover {
 .workspace-tab-new-form select {
   font-size: 12px;
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--accent);
   font-family: var(--sans);
 }
@@ -780,6 +785,54 @@ button:hover, .suggestion-button:hover {
   font-family: var(--mono);
 }
 
+/* Every button inside these three workspace-toolbar dropdown panels
+   (Share/Tools/PersonaWizard) falls back, by default, to whichever of this
+   file's many auto-generated `button { ... }` rules happens to win the
+   cascade -- a different radius/border/shadow on nearly every one of them,
+   which is where most of the panels' "no coherent theme" feel came from.
+   One rule per panel, scoped by class+element (beats a bare `button`
+   regardless of source order), gives every button in these panels the same
+   quiet, thin-bordered look as the rest of the app -- the danger-colored
+   remove/delete buttons below have their own higher-specificity selectors
+   and still win over this. */
+.workspace-share-panel button,
+.workspace-tool-bindings-panel button,
+.persona-wizard-panel button {
+  padding: 4px 10px !important;
+  border-radius: 6px !important;
+  border: 1px solid var(--rule) !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+  font-family: var(--sans) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+  transform: none !important;
+  transition: border-color 0.15s, background 0.15s;
+}
+.workspace-share-panel button:hover,
+.workspace-tool-bindings-panel button:hover,
+.persona-wizard-panel button:hover {
+  border-color: var(--accent) !important;
+  background: var(--accent-light) !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+.workspace-share-panel button:disabled,
+.workspace-tool-bindings-panel button:disabled,
+.persona-wizard-panel button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.persona-wizard-panel button[type="submit"] {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+}
+.persona-wizard-panel button[type="submit"]:hover {
+  background: var(--accent-hover) !important;
+}
+
 /* Share/invite panel for the active workspace. */
 .workspace-share {
   position: relative;
@@ -793,9 +846,9 @@ button:hover, .suggestion-button:hover {
   min-width: 220px;
   background: var(--paper);
   border: 1px solid var(--rule);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  padding: 10px;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  padding: 12px;
 }
 .workspace-share-title {
   font-size: 11px;
@@ -849,7 +902,7 @@ button:hover, .suggestion-button:hover {
 .workspace-share-invite-form select {
   font-size: 12px;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--rule);
   font-family: var(--sans);
   min-width: 0;
@@ -904,9 +957,9 @@ button:hover, .suggestion-button:hover {
   overflow-y: auto;
   background: var(--paper);
   border: 1px solid var(--rule);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  padding: 10px;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -950,7 +1003,7 @@ button:hover, .suggestion-button:hover {
 .workspace-tool-bindings-agent textarea {
   font-size: 12px;
   padding: 3px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--rule);
   font-family: var(--sans);
 }
@@ -968,7 +1021,7 @@ button:hover, .suggestion-button:hover {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -979,8 +1032,8 @@ button:hover, .suggestion-button:hover {
   overflow-y: auto;
   background: var(--paper);
   border: 1px solid var(--rule);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
   padding: 16px;
 }
 .persona-wizard-header {
@@ -1018,7 +1071,7 @@ button:hover, .suggestion-button:hover {
 .persona-wizard-fields input {
   font-size: 13px;
   padding: 5px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--rule);
   font-family: var(--sans);
 }
@@ -1035,7 +1088,7 @@ button:hover, .suggestion-button:hover {
 .persona-wizard-agent input {
   font-size: 12px;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--rule);
   font-family: var(--sans);
   min-width: 0;
@@ -1053,7 +1106,7 @@ button:hover, .suggestion-button:hover {
 .persona-wizard-interview-question input {
   font-size: 12px;
   padding: 4px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
   border: 1px solid var(--rule);
   font-family: var(--sans);
   min-width: 0;
