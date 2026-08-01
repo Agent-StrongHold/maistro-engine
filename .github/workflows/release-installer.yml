@@ -1,14 +1,25 @@
 # Installer release plumbing (SPEC-072726-3439 Phase 5):
-#   - build + push pinned images to GHCR (digests printed for the
-#     PINNED_IMAGES map in maistro_bootstrap/delivery.py),
-#   - publish a SHA256SUMS manifest for the curl/iex entrypoints
-#     (get.sh verifies install.sh against it via MAISTRO_SHA256SUMS_URL),
+#   - produce a SHA256SUMS manifest for the curl/iex entrypoints as a build
+#     artifact (get.sh verifies install.sh against it via
+#     MAISTRO_SHA256SUMS_URL; the *published* manifest is the one release.yml
+#     attaches to the GitHub release),
 #   - run a full installer smoke test: wizardless install with staged
 #     bootstrap credentials, asserting the stack is healthy, setup
 #     completed, and the credentials file was shredded.
 #
 # Runs on version tags and manual dispatch — the smoke job builds the whole
 # compose stack and takes tens of minutes; it is not a per-PR gate.
+#
+# This workflow DOES NOT PUBLISH. It used to carry a `build-images` job that
+# pushed ghcr.io/.../maistro-engine and hive-conductor at `:latest` and
+# `:${{ github.ref_name }}` on every `v*` tag. That was a second publish path,
+# which ADR-073126-c4e1 §3 forbids ("Publishing — to PyPI or to the container
+# registry — happens only via the tag-triggered release.yml workflow"), and it
+# published unsigned images and moved `:latest` even for a release candidate.
+# release.yml's `images` job replaces it: same two images, gated by the
+# `release` environment approval, cosign-signed by digest, and with `latest`
+# withheld from prereleases. Image digests for the PINNED_IMAGES map in
+# maistro_bootstrap/delivery.py are printed to that job's run summary.
 name: release-installer
 
 on:
@@ -16,54 +27,11 @@ on:
   push:
     tags: ["v*"]
 
+# Read-only: this workflow no longer pushes anything to the registry.
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  build-images:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-buildx-action@v3
-      - name: Build + push maistro-engine
-        id: engine
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: |
-            ghcr.io/blakematthews-dev/maistro-engine:latest
-            ghcr.io/blakematthews-dev/maistro-engine:${{ github.ref_name }}
-      - name: Build + push hive-conductor
-        id: conductor
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: packages/hive-conductor/Dockerfile
-          push: true
-          tags: |
-            ghcr.io/blakematthews-dev/hive-conductor:latest
-            ghcr.io/blakematthews-dev/hive-conductor:${{ github.ref_name }}
-      - name: Print digests for the PINNED_IMAGES map
-        run: |
-          {
-            echo "## Pinned image digests"
-            echo
-            echo "Update PINNED_IMAGES in packages/maistro-bootstrap/src/maistro_bootstrap/delivery.py:"
-            echo
-            echo '```'
-            echo "maistro-engine:  ghcr.io/blakematthews-dev/maistro-engine@${{ steps.engine.outputs.digest }}"
-            echo "hive-conductor:  ghcr.io/blakematthews-dev/hive-conductor@${{ steps.conductor.outputs.digest }}"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
   checksums:
     runs-on: ubuntu-latest
     steps:

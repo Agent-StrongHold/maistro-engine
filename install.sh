@@ -22,6 +22,22 @@ MACOS_RUNTIME="${MAISTRO_MACOS_RUNTIME:-}"
 INSTALL_CLI="${MAISTRO_INSTALL_CLI:-1}"
 OPEN_BROWSER="${MAISTRO_OPEN_BROWSER:-1}"
 
+# Container tag the generated image_pull compose pins to (E5/#298). get.sh
+# exports this to match the release it just checked out; when install.sh is run
+# directly out of a tree, derive it from the tag that tree is sitting on so a
+# `git checkout v1.0.0 && ./install.sh` also pins correctly. `latest` is the
+# fallback for a branch checkout, where no published image corresponds to the
+# working tree anyway.
+resolve_image_tag() {
+    local tag=""
+    if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+        tag="$(git describe --tags --exact-match 2>/dev/null || true)"
+    fi
+    printf '%s\n' "${tag:-latest}"
+}
+MAISTRO_IMAGE_TAG="${MAISTRO_IMAGE_TAG:-$(resolve_image_tag)}"
+export MAISTRO_IMAGE_TAG
+
 OS_NAME="$(uname -s)"
 ARCH="$(uname -m)"
 CHOSEN_RUNTIME=""
@@ -92,7 +108,9 @@ Environment:
   MAISTRO_AUTO_INSTALL_DEPS (1 = install deps on macOS without prompting),
   MAISTRO_MACOS_RUNTIME (colima | docker-desktop = preselect, skip the prompt),
   MAISTRO_INSTALL_CLI (0 = do not install the host 'maistro' CLI),
-  MAISTRO_OPEN_BROWSER (0 = do not open the Conductor UI when ready).
+  MAISTRO_OPEN_BROWSER (0 = do not open the Conductor UI when ready),
+  MAISTRO_IMAGE_TAG (container tag the image_pull compose pins to; defaults to
+    the release tag this checkout sits on, else 'latest').
 
 macOS:
   When no container runtime is found, the installer asks whether to install
@@ -808,7 +826,7 @@ compose_files() {
             # relative bind mounts anchored at the repo root.
             COMPOSE_FILES=(--project-directory "$PWD" -f "$PLAN_DIR/compose.install.yml")
             COMPOSE_UP_ARGS=(up -d)
-            info "Delivery: image_pull — pinned images from $PLAN_DIR/compose.install.yml (no local build)."
+            info "Delivery: image_pull — pinned images (tag ${MAISTRO_IMAGE_TAG}) from $PLAN_DIR/compose.install.yml (no local build)."
         else
             warn "delivery_mode=image_pull selected, but pinned images are not published yet."
             warn "Falling back to source build (identical runtime behavior, longer install)."
@@ -1001,7 +1019,9 @@ PY
             ;;
         *)
             warn "Bootstrap failed (HTTP $http_code). Credentials kept at $creds for retry."
-            warn "Response: $(cat "$resp_file" 2>/dev/null | head -c 400)"
+            # stderr redirected before stdin, so a missing $resp_file is silent
+            # (a failed input redirect reports on the stderr in effect at the time).
+            warn "Response: $(head -c 400 2>/dev/null < "$resp_file")"
             warn "Retry with: curl -sS -H 'Content-Type: application/json' --data-binary @$creds $base/v1/setup/complete"
             ;;
     esac

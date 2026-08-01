@@ -143,11 +143,11 @@ yet, and this section is the honest inventory:
 | Lockstep versioning from root `VERSION` | Exists (E1, #317) |
 | Inter-package bounds `>=X.0.0,<X+1` | **Not yet** — every package is at `0.9.0`, so a `>=1.0.0` floor is unsatisfiable today. Lands with the E1 bump (see #295) |
 | Third-party dependency caps | Exists (#334) |
-| `release.yml` | **Does not exist** (E3, #296) |
+| `release.yml` | Exists (E3, #296) — **never executed**: no tag has been pushed, so it is statically verified only |
 | PyPI trusted publisher | **Not registered** — maintainer-only setup (#296) |
-| `release` environment + reviewer | **Not configured** (#296) |
-| Annotated tags on `main` | **No tags exist at all** |
-| Installers pinned to tags | **Not yet** (E5, #298) |
+| `release` environment + reviewer | **Not configured** (#296). Until it is, `release.yml`'s publish jobs run *ungated* |
+| Annotated tags on `main` | **No tags exist at all** (the guard rejects lightweight tags when they do) |
+| Installers pinned to tags | Exists (E5, #298). With no release published, the default install warns and falls back to `main` |
 
 ## Relationship to `main`'s protection
 
