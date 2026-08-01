@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
+from maistro.memory.episodic.tiers import clamp_weight
 from maistro.memory.episodic.tiers import reinforce as _reinforce
+from maistro.memory.episodic.tiers import tick_decay as _tick_decay
 from maistro.memory.scopes import build_scope_filter, matches_scope
-from maistro.memory.types import EpisodicMemory
+from maistro.memory.types import DecaySweep, EpisodicMemory
 
 
 class InMemoryEpisodicStore:
@@ -52,6 +56,29 @@ class InMemoryEpisodicStore:
             if mem.memory_id == memory_id:
                 self._memories[i] = _reinforce(mem, delta)
                 break
+
+    async def apply_decay(self, *, now: datetime | None = None) -> DecaySweep:
+        """Decay every live memory once (SPEC-080126-9e42).
+
+        Entries already resting on their tier floor are still swept — the tick
+        refreshes their timestamp — but they are reported as ``at_floor`` rather
+        than ``decayed`` because their weight cannot move. That is the
+        wisdom/regret floor promise being exercised, not a no-op.
+        """
+        now = now or datetime.now(UTC)
+        sweep = DecaySweep()
+        for i, mem in enumerate(self._memories):
+            if mem.deleted:
+                continue
+            floor = clamp_weight(mem.tier, float("-inf"))
+            decayed = _tick_decay(mem, now=now)
+            self._memories[i] = decayed
+            sweep = DecaySweep(
+                scanned=sweep.scanned + 1,
+                decayed=sweep.decayed + (1 if decayed.weight != mem.weight else 0),
+                at_floor=sweep.at_floor + (1 if decayed.weight <= floor else 0),
+            )
+        return sweep
 
     async def list_by_scope(
         self,
