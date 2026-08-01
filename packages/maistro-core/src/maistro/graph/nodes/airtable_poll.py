@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-import httpx
 from pydantic import BaseModel, Field
+
+from maistro.http import shared_client
 
 from . import register_node
 from .base import BaseNode, NodeContext
@@ -68,7 +69,7 @@ class AirtablePollNode(BaseNode[AirtablePollIn, AirtablePollOut]):
         if inputs.since_iso:
             params["filterByFormula"] = f"IS_AFTER(LAST_MODIFIED_TIME(), '{inputs.since_iso}')"
 
-        async with httpx.AsyncClient(timeout=inputs.timeout_s) as client:
+        async with shared_client(timeout=inputs.timeout_s) as client:
             resp = await client.get(
                 f"https://api.airtable.com/v0/{inputs.base_id}/{inputs.table}",
                 headers={"Authorization": f"Bearer {inputs.pat}"},

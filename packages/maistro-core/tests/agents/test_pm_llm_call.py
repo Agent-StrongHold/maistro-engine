@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import httpx
 import pytest
 
@@ -13,8 +11,7 @@ from maistro.agents.pm_llm_call import (
     _resolve_model,
     maistro_llm_call,
 )
-
-_RealAsyncClient = httpx.AsyncClient
+from maistro.http import override_transport
 
 
 @pytest.fixture(autouse=True)
@@ -107,10 +104,7 @@ class TestMaistroLlmCall:
             )
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             result = await maistro_llm_call(
                 [{"role": "user", "content": "hi"}], model="claude-sonnet-4-6"
             )
@@ -135,10 +129,7 @@ class TestMaistroLlmCall:
             return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             await maistro_llm_call([{"role": "user", "content": "hi"}], temperature=0.5)
 
         body = captured["body"]
@@ -160,10 +151,7 @@ class TestMaistroLlmCall:
             return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             await maistro_llm_call([{"role": "user", "content": "hi"}], json_mode=False)
 
         body = captured["body"]
@@ -181,10 +169,7 @@ class TestMaistroLlmCall:
 
         transport = httpx.MockTransport(handler)
         with (
-            patch(
-                "maistro.agents.pm_llm_call.httpx.AsyncClient",
-                lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-            ),
+            override_transport(transport),
             pytest.raises(RuntimeError, match="LLM gateway 401"),
         ):
             await maistro_llm_call([{"role": "user", "content": "hi"}])
@@ -213,10 +198,7 @@ class TestMaistroLlmCall:
             captured["headers"] = dict(response.headers)
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             result = await maistro_llm_call(
                 [{"role": "user", "content": "hi"}], on_response=on_response
             )
@@ -239,10 +221,7 @@ class TestMaistroLlmCall:
             raise RuntimeError("recording hook blew up")
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             # Must not raise -- a broken instrumentation hook can't take down
             # a call that already succeeded.
             result = await maistro_llm_call(
@@ -260,10 +239,7 @@ class TestMaistroLlmCall:
             return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             result = await maistro_llm_call([{"role": "user", "content": "hi"}])
 
         assert result == "ok"

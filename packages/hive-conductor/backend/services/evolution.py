@@ -10,6 +10,8 @@ import asyncio
 import logging
 from typing import Any
 
+from maistro.http import shared_client
+
 logger = logging.getLogger(__name__)
 
 _service: _EvolutionService | None = None
@@ -102,7 +104,6 @@ class _EvolutionService:
 
     def _build_llm_call(self):
         try:
-            import httpx
             from config import get_settings
 
             from services.secrets import litellm_api_key, maistro_llm_api_key
@@ -123,7 +124,7 @@ class _EvolutionService:
                     "temperature": kwargs.get("temperature", 0.3),
                     "max_tokens": kwargs.get("max_tokens", 4096),
                 }
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                async with shared_client(timeout=120.0) as client:
                     resp = await client.post(
                         f"{base}/v1/chat/completions", json=payload, headers=headers
                     )

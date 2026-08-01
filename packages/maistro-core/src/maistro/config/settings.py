@@ -46,6 +46,12 @@ class DatabaseSettings(BaseSettings):
     max_overflow: int = 10
     pool_recycle: int = 1800
 
+    # asyncpg pool bounds, applied by `persistence.get_pool`. Distinct from
+    # pool_size/max_overflow above, which are SQLAlchemy-shaped and unused by
+    # the asyncpg path.
+    asyncpg_min_size: int = 2
+    asyncpg_max_size: int = 50
+
     @property
     def url(self) -> str:
         return (
@@ -168,6 +174,13 @@ class Settings(BaseSettings):
 
     rate_limit_per_minute: int = 60
     rate_limit_burst: int = 10
+
+    # Shared outbound HTTP pool (see maistro.http). Ceilings against fd
+    # exhaustion, NOT a load throttle — a small cap here was measured as the
+    # worst option for interactive latency (chat p50 24.14s vs 2.03s).
+    http_max_connections: int = 100
+    http_max_keepalive_connections: int = 50
+    http_keepalive_expiry_s: float = 30.0
 
     task_progress_webhook_url: str = Field(
         default="",

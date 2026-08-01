@@ -7,6 +7,8 @@ from typing import Any, Literal
 import httpx
 from models.schemas import ChatCompletionRequest
 
+from maistro.http import shared_client
+
 
 def stub_completion(req: ChatCompletionRequest) -> dict[str, Any]:
     from uuid import uuid4
@@ -102,7 +104,7 @@ class HttpOpenAIProtocolLLM:
         model = req.model
         headers = {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with shared_client(timeout=120.0) as client:
             if self._variant in ("auto", "responses") and not req.tools:
                 r = await client.post(
                     f"{self._base}/responses",

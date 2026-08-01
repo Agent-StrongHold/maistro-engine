@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from maistro.http import shared_client
+
 logger = logging.getLogger("hive.mcp_client")
 
 _SITE_RE = re.compile(r"^https://[a-zA-Z0-9.-]+\.atlassian\.net/?$")
@@ -84,7 +86,7 @@ async def test_jira_rest(*, user_id: str | None = None) -> dict[str, Any]:
     auth_user = email if email else token
     url = f"{site}/rest/api/3/myself"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with shared_client(timeout=10.0) as client:
             r = await client.get(url, auth=(auth_user, token))
         if r.status_code == 200:
             data = r.json()
@@ -133,7 +135,7 @@ async def test_mcp_server(
 
     if url.startswith("http://127.0.0.1") or url.startswith("http://localhost"):
         try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
+            async with shared_client(timeout=2.0) as client:
                 r = await client.get(url)
             if r.status_code < 500:
                 return {

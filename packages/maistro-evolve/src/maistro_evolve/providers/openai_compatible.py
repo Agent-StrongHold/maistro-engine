@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from maistro.http import shared_client
+
 
 class OpenAICompatibleProvider:
     """Async `llm_call` adapter for OpenAI-compatible `/chat/completions` APIs."""
@@ -71,7 +73,7 @@ class OpenAICompatibleProvider:
         if "max_tokens" in kwargs and kwargs["max_tokens"] is not None:
             body["max_tokens"] = kwargs["max_tokens"]
 
-        async with httpx.AsyncClient(
+        async with shared_client(
             timeout=self._timeout_seconds,
             transport=self._transport,
         ) as client:

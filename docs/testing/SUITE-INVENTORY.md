@@ -25,7 +25,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5732 | `ci.yml` |
+| `packages/maistro-core/tests` | 5745 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 528 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |

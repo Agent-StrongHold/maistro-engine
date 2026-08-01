@@ -23,9 +23,8 @@ from maistro.agents.conductor import (
 )
 from maistro.agents.types import ConductorOutput, LLMProviderError
 from maistro.config.models import DEFAULT_TIERS, Tier
+from maistro.http import set_test_transport
 from maistro.tasks.models import TaskCreate
-
-_RealAsyncClient = httpx.AsyncClient
 
 
 @pytest.fixture(autouse=True)
@@ -41,10 +40,7 @@ def _reset_circuit() -> None:
 
 def _patched_client(monkeypatch: pytest.MonkeyPatch, handler: Any) -> None:
     transport = httpx.MockTransport(handler)
-    monkeypatch.setattr(
-        "maistro.agents.conductor.httpx.AsyncClient",
-        lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-    )
+    set_test_transport(transport)
 
 
 class TestConductorDryRun:

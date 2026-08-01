@@ -2,8 +2,7 @@
 
 import os
 
-import httpx
-
+from maistro.http import shared_client
 from services import tork_client
 
 LAUNCH_API = os.environ.get("DEPLOY_API_URL") or os.environ.get("STUDIOSHARE_API_URL") or ""
@@ -39,7 +38,7 @@ async def deploy_to_launch(project_name: str, repo_url: str, branch: str = "main
     api_key = os.environ.get("DEPLOY_API_KEY") or os.environ.get("STUDIOSHARE_API_KEY") or ""
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with shared_client(timeout=30) as client:
         # Create the app
         r = await client.post(
             f"{LAUNCH_API}/launch/apps",

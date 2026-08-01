@@ -6,8 +6,7 @@ import hashlib
 import os
 from typing import Any
 
-import httpx
-
+from maistro.http import shared_client
 from services.tool_primitives import ToolCallTTLCache
 
 _AIRTABLE_CACHE = ToolCallTTLCache()
@@ -49,7 +48,7 @@ async def get_airtable_records_json(
     key = ("records", _token_fingerprint(token), base_id, table, _params_key(params))
 
     async def load() -> object:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with shared_client(timeout=15) as client:
             response = await client.get(
                 f"https://api.airtable.com/v0/{base_id}/{table}",
                 headers={"Authorization": f"Bearer {token}"},
@@ -76,7 +75,7 @@ async def get_airtable_base_tables_json(
     key = ("base_tables", _token_fingerprint(token), base_id)
 
     async def load() -> object:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with shared_client(timeout=15) as client:
             response = await client.get(
                 f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
                 headers={"Authorization": f"Bearer {token}"},
@@ -101,7 +100,7 @@ async def get_airtable_bases_json(
     key = ("bases", _token_fingerprint(token))
 
     async def load() -> object:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             response = await client.get(
                 "https://api.airtable.com/v0/meta/bases",
                 headers={"Authorization": f"Bearer {token}"},

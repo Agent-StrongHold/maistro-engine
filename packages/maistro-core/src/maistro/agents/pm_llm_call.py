@@ -29,6 +29,8 @@ from typing import Any
 
 import httpx
 
+from maistro.http import shared_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -95,7 +97,7 @@ async def maistro_llm_call(
     if json_mode:
         body["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with shared_client(timeout=timeout) as client:
         resp = await client.post(
             f"{base_url}/v1/chat/completions",
             json=body,

@@ -16,6 +16,7 @@ from config import get_settings
 from models.schemas import ChatCompletionRequest
 from protocols.llm import LLMPort
 
+from maistro.http import shared_client
 from services.airtable_cache import get_airtable_base_tables_json, get_airtable_records_json
 from services.secrets import litellm_api_key as _resolve_litellm_api_key
 from services.tool_primitives import (
@@ -696,7 +697,7 @@ async def _tool_poll_jira(
     max_results = min(args.get("max_results", 10), 15)
     jql = "project = JEDAI AND updated >= -7d ORDER BY updated DESC"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.get(
                 f"{_JIRA_BASE}/rest/api/2/search",
                 params={
@@ -741,7 +742,7 @@ async def _tool_search_jira(
         return {"error": "Provide 'jql' or 'text' to search"}
     max_results = min(args.get("max_results", 10), 15)
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.get(
                 f"{_JIRA_BASE}/rest/api/2/search",
                 params={
@@ -782,7 +783,7 @@ async def _tool_get_issue(
     if not issue_key:
         return {"error": "issue_key is required"}
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.get(
                 f"{_JIRA_BASE}/rest/api/2/issue/{issue_key}",
                 headers=_jira_headers(jira_pat),
@@ -841,7 +842,7 @@ async def _tool_check_blockers(
     )
     max_results = min(args.get("max_results", 10), 15)
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.get(
                 f"{_JIRA_BASE}/rest/api/2/search",
                 params={
@@ -898,11 +899,10 @@ async def _tool_search_confluence(
     query = args.get("query", "")
     if not query:
         return {"error": "query is required"}
-    import httpx
 
     confluence_base = "https://mywiki.disney.com"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.get(
                 f"{confluence_base}/rest/api/content/search",
                 params={"cql": f'text ~ "{query}"', "limit": args.get("max_results", 10)},
@@ -1454,11 +1454,10 @@ async def _tool_analyze_dashboard(
     args: dict[str, Any], user_id: str, jira_pat: str | None
 ) -> dict[str, Any]:
     """Capture screenshot of dashboard and analyze with vision model."""
-    import httpx
 
     # Capture screenshot via internal endpoint
     try:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with shared_client(timeout=30) as client:
             r = await client.post(
                 "http://127.0.0.1:8101/v1/widgets/screenshot",
                 cookies={"hive_session": "24f30b74-d535-4263-a2d4-8a773b07803d"},
@@ -1488,7 +1487,7 @@ async def _tool_analyze_dashboard(
             "Analyze this dashboard screenshot. Identify: 1) Widgets that look broken or show useless data, 2) Poor sizing choices, 3) Bad chart type choices for the data shown, 4) Missing widgets that would add value, 5) Layout improvements for better visual flow. Be specific and actionable.",
         )
 
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with shared_client(timeout=60) as client:
             resp = await client.post(
                 f"{base.rstrip('/')}/v1/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
