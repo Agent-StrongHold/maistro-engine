@@ -11,6 +11,7 @@ import structlog
 
 from maistro.agents.types import ConductorOutput
 from maistro.constants import WORKER_POLL_TIMEOUT
+from maistro.tasks.lanes import Lane, LaneGate
 from maistro.tasks.models import TaskCreate, TaskProgress, TaskResult, TaskStatus
 from maistro.tasks.progress_webhook import ProgressWebhookSink, payload_from_task
 from maistro.tasks.queue import TaskQueue
@@ -19,6 +20,12 @@ logger = structlog.get_logger()
 
 # Default number of concurrent task workers
 DEFAULT_MAX_WORKERS = 4
+
+# ADR-010: slots reserved for Lane.LIVE, so an interactive task never queues
+# behind a full background pool. The ADR specifies 2. BACKGROUND keeps a
+# floor of its own so sustained live traffic cannot starve batch work.
+DEFAULT_LIVE_SLOTS = 2
+DEFAULT_BACKGROUND_SLOTS = 1
 
 # Type for the injected executor — takes a TaskCreate, returns ConductorOutput
 TaskExecutor = Callable[[TaskCreate], Coroutine[Any, Any, ConductorOutput]]
@@ -37,6 +44,8 @@ class TaskRunner:
         executor: TaskExecutor,
         max_workers: int = DEFAULT_MAX_WORKERS,
         progress_webhook: ProgressWebhookSink | None = None,
+        live_slots: int | None = None,
+        background_slots: int | None = None,
     ) -> None:
         self._queue = queue
         self._executor = executor
@@ -44,15 +53,38 @@ class TaskRunner:
         self._progress_webhook = progress_webhook
         self._running = False
         self._draining = False
-        self._semaphore: asyncio.Semaphore | None = None
+        # Explicit floors are passed to LaneGate untouched and validated
+        # strictly. Only the DEFAULTS adapt to max_workers — a runner built
+        # with max_workers=2 predates lanes entirely and must keep working,
+        # so the defaults shrink rather than raising on someone else's config.
+        self._live_slots = (
+            live_slots
+            if live_slots is not None
+            else min(DEFAULT_LIVE_SLOTS, max(0, max_workers - 1))
+        )
+        self._background_slots = (
+            background_slots
+            if background_slots is not None
+            else min(DEFAULT_BACKGROUND_SLOTS, max(0, max_workers - self._live_slots))
+        )
+        self._gate: LaneGate | None = None
         self._worker_task: asyncio.Task[None] | None = None
         self._active_tasks: set[asyncio.Task[None]] = set()
 
     async def start(self) -> None:
         self._running = True
-        self._semaphore = asyncio.Semaphore(self._max_workers)
+        self._gate = LaneGate(
+            self._max_workers,
+            live_reserved=self._live_slots,
+            background_reserved=self._background_slots,
+        )
         self._worker_task = asyncio.create_task(self._dispatcher_loop())
-        await logger.ainfo("task_runner_started", max_workers=self._max_workers)
+        await logger.ainfo(
+            "task_runner_started",
+            max_workers=self._max_workers,
+            live_slots=self._live_slots,
+            background_slots=self._background_slots,
+        )
 
     async def stop(self, drain_timeout: float = 30.0) -> None:
         """Stop the runner, waiting for in-progress tasks to drain."""
@@ -114,15 +146,33 @@ class TaskRunner:
             except asyncio.CancelledError:
                 break
 
-            assert self._semaphore is not None
-            await self._semaphore.acquire()
-            t = asyncio.create_task(self._run_with_semaphore(task_id))
+            assert self._gate is not None
+            lane, tier = self._schedule_of(task_id)
+            await self._gate.acquire(lane, tier)
+            t = asyncio.create_task(self._run_with_permit(task_id, lane))
             self._active_tasks.add(t)
             t.add_done_callback(self._active_tasks.discard)
 
-    async def _run_with_semaphore(self, task_id: str) -> None:
-        """Execute a task and release the semaphore when done."""
-        assert self._semaphore is not None
+    def _schedule_of(self, task_id: str) -> tuple[Lane, str]:
+        """The task's lane and tier, defaulting to BACKGROUND/P2 (ADR-010).
+
+        A task that vanished between dequeue and lookup still needs a lane to
+        release against, so this never returns None — it defaults, and
+        ``_execute_task`` handles the missing task separately.
+        """
+        task = self._queue.get(task_id)
+        if task is None:
+            return Lane.BACKGROUND, "P2"
+        return task.lane, task.priority_tier
+
+    async def _run_with_permit(self, task_id: str, lane: Lane) -> None:
+        """Execute a task and return its lane permit when done.
+
+        The lane is passed in rather than re-read from the queue: the task may
+        be mutated or removed while running, and releasing against a different
+        lane than was acquired would corrupt the gate's per-lane counts.
+        """
+        assert self._gate is not None
         try:
             await self._execute_task(task_id)
         except asyncio.CancelledError:
@@ -136,7 +186,7 @@ class TaskRunner:
             self._queue.set_result(task_id, TaskResult(error=str(exc)))
             await self._emit_progress_webhook(task_id)
         finally:
-            self._semaphore.release()
+            self._gate.release(lane)
 
     async def _emit_progress_webhook(self, task_id: str) -> None:
         if self._progress_webhook is None:
@@ -175,6 +225,8 @@ class TaskRunner:
                 capability=task.capability,
                 program_context=task.program_context,
                 user_id=task.user_id or None,
+                lane=task.lane,
+                priority_tier=task.priority_tier,
             )
 
             # Run conductor (single-pass: plan + code in one LLM call)
