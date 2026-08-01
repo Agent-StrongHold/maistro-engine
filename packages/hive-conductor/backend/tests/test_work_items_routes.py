@@ -1,9 +1,10 @@
 """routes/work_items.py -- Persona/Workspace system, Phase H: the PM-gate and
 suggest_work_item_route's ProgramContext lookup now resolve an optional
-workspace_id (membership-checked, must be the pm_fleet persona -- Jira epics/
-stories are genuinely PM-Fleet-specific, unlike the generalized onboarding
-interview). Omitted workspace_id keeps the exact old global-default
-behavior.
+workspace_id. The gate is capability-based (does this workspace's own
+materialized agent roster include Jira-capable agents -- real for pm_fleet
+since its spawns are named intake/program_manager/etc, not because its
+persona_template_id is literally "pm_fleet"), not identity-based. Omitted
+workspace_id keeps the exact old global-default behavior.
 """
 
 from __future__ import annotations
@@ -14,18 +15,26 @@ import stores
 
 @pytest.fixture(autouse=True)
 def _pm_poc_mode_on(monkeypatch: pytest.MonkeyPatch):
+    import routes.work_items as work_items_routes
     import services.workspace_mode as wm
 
+    monkeypatch.setattr(work_items_routes, "is_pm_poc_mode", lambda: True)
     monkeypatch.setattr(wm, "is_pm_poc_mode", lambda: True)
 
 
 @pytest.fixture(autouse=True)
 def _clear_state():
-    for store in (stores.workspaces, stores.work_item_drafts, stores.program_contexts):
+    stores_to_clear = (
+        stores.workspaces,
+        stores.work_item_drafts,
+        stores.program_contexts,
+        stores.agents,
+    )
+    for store in stores_to_clear:
         for key in list(store.keys()):
             store.pop(key, None)
     yield
-    for store in (stores.workspaces, stores.work_item_drafts, stores.program_contexts):
+    for store in stores_to_clear:
         for key in list(store.keys()):
             store.pop(key, None)
 
@@ -57,6 +66,29 @@ def test_non_pm_fleet_workspace_id_is_refused_even_with_legacy_flag_on(admin_cli
     ws_id = _create_workspace(admin_client, "content_creator")
     r = admin_client.get(f"/v1/work-items?workspace_id={ws_id}")
     assert r.status_code == 404
+
+
+def test_a_differently_named_persona_with_pm_fleet_shaped_agents_also_qualifies(
+    admin_client,
+) -> None:
+    """No identity special-casing: the gate is "does this workspace's own
+    materialized roster include Jira-capable agents", not "is
+    persona_template_id literally pm_fleet". A wizard-authored persona
+    whose spawns happen to be named the same way qualifies identically."""
+    r = admin_client.post(
+        "/v1/workspaces/persona-templates",
+        json={
+            "id": "field_ops",
+            "display_name": "Field Ops",
+            "agents": [
+                {"agent": "intake", "role": "Takes requests", "tools": ["create_epic"]},
+            ],
+        },
+    )
+    assert r.status_code == 201
+    ws_id = _create_workspace(admin_client, "field_ops")
+    r = admin_client.get(f"/v1/work-items?workspace_id={ws_id}")
+    assert r.status_code == 200
 
 
 def test_unknown_workspace_id_falls_back_to_legacy_global_gate(admin_client) -> None:

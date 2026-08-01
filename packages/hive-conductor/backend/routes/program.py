@@ -74,7 +74,7 @@ def _resolve_program_scope(
 @router.get("/cpntext")  # common typo alias
 def get_program_context(request: Request, workspace_id: str | None = None) -> dict[str, Any]:
     uid = user_id_from_request(request)
-    require_pm_poc(user_id=uid, workspace_id=workspace_id, require_pm_fleet_persona=False)
+    require_pm_poc(user_id=uid, workspace_id=workspace_id)
     project_id, use_case, custom_steps = _resolve_program_scope(uid, workspace_id)
     ctx = prog.get_context(uid, project_id)
     return {
@@ -94,7 +94,7 @@ async def post_interview_answer(
     body: InterviewAnswerBody, request: Request, workspace_id: str | None = None
 ) -> dict[str, Any]:
     uid = user_id_from_request(request)
-    require_pm_poc(user_id=uid, workspace_id=workspace_id, require_pm_fleet_persona=False)
+    require_pm_poc(user_id=uid, workspace_id=workspace_id)
     project_id, use_case, custom_steps = _resolve_program_scope(uid, workspace_id)
     ctx = prog.get_context(uid, project_id)
     ctx = apply_interview_answer(ctx, body.answer, use_case=use_case, custom_steps=custom_steps)

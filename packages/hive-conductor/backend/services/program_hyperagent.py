@@ -48,26 +48,17 @@ def user_id_from_request(request: Request) -> str:
     return str(uid)
 
 
-def require_pm_poc(
-    *,
-    user_id: str | None = None,
-    workspace_id: str | None = None,
-    require_pm_fleet_persona: bool = True,
-) -> None:
-    """Gate a PM Fleet-only surface. Passing `user_id` resolves
-    (membership-checked) against that specific workspace instead of the
-    legacy global flag -- omitted (every pre-Phase-H caller) keeps the exact
-    old behavior. `require_pm_fleet_persona` (default True) is passed
-    straight through to `is_workspace_request_authorized` -- set it False
-    for surfaces already generalized to any persona (the onboarding
-    interview), True (the default) for ones genuinely specific to PM Fleet
-    (e.g. Jira work items)."""
+def require_pm_poc(*, user_id: str | None = None, workspace_id: str | None = None) -> None:
+    """Gate the program hyperagent surface (the onboarding interview,
+    already generalized to any persona via `program_context.py`'s
+    per-use_case `INTERVIEW_TEMPLATES`). Passing `user_id` resolves
+    (membership-checked, any persona) against that specific workspace
+    instead of the legacy global flag -- omitted (every pre-Phase-H caller)
+    keeps the exact old behavior."""
     if user_id is not None:
         from services.workspace_mode import is_workspace_request_authorized
 
-        ok = is_workspace_request_authorized(
-            user_id, workspace_id, require_pm_fleet_persona=require_pm_fleet_persona
-        )
+        ok = is_workspace_request_authorized(user_id, workspace_id)
     else:
         ok = is_pm_poc_mode()
     if not ok:

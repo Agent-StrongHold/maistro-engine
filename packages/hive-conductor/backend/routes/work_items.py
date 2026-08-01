@@ -1,13 +1,20 @@
 """Gated Jira work items — suggest, clarify, edit, confirm.
 
 Persona/Workspace system: routes accept an optional `workspace_id` query
-param, resolved (membership-checked) to that workspace's own persona for
-the PM-gate and its own `ProgramContext` project_id for `suggest`/`confirm`
--- omitted (every pre-Phase-H caller) keeps the exact old global-default
-behavior. A `WorkItemDraft` remembers the `project_id` it was suggested
-under (`maistro.agents.work_items.WorkItemDraft.project_id`), so `confirm`
-reads back the same context it was suggested from rather than always the
-global default.
+param, resolved to that workspace's own `ProgramContext` project_id for
+`suggest`/`confirm` -- omitted (every pre-Phase-H caller) keeps the exact
+old global-default behavior. A `WorkItemDraft` remembers the `project_id`
+it was suggested under (`maistro.agents.work_items.WorkItemDraft.
+project_id`), so `confirm` reads back the same context it was suggested
+from rather than always the global default.
+
+The PM-gate is capability-based, not identity-based: a workspace unlocks
+Jira/work-item drafting because its own materialized agent roster
+(`services/agent_materialization.py`) actually includes the agents
+`maistro.agents.pm_capabilities.agent_for_work_item()` dispatches to, not
+because its persona is literally named "pm_fleet"
+(`services/workspace_mode.py::workspace_has_pm_fleet_agents`). Any persona
+whose spawns declare those agent names qualifies the same way.
 """
 
 from __future__ import annotations
@@ -20,8 +27,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from services import program_store as prog
 from services.engine import get_engine
-from services.pm_fleet import invoke_pm_agent
-from services.workspace_mode import is_workspace_request_authorized
+from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode
+from services.workspace_mode import workspace_has_pm_fleet_agents
 
 from maistro.agents.pm_capabilities import WORK_ITEM_LABELS, WorkItemType
 from maistro.agents.work_items import (
@@ -46,8 +53,22 @@ def _user_id(request: Request) -> str:
 
 
 def _require_pm(user_id: str, workspace_id: str | None) -> None:
-    if not is_workspace_request_authorized(user_id, workspace_id):
-        raise HTTPException(status_code=404, detail="Work items only available in PM POC mode")
+    if workspace_id:
+        workspace = stores.workspaces.get(workspace_id)
+        is_member = workspace is not None and any(m.user_id == user_id for m in workspace.members)
+        if is_member:
+            if workspace_has_pm_fleet_agents(workspace_id):
+                return
+            raise HTTPException(
+                status_code=404,
+                detail="This workspace's persona has no Jira/work-item-capable agents",
+            )
+        # Unknown workspace_id or the caller isn't a member -- fall back to
+        # the legacy global flag exactly as before, same as every other
+        # workspace-scoped route in this system.
+    if is_pm_poc_mode():
+        return
+    raise HTTPException(status_code=404, detail="Work items only available in PM POC mode")
 
 
 def _resolve_project_id(user_id: str, workspace_id: str | None) -> str:

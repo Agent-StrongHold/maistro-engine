@@ -271,6 +271,77 @@ class TestRealPmFleetTemplate:
         assert {"pm_fleet", "content_creator"} <= ids
 
 
+class TestWorkspaceCreationMaterializesRealAgents:
+    """Persona/Workspace system: creating a workspace materializes its
+    persona's own declared spawns into real, workspace-scoped Agent
+    records (services/agent_materialization.py) -- the previously-missing
+    wiring between expand_persona() and GET /v1/agents. Any persona works
+    the same way; pm_fleet isn't special-cased."""
+
+    def test_pm_fleet_workspace_gets_its_real_agents(self, admin_client) -> None:
+        r = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        )
+        ws_id = r.json()["id"]
+        r = admin_client.get(f"/v1/agents?workspace_id={ws_id}")
+        assert r.status_code == 200
+        names = {a["name"] for a in r.json()}
+        assert names == {
+            "pm_fleet.intake",
+            "pm_fleet.program_manager",
+            "pm_fleet.research",
+            "pm_fleet.delivery",
+            "pm_fleet.risk_dependency",
+            "pm_fleet.reporting",
+        }
+
+    def test_content_creator_workspace_gets_its_own_real_agents_the_same_way(
+        self, admin_client
+    ) -> None:
+        r = admin_client.post(
+            "/v1/workspaces",
+            json={"persona_template_id": "content_creator", "name": "My Channel"},
+        )
+        ws_id = r.json()["id"]
+        r = admin_client.get(f"/v1/agents?workspace_id={ws_id}")
+        assert r.status_code == 200
+        names = {a["name"] for a in r.json()}
+        assert names == {
+            "content_creator.ideation",
+            "content_creator.scheduler",
+            "content_creator.analytics",
+        }
+
+    def test_two_workspaces_of_the_same_persona_get_independent_agent_records(
+        self, admin_client
+    ) -> None:
+        ws_a = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "content_creator", "name": "Channel A"}
+        ).json()["id"]
+        ws_b = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "content_creator", "name": "Channel B"}
+        ).json()["id"]
+        agents_a = admin_client.get(f"/v1/agents?workspace_id={ws_a}").json()
+        agents_b = admin_client.get(f"/v1/agents?workspace_id={ws_b}").json()
+        assert {a["id"] for a in agents_a}.isdisjoint({a["id"] for a in agents_b})
+
+    def test_non_member_cannot_see_a_workspaces_agents(self, admin_client, authed_client) -> None:
+        ws_id = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
+        ).json()["id"]
+        r = authed_client.get(f"/v1/agents?workspace_id={ws_id}")
+        assert r.status_code == 200
+        assert all(a["workspace_id"] != ws_id for a in r.json())
+
+    def test_unknown_persona_template_id_materializes_no_agents(self, admin_client) -> None:
+        ws_id = admin_client.post(
+            "/v1/workspaces", json={"persona_template_id": "no_such_persona", "name": "X"}
+        ).json()["id"]
+        r = admin_client.get(f"/v1/agents?workspace_id={ws_id}")
+        assert r.status_code == 200
+        assert r.json() == []
+
+
 class TestWorkspaceTheme:
     """Phase D: theme catalog + per-workspace tone override."""
 

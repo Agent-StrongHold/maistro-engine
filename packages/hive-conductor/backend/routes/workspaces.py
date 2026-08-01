@@ -22,6 +22,7 @@ from fastapi import APIRouter, HTTPException, Request
 from models.persona_feedback import PersonaFeedback, Thumb
 from models.workspace import AgentToolBinding, Workspace, WorkspaceMember, WorkspaceRole
 from pydantic import BaseModel, ConfigDict, Field
+from services.agent_materialization import materialize_workspace_agents
 from services.persona_authoring import (
     PersonaTemplateIdConflict,
     all_persona_templates,
@@ -252,9 +253,9 @@ def create_workspace(body: CreateWorkspaceBody, request: Request) -> Workspace:
     user_id = _user_id(request)
     workspace_id = str(uuid4())
     t = _now()
+    template = all_persona_templates().get(body.persona_template_id)
     checklist = body.checklist
     if checklist is None:
-        template = all_persona_templates().get(body.persona_template_id)
         checklist = default_checklist_ids(template) if template is not None else []
     workspace = Workspace(
         id=workspace_id,
@@ -268,6 +269,11 @@ def create_workspace(body: CreateWorkspaceBody, request: Request) -> Workspace:
         updated_at=t,
     )
     stores.workspaces[workspace_id] = workspace
+    # Materialize the persona's own declared agents as real, workspace-scoped
+    # Agent records (services/agent_materialization.py) -- every persona is
+    # treated identically here, not just pm_fleet.
+    if template is not None:
+        materialize_workspace_agents(workspace_id, template)
     return workspace
 
 
