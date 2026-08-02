@@ -48,6 +48,12 @@ class WorkItemDraft(BaseModel):
 
     id: str
     user_id: str
+    # Which ProgramContext (services/program_store.py's per-workspace key)
+    # this draft was suggested under -- so a later confirm/post step reads
+    # back the same context, not always the global "default" one. Defaults
+    # to "default" for backward compatibility with drafts persisted before
+    # this field existed.
+    project_id: str = "default"
     work_type: WorkItemType
     agent_id: str
     capability: str
@@ -150,6 +156,7 @@ def suggest_work_item(
     return WorkItemDraft(
         id=uuid4().hex[:12],
         user_id=user_id,
+        project_id=ctx.project_id,
         work_type=work_type,
         agent_id=agent_for_work_item(work_type),
         capability=cap,

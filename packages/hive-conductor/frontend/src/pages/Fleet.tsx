@@ -14,6 +14,7 @@ import {
   type WorkItemType,
 } from "../lib/pmCapabilities";
 import { usePmPoc } from "../context/PocMode";
+import { useWorkspaces } from "../context/WorkspaceContext";
 import { PM_NAV_DRAFTS, PM_PRODUCT_TAGLINE } from "../lib/pmBranding";
 import { LoadingSpinner, PageHeader, useToast } from "../components/shared";
 
@@ -59,6 +60,7 @@ type DraftModalState =
 
 export default function Fleet() {
   const pmPoc = usePmPoc();
+  const { activeWorkspaceId } = useWorkspaces();
   const toast = useToast();
   const [agents, setAgents] = useState<FleetAgent[]>([]);
   const [program, setProgram] = useState<ProgramResponse | null>(null);
@@ -80,9 +82,15 @@ export default function Fleet() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Persona/Workspace system: scope the interview to the active tab so
+      // two workspaces (even two of the same persona) track independent
+      // progress, instead of sharing the one legacy global interview.
+      const contextPath = activeWorkspaceId
+        ? `/v1/program/context?workspace_id=${encodeURIComponent(activeWorkspaceId)}`
+        : "/v1/program/context";
       const [agentData, progData] = await Promise.all([
         apiGet<FleetAgent[]>("/v1/agents"),
-        apiGet<ProgramResponse>("/v1/program/context"),
+        apiGet<ProgramResponse>(contextPath),
       ]);
       setAgents(agentData);
       setProgram(progData);
@@ -92,7 +100,7 @@ export default function Fleet() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, activeWorkspaceId]);
 
   const runPulse = useCallback(async () => {
     if (!program?.interview.complete) return;
@@ -130,8 +138,11 @@ export default function Fleet() {
     if (!interviewAnswer.trim()) return;
     setSubmittingInterview(true);
     try {
+      const answerPath = activeWorkspaceId
+        ? `/v1/program/interview/answer?workspace_id=${encodeURIComponent(activeWorkspaceId)}`
+        : "/v1/program/interview/answer";
       const res = await apiPost<ProgramResponse & { queued_tasks?: { task_id: string }[] }>(
-        "/v1/program/interview/answer",
+        answerPath,
         { answer: interviewAnswer.trim() },
       );
       setInterviewAnswer("");

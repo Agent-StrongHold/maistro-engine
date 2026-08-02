@@ -129,6 +129,11 @@ class Agent(BaseModel):
 
     id: str
     user_id: str = ""
+    # Persona/Workspace system: which workspace this agent was materialized
+    # for (maistro.personas.expander.expand_persona(), via
+    # services/agent_materialization.py). None means a global agent not
+    # tied to any workspace -- every agent before this field existed.
+    workspace_id: str | None = None
     name: str
     description: str
     model: str
