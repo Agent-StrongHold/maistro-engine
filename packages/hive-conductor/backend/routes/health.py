@@ -44,6 +44,18 @@ def _memory_decay_state() -> dict:
         return {"enabled": False, "state": "unavailable"}
 
 
+def _log_redaction_active() -> bool:
+    """ADR-064 log-redaction state. Same defensive contract as the probes above:
+    unreadable reports as inactive, because a false "secrets are scrubbed" is the
+    failure this control exists to prevent."""
+    try:
+        from logging_setup import redaction_active
+
+        return redaction_active()
+    except Exception:
+        return False
+
+
 @router.get("/health")
 def health() -> dict:
     settings = get_settings()
@@ -66,6 +78,7 @@ def health() -> dict:
     llm_configured, allow_stub_llm = _llm_state()
     memory_decay = _memory_decay_state()
     memory_decay_enabled = bool(memory_decay.get("enabled"))
+    log_redaction = _log_redaction_active()
 
     return {
         "status": "ok",
@@ -86,7 +99,10 @@ def health() -> dict:
         # contradicts a documented product behaviour — degraded, never silent.
         "memory_decay": memory_decay,
         "memory_decay_enabled": memory_decay_enabled,
-        "degraded": (not llm_configured) or (not memory_decay_enabled),
+        # ADR-064: off means log lines carry API keys and connection strings
+        # verbatim, which SECURITY.md says they do not. Degraded, never silent.
+        "log_redaction_active": log_redaction,
+        "degraded": (not llm_configured) or (not memory_decay_enabled) or (not log_redaction),
     }
 
 
@@ -109,4 +125,5 @@ def ready() -> ReadyResponse:
     # degrades the conductor without taking it out of rotation.
     checks["llm"] = _llm_state()[0]
     checks["memory_decay"] = bool(_memory_decay_state().get("enabled"))
+    checks["log_redaction"] = _log_redaction_active()
     return ReadyResponse(ready=checks["api"], checks=checks)

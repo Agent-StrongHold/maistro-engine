@@ -37,6 +37,26 @@ Honest limits — repeated here because a home-made benchmark gets quoted
   snapshot is meaningful.
 * Small. Tens of tasks, not thousands. ``samples_evaluated`` travels with every
   result and a percentage without it is meaningless.
+
+Not wired into any harness yet — deliberately
+---------------------------------------------
+This is SPEC-281 §4's **consumer half only**: it loads and validates a corpus.
+There is no ``run_repo_history()``, so there is nothing to put in
+``PROXY_BENCHMARKS`` or ``REAL_BENCHMARKS``, and it belongs in neither anyway —
+``official_comparable`` is always False, so it is not ``real``, and it is not a
+handcrafted sample set, so it is not ``proxy``. Deciding where a third tier
+lives is a harness change, not a loader change.
+
+``MODEL_CUTOFFS`` is also still empty, so ``resolve_cutoff`` refuses every
+model. That is the intended direction to fail in — an unwired loader scores
+nothing, where a wired one with no cutoffs would score everything as clean.
+
+It is therefore listed in ``quality/reachability-baseline.json``. That listing
+is the honest record of a staged component, not a dismissal: it should come off
+the list when the runner and the tier decision land together. Stating it here
+because a module whose docstring reads like a working benchmark, sitting beside
+seven that are, is exactly how built-but-never-wired code gets quoted as if it
+ran.
 """
 
 from __future__ import annotations
