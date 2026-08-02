@@ -8,7 +8,13 @@ import "./index.css";
 // attribute matches these selectors.
 import "./themes/dark.css";
 import "./fantasia-theme.css";
+import { applyAppearance } from "./lib/appearance";
 import App from "./App";
+
+// Apply the stored (or OS-preferred) light/dark appearance before first
+// paint so a dark-mode user never sees a white flash. Workspace themes
+// re-apply on top once WorkspaceContext loads.
+applyAppearance();
 
 // When Vite is built with VITE_BASE_PATH=/pm/, the browser is at /pm/ but
 // React Router needs `basename` to strip that prefix before matching nested

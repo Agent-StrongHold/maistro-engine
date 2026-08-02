@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { apiDelete, apiGet, apiPatch, apiPost } from "../lib/api";
+import { applyAppearance } from "../lib/appearance";
 
 export type WorkspaceRole = "owner" | "editor" | "viewer";
 
@@ -130,7 +131,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (themeId && themeId !== "default") {
       document.documentElement.dataset.theme = themeId;
     } else {
+      // No workspace theme override -- fall back to the user's app-level
+      // light/dark appearance rather than always forcing light.
       delete document.documentElement.dataset.theme;
+      applyAppearance();
     }
   }, [activeWorkspace?.theme_id]);
 

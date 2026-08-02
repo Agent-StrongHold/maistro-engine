@@ -2,6 +2,7 @@ import { type ReactNode, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useUser } from "../App";
 import { ModeToggle } from "./ModeToggle";
+import { AppearanceToggle } from "./AppearanceToggle";
 import { WorkspaceTabs } from "./WorkspaceTabs";
 import { WorkspaceShare } from "./WorkspaceShare";
 import { WorkspaceToolBindings } from "./WorkspaceToolBindings";
@@ -97,6 +98,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
         <div className="drawer-header">
           <span style={{ fontFamily: "var(--hand)", fontSize: 20, fontWeight: 700 }}>{shellTitle}</span>
           <ModeToggle />
+          <AppearanceToggle />
           <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu">&#x2715;</button>
         </div>
         {pmPoc ? (
@@ -150,6 +152,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
           </NavLink>
         ))}
         <div style={{ flex: 1 }} />
+        <AppearanceToggle />
         {user && (
           <div
             className="nav-icon"

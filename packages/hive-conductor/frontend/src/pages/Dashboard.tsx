@@ -413,7 +413,7 @@ function JiraWidget({ widget }: { widget: Widget }) {
         {entries.map(([name, count]) => (
           <div key={name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: "0.6rem", color: C.muted, width: 80, textAlign: "right", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
-            <div style={{ flex: 1, height: 14, background: "rgba(0,0,0,0.05)", borderRadius: 4, overflow: "hidden" }}>
+            <div style={{ flex: 1, height: 14, background: "var(--track)", borderRadius: 4, overflow: "hidden" }}>
               <div style={{ width: `${(count / max) * 100}%`, height: "100%", background: statusColors[name] || C.gold, borderRadius: 4 }} />
             </div>
             <span style={{ fontSize: "0.6rem", color: C.ink, width: 30, flexShrink: 0 }}>{count}</span>
@@ -534,7 +534,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
           {nums.map((n: {label: string; value: number}, i: number) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: "0.6rem", color: C.muted, width: 70, textAlign: "right", flexShrink: 0 }}>{n.label}</span>
-              <div style={{ flex: 1, height: 16, background: "rgba(0,0,0,0.05)", borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ flex: 1, height: 16, background: "var(--track)", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ width: `${(n.value / max) * 100}%`, height: "100%", background: C.gold, borderRadius: 4 }} />
               </div>
               <span style={{ fontSize: "0.6rem", color: C.ink, width: 50, flexShrink: 0 }}>{n.value.toLocaleString()}</span>
@@ -569,9 +569,9 @@ function UnknownWidget({ widget }: { widget: Widget }) {
             </thead>
             <tbody>
               {rows.slice(0, 50).map((row, i) => (
-                <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "rgba(0,0,0,0.03)" }}>
+                <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "var(--track)" }}>
                   {cols.map(c => (
-                    <td key={c} style={{ padding: "4px 8px", color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180, borderBottom: "1px solid rgba(0,0,0,0.04)" }}>{(row[c] || "—").slice(0, 60)}</td>
+                    <td key={c} style={{ padding: "4px 8px", color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 180, borderBottom: "1px solid var(--track)" }}>{(row[c] || "—").slice(0, 60)}</td>
                   ))}
                 </tr>
               ))}
@@ -600,7 +600,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", maxHeight: 240 }}>
         {data.records.length === 0 && <div style={{ fontSize: "0.65rem", color: "var(--pencil)" }}>No records</div>}
         {data.records.map((r: { name?: string; id?: string }, i: number) => (
-          <div key={i} style={{ fontSize: "0.68rem", padding: "4px 0", borderBottom: "1px solid rgba(0,0,0,0.05)", color: "var(--ink)" }}>
+          <div key={i} style={{ fontSize: "0.68rem", padding: "4px 0", borderBottom: "1px solid var(--track)", color: "var(--ink)" }}>
             {r.name || r.id || "(untitled)"}
           </div>
         ))}
@@ -655,7 +655,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6, justifyContent: "center", height: "100%" }}>
           <div style={{ fontSize: "1.8rem", fontWeight: 800, color: "var(--ink)" }}>{pct}%</div>
-          <div style={{ height: 10, background: "rgba(0,0,0,0.06)", borderRadius: 6, overflow: "hidden" }}>
+          <div style={{ height: 10, background: "var(--track)", borderRadius: 6, overflow: "hidden" }}>
             <div style={{ width: `${pct}%`, height: "100%", background: "var(--accent-gradient)", borderRadius: 6, transition: "width 0.4s cubic-bezier(0.4, 0, 0.2, 1)" }} />
           </div>
           <div style={{ fontSize: "0.58rem", color: "var(--pencil)" }}>{achieved} / {target}</div>
@@ -722,7 +722,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
         {entries.slice(0, 10).map(([label, count], i) => (
           <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: "0.62rem", color: "var(--pencil)", width: 80, textAlign: "right", flexShrink: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }} title={label}>{label}</span>
-            <div style={{ flex: 1, height: 20, background: "rgba(0,0,0,0.04)", borderRadius: 6, overflow: "hidden" }}>
+            <div style={{ flex: 1, height: 20, background: "var(--track)", borderRadius: 6, overflow: "hidden" }}>
               <div style={{ width: `${(count / max) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${palette[i % palette.length]}cc, ${palette[i % palette.length]})`, borderRadius: 6, minWidth: 4, transition: "width 0.4s ease" }} />
             </div>
             <span style={{ fontSize: "0.65rem", color: "var(--ink)", width: 32, flexShrink: 0, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{count}</span>
@@ -751,7 +751,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
         {data.records.slice(0, 12).map((rec: any, i: number) => {
           const name = rec.name || rec.Name || rec.Title || rec.use_case || rec.Summary || rec["Use Case Name/ Project"] || Object.values(rec).find(v => typeof v === "string" && (v as string).length > 3 && v !== rec.id && v !== rec.status) || rec.id;
           return (
-            <div key={i} style={{ display: "flex", gap: 8, padding: "6px 4px", borderBottom: "1px solid rgba(0,0,0,0.05)", alignItems: "center" }}>
+            <div key={i} style={{ display: "flex", gap: 8, padding: "6px 4px", borderBottom: "1px solid var(--track)", alignItems: "center" }}>
               <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--accent)", flexShrink: 0, opacity: 0.7 }} />
               <span style={{ color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "0.68rem" }}>{name as string}</span>
               {rec.status && <span style={{ color: "var(--accent)", flexShrink: 0, fontSize: "0.56rem", padding: "2px 8px", borderRadius: 6, background: "var(--accent-light)", fontWeight: 600 }}>{rec.status}</span>}
@@ -772,7 +772,7 @@ function UnknownWidget({ widget }: { widget: Widget }) {
           {numEntries.slice(0, 10).map(([label, value]) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: "0.6rem", color: C.muted, width: 70, textAlign: "right", flexShrink: 0 }}>{label}</span>
-              <div style={{ flex: 1, height: 14, background: "rgba(0,0,0,0.05)", borderRadius: 4, overflow: "hidden" }}>
+              <div style={{ flex: 1, height: 14, background: "var(--track)", borderRadius: 4, overflow: "hidden" }}>
                 <div style={{ width: `${(value / max) * 100}%`, height: "100%", background: C.gold, borderRadius: 4 }} />
               </div>
               <span style={{ fontSize: "0.6rem", color: C.ink, width: 40, flexShrink: 0 }}>{value.toLocaleString()}</span>
@@ -1077,7 +1077,7 @@ function WidgetCard({ widget, agents, metrics, editing, onRemove, onUpdate }: {
           <button onClick={() => { if (window.confirm(`Remove "${widget.title}"?`)) { onRemove(); setConfigOpen(false); } }} style={{ marginTop: 4, padding: "5px 0", borderRadius: 8, border: `1px solid ${C.danger}`, background: "transparent", color: C.danger, fontSize: "0.62rem", cursor: "pointer" }}>Delete Widget</button>
         </div></div>
       )}
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: "thin", scrollbarColor: "rgba(0,0,0,0.15) transparent" }}>{content}</div>
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: "thin", scrollbarColor: "var(--scroll-thumb) transparent" }}>{content}</div>
     </div>
   );
 }
