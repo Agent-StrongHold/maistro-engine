@@ -54,39 +54,56 @@ async function setupIfNeeded(page: Page) {
     // 4/5 — Modules (skip)
     await page.locator("button", { hasText: /next/i }).click();
 
-    // 5/5 — Confirm
-    await page.locator("button", { hasText: /launch/i }).click();
-    await page.waitForURL(/\/(chat|login)?/, { timeout: 15000 }).catch(() => {});
+    // 5/5 — Confirm. Wait for the POST itself to land, not for a URL change:
+    // the old `waitForURL(/\/(chat|login)?/)` matched the current URL "/"
+    // immediately and returned without waiting for anything, so spec 01 could
+    // read /v1/setup/status while setup/complete was still in flight and see
+    // setup_complete: false.
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/v1/setup/complete") && r.request().method() === "POST",
+        { timeout: 15000 },
+      ),
+      page.locator("button", { hasText: /launch/i }).click(),
+    ]).catch(() => {});
   }
 }
 
+// Login.tsx's inputs carry NO `name` and no user-ish placeholder — they are
+// identified by autocomplete tokens:
+//   login mode     -> autocomplete="username" + autocomplete="current-password"
+//   register mode  -> autocomplete="username" + two autocomplete="new-password"
+//                     (password, then confirm)
+// The previous selectors here were 'input[name="username"], input[placeholder*="user"]',
+// which match nothing in either mode. That is why specs 02-12 each hung for the
+// full test timeout inside this helper rather than failing on an assertion.
+//
+// Mode is detected from the form itself rather than from body text: the login
+// view also renders a "Register" toggle, so a body.includes("Register") check
+// takes the register branch while sitting on the login form.
 async function loginAsPM(page: Page) {
   await page.goto("/login");
-  await page.waitForTimeout(500);
 
-  const body = await page.textContent("body");
-  if (body?.includes("Register") || body?.includes("Sign up")) {
-    // Register first
-    const usernameInput = page.locator('input[name="username"], input[placeholder*="user"]').first();
-    const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
-    const confirmInput = page.locator('input[name="confirm"], input[placeholder*="confirm"]').first();
+  const usernameInput = page.locator('input[autocomplete="username"]').first();
+  const newPasswords = page.locator('input[autocomplete="new-password"]');
+  const currentPassword = page.locator('input[autocomplete="current-password"]').first();
 
+  await usernameInput.waitFor({ state: "visible" });
+
+  if (await newPasswords.first().isVisible().catch(() => false)) {
+    // Register first.
     await usernameInput.fill(PM_USER);
-    await passwordInput.fill(PM_PASS);
-    if (await confirmInput.isVisible()) {
-      await confirmInput.fill(PM_PASS);
+    await newPasswords.nth(0).fill(PM_PASS);
+    if (await newPasswords.nth(1).isVisible().catch(() => false)) {
+      await newPasswords.nth(1).fill(PM_PASS);
     }
     await page.locator("button", { hasText: /register|sign up/i }).click();
     await page.waitForTimeout(1000);
   }
 
-  // Login
-  const usernameInput = page.locator('input[name="username"], input[placeholder*="user"]').first();
-  const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
-
-  if (await usernameInput.isVisible()) {
+  if (await currentPassword.isVisible().catch(() => false)) {
     await usernameInput.fill(PM_USER);
-    await passwordInput.fill(PM_PASS);
+    await currentPassword.fill(PM_PASS);
     await page.locator("button", { hasText: /log.?in|sign.?in/i }).click();
     await page.waitForTimeout(1000);
   }
