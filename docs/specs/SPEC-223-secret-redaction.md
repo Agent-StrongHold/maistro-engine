@@ -9,7 +9,8 @@ substrate:
   - maistro-engine#ADR-064
 implements:
   - maistro-engine#ADR-064
-related: []
+related:
+  - maistro-engine#SPEC-080226-4c1f
 supersedes: []
 blocks: []
 blocked-by: []
@@ -51,6 +52,11 @@ leakage.
 - Wiring `redact()` into logging handlers, error-message formatting, or
   trajectory recording — these integration points are explicitly tracked
   separately per ADR-064 and are not implemented by this module.
+  **No such tracking artifact was ever created**, so for the whole life of this
+  module `redact()` had zero production callers while `SECURITY.md` and
+  `COMPLIANCE.md` described it as an operative control. That is now closed by
+  [SPEC-080226-4c1f](SPEC-080226-4c1f-log-redaction-wiring.md), which installs it
+  on both log pipelines; this SPEC's own scope is unchanged.
 - A runtime on/off toggle — the implemented module always redacts; there
   is no `is_redaction_enabled()` / `_REDACT_ENABLED` flag as sketched in
   ADR-064's interface section.

@@ -33,7 +33,7 @@ in **[ADR-072](docs/adr/ADR-072-threat-model.md)**. It is not duplicated here; t
 | **2. Warden** | Trust-boundary scanner: fast-tier heuristics (regex/pattern/anomaly, free) escalate only ambiguous input to an LLM judge (risk `0..1`). Scans user input, tool results, and — at the MCP boundary — both ingress and egress | `maistro/security/warden/detector.py`, `heuristics.py`, `semantic.py`, `llm_classifier.py`, `sanitizer.py`, `patterns.py` |
 | **3. Sentinel (AuthZ / elevation)** | Policy decision + enforcement point (PDP/PEP) at the tool-call boundary. Evaluates CLASSIFY → AUTHORIZE → BUDGET → GATE (ADR-068) in order, stopping at first deny | `maistro/security/sentinel/policy.py`, `validator.py`, `elevation.py`, `approver_graph.py`, `rlphd.py` |
 | **4. Skill / tool trust tiers** | Skill body size cap + `security_scan()` (exec/eval/subprocess/credential/injection patterns) at import; dangerous-command and dangerous-tool-name detection at call time. **Reversibility classification does NOT currently gate anything** — `ReversibilityRegistry` is never constructed and `Sentinel.resolve_tier` never consults it (#346). Skill scanning runs on the CRUD write paths and `POST /v1/skills/scan` (#347), but those are content-only: skills created that way do not pass `import_pipeline.import_skill`, so no signing, T3 sandboxing, or rescan-on-use binding applies to them | `maistro/skills/parser.py`, `skills/import_pipeline.py`, `security/dangerous_tools.py`, `tools/reversibility_registry.py` |
-| **5. Resource protection** | Quota tracking, per-key rate limiting, circuit breakers/retry/fallback, secret redaction, result-size truncation (see inventory below) | `maistro/quota/tracker.py`, `security/rate_limiter.py`, `resilience/`, `security/redact.py`, `security/sentinel/token_optimizer.py` |
+| **5. Resource protection** | Quota tracking, per-key rate limiting, circuit breakers/retry/fallback, secret redaction on log output, result-size truncation (see inventory below) | `maistro/quota/tracker.py`, `security/rate_limiter.py`, `resilience/`, `security/redact.py` + `security/log_redaction.py`, `security/sentinel/token_optimizer.py` |
 | **6. Sandbox isolation** | Untrusted agent/tool code MUST run behind a hardware-VM boundary (microVM), not a shared-kernel container; the Docker-socket-mounting sandbox is deprecated for untrusted workloads (ADR-093) | `maistro/tools/sandbox/`, `maistro/sandbox/protocol.py` |
 
 This is the engine's version of Stronghold's Gate → Warden → Identity → Skill → Resource
@@ -64,7 +64,7 @@ Real numeric caps found in the engine (grepped, not asserted from memory — eac
 | Rate limiter window / burst window | 60 s / 1 s | `security/rate_limiter.py:30-31` (`self._window`, `self._burst_window`) | Sliding-window + burst limiting per key |
 | Rate limiter key eviction age | 300 s | `security/rate_limiter.py:16` (`_KEY_EVICTION_AGE_S`) | Bounds in-memory key table growth |
 | Circuit breaker defaults | N=5 failures / W=60s window / T=30s cooldown | ADR-038 §2 (implemented in `resilience/`) | Per-upstream-dependency failure isolation |
-| Secret-redaction pattern catalogue | 30+ patterns, single-pass composite regex | `security/redact.py` (ADR-064) | Scrubs API keys, JWTs, private-key blocks, connection strings, etc. from logs/errors/trajectories |
+| Secret-redaction pattern catalogue | 30+ patterns, single-pass span merge, plus a >4.0 bits/char entropy fallback for unknown key formats | `security/redact.py` (ADR-064), installed by `security/log_redaction.py` | Scrubs API keys, JWTs, private-key blocks, connection strings, etc. **Operative on both log pipelines** — every stdlib handler (Conductor + uvicorn) and the structlog processor chain (`maistro-server`), covering `%`-args and exception tracebacks. `/health` reports `log_redaction_active`. It does **not** cover anything that bypasses logging — `print()`, an HTTP response body, or a value written straight to disk |
 
 ### Gaps against Stronghold's inventory
 
@@ -84,7 +84,7 @@ Stronghold's `SECURITY.md` carries several caps the engine does not (yet) have a
 | ID | Threat | Engine mitigation |
 |---|---|---|
 | LLM01 | Prompt Injection | Warden fast-tier heuristics + LLM-judge escalation on ambiguity (`security/warden/`) |
-| LLM02 | Sensitive Information Disclosure | Sentinel PII filter (`security/sentinel/pii_filter.py`) + secret redaction (`security/redact.py`, ADR-064) |
+| LLM02 | Sensitive Information Disclosure | Sentinel PII filter (`security/sentinel/pii_filter.py`) + secret redaction on both log pipelines (`security/redact.py` installed by `security/log_redaction.py`, ADR-064). The PII filter reaches only callers of the Sentinel post-call pipeline, which the Conductor chat path does not traverse (#350) |
 | LLM03 | Supply Chain (skills / MCP / dependencies) | Skill content scan on the CRUD write paths (`skills/parser.py::security_scan`, #347) + microVM isolation for untrusted code (ADR-093). **Two caveats:** `import_pipeline.import_skill`'s full gate has no production caller, and **signed code-registry entries (`code_registry/verify.py`, ADR-069) are not operative** — `CodeRegistry.register()` is never called, so nothing is signature-checked at load (#346) |
 | LLM04 | Data / Model Poisoning | Warden scan on tool results before they re-enter context; learning promotion gate (`memory/learnings/promoter.py`) |
 | LLM05 | Improper Output Handling | Sentinel post-call pipeline: Warden scan + PII filter + token-result truncation (`security/sentinel/token_optimizer.py`) |
@@ -115,10 +115,13 @@ Stronghold's `SECURITY.md` carries several caps the engine does not (yet) have a
    store all default to in-memory implementations; data is lost on restart. PostgreSQL
    implementations exist under `persistence/` but require explicit `database_url` configuration —
    nothing forces the switch.
-5. **PII filter is pattern-based.** `security/sentinel/pii_filter.py` and `security/redact.py` are
-   regex-driven; homoglyph/encoding-based evasion is only partially mitigated (Warden applies NFKD
-   normalization before scanning, but redaction itself is not entropy-based). No high-entropy
-   secret detection for unknown key formats.
+5. **PII filter is pattern-based.** `security/sentinel/pii_filter.py` is regex-driven;
+   homoglyph/encoding-based evasion is only partially mitigated (Warden applies NFKD normalization
+   before scanning, but the PII filter itself does not). `security/redact.py` additionally carries a
+   Shannon-entropy fallback (`_looks_like_secret`, >4.0 bits/char with a mixed charset) that catches
+   unknown key formats an earlier revision of this section wrongly said it lacked; that fallback
+   does not extend to the PII filter. **Redaction covers the log pipelines only** — a secret placed
+   in an HTTP response body or written directly to a file is not scrubbed.
 6. **Warden's LLM-judge tier is fail-open by design intent, not yet verified in code.** ADR-073
    specifies the escalation tier scores risk on ambiguity only; the fail-open behavior on judge
    error (matching Stronghold's documented L3 fail-open pattern) was not independently confirmed
