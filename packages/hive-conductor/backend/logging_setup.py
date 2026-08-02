@@ -27,6 +27,13 @@ def _install_redaction() -> None:
         _REDACTION_ACTIVE = True
     except Exception as exc:  # pragma: no cover - requires a broken maistro-core
         _REDACTION_ACTIVE = False
+        # The rule fires on the word "secrets" in the format string. `exc` can only
+        # be an import failure for `maistro.security.log_redaction` or a handler-
+        # manipulation error from inside it, so its text is a module path or a
+        # handler repr — never credential material. Worth stating plainly because
+        # this is the one line in the process that redaction is NOT covering: it
+        # only runs when installing redaction failed.
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure -- logs an import/attribute error from the redaction installer, never key material
         logging.getLogger("hive").warning(
             "log_redaction_unavailable: logs are NOT scrubbed of secrets (ADR-064): %s",
             exc,
