@@ -29,7 +29,7 @@ export default function App() {
   }, []);
 
   const refreshSaved = async () => {
-    try { setSavedBooks(await listSaved()); } catch {}
+    try { setSavedBooks(await listSaved()); } catch { /* a stale saved-books list is better than a crash on refresh */ }
   };
 
   const resumeBook = (entry) => {

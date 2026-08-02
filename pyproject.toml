@@ -101,7 +101,7 @@ build-backend = "hatchling.build"
 bypass-selection = true
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py312"
 line-length = 100
 exclude = [
     "packages/maistro-bootstrap/mutants",
@@ -121,7 +121,16 @@ src = [
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF", "C90", "C4"]
-ignore = ["E501"]
+# UP046/UP047 (PEP 695 type-parameter syntax) only fire once target-version
+# reaches py312 (C2/#287). The 9 existing TypeVar/Generic[T] sites they'd flag
+# (maistro.credentials.rotation, maistro.graph.executor/nodes.base,
+# maistro.repertoire.run, maistro.skills.connectors, maistro_rsi.merge) are
+# correct pre-3.12-style generics, not new debt — rewriting them to `def
+# foo[T](...)`/`class Foo[T]:` is a real, separate change with its own mypy
+# --strict + pydantic interaction risk across public API signatures, not a
+# side effect of a floor-alignment PR. Tracked as follow-up, not silently
+# dropped.
+ignore = ["E501", "UP046", "UP047"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
@@ -189,9 +198,33 @@ ignore_missing_imports = true
 module = ["bip_utils"]
 ignore_missing_imports = true
 
+# Every directory under packages/ is a real distribution with its own
+# pyproject.toml — including hive-conductor, which joined the workspace with F1.
+# Declaring the members table is what makes `uv lock` resolve all of them
+# together against ONE dependency set instead of leaving each package (and,
+# before F1, the conductor's requirements.txt) to resolve independently.
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# Workspace-root sources are inherited by every member, so a member depending on
+# e.g. maistro-core gets the local checkout rather than an index lookup for a
+# name that is not published yet. `workspace = true` is the canonical pairing
+# with the members table above (it replaces the earlier
+# `{ path = ..., editable = true }` form, which said the same thing by hand).
 [tool.uv.sources]
-maistro-bootstrap = { path = "packages/maistro-bootstrap", editable = true }
-maistro-core = { path = "packages/maistro-core", editable = true }
-maistro-registry = { path = "packages/maistro-registry", editable = true }
-maistro-design = { path = "packages/maistro-design", editable = true }
-maistro-canvas = { path = "packages/maistro-canvas", editable = true }
+maistro-bootstrap = { workspace = true }
+maistro-core = { workspace = true }
+maistro-registry = { workspace = true }
+maistro-design = { workspace = true }
+maistro-canvas = { workspace = true }
+# Not root dependencies, but uv requires every workspace member that any member
+# depends on to have a source entry (maistro-rsi -> maistro-evolve is the live
+# case). Listing all of them keeps the table complete rather than one edit away
+# from a resolution error.
+maistro-evolve = { workspace = true }
+maistro-rsi = { workspace = true }
+maistro-server = { workspace = true }
+maistro-turing = { workspace = true }
+# Listed so any member (or a developer) that depends on it resolves to this
+# checkout. It is not published to PyPI — see packages/hive-conductor/pyproject.toml.
+hive-conductor = { workspace = true }

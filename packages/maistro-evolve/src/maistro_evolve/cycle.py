@@ -42,7 +42,12 @@ class EvolutionConfig(BaseModel):
     cull_pct: float = 0.3
     breed_pct: float = 0.2
     eval_batch_size: int = Field(default=5, ge=0, le=MAX_EVAL_BATCH_SIZE)
-    target_benchmarks: list[str] = ["ifeval", "bfcl", "swebench", "tau_bench"]
+    target_benchmarks: list[str] = [
+        "proxy_ifeval",
+        "proxy_bfcl",
+        "proxy_swebench",
+        "proxy_tau_bench",
+    ]
     tournament_size: int = Field(default=3, gt=0, le=MAX_TOURNAMENT_SIZE)
     self_improve: bool = True
     self_improve_top_n: int = Field(default=3, ge=0, le=MAX_SELF_IMPROVE_TOP_N)

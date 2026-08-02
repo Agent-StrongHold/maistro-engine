@@ -226,6 +226,8 @@ class TestEmitProgressWebhook:
         runner = TaskRunner(queue, success_executor)
         await runner._emit_progress_webhook("nonexistent")
 
+        assert runner._progress_webhook is None
+
     @pytest.mark.asyncio
     async def test_missing_task_returns_without_notifying(self) -> None:
         queue = TaskQueue()
@@ -249,7 +251,9 @@ class TestEmitProgressWebhook:
         webhook = FakeWebhook(fail=True)
         runner = TaskRunner(queue, success_executor, progress_webhook=webhook)
         task_id = await make_task(queue)
-        await runner._emit_progress_webhook(task_id)  # must not raise
+        await runner._emit_progress_webhook(task_id)
+
+        assert webhook.notified == []
 
 
 class TestExecuteTask:
@@ -257,7 +261,12 @@ class TestExecuteTask:
     async def test_missing_task_returns_early(self) -> None:
         queue = TaskQueue()
         runner = TaskRunner(queue, success_executor)
-        await runner._execute_task("nonexistent")  # must not raise
+        task_id = await make_task(queue)
+        await runner._execute_task("nonexistent")
+
+        task = queue.get(task_id)
+        assert task is not None
+        assert task.status == TaskStatus.QUEUED
 
     @pytest.mark.asyncio
     async def test_success_path_sets_completed_with_files_changed(self) -> None:

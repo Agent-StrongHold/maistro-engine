@@ -74,6 +74,19 @@ async def _judge_answer(
 
 
 async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score Q&A responses with a fuzzy heuristic that gates a real LLM-judge fallback.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official GAIA corpus. Despite the name, ``_exact_match_score`` is NOT
+    exact-match: it awards 1.0 for exact equality, but also 0.9 for the
+    expected answer appearing anywhere as a raw substring of the response,
+    0.85 for the same set of digit-sequences appearing in both, and up to
+    0.7 for plain word-set overlap. Any of those non-exact tiers can reach
+    the 0.7 threshold that skips the LLM-as-judge call (``_judge_answer``)
+    entirely — so a short expected answer (e.g. a single letter) can be
+    trivially satisfied by an unrelated response that happens to contain
+    that substring, without the judge ever running.
+    """
     if llm_call is None:
         raise ValueError(
             "run_gaia requires an llm_call — there is no stub/heuristic "
@@ -126,7 +139,7 @@ async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="gaia",
+        benchmark="proxy_gaia",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
