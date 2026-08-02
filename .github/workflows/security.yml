@@ -20,6 +20,13 @@ on:
     # Nightly full SBOM + image scan.
     - cron: "30 7 * * *"
 
+# See the rationale in ci.yml. The nightly schedule falls to `github.ref`, and
+# `cancel-in-progress` is false for it, so a scheduled scan is never cut short
+# by a push landing while it runs.
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # ----- SAST: bandit + semgrep + gitleaks (fast; every push) -----
   sast:
@@ -81,7 +88,7 @@ jobs:
             --config p/secrets \
             --exclude 'packages/hive-conductor/eval' \
             --exclude 'packages/hive-conductor/cage' \
-            --error packages/ apps/ tests/ 2>&1 | tee semgrep-report.txt
+            --error packages/ tests/ 2>&1 | tee semgrep-report.txt
 
       - name: gitleaks (full-history scan on main; commit-range on PR)
         uses: gitleaks/gitleaks-action@v2

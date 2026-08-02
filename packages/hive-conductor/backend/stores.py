@@ -151,6 +151,19 @@ def configure_persistence(persisted_store: Any) -> None:
         store._persisted = persisted_store
 
 
+def purge_all_sessions() -> int:
+    """Invalidate every authenticated session. Returns the number revoked.
+
+    Post-disclosure remediation (see ``docs/CREDENTIAL-ROTATION-RUNBOOK.md``):
+    any session id an attacker read out of the session store stops resolving.
+    Every user must log in again. Elevation grants live inside the session
+    records, so they are revoked with them.
+    """
+    revoked = sessions.clear()
+    logger.warning("sessions_purged count=%d", revoked)
+    return revoked
+
+
 def initialize_stores() -> None:
     """Load persisted data, then seed if empty."""
     for store in _all_model_stores:

@@ -10,14 +10,13 @@ Shared Python runtime and monorepo substrate for AI agent platforms: orchestrato
 - **uv** workspace — root meta-package `maistro-workspace`; code in `packages/*`
 - **FastAPI**, **SQLAlchemy** (async) + **asyncpg**, **Alembic**, **LiteLLM**, **structlog**
 - Packages: `maistro-core`, `maistro-server`, `maistro-turing`, `maistro-canvas`, `maistro-bootstrap`, `maistro-registry`; reference app `packages/hive-conductor`
-- **Flutter (not part of uv):** `apps/maistro-gateway-node-flutter/` — gateway **node** (iOS + Android); [SPEC-179](docs/specs/SPEC-179-flutter-gateway-node.md)
 
 ## Build and test commands
 
 | Step | Command |
 |------|---------|
 | Install deps | `uv sync` |
-| Run tests | `uv run pytest` (Python); Flutter: `cd apps/maistro-gateway-node-flutter && flutter test` when the project exists |
+| Run tests | `uv run pytest` |
 | Lint / format | `uv run ruff check .` and `uv run ruff format .` |
 | Typecheck | `uv run mypy packages/maistro-core/src packages/maistro-server/src packages/maistro-turing/src packages/maistro-canvas/src packages/maistro-bootstrap/src packages/maistro-registry/src` |
 | Expected dirs | `./scripts/verify-monorepo-layout.sh` |
@@ -26,11 +25,10 @@ Shared Python runtime and monorepo substrate for AI agent platforms: orchestrato
 
 ## Architecture pointers
 
-- **Flutter node app:** `apps/maistro-gateway-node-flutter/` — gateway WebSocket client; [SPEC-179](docs/specs/SPEC-179-flutter-gateway-node.md).
 - **Canonical library:** `packages/maistro-core/src/maistro/` — agents, memory, classifier, router, builders, protocols, types, agent spec/recipes/spawner, etc.
 - **HTTP API:** `packages/maistro-server/src/maistro_server/` — FastAPI app (thin wrapper over core). Prefer `from maistro_server...` in tests and tooling; do not reintroduce a second `maistro.main` at repo root.
 - **ADR/spec registry CLI:** `packages/maistro-registry/src/maistro_registry/` — `maistro-registry` console script.
-- **Legacy snapshots:** the former `code-worth-implementing-from-*` and `legacy-maistro-site/` trees (once under `potential-dead-code/`) were **removed** per [`docs/specs/SPEC-178`](docs/specs/SPEC-178-legacy-snapshot-retention.md) — their behavior ships under `packages/` (graph execution per [`SPEC-177`](docs/specs/SPEC-177-hyperagent-graph-execution.md)) or lives in the sibling repos; git history retains provenance. New **Python** work belongs under `packages/*/src/` (Flutter under `apps/` per SPEC-179).
+- **Legacy snapshots:** the former `code-worth-implementing-from-*` and `legacy-maistro-site/` trees (once under `potential-dead-code/`) were **removed** per [`docs/specs/SPEC-178`](docs/specs/SPEC-178-legacy-snapshot-retention.md) — their behavior ships under `packages/` (graph execution per [`SPEC-177`](docs/specs/SPEC-177-hyperagent-graph-execution.md)) or lives in the sibling repos; git history retains provenance. New Python work belongs under `packages/*/src/`.
 - **Canvas:** `packages/maistro-canvas/src/maistro_canvas/`
 - **Turing extensions:** `packages/maistro-turing/src/maistro_turing/`
 - **ADRs:** `docs/adr/`

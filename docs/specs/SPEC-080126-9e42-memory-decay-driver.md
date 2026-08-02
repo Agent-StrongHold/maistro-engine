@@ -3,7 +3,7 @@ id: SPEC-080126-9e42
 title: "Periodic memory-decay driver — making 'memory must forget' true at runtime"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-08-01
 substrate:
   - maistro-engine#ADR-046
@@ -16,17 +16,19 @@ related:
   - maistro-engine#ADR-037
 supersedes: []
 blocks: []
-blocked-by:
-  - maistro-engine#SPEC-080126-3a7c
+blocked-by: []
 contracts:
   - behavioral
 tests:
-  - packages/maistro-core/tests/memory/episodic/test_tiers.py
+  - packages/maistro-core/tests/memory/episodic/test_decay_driver.py
+  - packages/hive-conductor/backend/tests/test_memory_decay.py
 layer: Memory
 owners:
   - '@BlakeMatthews-dev'
 history:
   - status: Proposed
+    date: 2026-08-01
+  - status: Implemented
     date: 2026-08-01
 ---
 
@@ -76,45 +78,82 @@ The decay primitives are inert. Consequences:
 
 ## Decision
 
-### Blocked on the scheduler, deliberately
+### Not blocked on the scheduler — dependency lifted
 
-This depends on [SPEC-080126-3a7c](SPEC-080126-3a7c-durable-scheduler.md), and the
-`blocked-by` is real rather than bookkeeping. Driving decay from the *current* scheduler
-would inherit its in-memory store (#343): the decay schedule itself would vanish on restart,
-so the fix would silently stop working at the first deploy — reproducing the exact failure
-mode this SPEC exists to end. **Do not implement this on top of the shipped scheduler.**
+This SPEC originally declared `blocked-by: SPEC-080126-3a7c` (the durable scheduler), on the
+reasoning that decay would live in the scheduler's store, which is in-memory and loses
+records on restart (#343).
 
-### The first run is the dangerous one
+**That blocker was too strong and has been lifted.** It conflated two different things.
+Decay is a *system-level cadence*, not a user-created schedule: nobody creates it, nobody
+edits it, and nothing is lost if no record of it survives a restart. It does not need a
+durable schedule row — it needs a periodic tick that starts on boot. A background task
+started from the app lifespan has exactly that lifetime: it restarts with the process, which
+is all the durability a system cadence requires.
 
-Decay has never run. On a system with existing memories, the first tick applies accumulated
-decay to entries whose `last_reinforced` timestamps may be months old. Depending on the
-curve, that could collapse a large fraction of episodic salience in a single pass.
+So this is **not** built on `/v1/schedules` or `maistro/scheduling/store.py`. It follows the
+shape already established by `packages/hive-conductor/backend/services/scheduler.py` —
+a module-level singleton started from `main.py`'s lifespan and stopped on shutdown.
+SPEC-080126-3a7c remains worth doing for *user-created* schedules, where losing the record
+genuinely is data loss; it is simply not a prerequisite for this.
 
-This must be handled explicitly, not discovered in production. The implementer must
-determine, with real data shapes, whether the first tick is safe, and if not, specify the
-mitigation — a clamp on per-tick decay magnitude, a staged rollout, or a one-time
-`last_reinforced` rebase. **A migration that silently guts a user's memory on upgrade is
-strictly worse than the current gap**, which merely does nothing.
+### First-run hazard: not applicable under this deployment model
+
+An earlier draft treated the first tick as the dangerous part: decay has never run, so on a
+store carrying months of history the first sweep would bill all of that accrued time at once
+and flatten episodic salience in a single pass. That concern was real in the abstract and
+**does not apply here**, for two independent reasons:
+
+1. **Deployment model.** This is an MVP with a single user (the maintainer) and a fresh
+   install every time. There is no upgrade path carrying old data forward, so there are no
+   entries with stale timestamps for a first tick to punish.
+2. **There is no durable episodic store.** `InMemoryEpisodicStore` is the only
+   implementation of the episodic protocol and `container.py` wires it unconditionally, in
+   the SQLite branch as well. Episodic entries cannot outlive the process, so
+   `last_accessed_at` can never predate process start — the accrued gap a tick can bill for
+   is bounded by uptime, and the driver ticks hourly from boot.
+
+No first-run mitigation is therefore implemented: no per-tick clamp, no timestamp rebase, no
+staged rollout. Dormant mitigation code for a scenario that cannot occur would later read as
+a real safeguard, which is worse than not having one.
+
+**Revisit this if reason 2 stops holding.** A durable (SQLite/Postgres) episodic store would
+reintroduce the hazard directly, and that is the trigger to reopen this section rather than
+assume it stays moot.
 
 ### Loud when disabled
 
 Following the F3 precedent (#302): if decay is configured off, that is a degraded mode and
 must be visible, not a silent no-op that looks identical to today's bug.
 
+## What shipped
+
+- `maistro/memory/episodic/decay_driver.py` — `EpisodicDecayDriver`: cadence loop,
+  `run_once()`, `start()`/`stop()`, and `status()` for health reporting.
+- `EpisodicStore.apply_decay()` (new `DecayableEpisodicStore` protocol) — sweeps every live
+  entry through the existing `tick_decay` and returns a `DecaySweep`
+  (`scanned` / `decayed` / `at_floor`).
+- `hive-conductor` `services/memory_decay.py`, started and stopped from `main.py`'s lifespan
+  alongside `start_scheduler()`.
+- `MEMORY_DECAY_INTERVAL_S` (default 3600, `<=0` disables). Disabled is loud: a startup
+  warning naming the knob, plus `degraded: true` and `memory_decay.state: "disabled"` on
+  `/health`, matching the `ALLOW_STUB_LLM` precedent.
+- Observability via the surrounding logging convention (`episodic_decay_tick scanned=… 
+  decayed=… at_floor=…`). No ADR-037 metric names were invented — per SPEC-228 none of them
+  exist yet.
+
 ## Acceptance criteria
 
-- [ ] With the driver enabled, `tick_decay` demonstrably runs on its cadence against a real
+- [x] With the driver enabled, `tick_decay` demonstrably runs on its cadence against a real
       store, and affected entries' weights change.
-- [ ] Weight floors for wisdom/regrets hold across repeated ticks — an entry at the floor
+- [x] Weight floors for wisdom/regrets hold across repeated ticks — an entry at the floor
       does not decay below it no matter how many cycles run.
-- [ ] Reinforcement between ticks measurably offsets decay (the "without reinforcement"
+- [x] Reinforcement between ticks measurably offsets decay (the "without reinforcement"
       qualifier in the README is load-bearing and must be true).
-- [ ] The cadence is configurable and can be disabled; disabling is surfaced as degraded,
+- [x] The cadence is configurable and can be disabled; disabling is surfaced as degraded,
       not silent.
-- [ ] First-run behavior on a store with stale timestamps is characterized and safe, with
-      the reasoning recorded here.
-- [ ] Decay activity is observable — at minimum a count of entries touched per tick.
-- [ ] `README.md:95` and `CLAUDE.md:180` are true once this ships. **If this SPEC does not
+- [x] Decay activity is observable — at minimum a count of entries touched per tick.
+- [x] `README.md:95` and `CLAUDE.md:180` are true once this ships. **If this SPEC does not
       ship for v1, those lines must be corrected instead** and a `KNOWN-GAPS.md` entry added
       — the claim cannot stand unbacked either way.
 
@@ -122,15 +161,16 @@ must be visible, not a silent no-op that looks identical to today's bug.
 
 - Unit: floors hold across N ticks; reinforcement offsets decay; disabled driver performs no
   mutation.
-- Integration: driver scheduled → tick fires → store reflects decayed weights. Must exercise
+- Integration: driver started → cadence fires → store reflects decayed weights. Must exercise
   the real scheduling path, not call `tick_decay` directly — calling it directly is what the
   existing tests already do, and it is exactly the coverage that let this gap survive.
-- Migration/first-run: fixture store with months-old `last_reinforced` values → first tick →
-  assert the outcome matches whatever mitigation was chosen.
+- No migration/first-run test: see "First-run hazard" above. There is no stale-timestamp
+  scenario to characterise under this deployment model.
 
 ## References
 
 - #344 — the gap this SPEC closes
 - #343 — the scheduler drift that kept it invisible
 - [SPEC-240](SPEC-240-memory-decay-reinforcement.md) — ships the primitives; this drives them
-- [SPEC-080126-3a7c](SPEC-080126-3a7c-durable-scheduler.md) — the blocking dependency
+- [SPEC-080126-3a7c](SPEC-080126-3a7c-durable-scheduler.md) — formerly the blocking
+  dependency; no longer a prerequisite (see "Not blocked on the scheduler" above)
