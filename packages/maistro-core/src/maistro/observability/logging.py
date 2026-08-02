@@ -12,6 +12,8 @@ import sys
 
 import structlog
 
+from maistro.security.log_redaction import install_log_redaction, structlog_redact_processor
+
 
 def configure_logging(*, debug: bool = False, json_output: bool = True) -> None:
     """Configure structlog and stdlib logging for the application.
@@ -39,6 +41,10 @@ def configure_logging(*, debug: bool = False, json_output: bool = True) -> None:
         processors=[
             *shared_processors,
             structlog.processors.format_exc_info,
+            # ADR-064: last processor before the renderer, so it sees the
+            # traceback string `format_exc_info` just produced as well as the
+            # event's own fields. Anything added after this point would bypass it.
+            structlog_redact_processor,
             renderer,
         ],
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
@@ -56,3 +62,9 @@ def configure_logging(*, debug: bool = False, json_output: bool = True) -> None:
     # Quiet noisy third-party loggers
     for noisy in ("httpx", "httpcore", "uvicorn.access", "docker", "asyncio"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+
+    # Third-party libraries log through stdlib, not structlog, so the processor
+    # above never sees them. Handler wrapping is what covers httpx's request
+    # lines and any traceback uvicorn prints. Must come after basicConfig —
+    # there are no handlers to wrap before it.
+    install_log_redaction()
