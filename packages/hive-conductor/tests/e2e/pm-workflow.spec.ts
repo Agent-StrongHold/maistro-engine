@@ -85,28 +85,38 @@ async function loginAsPM(page: Page) {
   await page.goto("/login");
 
   const usernameInput = page.locator('input[autocomplete="username"]').first();
-  const newPasswords = page.locator('input[autocomplete="new-password"]');
-  const currentPassword = page.locator('input[autocomplete="current-password"]').first();
+  const passwordInput = page.locator('input[autocomplete="current-password"]').first();
 
+  // The PM account is created by the setup wizard (setupIfNeeded fills the
+  // Accounts step with these same constants), so this only ever needs to log
+  // in — there is no register path to fall back to.
   await usernameInput.waitFor({ state: "visible" });
+  await usernameInput.fill(PM_USER);
+  await passwordInput.fill(PM_PASS);
 
-  if (await newPasswords.first().isVisible().catch(() => false)) {
-    // Register first.
-    await usernameInput.fill(PM_USER);
-    await newPasswords.nth(0).fill(PM_PASS);
-    if (await newPasswords.nth(1).isVisible().catch(() => false)) {
-      await newPasswords.nth(1).fill(PM_PASS);
-    }
-    await page.locator("button", { hasText: /register|sign up/i }).click();
-    await page.waitForTimeout(1000);
-  }
-
-  if (await currentPassword.isVisible().catch(() => false)) {
-    await usernameInput.fill(PM_USER);
-    await currentPassword.fill(PM_PASS);
-    await page.locator("button", { hasText: /log.?in|sign.?in/i }).click();
-    await page.waitForTimeout(1000);
-  }
+  // Submit by type, NOT by text. Login.tsx renders two mode-TOGGLE buttons
+  // labelled "Sign in" / "Sign up" above the form, and the real submit button
+  // reads "enter the hive" (only "sign in" in PM-POC mode). The previous
+  // selector, hasText: /log.?in|sign.?in/i, therefore matched the *toggle*:
+  // it clicked it, switched to the mode it was already in, submitted nothing,
+  // and reported no error.
+  //
+  // That failed silently in the worst way. No POST /v1/auth/login was ever
+  // issued by this helper, so every spec ran unauthenticated — which is why
+  // the API specs got 401 (not the 403 the ci.yml comment predicted), and why
+  // the specs whose assertions are loose enough to pass while logged out
+  // (e.g. body matching /hive|conductor|chat/i, which the login page itself
+  // satisfies) reported green.
+  //
+  // Awaiting the response rather than a fixed timeout means a login that stops
+  // working fails here, loudly, instead of leaking into a downstream 401.
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes("/v1/auth/login") && r.request().method() === "POST",
+      { timeout: 15000 },
+    ),
+    page.locator('form button[type="submit"]').click(),
+  ]);
 }
 
 test.describe("PM Workflow — Full UI Walkthrough", () => {
