@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
+from models.persona_feedback import PersonaFeedback
 from models.schemas import (
     Agent,
     ChatMessage,
@@ -31,6 +32,7 @@ from models.schemas import (
     SettingsModel,
     Skill,
 )
+from models.workspace import Workspace
 from services.model_store import JsonStore, ModelStore
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,11 @@ memory_entries: ModelStore = ModelStore("memory_entries", MemoryEntry)
 memory_namespaces: dict[str, MemoryNamespace] = {
     "default": MemoryNamespace(name="default", entry_count=1, size_bytes=1024)
 }
+# Persona/Workspace system — a user's live instantiations of adopted personas.
+workspaces: ModelStore = ModelStore("workspaces", Workspace)
+# Phase I: thumbs +/- + comment feedback, persisted per-persona (see
+# services/persona_feedback.py for aggregation across workspaces).
+persona_feedback: ModelStore = ModelStore("persona_feedback", PersonaFeedback)
 
 
 def _initial_settings() -> SettingsModel:
@@ -116,6 +123,8 @@ _all_model_stores: list[ModelStore] = [
     memory_entries,
     chat_sessions,
     users,
+    workspaces,
+    persona_feedback,
 ]
 _all_json_stores: list[JsonStore] = [
     mission_steps,

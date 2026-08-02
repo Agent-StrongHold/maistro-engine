@@ -235,8 +235,10 @@
     "services.opsagent",
     "services.pg_persisted",
     "services.pipeline_orchestrator",
+    "services.preference_calibration",
     "services.repo_scanner",
     "services.skill_optimizer",
+    "services.tool_binding",
     "services.ui_auto_climb",
     "services.ui_climb_vm",
     "services.ui_hill_climber"

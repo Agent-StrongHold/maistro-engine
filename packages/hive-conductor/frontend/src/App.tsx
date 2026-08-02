@@ -6,6 +6,7 @@ import { ModeProvider } from "./components/ModeToggle";
 import { Onboarding } from "./components/Onboarding";
 import { ToastProvider } from "./components/shared";
 import { PocModeProvider, usePmPoc } from "./context/PocMode";
+import { WorkspaceProvider } from "./context/WorkspaceContext";
 import Agents from "./pages/Agents";
 import Fleet from "./pages/Fleet";
 import AuditLog from "./pages/AuditLog";
@@ -109,8 +110,10 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
   return (
     <UserCtx.Provider value={user}>
-      <OnboardingGate />
-      {children}
+      <WorkspaceProvider>
+        <OnboardingGate />
+        {children}
+      </WorkspaceProvider>
     </UserCtx.Provider>
   );
 }

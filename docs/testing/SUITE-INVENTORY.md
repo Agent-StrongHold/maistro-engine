@@ -48,7 +48,7 @@ silently-stopped-collecting case the gate exists to catch.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5872 | `ci.yml` |
+| `packages/maistro-core/tests` | 5917 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 628 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -59,7 +59,7 @@ silently-stopped-collecting case the gate exists to catch.
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 604 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1078 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1224 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
