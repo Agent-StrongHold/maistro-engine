@@ -101,7 +101,7 @@ Reference: Regulation (EU) 2024/1689, Articles 9–15, 17, 26.
 | Article | Requirement | Engine control | Status |
 |---|---|---|---|
 | **Art. 9** | Risk-management system | ADR-072 threat model + this COMPLIANCE.md | ✅ |
-| **Art. 10** | Data governance | Memory scope axes (global→org→team→user→agent→session, ADR-019 Decision 7) + Sentinel PII filter (`security/sentinel/pii_filter.py`) + secret redaction (`security/redact.py`, ADR-064) | `formal/models/test_memory_scopes.py`; `formal/models/test_pii_filter.py`; `packages/maistro-core/tests/security/test_redact.py` | ✅ |
+| **Art. 10** | Data governance | Memory scope axes (global→org→team→user→agent→session, ADR-019 Decision 7) + Sentinel PII filter (`security/sentinel/pii_filter.py`) + secret redaction on both log pipelines (`security/redact.py` installed by `security/log_redaction.py`, ADR-064) | `formal/models/test_memory_scopes.py`; `formal/models/test_pii_filter.py`; `packages/maistro-core/tests/security/test_redact.py`; `packages/maistro-core/tests/security/test_log_redaction.py` | 🟡 (redaction is operative, but **log output only**; the PII filter runs inside the Sentinel post-call pipeline, which the Conductor chat path does not traverse — #350) |
 | **Art. 11** | Technical documentation | ADR ladder (`docs/adr/`, 100+ ADRs) + `docs/TURING-MIGRATION-SPEC.md` + `CLAUDE.md` | ✅ |
 | **Art. 12** | Record-keeping | Sentinel decision audit + durable event log (`events/`) | 🟡 (retention policy per event kind is `gap-spec` — ADR-037/055 define tiers but no engine-wide retention default is codified outside the `sensitive`/`secret` tiers) |
 | **Art. 13** | Transparency to users | Warden flag-and-warn responses (`security/warden/flag_response.py`) surface why content was blocked/flagged | `formal/models/test_flag_response.py` | ✅ |
@@ -117,10 +117,10 @@ concern (this repo has no auditor engagement).
 
 | TSC | Engine control | Status |
 |---|---|---|
-| Security (CC1–CC9) | Warden/Sentinel boundary scan (ADR-073) + ADR-068 authz ladder + secret redaction (ADR-064) | ✅ |
+| Security (CC1–CC9) | Warden/Sentinel boundary scan (ADR-073) + ADR-068 authz ladder + secret redaction on log output (ADR-064, `security/log_redaction.py`) | 🟡 (redaction is operative; the Warden/Sentinel scan is reachable only via `route_request()`, which the Conductor chat path does not call — #350) |
 | Availability (A1) | ADR-038 circuit breakers + healthchecks (`/health`, `/health/live`, `/health/ready`, `maistro_server/api/health.py`) | `packages/maistro-server/tests/api/test_health.py`; `packages/maistro-core/tests/test_circuit_breaker.py` | ✅ |
-| Processing Integrity (PI1) | Builders spec-driven verification + structural-awareness gate + boundary/behavioral contracts (ADR-032) | `packages/maistro-core/tests/builders/test_structural_gate.py` | ✅ |
-| Confidentiality (C1) | Soft memory scopes (core) + secret redaction (ADR-064) + PII tiers (ADR-055); hard tenant confidentiality is Stronghold's | — (partially deferred — redaction/scoping is core; tenant confidentiality boundary is Stronghold per ADR-019) |
+| Processing Integrity (PI1) | Boundary/behavioral contracts (ADR-032), enforced by the `@pytest.mark.contract` suites in CI | `packages/maistro-core/tests/builders/test_structural_gate.py` | 🟡 (**downgraded.** The builders pipeline and its structural-awareness gate were cited here as operative controls; `maistro.builders` has **no production call path** — nothing outside its own tests constructs it, so it verifies nothing at runtime. The contract-marked test suites are real and do run) |
+| Confidentiality (C1) | Soft memory scopes (core) + secret redaction on log output (ADR-064) + PII tiers (ADR-055); hard tenant confidentiality is Stronghold's | — (partially deferred — log redaction and scoping are core and operative; secrets outside log output are not scrubbed; tenant confidentiality boundary is Stronghold per ADR-019) |
 | Privacy (P1–P8) | Sentinel PII filter (`security/sentinel/pii_filter.py`) + ADR-055 sensitivity tiers (`normal`/`sensitive`/`secret`) | `formal/models/test_pii_filter.py`; `packages/maistro-core/tests/observability/test_tiers.py` | ✅ |
 
 ## How this document is maintained

@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx
 
+from maistro.http import shared_client
+
 logger = logging.getLogger(__name__)
 
 OnResponseHook = Callable[[dict[str, Any], httpx.Response], None]
@@ -652,7 +654,7 @@ def _build_llm_call(on_response: OnResponseHook | None = None):
             }
         else:
             payload["response_format"] = {"type": "json_object"}
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with shared_client(timeout=120.0) as client:
             resp = await client.post(f"{base}/chat/completions", json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()

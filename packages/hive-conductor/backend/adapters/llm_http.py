@@ -143,7 +143,7 @@ class HttpOpenAIProtocolLLM:
 
         if self._variant in ("auto", "responses") and not req.tools:
             async with (
-                httpx.AsyncClient(timeout=120.0) as client,
+                shared_client(timeout=120.0) as client,
                 client.stream(
                     "POST",
                     f"{self._base}/responses",
@@ -174,7 +174,7 @@ class HttpOpenAIProtocolLLM:
             payload["tools"] = req.tools
 
         async with (
-            httpx.AsyncClient(timeout=120.0) as client,
+            shared_client(timeout=120.0) as client,
             client.stream(
                 "POST", f"{self._base}/chat/completions", headers=headers, json=payload
             ) as r,
