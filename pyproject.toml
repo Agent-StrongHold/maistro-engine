@@ -114,6 +114,12 @@ line-length = 100
 exclude = [
     "packages/maistro-bootstrap/mutants",
     "packages/maistro-evolve/mutants",
+    # Vendored upstream benchmark graders, reproduced by scripts/vendor_*.py and
+    # pinned by content hash. Deliberately NOT reformatted: the whole value of a
+    # vendored grader is that it is byte-comparable to the published one, and
+    # `vendor_ifeval.py --check` enforces that. Reformatting would quietly make
+    # it our grader wearing the official grader's name.
+    "packages/*/src/*/benchmarks/third_party",
 ]
 src = [
     "packages/maistro-core/src",
@@ -180,6 +186,19 @@ pythonpath = [
     ".",
 ]
 
+# Vendored upstream source (Google's IFEval verifier, BFCL's AST checker) is
+# kept byte-faithful so the benchmarks run the official implementation rather
+# than a paraphrase. We do not unit-test someone else's library — the adapters
+# around it are what carry our tests — so measuring it makes the number mean
+# less in both directions: it buries a real regression in our code under a
+# constant mass of untested upstream lines. Measured on maistro-evolve:
+# 64% including the vendored tree, 86% excluding it, for identical test code.
+[tool.coverage.run]
+omit = ["*/third_party/*"]
+
+[tool.coverage.report]
+omit = ["*/third_party/*"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -204,6 +223,22 @@ ignore_missing_imports = true
 # install — drop it if bip-utils ever ships types.
 [[tool.mypy.overrides]]
 module = ["bip_utils"]
+ignore_missing_imports = true
+
+# Vendored upstream benchmark graders (see the ruff exclude above and each
+# subpackage's NOTICE). Untyped Google research code, kept byte-comparable to
+# upstream on purpose, so it is neither annotated nor annotatable by us.
+# `follow_imports = skip` keeps our own adapters strict while not demanding
+# types from code we must not edit.
+[[tool.mypy.overrides]]
+module = ["maistro_evolve.benchmarks.third_party.*"]
+ignore_errors = true
+follow_imports = "skip"
+
+# The vendored IFEval verifier's own third-party deps, behind the `ifeval`
+# extra. Absent unless that extra is installed, which is the normal case.
+[[tool.mypy.overrides]]
+module = ["nltk", "nltk.*", "langdetect", "langdetect.*", "immutabledict", "absl", "absl.*"]
 ignore_missing_imports = true
 
 # Every directory under packages/ is a real distribution with its own
