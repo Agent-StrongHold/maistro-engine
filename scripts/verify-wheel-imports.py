@@ -105,7 +105,6 @@ CORE_PUBLIC_SURFACE = [
     "maistro.providers",
     "maistro.repertoire",
     "maistro.sandbox",
-    "maistro.scheduler",
     "maistro.tasks",
     "maistro.tools",
 ]

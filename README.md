@@ -33,7 +33,7 @@ The shared Python runtime — and the consolidation monorepo — behind the Mais
 
 ## What this repo is not
 
-- Not, by itself, multi-tenant. Tenant isolation is the Stronghold layer on top of `maistro-core`, not part of core — there is no `org_id` in core (see [`ADR-019`](docs/adr/ADR-019-canonical-source-split.md)).
+- Not, by itself, multi-tenant. Tenant isolation is the Stronghold layer on top of `maistro-core`, not part of core. Core carries the *soft* scope axes (`global → org → team → user → agent → session`), including `org_id`; only the **hard** `tenant` boundary is Stronghold-specific (see [`ADR-019`](docs/adr/ADR-019-canonical-source-split.md) and root `CLAUDE.md` decision 7, which supersedes the older "no `org_id` in core" shorthand).
 - Not the place for product-specific UX. Homelab/personal features live in Agent Conductor; the enterprise hardening lives in Stronghold.
 
 ## Products
@@ -64,19 +64,20 @@ uv run alembic upgrade head           # apply DB migrations (needs Postgres)
 docker compose up -d                  # full local stack (Postgres + LiteLLM + Langfuse)
 ```
 
-The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker) and the planned **`apps/maistro-gateway-node-flutter`** native node (see [`SPEC-179`](docs/specs/SPEC-179-flutter-gateway-node.md)).
+The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker).
 
 | Package / tree | Purpose |
 |---|---|
 | `maistro-core` | The library: orchestration, agents, memory, security, skills, tools, router |
 | `maistro-server` | FastAPI HTTP surface around `maistro-core` |
 | `maistro-turing` | Autonoetic self-model package (mood, drives, proactive producers) |
-| `maistro-canvas` | Canvas engine — the base canvas ability behind Canvas Studio |
+| `maistro-canvas` | Canvas engine (Python library) + the standalone Node book-maker POC |
 | `maistro-evolve` | Elo-tournament optimizer for agent self-improvement |
 | `maistro-bootstrap` | `maistro-install` TUI and answers-file planner (`uv sync --extra bootstrap`) |
 | `maistro-registry` | Front-matter validation, link checks, registry generation |
+| `maistro-rsi` | Recursive self-improvement: sandboxed self-branch cycles, quarantine gate (`maistro-rsi` CLI) |
+| `maistro-design` | Open Design integration: renderer registry, `/v1/design/*` routes |
 | `packages/hive-conductor/` | Agent Conductor reference app: React frontend, FastAPI backend, Docker |
-| `apps/maistro-gateway-node-flutter/` | Flutter gateway node (bootstrap with `flutter create`; see app README) |
 
 ## Architecture at a glance
 
@@ -92,12 +93,94 @@ request ──► conduit ──► classifier ──► orchestrator ──► 
 - **orchestrator** — plans tasks, manages execution, tracks state
 - **router** — picks model and agent via the scoring formula `quality^(qw·p) / (1 + normalized_cost)^cw`
 - **agents** — base / factory / strategies / roster + A2A delegation
-- **memory** — learning, episodic, outcome stores; pgvector-backed; decays without reinforcement
-- **security** — Warden (input), Sentinel (output), Gate (boundary), PII filter — all input is untrusted
-- **skills** — marketplace + Forge + canary
+- **memory** — learning, episodic, outcome stores; episodic decays without reinforcement (driven hourly, see feature table). **Not vector-backed:** the learnings/outcome Postgres stores have no embedding column; retrieval is keyword/attribute matching
+- **security** — Warden (input), Sentinel (output), Gate (boundary), PII filter. ⚠️ **These are library components, not a pipeline the Conductor's chat path currently traverses** — see [#350](https://github.com/BlakeMatthews-dev/maistro-engine/issues/350) and `SECURITY.md`
+- **skills** — marketplace + Forge + canary (library only; the Conductor's Skills UI is a separate CRUD store — see feature table)
 - **graph** — DAG execution: nodes, executor, optimizer ([`ADR-062`](docs/adr/ADR-062-graph-execution-protocol.md))
 - **observability** — traces, Prometheus metrics, structlog logs, domain events ([`ADR-037`](docs/adr/ADR-037-observability-taxonomy.md))
 - **resilience** — retries, circuit breakers, fallbacks ([`ADR-038`](docs/adr/ADR-038-reliability-taxonomy.md))
+
+## v1 feature status
+
+Every row below was verified against the code, not against intent. **Status means what a
+user actually gets**, not whether a module exists — this repo has repeatedly shipped correct,
+tested modules with no call path, so "the code is there" is not the bar.
+
+| | Meaning |
+|---|---|
+| **Complete** | Works as the name implies. |
+| **Partial** | Works, but materially narrower than the name suggests. The limitation is stated. |
+| **TODO** | Reachable in the UI/API but does **not** do what it says. Do not rely on it. |
+| **v1.1+** | Deliberately not in v1. |
+
+### Agent Conductor — web UI
+
+| Feature | Status | Notes |
+|---|---|---|
+| Chat (sessions, streaming) | **Complete** | Requires an LLM gateway; without one it returns a visibly-labelled stub reply. |
+| DAG builder / runs / SSE events | **Complete** | Real `maistro.graph` execution. Refuses to run against a stub LLM. |
+| DAG feedback, optimizer, eval-judge | **Complete** | Optimizer inbox is a real validation gate + hill-climb. |
+| Agents, MCP servers, Skills — CRUD | **Complete** | Local stores. |
+| MCP connectivity test | **Complete** | Real probe. |
+| Setup wizard, auth, profile, credentials, settings, audit log | **Complete** | |
+| Capabilities + HITL approvals inbox | **Complete** | Also via `maistro approvals`. |
+| Message board, memory browser, docs | **Complete** | |
+| Evolution (population, tournament, champion) | **Partial** | Real cycles; population is **in-process and lost on restart**. |
+| Dashboard | **Partial** | KPI cards (`runs_today`, `avg_latency_ms`, `total_cost`, `ttft_ms`) are **hardcoded zeros**. Layout and widgets are real. |
+| Quotas | **Partial** | LiteLLM spend is real; quota/limit/remaining bars are structurally always `0` — LiteLLM has no quota concept. |
+| Containers | **Partial** | Real Docker client, but no compose file mounts the socket into the Conductor, so it reads as "no containers". |
+| Knowledge base / memory API | **Partial** | A plain key-value store — **not** `maistro.memory`. See *reinforce/decay/contradict* below. |
+| Missions | **Partial** | Real when an engine is configured; otherwise silently falls back to inert in-memory records. |
+| Deck builder | **Partial** | AI generation is real; the slide library is hardcoded demo content. |
+| Topology | **Partial** | Agent/MCP/skill graph. Does not use the `/v1/topology` compare API. |
+| **Schedules — execution** | **TODO** | Schedules can be created, the cron matcher ticks, and `last_run` advances — but **nothing is ever executed**. "Run now" only stamps a timestamp. |
+| **Tools Lab** | **TODO** | Launch/Stop buttons for Promptfoo, Langflow, Flowise, Opik. The backend endpoints **do not exist**; nothing ever starts. |
+| **Design Studio** | **TODO** | The six-node pipeline is a `setTimeout` animation with template-string output. No image is produced. |
+| **Forge (agents, skills)** | **TODO** | Fabricates a record with a generated name. No LLM is called. |
+| **Scan (agents, skills, MCP)** | **TODO** | Returns `{"findings": [], "status": "clean"}` unconditionally. Nothing is scanned. |
+| **Memory reinforce / decay / contradict** | **TODO** | Increments/decrements an integer. Not the `maistro.memory` decay or weight-floor logic. |
+| **CLI page** | **TODO** | A simulated terminal supporting four hardcoded `hctl` strings. |
+| **Containers build / suggest Dockerfile** | **TODO** | Canned status string; one hardcoded Dockerfile. |
+| RSI page | **v1.1** | `maistro-rsi` is not installed in the shipped image. Use the `maistro-rsi` CLI. |
+| Work Items → post to Jira | **v1.1** | PM-POC mode only, and the post is a stub. |
+
+### APIs
+
+| Feature | Status | Notes |
+|---|---|---|
+| `maistro-server` — tasks, OpenAI-compatible chat, webhooks, WS, `/metrics` | **Complete** | Webhooks fail closed without a secret. |
+| Conductor `/v1/*` — the surfaces marked Complete above | **Complete** | |
+| `/v1/design/*` | **Complete** | No UI consumes it. |
+| `/v1/harness/*` (inbound foreign-harness API) | **Complete** | Lets another orchestrator drive this instance. |
+| `/v1/models` | **Partial** | Four hardcoded pseudo-models. |
+| `/v2/canvas` | **TODO** | Every route 503s — nothing injects the canvas store. |
+| Program / Work Items / PM Fleet / agent invoke | **v1.1** | `MAISTRO_POC_MODE=pm` only; 404 in a default install. |
+
+### CLI and packages
+
+| Feature | Status | Notes |
+|---|---|---|
+| `curl \| bash` installer (`get.sh`, `install.sh`, `get.ps1`) | **Complete** | Includes WSL2 setup on Windows. |
+| `maistro install` / `launch server` / `builders` / `approvals` | **Complete** | |
+| `maistro-install`, `maistro-registry` | **Complete** | |
+| `maistro-rsi`, `maistro-rsi-autorun` | **Complete** | The real RSI product is the CLI, not the UI page. |
+| `maistro upgrade` | **Partial** | `git pull` + `uv sync`. Does nothing useful for a tarball install. |
+| `maistro launch tui` | **TODO** | Prints "coming soon". |
+| `maistro-core`, `-server`, `-evolve`, `-registry`, `-bootstrap`, `-design` | **Complete** | |
+| `maistro-canvas` (Python library) | **Complete** | Library only — no route in this repo mounts it. |
+| Canvas book-maker (Node app, Lulu print ordering) | **Partial** | Runs standalone; not in the root compose or installer. |
+| `maistro-turing` | **v1.1** | A separate FastAPI app + Astro frontend; not deployed by compose or the installer. |
+| Flutter gateway node | **v1.2** | README-only shell; no code. |
+
+### Known non-features
+
+These exist in the tree with **no production call path**. They are not v1 features and are not
+advertised as working: `maistro.builders`, `ontology`, `scheduling`, `governance`, `delivery`,
+`portability`, `repertoire`, `collaboration`, `code_registry`, `sandbox`, `integrations`.
+
+See [`KNOWN-GAPS.md`](KNOWN-GAPS.md) for shipped-but-limited behavior, and
+[`SECURITY.md`](SECURITY.md) / [`COMPLIANCE.md`](COMPLIANCE.md) for which security controls
+are operative versus specified.
 
 ## ADRs and specs
 
@@ -132,8 +215,6 @@ maistro-engine/
 │   ├── maistro-bootstrap/            # maistro-install planner
 │   ├── maistro-registry/             # Registry / front-matter CI helpers
 │   └── hive-conductor/               # Agent Conductor reference app (frontend + backend + Docker)
-├── apps/
-│   └── maistro-gateway-node-flutter/ # Native gateway node (Flutter; see SPEC-179)
 ├── formal/                           # Property-based conformance tests (Hypothesis; separate CI)
 ├── templates/                        # Copier templates (per ADR-033)
 ├── scripts/                          # Repo maintenance scripts
