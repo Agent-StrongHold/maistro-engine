@@ -38,6 +38,17 @@ on:
         default: "4"
         type: string
 
+# See the rationale in ci.yml. This workflow is the biggest single consumer of
+# runner capacity — sampled shards have run for over five hours (shard 31:
+# 06:20→12:03, shard 29: 14:20→16:55), so without superseding, two pushes an
+# hour apart leave both fleets of shards running against each other.
+#
+# The nightly sweep and workflow_dispatch runs fall to `github.ref` with
+# `cancel-in-progress` false, so a full baseline sweep is never interrupted.
+concurrency:
+  group: mutation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   mutation-pr:
     name: Mutation testing on changed files

@@ -6,8 +6,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from maistro.config.settings import validate_cors_origins
 
 _BACKEND_DIR = Path(__file__).resolve().parent
 # Repo root `.env` (PM POC flags) — uvicorn cwd is usually `backend/`.
@@ -67,14 +69,25 @@ class Settings(BaseSettings):
     open_design_token: SecretStr | None = None
 
     # CORS allow-list. Defaults to local-dev origins; set CORS_ORIGINS (JSON list)
-    # in deployment. Wildcard "*" is intentionally NOT the default — wildcard with
-    # credentials is rejected by browsers and flagged as insecure.
+    # in deployment.
+    #
+    # This is the field `main.py` hands to CORSMiddleware — alongside
+    # allow_credentials=True and allow_methods/allow_headers of ["*"] — so it
+    # is the most exposed CORS surface in the repo, and it is validated by the
+    # same `validate_cors_origins` the engine's own settings use. A comment
+    # saying a wildcard "is rejected by browsers" used to stand in for that
+    # check; it does not hold. Starlette answers wildcard-plus-credentials by
+    # echoing the request's Origin back with
+    # `Access-Control-Allow-Credentials: true`, so the browser accepts it and
+    # any site can make credentialed cross-origin requests.
     cors_origins: list[str] = [
         "http://localhost:5173",
         "http://localhost:8101",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8101",
     ]
+
+    _check_cors_origins = field_validator("cors_origins")(validate_cors_origins)
 
     # Mark the session cookie Secure so browsers refuse to send it over plain
     # HTTP. Off by default because the documented dev loop is

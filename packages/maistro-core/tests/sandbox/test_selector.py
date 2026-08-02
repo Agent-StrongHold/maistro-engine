@@ -109,3 +109,40 @@ class TestNoSilentDowngrade:
         sel.register("container", FakeSandboxBackend())
         with pytest.raises(NoSuitableBackendError, match="requires min_tier='vm'"):
             sel.select(UNTRUSTED_CODE)
+
+
+class TestBuildConfigClamping:
+    """`WorkloadPolicy` names its fields `max_memory_mb`, `max_timeout_s` and
+    `network_allowed` — ceilings and a permission. They were being used as
+    defaults that any override replaced, which let a caller hand
+    model-generated code a networked sandbox against a policy that forbids it.
+    Overrides may only tighten.
+    """
+
+    def test_network_override_cannot_defeat_a_no_network_policy(self) -> None:
+        cfg = SandboxSelector().build_config(UNTRUSTED_CODE, network=True)
+        assert cfg.network is False
+
+    def test_network_override_can_still_drop_network(self) -> None:
+        assert TRUSTED_TOOL.network_allowed is True
+        cfg = SandboxSelector().build_config(TRUSTED_TOOL, network=False)
+        assert cfg.network is False
+
+    def test_memory_override_above_the_ceiling_is_clamped(self) -> None:
+        cfg = SandboxSelector().build_config(UNTRUSTED_CODE, memory_mb=999_999)
+        assert cfg.memory_mb == UNTRUSTED_CODE.max_memory_mb
+
+    def test_memory_override_below_the_ceiling_is_honoured(self) -> None:
+        cfg = SandboxSelector().build_config(UNTRUSTED_CODE, memory_mb=128)
+        assert cfg.memory_mb == 128
+
+    def test_timeout_override_above_the_ceiling_is_clamped(self) -> None:
+        cfg = SandboxSelector().build_config(UNTRUSTED_CODE, timeout_s=86_400)
+        assert cfg.timeout_s == UNTRUSTED_CODE.max_timeout_s
+
+    def test_no_overrides_yields_the_policy_limits(self) -> None:
+        cfg = SandboxSelector().build_config(BENCHMARK_EVAL)
+        assert cfg.memory_mb == BENCHMARK_EVAL.max_memory_mb
+        assert cfg.timeout_s == BENCHMARK_EVAL.max_timeout_s
+        assert cfg.network is False
+        assert cfg.min_isolation == BENCHMARK_EVAL.min_tier

@@ -38,11 +38,17 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
   uv run pytest formal --collect-only -q | tail -3
 ```
 
-## Counts as of `develop` @ F3 (#336)
+## Counts as of `develop` @ #352
+
+Refreshed after #341, #347, #348, #351 and #352 landed. Each added tests but
+predated this gate, so none refreshed the table on the way in and the baseline
+drifted +89 (maistro-core +61, hive-conductor +28). Both moved *upward* and
+every other suite matched exactly, which is the added-tests case, not the
+silently-stopped-collecting case the gate exists to catch.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5732 | `ci.yml` |
+| `packages/maistro-core/tests` | 5850 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 528 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -53,7 +59,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 599 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1042 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1075 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
