@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-from maistro.config.settings import MaistroYamlConfig, set_yaml_config
+from maistro.config.settings import MaistroYamlConfig, set_yaml_config, validate_cors_origins
 
 logger = logging.getLogger(__name__)
 
@@ -102,17 +102,9 @@ def _apply_cors_and_limits(raw: dict[str, Any]) -> None:
     """Validate + apply CORS origins and request-limit env vars onto ``raw``."""
     cors_origins = os.getenv("MAISTRO_CORS_ORIGINS")
     if cors_origins:
-        origins = [o.strip() for o in cors_origins.split(",")]
-        for origin in origins:
-            if origin == "*":
-                msg = "CORS_ORIGINS must not contain '*' — use exact origins"
-                raise ValueError(msg)
-            if origin.startswith("javascript:") or origin.startswith("data:"):
-                msg = f"CORS_ORIGINS contains unsafe origin: {origin!r}"
-                raise ValueError(msg)
-            is_local = origin.startswith("http://localhost")
-            if origin and not origin.startswith("https://") and not is_local:
-                logger.warning("CORS origin %r is not HTTPS — use HTTPS in production", origin)
+        # Same validator the live `Settings.cors_origins` path uses — one
+        # implementation, so the two paths cannot drift apart again.
+        origins = validate_cors_origins(cors_origins.split(","))
         raw.setdefault("cors", {})["allowed_origins"] = origins
 
     rate_limit_rpm = os.getenv("MAISTRO_RATE_LIMIT_RPM")
