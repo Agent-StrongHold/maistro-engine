@@ -6,6 +6,20 @@ on:
   pull_request:
     branches: [main, integration, develop]
 
+# Supersede in-flight runs for the same PR instead of letting them pile up.
+# Every push to a PR previously left the prior run's jobs burning runners —
+# including this workflow's own 20-minute `hive-conductor-e2e-ui` — which is
+# what left later jobs sitting `queued` for tens of minutes.
+#
+# Cancellation is scoped to pull_request on purpose: pushes to main/integration/
+# develop must run to completion, because ADR-095's branch model relies on
+# knowing whether a given commit on a protected branch was green. A cancelled
+# run reports neither success nor failure, so cancelling those would erase that
+# record rather than just saving time.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
