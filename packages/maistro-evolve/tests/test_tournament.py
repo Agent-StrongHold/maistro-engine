@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from maistro_evolve.tournament import _DEFAULT_ELO, _K_FACTOR, EloTournament
 
 
@@ -70,6 +72,41 @@ class TestEloTournament:
         t.record_battle("proxy_bfcl", "g1", "g2", 0.3, 0.7)
         lb = t.get_leaderboard(benchmark="proxy_ifeval")
         assert all(isinstance(e, dict) for e in lb)
+        assert [e["total_battles"] for e in lb] == [1, 1]
+
+    def test_unfiltered_leaderboard_sums_battles_across_benchmarks(self):
+        """No battle is recorded against the name "overall", so looking one up
+        reported total_battles=0 for every genome — a perfect record reading as
+        unproven. This is user-facing via GET /v1/tournament/leaderboard."""
+        t = EloTournament()
+        t.record_battle("ifeval", "g1", "g2", 0.9, 0.1)
+        t.record_battle("bfcl", "g1", "g2", 0.9, 0.1)
+        t.record_battle("swebench", "g1", "g2", 0.5, 0.5)  # draw
+
+        board = {e["genome_id"]: e for e in t.get_leaderboard()}
+        assert board["g1"]["total_battles"] == 3
+        assert board["g2"]["total_battles"] == 3
+        assert board["g1"]["win_rate"] == pytest.approx((2 + 0.5) / 3)
+        assert board["g2"]["win_rate"] == pytest.approx(0.5 / 3)
+
+    def test_reading_the_leaderboard_does_not_mutate_ratings(self):
+        """_get_rating creates on miss, so the "overall" lookup inserted a
+        phantom default-elo rating per genome. get_avg_elo averages over every
+        rating for a genome, so merely reading the leaderboard moved the number
+        that feeds compute_fitness's elo component."""
+        t = EloTournament()
+        t.record_battle("ifeval", "g1", "g2", 0.9, 0.1)
+        t.record_battle("bfcl", "g1", "g2", 0.9, 0.1)
+
+        before = t.get_avg_elo("g1")
+        t.get_leaderboard()
+        assert t.get_avg_elo("g1") == before
+        assert t.get_leaderboard() == t.get_leaderboard()  # idempotent
+        assert all(bench != "overall" for _gid, bench in t._ratings)
+
+    def test_empty_leaderboard(self):
+        assert EloTournament().get_leaderboard() == []
+        assert EloTournament().get_leaderboard(benchmark="ifeval") == []
 
     def test_tournament_select(self):
         t = EloTournament()
