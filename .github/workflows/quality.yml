@@ -186,6 +186,14 @@ jobs:
             exit 1
           fi
 
+      # Vulture works at symbol granularity inside a file, so it is structurally
+      # blind to a whole module that only its own siblings and tests import —
+      # every symbol in it looks used. That is the shape of #344/#346/#347 and
+      # ADR-064's unwired redact(): correct, well-covered code with no caller.
+      # This ratchet closes that blind spot at module granularity.
+      - name: reachability ratchet (built-but-never-wired modules)
+        run: uv run python scripts/check-reachability.py
+
       # ----- Pillar 4: types -----
       - name: mypy --strict
         run: uv run mypy --strict packages/maistro-core/src
