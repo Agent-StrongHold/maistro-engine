@@ -178,6 +178,19 @@ pythonpath = [
     ".",
 ]
 
+# Vendored upstream source (Google's IFEval verifier, BFCL's AST checker) is
+# kept byte-faithful so the benchmarks run the official implementation rather
+# than a paraphrase. We do not unit-test someone else's library — the adapters
+# around it are what carry our tests — so measuring it makes the number mean
+# less in both directions: it buries a real regression in our code under a
+# constant mass of untested upstream lines. Measured on maistro-evolve:
+# 64% including the vendored tree, 86% excluding it, for identical test code.
+[tool.coverage.run]
+omit = ["*/third_party/*"]
+
+[tool.coverage.report]
+omit = ["*/third_party/*"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
