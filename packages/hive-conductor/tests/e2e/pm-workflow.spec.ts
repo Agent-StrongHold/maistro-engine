@@ -26,18 +26,35 @@ async function setupIfNeeded(page: Page) {
   const body = await page.textContent("body");
 
   if (body?.includes("Setup") || body?.includes("First boot")) {
-    // Step 1: Name
+    // Setup.tsx's non-PM-POC wizard is five steps:
+    //   ["Hive", "Hardware", "Accounts", "Modules", "Confirm"]
+    // This walkthrough used to skip "Accounts" entirely, which did not fail
+    // loudly — it parked on that step with `next` permanently disabled, because
+    // Setup.tsx gates it on `!adminPassword || !userUsername || !userPassword`.
+    // Every spec then died in beforeEach on the same disabled button.
+
+    // 1/5 — Hive
     await page.locator('input[placeholder="Hive Conductor"]').fill("PM Test Hive");
     await page.locator("button", { hasText: /next/i }).click();
 
-    // Step 2: Hardware
+    // 2/5 — Hardware
     await page.locator("text=Beast").first().click();
     await page.locator("button", { hasText: /next/i }).click();
 
-    // Step 3: Modules (skip)
+    // 3/5 — Accounts. These are the same credentials loginAsPM() logs in with
+    // below, so the accounts this creates are the ones the rest of the suite
+    // depends on. Both password fields share placeholder="password" (admin
+    // card first, daily-user card second), hence nth() rather than placeholder.
+    await page.locator('input[placeholder="admin"]').fill(ADMIN_USER);
+    await page.locator('input[type="password"]').nth(0).fill(ADMIN_PASS);
+    await page.locator('input[placeholder="username"]').fill(PM_USER);
+    await page.locator('input[type="password"]').nth(1).fill(PM_PASS);
     await page.locator("button", { hasText: /next/i }).click();
 
-    // Step 4: Confirm
+    // 4/5 — Modules (skip)
+    await page.locator("button", { hasText: /next/i }).click();
+
+    // 5/5 — Confirm
     await page.locator("button", { hasText: /launch/i }).click();
     await page.waitForURL(/\/(chat|login)?/, { timeout: 15000 }).catch(() => {});
   }
