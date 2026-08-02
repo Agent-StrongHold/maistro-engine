@@ -30,8 +30,9 @@ Requires Python 3.11+.
 | `tiers.py`, `types.py` | Tier definitions and shared dataclasses |
 | `tools/`, `schema/` | Tool surface and schemas |
 
-`backend/` and `frontend/` hold the Turing app that consumes this library; they are not part of
-the distributed wheel (`[tool.hatch.build.targets.wheel]` ships `src/maistro_turing` only).
+`backend/` holds the Turing app service that consumes this library; it is not part of the
+distributed wheel (`[tool.hatch.build.targets.wheel]` ships `src/maistro_turing` only). The
+Astro `frontend/` was removed under the v1 cut list (D1/#289) — it had no tests and no CI job.
 
 ## Tests
 

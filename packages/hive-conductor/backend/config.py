@@ -113,6 +113,15 @@ class Settings(BaseSettings):
     # self_repair (SPEC-188) cadence; <=0 disables the periodic loop (API still works).
     self_repair_interval_s: int = 90
 
+    # Episodic memory-decay cadence (SPEC-080126-9e42). This is what makes
+    # README's "decays without reinforcement" and CLAUDE.md decision #5 true at
+    # runtime — the decay primitives had no production caller before it (#344).
+    # <=0 disables the driver, and per the F3 precedent that is a *loud* degraded
+    # mode: startup logs a warning and /health reports `degraded: true` with
+    # `memory_decay.state == "disabled"`. A silent off switch here would look
+    # exactly like the bug this closes.
+    memory_decay_interval_s: int = 3600
+
 
 @lru_cache
 def get_settings() -> Settings:

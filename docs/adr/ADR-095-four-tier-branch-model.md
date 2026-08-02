@@ -65,7 +65,31 @@ feat/* bug/* idea/* doc/* chore/*   →  develop  →  integration  →  main
 - [x] All three are protected: PR required, no force-push, no deletion, linear history.
 - [x] `main` requires 1 approving review; `develop`/`integration` require 0.
 - [ ] Required status checks (`lint-and-type-check`, `test`) added to each branch once green.
-- [ ] CONTRIBUTING documents the flow; topic branches base off `develop`.
+      *(Verifiable only in GitHub branch-protection settings, not from the tree — left unchecked
+      until confirmed there. C3/#288.)*
+- [x] CONTRIBUTING documents the flow; topic branches base off `develop`.
+      ([`CONTRIBUTING.md` §Branch model](../../CONTRIBUTING.md#branch-model) — the four-tier
+      diagram, the "branch off `develop`, PR into `develop`" rule for every topic prefix, the
+      per-branch approval counts, and the squash/rebase consequence of linear history.)
+
+### Workflow branch-filter coverage (audited C3/#288, 2026-08-01)
+
+Every workflow that filters by branch includes `integration`; the rest are not branch-triggered.
+`registry.yml`'s `develop` gap noted in the v1 plan is already closed, and the stale
+`research/pm-fleet-poc` filter it mentioned is gone.
+
+| Workflow | `push` branches | `pull_request` branches | `integration` covered |
+|---|---|---|:--:|
+| `ci.yml` | `main, integration, develop, merge/main-into-integration` | `main, integration, develop` | yes |
+| `quality.yml` | `main, integration, develop, feat/*` | `main, integration, develop` | yes |
+| `security.yml` | `main, integration, develop, feat/*` (+ nightly) | `main, integration, develop` | yes |
+| `registry.yml` | `main, integration, develop` | *(unfiltered, path-scoped)* | yes |
+| `formal-conformance.yml` | `main, integration, develop` | *(unfiltered)* | yes |
+| `mutation.yml` | — | `main, integration, develop` (path-scoped, + nightly) | yes |
+| `cage-guard.yml` | — | *(unfiltered, path-scoped)* | yes |
+| `formal-conformance-nightly.yml` | — | — | n/a (schedule) |
+| `release-installer.yml` | tags `v*` | — | n/a (tag/dispatch) |
+| `rsi-harvest.yml` | — | — | n/a (dispatch) |
 
 ## Consequences
 

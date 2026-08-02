@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from maistro.agents.types import CodeOutput, ConductorOutput
+from maistro.tasks.lanes import Lane, LaneGate
 from maistro.tasks.models import TaskCreate, TaskResult, TaskStatus
 from maistro.tasks.queue import TaskQueue
 from maistro.tasks.runner import TaskRunner
@@ -171,52 +172,52 @@ class TestDispatcherLoop:
         assert task.status == TaskStatus.COMPLETED
 
 
-class TestRunWithSemaphore:
+class TestRunWithPermit:
     @pytest.mark.asyncio
-    async def test_success_releases_semaphore(self) -> None:
+    async def test_success_releases_permit(self) -> None:
         queue = TaskQueue()
         runner = TaskRunner(queue, success_executor)
-        runner._semaphore = asyncio.Semaphore(1)
-        await runner._semaphore.acquire()
+        runner._gate = LaneGate(4, live_reserved=2, background_reserved=1)
+        await runner._gate.acquire(Lane.BACKGROUND)
         task_id = await make_task(queue)
-        await runner._run_with_semaphore(task_id)
-        assert runner._semaphore._value == 1
+        await runner._run_with_permit(task_id, Lane.BACKGROUND)
+        assert runner._gate.held(Lane.BACKGROUND) == 0
         task = queue.get(task_id)
         assert task is not None
         assert task.status == TaskStatus.COMPLETED
 
     @pytest.mark.asyncio
-    async def test_exception_marks_task_failed_and_releases_semaphore(self) -> None:
+    async def test_exception_marks_task_failed_and_releases_permit(self) -> None:
         queue = TaskQueue()
         runner = TaskRunner(queue, raising_executor)
-        runner._semaphore = asyncio.Semaphore(1)
-        await runner._semaphore.acquire()
+        runner._gate = LaneGate(4, live_reserved=2, background_reserved=1)
+        await runner._gate.acquire(Lane.BACKGROUND)
         task_id = await make_task(queue)
-        await runner._run_with_semaphore(task_id)
+        await runner._run_with_permit(task_id, Lane.BACKGROUND)
         task = queue.get(task_id)
         assert task is not None
         assert task.status == TaskStatus.FAILED
         assert task.result is not None
         assert task.result.error == "executor blew up"
-        assert runner._semaphore._value == 1
+        assert runner._gate.held(Lane.BACKGROUND) == 0
 
     @pytest.mark.asyncio
-    async def test_cancelled_error_marks_task_failed_and_releases_semaphore(self) -> None:
+    async def test_cancelled_error_marks_task_failed_and_releases_permit(self) -> None:
         async def cancels(_request: TaskCreate) -> ConductorOutput:
             raise asyncio.CancelledError
 
         queue = TaskQueue()
         runner = TaskRunner(queue, cancels)
-        runner._semaphore = asyncio.Semaphore(1)
-        await runner._semaphore.acquire()
+        runner._gate = LaneGate(4, live_reserved=2, background_reserved=1)
+        await runner._gate.acquire(Lane.BACKGROUND)
         task_id = await make_task(queue)
-        await runner._run_with_semaphore(task_id)
+        await runner._run_with_permit(task_id, Lane.BACKGROUND)
         task = queue.get(task_id)
         assert task is not None
         assert task.status == TaskStatus.FAILED
         assert task.result is not None
         assert task.result.error == "Task cancelled during shutdown"
-        assert runner._semaphore._value == 1
+        assert runner._gate.held(Lane.BACKGROUND) == 0
 
 
 class TestEmitProgressWebhook:
@@ -304,3 +305,153 @@ class TestExecuteTask:
         assert task.status == TaskStatus.FAILED
         assert task.result is not None
         assert task.result.error == "boom"
+
+
+class TestLaneReservation:
+    """ADR-010's acceptance criteria. These build the gate the way `start()`
+    does rather than running the dispatcher, so they assert admission policy
+    without depending on worker-loop timing."""
+
+    def _gate_for(self, runner: TaskRunner) -> LaneGate:
+        return LaneGate(
+            runner._max_workers,
+            live_reserved=runner._live_slots,
+            background_reserved=runner._background_slots,
+        )
+
+    @pytest.mark.asyncio
+    async def test_live_task_runs_when_background_pool_is_full(self) -> None:
+        runner = TaskRunner(TaskQueue(), success_executor, max_workers=4)
+        gate = self._gate_for(runner)
+        # Defaults are live=2, background=1, so exactly one permit is shared:
+        # background's floor plus that shared permit saturates everything it
+        # is allowed to touch.
+        saturating = runner._background_slots + (
+            runner._max_workers - runner._live_slots - runner._background_slots
+        )
+        for _ in range(saturating):
+            await gate.acquire(Lane.BACKGROUND, "P5")
+        assert gate.stats()["shared_free"] == 0
+        with pytest.raises(TimeoutError):  # background genuinely cannot take more
+            await asyncio.wait_for(gate.acquire(Lane.BACKGROUND, "P5"), timeout=0.05)
+        # The reserved slot is what makes this succeed rather than block.
+        await asyncio.wait_for(gate.acquire(Lane.LIVE, "P0"), timeout=0.5)
+        assert gate.held(Lane.LIVE) == 1
+
+    @pytest.mark.asyncio
+    async def test_defaults_shrink_rather_than_breaking_small_pools(self) -> None:
+        """A runner predating lanes (max_workers=1 or 2) must still construct."""
+        for mw in (1, 2, 3, 8):
+            runner = TaskRunner(TaskQueue(), success_executor, max_workers=mw)
+            assert runner._live_slots + runner._background_slots <= mw
+            self._gate_for(runner)  # must not raise
+
+    @pytest.mark.asyncio
+    async def test_explicit_floors_are_validated_not_clamped(self) -> None:
+        """Only defaults adapt. Silently shrinking an operator's explicit floor
+        would make the guarantee they asked for quietly untrue."""
+        runner = TaskRunner(
+            TaskQueue(), success_executor, max_workers=2, live_slots=2, background_slots=2
+        )
+        with pytest.raises(ValueError, match="exceed total"):
+            self._gate_for(runner)
+
+    @pytest.mark.asyncio
+    async def test_task_lane_and_tier_drive_admission(self) -> None:
+        queue = TaskQueue()
+        runner = TaskRunner(queue, success_executor, max_workers=4)
+        response = await queue.submit(
+            TaskCreate(description="interactive", lane=Lane.LIVE, priority_tier="P0")
+        )
+        assert runner._schedule_of(response.task_id) == (Lane.LIVE, "P0")
+
+    @pytest.mark.asyncio
+    async def test_lane_survives_the_queue_round_trip(self) -> None:
+        """The label has to be stored, not just accepted. Before TaskResponse
+        carried these fields, submit() dropped them and every task reached the
+        dispatcher as BACKGROUND/P2 regardless of what the caller asked for."""
+        queue = TaskQueue()
+        response = await queue.submit(
+            TaskCreate(description="interactive", lane=Lane.LIVE, priority_tier="P1")
+        )
+        stored = queue.get(response.task_id)
+        assert stored is not None
+        assert (stored.lane, stored.priority_tier) == (Lane.LIVE, "P1")
+
+    @pytest.mark.asyncio
+    async def test_default_task_is_background_p2(self) -> None:
+        queue = TaskQueue()
+        runner = TaskRunner(queue, success_executor)
+        response = await queue.submit(TaskCreate(description="batch"))
+        assert runner._schedule_of(response.task_id) == (Lane.BACKGROUND, "P2")
+
+    @pytest.mark.asyncio
+    async def test_missing_task_still_yields_a_releasable_lane(self) -> None:
+        """A task removed between dequeue and lookup must not leave the
+        dispatcher without a lane to release against."""
+        runner = TaskRunner(TaskQueue(), success_executor)
+        assert runner._schedule_of("does-not-exist") == (Lane.BACKGROUND, "P2")
+
+
+class TestDispatcherDoesNotHeadOfLineBlock:
+    """The dispatcher used to `await gate.acquire(...)` inline, which meant the
+    single loop blocked on whatever was at the head of the FIFO. A later
+    LIVE/P0 task could not overtake it even with LIVE reservations sitting
+    free, and the gate never held more than one waiter, so its tier heap had
+    nothing to order. These assert the behaviour the lanes exist to provide.
+    """
+
+    @pytest.mark.asyncio
+    async def test_live_task_overtakes_a_blocked_background_queue(self) -> None:
+        started: list[str] = []
+        release = asyncio.Event()
+
+        async def slow_executor(request: TaskCreate) -> ConductorOutput:
+            started.append(request.description)
+            if request.description.startswith("bg"):
+                await release.wait()
+            return ConductorOutput(success=True, final_answer="ok")
+
+        queue = TaskQueue()
+        runner = TaskRunner(queue, slow_executor, max_workers=4)
+        await runner.start()
+        try:
+            # Saturate everything BACKGROUND is allowed to touch (floor +
+            # shared), then queue one more that cannot be admitted.
+            for i in range(3):
+                await queue.submit(TaskCreate(description=f"bg{i}"))
+            await asyncio.sleep(0.15)
+            await queue.submit(TaskCreate(description="live", lane=Lane.LIVE, priority_tier="P0"))
+            # The LIVE task must start on its reserved floor while the extra
+            # BACKGROUND task is still waiting.
+            for _ in range(50):
+                if "live" in started:
+                    break
+                await asyncio.sleep(0.02)
+            assert "live" in started, f"LIVE never started; started={started}"
+        finally:
+            release.set()
+            await runner.stop(drain_timeout=2.0)
+
+    @pytest.mark.asyncio
+    async def test_queued_tasks_become_concurrent_waiters_on_the_gate(self) -> None:
+        """Tier ordering can only work if more than one task waits at once."""
+        release = asyncio.Event()
+
+        async def blocking_executor(_request: TaskCreate) -> ConductorOutput:
+            await release.wait()
+            return ConductorOutput(success=True, final_answer="ok")
+
+        queue = TaskQueue()
+        runner = TaskRunner(queue, blocking_executor, max_workers=4)
+        await runner.start()
+        try:
+            for i in range(10):
+                await queue.submit(TaskCreate(description=f"t{i}"))
+            await asyncio.sleep(0.25)
+            assert runner._gate is not None
+            waiting = runner._gate.stats()["waiting"]
+            assert waiting > 1, f"expected several concurrent waiters, got {waiting}"
+        finally:
+            release.set()
+            await runner.stop(drain_timeout=2.0)

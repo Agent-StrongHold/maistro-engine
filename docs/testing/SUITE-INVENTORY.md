@@ -4,7 +4,24 @@ Per-suite collected **node-ID counts**, for C1 (#286). Node IDs, not static
 `def test_` counts — parametrization expands one `def` into many IDs, so
 counting definitions understates every parametrized suite.
 
-Regenerate with:
+**This table is enforced.** `ci.yml`'s `test` job runs
+[`scripts/check-suite-inventory.py`](../../scripts/check-suite-inventory.py) as
+its last step; it collects every suite below and fails the build if any count
+drifts. When you legitimately add or remove tests, refresh the table and commit
+it with your change:
+
+```bash
+python3 scripts/check-suite-inventory.py            # check (what CI runs)
+python3 scripts/check-suite-inventory.py --update   # rewrite the counts below
+```
+
+The gate compares **counts, not node-ID sets** — a checked-in manifest of ~9,500
+node IDs would churn on every `@parametrize` tweak, and the rename case it would
+catch is already covered by the suites actually *running* in CI. What counts
+catch, and nothing else does, is a suite silently dropping to zero collected.
+Rationale in full in the script's module docstring.
+
+Regenerate a single suite by hand with:
 
 ```bash
 # Everything under the uv workspace:
@@ -21,11 +38,17 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
   uv run pytest formal --collect-only -q | tail -3
 ```
 
-## Counts as of `develop` @ F3 (#336)
+## Counts as of `develop` @ #352
+
+Refreshed after #341, #347, #348, #351 and #352 landed. Each added tests but
+predated this gate, so none refreshed the table on the way in and the baseline
+drifted +89 (maistro-core +61, hive-conductor +28). Both moved *upward* and
+every other suite matched exactly, which is the added-tests case, not the
+silently-stopped-collecting case the gate exists to catch.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5758 | `ci.yml` |
+| `packages/maistro-core/tests` | 5849 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 528 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -36,7 +59,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 599 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1047 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1075 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
@@ -69,10 +92,22 @@ skip states its reason.
 compose job that exists to run it — converting a real test into a green no-op.
 It should error loudly when the stack it needs is absent.
 
-## Known gap against C1's acceptance criterion
+## C1's acceptance criterion — how it is met
 
 C1 asks that "CI-collected node IDs match [this inventory] (± documented
-skips)". This document is the inventory half. **The automated comparison is not
-wired up** — nothing currently fails CI when a suite's collected count drifts
-from the table above. That check is the remaining work on #286; the counts here
-are a hand-regenerated snapshot until it exists.
+skips)". This document is the inventory half; `scripts/check-suite-inventory.py`
+is the comparison half, wired into `ci.yml`'s `test` job (C1/#286). Every row
+above has an entry in that script's `RECIPES` table — a row with no recipe is a
+hard error rather than a silent skip, so adding a suite here cannot look gated
+without being gated.
+
+Two things the gate deliberately does **not** do:
+
+- **It does not compare node-ID sets.** See the rationale at the top.
+- **It does not distinguish skips from passes.** `--collect-only` counts
+  collected node IDs, which is the right denominator for "did this suite stop
+  collecting". Whether a collected test then skips is the runtime suites' and
+  the coverage gate's business (C2/#287), not this one's — the
+  `pytest.importorskip` guards on `packages/hive-conductor/tests/e2e` are
+  exactly why: they keep the directory *collecting* 24 node IDs whether or not
+  `browser_use` is installed, which is the property this gate wants to hold.
