@@ -215,7 +215,7 @@ def test_no_new_lambda_s_s_in_critical_callsites() -> None:
         "hive-conductor/backend/services/mcp_client.py:51",
         # Centralised secret helpers — one lambda per file (refactored from inline callsites)
         "hive-conductor/backend/routes/daily_report_v2.py:19",
-        "hive-conductor/backend/routes/agents.py:26",
+        "hive-conductor/backend/routes/agents.py:45",
         "hive-conductor/backend/services/program_hyperagent.py:25",
         "hive-conductor/backend/services/tool_primitives.py:66",
     }
