@@ -48,6 +48,18 @@ class _FakeHarness:
 
 def _scored_fixer_genome(score: float = 0.5):
     g = _random_genome()
+    # Pin the one slot the hyper_mutate tests below propose a value for.
+    # _random_genome draws tdd_rigor as round(random.uniform(0, 1), 2) — 101
+    # discrete values — and those tests propose {"tdd_rigor": 0.95}.
+    # parse_fixer_proposal deliberately rejects a no-op proposal
+    # (`return None if candidate == base else candidate`), so a 1-in-101
+    # collision produced zero candidates and an outcome reporting the
+    # misleading reason="no_candidate_beat_baseline" — a ~1%-per-run flake.
+    # Per this package's CLAUDE.md: randomness is unseeded, so don't let a test
+    # depend on a random draw differing from a literal.
+    entry = next((n for n in g.topology.nodes if n.id == g.topology.entry_node), None)
+    if entry is not None and entry.fixer is not None:
+        entry.fixer.tdd_rigor = 0.10
     g.eval_scores = {"code_rsi": score}
     g.fitness_score = score * 100
     return g
