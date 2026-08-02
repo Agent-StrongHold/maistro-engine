@@ -35,6 +35,14 @@ llm = [
 # The sandbox tool drives the `docker` CLI via subprocess, not the Python SDK,
 # so it needs no pip dependency. Kept as an explicit (empty) extra for clarity.
 sandbox = []
+# RE2 accelerates Warden's 47-pattern scan ~14x and, more importantly, bounds
+# its worst case: `re` backtracks, so attacker-shaped input can make a scan
+# superlinear. Optional because it is a native extension — without it Warden
+# falls back to `re` and behaves identically, just slower (see
+# security/warden/_regex.py).
+re2 = [
+    "google-re2>=1.1",
+]
 # Vendor-neutral tracing export. The agent tracing decorators use the OpenTelemetry
 # API directly (see observability/tracing.py); installing this extra + setting an OTLP
 # endpoint routes spans to any backend (Arize/Phoenix, Langfuse, Honeycomb, Jaeger).
