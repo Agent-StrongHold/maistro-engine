@@ -7,8 +7,6 @@ from typing import Any
 
 import httpx
 
-from maistro.http import shared_client
-
 
 class OpenAICompatibleProvider:
     """Async `llm_call` adapter for OpenAI-compatible `/chat/completions` APIs."""
@@ -73,9 +71,15 @@ class OpenAICompatibleProvider:
         if "max_tokens" in kwargs and kwargs["max_tokens"] is not None:
             body["max_tokens"] = kwargs["max_tokens"]
 
-        async with shared_client(
+        # Deliberately NOT `maistro.http.shared_client`, despite the pooling
+        # win everywhere else: maistro-evolve does not depend on maistro-core,
+        # and taking that dependency to pool a single call site would couple a
+        # standalone optimizer to the whole core runtime. `limits` is set here
+        # instead so the pool is at least explicit rather than httpx's default.
+        async with httpx.AsyncClient(
             timeout=self._timeout_seconds,
             transport=self._transport,
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=50),
         ) as client:
             try:
                 response = await client.post(

@@ -61,6 +61,7 @@ CORE_PUBLIC_SURFACE = [
     "maistro.credentials",
     "maistro.events",
     "maistro.graph",
+    "maistro.http",
     "maistro.memory",
     "maistro.ontology",
     "maistro.orchestrator",
