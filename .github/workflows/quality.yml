@@ -31,6 +31,12 @@ on:
   push:
     branches: [main, integration, develop, feat/*]
 
+# See the rationale in ci.yml: supersede PR runs, let protected-branch pushes
+# finish so their pass/fail record survives.
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   quality-gate:
     name: Quality gate (Pillars 1–4, 7, 8)
