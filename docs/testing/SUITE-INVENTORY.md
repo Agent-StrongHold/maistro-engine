@@ -48,7 +48,7 @@ silently-stopped-collecting case the gate exists to catch.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5793 | `ci.yml` |
+| `packages/maistro-core/tests` | 5824 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 528 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
