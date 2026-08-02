@@ -51,7 +51,7 @@ become noise is worse than no signal.
 | Tier | Meaning | Trust for promotion |
 |------|---------|---------------------|
 | `proxy` | A lite-weight version of the real methodology — small handcrafted/lite sample sets, but genuine scoring (rule verification, exact-match, tool-call matching, real sandboxed execution + assertion/state checks). Exists to save time/money and produce Pareto (cost vs. quality) signal, not to fake the official eval. | Development only; this is the default and what every benchmark below ships today. |
-| `real` | The official published benchmark harness against the official dataset | Not implemented for any benchmark. `EvalHarness(benchmark_fidelity="real")` raises rather than silently downgrading. |
+| `real` | The official published benchmark harness against the official dataset | Implemented for **`ifeval`** and **`bfcl`** (see §3a). `EvalHarness(benchmark_fidelity="real")` registers the *available* real adapters and nothing else; it raises only if none can run in this environment. It never silently downgrades a benchmark to proxy. |
 
 ### 2. Rename to remove false claims
 
@@ -72,9 +72,44 @@ become noise is worse than no signal.
 | `terminalbench` | CLI task | Delegates to `executable_terminal.py`'s real filesystem-state verification (restricted JSON action language, tempdir-based) | Yes — tempdir-scoped |
 | `osworld` | Desktop task | **Not implemented.** `run_osworld` raises `NotImplementedError` and is not registered in `PROXY_BENCHMARKS` — no desktop-VM/GUI-automation infra exists in this repo. Reference task definitions remain in `datasets.py` for when that infra lands. | N/A |
 
-Official-dataset/official-harness `real` adapters (loading the actual SWE-bench/
-BFCL/GAIA/etc. datasets and running their published evaluators) remain future work
-and are out of scope for the proxy tier described here.
+### 3a. Implemented `real` adapters
+
+Two benchmarks now run the official grader against the official dataset. Both
+qualified for the same reason: a deterministic official grader over response
+text, needing no container, reference solution, or judge model — so the entire
+cost of making each real was the LLM calls.
+
+| Benchmark | Adapter | Corpus | Grader | Headline `score` |
+|-----------|---------|--------|--------|------------------|
+| `ifeval` | `benchmarks/ifeval_real.py` | official 541 prompts, 25 instruction types | Google Research's own verifier, vendored | prompt-level strict (all four official metrics in `metadata`) |
+| `bfcl` | `benchmarks/bfcl_real.py` | official BFCL v4 **Python-AST track** only — 1,000 instances across `simple_python`/`multiple`/`parallel`/`parallel_multiple` | the leaderboard's own `ast_checker`, vendored | instance-weighted aggregate; per-category accuracies (the leaderboard-comparable numbers) in `metadata` |
+
+Contract points that bind consumers:
+
+- **Vendored, pinned, and byte-verified.** Corpora and graders live under
+  `benchmarks/third_party/`, reproduced by `scripts/vendor_{ifeval,bfcl}.py` and
+  pinned by sha256 of both the upstream bytes and the *rendered* vendored bytes.
+  `--check` runs in `quality.yml`. Pinning the rendered bytes is what makes the
+  guarantee real: an earlier version verified only the provenance header, so
+  grading logic could be edited freely and CI still passed.
+- **Optional includes.** Each adapter exposes `available() -> (ok, reason)`. A
+  real harness registers only what passes and records the rest on
+  `EvalHarness.unavailable_real` with an install hint. Unavailable ≠ proxy: an
+  unavailable adapter is skipped when unnamed and *raises* when explicitly
+  requested. `bfcl`'s checker is stdlib-only, so a real harness is never empty;
+  `ifeval` needs the `ifeval` extra plus nltk `punkt` **and** `punkt_tab`.
+- **Tier separation is enforced, not conventional.** `register_benchmark`
+  refuses a proxy runner on a real harness; requested benchmarks are validated
+  as a whole set *before* any runner spends money.
+- **`official_comparable`** is `True` only for a full, unsampled, unsplit,
+  error-free run. Sampling and splitting both cover a subset and set it `False`.
+- **Enforced train/holdout splits**, hashed by instance key so every instruction
+  type / category appears on both sides. These detect harness-level overfitting;
+  they cannot address pretraining contamination of a public corpus.
+
+Official-dataset/official-harness `real` adapters for the remaining benchmarks
+(SWE-bench, Terminal-Bench, τ-bench) remain future work. `gaia` and `ragas` are
+slated for removal/renaming rather than promotion.
 
 ### 4. Fitness gate enforces fidelity
 

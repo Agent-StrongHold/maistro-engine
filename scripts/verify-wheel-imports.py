@@ -143,7 +143,13 @@ PACKAGES = [
     Package("maistro-server", "maistro_server"),
     Package("maistro-turing", "maistro_turing"),
     Package("maistro-design", "maistro_design"),
-    Package("maistro-evolve", "maistro_evolve"),
+    # [ifeval] carries the vendored Google IFEval verifier's own runtime deps
+    # (nltk, langdetect, absl-py, immutabledict). That vendored tree imports
+    # them at module scope, and this check walks *every* module, so the bare
+    # wheel cannot import it. Declaring the widest extra is the mechanism for
+    # exactly this — same as maistro-canvas[export] and
+    # maistro-bootstrap[builders] above — not an exclusion.
+    Package("maistro-evolve", "maistro_evolve", widest_extra="ifeval"),
     Package("maistro-registry", "maistro_registry"),
     Package("maistro-rsi", "maistro_rsi"),
     Package("maistro-bootstrap", "maistro_bootstrap", widest_extra="builders"),
@@ -286,11 +292,21 @@ def check(pkg: Package, mode: str, dist_dir: Path, uv: str, py: str) -> tuple[bo
         if not python.exists():  # Windows layout
             python = venv / "Scripts" / "python.exe"
 
-        # cwd=tmpdir keeps the repo off sys.path[0]; without it `packages/*/src`
-        # or a stray `maistro/` in the working tree could satisfy the import.
+        # Keep the repo off sys.path[0] — without it `packages/*/src` or a stray
+        # `maistro/` in the working tree could satisfy the import and this check
+        # would pass without having exercised the wheel.
+        #
+        # The cwd must also NOT be an ancestor of the venv. nltk ships an import
+        # hook (nltk/inisec.py) that refuses any nltk-initiated import whose
+        # origin resolves inside the cwd; with the venv at `tmpdir/.venv` and
+        # cwd=tmpdir, the entire site-packages tree is "inside the cwd", so
+        # nltk blocked its own transitive `regex` import. An empty sibling
+        # directory satisfies both constraints.
+        probe_cwd = tmpdir / "probe-cwd"
+        probe_cwd.mkdir(exist_ok=True)
         probe = _run(
             [str(python), "-c", PROBE, mode, pkg.root, json.dumps(pkg.bare_surface())],
-            cwd=tmpdir,
+            cwd=probe_cwd,
             env=env,
         )
         if probe.returncode != 0 or not probe.stdout.strip():
