@@ -174,9 +174,31 @@ tested modules with no call path, so "the code is there" is not the bar.
 
 ### Known non-features
 
-These exist in the tree with **no production call path**. They are not v1 features and are not
-advertised as working: `maistro.builders`, `ontology`, `scheduling`, `governance`, `delivery`,
+These exist in the tree with **no production call path** — nothing outside their own tests
+constructs them, so they do nothing in a running system. They are not v1 features and are not
+advertised as working.
+
+*Whole subsystems:* `maistro.builders`, `ontology`, `scheduling`, `governance`, `delivery`,
 `portability`, `repertoire`, `collaboration`, `code_registry`, `sandbox`, `integrations`.
+
+*Individual capabilities inside subsystems that otherwise do work* — these are the harder ones
+to spot, because the package around them is live:
+
+| Unreachable | Documented as | Reality |
+|---|---|---|
+| `memory/episodic/retrieval.py` | SPEC-243 / ADR-080(D) hybrid BM25 + vector ranking | Nothing retrieves memory through it; there is no ranked retrieval at runtime. |
+| `credentials/pool.py`, `rotation.py` | SPEC-222 / ADR-063 credential pool + rotation-on-exhaustion | Unrelated to `maistro credentials rotate-key`, which rotates the *master key* and does work. |
+| `graph/scout.py` | ADR-062 | Not consulted by the executor. |
+| `config/loader.py` | SPEC-062226-fb23 | Settings come from `config/settings.py`. |
+| `agents/spec/`, `agents/spawner/` | ADR-005 / ADR-008 / ADR-009 | Reachable only from each other. |
+| `maistro_canvas/canvas/asset_*` | ADR-040/042/043/044/067, SPEC-220/221/229 | The asset pipeline is a closed island; `/v2/canvas` 503s regardless. |
+| `maistro_design/nodes.py` | ADR-061 / SPEC-234 | `/v1/design/*` works without it. |
+| `graph/durable_runs/` | — | DAG runs are in-memory only. |
+
+`maistro.testing` is also unreachable from the app, which is correct — it is test scaffolding.
+
+This list came out of a reachability sweep (#357) and supersedes any earlier claim that a
+symbol's existence implies it runs.
 
 See [`KNOWN-GAPS.md`](KNOWN-GAPS.md) for shipped-but-limited behavior, and
 [`SECURITY.md`](SECURITY.md) / [`COMPLIANCE.md`](COMPLIANCE.md) for which security controls
