@@ -142,7 +142,13 @@ PACKAGES = [
     Package("maistro-server", "maistro_server"),
     Package("maistro-turing", "maistro_turing"),
     Package("maistro-design", "maistro_design"),
-    Package("maistro-evolve", "maistro_evolve"),
+    # [ifeval] carries the vendored Google IFEval verifier's own runtime deps
+    # (nltk, langdetect, absl-py, immutabledict). That vendored tree imports
+    # them at module scope, and this check walks *every* module, so the bare
+    # wheel cannot import it. Declaring the widest extra is the mechanism for
+    # exactly this — same as maistro-canvas[export] and
+    # maistro-bootstrap[builders] above — not an exclusion.
+    Package("maistro-evolve", "maistro_evolve", widest_extra="ifeval"),
     Package("maistro-registry", "maistro_registry"),
     Package("maistro-rsi", "maistro_rsi"),
     Package("maistro-bootstrap", "maistro_bootstrap", widest_extra="builders"),
