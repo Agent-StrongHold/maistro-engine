@@ -53,6 +53,98 @@ def test_missing_raises(store: UserCredentialStore) -> None:
         store.use_secret("nobody", "jira", lambda v: v)
 
 
+class TestWorkspaceScopedConnections:
+    """Persona/Workspace Phase F: (user_id, provider, workspace_id, connection_name)."""
+
+    def test_default_scope_is_backward_compatible_with_unscoped_calls(
+        self, store: UserCredentialStore, tmp_path
+    ) -> None:
+        """A secret set with no scope args round-trips through explicit
+        default-scope args, and lands on-disk under the exact bare-provider
+        key pre-Phase-F code used -- zero format change for the common case."""
+        store.set_secret("alice", "jira", "token-alice")
+        assert store.has_secret("alice", "jira", workspace_id="default", connection_name="default")
+        assert (
+            store.use_secret(
+                "alice", "jira", lambda v: v, workspace_id="default", connection_name="default"
+            )
+            == "token-alice"
+        )
+        raw = json.loads(
+            Fernet(_master_key(tmp_path)).decrypt((tmp_path / "user_credentials.enc").read_bytes())
+        )
+        assert raw["alice"] == {"jira": "token-alice"}
+
+    def test_two_connections_of_the_same_provider_coexist(self, store: UserCredentialStore) -> None:
+        store.set_secret(
+            "alice", "jira", "team-a-token", workspace_id="ws-a", connection_name="team_a"
+        )
+        store.set_secret(
+            "alice", "jira", "team-b-token", workspace_id="ws-a", connection_name="team_b"
+        )
+        assert (
+            store.use_secret(
+                "alice", "jira", lambda v: v, workspace_id="ws-a", connection_name="team_a"
+            )
+            == "team-a-token"
+        )
+        assert (
+            store.use_secret(
+                "alice", "jira", lambda v: v, workspace_id="ws-a", connection_name="team_b"
+            )
+            == "team-b-token"
+        )
+
+    def test_legacy_unscoped_secret_still_resolves_at_default_scope(
+        self, store: UserCredentialStore, tmp_path
+    ) -> None:
+        """A record written before Phase F (bare-provider key, no scoping at
+        all) must resolve exactly as "the default workspace's default
+        connection" with no migration step required."""
+        store.set_secret("alice", "jira", "pre-phase-f-token")
+        fresh = UserCredentialStore.open(tmp_path)
+        assert fresh.has_secret("alice", "jira")  # unscoped call
+        assert fresh.has_secret("alice", "jira", workspace_id="default", connection_name="default")
+        assert (
+            fresh.use_secret("alice", "jira", lambda v: v, workspace_id="default")
+            == "pre-phase-f-token"
+        )
+
+    def test_scoped_connection_does_not_shadow_the_legacy_default(
+        self, store: UserCredentialStore
+    ) -> None:
+        store.set_secret("alice", "jira", "legacy-token")
+        store.set_secret("alice", "jira", "scoped-token", workspace_id="ws-a", connection_name="x")
+        assert store.use_secret("alice", "jira", lambda v: v) == "legacy-token"
+        assert (
+            store.use_secret("alice", "jira", lambda v: v, workspace_id="ws-a", connection_name="x")
+            == "scoped-token"
+        )
+
+    def test_delete_is_scoped_and_does_not_touch_other_connections(
+        self, store: UserCredentialStore
+    ) -> None:
+        store.set_secret("alice", "jira", "legacy-token")
+        store.set_secret("alice", "jira", "scoped-token", workspace_id="ws-a", connection_name="x")
+        assert (
+            store.delete_secret("alice", "jira", workspace_id="ws-a", connection_name="x") is True
+        )
+        assert store.has_secret("alice", "jira", workspace_id="ws-a", connection_name="x") is False
+        assert store.has_secret("alice", "jira") is True  # legacy default untouched
+
+    def test_list_providers_for_user_is_scoped(self, store: UserCredentialStore) -> None:
+        store.set_secret("alice", "jira", "legacy-token")
+        store.set_secret(
+            "alice", "github", "scoped-token", workspace_id="ws-a", connection_name="x"
+        )
+
+        default_scope = store.list_providers_for_user("alice")
+        assert set(default_scope) == {"jira"}
+
+        scoped = store.list_providers_for_user("alice", workspace_id="ws-a", connection_name="x")
+        assert set(scoped) == {"github"}
+
+
 def _master_key(tmp_path) -> bytes:
     return (tmp_path / "credential_master.key").read_bytes()
 
