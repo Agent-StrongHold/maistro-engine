@@ -20,17 +20,29 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Raise cryptography compatibility range
+      - name: Raise cryptography compatibility ranges
         run: |
           python - <<'PY'
           from pathlib import Path
-          p = Path('packages/maistro-core/pyproject.toml')
-          text = p.read_text()
-          old = '"cryptography>=48.0.1,<49"'
-          new = '"cryptography>=50.0.0,<51"'
-          if old not in text:
-              raise SystemExit(f'expected constraint not found: {old}')
-          p.write_text(text.replace(old, new, 1))
+          replacements = {
+              Path('packages/maistro-core/pyproject.toml'): (
+                  '"cryptography>=48.0.1,<49"',
+                  '"cryptography>=50.0.0,<51"',
+              ),
+              Path('packages/hive-conductor/pyproject.toml'): (
+                  '"cryptography>=43.0.0,<49"',
+                  '"cryptography>=50.0.0,<51"',
+              ),
+              Path('packages/hive-conductor/backend/requirements.txt'): (
+                  'cryptography>=43.0.0,<49',
+                  'cryptography>=50.0.0,<51',
+              ),
+          }
+          for path, (old, new) in replacements.items():
+              text = path.read_text()
+              if old not in text:
+                  raise SystemExit(f'expected constraint not found in {path}: {old}')
+              path.write_text(text.replace(old, new, 1))
           PY
       - name: Regenerate Python lock for audited packages
         run: uv lock --upgrade-package aiohttp --upgrade-package cryptography --upgrade-package gitpython
@@ -45,9 +57,9 @@ jobs:
           uvx pip-audit --strict -r /tmp/deps.txt
           cd packages/maistro-canvas/frontend
           npm audit --audit-level=high
-      - name: Remove one-shot workflow and commit generated changes
+      - name: Remove one-shot scaffolding and commit generated changes
         run: |
-          rm .github/workflows/ci-fix-promotion-gates.yml
+          rm -f .github/workflows/ci-fix-promotion-gates.yml placeholder.tmp placeholder2.tmp
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
