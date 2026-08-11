@@ -101,13 +101,6 @@ async function loginAsPM(page: Page) {
   // it clicked it, switched to the mode it was already in, submitted nothing,
   // and reported no error.
   //
-  // That failed silently in the worst way. No POST /v1/auth/login was ever
-  // issued by this helper, so every spec ran unauthenticated — which is why
-  // the API specs got 401 (not the 403 the ci.yml comment predicted), and why
-  // the specs whose assertions are loose enough to pass while logged out
-  // (e.g. body matching /hive|conductor|chat/i, which the login page itself
-  // satisfies) reported green.
-  //
   // Awaiting the response rather than a fixed timeout means a login that stops
   // working fails here, loudly, instead of leaking into a downstream 401.
   await Promise.all([
@@ -119,13 +112,28 @@ async function loginAsPM(page: Page) {
   ]);
 }
 
+async function elevateDagWrites(page: Page, taskId: string) {
+  // DAG creation/runs and optimizer mutations are protected operations. The
+  // setup-created daily user is assigned dags.write but must prove possession
+  // of its password for a task-scoped elevation before exercising that power.
+  const response = await page.request.post("/v1/auth/elevate", {
+    data: {
+      password: PM_PASS,
+      permissions: ["dags.write"],
+      task_id: taskId,
+    },
+  });
+  expect(response.status()).toBe(200);
+  const body = await response.json();
+  expect(body.elevated_permissions).toContain("dags.write");
+}
+
 test.describe("PM Workflow — Full UI Walkthrough", () => {
   test.beforeEach(async ({ page }) => {
     await setupIfNeeded(page);
   });
 
   test("01 — Setup wizard completes on first boot", async ({ page }) => {
-    // Setup already ran in beforeEach; verify we're past it
     const r = await page.request.get("/v1/setup/status");
     const data = await r.json();
     expect(data.setup_complete).toBe(true);
@@ -140,8 +148,6 @@ test.describe("PM Workflow — Full UI Walkthrough", () => {
   test("03 — Dashboard loads with key metrics", async ({ page }) => {
     await loginAsPM(page);
     await page.goto("/");
-
-    // Wait for the app to load
     await page.waitForTimeout(2000);
     const response = await page.request.get("/health");
     expect(response.status()).toBe(200);
@@ -151,16 +157,14 @@ test.describe("PM Workflow — Full UI Walkthrough", () => {
     await loginAsPM(page);
     await page.goto("/fleet");
     await page.waitForTimeout(2000);
-
-    // Fleet page should load DAGs
     const apiResponse = await page.request.get("/v1/dags");
     expect(apiResponse.status()).toBe(200);
   });
 
   test("05 — PM can create a DAG via API (simulating DagBuilder)", async ({ page }) => {
     await loginAsPM(page);
+    await elevateDagWrites(page, "e2e-create-dag");
 
-    // Create DAG via API (DagBuilder does this)
     const createResp = await page.request.post("/v1/dags", {
       data: {
         name: "Sprint Retro Digest",
@@ -175,20 +179,19 @@ test.describe("PM Workflow — Full UI Walkthrough", () => {
 
   test("06 — PM can activate and run a DAG", async ({ page }) => {
     await loginAsPM(page);
+    await elevateDagWrites(page, "e2e-run-dag");
 
-    // Create
     const createResp = await page.request.post("/v1/dags", {
       data: { name: "E2E Run Test", description: "test" },
     });
+    expect(createResp.status()).toBe(201);
     const dag = await createResp.json();
 
-    // Activate
     const activateResp = await page.request.post(`/v1/dags/${dag.id}/activate`);
     expect(activateResp.status()).toBe(200);
     const activated = await activateResp.json();
     expect(activated.status).toBe("active");
 
-    // Run
     const runResp = await page.request.post(`/v1/dags/${dag.id}/run`);
     expect(runResp.status()).toBe(200);
     const run = await runResp.json();
@@ -197,38 +200,40 @@ test.describe("PM Workflow — Full UI Walkthrough", () => {
 
   test("07 — PM can give thumbs feedback on a run", async ({ page }) => {
     await loginAsPM(page);
+    await elevateDagWrites(page, "e2e-feedback-dag");
 
-    // Create + run
     const createResp = await page.request.post("/v1/dags", {
       data: { name: "Feedback Test DAG", description: "test" },
     });
+    expect(createResp.status()).toBe(201);
     const dag = await createResp.json();
-    await page.request.post(`/v1/dags/${dag.id}/activate`);
-    const runResp = await page.request.post(`/v1/dags/${dag.id}/run`);
-    const run = await runResp.json();
 
-    // Feedback
-    const fbResp = await page.request.post(
-      `/v1/dag-runs/${run.execution_id}/feedback`,
-      { data: { thumb: "up", comment: "Nailed it!", dag_id: dag.id } }
-    );
-    // 200 or 404 (run may not be in store if execution was instant)
+    const activateResp = await page.request.post(`/v1/dags/${dag.id}/activate`);
+    expect(activateResp.status()).toBe(200);
+    const runResp = await page.request.post(`/v1/dags/${dag.id}/run`);
+    expect(runResp.status()).toBe(200);
+    const run = await runResp.json();
+    expect(run.execution_id).toBeTruthy();
+
+    const fbResp = await page.request.post(`/v1/dag-runs/${run.execution_id}/feedback`, {
+      data: { thumb: "up", comment: "Nailed it!", dag_id: dag.id },
+    });
     expect([200, 404]).toContain(fbResp.status());
   });
 
   test("08 — PM can trigger optimizer and see proposals", async ({ page }) => {
     await loginAsPM(page);
+    await elevateDagWrites(page, "e2e-optimize-dag");
 
     const createResp = await page.request.post("/v1/dags", {
       data: { name: "Optimizer Test DAG", description: "test" },
     });
+    expect(createResp.status()).toBe(201);
     const dag = await createResp.json();
 
-    // Trigger optimizer
     const optResp = await page.request.post(`/v1/optimizer/${dag.id}/run`);
     expect([200, 400]).toContain(optResp.status());
 
-    // List proposals
     const proposalsResp = await page.request.get(`/v1/optimizer/${dag.id}/proposals`);
     expect(proposalsResp.status()).toBe(200);
     const proposals = await proposalsResp.json();
@@ -239,15 +244,12 @@ test.describe("PM Workflow — Full UI Walkthrough", () => {
     await loginAsPM(page);
     await page.goto("/optimization");
     await page.waitForTimeout(2000);
-
-    // The page should render without crashing
     const body = await page.textContent("body");
     expect(body).toBeTruthy();
   });
 
   test("10 — PM can view audit log", async ({ page }) => {
     await loginAsPM(page);
-
     const auditResp = await page.request.get("/v1/audit");
     expect(auditResp.status()).toBe(200);
     const entries = await auditResp.json();
@@ -257,7 +259,6 @@ test.describe("PM Workflow — Full UI Walkthrough", () => {
 
   test("11 — PM can view DAG metrics", async ({ page }) => {
     await loginAsPM(page);
-
     const metricsResp = await page.request.get("/v1/dag-metrics");
     expect(metricsResp.status()).toBe(200);
   });
@@ -269,7 +270,6 @@ test.describe("PM Workflow — Full UI Walkthrough", () => {
     for (const p of pages) {
       await page.goto(p);
       await page.waitForTimeout(1000);
-      // No crash = page rendered
       const body = await page.textContent("body");
       expect(body?.length).toBeGreaterThan(0);
     }
