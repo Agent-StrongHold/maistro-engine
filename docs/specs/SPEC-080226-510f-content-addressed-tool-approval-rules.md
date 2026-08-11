@@ -32,9 +32,9 @@ owners:
 `maistro.tools.approval.gate` (SPEC-253/ADR-051) currently makes per-call approval decisions
 (`needs_plan_approval`, `needs_escalation`, `collapse_window`) but has no concept of a durable
 "don't ask again" rule — every risky call is re-evaluated from the declared plan or an escalation
-threshold, with nothing persisted across turns or sessions. Grepping both `maistro-core` and
-`stronghold` for `always_approve`, `ApprovalRule`, `dont_ask_again`, or any standing-rule concept
-returns zero matches.
+threshold, with nothing persisted across turns or sessions. Grepping `maistro-engine` for
+`always_approve`, `ApprovalRule`, `dont_ask_again`, or any standing-rule concept returns zero
+matches.
 
 Microsoft's Agent Framework harness (`_harness/_tool_approval.py`) solves this with a
 `ToolApprovalRule(tool_name, args, server_label)` persisted in session state, matched by **name**.
@@ -55,8 +55,8 @@ content-addressed identity that solve the same underlying problem:
   security scanning; the same primitive generalizes to approval caching.
 
 The one tool source with no content-addressed identity today is native/built-in tools —
-`CapabilityRegistry.register(provider)` (maistro-core) and Stronghold's `ToolRegistry.get_executor
-(tool_name)` (`protocols/tools.py`) both resolve purely by string name.
+`CapabilityRegistry.register(provider)` resolves providers by logical identity rather than a hash
+of the implementation that will execute.
 
 ## Goals
 
@@ -100,10 +100,10 @@ Resolution differs by source, computed once and cached, never per-call:
 - **Marketplace-imported / Forge-created skills**: `code_sha256` = the skill's existing
   `PolicyAttachment.content_hash` (ADR-083). No new hashing — read the attachment already bound at
   import/forge time.
-- **Native Python tools / capability providers**: new one-time hash at registration
-  (`CapabilityRegistry.register()` in maistro-core, `ToolRegistry.register()` in Stronghold) —
-  SHA-256 of the executor's resolved source (module file content or serialized `__code__`, mirroring
-  `code_registry`'s `code_sha256` derivation), cached on the registry entry.
+- **Native Python tools / capability providers**: new one-time hash at registration through
+  MAIstro's capability/tool registry — SHA-256 of the executor's resolved source (module file
+  content or serialized `__code__`, mirroring `code_registry`'s `code_sha256` derivation), cached
+  on the registry entry.
 
 ### `ToolApprovalRule`
 
@@ -163,12 +163,11 @@ common case of "the tool changed under me."
 
 ## Open questions
 
-- Where should the native-tool hash be cached — on the `CapabilityRegistry`/`ToolRegistry` entry
-  itself, or in a separate identity cache keyed by `(slot, provider_name)`? Affects invalidation
-  when a provider is re-registered at runtime (hot-reload).
-- Should Stronghold's `ToolRegistry` protocol (`protocols/tools.py`) grow a `get_identity(tool_name)
-  -> ToolIdentity` method, or should identity resolution stay a wrapper outside the protocol to
-  avoid a breaking change to an existing DI-wired interface?
+- Where should the native-tool hash be cached — on the capability/tool registry entry itself, or
+  in a separate identity cache keyed by `(slot, provider_name)`? Affects invalidation when a
+  provider is re-registered at runtime (hot-reload).
+- Should tool identity be surfaced directly by the existing capability registry protocol, or stay
+  in a wrapper to avoid widening an established interface before the unified capability work?
 - Team-scoped rules: does a team-scoped "always approve" require a higher approval authority
   (e.g. team admin) than a session-scoped one? Not addressed here — may need an ADR if the answer
   is yes.
