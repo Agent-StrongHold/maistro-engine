@@ -90,12 +90,6 @@ def get_graph_gate() -> LaneGate:
     return _gate
 
 
-def reset_graph_gate() -> None:
-    """Drop the gate so the next call rebuilds it (tests)."""
-    global _gate
-    _gate = None
-
-
 @asynccontextmanager
 async def llm_call_permit(lane: Lane = Lane.BACKGROUND, tier: str = "P2") -> AsyncIterator[None]:
     """Hold a permit for the duration of one LLM call.
