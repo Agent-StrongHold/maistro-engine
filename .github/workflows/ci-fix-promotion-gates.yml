@@ -40,6 +40,20 @@ jobs:
                   raise SystemExit(f'expected constraint not found in {path}: {old}')
               path.write_text(text.replace(old, new, 1))
           PY
+      - name: Document platform compatibility
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('README.md')
+          text = p.read_text()
+          anchor = "The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker)."
+          note = """\n\n> **Platform compatibility:** MAIstro targets modern 64-bit platforms. Intel (x86_64) Macs and 32-bit Windows have limited compatibility because `cryptography` 50.x no longer provides those upstream wheel/support paths. Apple Silicon Macs, 64-bit Windows, and supported 64-bit Linux platforms are the normal targets."""
+          if note.strip() not in text:
+              if anchor not in text:
+                  raise SystemExit('README quick-start anchor not found')
+              text = text.replace(anchor, anchor + note, 1)
+              p.write_text(text)
+          PY
       - name: Regenerate Python lock for audited packages
         run: uv lock --upgrade-package aiohttp --upgrade-package cryptography --upgrade-package gitpython
       - name: Repair high-severity canvas npm advisories
@@ -60,5 +74,5 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -A
           git diff --cached --quiet && exit 0
-          git commit -m 'fix(ci): update vulnerable Python and npm dependencies'
+          git commit -m 'fix(ci): update vulnerable dependencies and platform notes'
           git push origin HEAD:ci/fix-promotion-gates
