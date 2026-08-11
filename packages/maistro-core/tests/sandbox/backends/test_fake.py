@@ -98,3 +98,5 @@ class TestDestroy:
         instance = await backend.spawn(config=config)
         await backend.destroy(instance)
         await backend.destroy(instance)
+
+        assert backend._instances == {}

@@ -113,6 +113,20 @@ def _score_response(response: str, rules: list[dict[str, Any]]) -> float:
 
 
 async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score instruction-following by checking real, per-instruction rules.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official IFEval corpus. But each check is a genuine structural rule
+    (``contains``, ``exact_match``, ``sentence_count``, ``word_count``,
+    ``valid_json``, ...) evaluated against the actual response — not scored
+    by keyword overlap.
+    """
+    if llm_call is None:
+        raise ValueError(
+            "run_ifeval requires an llm_call — there is no stub/heuristic "
+            "fallback (SPEC-202: never produce a fabricated score)"
+        )
+
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -127,36 +141,31 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     for sample in IFEVAL_SAMPLES:
         messages = build_messages(system_prompt, sample["instruction"])
         try:
-            if llm_call is not None:
-                response = await asyncio.wait_for(
-                    llm_call(
-                        messages,
-                        temperature=model_config.get("temperature", 0.3),
-                        max_tokens=model_config.get("max_tokens", 2048),
-                    ),
-                    timeout=30.0,
+            response = await asyncio.wait_for(
+                llm_call(
+                    messages,
+                    temperature=model_config.get("temperature", 0.3),
+                    max_tokens=model_config.get("max_tokens", 2048),
+                ),
+                timeout=30.0,
+            )
+            sample_score = _score_response(response, sample["rules"])
+            total_score += sample_score
+            evaluated += 1
+            total_cost += 0.001
+            if sample_score < 1.0 and len(failures) < _MAX_FAILURE_TRACES:
+                failures.append(
+                    {
+                        "instruction": sample["instruction"],
+                        "failed_rules": _failed_rule_descriptions(response, sample["rules"]),
+                        "response_excerpt": response[:200],
+                        "score": round(sample_score, 3),
+                    }
                 )
-                sample_score = _score_response(response, sample["rules"])
-                total_score += sample_score
-                evaluated += 1
-                total_cost += 0.001
-                if sample_score < 1.0 and len(failures) < _MAX_FAILURE_TRACES:
-                    failures.append(
-                        {
-                            "instruction": sample["instruction"],
-                            "failed_rules": _failed_rule_descriptions(response, sample["rules"]),
-                            "response_excerpt": response[:200],
-                            "score": round(sample_score, 3),
-                        }
-                    )
-            else:
-                sample_score = _heuristic_score(sample)
-                total_score += sample_score
-                evaluated += 1
         except (TimeoutError, Exception):
             total_score += 0.0
             evaluated += 1
-            if llm_call is not None and len(failures) < _MAX_FAILURE_TRACES:
+            if len(failures) < _MAX_FAILURE_TRACES:
                 failures.append(
                     {
                         "instruction": sample["instruction"],
@@ -170,28 +179,10 @@ async def run_ifeval(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="ifeval",
+        benchmark="proxy_ifeval",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real", "failures": failures},
+        metadata={"total_samples": samples, "fidelity": "proxy", "failures": failures},
     )
-
-
-def _heuristic_score(sample: dict[str, Any]) -> float:
-    instruction = sample["instruction"].lower()
-    base = 0.5
-    if "exactly" in instruction:
-        base = 0.3
-    if "only" in instruction:
-        base = 0.25
-    if "not" in instruction or "do not" in instruction or "don't" in instruction:
-        base *= 0.8
-    if "json" in instruction:
-        base *= 1.1
-    if "keyword" in instruction or "include" in instruction:
-        base *= 1.2
-    import random
-
-    return max(0.0, min(1.0, base + random.uniform(-0.1, 0.1)))

@@ -9,7 +9,10 @@ test.describe("Setup Wizard", () => {
 
   test("step indicators show 4 steps", async ({ page }) => {
     await page.goto("/");
-    const steps = page.locator(".page-header + div > div, [style*='border-bottom'] > div");
+    // The four step labels are the assertion; a `.page-header + div > div`
+    // locator was built here for a count check that was never written. It is
+    // not restored as `toHaveCount(4)` because that selector also matches the
+    // header's own children, so the count it would assert is unverified.
     await expect(page.locator("text=Hive")).toBeVisible();
     await expect(page.locator("text=Hardware")).toBeVisible();
     await expect(page.locator("text=Modules")).toBeVisible();

@@ -232,7 +232,9 @@ class TestRemoveVolume:
     def test_swallows_exception(self, runtime: DockerRuntime, fake_client: MagicMock) -> None:
         _with_client(runtime, fake_client)
         fake_client.volumes.get.side_effect = RuntimeError("not found")
-        runtime.remove_volume("vol1")  # should not raise
+        runtime.remove_volume("vol1")
+
+        fake_client.volumes.get.assert_called_once_with("vol1")
 
 
 class TestArchiveToVolume:

@@ -37,6 +37,53 @@ def _resolve_answers(answers_file: Path | None) -> InstallAnswersV1:
     return collect_answers_interactive()
 
 
+def _maybe_stage_bootstrap_credentials(answers: InstallAnswersV1, target_dir: Path) -> None:
+    """Interactively stage first-run credentials next to the plan artifacts.
+
+    Skipped when: not a TTY (headless installs stage their own file and set
+    MAISTRO_BOOTSTRAP_CREDENTIALS_FILE), an external file is already staged,
+    or the operator declines (UI Setup wizard remains the fallback).
+    """
+    import os
+
+    from maistro_bootstrap.credentials import (
+        BOOTSTRAP_CREDENTIALS_FILENAME,
+        ENV_CREDENTIALS_FILE,
+        write_bootstrap_credentials,
+    )
+    from maistro_bootstrap.wizard import collect_bootstrap_credentials
+
+    external = os.environ.get(ENV_CREDENTIALS_FILE)
+    if external:
+        console.print(
+            f"[dim]{ENV_CREDENTIALS_FILE} is set — using pre-staged credentials at "
+            f"{external}; skipping prompts.[/dim]"
+        )
+        return
+    if (target_dir / BOOTSTRAP_CREDENTIALS_FILENAME).exists():
+        console.print("[dim]bootstrap-credentials.json already staged; skipping prompts.[/dim]")
+        return
+    if not sys.stdin.isatty():
+        console.print(
+            "[dim]No TTY: first-run accounts will be created in the UI Setup wizard "
+            f"(or stage a file and set {ENV_CREDENTIALS_FILE}).[/dim]"
+        )
+        return
+    ok = typer.confirm(
+        "Set initial admin & daily-driver passwords now (recommended)? "
+        "Declining leaves account setup to the web UI.",
+        default=True,
+    )
+    if not ok:
+        console.print("[dim]Skipped — the UI Setup wizard will collect credentials.[/dim]")
+        return
+    creds = collect_bootstrap_credentials(answers)
+    path = write_bootstrap_credentials(target_dir, creds)
+    console.print(
+        f"[green]Staged {path} (0600). It is consumed once at bring-up and then shredded.[/green]"
+    )
+
+
 def _print_human_plan(plan: dict[str, Any], answers: InstallAnswersV1, repo: str | None) -> None:
     console.print("[bold]Resolved plan[/bold]")
     console.print(f"  features:               {sorted(answers.features)}")
@@ -147,6 +194,7 @@ def main(
     if materialize_dir is not None:
         written = materialize_install_artifacts(plan, materialize_dir)
         console.print(f"[green]Wrote {len(written)} install artifacts to {materialize_dir}[/green]")
+        _maybe_stage_bootstrap_credentials(answers, materialize_dir)
 
     if json_out:
         console.print_json(data=plan)

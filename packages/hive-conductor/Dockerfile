@@ -22,6 +22,24 @@ ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
+# ---- age build ----
+# age v1.3.1 remains the latest upstream release, but its prebuilt Linux binary
+# was compiled before several 2026 Go/x/crypto and stdlib fixes. Build the exact
+# immutable release tag ourselves with a patched Go toolchain/dependency set so
+# the runtime does not inherit vulnerabilities from an otherwise-current source
+# release. The release tag resolves to b8564ad; fail if upstream ever disagrees.
+FROM golang:1.25.12-alpine AS agebuild
+ARG AGE_VERSION=1.3.1
+ARG AGE_COMMIT_SHORT=b8564ad
+RUN apk add --no-cache git && \
+    git clone --branch "v${AGE_VERSION}" --depth 1 https://github.com/FiloSottile/age.git /src/age && \
+    cd /src/age && \
+    test "$(git rev-parse --short=7 HEAD)" = "${AGE_COMMIT_SHORT}" && \
+    go get golang.org/x/crypto@v0.52.0 && \
+    mkdir -p /out && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/age ./cmd/age && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/age-keygen ./cmd/age-keygen
+
 # ---- fat Wolfi builder: self-contained venv (has shell/pip/apk, glibc) ----
 FROM cgr.dev/chainguard/python:latest-dev AS pybuild
 WORKDIR /app
@@ -37,6 +55,12 @@ COPY packages/maistro-bootstrap /packages/maistro-bootstrap
 COPY packages/maistro-canvas /packages/maistro-canvas
 COPY packages/maistro-design /packages/maistro-design
 COPY packages/maistro-evolve /packages/maistro-evolve
+# NOTE: maistro-core's [identity] extra (bip-utils → coincurve) cannot install
+# here yet: coincurve publishes no cp314 wheels (21.0.0 caps at cp313), this
+# base image is Python 3.14, and coincurve's source build is broken against
+# current cffi. Until a cp314 wheel exists, setup surfaces the gap loudly via
+# identity_unavailable instead of a silently-missing mnemonic
+# (SPEC-072726-3439 Phase 3 tracks restoring in-image identity).
 RUN pip install --no-cache-dir \
     /packages/maistro-core \
     /packages/maistro-bootstrap \
@@ -44,7 +68,8 @@ RUN pip install --no-cache-dir \
     /packages/maistro-design \
     /packages/maistro-evolve
 COPY packages/hive-conductor/backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt && \
+    pip install --no-cache-dir "setuptools>=78.1.1"
 # Seed dir for conductor state (SQLite/vault/state). Created under the writable
 # /app workdir because the -dev base runs as nonroot and cannot write to /. The
 # runtime stage COPY --chown's it to /data so a mounted named volume inherits
@@ -59,6 +84,7 @@ ENV PATH="/app/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 COPY --from=pybuild /app/venv /app/venv
+COPY --from=agebuild /out/age /out/age-keygen /usr/bin/
 COPY packages/hive-conductor/backend/ /app/backend/
 COPY packages/hive-conductor/cage/ /app/cage/
 COPY packages/hive-conductor/eval/ /app/eval/

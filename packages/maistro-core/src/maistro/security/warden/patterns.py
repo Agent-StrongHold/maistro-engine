@@ -1,17 +1,22 @@
 """Known attack patterns for Warden regex screening.
 
 Ported from Stronghold warden/patterns.py.
-Uses `regex` library instead of `re` for built-in timeout support (ReDoS-safe).
+Uses the `regex` library instead of `re` for its per-call ``timeout=`` support:
+the detector passes a timeout on every search, so a catastrophically
+backtracking pattern raises ``TimeoutError`` (which the scan records as a
+fail-closed ``regex_error:`` flag) instead of stalling the boundary.
+
+`regex` is a hard dependency of maistro-core — the old conditional fallback to
+``re`` silently voided the timeout claim whenever the library was missing,
+which is worse than failing to import: the scan kept running with the safety
+property quietly absent.
 """
 
 from __future__ import annotations
 
-from importlib import import_module, util
-from typing import Any
+import regex
 
-regex: Any = import_module("regex") if util.find_spec("regex") else import_module("re")
-
-REJECT_PATTERNS: list[tuple[Any, str]] = [
+REJECT_PATTERNS: list[tuple[regex.Pattern[str], str]] = [
     (
         regex.compile(
             r"ignore\s+(all\s+)?previous\s+(instructions|prompts|rules)",

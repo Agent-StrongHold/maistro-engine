@@ -5,11 +5,13 @@ from datetime import UTC
 
 import httpx
 
+from maistro.http import shared_client
+
 POSTGREST_URL = os.environ.get("POSTGREST_URL") or os.environ.get("STUDIOSHARE_POSTGREST_URL") or ""
 
 
 async def _req(method: str, table: str, **kwargs) -> httpx.Response:
-    async with httpx.AsyncClient(base_url=POSTGREST_URL, timeout=10) as c:
+    async with shared_client(base_url=POSTGREST_URL, timeout=10) as c:
         return await getattr(c, method)(f"/{table}", **kwargs)
 
 

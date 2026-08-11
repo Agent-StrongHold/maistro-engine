@@ -106,7 +106,9 @@ class TestDiscard:
     def test_discard_idempotent(self, tmp_path: Path) -> None:
         ws = create_shadow_workspace(tmp_path, "task-1")
         ws.discard()
-        ws.discard()  # must not raise
+        ws.discard()
+
+        assert not ws.workspace_ref.exists()
 
     def test_discard_refuses_workspace_outside_shadow_root(self, tmp_path: Path) -> None:
         ws = create_shadow_workspace(tmp_path / "shadow-root", "task-1")

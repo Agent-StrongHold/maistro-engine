@@ -13,9 +13,9 @@ from maistro.agents.pm_capabilities import (
 )
 from maistro.agents.pm_fleet import get_pm_def
 from maistro.agents.program_context import (
-    INTERVIEW_STEPS,
     ProgramContext,
     current_interview_question,
+    interview_steps_for,
 )
 from maistro.agents.work_items import suggest_work_item
 
@@ -52,21 +52,33 @@ class WorkItemSuggestion:
         }
 
 
-def interview_status(ctx: ProgramContext) -> dict[str, Any]:
-    q = current_interview_question(ctx)
+def interview_status(
+    ctx: ProgramContext,
+    *,
+    use_case: str = "pm_fleet",
+    custom_steps: tuple[dict[str, str], ...] | None = None,
+) -> dict[str, Any]:
+    """`use_case` selects which persona's interview script `total_steps` and
+    the next question are drawn from (Persona/Workspace system) -- callers
+    that never resolve a specific persona (the pre-Phase-B majority) keep
+    getting the pm_fleet script via the default, unchanged. `custom_steps`
+    (a persona's own declared `PersonaTemplate.interview`) takes priority
+    over `use_case`'s canned script when given and non-empty."""
+    steps = interview_steps_for(use_case, custom_steps)
+    q = current_interview_question(ctx, use_case=use_case, custom_steps=custom_steps)
     if ctx.interview_complete:
         return {
             "complete": True,
-            "step": len(INTERVIEW_STEPS),
-            "total_steps": len(INTERVIEW_STEPS),
+            "step": len(steps),
+            "total_steps": len(steps),
             "message": "Interview complete. Autonomous polls run automatically; Jira creates require your approval.",
         }
     if q is None:
-        return {"complete": True, "step": 0, "total_steps": len(INTERVIEW_STEPS), "message": ""}
+        return {"complete": True, "step": 0, "total_steps": len(steps), "message": ""}
     return {
         "complete": False,
         "step": ctx.interview_step + 1,
-        "total_steps": len(INTERVIEW_STEPS),
+        "total_steps": len(steps),
         "agent": q["agent"],
         "question": q["question"],
     }

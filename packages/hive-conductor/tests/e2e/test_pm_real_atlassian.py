@@ -25,7 +25,21 @@ import os
 import sys
 
 import httpx
-from browser_use import Agent, Browser, ChatGoogle
+import pytest
+
+# C1 (#286): a manual e2e *script*, not a pytest suite — no `test_*` functions,
+# only `run()` behind `if __name__ == "__main__"`. It matches pytest's
+# `test_*.py` glob anyway, so the unguarded `browser_use` import aborted
+# collection for the whole `tests/e2e` directory. `browser_use` ships only in
+# `Dockerfile.research`, and this one additionally needs real Atlassian
+# credentials. Guarded so the directory collects; contributes zero node IDs.
+_browser_use = pytest.importorskip(
+    "browser_use",
+    reason="browser-use not installed (research image only — see Dockerfile.research)",
+)
+Agent = _browser_use.Agent
+Browser = _browser_use.Browser
+ChatGoogle = _browser_use.ChatGoogle
 
 HIVE_URL = os.environ.get("HIVE_URL", "http://localhost:8101")
 JIRA_URL = os.environ.get("JIRA_URL", "")

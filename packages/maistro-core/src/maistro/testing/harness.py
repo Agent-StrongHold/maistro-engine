@@ -23,8 +23,10 @@ from maistro.quota.tracker import InMemoryQuotaTracker
 from maistro.router.selector import RouterEngine
 from maistro.security._types import PermissionTable
 from maistro.security.gate import Gate
+from maistro.security.permission_policy import build_permission_table
 from maistro.security.sentinel.audit import InMemoryAuditLog
 from maistro.security.sentinel.policy import Sentinel
+from maistro.security.strikes import InMemoryStrikeTracker
 from maistro.security.warden.detector import Warden
 from maistro.sessions.store import InMemorySessionStore
 from maistro.testing.faux_provider import FauxProvider
@@ -113,10 +115,26 @@ def create_test_environment(
     classifier = ClassifierEngine()
     context_builder = ContextBuilder()
     intent_registry = IntentRegistry()
-    gate = Gate(warden=warden)
+    # Mirror create_container's security wiring rather than hardcoding it.
+    # This function accepts an AgentConfig and previously ignored its security
+    # section entirely, so a test doing
+    #   create_test_environment(config=AgentConfig(security=SecurityConfig(
+    #       permission_preset="dangerous_tools_admin")))
+    # silently observed an empty permission table and no strike tracker. That is
+    # the same "second assembly path drifts from the real one" shape that let
+    # the empty permission_table and missing strike_tracker survive a green
+    # suite in the first place; a test harness that cannot reproduce the
+    # container's security posture cannot catch a regression in it.
+    strike_tracker: InMemoryStrikeTracker | None = None
+    if config.security.strike_tracking_enabled:
+        strike_tracker = InMemoryStrikeTracker()
+    gate = Gate(warden=warden, strike_tracker=strike_tracker)
 
     audit_log = InMemoryAuditLog()
-    permission_table: PermissionTable = {}
+    permission_table: PermissionTable = build_permission_table(
+        preset=config.security.permission_preset,
+        permissions=config.security.permissions,
+    )
     sentinel = Sentinel(
         warden=warden,
         permission_table=permission_table,
@@ -134,6 +152,7 @@ def create_test_environment(
         session_store=session_store,
         warden=warden,
         gate=gate,
+        strike_tracker=strike_tracker,
         sentinel=sentinel,
         context_builder=context_builder,
         intent_registry=intent_registry,

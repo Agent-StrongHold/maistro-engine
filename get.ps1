@@ -220,6 +220,9 @@ function Invoke-LinuxInstall {
     if ($NoStart) { $envAssignments += 'MAISTRO_START_STACK=0' }
     if ($NoCli) { $envAssignments += 'MAISTRO_INSTALL_CLI=0' }
     if ($NoOpen) { $envAssignments += 'MAISTRO_OPEN_BROWSER=0' }
+    # Checksum verification of the fetched install.sh (SPEC-072726-3439
+    # Phase 5): forward the manifest URL so get.sh verifies before executing.
+    if ($env:MAISTRO_SHA256SUMS_URL) { $envAssignments += "MAISTRO_SHA256SUMS_URL=$($env:MAISTRO_SHA256SUMS_URL)" }
     $exports = ($envAssignments | ForEach-Object { "export $_;" }) -join ' '
 
     $getShUrl = "https://raw.githubusercontent.com/$Repo/$Branch/get.sh"

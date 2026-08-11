@@ -60,11 +60,51 @@ SENSITIVE_ROOTS = (
     "packages/maistro-core/src/maistro/policy/",
     "packages/maistro-core/src/maistro/capabilities/providers/",
     "packages/maistro-core/src/maistro/tools/sandbox/",
+    "packages/maistro-core/src/maistro/graph/durable_runs/",
     "packages/maistro-rsi/src/maistro_rsi/sandbox/",
-    "packages/maistro-rsi/src/maistro_rsi/durable_runs/",
+    # The measurement surface: task corpora, graders, and the train/holdout
+    # split the loop is scored against. Editing your own exam is a containment
+    # failure even though it touches no sandbox or security code.
+    "packages/maistro-evolve/src/maistro_evolve/benchmarks/",
     ".github/workflows/",
     "quality/",
     "sbx/",
+)
+
+# Individual files on the containment surface that live OUTSIDE the directories
+# above. Directory probes alone let any of these quietly fall off
+# SENSITIVE_PATH_PATTERNS without failing the ratchet — including quarantine.py
+# itself, i.e. the gate could lose protection from self-modification with a
+# green build (Codex P2 on #263).
+SENSITIVE_FILES = (
+    "packages/maistro-rsi/src/maistro_rsi/quarantine.py",
+    "packages/maistro-rsi/src/maistro_rsi/selfbranch.py",
+    "packages/maistro-rsi/src/maistro_rsi/runner.py",
+    "packages/maistro-rsi/src/maistro_rsi/coordinator.py",
+    "packages/maistro-rsi/src/maistro_rsi/autorun.py",
+    "packages/maistro-rsi/src/maistro_rsi/apply_agents.py",
+    "packages/maistro-core/src/maistro/graph/depth.py",
+    "packages/maistro-core/src/maistro/graph/nodes/agent_synth_dag.py",
+    "packages/maistro-core/src/maistro/graph/nodes/agent_spawn_harness.py",
+    # Promotion gates and the PR-opening path — what decides that a candidate
+    # is good enough to keep, and what turns "kept" into a pull request.
+    "packages/maistro-evolve/src/maistro_evolve/fitness.py",
+    "packages/maistro-evolve/src/maistro_evolve/scorecard.py",
+    "packages/maistro-rsi/src/maistro_rsi/candidate_fitness.py",
+    "packages/maistro-rsi/src/maistro_rsi/harvest.py",
+    # Score administration: which runners register, how results fold into
+    # eval_scores, how scores become Elo, and the per-benchmark weights. Each
+    # can move a score without touching the exam.
+    "packages/maistro-evolve/src/maistro_evolve/harness.py",
+    "packages/maistro-evolve/src/maistro_evolve/cycle.py",
+    "packages/maistro-evolve/src/maistro_evolve/tournament.py",
+    "packages/maistro-evolve/src/maistro_evolve/types.py",
+    # This file, and the vendoring scripts holding the vendored graders' pinned
+    # digests. A ratchet outside the surface it protects can be edited in the
+    # same diff as the list it checks, and the build stays green.
+    "scripts/check_enumerations.py",
+    "scripts/vendor_ifeval.py",
+    "scripts/vendor_bfcl.py",
 )
 
 # maistro subpackages intentionally absent from CORE_PUBLIC_SURFACE, because they
@@ -77,10 +117,36 @@ SURFACE_EXEMPT = {
     "maistro.identity": "bip-utils/pynacl, behind the `identity` extra",
 }
 
-# Route prefixes that legitimately need no scope entry.
+# Route prefixes that legitimately need no scope entry. Two kinds live here:
+# identity/bootstrap machinery, and the daily account's ordinary product
+# surface — chat, personal tasks, notes, drafts, UI state. The middleware's
+# permission model is assignment + per-task elevation; gating the primary UX
+# behind elevation would train users to elevate reflexively, which destroys
+# the signal elevation exists to create. Every entry names its reason so a
+# reviewer can veto the classification, and anything NOT here and NOT scoped
+# is a build-failing gap.
 ROUTE_EXEMPT = {
     "/v1/auth": "login/register/elevate — the thing that establishes identity",
     "/v1/setup": "first-run bootstrap, public by design (see _PUBLIC_EXACT)",
+    "/v1/setup-checklist": "personal first-run checklist dismissals",
+    "/v1/chat": "the product's primary surface; admin is blocked from it, users live in it",
+    "/v1/messages": "the user's own notification inbox",
+    "/v1/tasks": "the user's own missions",
+    "/v1/work-items": "the user's own drafts (suggest/clarify/confirm)",
+    "/v1/memory": "the user's own memory entries (CRUD + reinforce/decay/contradict)",
+    "/v1/program": "onboarding coaching (guidance/interview/pulse)",
+    "/v1/confirms": "the human half of the agent-confirmation flow — it IS the control",
+    "/v1/dag-runs": "run feedback/ratings; execution itself is scoped at /v1/dags",
+    "/v1/dashboard": "personal UI layout",
+    "/v1/profile": "the user's own profile",
+    "/v1/design": "canvas/book content authoring",
+    "/v1/canvas": "canvas visual evaluation (scoring, not execution)",
+    "/v1/eval-judge": "run judging/scoring",
+    "/v1/install": "bootstrap installer session state",
+    "/v1/widgets": "dashboard widgets; /screenshot renders localhost with the CALLER's own session cookie",
+    "/v1/cli": "creates an in-memory CLI session record only — no command execution in this router",
+    "/v1/pm-fleet/distill": "telemetry recording; tool EXECUTION is scoped at /v1/pm-fleet/tools",
+    "/v1/pm-fleet/topk": "telemetry recording",
 }
 
 
@@ -117,22 +183,47 @@ def check_routes() -> tuple[list[Gap], str | None]:
     os.environ.setdefault("CONDUCTOR_DATA_DIR", "/tmp/enum-check-data")
     try:
         from main import app  # type: ignore[import-not-found]
-        from middleware.auth import _PROTECTED_OPS  # type: ignore[import-not-found]
+        from middleware.auth import (  # type: ignore[import-not-found]
+            _PROTECTED_OPS,
+            _PUBLIC_EXACT,
+            _PUBLIC_PREFIXES,
+            _matches_public_prefix,
+        )
     except Exception as exc:  # pragma: no cover - reported, never swallowed
         # Deliberately not a silent skip: if this check cannot run, the build
         # should say so rather than print a green tick it has not earned.
         return [], f"could not import the app ({type(exc).__name__}: {exc})"
 
-    uncovered = sorted(
-        {
-            f"{method} {path}"
-            for path, method in _mutating_v1_routes(app.routes)
-            if not _route_is_scoped(path, method, _PROTECTED_OPS)
-        }
-    )
-    return [
-        Gap("routes", item, "mutating route with no _PROTECTED_OPS entry") for item in uncovered
-    ], None
+    def _is_public(path: str) -> bool:
+        return path in _PUBLIC_EXACT or any(
+            _matches_public_prefix(path, p) for p in _PUBLIC_PREFIXES
+        )
+
+    # A _PROTECTED_OPS entry on a path the middleware returns from EARLY as
+    # public never executes: dispatch checks the public tables before the
+    # permission table, so a "scoped" public route is unauthenticated in
+    # practice (Codex P2 on #263: POST /v1/voice/intent). Model the bypass
+    # instead of trusting the scope entry.
+    gaps: dict[str, str] = {}
+    for path, method in _mutating_v1_routes(app.routes):
+        if _route_is_exempt(path):
+            # Documented intentionally-public/unscoped prefixes (auth, setup).
+            continue
+        public = _is_public(path)
+        scoped = _route_is_scoped(path, method, _PROTECTED_OPS)
+        if public and scoped:
+            gaps[f"{method} {path}"] = (
+                "scope entry is INEFFECTIVE — middleware treats this path as "
+                "public and never consults _PROTECTED_OPS"
+            )
+        elif public:
+            gaps[f"{method} {path}"] = (
+                "public mutating route — reachable without authentication "
+                "(dispatch bypasses auth before the scope table)"
+            )
+        elif not scoped:
+            gaps[f"{method} {path}"] = "mutating route with no _PROTECTED_OPS entry"
+    return [Gap("routes", item, detail) for item, detail in sorted(gaps.items())], None
 
 
 _MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -150,11 +241,28 @@ def _mutating_v1_routes(routes: object) -> list[tuple[str, str]]:
     return found
 
 
+def _route_is_exempt(path: str) -> bool:
+    """Boundary-safe match against ROUTE_EXEMPT.
+
+    Raw startswith let "/v1/setup" also exempt sibling routers like
+    "/v1/setup-checklist/..." — absent from both the gaps and the baseline
+    even though only the first-run setup router is documented as exempt
+    (Codex P2 on #263). A prefix exempts itself and its sub-paths, nothing
+    that merely shares its spelling.
+    """
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in ROUTE_EXEMPT)
+
+
 def _route_is_scoped(path: str, method: str, protected: dict[str, dict[str, str]]) -> bool:
-    """True if this route needs no scope entry, or already resolves to one."""
+    """True if this route needs no scope entry, or already resolves to one.
+
+    The _PROTECTED_OPS match stays raw startswith ON PURPOSE: that is exactly
+    how middleware._required_permission matches at runtime, and this checker
+    must model enforcement as it is, not as it ought to be.
+    """
     if path.endswith("/invoke"):
         return True  # documented exemption in _required_permission
-    if any(path.startswith(prefix) for prefix in ROUTE_EXEMPT):
+    if _route_is_exempt(path):
         return True
     return any(path.startswith(prefix) for prefix in protected.get(method, {}))
 
@@ -165,9 +273,10 @@ def _route_is_scoped(path: str, method: str, protected: dict[str, dict[str, str]
 def check_sensitive_paths() -> tuple[list[Gap], str | None]:
     """Every file under a containment-surface directory must escalate.
 
-    `SENSITIVE_PATH_PATTERNS` is matched by substring against paths from
-    `git diff --name-only`, so a pattern covers a directory when it appears in
-    every path beneath it.
+    Probes go through the REAL matcher (`matches_sensitive_pattern`), not a
+    local reimplementation of it: an earlier version of this check replicated
+    the substring logic, which meant the gate could pass while asserting
+    semantics the quarantine no longer used.
     """
     src = REPO / "packages" / "maistro-rsi" / "src" / "maistro_rsi" / "quarantine.py"
     if not src.is_file():
@@ -175,19 +284,28 @@ def check_sensitive_paths() -> tuple[list[Gap], str | None]:
 
     sys.path.insert(0, str(REPO / "packages" / "maistro-rsi" / "src"))
     try:
-        from maistro_rsi.quarantine import SENSITIVE_PATH_PATTERNS
+        from maistro_rsi.quarantine import matches_sensitive_pattern
     except Exception as exc:  # pragma: no cover
         return [], f"could not import quarantine ({type(exc).__name__}: {exc})"
+
+    try:
+        from maistro_rsi.quarantine import SENSITIVE_PATH_PATTERNS
+    except Exception as exc:  # pragma: no cover
+        return [], f"could not import quarantine patterns ({type(exc).__name__}: {exc})"
 
     gaps: list[Gap] = []
     for root in SENSITIVE_ROOTS:
         root_dir = REPO / root
         if not root_dir.is_dir():
+            # A configured root that stops existing is a gap, not a silent
+            # skip: either the surface moved (update this list) or something
+            # deleted a containment directory (worth a red build either way).
+            gaps.append(Gap("sensitive_paths", root, "configured sensitive root does not exist"))
             continue
-        # One representative path is enough: patterns are substrings, so if the
-        # directory itself is unmatched every file under it is unmatched.
+        # One representative file path per directory: if the directory is
+        # unmatched by the real matcher, every file under it is unmatched.
         probe = f"{root}__probe__.py"
-        if not any(pattern in probe for pattern in SENSITIVE_PATH_PATTERNS):
+        if not matches_sensitive_pattern(probe):
             gaps.append(
                 Gap(
                     "sensitive_paths",
@@ -195,7 +313,54 @@ def check_sensitive_paths() -> tuple[list[Gap], str | None]:
                     "containment-surface directory not matched by SENSITIVE_PATH_PATTERNS",
                 )
             )
+    for file_path in SENSITIVE_FILES:
+        if not (REPO / file_path).is_file():
+            gaps.append(
+                Gap("sensitive_paths", file_path, "configured sensitive file does not exist")
+            )
+            continue
+        if not matches_sensitive_pattern(file_path):
+            gaps.append(
+                Gap(
+                    "sensitive_paths",
+                    file_path,
+                    "containment-surface file not matched by SENSITIVE_PATH_PATTERNS",
+                )
+            )
+    gaps.extend(_dead_patterns(SENSITIVE_PATH_PATTERNS))
     return gaps, None
+
+
+def _dead_patterns(patterns: tuple[str, ...]) -> list[Gap]:
+    """Patterns that match nothing in the tree.
+
+    The inverse direction of the coverage probes above, and the gate's own
+    blind spot until an external review caught it: `maistro_rsi/durable_runs/`
+    sat in SENSITIVE_PATH_PATTERNS matching a directory that does not exist —
+    the checker verified files-are-covered, never patterns-match-something, so
+    a typo'd or bit-rotted pattern protected nothing while reading as if it
+    did.
+    """
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    gaps: list[Gap] = []
+    for pattern in patterns:
+        if pattern.endswith("/"):
+            alive = any(p.startswith(pattern) or f"/{pattern}" in p for p in tracked)
+        else:
+            alive = any(p == pattern or p.endswith(f"/{pattern}") for p in tracked)
+        if not alive:
+            gaps.append(
+                Gap(
+                    "sensitive_paths",
+                    f"pattern:{pattern}",
+                    "SENSITIVE_PATH_PATTERNS entry matches no tracked file",
+                )
+            )
+    return gaps
 
 
 # --- check C: the documented public surface must be complete ---------------

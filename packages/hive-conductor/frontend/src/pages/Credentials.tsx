@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPut } from "../lib/api";
+import { LlmProviders } from "../components/LlmProviders";
 import { PageHeader } from "../components/shared";
 
 type ConfigField = {
@@ -112,6 +113,8 @@ export default function Credentials() {
         title="Integration credentials"
         subtitle="Encrypted at rest in this container — used by Hive agents and MCP at runtime. Never sent back to the browser."
       />
+
+      <LlmProviders />
 
       <div className="card" style={{ marginBottom: 14, padding: 12, borderLeft: "3px solid var(--accent)" }}>
         <div style={{ fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)", marginBottom: 6 }}>

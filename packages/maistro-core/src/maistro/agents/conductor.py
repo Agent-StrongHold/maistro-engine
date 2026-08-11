@@ -29,6 +29,7 @@ from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
+from maistro.http import shared_client
 from maistro.observability.metrics import llm_errors_total, llm_requests_total
 from maistro.observability.tracing import trace_agent
 from maistro.tasks.models import TaskCreate
@@ -122,7 +123,7 @@ async def _call_gateway(
         "max_tokens": max_tokens,
     }
     headers = {"Authorization": f"Bearer {call.api_key}"}
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with shared_client(timeout=timeout) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()

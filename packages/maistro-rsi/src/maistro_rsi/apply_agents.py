@@ -62,12 +62,16 @@ def command_apply_patch(
             model=shlex.quote(model) if model else "",
         )
         exit_code, output = await sandbox.exec(command, timeout=timeout)
+        # Info-level gets the size only: the agent's stdout can contain
+        # anything it read in-sandbox, including credentials it was told not
+        # to touch, and info-level logs travel further than the sandbox does.
         await logger.ainfo(
             "rsi_apply_agent_complete",
             workspace=workspace,
             exit_code=exit_code,
-            output_tail=output[-400:],
+            output_len=len(output),
         )
+        await logger.adebug("rsi_apply_agent_output_tail", output_tail=output[-400:])
         if exit_code != 0:
             raise ApplyPatchError(f"agent command exited {exit_code}: {output[-400:]}")
 

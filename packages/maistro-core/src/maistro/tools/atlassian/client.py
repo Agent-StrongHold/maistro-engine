@@ -19,6 +19,8 @@ from typing import Any
 
 import httpx
 
+from maistro.http import shared_client
+
 _MAX_DESCRIPTION = 2000
 _MAX_CONFLUENCE_CONTENT = 4000
 
@@ -194,7 +196,7 @@ class AtlassianMCPClient:
 
     async def healthz(self) -> dict[str, Any]:
         """Probe the MCP container (no auth required for /healthz)."""
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with shared_client(timeout=self.timeout) as client:
             try:
                 resp = await client.get(self.health_url)
             except httpx.HTTPError as exc:
@@ -233,7 +235,7 @@ class AtlassianMCPClient:
             "method": "tools/call",
             "params": {"name": tool_name, "arguments": arguments},
         }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with shared_client(timeout=self.timeout) as client:
             try:
                 resp = await client.post(
                     self.mcp_url,

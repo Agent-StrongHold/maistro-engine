@@ -36,11 +36,6 @@ type Review = {
   diff_lines?: number;
 };
 
-type WeightDelta = {
-  theta: { before: number; after: number };
-  weights: Record<string, { before: number; after: number }>;
-  prediction_explanation: Array<{ feature: string; value: number; weight: number; contribution: number }>;
-};
 
 const STATUS_TONE: Record<string, string> = {
   running: "text-amber-400",

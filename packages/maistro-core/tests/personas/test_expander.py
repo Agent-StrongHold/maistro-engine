@@ -81,3 +81,14 @@ def test_expansion_is_idempotent() -> None:
 def test_department_kind_expands_to_empty_roster() -> None:
     expanded = expand_persona(load_template(FIXTURES / "gardening_department.yaml"))
     assert expanded.agents == []
+
+
+def test_workspace_kind_expands_spawns_like_author_creator() -> None:
+    """kind: workspace (a workspace-adoptable persona, e.g. PM Fleet) is not
+    special-cased like department — it must spawn agents just like author/creator."""
+    expanded = expand_persona(load_template(FIXTURES / "pm_fleet_minimal.yaml"))
+    assert [a.recipe.name for a in expanded.agents] == [
+        "pm_fleet.intake",
+        "pm_fleet.program_manager",
+    ]
+    assert expanded.agents[1].recipe.tools == ["poll_jira", "escalate_issue"]

@@ -1,15 +1,34 @@
-"""Gated Jira work items — suggest, clarify, edit, confirm."""
+"""Gated Jira work items — suggest, clarify, edit, confirm.
+
+Persona/Workspace system: routes accept an optional `workspace_id` query
+param, resolved to that workspace's own `ProgramContext` project_id for
+`suggest`/`confirm` -- omitted (every pre-Phase-H caller) keeps the exact
+old global-default behavior. A `WorkItemDraft` remembers the `project_id`
+it was suggested under (`maistro.agents.work_items.WorkItemDraft.
+project_id`), so `confirm` reads back the same context it was suggested
+from rather than always the global default.
+
+The PM-gate is capability-based, not identity-based: a workspace unlocks
+Jira/work-item drafting because its own materialized agent roster
+(`services/agent_materialization.py`) actually includes the agents
+`maistro.agents.pm_capabilities.agent_for_work_item()` dispatches to, not
+because its persona is literally named "pm_fleet"
+(`services/workspace_mode.py::workspace_has_pm_fleet_agents`). Any persona
+whose spawns declare those agent names qualifies the same way.
+"""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
 
+import stores
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from services import program_store as prog
 from services.engine import get_engine
 from services.pm_fleet import invoke_pm_agent, is_pm_poc_mode
+from services.workspace_mode import workspace_has_pm_fleet_agents
 
 from maistro.agents.pm_capabilities import WORK_ITEM_LABELS, WorkItemType
 from maistro.agents.work_items import (
@@ -33,9 +52,33 @@ def _user_id(request: Request) -> str:
     return str(uid)
 
 
-def _require_pm() -> None:
-    if not is_pm_poc_mode():
-        raise HTTPException(status_code=404, detail="Work items only available in PM POC mode")
+def _require_pm(user_id: str, workspace_id: str | None) -> None:
+    if workspace_id:
+        workspace = stores.workspaces.get(workspace_id)
+        is_member = workspace is not None and any(m.user_id == user_id for m in workspace.members)
+        if is_member:
+            if workspace_has_pm_fleet_agents(workspace_id):
+                return
+            raise HTTPException(
+                status_code=404,
+                detail="This workspace's persona has no Jira/work-item-capable agents",
+            )
+        # Unknown workspace_id or the caller isn't a member -- fall back to
+        # the legacy global flag exactly as before, same as every other
+        # workspace-scoped route in this system.
+    if is_pm_poc_mode():
+        return
+    raise HTTPException(status_code=404, detail="Work items only available in PM POC mode")
+
+
+def _resolve_project_id(user_id: str, workspace_id: str | None) -> str:
+    """Same resolution as routes/program.py's _resolve_program_scope, minus
+    the use_case half (work items don't run the interview script)."""
+    if workspace_id:
+        workspace = stores.workspaces.get(workspace_id)
+        if workspace is not None and any(m.user_id == user_id for m in workspace.members):
+            return workspace_id
+    return "default"
 
 
 def _load_draft(draft_id: str, user_id: str) -> WorkItemDraft:
@@ -87,18 +130,20 @@ class SuggestBody(BaseModel):
 
 
 @router.get("")
-def list_work_items(request: Request) -> dict[str, Any]:
-    _require_pm()
+def list_work_items(request: Request, workspace_id: str | None = None) -> dict[str, Any]:
     uid = _user_id(request)
+    _require_pm(uid, workspace_id)
     drafts = _list_drafts(uid)
     return {"drafts": [d.as_dict() for d in drafts]}
 
 
 @router.post("/suggest")
-def suggest_work_item_route(body: SuggestBody, request: Request) -> dict[str, Any]:
-    _require_pm()
+def suggest_work_item_route(
+    body: SuggestBody, request: Request, workspace_id: str | None = None
+) -> dict[str, Any]:
     uid = _user_id(request)
-    ctx = prog.get_context(uid)
+    _require_pm(uid, workspace_id)
+    ctx = prog.get_context(uid, _resolve_project_id(uid, workspace_id))
     draft = suggest_work_item(
         uid,
         body.work_type,
@@ -116,9 +161,12 @@ def suggest_work_item_route(body: SuggestBody, request: Request) -> dict[str, An
 
 
 @router.get("/{draft_id}")
-def get_work_item(draft_id: str, request: Request) -> dict[str, Any]:
-    _require_pm()
-    return {"draft": _load_draft(draft_id, _user_id(request)).as_dict()}
+def get_work_item(
+    draft_id: str, request: Request, workspace_id: str | None = None
+) -> dict[str, Any]:
+    uid = _user_id(request)
+    _require_pm(uid, workspace_id)
+    return {"draft": _load_draft(draft_id, uid).as_dict()}
 
 
 class ClarifyBody(BaseModel):
@@ -128,9 +176,11 @@ class ClarifyBody(BaseModel):
 
 
 @router.post("/{draft_id}/clarify")
-def clarify_work_item(draft_id: str, body: ClarifyBody, request: Request) -> dict[str, Any]:
-    _require_pm()
+def clarify_work_item(
+    draft_id: str, body: ClarifyBody, request: Request, workspace_id: str | None = None
+) -> dict[str, Any]:
     uid = _user_id(request)
+    _require_pm(uid, workspace_id)
     draft = apply_clarifying_answers(_load_draft(draft_id, uid), body.answers)
     draft = _save_draft(draft)
     return {"draft": draft.as_dict()}
@@ -150,9 +200,11 @@ class PatchFieldsBody(BaseModel):
 
 
 @router.patch("/{draft_id}")
-def patch_work_item(draft_id: str, body: PatchFieldsBody, request: Request) -> dict[str, Any]:
-    _require_pm()
+def patch_work_item(
+    draft_id: str, body: PatchFieldsBody, request: Request, workspace_id: str | None = None
+) -> dict[str, Any]:
     uid = _user_id(request)
+    _require_pm(uid, workspace_id)
     draft = _load_draft(draft_id, uid)
     if draft.status == "posted":
         raise HTTPException(status_code=400, detail="Already posted to Jira")
@@ -171,10 +223,12 @@ def patch_work_item(draft_id: str, body: PatchFieldsBody, request: Request) -> d
 
 
 @router.post("/{draft_id}/confirm")
-async def confirm_work_item(draft_id: str, request: Request) -> dict[str, Any]:
+async def confirm_work_item(
+    draft_id: str, request: Request, workspace_id: str | None = None
+) -> dict[str, Any]:
     """User-approved post to Jira (stub) — only after clarify + edit."""
-    _require_pm()
     uid = _user_id(request)
+    _require_pm(uid, workspace_id)
     draft = _load_draft(draft_id, uid)
     try:
         posted, result = confirm_post_stub(draft)
@@ -182,6 +236,10 @@ async def confirm_work_item(draft_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     _save_draft(posted)
 
+    # Read back the same ProgramContext this draft was suggested under
+    # (draft.project_id), not always the global default -- so a draft
+    # suggested from a specific workspace's context stays consistent
+    # through to the queued task's `program` payload.
     engine = get_engine()
     task_type, description, agent_id = invoke_pm_agent(
         posted.agent_id,
@@ -189,12 +247,12 @@ async def confirm_work_item(draft_id: str, request: Request) -> dict[str, Any]:
         {
             "title": posted.fields.summary,
             "summary": posted.fields.description,
-            "program": prog.context_dict(uid),
+            "program": prog.context_dict(uid, posted.project_id),
             "jira_issue_key": result.get("issue_key"),
             "confirmed": True,
         },
     )
-    prog_ctx = prog.context_dict(uid)
+    prog_ctx = prog.context_dict(uid, posted.project_id)
     prog_ctx["confirmed"] = True
     prog_ctx["jira_issue_key"] = result.get("issue_key")
     rec = await engine.submit_task(
@@ -221,8 +279,8 @@ async def confirm_work_item(draft_id: str, request: Request) -> dict[str, Any]:
 
 
 @router.delete("/{draft_id}", status_code=204)
-def cancel_work_item(draft_id: str, request: Request) -> None:
-    _require_pm()
+def cancel_work_item(draft_id: str, request: Request, workspace_id: str | None = None) -> None:
     uid = _user_id(request)
+    _require_pm(uid, workspace_id)
     draft = _load_draft(draft_id, uid)
     _save_draft(draft.model_copy(update={"status": "cancelled"}))

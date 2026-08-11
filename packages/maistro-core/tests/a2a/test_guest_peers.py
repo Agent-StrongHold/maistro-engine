@@ -13,17 +13,13 @@ from maistro.a2a.guest_peers import (
     InMemoryAuditLogger,
     PeerTrust,
 )
+from maistro.http import set_test_transport
 
 
 def _patch_transport(monkeypatch: pytest.MonkeyPatch, handler: Any) -> None:
-    """Make the module's `httpx.AsyncClient(timeout=...)` use a MockTransport."""
-    real_client = httpx.AsyncClient
-
-    def factory(*args: Any, **kwargs: Any) -> httpx.AsyncClient:
-        kwargs["transport"] = httpx.MockTransport(handler)
-        return real_client(*args, **kwargs)
-
-    monkeypatch.setattr("maistro.a2a.guest_peers.httpx.AsyncClient", factory)
+    """Route the shared client through a MockTransport for this test."""
+    del monkeypatch  # kept for call-site compatibility
+    set_test_transport(httpx.MockTransport(handler))
 
 
 def test_register_get_list_remove_peer() -> None:

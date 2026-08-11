@@ -40,7 +40,7 @@ def _genome() -> PipelineGenome:
             use_scout=False,
         ),
         eval_weights=EvalWeights(),
-        eval_scores={"ifeval": 0.5},
+        eval_scores={"proxy_ifeval": 0.5},
         harness_params={"k": "v"},
         generation=2,
         parent_a_id="p1",

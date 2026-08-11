@@ -3,7 +3,14 @@
 Public API surface. Import from here for stable, ADR-061-governed access.
 """
 
+import importlib.metadata
 from typing import Any
+
+# Single source of truth for version — read from installed package metadata.
+try:
+    __version__ = importlib.metadata.version("maistro-design")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/unbuilt checkout
+    __version__ = "0.9.0-dev"
 
 from maistro_design.engine import DesignEngine
 from maistro_design.protocols import (
@@ -118,6 +125,7 @@ __all__ = [
     "TrustUpgradeRequiredError",
     "TypographyRenderer",
     "TypographyToken",
+    "__version__",
     "available_skills",
     "import_from_catalog",
     "import_open_design_system",

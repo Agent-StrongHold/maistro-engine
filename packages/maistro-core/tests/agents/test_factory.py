@@ -314,14 +314,19 @@ class TestRegisterCustomStrategies:
         import builtins
 
         real_import = builtins.__import__
+        attempted = False
 
         def _fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            nonlocal attempted
             if name == "maistro.agents.strategies.react":
+                attempted = True
                 raise ImportError("simulated")
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", _fake_import)
         factory_mod._register_custom_strategies()
+
+        assert attempted is True
 
     @pytest.mark.parametrize(
         "module_name",
@@ -338,14 +343,19 @@ class TestRegisterCustomStrategies:
         import builtins
 
         real_import = builtins.__import__
+        attempted = False
 
         def _fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            nonlocal attempted
             if name == module_name:
+                attempted = True
                 raise ImportError("simulated")
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", _fake_import)
         factory_mod._register_custom_strategies()
+
+        assert attempted is True
 
 
 class TestInstantiate:

@@ -99,7 +99,9 @@ class TestGracefulShutdown:
 
     async def test_noop_when_no_runner(self) -> None:
         with patch.object(main_module, "_runner", None):
-            await _graceful_shutdown(signal.SIGTERM)  # must not raise
+            await _graceful_shutdown(signal.SIGTERM)
+
+            assert main_module._runner is None
 
 
 class TestLifespan:

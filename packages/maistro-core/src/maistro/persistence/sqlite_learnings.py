@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS learnings (
     tool_name TEXT NOT NULL DEFAULT '',
     agent_id TEXT NOT NULL DEFAULT '',
     user_id TEXT,
+    org_id TEXT NOT NULL DEFAULT '',
     scope TEXT NOT NULL DEFAULT 'agent',
     hit_count INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'active',
@@ -37,15 +38,37 @@ class SqliteLearningStore:
         self._conn = conn
 
     async def ensure_schema(self) -> None:
-        """Create the learnings table if it doesn't exist."""
+        """Create the learnings table, and upgrade one created before org_id.
+
+        `org_id` was in the `Learning` dataclass and in every store method's
+        signature long before it was a column, so a database created by an
+        earlier version has rows the scope filter cannot see. SQLite has no
+        `ADD COLUMN IF NOT EXISTS`, so the column list is inspected first;
+        `ALTER TABLE ... ADD COLUMN` with a constant default is a metadata-only
+        operation, so this is cheap even on a large table.
+        """
         await self._conn.execute(_SCHEMA)
+        cursor = await self._conn.execute("PRAGMA table_info(learnings)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "org_id" not in columns:
+            await self._conn.execute(
+                "ALTER TABLE learnings ADD COLUMN org_id TEXT NOT NULL DEFAULT ''"
+            )
+        await self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_learnings_scope ON learnings (org_id, agent_id, status)"
+        )
         await self._conn.commit()
 
     async def store(self, learning: Learning) -> int:
         """Store a learning. Dedup by tool_name + trigger_key overlap."""
+        # Scope the dedup probe too. Without `org_id` here, storing a learning
+        # for org A could match org B's row, bump B's hit_count and return B's
+        # id to A — a cross-scope write and an id leak, not merely a missed
+        # insert.
         cursor = await self._conn.execute(
-            "SELECT id, trigger_keys FROM learnings WHERE tool_name = ? AND status = 'active'",
-            (learning.tool_name,),
+            "SELECT id, trigger_keys FROM learnings "
+            "WHERE tool_name = ? AND org_id = ? AND status = 'active'",
+            (learning.tool_name, learning.org_id or ""),
         )
         existing = await cursor.fetchall()
         new_keys = set(learning.trigger_keys)
@@ -64,10 +87,10 @@ class SqliteLearningStore:
         insert_cursor = await self._conn.execute(
             """INSERT INTO learnings
                (category, trigger_keys, learning, tool_name,
-                agent_id, user_id, scope, status,
+                agent_id, user_id, org_id, scope, status,
                 rca_category, rca_prevention,
                 success_after_use, failure_after_use)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 learning.category,
                 json.dumps(list(learning.trigger_keys)),
@@ -75,6 +98,7 @@ class SqliteLearningStore:
                 learning.tool_name,
                 learning.agent_id or "",
                 learning.user_id,
+                learning.org_id or "",
                 learning.scope,
                 learning.status,
                 learning.rca_category,
@@ -94,9 +118,32 @@ class SqliteLearningStore:
         org_id: str = "",
         max_results: int = 10,
     ) -> list[Learning]:
-        """Find relevant learnings by keyword match."""
+        """Find relevant learnings by keyword match, within `org_id`'s scope.
+
+        `org_id` was accepted and ignored: the query was
+        `SELECT * FROM learnings WHERE status = 'active'` with no scope
+        predicate at all, and the results are interpolated into the agent's
+        *system* prompt. Filtering matters here more than in a normal read path
+        because a learning is an instruction, not a datum.
+
+        Org matching is exact: `org_id` matches only rows carrying that same
+        `org_id`, and an empty `org_id` matches only rows that have none. There
+        is deliberately no global bucket. An earlier form of this predicate
+        also admitted `org_id = ''` rows to every caller, mirroring the
+        `agent_id = ''` convention on the line below, but the two are not
+        analogous — `agent_id = ''` widens within one org, while `org_id = ''`
+        crosses the tenancy boundary that SPEC-216 names a non-goal ("cross-org
+        learning sharing of any kind"). Any write path that failed to set
+        `org_id` silently published into that bucket, and a learning is an
+        instruction interpolated into the system prompt, not a datum.
+
+        This matches `InMemoryLearningStore`, the reference implementation the
+        spec describes; the SQL stores had drifted from it.
+        """
         query = "SELECT * FROM learnings WHERE status = 'active'"
         params: list[Any] = []
+        query += " AND org_id = ?"
+        params.append(org_id)
         if agent_id:
             query += " AND (agent_id = ? OR agent_id = '')"
             params.append(agent_id)
@@ -136,9 +183,13 @@ class SqliteLearningStore:
             return
         placeholders = ",".join("?" for _ in learning_ids)
         column = "success_after_use" if success else "failure_after_use"
+        # Scoped like find_relevant: a caller may only move counters on rows it
+        # could have been served. Unscoped, an id from another org would be
+        # accepted and written, so a guessed id was a cross-scope write.
         await self._conn.execute(
-            f"UPDATE learnings SET {column} = {column} + 1 WHERE id IN ({placeholders})",  # nosec B608
-            learning_ids,
+            f"UPDATE learnings SET {column} = {column} + 1 "  # nosec B608
+            f"WHERE id IN ({placeholders}) AND org_id = ?",
+            [*learning_ids, org_id],
         )
         await self._conn.commit()
 
@@ -149,8 +200,8 @@ class SqliteLearningStore:
     ) -> list[Learning]:
         """Promote learnings with hit_count >= threshold."""
         cursor = await self._conn.execute(
-            "SELECT id FROM learnings WHERE status = 'active' AND hit_count >= ?",
-            (threshold,),
+            "SELECT id FROM learnings WHERE status = 'active' AND hit_count >= ? AND org_id = ?",
+            (threshold, org_id),
         )
         ids = [r[0] for r in await cursor.fetchall()]
         if not ids:
@@ -176,8 +227,8 @@ class SqliteLearningStore:
         org_id: str = "",
     ) -> list[Learning]:
         """Get promoted learnings."""
-        query = "SELECT * FROM learnings WHERE status = 'promoted'"
-        params: list[Any] = []
+        query = "SELECT * FROM learnings WHERE status = 'promoted' AND org_id = ?"
+        params: list[Any] = [org_id]
         if task_type:
             query += " AND category = ?"
             params.append(task_type)
@@ -189,8 +240,8 @@ class SqliteLearningStore:
     async def list_all(self, org_id: str = "", limit: int = 200) -> list[Learning]:
         """List all learnings (admin endpoint)."""
         cursor = await self._conn.execute(
-            "SELECT * FROM learnings ORDER BY id DESC LIMIT ?",
-            (limit,),
+            "SELECT * FROM learnings WHERE org_id = ? ORDER BY id DESC LIMIT ?",
+            (org_id, limit),
         )
         columns = [d[0] for d in cursor.description]
         rows = await cursor.fetchall()
@@ -206,6 +257,7 @@ def _row_to_learning(row: dict[str, Any]) -> Learning:
         tool_name=row.get("tool_name") or "",
         agent_id=row.get("agent_id") or None,
         user_id=row.get("user_id"),
+        org_id=row.get("org_id") or "",
         scope=MemoryScope(row.get("scope") or "agent"),
         hit_count=row.get("hit_count", 0),
         status=row.get("status") or "active",

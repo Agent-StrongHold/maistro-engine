@@ -266,12 +266,12 @@ def _seed_dag(client: Any) -> str:
     return r.json()["id"]
 
 
-def test_put_dag_writes_dag_edit_audit_entry(authed_client: Any) -> None:
+def test_put_dag_writes_dag_edit_audit_entry(admin_client: Any) -> None:
     import stores
 
-    dag_id = _seed_dag(authed_client)
+    dag_id = _seed_dag(admin_client)
     before = len(stores.audit_log)
-    r = authed_client.put(
+    r = admin_client.put(
         f"/v1/dags/{dag_id}",
         json={"name": "renamed", "description": "now updated"},
     )
@@ -282,30 +282,30 @@ def test_put_dag_writes_dag_edit_audit_entry(authed_client: Any) -> None:
     last = entries[-1]
     assert last["action"] == "dag_edit"
     assert last["target"] == dag_id
-    assert last["actor"] == "user"  # from testuser fixture id
+    assert last["actor"] == "admin"  # dag edits now require dags.write; admin fixture drives them
     assert set(last["detail"]["changed"]) == {"name", "description"}
     assert last["detail"]["field_count"] == 2
 
 
-def test_put_dag_no_changes_writes_no_audit(authed_client: Any) -> None:
+def test_put_dag_no_changes_writes_no_audit(admin_client: Any) -> None:
     """Empty PUT body (or only no-op fields) MUST NOT write an audit entry
     or refresh the edit-lock. A no-op edit is not a 'manual override'."""
     import stores
     from services.edit_lock import locked_fields
 
-    dag_id = _seed_dag(authed_client)
+    dag_id = _seed_dag(admin_client)
     before_audit = len(stores.audit_log)
-    r = authed_client.put(f"/v1/dags/{dag_id}", json={})
+    r = admin_client.put(f"/v1/dags/{dag_id}", json={})
     assert r.status_code == 200
     assert len(stores.audit_log) == before_audit
     assert locked_fields(dag_id) == []
 
 
-def test_put_dag_marks_edited_fields_as_locked(authed_client: Any) -> None:
+def test_put_dag_marks_edited_fields_as_locked(admin_client: Any) -> None:
     from services.edit_lock import is_locked
 
-    dag_id = _seed_dag(authed_client)
-    authed_client.put(f"/v1/dags/{dag_id}", json={"max_cycles": 99, "status": "active"})
+    dag_id = _seed_dag(admin_client)
+    admin_client.put(f"/v1/dags/{dag_id}", json={"max_cycles": 99, "status": "active"})
     assert is_locked(dag_id, "max_cycles") is True
     assert is_locked(dag_id, "status") is True
     assert is_locked(dag_id, "description") is False  # untouched
@@ -321,11 +321,11 @@ def test_put_dag_unauthorized_returns_401() -> None:
     assert r.status_code == 401
 
 
-def test_put_dag_404_when_id_missing(authed_client: Any) -> None:
+def test_put_dag_404_when_id_missing(admin_client: Any) -> None:
     import stores
 
     before_audit = len(stores.audit_log)
-    r = authed_client.put("/v1/dags/does-not-exist", json={"name": "x"})
+    r = admin_client.put("/v1/dags/does-not-exist", json={"name": "x"})
     assert r.status_code == 404
     # No audit on the failure path
     assert len(stores.audit_log) == before_audit

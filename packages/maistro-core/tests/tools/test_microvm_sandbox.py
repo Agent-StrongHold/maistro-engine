@@ -23,7 +23,11 @@ class _FakeLauncher:
 
 async def test_exec_runs_command_in_microvm():
     launcher = _FakeLauncher(result=(0, "hello from vm"))
-    sandbox = MicroVMSandbox(launcher, config=MicroVMConfig(memory_mib=256, vcpus=1))
+    sandbox = MicroVMSandbox(
+        launcher,
+        config=MicroVMConfig(memory_mib=256, vcpus=1),
+        workspace="/tmp/maistro-workspace/t1",
+    )
     code, out = await sandbox.exec("echo hi", timeout=30)
 
     assert (code, out) == (0, "hello from vm")
@@ -37,14 +41,16 @@ async def test_exec_runs_command_in_microvm():
 
 async def test_call_timeout_capped_by_config():
     launcher = _FakeLauncher()
-    sandbox = MicroVMSandbox(launcher, config=MicroVMConfig(timeout=10))
+    sandbox = MicroVMSandbox(
+        launcher, config=MicroVMConfig(timeout=10), workspace="/tmp/maistro-workspace/t2"
+    )
     await sandbox.exec("echo hi", timeout=999)
     assert launcher.specs[-1].timeout == 10  # capped by the config ceiling
 
 
 async def test_dangerous_command_is_blocked_before_launch():
     launcher = _FakeLauncher()
-    sandbox = MicroVMSandbox(launcher)
+    sandbox = MicroVMSandbox(launcher, workspace="/tmp/maistro-workspace/t3")
     code, out = await sandbox.exec("rm -rf /")
     assert code == 126 and "blocked" in out
     assert launcher.specs == []  # never reached the VMM
@@ -57,10 +63,10 @@ async def test_plain_async_function_is_a_valid_launcher():
         seen.append(spec)
         return (7, "fn-launcher")
 
-    sandbox = MicroVMSandbox(launch, workspace="/w")
+    sandbox = MicroVMSandbox(launch, workspace="/tmp/maistro-workspace/t4")
     code, out = await sandbox.exec("echo hi")
     assert (code, out) == (7, "fn-launcher")
-    assert seen[-1].workspace == "/w"
+    assert seen[-1].workspace == "/tmp/maistro-workspace/t4"
 
 
 def test_config_from_settings_parses_memory_and_network():
@@ -77,3 +83,17 @@ def test_parse_mib_units():
     assert _parse_mib("1024k") == 1
     assert _parse_mib("2097152") == 2  # bare bytes -> MiB
     assert _parse_mib("500") == 1  # rounds up to a 1 MiB floor
+
+
+def test_workspace_outside_allowlist_is_refused():
+    """The harness API's request body controls workdir, and the launcher
+    mounts it into the guest: /etc or the service checkout must be refused at
+    construction, mirroring the Docker backend's ensure_workspace posture."""
+    import pytest
+
+    async def launch(spec):
+        return 0, ""
+
+    for hostile in ("/etc", "/", "/home", "."):
+        with pytest.raises(ValueError):
+            MicroVMSandbox(launch, workspace=hostile)

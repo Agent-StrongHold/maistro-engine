@@ -61,6 +61,7 @@ CORE_PUBLIC_SURFACE = [
     "maistro.credentials",
     "maistro.events",
     "maistro.graph",
+    "maistro.http",
     "maistro.memory",
     "maistro.ontology",
     "maistro.orchestrator",
@@ -82,6 +83,31 @@ CORE_PUBLIC_SURFACE = [
     "maistro.reactor",
     "maistro.state",
     "maistro.vault",
+    # Added 2026-07: these were importable from a bare install all along but
+    # were simply never listed, so the enumeration gate reported each as a gap
+    # ("importable module absent from CORE_PUBLIC_SURFACE") and all 18 sat in
+    # the tolerated baseline. Listing them turns the bare tier into an actual
+    # assertion about them rather than tolerated silence. They are NOT
+    # extras-gated — that carve-out is SURFACE_EXEMPT (maistro.cli,
+    # maistro.identity), and anything here that needs an extra belongs there
+    # with a written reason instead.
+    "maistro.code_registry",
+    "maistro.codebase",
+    "maistro.collaboration",
+    "maistro.config",
+    "maistro.constants",
+    "maistro.delivery",
+    "maistro.governance",
+    "maistro.integrations",
+    "maistro.observability",
+    "maistro.personas",
+    "maistro.policy",
+    "maistro.portability",
+    "maistro.providers",
+    "maistro.repertoire",
+    "maistro.sandbox",
+    "maistro.tasks",
+    "maistro.tools",
 ]
 
 
@@ -117,16 +143,40 @@ PACKAGES = [
     Package("maistro-server", "maistro_server"),
     Package("maistro-turing", "maistro_turing"),
     Package("maistro-design", "maistro_design"),
-    Package("maistro-evolve", "maistro_evolve"),
+    # [ifeval] carries the vendored Google IFEval verifier's own runtime deps
+    # (nltk, langdetect, absl-py, immutabledict). That vendored tree imports
+    # them at module scope, and this check walks *every* module, so the bare
+    # wheel cannot import it. Declaring the widest extra is the mechanism for
+    # exactly this — same as maistro-canvas[export] and
+    # maistro-bootstrap[builders] above — not an exclusion.
+    Package("maistro-evolve", "maistro_evolve", widest_extra="ifeval"),
     Package("maistro-registry", "maistro_registry"),
     Package("maistro-rsi", "maistro_rsi"),
     Package("maistro-bootstrap", "maistro_bootstrap", widest_extra="builders"),
 ]
 
-# The workspace root builds an empty wheel on purpose (bypass-selection = true);
-# there is nothing to import, so it is not a package under test.
+# Distributions that are BUILT by the CI loop but not import-verified here. Both
+# entries state a structural reason, not a convenience: a skip printed by
+# _announce_exclusions is a visible reduction in coverage, and the day the reason
+# stops being true the entry must go.
 SKIPPED_DISTS = {
     "maistro-workspace": "dependency-only meta package, builds an empty wheel by design",
+    "hive-conductor": (
+        "flat module layout: packages/hive-conductor/backend/ has no package root "
+        "(no backend/__init__.py) and the app imports its own modules "
+        "top-level-relative — `from config import get_settings`, `from routes "
+        "import ...`, `from middleware.auth import AuthMiddleware` — which only "
+        "resolve with backend/ itself on sys.path (the Dockerfile sets "
+        "PYTHONPATH=/app/backend; backend/tests/conftest.py inserts it at "
+        "sys.path[0]). The wheel therefore ships those sources remapped under a "
+        "hive_conductor/ prefix, and `import hive_conductor.main` raises "
+        "ModuleNotFoundError: config. Lifting this skip means giving backend/ a "
+        "real package root and rewriting every intra-app import to be "
+        "package-relative, then updating the Dockerfile PYTHONPATH and the "
+        "conftest sys.path shim to match — a refactor, not a packaging change. "
+        "It is an application, not a published library (not in the PyPI set), so "
+        "the build itself is the coverage that matters here"
+    ),
 }
 
 # Probe executed inside the clean venv. Prints one JSON object so the parent can
@@ -242,11 +292,21 @@ def check(pkg: Package, mode: str, dist_dir: Path, uv: str, py: str) -> tuple[bo
         if not python.exists():  # Windows layout
             python = venv / "Scripts" / "python.exe"
 
-        # cwd=tmpdir keeps the repo off sys.path[0]; without it `packages/*/src`
-        # or a stray `maistro/` in the working tree could satisfy the import.
+        # Keep the repo off sys.path[0] — without it `packages/*/src` or a stray
+        # `maistro/` in the working tree could satisfy the import and this check
+        # would pass without having exercised the wheel.
+        #
+        # The cwd must also NOT be an ancestor of the venv. nltk ships an import
+        # hook (nltk/inisec.py) that refuses any nltk-initiated import whose
+        # origin resolves inside the cwd; with the venv at `tmpdir/.venv` and
+        # cwd=tmpdir, the entire site-packages tree is "inside the cwd", so
+        # nltk blocked its own transitive `regex` import. An empty sibling
+        # directory satisfies both constraints.
+        probe_cwd = tmpdir / "probe-cwd"
+        probe_cwd.mkdir(exist_ok=True)
         probe = _run(
             [str(python), "-c", PROBE, mode, pkg.root, json.dumps(pkg.bare_surface())],
-            cwd=tmpdir,
+            cwd=probe_cwd,
             env=env,
         )
         if probe.returncode != 0 or not probe.stdout.strip():

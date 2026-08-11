@@ -385,3 +385,51 @@ class TestLocalBackendRequiresVerifiedIsolation:
 
         assert variables["MAISTRO_RSI_SANDBOX"] == "local"
         assert variables["MAISTRO_RSI_SANDBOX_ATTEST_ISOLATED"] == "i-am-inside-a-disposable-vm"
+
+
+class TestIsolationEvidenceSemantics:
+    """Only container evidence counts — generic VM-ness must not.
+
+    Codex P1 on #263: a persistent KVM/VirtualBox development VM reports a
+    virtual platform in DMI, so DMI-based evidence let MAISTRO_RSI_SANDBOX=
+    local hand an auto-approved agent a real, non-disposable filesystem —
+    recreating the exact workstation case this gate exists to refuse.
+    """
+
+    def _blind(self, monkeypatch, tmp_path):
+        """Point every probe at empty fixtures so the host can't interfere."""
+        import maistro_rsi.sandbox.microvm as microvm_mod
+
+        monkeypatch.setattr(microvm_mod, "_CONTAINER_MARKER_FILES", ())
+        monkeypatch.setattr(microvm_mod, "_CGROUP_PATH", str(tmp_path / "no-cgroup"))
+        return microvm_mod
+
+    def test_no_markers_means_no_evidence(self, monkeypatch, tmp_path):
+        mod = self._blind(monkeypatch, tmp_path)
+        assert mod.isolation_evidence() == []
+
+    def test_container_marker_file_is_evidence(self, monkeypatch, tmp_path):
+        mod = self._blind(monkeypatch, tmp_path)
+        marker = tmp_path / ".dockerenv"
+        marker.write_text("")
+        monkeypatch.setattr(mod, "_CONTAINER_MARKER_FILES", (str(marker),))
+        assert mod.isolation_evidence() == [str(marker)]
+
+    def test_cgroup_runtime_token_is_evidence(self, monkeypatch, tmp_path):
+        mod = self._blind(monkeypatch, tmp_path)
+        cgroup = tmp_path / "cgroup"
+        cgroup.write_text("0::/system.slice/docker-abc123.scope\n")
+        monkeypatch.setattr(mod, "_CGROUP_PATH", str(cgroup))
+        evidence = mod.isolation_evidence()
+        assert evidence and "docker" in evidence[0]
+
+    def test_dmi_is_never_consulted(self):
+        """The source must not read DMI: VM-ness ≠ disposability. Pinned at
+        the source level because no fixture can prove a negative about a
+        removed probe."""
+        import inspect
+
+        import maistro_rsi.sandbox.microvm as microvm_mod
+
+        source = inspect.getsource(microvm_mod.isolation_evidence)
+        assert "/sys/class/dmi" not in source

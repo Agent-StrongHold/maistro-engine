@@ -3,8 +3,6 @@ import {
   decomposeStory,
   createStory,
   generateScene,
-  refineStyleContract,
-  updateStyleContract,
 } from "../lib/storyApi";
 
 export default function StoryInput({ onStoryReady }) {

@@ -109,9 +109,13 @@ async def github_webhook(
                 detail="Invalid webhook signature",
             )
     else:
-        await logger.awarn(
-            "github_webhook_no_secret",
-            msg="GITHUB_WEBHOOK_SECRET not set — signature verification skipped",
+        await logger.aerror(
+            "github_webhook_rejected_no_secret",
+            msg="GITHUB_WEBHOOK_SECRET not set — refusing to process an unauthenticated webhook",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook receiver not configured (GITHUB_WEBHOOK_SECRET unset)",
         )
 
     payload = json.loads(body)
@@ -200,9 +204,13 @@ async def ci_webhook(
                 detail="Invalid or missing CI webhook token",
             )
     else:
-        await logger.awarn(
-            "ci_webhook_no_secret",
-            msg="CI_WEBHOOK_SECRET not set — authentication skipped",
+        await logger.aerror(
+            "ci_webhook_rejected_no_secret",
+            msg="CI_WEBHOOK_SECRET not set — refusing to process an unauthenticated webhook",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Webhook receiver not configured (CI_WEBHOOK_SECRET unset)",
         )
 
     if payload.status == "failure":

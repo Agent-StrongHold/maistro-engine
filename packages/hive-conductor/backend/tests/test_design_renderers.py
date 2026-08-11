@@ -61,3 +61,25 @@ async def test_registry_with_no_provider_hides_web_skills_from_listing() -> None
     slugs = {s.slug for s in skills.list_available(filled)}
     assert "pitch-deck" in slugs  # native deck
     assert "landing-page" not in slugs  # external web, absent
+
+
+# --- F3: unimplemented render backend is a clean 501, not a 500 -------------
+
+
+async def test_render_to_png_raises_501_not_notimplementederror() -> None:
+    """PNG rendering is not built yet — say so with 501, not a crash-shaped 500.
+
+    A bare `NotImplementedError` reaches `routes/design.py`'s catch-all and
+    becomes a 500, which reads as "the server broke". 501 Not Implemented is
+    the honest answer, and `routes/design.py` re-raises `HTTPException`
+    untouched so the status survives to the client.
+    """
+    from fastapi import HTTPException
+    from services.design_render import DesignRenderService
+
+    svc = DesignRenderService()
+    with pytest.raises(HTTPException) as exc_info:
+        await svc.render_to_png("<html>hi</html>", {})
+
+    assert exc_info.value.status_code == 501
+    assert "PNG rendering is not implemented" in str(exc_info.value.detail)

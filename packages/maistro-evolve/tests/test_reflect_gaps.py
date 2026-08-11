@@ -71,7 +71,7 @@ async def test_propose_candidates_reuses_tips_when_num_candidates_exceeds_tip_po
         return f"candidate-{counter['n']}"
 
     candidates = await propose_candidates(
-        genome, node, "ifeval", 0.4, "", llm_call, num_candidates=len(PROPOSAL_TIPS) + 2
+        genome, node, "proxy_ifeval", 0.4, "", llm_call, num_candidates=len(PROPOSAL_TIPS) + 2
     )
 
     assert len(candidates) == len(PROPOSAL_TIPS) + 2
@@ -90,7 +90,7 @@ async def test_propose_candidates_skips_candidate_when_llm_call_raises() -> None
         return "a working candidate"
 
     candidates = await propose_candidates(
-        genome, node, "ifeval", 0.4, "", flaky_llm, num_candidates=2
+        genome, node, "proxy_ifeval", 0.4, "", flaky_llm, num_candidates=2
     )
 
     assert candidates == ["a working candidate"]
@@ -98,8 +98,8 @@ async def test_propose_candidates_skips_candidate_when_llm_call_raises() -> None
 
 @pytest.mark.asyncio
 async def test_reflective_improve_returns_none_when_baseline_evaluation_yields_no_results() -> None:
-    genome = _genome([_node("q1")], entry_node="q1", eval_scores={"ifeval": 0.4})
-    harness = EvalHarness(use_real_benchmarks=False)
+    genome = _genome([_node("q1")], entry_node="q1", eval_scores={"proxy_ifeval": 0.4})
+    harness = EvalHarness()
 
     async def empty_runner(g: PipelineGenome, llm_call: Any) -> EvalResult:
         raise AssertionError("not reached: evaluate_genome filters unregistered benchmarks")
@@ -112,33 +112,33 @@ async def test_reflective_improve_returns_none_when_baseline_evaluation_yields_n
     async def llm_call(prompt: str, **kwargs: Any) -> str:
         return "irrelevant"
 
-    outcome = await reflective_improve(genome, harness, llm_call, benchmarks=["ifeval"])
+    outcome = await reflective_improve(genome, harness, llm_call, benchmarks=["proxy_ifeval"])
 
     assert outcome is None
 
 
 @pytest.mark.asyncio
 async def test_reflective_improve_skips_candidate_with_no_evaluation_result() -> None:
-    genome = _genome([_node("q1")], entry_node="q1", eval_scores={"ifeval": 0.4})
-    harness = EvalHarness(use_real_benchmarks=False)
+    genome = _genome([_node("q1")], entry_node="q1", eval_scores={"proxy_ifeval": 0.4})
+    harness = EvalHarness()
     calls = {"count": 0}
 
     async def runner(g: PipelineGenome, llm_call: Any) -> EvalResult:
         calls["count"] += 1
-        # Baseline rollout (real, non-stub score) deregisters the benchmark
+        # Baseline rollout (proxy, non-stub score) deregisters the benchmark
         # immediately after returning, so the candidate's later call to
-        # evaluate_genome finds no runner for "ifeval" and comes back empty,
+        # evaluate_genome finds no runner for "proxy_ifeval" and comes back empty,
         # hitting the "if not results: continue" branch (line 243).
-        harness._benchmarks.pop("ifeval", None)
-        return EvalResult(benchmark="ifeval", score=0.4, metadata={"runner": "real"})
+        harness._benchmarks.pop("proxy_ifeval", None)
+        return EvalResult(benchmark="proxy_ifeval", score=0.4, metadata={"fidelity": "proxy"})
 
-    harness.register_benchmark("ifeval", runner)
+    harness.register_benchmark("proxy_ifeval", runner)
 
     async def llm_call(prompt: str, **kwargs: Any) -> str:
         return "improved prompt"
 
     outcome = await reflective_improve(
-        genome, harness, llm_call, benchmarks=["ifeval"], num_candidates=1
+        genome, harness, llm_call, benchmarks=["proxy_ifeval"], num_candidates=1
     )
 
     assert outcome is not None
