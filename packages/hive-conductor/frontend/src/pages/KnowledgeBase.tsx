@@ -50,7 +50,7 @@ export default function KnowledgeBase() {
       setNamespaces(ns); setEntries(ents);
     } catch { /* */ }
     try {
-      const p = await fetch("/api/v1/profile", { credentials: "same-origin" }).then(r => r.json());
+      const p = await fetch("/v1/profile", { credentials: "same-origin" }).then(r => r.json());
       setProfile(p?.preferences || {});
       if (p?.preferences?.prompts) setPrompts(p.preferences.prompts);
     } catch { /* */ }
@@ -66,7 +66,7 @@ export default function KnowledgeBase() {
   const savePrompt = async (section: string, field: "user", value: string) => {
     const updated = { ...prompts, [section]: { ...prompts[section], [field]: value } };
     setPrompts(updated);
-    await fetch("/api/v1/profile", { method: "PUT", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    await fetch("/v1/profile", { method: "PUT", credentials: "same-origin", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ preferences: { ...profile, prompts: updated } }) }).catch(() => {});
   };
 
@@ -105,7 +105,7 @@ Current memories:\n${entries.slice(0, 15).map(e => `- [${e.namespace}] ${e.value
       const reader = res.body?.getReader(); const decoder = new TextDecoder(); let acc = "";
       if (reader) { while (true) { const { done, value } = await reader.read(); if (done) break;
         for (const line of decoder.decode(value, { stream: true }).split("\n")) { if (!line.startsWith("data: ")) continue;
-          try { const e = JSON.parse(line.slice(6)); if (e.type === "token" || e.type === "content") acc += e.content || e.token || ""; else if (e.type === "done" && e.content && !acc) acc = e.content; } catch {} }
+          try { const e = JSON.parse(line.slice(6)); if (e.type === "token" || e.type === "content") acc += e.content || e.token || ""; else if (e.type === "done" && e.content && !acc) acc = e.content; } catch { /* SSE chunk split a JSON payload mid-object — wait for the rest */ } }
         setChatHistory([...newHistory, { role: "assistant", content: acc }]); } }
       setChatHistory([...newHistory, { role: "assistant", content: acc || "No response" }]); load();
     } catch { setChatHistory([...newHistory, { role: "assistant", content: "Error — try again" }]); }

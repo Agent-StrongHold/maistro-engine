@@ -14,7 +14,9 @@ import asyncio
 import json
 import os
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 import structlog
@@ -27,9 +29,12 @@ from maistro.config.model_resolver import resolve_model
 from maistro.config.models import DEFAULT_TIERS, Tier, TierConfig
 from maistro.config.settings import get_settings
 from maistro.constants import DESCRIPTION_LOG_PREVIEW_LEN
+from maistro.http import shared_client
 from maistro.observability.metrics import llm_errors_total, llm_requests_total
 from maistro.observability.tracing import trace_agent
 from maistro.tasks.models import TaskCreate
+
+OnResponseHook = Callable[[dict[str, Any], httpx.Response], None]
 
 logger = structlog.get_logger()
 
@@ -89,9 +94,20 @@ def build_conductor(
 
 
 async def _call_gateway(
-    call: ConductorCall, user_prompt: str, max_tokens: int, timeout: float
+    call: ConductorCall,
+    user_prompt: str,
+    max_tokens: int,
+    timeout: float,
+    on_response: OnResponseHook | None = None,
 ) -> str:
-    """POST one chat-completion to the OpenAI-compatible gateway; return the message content."""
+    """POST one chat-completion to the OpenAI-compatible gateway; return the message content.
+
+    `on_response`, if given, is invoked with the parsed body and the raw response
+    right before `content` is returned — the same seam `pm_llm_call.maistro_llm_call`
+    exposes for `maistro.quota.recorder` to hook into. Optional and additive; a
+    failing hook is logged and swallowed since instrumentation on an already-
+    successful call must never turn into a failure the caller has to handle.
+    """
     if not call.base_url:
         raise LLMProviderError(
             "conductor: no gateway base_url configured (set MAISTRO_LLM_BASE_URL)"
@@ -107,10 +123,15 @@ async def _call_gateway(
         "max_tokens": max_tokens,
     }
     headers = {"Authorization": f"Bearer {call.api_key}"}
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with shared_client(timeout=timeout) as client:
         resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
+    if on_response is not None:
+        try:
+            on_response(data, resp)
+        except Exception:
+            await logger.awarning("conductor_on_response_hook_failed", exc_info=True)
     return str(data["choices"][0]["message"]["content"])
 
 
@@ -137,6 +158,7 @@ async def _run_with_retry(
     prompt: str,
     tier_config: TierConfig,
     max_tokens: int,
+    on_response: OnResponseHook | None = None,
 ) -> ConductorOutput:
     """Call the gateway with timeout and retry logic for transient failures."""
     if not llm_circuit.allow_request():
@@ -148,7 +170,7 @@ async def _run_with_retry(
         try:
             llm_requests_total.inc()
             raw = await asyncio.wait_for(
-                _call_gateway(call, prompt, max_tokens, tier_config.timeout),
+                _call_gateway(call, prompt, max_tokens, tier_config.timeout, on_response),
                 timeout=tier_config.timeout,
             )
             result = _parse_json_output(raw)
@@ -190,7 +212,7 @@ async def _run_with_retry(
 
 
 @trace_agent("conductor")
-async def run_task(task: TaskCreate) -> ConductorOutput:
+async def run_task(task: TaskCreate, on_response: OnResponseHook | None = None) -> ConductorOutput:
     """Execute a full engineering task through the conductor pipeline.
 
     This is the main entry point for task execution. It:
@@ -198,6 +220,9 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
     2. Builds the conductor agent
     3. Runs the agent with timeout and retry logic
     4. Returns structured output
+
+    `on_response`, if given, is forwarded to `_call_gateway` on every retry attempt —
+    the same additive quota-recording seam `pm_llm_call.maistro_llm_call` exposes.
 
     If maistro_dry_run is set in settings, returns a mock result without calling any LLM.
     """
@@ -244,6 +269,8 @@ async def run_task(task: TaskCreate) -> ConductorOutput:
         f"Task: {task.description}\n\nWorkspace: {task.workspace}\nConstraints:\n{constraints_text}"
     )
 
-    result = await _run_with_retry(call, prompt, tier_config, max_tokens=max_tokens)
+    result = await _run_with_retry(
+        call, prompt, tier_config, max_tokens=max_tokens, on_response=on_response
+    )
     await logger.ainfo("conductor_complete", success=result.success)
     return result

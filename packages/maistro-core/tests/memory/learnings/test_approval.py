@@ -134,7 +134,9 @@ class TestMarkPromoted:
 
     def test_noop_for_missing_learning(self) -> None:
         gate = LearningApprovalGate()
-        gate.mark_promoted(999)  # must not raise
+        gate.mark_promoted(999)
+
+        assert gate._approvals == {}
 
     def test_noop_for_non_approved_learning(self) -> None:
         gate = LearningApprovalGate()

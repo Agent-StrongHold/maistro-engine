@@ -3,7 +3,7 @@ id: ADR-070
 title: "The Repertoire Pattern — reuse-first cascade (perform, improvise, rehearse, compose)"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-30
 substrate: []
 implements: []

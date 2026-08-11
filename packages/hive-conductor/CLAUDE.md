@@ -3,7 +3,16 @@
 This file provides guidance to Claude Code (claude.ai/code) when working in `packages/hive-conductor/`.
 
 The Agent Conductor app (household/personal): FastAPI backend + React SPA. Unlike the library packages, this is
-an **application** — no `pyproject.toml`, deps live in `backend/requirements.txt`.
+an **application** — it is not published to PyPI.
+
+It does have a `pyproject.toml` (added by F1/#300), but that file is for build hygiene only: it puts the app's
+dependency resolution inside the workspace lock and enrolls it in the wheel-imports CI build loop. **The
+install path is still `backend/requirements.txt`** — that is what the Dockerfile and CI install. Change a
+dependency in both, or the image and the lock drift apart.
+
+The backend is a **flat module layout** (`from config import ...`, `from routes import ...`) resolved by putting
+`backend/` on `sys.path`, so the built wheel is not importable as `hive_conductor.*`. It is deliberately listed
+in `scripts/verify-wheel-imports.py`'s `SKIPPED_DISTS` with that reason.
 
 ## Backend
 

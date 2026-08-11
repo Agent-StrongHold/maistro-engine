@@ -7,6 +7,7 @@ from maistro.graph.types import (
     CodeOutput,
     GraphBlackboard,
     GraphTask,
+    HarnessOutput,
     PlanOutput,
     PMRoleOutput,
     ReviewOutput,
@@ -252,6 +253,44 @@ class PMStrategy:
         return blackboard
 
 
+class HarnessStrategy:
+    """Prompt/output shaper for an outbound foreign-harness node (SPEC-208 §5).
+
+    The harness itself owns the turn loop (via `graph.harness_executor`), so this
+    strategy only shapes the prompt the harness receives and scores/records the
+    `HarnessOutput` it returns — it never calls an LLM.
+    """
+
+    role: AgentRole = AgentRole.HARNESS
+    output_type: type[BaseModel] = HarnessOutput
+
+    def build_user_prompt(
+        self,
+        task: GraphTask,
+        blackboard: GraphBlackboard,
+        plan: PlanOutput | None,
+        code: CodeOutput | None,
+        review: ReviewOutput | None,
+    ) -> str:
+        constraints = "\n".join(f"- {c}" for c in task.constraints) if task.constraints else "None"
+        return (
+            f"Task: {task.description}\n\nWorkspace: {task.workspace}\nConstraints:\n{constraints}"
+        )
+
+    def score_output(self, output: BaseModel) -> float:
+        if isinstance(output, HarnessOutput):
+            # A turn that produced actions is worth more than a bare summary.
+            return float(len(output.actions)) + (1.0 if output.summary else 0.0)
+        return 0.0
+
+    def update_blackboard(self, output: BaseModel, blackboard: GraphBlackboard) -> GraphBlackboard:
+        if isinstance(output, HarnessOutput) and output.summary:
+            annotations = dict(blackboard.node_annotations)
+            annotations[AgentRole.HARNESS.value] = output.summary
+            return blackboard.model_copy(update={"node_annotations": annotations})
+        return blackboard
+
+
 STRATEGY_REGISTRY: dict[AgentRole, NodeStrategy] = {
     AgentRole.PLANNER: PlannerStrategy(),
     AgentRole.CODER: CoderStrategy(),
@@ -265,6 +304,8 @@ STRATEGY_REGISTRY: dict[AgentRole, NodeStrategy] = {
     AgentRole.DELIVERY: PMStrategy(AgentRole.DELIVERY),
     AgentRole.RISK_DEPENDENCY: PMStrategy(AgentRole.RISK_DEPENDENCY),
     AgentRole.REPORTING: PMStrategy(AgentRole.REPORTING),
+    # Outbound foreign-harness node (SPEC-208 §5) — driven by harness_executor.
+    AgentRole.HARNESS: HarnessStrategy(),
 }
 
 

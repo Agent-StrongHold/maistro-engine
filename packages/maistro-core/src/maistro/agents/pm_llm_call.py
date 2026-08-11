@@ -22,10 +22,16 @@ machinery handles 429/5xx). Auth failures (401/403) bubble immediately.
 
 from __future__ import annotations
 
+import logging
 import os
+from collections.abc import Callable
 from typing import Any
 
 import httpx
+
+from maistro.http import shared_client
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_base_url() -> str:
@@ -61,12 +67,21 @@ async def maistro_llm_call(
     temperature: float | None = None,
     json_mode: bool = True,
     timeout: float = 120.0,
+    on_response: Callable[[dict[str, Any], httpx.Response], None] | None = None,
 ) -> str:
     """Call the LLM gateway with OpenAI-compatible chat-completions.
 
     Signature matches what `NodeRun.execute` invokes: positional
     `messages` + kwargs `model` + `temperature`. JSON mode is on by
     default since PM nodes always parse PMRoleOutput.
+
+    `on_response`, if given, is invoked with the parsed body and the raw
+    response right before `content` is returned — the seam quota recording
+    (`maistro.quota.recorder`) hooks into, since this function otherwise
+    discards `usage`/headers entirely once it extracts `content`. Optional
+    and additive: omitting it changes nothing about existing callers. A
+    failing hook is logged and swallowed — instrumentation on an already-
+    successful call must never turn into a failure the caller has to handle.
     """
     base_url = _resolve_base_url()
     api_key = _resolve_api_key()
@@ -82,7 +97,7 @@ async def maistro_llm_call(
     if json_mode:
         body["response_format"] = {"type": "json_object"}
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with shared_client(timeout=timeout) as client:
         resp = await client.post(
             f"{base_url}/v1/chat/completions",
             json=body,
@@ -99,6 +114,11 @@ async def maistro_llm_call(
             raise RuntimeError(f"LLM gateway {resp.status_code}: {resp.text[:1000]}")
         data = resp.json()
         content: str = data["choices"][0]["message"]["content"]
+        if on_response is not None:
+            try:
+                on_response(data, resp)
+            except Exception:
+                logger.warning("on_response hook failed", exc_info=True)
         return content
 
 

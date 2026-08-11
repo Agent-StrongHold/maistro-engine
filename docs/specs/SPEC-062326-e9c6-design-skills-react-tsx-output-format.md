@@ -3,11 +3,12 @@ id: SPEC-062326-e9c6
 title: "Design skills React/TSX output format — acceptance criteria"
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-23
 substrate:
   - maistro-engine#ADR-062326-616c
-implements: []
+implements:
+  - maistro-engine#ADR-062326-616c
 related:
   - maistro-engine#SPEC-160
 supersedes: []

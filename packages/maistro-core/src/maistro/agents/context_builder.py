@@ -8,6 +8,7 @@ before soul prompt, which is never truncated.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -26,6 +27,37 @@ _DEFAULT_SYSTEM_TOKEN_BUDGET = 4096
 
 def _estimate_tokens(text: str) -> int:
     return len(text) // _CHARS_PER_TOKEN
+
+
+_MAISTRO_TAG_RE = re.compile(r"<\s*/?\s*maistro:[A-Za-z0-9_.:-]*\s*[^>]*>", re.IGNORECASE)
+
+
+def _neutralize_delimiters(text: str) -> str:
+    """Strip any `<maistro:...>` tag from learning text before interpolation.
+
+    Learnings are model-authored and are interpolated into the *system* prompt
+    between `<maistro:corrections>` delimiters. A learning containing the
+    closing tag terminates the block early, so everything after it reads as
+    top-level system instruction rather than as a correction — a stored prompt
+    injection that survives across sessions, since learnings persist and are
+    re-injected. The delimiter is the trust boundary, so nothing that could be
+    mistaken for one may cross it.
+
+    Any `maistro:` tag is removed, opening or closing, not just the exact
+    footer: `<maistro:corrections type="x">` opens a second block just as
+    effectively as `</maistro:corrections>` closes the first one, and matching
+    only the literal footer would leave that half open. Whitespace and
+    attribute variants are covered because a parser-shaped filter that only
+    catches the canonical spelling is not a filter.
+
+    Whitespace is permitted on *both* sides of the optional slash. The consumer
+    is a delimiter-tolerant language model, not an XML parser, so if
+    `</ maistro:corrections>` has to be treated as a delimiter then so does
+    `< /maistro:corrections>`; anchoring the slash to `<` left the second form
+    matching nothing and preserved the stored prompt-escape it was written to
+    remove.
+    """
+    return _MAISTRO_TAG_RE.sub("", text)
 
 
 def _render_learnings_block(
@@ -48,8 +80,13 @@ def _render_learnings_block(
     kept_ids: list[int] = []
     added = 0
     for lr in learnings:
-        prefix = f"[{lr.rca_category}] " if use_rca_prefix and lr.rca_category else ""
-        entry = f"- {prefix}{lr.learning}"
+        # Sanitize before measuring, so the budget reflects what is actually
+        # emitted and a long tag cannot be counted then dropped.
+        raw_category = lr.rca_category or ""
+        prefix = (
+            f"[{_neutralize_delimiters(raw_category)}] " if use_rca_prefix and raw_category else ""
+        )
+        entry = f"- {prefix}{_neutralize_delimiters(lr.learning)}"
         if used + len(entry) + 1 > budget_chars:
             break
         lines.append(entry)

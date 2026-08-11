@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from maistro_design.types import (
@@ -10,6 +10,7 @@ if TYPE_CHECKING:
         DesignSkill,
         DesignSystem,
         DiscoveryResult,
+        RenderSlot,
         TypographyToken,
     )
 
@@ -21,6 +22,7 @@ class DesignSkillRegistry(Protocol):
     def list_all(self) -> list[DesignSkill]: ...
     def list_by_mode(self, mode: str) -> list[DesignSkill]: ...
     def list_featured(self) -> list[DesignSkill]: ...
+    def list_available(self, filled_slots: frozenset[RenderSlot]) -> list[DesignSkill]: ...
     def delete(self, slug: str) -> bool: ...
 
 
@@ -44,7 +46,7 @@ class DesignProjectStore(Protocol):
 
 @runtime_checkable
 class DesignEngineProtocol(Protocol):
-    async def run_discovery(self, skill_slug: str) -> list[dict]: ...
+    async def run_discovery(self, skill_slug: str) -> list[dict[str, Any]]: ...
     async def generate(self, discovery: DiscoveryResult) -> DesignProject: ...
 
 

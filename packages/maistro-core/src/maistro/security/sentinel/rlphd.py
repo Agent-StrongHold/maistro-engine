@@ -11,6 +11,11 @@ COLD_START_THETA = 0.7
 DEFAULT_SURPRISE_GAIN = 0.3
 DEFAULT_CONFIRM_GAIN = 0.03
 DEFAULT_LEARNING_RATE = 0.1
+# Confidence-gap floor for the weight update: |p - theta| scales how much a
+# decision moves each trait (a confident-wrong prediction teaches the most), but
+# a pure |p - theta| would slow early learning to a crawl while the model is
+# still empty (cold-start p is constant). The floor keeps it bootstrapping.
+DEFAULT_CONF_GAP_FLOOR = 0.1
 
 
 @dataclass(frozen=True)
@@ -46,14 +51,25 @@ class RlphdModel:
         predicted_p: float,
         *,
         learning_rate: float = DEFAULT_LEARNING_RATE,
+        theta: float | None = None,
+        conf_gap_floor: float = DEFAULT_CONF_GAP_FLOOR,
     ) -> RlphdModel:
-        """Pure dual-signal weight update: nudges weights toward the realized decision."""
+        """Pure dual-signal weight update: nudges weights toward the realized decision.
+
+        When ``theta`` is supplied, the step on each trait is scaled by the
+        confidence gap ``|predicted_p - theta|`` — how confidently Ralph acted.
+        A confident prediction that the user overturns carries the most signal, so
+        its traits move the most; a borderline call (``p ≈ theta``) moves them
+        little. ``conf_gap_floor`` keeps the empty model bootstrapping. Without
+        ``theta`` the update is the unscaled gradient step (legacy behaviour)."""
         actual = 1.0 if decision == "approve" else 0.0
         error = actual - predicted_p
+        gap_scale = abs(predicted_p - theta) + conf_gap_floor if theta is not None else 1.0
+        eff_lr = learning_rate * gap_scale
         new_weights = dict(self.feature_weights)
         for name in features:
             base = new_weights.get(name, 0.0)
-            new_weights[name] = base + learning_rate * error * features[name]
+            new_weights[name] = base + eff_lr * error * features[name]
         return dataclasses.replace(self, feature_weights=new_weights)
 
 

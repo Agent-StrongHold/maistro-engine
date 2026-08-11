@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
+import { useWorkspaces } from "../context/WorkspaceContext";
 import {
   ConfirmDialog,
   EmptyState,
@@ -138,6 +139,7 @@ function SBadge({ s }: { s: Strategy }) {
 
 export default function Agents() {
   const toast = useToast();
+  const { activeWorkspaceId } = useWorkspaces();
   const [tab, setTab] = useState(0);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -172,13 +174,19 @@ export default function Agents() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      setAgents(await apiGet<Agent[]>("/v1/agents"));
+      // Persona/Workspace system: scope to the active workspace's own
+      // materialized agent roster (services/agent_materialization.py)
+      // instead of the flat global registry.
+      const path = activeWorkspaceId
+        ? `/v1/agents?workspace_id=${encodeURIComponent(activeWorkspaceId)}`
+        : "/v1/agents";
+      setAgents(await apiGet<Agent[]>(path));
     } catch {
       toast("Failed to load agents", "error");
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, activeWorkspaceId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -588,7 +596,7 @@ export default function Agents() {
               {scanning ? "Scanning..." : "\uD83D\uDEE1\uFE0F Scan"}
             </button>
             <button onClick={() => setDeleteId(selected.id)} style={{ ...btn, background: "var(--paper)", color: "#c4452a", borderColor: "#c4452a" }}>
-              \uD83D\uDDD1\uFE0F Delete
+              {"\uD83D\uDDD1\uFE0F Delete"}
             </button>
           </div>
         </div>

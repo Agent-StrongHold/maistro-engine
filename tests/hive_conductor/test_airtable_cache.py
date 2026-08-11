@@ -50,10 +50,30 @@ class _Client:
 def test_airtable_records_reuse_cached_response_until_refresh(monkeypatch: MonkeyPatch) -> None:
     calls: list[dict[str, Any]] = []
 
-    def client_factory(*, timeout: int) -> _Client:
-        return _Client(calls, timeout)
+    def handler(request: Any) -> Any:
+        import httpx
 
-    monkeypatch.setattr(airtable_cache.httpx, "AsyncClient", client_factory)
+        calls.append(
+            {
+                "url": str(request.url).split("?")[0],
+                "headers": request.headers,
+                "params": dict(request.url.params),
+            }
+        )
+        return httpx.Response(
+            200, json={"records": [{"id": "rec1", "fields": {"Name": "Roadmap"}}]}
+        )
+
+    # The shared client is real; only the transport is swapped, so this asserts
+    # on the request httpx actually built rather than on what the call site passed.
+    import httpx as _httpx
+
+    from maistro.http import set_test_transport
+
+    set_test_transport(_httpx.MockTransport(handler))
+    monkeypatch.setattr(
+        "maistro.http._test_transport", _httpx.MockTransport(handler), raising=False
+    )
     airtable_cache.clear_airtable_cache()
 
     async def run() -> None:

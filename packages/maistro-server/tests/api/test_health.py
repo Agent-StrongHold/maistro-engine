@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from maistro.agents.circuit_breaker import CircuitState
 from maistro_server.api.health import ProbeResult, _check_docker, _check_postgres
-from maistro_server.main import app
+from maistro_server.main import APP_VERSION, app
 
 
 @pytest.fixture
@@ -28,7 +28,9 @@ class TestHealthEndpoint:
         data = response.json()
         assert data["status"] == "ok"
         assert data["service"] == "maistro-engine"
-        assert data["version"] in ("0.1.0", "0.1.0-dev")
+        # Compare against the app's own computed version rather than a
+        # hardcoded literal (E1/#294) — see tests/api/test_health.py's twin.
+        assert data["version"] == APP_VERSION
         assert "uptime_seconds" in data
 
     def test_health_uptime_is_number(self, client: TestClient) -> None:

@@ -160,6 +160,14 @@ async def git_branch(workspace: str, name: str, checkout: bool = True) -> dict[s
     return await _git(workspace, "branch", name)
 
 
+@mcp.tool()
+async def git_add(workspace: str) -> dict[str, Any]:
+    """Stage all changes (git add -A) without committing. Lets callers inspect
+    the staged diff (git_diff staged=True) before git_commit decides what ships;
+    git_commit's sensitive-file unstaging still runs at commit time."""
+    return await _git(workspace, "add", "-A")
+
+
 # File patterns that should never be staged
 _SENSITIVE_PATTERNS = (
     ".env",

@@ -137,6 +137,14 @@ def _registration_allowed() -> bool:
     return len(stores.users) > 0
 
 
+def _cookie_secure() -> bool:
+    """Read the Secure flag at call time, not import time, so tests and
+    deployments can set SESSION_COOKIE_SECURE without re-importing this module."""
+    from config import get_settings
+
+    return bool(get_settings().session_cookie_secure)
+
+
 def _username_taken(username: str) -> bool:
     import stores
 
@@ -161,6 +169,8 @@ def _issue_session(user: Any, response: Response) -> dict[str, Any]:
         max_age=_COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=_cookie_secure(),
+        path="/",
     )
     return {
         "ok": True,
@@ -251,7 +261,19 @@ def logout(response: Response, hive_session: str | None = Cookie(None)) -> dict[
         actor = user_info.get("username", "unknown") if user_info else "unknown"
         stores.sessions.pop(hive_session, None)
         log_audit("logout", actor)
-    response.delete_cookie(key=_SESSION_COOKIE)
+    # A cookie is only cleared when the delete matches the attributes it was set
+    # with. Dropping path/secure/samesite here left the original cookie in place
+    # on any deployment where they differed, so `logout` returned ok:true while
+    # the browser kept sending a session id the server had already discarded —
+    # harmless today only because `stores.sessions.pop` above invalidates it
+    # server-side too.
+    response.delete_cookie(
+        key=_SESSION_COOKIE,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=_cookie_secure(),
+    )
     return {"ok": True}
 
 
@@ -298,3 +320,46 @@ def elevate(body: ElevateBody, hive_session: str | None = Cookie(None)) -> dict[
         "elevated_permissions": granted,
         "message": "Permissions elevated for this task. They will be revoked when the task completes.",
     }
+
+
+class GrantPermissionsBody(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    permissions: list[str]
+
+
+@router.patch("/users/{user_id}/permissions")
+def set_user_permissions(
+    user_id: str, body: GrantPermissionsBody, hive_session: str | None = Cookie(None)
+) -> dict[str, Any]:
+    """Admin-only: replace a user's assigned permission set.
+
+    This is the assignment half of the two-step model that /elevate is the
+    other half of: elevate can only raise permissions the account already
+    HOLDS, and registration assigns none — so before this route existed there
+    was no supported way for the daily account to ever satisfy a scope like
+    `rsi.execute` or `harness.execute`. The admin (break-glass) account
+    assigns; the daily account then elevates per task with its password.
+    """
+    import stores
+
+    actor = get_current_user(hive_session)
+    if actor is None:
+        raise HTTPException(status_code=401, detail="No session")
+    if actor["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin role required to assign permissions")
+
+    target = stores.users.get(user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Unknown user")
+
+    updated = target.model_copy(update={"permissions": sorted(set(body.permissions))})
+    stores.users[user_id] = updated
+    log_audit(
+        "permissions_assigned",
+        actor["username"],
+        target=user_id,
+        detail={"permissions": updated.permissions},
+        severity="warning",
+    )
+    return {"ok": True, "user_id": user_id, "permissions": updated.permissions}

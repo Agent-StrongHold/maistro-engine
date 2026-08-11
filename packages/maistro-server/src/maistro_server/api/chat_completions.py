@@ -183,8 +183,11 @@ async def chat_completions(
         logger.error("chat_completions_timeout", user_msg=user_msg[:100])
         raise HTTPException(status_code=504, detail="LLM call timed out") from None
     except LLMProviderError as exc:
+        # Upstream detail goes to the log only — echoing it leaks provider
+        # internals to clients (June audit 3.5; the streaming branch already
+        # sanitizes the same way).
         logger.exception("chat_completions_llm_error", user_msg=user_msg[:100])
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail="LLM provider error") from exc
     except Exception as exc:
         logger.exception("chat_completions_error", user_msg=user_msg[:100])
         raise HTTPException(status_code=500, detail="Internal server error") from exc

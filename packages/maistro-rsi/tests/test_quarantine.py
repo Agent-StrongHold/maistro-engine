@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from maistro.security._types import WardenVerdict
-from maistro_rsi.quarantine import quarantine_scan
+from maistro_rsi.quarantine import _touches_sensitive_surface, quarantine_scan
 
 
 class FakeWarden:
@@ -105,3 +105,100 @@ class TestQuarantineScan:
         verdict = await quarantine_scan("diff", ORDINARY_PATHS, FakeWarden(flagged))
 
         assert verdict.flags == ("secret_leak", "prompt_injection")
+
+
+class TestSensitiveSurfaceCoverage:
+    """The DAG-synthesis substrate (depth cap, synth_dag/spawn_harness nodes) is part of
+    the agent's own containment surface once RSI can propose changes to this repo — a
+    self-diff patching the recursion-depth cap or the harness-dispatch node changes what
+    *future* self-modifications are allowed to get away with, same as sandbox/security code."""
+
+    def test_depth_cap_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(["packages/maistro-core/src/maistro/graph/depth.py"])
+        assert touched
+
+    def test_synth_dag_node_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/nodes/agent_synth_dag.py"]
+        )
+        assert touched
+
+    def test_spawn_harness_node_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/nodes/agent_spawn_harness.py"]
+        )
+        assert touched
+
+    def test_durable_executor_is_sensitive_surface(self):
+        """The durable executor carries the actual synth_depth increment/
+        enforcement across checkpoints -- a diff here can defang the
+        recursion cap just as effectively as touching depth.py itself."""
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/durable_runs/executor.py"]
+        )
+        assert touched
+
+    def test_htr_coordinator_is_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-rsi/src/maistro_rsi/coordinator.py"]
+        )
+        assert touched
+
+    def test_dag_shape_gate_is_sensitive_surface_via_security_prefix(self):
+        """Not new — already covered by the existing "maistro/security/" prefix. Asserted
+        here so a future refactor of that prefix can't silently drop this coverage."""
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/security/dag_shape/evaluator.py"]
+        )
+        assert touched
+
+    def test_ordinary_graph_node_is_not_sensitive_surface(self):
+        touched = _touches_sensitive_surface(
+            ["packages/maistro-core/src/maistro/graph/nodes/llm_summarize.py"]
+        )
+        assert touched == []
+
+    @pytest.mark.asyncio
+    async def test_diff_touching_depth_cap_requires_adversarial_review(self):
+        clean = WardenVerdict(clean=True, flags=())
+        verdict = await quarantine_scan(
+            "diff",
+            ["packages/maistro-core/src/maistro/graph/depth.py"],
+            FakeWarden(clean),
+        )
+        assert verdict.requires_adversarial_review is True
+        assert verdict.cleared is False  # no reviewer supplied -> pending, never clears
+
+
+class TestSensitivePathMatching:
+    """Segment-boundary matching, not raw substring: `pattern in path` accepted
+    unrelated look-alikes and a leading `./` (or the lstrip('./') "fix" that
+    eats the dot of .github/) broke real containment paths."""
+
+    def test_directory_pattern_matches_at_root_and_nested(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        assert matches_sensitive_pattern(".github/workflows/ci.yml")
+        assert matches_sensitive_pattern(
+            "packages/maistro-core/src/maistro/security/warden/detector.py"
+        )
+
+    def test_file_pattern_matches_whole_segment_only(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        assert matches_sensitive_pattern("packages/maistro-rsi/src/maistro_rsi/runner.py")
+        # A suffix look-alike is NOT the protected file.
+        assert not matches_sensitive_pattern("packages/x/src/notmaistro_rsi/runner.py.orig")
+
+    def test_leading_dot_slash_is_normalized_without_eating_dots(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        # The lstrip("./") character-set bug turned "./.github/x" into "github/x".
+        assert matches_sensitive_pattern("./.github/workflows/quality.yml")
+        assert matches_sensitive_pattern("./packages/maistro-rsi/src/maistro_rsi/autorun.py")
+
+    def test_unrelated_sibling_directory_does_not_match(self):
+        from maistro_rsi.quarantine import matches_sensitive_pattern
+
+        assert not matches_sensitive_pattern("packages/x/src/notmaistro/security_helpers.py")
+        assert not matches_sensitive_pattern("docs/quality-notes/README.md")

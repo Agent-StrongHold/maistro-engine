@@ -8,20 +8,50 @@ import asyncpg
 
 logger = logging.getLogger("maistro.persistence")
 
+# Sized from Little's Law: concurrency = throughput x latency. A pool of 10
+# with ~10ms queries tops out around 1,000 queries/s in the ideal case, but
+# real request handling holds a connection across more than one query, so the
+# effective ceiling is far lower — and once the pool is full, `acquire()` is a
+# silent queue, indistinguishable from a slow database in every metric.
+#
+# These are ceilings, not a throttle. Admission control belongs in
+# `tasks.lanes.LaneGate`; see `maistro.http` for why capping a shared resource
+# to shed load is the worst of the available options.
+DEFAULT_DB_POOL_MIN_SIZE = 2
+DEFAULT_DB_POOL_MAX_SIZE = 50
+DEFAULT_DB_COMMAND_TIMEOUT_S = 30
+
 _pool: asyncpg.Pool | None = None
 
 
-async def get_pool(database_url: str) -> asyncpg.Pool:
-    """Get or create the connection pool."""
+async def get_pool(
+    database_url: str,
+    *,
+    min_size: int = DEFAULT_DB_POOL_MIN_SIZE,
+    max_size: int = DEFAULT_DB_POOL_MAX_SIZE,
+    command_timeout: int = DEFAULT_DB_COMMAND_TIMEOUT_S,
+) -> asyncpg.Pool:
+    """Get or create the connection pool.
+
+    Sizing applies only to the first call — the pool is a process singleton, so
+    later calls return the existing one and their arguments are ignored.
+    """
     global _pool
     if _pool is None:
+        if min_size > max_size:
+            raise ValueError(f"min_size ({min_size}) exceeds max_size ({max_size})")
         _pool = await asyncpg.create_pool(
             database_url,
-            min_size=2,
-            max_size=10,
-            command_timeout=30,
+            min_size=min_size,
+            max_size=max_size,
+            command_timeout=command_timeout,
         )
-        logger.info("PostgreSQL pool created: %s", database_url.split("@")[-1])
+        logger.info(
+            "PostgreSQL pool created: %s (min_size=%d, max_size=%d)",
+            database_url.split("@")[-1],
+            min_size,
+            max_size,
+        )
     return _pool
 
 

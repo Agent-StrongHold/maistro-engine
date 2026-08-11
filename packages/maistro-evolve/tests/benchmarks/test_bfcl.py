@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from maistro_evolve.benchmarks.bfcl import (
     _extract_tool_call,
-    _heuristic_score,
     _name_score,
     _param_score,
     _score_numeric_param,
@@ -192,57 +193,11 @@ class TestScoreToolCall:
         assert _score_tool_call(response, sample) == 1.0
 
 
-class TestHeuristicScore:
-    def test_single_function_no_params_deterministic(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {"functions": [{"name": "f"}], "expected_params": {}}
-        # base = 0.6 (1 function), num_params=0 -> base stays 0.6, clamp(0.1, 0.9) -> 0.6
-        assert _heuristic_score(sample) == 0.6
-
-    def test_multi_function_with_params_deterministic(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {
-            "functions": [{"name": "f1"}, {"name": "f2"}],
-            "expected_params": {"a": 1, "b": 2},
-        }
-        # base = 0.45 (2 functions), num_params=2 -> 0.45 - 2*0.03 = 0.39
-        assert _heuristic_score(sample) == 0.39
-
-    def test_clamped_to_lower_bound(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {
-            "functions": [{"name": "f1"}, {"name": "f2"}],
-            "expected_params": {f"p{i}": i for i in range(20)},
-        }
-        # base = 0.45 - 20*0.03 = -0.15, clamped to 0.1
-        assert _heuristic_score(sample) == 0.1
-
-    def test_clamped_to_upper_bound(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 1.0)
-        sample = {"functions": [{"name": "f"}], "expected_params": {}}
-        # base = 0.6 + 1.0 = 1.6, clamped to 0.9
-        assert _heuristic_score(sample) == 0.9
-
-    def test_no_functions_or_params_keys_default_empty(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        # missing "functions"/"expected_params" keys -> defaults to []/{}
-        assert _heuristic_score({}) == 0.45
-
-    def test_within_bounds_with_real_randomness(self):
-        sample = {"functions": [{"name": "f"}], "expected_params": {"a": 1}}
-        result = _heuristic_score(sample)
-        assert 0.1 <= result <= 0.9
-
-
 class TestRunBfcl:
-    async def test_heuristic_path_when_llm_call_none(self):
+    async def test_llm_call_none_raises(self):
         genome = make_genome()
-        result = await run_bfcl(genome, None)
-        assert result.benchmark == "bfcl"
-        assert result.samples_evaluated == len(BFCL_SAMPLES)
-        assert result.cost_usd == 0.0
-        assert 0.1 <= result.score <= 0.9
-        assert result.metadata == {"total_samples": len(BFCL_SAMPLES), "runner": "real"}
+        with pytest.raises(ValueError, match="requires an llm_call"):
+            await run_bfcl(genome, None)
 
     async def test_llm_call_scores_via_function_call_match(self):
         genome = make_genome()

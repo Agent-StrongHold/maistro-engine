@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from maistro.quota.tracker import InMemoryQuotaTracker
-from maistro_rsi.quota_burn import QuotaBurnScheduler, rank_models_by_headroom
+from maistro_rsi.quota_burn import QuotaBurnScheduler, discover_models, rank_models_by_headroom
 
 CYCLE = "2026-06"
 FREE_TOKENS = {"openai": 1_000_000, "anthropic": 500_000}
@@ -48,6 +48,29 @@ class TestRankModelsByHeadroom:
         over = next(m for m in ranked if m.model == "openai/over")
         assert over.headroom_tokens == 0
         assert ranked[-1].model == "openai/over"
+
+    @pytest.mark.asyncio
+    async def test_unlisted_provider_falls_back_to_default_free_tokens(self):
+        """A provider absent from free_tokens_per_provider is scheduled against
+        default_free_tokens rather than skipped or treated as zero budget."""
+        tracker = InMemoryQuotaTracker()
+        # "mistral" is not in FREE_TOKENS, so it must fall back to the default
+        # budget of 1,000,000; record exactly half of it as used.
+        await tracker.record_usage("mistral", CYCLE, 400_000, 100_000)
+
+        ranked = await rank_models_by_headroom(
+            ["mistral/large"],
+            tracker,
+            billing_cycle=CYCLE,
+            free_tokens_per_provider=FREE_TOKENS,
+            default_free_tokens=1_000_000,
+        )
+
+        mq = ranked[0]
+        assert mq.provider == "mistral"
+        assert mq.free_tokens == 1_000_000
+        assert mq.used_pct == pytest.approx(0.5)
+        assert mq.headroom_tokens == 500_000
 
 
 class TestQuotaBurnScheduler:
@@ -98,3 +121,35 @@ class TestQuotaBurnScheduler:
         # a model from a provider that was never recorded against stays untouched
         other_pct = await tracker.get_usage_pct("anthropic", CYCLE, FREE_TOKENS["anthropic"])
         assert other_pct == 0.0
+
+
+class TestDiscoverModels:
+    """Tests for discover_models function — currently has no tests."""
+
+    @pytest.mark.asyncio
+    async def test_extracts_model_ids_from_v1_models_response(self):
+        """Verify discover_models correctly parses the /v1/models response."""
+        # Simulate the LiteLLM /v1/models endpoint response
+        payload = {
+            "object": "list",
+            "data": [
+                {"id": "openai/gpt-4", "object": "model"},
+                {"id": "anthropic/claude-3-opus", "object": "model"},
+                {"id": "openai/gpt-3.5-turbo", "object": "model"},
+            ],
+        }
+
+        # A MockTransport rather than a stand-in client: the shared client is
+        # real, so this exercises the actual request-building path.
+        import httpx
+
+        from maistro.http import override_transport
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=payload)
+
+        with override_transport(httpx.MockTransport(handler)):
+            models = await discover_models(base_url="http://fake.example", api_key="fake-key")
+
+        # Should extract all "id" fields from the "data" array
+        assert models == ["openai/gpt-4", "anthropic/claude-3-opus", "openai/gpt-3.5-turbo"]

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
-
 import httpx
 import pytest
 
@@ -13,8 +11,7 @@ from maistro.agents.pm_llm_call import (
     _resolve_model,
     maistro_llm_call,
 )
-
-_RealAsyncClient = httpx.AsyncClient
+from maistro.http import override_transport
 
 
 @pytest.fixture(autouse=True)
@@ -107,10 +104,7 @@ class TestMaistroLlmCall:
             )
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             result = await maistro_llm_call(
                 [{"role": "user", "content": "hi"}], model="claude-sonnet-4-6"
             )
@@ -135,10 +129,7 @@ class TestMaistroLlmCall:
             return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             await maistro_llm_call([{"role": "user", "content": "hi"}], temperature=0.5)
 
         body = captured["body"]
@@ -160,10 +151,7 @@ class TestMaistroLlmCall:
             return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
 
         transport = httpx.MockTransport(handler)
-        with patch(
-            "maistro.agents.pm_llm_call.httpx.AsyncClient",
-            lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-        ):
+        with override_transport(transport):
             await maistro_llm_call([{"role": "user", "content": "hi"}], json_mode=False)
 
         body = captured["body"]
@@ -181,10 +169,77 @@ class TestMaistroLlmCall:
 
         transport = httpx.MockTransport(handler)
         with (
-            patch(
-                "maistro.agents.pm_llm_call.httpx.AsyncClient",
-                lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-            ),
+            override_transport(transport),
             pytest.raises(RuntimeError, match="LLM gateway 401"),
         ):
             await maistro_llm_call([{"role": "user", "content": "hi"}])
+
+    @pytest.mark.asyncio
+    async def test_on_response_hook_receives_body_and_response(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LITELLM_URL", "http://gw")
+        monkeypatch.setenv("LITELLM_MASTER_KEY", "key")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                headers={"x-ratelimit-remaining-requests": "10"},
+                json={
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {"prompt_tokens": 5, "completion_tokens": 7},
+                },
+            )
+
+        captured: dict[str, object] = {}
+
+        def on_response(data: dict, response: httpx.Response) -> None:
+            captured["data"] = data
+            captured["headers"] = dict(response.headers)
+
+        transport = httpx.MockTransport(handler)
+        with override_transport(transport):
+            result = await maistro_llm_call(
+                [{"role": "user", "content": "hi"}], on_response=on_response
+            )
+
+        assert result == "ok"
+        assert captured["data"]["usage"] == {"prompt_tokens": 5, "completion_tokens": 7}  # type: ignore[index]
+        assert captured["headers"]["x-ratelimit-remaining-requests"] == "10"  # type: ignore[index]
+
+    @pytest.mark.asyncio
+    async def test_on_response_hook_failure_is_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LITELLM_URL", "http://gw")
+        monkeypatch.setenv("LITELLM_MASTER_KEY", "key")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+        def broken_hook(data: dict, response: httpx.Response) -> None:
+            raise RuntimeError("recording hook blew up")
+
+        transport = httpx.MockTransport(handler)
+        with override_transport(transport):
+            # Must not raise -- a broken instrumentation hook can't take down
+            # a call that already succeeded.
+            result = await maistro_llm_call(
+                [{"role": "user", "content": "hi"}], on_response=broken_hook
+            )
+
+        assert result == "ok"
+
+    @pytest.mark.asyncio
+    async def test_no_hook_is_a_no_op(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LITELLM_URL", "http://gw")
+        monkeypatch.setenv("LITELLM_MASTER_KEY", "key")
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+        transport = httpx.MockTransport(handler)
+        with override_transport(transport):
+            result = await maistro_llm_call([{"role": "user", "content": "hi"}])
+
+        assert result == "ok"

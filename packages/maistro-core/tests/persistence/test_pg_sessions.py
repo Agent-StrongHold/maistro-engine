@@ -126,7 +126,13 @@ async def test_append_messages_inserts_user_and_assistant_with_incrementing_seq(
             {"role": "assistant", "content": "hello"},
         ],
     )
-    insert_calls = [c for c in conn.calls if c.method == "execute"]
+    # M3: append_messages now also issues a TTL DELETE, so "every execute is
+    # an insert" no longer holds. Filter on the statement rather than the
+    # method, and assert the purge fired — otherwise removing it would go
+    # unnoticed.
+    insert_calls = [c for c in conn.calls if c.method == "execute" and "INSERT" in c.query]
+    purge_calls = [c for c in conn.calls if c.method == "execute" and "DELETE" in c.query]
+    assert len(purge_calls) == 1, "append_messages must purge expired rows inline"
     assert len(insert_calls) == 2
     assert insert_calls[0].args == ("s1", 3, "user", "hi")
     assert insert_calls[1].args == ("s1", 4, "assistant", "hello")
@@ -144,7 +150,13 @@ async def test_append_messages_drops_non_user_assistant_roles_without_consuming_
             {"role": "user", "content": "kept"},
         ],
     )
-    insert_calls = [c for c in conn.calls if c.method == "execute"]
+    # M3: append_messages now also issues a TTL DELETE, so "every execute is
+    # an insert" no longer holds. Filter on the statement rather than the
+    # method, and assert the purge fired — otherwise removing it would go
+    # unnoticed.
+    insert_calls = [c for c in conn.calls if c.method == "execute" and "INSERT" in c.query]
+    purge_calls = [c for c in conn.calls if c.method == "execute" and "DELETE" in c.query]
+    assert len(purge_calls) == 1, "append_messages must purge expired rows inline"
     assert len(insert_calls) == 1
     # "kept" gets seq 0 — the dropped "system" message did not consume a seq.
     assert insert_calls[0].args == ("s1", 0, "user", "kept")
@@ -156,7 +168,13 @@ async def test_append_messages_defaults_missing_role_and_content_to_empty(
 ) -> None:
     conn.queue_fetchrow({"next_seq": 0})
     await store.append_messages("s1", [{}])
-    insert_calls = [c for c in conn.calls if c.method == "execute"]
+    # M3: append_messages now also issues a TTL DELETE, so "every execute is
+    # an insert" no longer holds. Filter on the statement rather than the
+    # method, and assert the purge fired — otherwise removing it would go
+    # unnoticed.
+    insert_calls = [c for c in conn.calls if c.method == "execute" and "INSERT" in c.query]
+    purge_calls = [c for c in conn.calls if c.method == "execute" and "DELETE" in c.query]
+    assert len(purge_calls) == 1, "append_messages must purge expired rows inline"
     assert insert_calls == []  # role "" is not in ("user", "assistant")
 
 
@@ -166,7 +184,13 @@ async def test_append_messages_no_existing_rows_starts_seq_at_default(
 ) -> None:
     conn.queue_fetchrow(None)
     await store.append_messages("s1", [{"role": "user", "content": "hi"}])
-    insert_calls = [c for c in conn.calls if c.method == "execute"]
+    # M3: append_messages now also issues a TTL DELETE, so "every execute is
+    # an insert" no longer holds. Filter on the statement rather than the
+    # method, and assert the purge fired — otherwise removing it would go
+    # unnoticed.
+    insert_calls = [c for c in conn.calls if c.method == "execute" and "INSERT" in c.query]
+    purge_calls = [c for c in conn.calls if c.method == "execute" and "DELETE" in c.query]
+    assert len(purge_calls) == 1, "append_messages must purge expired rows inline"
     assert insert_calls[0].args == ("s1", 0, "user", "hi")
 
 

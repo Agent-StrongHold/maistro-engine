@@ -4,11 +4,12 @@ import logging
 from datetime import UTC, datetime
 from uuid import uuid4
 
-import httpx
 import stores
 from fastapi import APIRouter, HTTPException, Request
 from models.schemas import MCPServer, MCPTool
 from pydantic import BaseModel, ConfigDict
+
+from maistro.http import shared_client
 
 router = APIRouter(tags=["mcp"])
 
@@ -35,7 +36,7 @@ async def _health_check(server: MCPServer, *, user_id: str | None = None) -> MCP
             }
         )
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with shared_client(timeout=3.0) as client:
             r = await client.get(server.url)
             if r.status_code < 500:
                 return server.model_copy(

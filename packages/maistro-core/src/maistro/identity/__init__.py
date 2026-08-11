@@ -9,14 +9,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from bip_utils import (
-    Base58Encoder,
-    Bip32Slip10Ed25519,
-    Bip32Slip10Secp256k1,
-    Bip39MnemonicGenerator,
-    Bip39SeedGenerator,
-)
-from nacl.signing import SigningKey, VerifyKey
+# Declared by the `identity` extra, not the base dependencies — bip-utils pulls
+# coincurve, which has no wheel for the Python the API image ships. Raise loudly
+# and name the fix rather than degrading silently to a partial identity module.
+try:
+    from bip_utils import (
+        Base58Encoder,
+        Bip32Slip10Ed25519,
+        Bip32Slip10Secp256k1,
+        Bip39MnemonicGenerator,
+        Bip39SeedGenerator,
+    )
+    from nacl.signing import SigningKey, VerifyKey
+except ModuleNotFoundError as exc:  # covered by tests/identity/test_extra_guard.py
+    raise ImportError(
+        f"maistro.identity requires the 'identity' extra (missing: {exc.name}). "
+        "Install it with:  pip install 'maistro-core[identity]'"
+    ) from exc
 
 # Multicodec prefix for an Ed25519 public key: varint(0xed) = 0xed 0x01.
 # Used by the did:key / multiformats spec; the leading multibase character
@@ -173,3 +182,60 @@ class ConductorSeed:
 
 
 PATHS = _PATHS
+
+from maistro.identity.lifecycle import (  # noqa: E402
+    AgentIdentity,
+    CapabilityToken,
+    CapabilityTokenError,
+    IdentityAlreadyExistsError,
+    IdentityArchivedError,
+    IdentityLifecycleError,
+    IdentityNotFoundError,
+    IdentityStore,
+    InMemoryIdentityStore,
+    InMemorySecretStore,
+    InMemoryTokenStore,
+    InvalidRecoverySeedError,
+    InvalidTokenSignatureError,
+    SecretStore,
+    TokenExpiredError,
+    TokenRevokedError,
+    TokenStore,
+    create_agent_identity,
+    did_key_from_public_key,
+    issue_capability_token,
+    offboard_agent,
+    public_key_from_did_key,
+    recover_agent_identity,
+    verify_capability_token,
+)
+
+__all__ = [
+    "PATHS",
+    "AgentIdentity",
+    "CapabilityToken",
+    "CapabilityTokenError",
+    "ConductorSeed",
+    "DerivedKey",
+    "IdentityAlreadyExistsError",
+    "IdentityArchivedError",
+    "IdentityLifecycleError",
+    "IdentityNotFoundError",
+    "IdentityStore",
+    "InMemoryIdentityStore",
+    "InMemorySecretStore",
+    "InMemoryTokenStore",
+    "InvalidRecoverySeedError",
+    "InvalidTokenSignatureError",
+    "SecretStore",
+    "TokenExpiredError",
+    "TokenRevokedError",
+    "TokenStore",
+    "create_agent_identity",
+    "did_key_from_public_key",
+    "issue_capability_token",
+    "offboard_agent",
+    "public_key_from_did_key",
+    "recover_agent_identity",
+    "verify_capability_token",
+]

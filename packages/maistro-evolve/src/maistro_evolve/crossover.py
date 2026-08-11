@@ -14,6 +14,7 @@ from .types import (
 
 
 def _new_id() -> str:
+    """Generate a 12-character hexadecimal UUID."""
     return uuid.uuid4().hex[:12]
 
 
@@ -35,6 +36,10 @@ def crossover(parent_a: PipelineGenome, parent_b: PipelineGenome) -> PipelineGen
 
     child_nodes: list[NodeGenome] = [entry_node]
     node_id_map: dict[str, str] = {entry_node.id: entry_node.id}
+    # parent_b's entry node isn't carried into the child as a distinct node
+    # (the child keeps parent_a's entry), so edges originating there must be
+    # rewired onto the child's single entry node instead of being dropped.
+    node_id_map[parent_b.topology.entry_node] = entry_node.id
 
     for nodes in (other_a, other_b):
         for n in nodes:
@@ -93,6 +98,10 @@ def crossover_and_mutate(
     parent_a: PipelineGenome,
     parent_b: PipelineGenome,
     mutation_rate: float = 0.3,
+    models: list[str] | None = None,
 ) -> PipelineGenome:
+    """``models`` constrains the child's model mutation to the run's routable
+    roster (see ``mutate_all``) — without it, breeding can drift a lineage onto
+    models the gateway can't serve."""
     child = crossover(parent_a, parent_b)
-    return mutate_all(child, mutation_rate)
+    return mutate_all(child, mutation_rate, models)

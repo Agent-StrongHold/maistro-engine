@@ -91,8 +91,23 @@ class AgentResponse:
     learnings_extracted: int = 0
     blocked: bool = False
     block_reason: str = ""
+    # A run that failed rather than answered. `handle()` converts provider
+    # outages into a normal-looking AgentResponse instead of raising, which
+    # keeps cleanup ordered — but without a machine-readable marker, callers
+    # that branch on success cannot tell the two apart. The A2A broker is
+    # exactly such a caller: it maps "no exception" to TaskStatus.COMPLETED, so
+    # a failed delegation reported success.
+    failed: bool = False
+    error: str = ""
 
     @classmethod
     def blocked_response(cls, reason: str) -> AgentResponse:
         """Create a blocked response."""
         return cls(blocked=True, block_reason=reason)
+
+    @classmethod
+    def error_response(
+        cls, message: str, *, agent_name: str = "", error: str = ""
+    ) -> AgentResponse:
+        """Create a failed response carrying a machine-readable marker."""
+        return cls(content=message, agent_name=agent_name, failed=True, error=error or message)

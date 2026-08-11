@@ -19,7 +19,23 @@ import os
 import sys
 
 import httpx
-from browser_use import Agent, Browser, ChatGoogle
+import pytest
+
+# C1 (#286): this module is a manual e2e *script*, not a pytest suite — it has
+# no `test_*` functions, only `run_pm_workflow()` behind `if __name__ ==
+# "__main__"`. It nonetheless matches pytest's `test_*.py` collection glob, so
+# the unguarded `browser_use` import turned it into a hard ImportError that
+# aborted collection for the whole `tests/e2e` directory. `browser_use` is
+# deliberately absent from the default image (the browser surface lives in
+# `Dockerfile.research`). Guarding it lets the directory collect cleanly; this
+# file contributes zero test node IDs, which is the honest count.
+_browser_use = pytest.importorskip(
+    "browser_use",
+    reason="browser-use not installed (research image only — see Dockerfile.research)",
+)
+Agent = _browser_use.Agent
+Browser = _browser_use.Browser
+ChatGoogle = _browser_use.ChatGoogle
 
 HIVE_URL = os.environ.get("HIVE_URL", "http://localhost:8101")
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-preview")

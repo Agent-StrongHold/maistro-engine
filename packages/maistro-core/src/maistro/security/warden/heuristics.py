@@ -12,7 +12,9 @@ from __future__ import annotations
 import base64
 import re
 
-_INSTRUCTION_TOKENS = re.compile(
+from maistro.security.warden._regex import compile_pattern
+
+_INSTRUCTION_TOKENS = compile_pattern(
     r"\b("
     r"ignore|disregard|forget|override|bypass|skip|"
     r"instead|actually|really|new instructions|"
@@ -27,9 +29,18 @@ _INSTRUCTION_TOKENS = re.compile(
     re.IGNORECASE,
 )
 
-_BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
+_BASE64_PATTERN = compile_pattern(r"[A-Za-z0-9+/]{40,}={0,2}")
 
 INSTRUCTION_DENSITY_THRESHOLD = 0.15
+
+# Injection hides locally: a hostile paragraph inside a long document keeps the
+# whole-text ratio arbitrarily low (500 words of filler around a 15-word
+# payload is 0.03), which is exactly where indirect injection lives. Density is
+# therefore also measured over sliding word windows, mirroring how the pattern
+# scan windows its input, and the maximum window density is what gets compared
+# to the threshold.
+_DENSITY_WINDOW_WORDS = 40
+_DENSITY_WINDOW_STRIDE = 20
 
 
 def score_instruction_density(text: str) -> float:
@@ -41,7 +52,20 @@ def score_instruction_density(text: str) -> float:
         return 0.0
 
     instruction_matches = _INSTRUCTION_TOKENS.findall(text)
-    return len(instruction_matches) / len(words)
+    whole_text = len(instruction_matches) / len(words)
+    if len(words) <= _DENSITY_WINDOW_WORDS:
+        return whole_text
+    return max(whole_text, _max_window_density(words))
+
+
+def _max_window_density(words: list[str]) -> float:
+    """Highest instruction density over any sliding window of the text."""
+    peak = 0.0
+    for offset in range(0, len(words) - _DENSITY_WINDOW_STRIDE, _DENSITY_WINDOW_STRIDE):
+        window = words[offset : offset + _DENSITY_WINDOW_WORDS]
+        matches = _INSTRUCTION_TOKENS.findall(" ".join(window))
+        peak = max(peak, len(matches) / len(window))
+    return peak
 
 
 def detect_encoded_instructions(text: str) -> list[str]:

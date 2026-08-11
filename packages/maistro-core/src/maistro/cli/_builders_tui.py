@@ -1,16 +1,21 @@
 """Builders interactive app — Textual TUI.
 
 Flow:
-  1. Welcome screen: "Open a repo" (paste URL/path) or "Resume session" (pick from list)
-  2. App clones repo into a dev container (or resumes existing)
+  1. Welcome screen: "Open a repo" (paste a local path or git URL) or "Resume session"
+     (pick from recently-opened local checkouts)
+  2. A local path is used directly; a git URL is cloned to a host cache dir. No
+     Docker/dev-container involved — the agent loop already operates on the
+     local filesystem via LocalWorktreeSandbox, so a container session added
+     nothing but a startup failure (see _builders_sessions.py).
   3. Drops into the coding session TUI (agent loop + diff viewer)
 """
 
 from __future__ import annotations
 
 # mypy: disable-error-code="misc,untyped-decorator,unused-ignore"
+import subprocess
+from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from textual import on, work  # type: ignore[import-not-found]
 from textual.app import App, ComposeResult  # type: ignore[import-not-found]
@@ -26,6 +31,21 @@ from textual.widgets import (  # type: ignore[import-not-found]
     RichLog,
     Static,
 )
+
+from maistro.cli._builders_sessions import (
+    BuilderSessionEntry,
+    get_session,
+    load_sessions,
+    make_session_id,
+    record_session,
+)
+
+_GIT_URL_PREFIXES = ("http://", "https://", "git@", "ssh://")
+_BUILDERS_CACHE_DIR = Path.home() / ".maistro" / "builders_repos"
+
+
+def _is_git_url(repo: str) -> bool:
+    return repo.startswith(_GIT_URL_PREFIXES) or repo.endswith(".git")
 
 
 class WelcomeScreen(Vertical):
@@ -57,7 +77,7 @@ class SessionPickerScreen(ModalScreen[str | None]):
 
     BINDINGS = [("escape", "cancel", "Cancel")]  # type: ignore[assignment, misc]  # noqa: RUF012
 
-    def __init__(self, sessions: list[Any]) -> None:
+    def __init__(self, sessions: list[BuilderSessionEntry]) -> None:
         super().__init__()
         self.sessions = sessions
 
@@ -65,13 +85,10 @@ class SessionPickerScreen(ModalScreen[str | None]):
         with Vertical(id="session-picker"):
             yield Static("[bold]Recent sessions[/bold]\n")
             for s in self.sessions:
-                status_icon = {"running": "🟢", "stopped": "⚪"}.get(s.status.value, "⚫")
-                label = (
-                    f"{status_icon} {s.name}  "
-                    f"[dim]{s.labels.get('maistro.repo_url', '?')}  "
-                    f"{s.created.strftime('%Y-%m-%d %H:%M')}[/dim]"
-                )
-                yield Button(label, id=f"pick-{s.name}", classes="session-btn")
+                status_icon = {"available": "🟢", "missing": "⚪"}.get(s.status_label, "⚫")
+                when = datetime.fromtimestamp(s.last_opened).strftime("%Y-%m-%d %H:%M")
+                label = f"{status_icon} {s.repo_url}  [dim]{s.path}  {when}[/dim]"
+                yield Button(label, id=f"pick-{s.id}", classes="session-btn")
             yield Button("Cancel", variant="default", id="pick-cancel")
 
     @on(Button.Pressed, "#pick-cancel")
@@ -95,10 +112,11 @@ class CodingScreen(Vertical):
         Binding("ctrl+r", "reject_changes", "Reject"),
     ]
 
-    def __init__(self, session_id: str, repo_url: str) -> None:
+    def __init__(self, session_id: str, repo_url: str, work_dir: Path) -> None:
         super().__init__()
         self.session_id = session_id
         self.repo_url = repo_url
+        self.work_dir = work_dir
 
     def compose(self) -> ComposeResult:
         yield Horizontal(
@@ -144,7 +162,7 @@ class CodingScreen(Vertical):
             from maistro_bootstrap.builders.sandbox import LocalWorktreeSandbox
             from maistro_bootstrap.builders.session import BuilderSession
 
-            session = BuilderSession(sandbox=LocalWorktreeSandbox(Path(".")))
+            session = BuilderSession(sandbox=LocalWorktreeSandbox(self.work_dir))
             runner = TurnRunner(session=session, config=AgentLoopConfig())
             runner.set_llm(ResponsesAPICallable())  # type: ignore[arg-type]
 
@@ -206,17 +224,12 @@ class BuildersApp(App[None]):
     @work
     async def _load_recent_sessions(self) -> None:
         try:
-            from maistro.cli._container.lifecycle import SessionLifecycle
-
-            lifecycle = SessionLifecycle()
-            sessions = lifecycle.list_sessions()
+            sessions = load_sessions()
             if sessions:
                 lines = ["\n  [bold]Recent sessions:[/bold]"]
                 for s in sessions[:5]:
-                    icon = {"running": "🟢", "stopped": "⚪"}.get(s.status.value, "⚫")
-                    lines.append(
-                        f"  {icon} {s.name}  [dim]{s.labels.get('maistro.repo_url', '?')}[/dim]"
-                    )
+                    icon = {"available": "🟢", "missing": "⚪"}.get(s.status_label, "⚫")
+                    lines.append(f"  {icon} {s.repo_url}  [dim]{s.path}[/dim]")
                 recent = self.query_one("#recent-sessions", Static)
                 recent.update("\n".join(lines))
         except Exception:
@@ -240,9 +253,7 @@ class BuildersApp(App[None]):
 
     def _show_session_picker(self) -> None:
         try:
-            from maistro.cli._container.lifecycle import SessionLifecycle
-
-            sessions = SessionLifecycle().list_sessions()
+            sessions = load_sessions()
             if not sessions:
                 self.query_one("#recent-sessions", Static).update(
                     "\n  [dim]No sessions found.[/dim]"
@@ -253,27 +264,51 @@ class BuildersApp(App[None]):
             self.query_one("#recent-sessions", Static).update(f"\n  [red]Error: {exc}[/red]")
 
     def _on_session_picked(self, session_id: str | None) -> None:
-        if session_id:
-            self._open_coding_screen(session_id, f"resumed:{session_id}")
+        if not session_id:
+            return
+        entry = get_session(session_id)
+        if entry is None:
+            self.query_one("#recent-sessions", Static).update("\n  [red]Session not found.[/red]")
+            return
+        work_dir = Path(entry.path)
+        if not work_dir.is_dir():
+            self.query_one("#recent-sessions", Static).update(
+                f"\n  [red]Path no longer exists: {work_dir}[/red]"
+            )
+            return
+        self._open_coding_screen(session_id, entry.repo_url, work_dir)
 
     @work
     async def _open_repo(self, repo: str) -> None:
-        from maistro.cli._container.lifecycle import SessionLifecycle
-
-        lifecycle = SessionLifecycle()
-        session_id = SessionLifecycle.make_session_id(repo)
+        recent = self.query_one("#recent-sessions", Static)
+        session_id = make_session_id(repo)
 
         try:
-            lifecycle.create_session(
-                session_id=session_id,
-                repo_url=repo,
-            )
-            self._open_coding_screen(session_id, repo)
-        except Exception as exc:
-            recent = self.query_one("#recent-sessions", Static)
-            recent.update(f"\n  [red]Failed to create session: {exc}[/red]")
+            if _is_git_url(repo):
+                recent.update(f"\n  [dim]Cloning {repo}…[/dim]")
+                work_dir = _BUILDERS_CACHE_DIR / session_id
+                work_dir.parent.mkdir(parents=True, exist_ok=True)
+                result = subprocess.run(
+                    ["git", "clone", "--depth", "1", repo, str(work_dir)],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if result.returncode != 0:
+                    recent.update(f"\n  [red]Clone failed: {result.stderr.strip()[:300]}[/red]")
+                    return
+            else:
+                work_dir = Path(repo).expanduser().resolve()
+                if not work_dir.is_dir():
+                    recent.update(f"\n  [red]Not a directory: {work_dir}[/red]")
+                    return
 
-    def _open_coding_screen(self, session_id: str, repo: str) -> None:
+            record_session(session_id, work_dir, repo)
+            self._open_coding_screen(session_id, repo, work_dir)
+        except Exception as exc:
+            recent.update(f"\n  [red]Failed to open: {exc}[/red]")
+
+    def _open_coding_screen(self, session_id: str, repo: str, work_dir: Path) -> None:
         welcome = self.query_one(WelcomeScreen)
         welcome.remove()
-        self.mount(CodingScreen(session_id, repo))
+        self.mount(CodingScreen(session_id, repo, work_dir))

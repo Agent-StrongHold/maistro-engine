@@ -3,7 +3,7 @@ id: ADR-052
 title: Parallel agent waves — per-wave branch isolation and fan-in merge
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-049

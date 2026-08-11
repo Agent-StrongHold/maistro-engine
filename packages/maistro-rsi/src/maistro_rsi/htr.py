@@ -22,6 +22,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any
 
 
 class NodeStatus(StrEnum):
@@ -37,6 +38,19 @@ class NodeStatus(StrEnum):
     OPEN = "open"
     EXPLORED = "explored"
     ABANDONED = "abandoned"
+
+
+class FrontierExhausted(ValueError):
+    """No node remains to refine: the root is abandoned and no EXPLORED branch
+    survives it. An ordinary end state for a run, not a fault.
+
+    A ``ValueError`` subclass so callers written against the old contract keep
+    working, but a distinct type so no caller has to recognise it by matching
+    on the message text. Message matching is what made this worth naming: a
+    caller catching ``ValueError`` and testing for ``"abandoned"`` also
+    swallows unrelated ``ValueError``s from injected proposers and executors,
+    which turns a real failure into a tidy "frontier exhausted" stop.
+    """
 
 
 @dataclass(frozen=True)
@@ -75,6 +89,25 @@ class HypothesisEvidence:
         losses = self.battles - self.benchmarks_won
         return (self.benchmarks_won - losses) / self.battles
 
+    def to_dict(self) -> dict[str, Any]:
+        """Plain-data form for persistence (htr-8)."""
+        return {
+            "tests_passed": self.tests_passed,
+            "benchmarks_won": self.benchmarks_won,
+            "battles": self.battles,
+            "improved": self.improved,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HypothesisEvidence:
+        """Rebuild from :meth:`to_dict` output; validation reruns in __post_init__."""
+        return cls(
+            tests_passed=bool(data["tests_passed"]),
+            benchmarks_won=int(data["benchmarks_won"]),
+            battles=int(data["battles"]),
+            improved=bool(data["improved"]),
+        )
+
 
 @dataclass
 class HypothesisNode:
@@ -109,6 +142,38 @@ class HypothesisNode:
         if not self.evidence.tests_passed:
             return 0.0
         return (self.evidence.net_gain + 1.0) / 2.0
+
+    def to_dict(self) -> dict[str, Any]:
+        """Plain-data form for persistence (htr-8)."""
+        return {
+            "id": self.id,
+            "parent_id": self.parent_id,
+            "depth": self.depth,
+            "hypothesis": self.hypothesis,
+            "order": self.order,
+            "status": self.status.value,
+            "evidence": self.evidence.to_dict() if self.evidence else None,
+            "insight": self.insight,
+            "artifacts": dict(self.artifacts),
+            "children": list(self.children),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HypothesisNode:
+        """Rebuild from :meth:`to_dict` output."""
+        evidence_data = data.get("evidence")
+        return cls(
+            id=str(data["id"]),
+            parent_id=data["parent_id"] if data["parent_id"] is None else str(data["parent_id"]),
+            depth=int(data["depth"]),
+            hypothesis=str(data["hypothesis"]),
+            order=int(data["order"]),
+            status=NodeStatus(str(data["status"])),
+            evidence=(HypothesisEvidence.from_dict(evidence_data) if evidence_data else None),
+            insight=data.get("insight"),
+            artifacts=dict(data.get("artifacts") or {}),
+            children=list(data.get("children") or []),
+        )
 
 
 class HypothesisTree:
@@ -235,14 +300,15 @@ class HypothesisTree:
     def select_seed(self) -> HypothesisNode:
         """The node a fresh hypothesis should refine when nothing is queued:
         the most promising explored branch, or the root while the tree is still
-        young (nothing explored yet). Raises ValueError if the root is abandoned
-        and no EXPLORED branches exist — the tree is a dead end."""
+        young (nothing explored yet). Raises :class:`FrontierExhausted` if the
+        root is abandoned and no EXPLORED branches exist — the tree is a dead
+        end."""
         seeds = self.expandable_seeds()
         if seeds:
             return seeds[0]
         root = self.nodes[self.root_id]
         if root.status is NodeStatus.ABANDONED:
-            raise ValueError("root is abandoned and no explored branches exist")
+            raise FrontierExhausted("root is abandoned and no explored branches exist")
         return root
 
     # -- lineage / insight propagation --------------------------------------
@@ -283,6 +349,37 @@ class HypothesisTree:
             counts[node.status.value] += 1
         counts["total"] = len(self.nodes)
         return counts
+
+    # -- persistence ----------------------------------------------------------
+
+    def to_dict(self) -> dict[str, Any]:
+        """Plain-data snapshot of the whole tree, losslessly restorable via
+        :meth:`from_dict` (htr-8). Kept pure (no file I/O) so this module stays
+        free of the runner/sandbox import chain — callers own where it lands."""
+        return {
+            "root_id": self.root_id,
+            "nodes": [node.to_dict() for node in self.nodes.values()],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> HypothesisTree:
+        """Rebuild a tree from :meth:`to_dict` output.
+
+        The private proposal counter is restored to ``max(order) + 1`` so
+        hypotheses expanded after a resume keep globally unique, correctly
+        prioritized ordering (htr-9) — recency tie-breaks in ``pending()``
+        depend on it.
+        """
+        tree = cls.__new__(cls)
+        nodes = [HypothesisNode.from_dict(entry) for entry in data["nodes"]]
+        if not nodes:
+            raise ValueError("cannot restore an empty hypothesis tree")
+        tree.nodes = {node.id: node for node in nodes}
+        tree.root_id = str(data["root_id"])
+        if tree.root_id not in tree.nodes:
+            raise ValueError(f"root_id {tree.root_id!r} not among restored nodes")
+        tree._order = max(node.order for node in nodes) + 1
+        return tree
 
 
 def _distill(hypothesis: str, evidence: HypothesisEvidence) -> str:

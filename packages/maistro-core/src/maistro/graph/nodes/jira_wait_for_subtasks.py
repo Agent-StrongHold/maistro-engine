@@ -15,8 +15,9 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import ClassVar
 
-import httpx
 from pydantic import BaseModel, Field
+
+from maistro.http import shared_client
 
 from . import register_node
 from .base import BaseNode, NodeContext, now_utc, pause_until
@@ -147,7 +148,7 @@ async def _fetch_subtask_statuses(inputs: WaitForSubtasksIn) -> dict[str, str]:
         else:
             headers["Authorization"] = f"Bearer {inputs.pat}"
 
-    async with httpx.AsyncClient(timeout=inputs.timeout_s) as client:
+    async with shared_client(timeout=inputs.timeout_s) as client:
         resp = await client.get(
             f"{base}{api_path}",
             params={"fields": "subtasks"},

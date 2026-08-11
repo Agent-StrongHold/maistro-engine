@@ -38,6 +38,12 @@ from .types import DurableNodeRecord, DurableRunRecord, NodePhase, RunStatus
 NodeResolver = Callable[[str, dict[str, Any]], BaseNode[Any, Any]]
 """Given (node_id, dag_snapshot) return an instantiated node ready to run."""
 
+# Node kinds that can descend into a spawned sub-graph -- `synth_depth`
+# increments for whatever runs next after one of these completes, not for
+# the spawning node's own invocation. Kept in sync with `agent_synth_dag.py`
+# and `agent_spawn_harness.py`'s registered `kind` ClassVars.
+_DEPTH_INCREMENTING_KINDS = frozenset({"agent.synth_dag", "agent.spawn_harness"})
+
 
 # --- Entrypoint: start a new run ------------------------------------------
 
@@ -149,7 +155,7 @@ async def _walk(
         node_record = node_record.model_copy(
             update={
                 "phase": NodePhase.RUNNING,
-                "started_at": node_record.started_at or datetime.now(UTC),
+                "started_at": node_record.started_at and datetime.now(UTC),
                 "attempts": node_record.attempts + 1,
             }
         )
@@ -191,6 +197,8 @@ async def _walk(
                 store=store,
             )
 
+        record = _maybe_increment_synth_depth(record, spec, result)
+
         next_id = _next_node(dag, node_id, result)
         record = record.model_copy(
             update={
@@ -201,7 +209,40 @@ async def _walk(
         )
         record = await store.update(record)
 
-    # No next node — completed.
+    return await _finish_walk(record, store=store, max_steps=max_steps)
+
+
+async def _finish_walk(
+    record: DurableRunRecord,
+    *,
+    store: DurableRunStore,
+    max_steps: int,
+) -> DurableRunRecord:
+    """Record the terminal status for a walk that left its loop.
+
+    There are two ways out of that loop and they are not the same outcome.
+    Falling out because `current_node_id` is empty means the graph ran to its
+    end. Falling out because `steps` hit `max_steps` means it did NOT — the run
+    still has a live node and a partial blackboard. Both used to fall through
+    to `_mark_completed`, so a cycling or over-long DAG was persisted as a
+    success with partial results. That is worse than a failure record:
+    downstream consumers trust COMPLETED.
+
+    Split out of `_walk` rather than inlined so the added branch does not push
+    that function over the radon complexity ratchet — the gate flagged exactly
+    that, which is the gate doing its job.
+    """
+    if record.current_node_id:
+        return await _mark_failed(
+            record,
+            error_code="StepBudgetExhausted",
+            error_message=(
+                f"run exceeded max_steps={max_steps} with node "
+                f"{record.current_node_id!r} still pending; the graph may cycle"
+            ),
+            store=store,
+        )
+
     return await _mark_completed(record, store=store)
 
 
@@ -308,9 +349,62 @@ def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRe
     return record.model_copy(update={"blackboard_snapshot": new_snapshot})
 
 
+def _actually_spawned(kind: str, result: NodeResult) -> bool:
+    """Did this node actually dispatch/execute a child graph, or just decline to?
+
+    `agent.synth_dag` encodes a depth-cap or security-review refusal as
+    `SynthDagOut(success=False, ...)` inside an otherwise-successful
+    `NodeResult` (the executor sees a normal completion; only the node's own
+    output says nothing was spawned) -- that refusal must not burn a depth
+    level for the next node, or a workflow that tries an alternate synth
+    after a blocked one hits the cap prematurely. But `success=False` also
+    covers a *different* case: synthesis was approved and the sub-graph WAS
+    dispatched via `run_graph`, and only the sub-graph's own execution
+    failed -- that's a real spawn attempt and must still burn a depth level
+    (otherwise a chained retry after a failed child bypasses the recursion
+    budget). `SynthDagOut.dispatched` disambiguates the two: it's True only
+    on the branch that actually called `run_graph`. `agent.spawn_harness`
+    never reaches this check on a fresh dispatch (that exits earlier via
+    `_checkpoint_pause`); getting here for that kind always means a resumed,
+    already-completed external invocation, so it counts unconditionally.
+    """
+    if kind == "agent.synth_dag":
+        output = result.output
+        return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
+    return True
+
+
+def _maybe_increment_synth_depth(
+    record: DurableRunRecord, spec: dict[str, Any], result: NodeResult
+) -> DurableRunRecord:
+    """Bump `synth_depth` after a node that can spawn a sub-graph completes.
+
+    Depth increments for whatever runs *next*, not for the spawning node's
+    own invocation -- descending into the spawned sub-graph is one level
+    deeper; the spawning node itself already ran at its own depth. Mirrors
+    `agent_synth_dag.py`'s `can_spawn(get_role(depth, max_depth))` check,
+    which reads this same counter back out via `_build_ctx`.
+    """
+    kind = spec.get("kind")
+    if kind not in _DEPTH_INCREMENTING_KINDS or not _actually_spawned(kind, result):
+        return record
+    snapshot = dict(record.blackboard_snapshot or {})
+    metadata = dict(snapshot.get("metadata") or {})
+    metadata["synth_depth"] = int(metadata.get("synth_depth", 0)) + 1
+    snapshot["metadata"] = metadata
+    return record.model_copy(update={"blackboard_snapshot": snapshot})
+
+
 def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
     """Reconstruct the NodeContext, lifting hitl_answers + blackboard
-    snapshot so HITL/wait nodes see the same state across pauses."""
+    snapshot so HITL/wait nodes see the same state across pauses.
+
+    `synth_depth` is surfaced into `NodeContext.metadata` (not
+    `blackboard.metadata`) because that's where `agent_synth_dag.py`'s
+    `can_spawn(get_role(depth, max_depth))` check reads it from — mirroring
+    how `hitl_answers` also lives in this same top-level metadata dict rather
+    than the blackboard's.
+    """
     from ..types import GraphBlackboard
 
     bb_snap = record.blackboard_snapshot or {}
@@ -324,6 +418,11 @@ def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
     except Exception:
         blackboard = None
 
+    try:
+        synth_depth = dict(bb_snap.get("metadata") or {}).get("synth_depth", 0)
+    except (TypeError, ValueError):
+        synth_depth = 0
+
     return NodeContext(
         run_id=record.run_id,
         dag_id=record.dag_id,
@@ -333,6 +432,7 @@ def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
         blackboard=blackboard,
         metadata={
             "hitl_answers": dict(record.hitl_answers),
+            "synth_depth": synth_depth,
         },
     )
 

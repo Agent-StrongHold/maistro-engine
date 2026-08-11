@@ -10,4 +10,12 @@ No new external deps: uses pyyaml + Pydantic v2, both already in
 (no new pip deps for the engine).
 """
 
-__version__ = "0.1.0"
+from __future__ import annotations
+
+import importlib.metadata
+
+# Single source of truth for version — read from installed package metadata.
+try:
+    __version__ = importlib.metadata.version("maistro-registry")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/unbuilt checkout
+    __version__ = "0.9.0-dev"

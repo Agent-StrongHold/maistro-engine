@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 
-from hypothesis import assume, given, settings
+import pytest
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
 
@@ -161,3 +162,102 @@ def test_services_property_returns_copy(key):
     svc = reg.services
     svc["extra"] = None
     assert "extra" not in reg.services
+
+
+class TestLoadYamlAdversarial:
+    """load_yaml must degrade (log + skip), never raise — matches discover_into's philosophy."""
+
+    def test_malformed_yaml_syntax_does_not_raise(self, tmp_path):
+        path = tmp_path / "keys.yaml"
+        path.write_text("services:\n  svc-a: {key: 'unterminated\n  scopes: [llm:*]\n")
+        reg = ServiceKeyRegistry()
+        reg.load_yaml(path)  # must not raise
+        assert reg.services == {}
+
+    def test_services_value_is_list_does_not_raise(self, tmp_path):
+        path = tmp_path / "keys.yaml"
+        path.write_text("services:\n  - not\n  - a\n  - mapping\n")
+        reg = ServiceKeyRegistry()
+        reg.load_yaml(path)  # must not raise
+        assert reg.services == {}
+
+    def test_services_value_is_scalar_does_not_raise(self, tmp_path):
+        path = tmp_path / "keys.yaml"
+        path.write_text("services: not-a-mapping\n")
+        reg = ServiceKeyRegistry()
+        reg.load_yaml(path)
+        assert reg.services == {}
+
+    def test_service_entry_is_not_a_dict_does_not_raise(self, tmp_path):
+        path = tmp_path / "keys.yaml"
+        path.write_text("services:\n  svc-a: just-a-string\n")
+        reg = ServiceKeyRegistry()
+        reg.load_yaml(path)  # cfg.get("key", ...) on a str would raise AttributeError unguarded
+        assert "svc-a" not in reg.services
+
+    def test_missing_file_does_not_raise(self, tmp_path):
+        reg = ServiceKeyRegistry()
+        reg.load_yaml(tmp_path / "does-not-exist.yaml")
+        assert reg.services == {}
+
+    def test_empty_file_does_not_raise(self, tmp_path):
+        path = tmp_path / "keys.yaml"
+        path.write_text("")
+        reg = ServiceKeyRegistry()
+        reg.load_yaml(path)
+        assert reg.services == {}
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("property")
+    @given(garbage=st.text(max_size=200))
+    @settings(max_examples=50, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    def test_arbitrary_text_never_raises(self, garbage, tmp_path):
+        path = tmp_path / f"keys-{abs(hash(garbage))}.yaml"
+        path.write_text(garbage)
+        reg = ServiceKeyRegistry()
+        reg.load_yaml(path)  # property: no input crashes the loader
+
+
+class TestKeyCollisionInvalidation:
+    """Overwriting a service's key must invalidate the old key — no stale auth."""
+
+    def test_load_dict_reregister_invalidates_old_key(self):
+        reg = ServiceKeyRegistry()
+        reg.load_dict({"svc": {"key": "old-key", "scopes": ["llm:*"]}})
+        assert reg.authenticate("old-key") is not None
+
+        reg.load_dict({"svc": {"key": "new-key", "scopes": ["llm:*"]}})
+        assert reg.authenticate("new-key") is not None
+        assert reg.authenticate("old-key") is None
+
+    def test_env_name_collision_after_case_folding_invalidates_old_key(self, monkeypatch):
+        # SERVICE_KEY_FOO and SERVICE_KEY_foo both normalize to service name "foo".
+        monkeypatch.setenv("SERVICE_KEY_FOO", "key-upper")
+        monkeypatch.setenv("SERVICE_KEY_foo", "key-lower")
+        reg = ServiceKeyRegistry()
+        reg.load_env()
+
+        assert "foo" in reg.services
+        # Exactly one of the two colliding keys should authenticate — never both.
+        results = [reg.authenticate("key-upper") is not None, reg.authenticate("key-lower") is not None]
+        assert results.count(True) == 1
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("property")
+    @given(
+        keys=st.lists(
+            st.text(min_size=8, max_size=20, alphabet=st.characters(whitelist_categories=("L", "N"))),
+            min_size=2,
+            max_size=5,
+            unique=True,
+        )
+    )
+    @settings(max_examples=30)
+    def test_repeated_reregistration_only_last_key_authenticates(self, keys):
+        reg = ServiceKeyRegistry()
+        for key in keys:
+            reg.load_dict({"svc": {"key": key, "scopes": ["llm:*"]}})
+
+        for key in keys[:-1]:
+            assert reg.authenticate(key) is None, "stale key must not authenticate"
+        assert reg.authenticate(keys[-1]) is not None

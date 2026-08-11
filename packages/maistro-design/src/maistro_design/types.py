@@ -38,6 +38,21 @@ class OutputFormat(StrEnum):
     REACT_TSX = "react_tsx"
 
 
+class RenderSlot(StrEnum):
+    """A renderer capability slot (SPEC-070426-a22b / ADR-070426-f2a0).
+
+    A slot is a capability the system *can* have. A provider fills one or more slots;
+    a skill declares the slot it needs via ``DesignSkill.render_slot``. ``FIXED_PAGE`` is
+    the canvas-native floor — always present, never supplied by an external plugin.
+    """
+
+    FIXED_PAGE = "renderer.fixed-page"  # slides/flyers/posters/cards/covers — canvas-native
+    DECK = "renderer.deck"  # multi-page decks -> PPTX/PDF
+    REFLOWABLE_WEB = "renderer.reflowable-web"  # responsive HTML/CSS — canvas cannot reflow
+    VIDEO = "renderer.video"  # HTML -> MP4
+    DESIGN_SYSTEMS_LIVE = "designsystems.live"  # live corpus vs. vendored snapshot
+
+
 class ArtifactKind(StrEnum):
     """Shape of a single ArtifactNode — leaf text, leaf binary, or a nested container."""
 
@@ -127,6 +142,9 @@ class DesignSkill:
     output_formats: list[OutputFormat] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     required_renderer: RendererKind | None = None
+    # Capability slot this skill needs (SPEC-070426-a22b). None => no external renderer
+    # required (canvas-native fixed-page) => always available regardless of installed plugins.
+    render_slot: RenderSlot | None = None
 
 
 @dataclass(frozen=True)

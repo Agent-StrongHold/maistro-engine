@@ -19,3 +19,4 @@ After the run:
 1. Report how many tests passed/failed and which invariants (I1–I22+) were exercised.
 2. If any failed, show the Hypothesis shrunk counterexample and identify which source file likely caused the regression.
 3. Remind the user that formal tests are not run in regular CI — a green regular test suite does not mean formal invariants are satisfied.
+4. If a passing run still surfaces behavior worth a closer look (output that "looks wrong" but technically satisfies the property, a flaky-seeming case, an untested edge the model didn't generate), don't let the observation evaporate — start an exploratory session per `docs/EXPLORATORY-TESTING.md` and log it under `docs/exploratory-sessions/`.

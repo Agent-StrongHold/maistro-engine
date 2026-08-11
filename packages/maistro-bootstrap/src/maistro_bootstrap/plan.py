@@ -142,6 +142,12 @@ def _generated_artifacts(answers: InstallAnswersV1) -> dict[str, Any]:
     compose = {
         "services": {
             "maistro-reactor": {
+                # Profiles-gated: never starts unless COMPOSE_PROFILES=reactor is
+                # set explicitly. The image reference makes the override pass
+                # `docker compose config` when merged with the root compose file;
+                # the real reactor image is published by the release workflow
+                # (SPEC-072726-3439 Phase 5).
+                "image": "ghcr.io/blakematthews-dev/maistro-engine:reactor-preview",
                 "profiles": ["reactor"],
                 "environment": {
                     "MAISTRO_DELIVERY_MODE": answers.delivery_mode,

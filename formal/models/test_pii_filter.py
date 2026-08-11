@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, rule, invariant
@@ -117,11 +118,8 @@ def test_redact_preserves_surrounding():
 def test_pii_match_frozen(text):
     matches = scan_for_pii(text)
     for m in matches:
-        try:
+        with pytest.raises((AttributeError, TypeError)):
             m.pii_type = "other"
-            assert False, "PIIMatch should be frozen"
-        except (AttributeError, TypeError):
-            pass
 
 
 def test_overlapping_matches_no_duplication():

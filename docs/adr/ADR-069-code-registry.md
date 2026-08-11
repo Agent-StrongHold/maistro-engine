@@ -3,7 +3,7 @@ id: ADR-069
 title: "Code Registry — versioned, signed, microVM-isolated execution of substrate code refs"
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-30
 substrate:
   - maistro-engine#ADR-053

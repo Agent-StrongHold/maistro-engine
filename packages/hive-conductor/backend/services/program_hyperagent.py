@@ -48,8 +48,20 @@ def user_id_from_request(request: Request) -> str:
     return str(uid)
 
 
-def require_pm_poc() -> None:
-    if not is_pm_poc_mode():
+def require_pm_poc(*, user_id: str | None = None, workspace_id: str | None = None) -> None:
+    """Gate the program hyperagent surface (the onboarding interview,
+    already generalized to any persona via `program_context.py`'s
+    per-use_case `INTERVIEW_TEMPLATES`). Passing `user_id` resolves
+    (membership-checked, any persona) against that specific workspace
+    instead of the legacy global flag -- omitted (every pre-Phase-H caller)
+    keeps the exact old behavior."""
+    if user_id is not None:
+        from services.workspace_mode import is_workspace_request_authorized
+
+        ok = is_workspace_request_authorized(user_id, workspace_id)
+    else:
+        ok = is_pm_poc_mode()
+    if not ok:
         raise HTTPException(
             status_code=404,
             detail=(

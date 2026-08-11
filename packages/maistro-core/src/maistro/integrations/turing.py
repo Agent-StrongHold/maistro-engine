@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
 from maistro.events.bus import Event, EventBus, EventCategory
+from maistro.http import shared_client
 
 logger = logging.getLogger("maistro.integrations.turing")
 
@@ -28,7 +27,7 @@ class TuringIntegration:
         self._bus = event_bus
 
     async def chat(self, message: str, user: str = "system") -> str:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with shared_client(timeout=30) as client:
             r = await client.post(
                 f"{self._chat_url}/api/chat",
                 json={"message": message, "user": user},
@@ -49,7 +48,7 @@ class TuringIntegration:
         return await self.chat(f"[Writing trigger] {prompt}")
 
     async def get_metrics(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.get(f"{self._metrics_url}/metrics")
             r.raise_for_status()
             metrics: dict[str, Any] = r.json()

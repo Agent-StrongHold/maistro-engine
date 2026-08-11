@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.metadata
+
+# Single source of truth for version — read from installed package metadata.
+try:
+    __version__ = importlib.metadata.version("maistro-turing")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/unbuilt checkout
+    __version__ = "0.9.0-dev"
+
 from maistro_turing.bridge import (
     TuringClassifierBridge,
     TuringMemoryBridge,
@@ -103,6 +111,7 @@ __all__ = [
     "WisdomDeferred",
     "WisdomInvariantViolation",
     "WorkingMemoryStore",
+    "__version__",
     "clamp_weight",
     "current_level",
     "facet_node_id",

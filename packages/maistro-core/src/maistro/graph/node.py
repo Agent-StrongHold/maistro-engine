@@ -7,11 +7,13 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import structlog
+from pydantic import BaseModel
 
 from maistro.agents.circuit_breaker import CircuitBreaker
+from maistro.graph.concurrency import llm_call_permit
 from maistro.graph.events import (
     node_completed,
     node_failed,
@@ -32,6 +34,29 @@ from maistro.resilience.backoff import BackoffConfig, compute_backoff, jittered_
 from maistro.resilience.classifier import ClassifiedError, classify_error
 
 logger = structlog.get_logger()
+
+
+@runtime_checkable
+class NodeExecutor(Protocol):
+    """A non-LLM execution backend for a graph node (SPEC-208 §5 outbound).
+
+    The default node path calls ``llm_call`` and parses the returned text into
+    the strategy's ``output_type``. An executor instead *owns the turn loop*
+    itself — e.g. a foreign coding harness driving a multi-step, tool-emitting
+    session — and returns the already-parsed strategy output. When a ``NodeRun``
+    carries an executor, ``execute()`` dispatches to it and bypasses the
+    ``llm_call``/beam machinery entirely.
+    """
+
+    async def run(
+        self,
+        *,
+        role: AgentRole,
+        system_prompt: str,
+        user_prompt: str,
+        blackboard: GraphBlackboard | None,
+        output_type: type[BaseModel],
+    ) -> BaseModel: ...
 
 
 def _strip_json_block(text: str) -> str:
@@ -205,6 +230,9 @@ class NodeRun:
     role: AgentRole = AgentRole.PLANNER
     strategy: NodeStrategy | None = None
     beam_width: int = 1
+    # When set, this node is driven by a foreign executor (e.g. a coding
+    # harness) instead of ``llm_call`` — see NodeExecutor (SPEC-208 §5).
+    executor: NodeExecutor | None = None
 
     model: str = "default"
     temperature: float | None = None
@@ -282,10 +310,7 @@ class NodeRun:
             )
 
         try:
-            if self.beam_width > 1:
-                await self._execute_beam(llm_call, timeout, backoff_config, iteration_budget)
-            else:
-                await self._execute_single(llm_call, timeout, backoff_config, iteration_budget)
+            await self._dispatch(llm_call, timeout, backoff_config, iteration_budget)
         except asyncio.CancelledError:
             self._transition(NodePhase.CANCELLED)
             self.completed_at = time.monotonic()
@@ -307,6 +332,37 @@ class NodeRun:
         self.completed_at = time.monotonic()
         self.duration_s = self.completed_at - (self.started_at or self.completed_at)
 
+    async def _dispatch(
+        self,
+        llm_call: Callable[..., Awaitable[str]],
+        timeout: float,
+        backoff_config: BackoffConfig,
+        iteration_budget: IterationBudget | None,
+    ) -> None:
+        """Route execution to the executor, beam, or single-shot backend."""
+        if self.executor is not None:
+            await self._execute_via_executor(timeout, backoff_config, iteration_budget)
+        elif self.beam_width > 1:
+            await self._execute_beam(llm_call, timeout, backoff_config, iteration_budget)
+        else:
+            await self._execute_single(llm_call, timeout, backoff_config, iteration_budget)
+
+    async def _preflight_stop(self, iteration_budget: IterationBudget | None) -> bool:
+        """Run the per-attempt guards (cancel / circuit / budget) shared by the
+        LLM and executor paths. Returns True (after recording the terminal
+        phase) when the attempt loop must stop; False to proceed.
+        """
+        if self._cancel_requested:
+            self._transition(NodePhase.CANCELLED)
+            return True
+        if not self.circuit.allow_request():
+            await self._finish_failure(LLMProviderError("Circuit breaker open for node"))
+            return True
+        if iteration_budget is not None and not iteration_budget.consume():
+            await self._finish_failure(LLMProviderError("Iteration budget exhausted"))
+            return True
+        return False
+
     async def _execute_single(
         self,
         llm_call: Callable[..., Awaitable[str]],
@@ -322,16 +378,7 @@ class NodeRun:
         last_exc: Exception | None = None
 
         for attempt in range(self.max_retries):
-            if self._cancel_requested:
-                self._transition(NodePhase.CANCELLED)
-                return
-
-            if not self.circuit.allow_request():
-                await self._finish_failure(LLMProviderError("Circuit breaker open for node"))
-                return
-
-            if iteration_budget is not None and not iteration_budget.consume():
-                await self._finish_failure(LLMProviderError("Iteration budget exhausted"))
+            if await self._preflight_stop(iteration_budget):
                 return
 
             try:
@@ -340,15 +387,18 @@ class NodeRun:
                     if self.strategy and hasattr(self.strategy, "output_type")
                     else None
                 )
-                result = await asyncio.wait_for(
-                    llm_call(
-                        messages,
-                        model=self.model,
-                        temperature=self.temperature,
-                        response_schema=schema,
-                    ),
-                    timeout=timeout,
-                )
+                # One permit per in-flight LLM call. The permit is held only
+                # for the call, so the wait is not counted against `timeout`.
+                async with llm_call_permit():
+                    result = await asyncio.wait_for(
+                        llm_call(
+                            messages,
+                            model=self.model,
+                            temperature=self.temperature,
+                            response_schema=schema,
+                        ),
+                        timeout=timeout,
+                    )
                 raw, tokens_in, tokens_out = _normalize_llm_result(result)
                 self.circuit.record_success()
                 self.raw_response = raw
@@ -364,6 +414,53 @@ class NodeRun:
                 await self._finish_success(parsed)
                 return
 
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                last_exc = exc
+                should_retry = await self._handle_attempt_exception(exc, attempt, backoff_config)
+                if not should_retry:
+                    return
+
+        if last_exc is not None:
+            await self._finish_failure(last_exc)
+
+    async def _execute_via_executor(
+        self,
+        timeout: float,
+        backoff_config: BackoffConfig,
+        iteration_budget: IterationBudget | None,
+    ) -> None:
+        """Run this node through its :class:`NodeExecutor` instead of ``llm_call``.
+
+        Reuses the same circuit-breaker, iteration-budget, retry, and
+        success/failure plumbing as the LLM path — only the "produce a parsed
+        output" step differs: the executor returns the strategy output directly
+        (already a turn of a foreign harness), so there is no text to parse.
+        """
+        assert self.strategy is not None
+        assert self.executor is not None
+        last_exc: Exception | None = None
+
+        for attempt in range(self.max_retries):
+            if await self._preflight_stop(iteration_budget):
+                return
+
+            try:
+                parsed = await asyncio.wait_for(
+                    self.executor.run(
+                        role=self.role,
+                        system_prompt=self.system_prompt,
+                        user_prompt=self.user_prompt,
+                        blackboard=self.blackboard_snapshot,
+                        output_type=self.strategy.output_type,
+                    ),
+                    timeout=timeout,
+                )
+                self.circuit.record_success()
+                self.raw_response = str(parsed)
+                await self._finish_success(parsed)
+                return
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -530,10 +627,14 @@ class NodeRun:
         if iteration_budget is not None and not iteration_budget.consume():
             raise LLMProviderError("Iteration budget exhausted")
 
-        result = await asyncio.wait_for(
-            llm_call(messages, model=self.model, temperature=self.temperature),
-            timeout=timeout,
-        )
+        # Beam attempts fan out inside a node, and the node gather fans out
+        # across roles — the two multiply. This is the only choke point both
+        # paths share, so it is where the bound goes.
+        async with llm_call_permit():
+            result = await asyncio.wait_for(
+                llm_call(messages, model=self.model, temperature=self.temperature),
+                timeout=timeout,
+            )
         raw, tokens_in, tokens_out = _normalize_llm_result(result)
         elapsed = time.monotonic() - start
 

@@ -6,7 +6,11 @@ through explicitly allowed env var names, with defense-in-depth value checks.
 
 from __future__ import annotations
 
+import time
+
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from maistro.tools.sandbox.env_sanitize import (
     is_allowed_name,
@@ -156,3 +160,115 @@ class TestSanitizeEnv:
 
     def test_empty_env(self) -> None:
         assert sanitize_env({}) == {}
+
+
+class TestSecretPatternBoundaries:
+    """_SECRET_PATTERN's alternatives each have a hard length threshold
+    (sk-/Bearer/eyJ need >=20 trailing chars, ghp_/ghs_ need exactly 36,
+    hex keys need exactly 64). Off-by-one at each boundary must not flip
+    the verdict in the wrong direction."""
+
+    def test_hex_key_63_chars_not_flagged(self) -> None:
+        assert not looks_like_secret("a" * 63)
+
+    def test_hex_key_64_chars_flagged(self) -> None:
+        assert looks_like_secret("a" * 64)
+
+    def test_hex_key_65_chars_not_flagged(self) -> None:
+        # exact {64} with trailing $ means one extra char breaks the match
+        assert not looks_like_secret("a" * 65)
+
+    def test_hex_key_uppercase_flagged(self) -> None:
+        # regression: [a-f0-9] alone would miss uppercase-hex secrets
+        assert looks_like_secret("A" * 64)
+
+    def test_hex_key_mixed_case_flagged(self) -> None:
+        assert looks_like_secret("aB" * 32)
+
+    def test_github_pat_35_chars_not_flagged(self) -> None:
+        assert not looks_like_secret("ghp_" + "a" * 35)
+
+    def test_github_pat_36_chars_flagged(self) -> None:
+        assert looks_like_secret("ghp_" + "a" * 36)
+
+    def test_github_pat_37_chars_not_flagged(self) -> None:
+        assert not looks_like_secret("ghp_" + "a" * 37)
+
+    def test_github_app_token_36_chars_flagged(self) -> None:
+        assert looks_like_secret("ghs_" + "a" * 36)
+
+    def test_openai_key_19_chars_not_flagged(self) -> None:
+        assert not looks_like_secret("sk-" + "a" * 19)
+
+    def test_openai_key_20_chars_flagged(self) -> None:
+        assert looks_like_secret("sk-" + "a" * 20)
+
+    def test_bearer_token_19_chars_not_flagged(self) -> None:
+        assert not looks_like_secret("Bearer " + "a" * 19)
+
+    def test_bearer_token_20_chars_flagged(self) -> None:
+        assert looks_like_secret("Bearer " + "a" * 20)
+
+    def test_jwt_19_chars_not_flagged(self) -> None:
+        assert not looks_like_secret("eyJ" + "a" * 19)
+
+    def test_jwt_20_chars_flagged(self) -> None:
+        assert looks_like_secret("eyJ" + "a" * 20)
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("property")
+    @given(n=st.integers(min_value=0, max_value=80))
+    @settings(max_examples=100)
+    def test_hex_length_boundary_is_exactly_64(self, n: int) -> None:
+        value = "a" * n
+        assert looks_like_secret(value) == (n == 64)
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("property")
+    @given(n=st.integers(min_value=0, max_value=60))
+    @settings(max_examples=100)
+    def test_github_pat_length_boundary_is_exactly_36(self, n: int) -> None:
+        value = "ghp_" + "a" * n
+        assert looks_like_secret(value) == (n == 36)
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("property")
+    @given(n=st.integers(min_value=0, max_value=40))
+    @settings(max_examples=100)
+    def test_openai_key_length_boundary_is_at_least_20(self, n: int) -> None:
+        value = "sk-" + "a" * n
+        assert looks_like_secret(value) == (n >= 20)
+
+
+class TestSecretPatternReDoSSafety:
+    """The pattern's alternation has no nested ambiguous quantifiers, so it
+    must stay linear-time even on long adversarial near-miss inputs. A
+    regression here would mean someone introduced backtracking risk."""
+
+    @pytest.mark.parametrize(
+        "near_miss",
+        [
+            "a" * 50_000,  # almost a hex key, never terminates the run
+            "sk-" + "a" * 50_000,
+            "ghp_" + "a" * 50_000,
+            "Bearer " + "a" * 50_000,
+            "eyJ" + "a" * 50_000,
+            ("a" * 49_999) + "!",  # one disqualifying char near the end
+        ],
+        ids=["bare_hex", "openai", "github_pat", "bearer", "jwt", "hex_with_bad_tail"],
+    )
+    def test_long_near_miss_inputs_stay_fast(self, near_miss: str) -> None:
+        start = time.monotonic()
+        looks_like_secret(near_miss)
+        elapsed = time.monotonic() - start
+        assert elapsed < 1.0, f"looks_like_secret took {elapsed:.2f}s — possible ReDoS regression"
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("property")
+    @given(garbage=st.text(alphabet=st.characters(whitelist_categories=("L", "N")), max_size=2000))
+    @settings(max_examples=50, deadline=None)
+    def test_arbitrary_alnum_text_stays_fast(self, garbage: str) -> None:
+        start = time.monotonic()
+        looks_like_secret(garbage)
+        elapsed = time.monotonic() - start
+        assert elapsed < 1.0, f"looks_like_secret took {elapsed:.2f}s on len={len(garbage)} input"

@@ -16,7 +16,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.ui_climb_vm")
 
@@ -56,7 +56,7 @@ async def request_hill_climb_vm(component: str = "Chat.tsx", passes: int = 5) ->
         },
     }
 
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with shared_client(timeout=300.0) as client:
         r = await client.post(
             f"{BROKER_URL}/sandboxes",
             json=payload,
@@ -81,7 +81,7 @@ async def run_ui_hill_climb(component: str = "Chat.tsx", passes: int = 5) -> dic
     logger.info(f"VM provisioned: {lease_id}")
 
     # Poll for completion (the VM runs the script and reports back)
-    async with httpx.AsyncClient(timeout=600.0) as client:
+    async with shared_client(timeout=600.0) as client:
         for _ in range(120):  # poll for up to 10 minutes
             import asyncio
 

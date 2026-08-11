@@ -10,8 +10,8 @@ so swapping the backend later touches one factory function, not call sites.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from typing import Protocol, runtime_checkable
+from collections.abc import Callable, Coroutine
+from typing import Any, Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -48,8 +48,16 @@ class MicroVmSandbox(Protocol):
         ...
 
 
-# Supplied by the RSI runner: given a sandbox and a checked-out workspace,
-# produce the actual code modification (typically by driving an agent).
-# Kept out of `selfbranch` so the git/sandbox plumbing stays testable
-# independent of any particular agent strategy.
-ApplyPatchFn = Callable[[MicroVmSandbox, str], Awaitable[None]]
+# Supplied by the RSI runner: given a sandbox, a checked-out workspace, and
+# the model the quota-burn scheduler picked for this cycle (None when no
+# pool is available), produce the actual code modification (typically by
+# driving an agent). The model arg is what makes quota-burn routing real
+# rather than reporting-only. Kept out of `selfbranch` so the git/sandbox
+# plumbing stays testable independent of any particular agent strategy.
+ApplyPatchFn = Callable[[MicroVmSandbox, str, str | None], Coroutine[Any, Any, None]]
+
+# Supplied by the RSI runner: measure the workspace's current state and return
+# named scores (e.g. {"lint": 1.0, "coverage": 87.4}). Run twice per attempt —
+# before and after the patch — so the tournament battles over the *differential*
+# evidence of what the change actually did, not a proxy that never saw it.
+WorkspaceProbeFn = Callable[[MicroVmSandbox, str], Coroutine[Any, Any, dict[str, float]]]

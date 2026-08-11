@@ -3,7 +3,7 @@ id: SPEC-179
 title: Flutter gateway node companion (iOS + Android) — monorepo app
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Deferred
 created: 2026-05-13
 accepted: null
 implemented: null
@@ -24,9 +24,20 @@ owners:
 history:
   - status: Proposed
     date: 2026-05-13
+  - status: Deferred
+    date: 2026-08-01
 ---
 
 # SPEC-179: Flutter gateway node companion (monorepo)
+
+**Deferred (D1/#289, 2026-08-01).** Not v1.0.0 scope. The `apps/maistro-gateway-node-flutter/`
+tree only ever contained a `flutter create` bootstrap README — no `pubspec.yaml`, no Dart source,
+no tests, and no CI job — so it was removed from the tree under the v1 cut list. Nothing below is
+implemented. The design stands; revisit for a post-v1 milestone, at which point the app root is
+recreated with `flutter create` per the Bootstrap appendix. Deferring parks this spec; it is not
+rejected.
+
+---
 
 ## Context
 
@@ -176,4 +187,12 @@ Reference behavior from the **gateway product** native node apps and shared kit 
 
 ## Appendix — Bootstrap
 
-See **`apps/maistro-gateway-node-flutter/README.md`**.
+The app root does not exist in the tree (see the Deferred note above). To recreate it when this
+spec is picked up:
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+flutter create --org <org> --project-name maistro_gateway_node_flutter \
+  --platforms=ios,android apps/maistro_gateway_node_flutter
+mv apps/maistro_gateway_node_flutter apps/maistro-gateway-node-flutter
+```

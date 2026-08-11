@@ -59,3 +59,6 @@ code-worth-implementing-from-dev-ai-env/
 code-worth-implementing-from-n8n_automation/
 code-worth-implementing-from-Owui_mods/
 code-worth-implementing-from-Project-mAIstro/
+
+# Materialized installer plan + staged bootstrap credentials (install.sh)
+.maistro-install/

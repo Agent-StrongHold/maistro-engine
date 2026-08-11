@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -35,6 +35,26 @@ class TaskStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+# Valid state transitions. QUEUED can jump straight to RUNNING (auto-started,
+# no separate assignment step) or fail/cancel before ever being picked up.
+# COMPLETED/FAILED/CANCELLED are terminal — once a task lands there it cannot
+# be reopened.
+_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
+    TaskStatus.QUEUED: frozenset(
+        {TaskStatus.ASSIGNED, TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED}
+    ),
+    TaskStatus.ASSIGNED: frozenset({TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED}),
+    TaskStatus.RUNNING: frozenset({TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED}),
+    TaskStatus.COMPLETED: frozenset(),
+    TaskStatus.FAILED: frozenset(),
+    TaskStatus.CANCELLED: frozenset(),
+}
+
+
+def can_transition(current: TaskStatus, target: TaskStatus) -> bool:
+    return target in _TRANSITIONS.get(current, frozenset())
+
+
 @dataclass
 class A2ATask:
     """A2A task for delegation."""
@@ -50,6 +70,7 @@ class A2ATask:
     result: str | None
     error: str | None
     delegation_mode: DelegationMode
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class A2ADelegator:
@@ -115,13 +136,14 @@ class A2ADelegator:
             result=None,
             error=None,
             delegation_mode=delegation_mode,
+            metadata=metadata or {},
         )
 
         self._tasks[task_id] = task_obj
         logger.info(
             "Task delegated: %s from %s to %s (mode=%s)",
-            from_agent,
             task_id,
+            from_agent,
             to_agent,
             delegation_mode,
         )
@@ -167,6 +189,9 @@ class A2ADelegator:
             raise ValueError(f"Task not found: {task_id}")
 
         old_status = task.status
+
+        if not can_transition(old_status, status):
+            raise ValueError(f"Invalid task status transition: {old_status} -> {status}")
 
         if old_status == TaskStatus.RUNNING and status == TaskStatus.COMPLETED:
             task.completed_at = datetime.now(UTC)

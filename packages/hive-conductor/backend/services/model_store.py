@@ -137,3 +137,17 @@ class JsonStore:
         if default:
             return default[0]
         raise KeyError(key)
+
+    def clear(self) -> int:
+        """Remove every entry and return how many were removed.
+
+        Routes each removal through ``pop`` so the backing PersistedStore sees
+        the same per-key delete it sees for any other eviction — no second
+        persistence path, and no bulk SQL that PgPersistedStore would not
+        implement.
+        """
+        removed = 0
+        for key in list(self._data.keys()):
+            self.pop(key, None)
+            removed += 1
+        return removed

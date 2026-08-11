@@ -6,8 +6,9 @@ import contextlib
 import os
 from typing import Any
 
-import httpx
 from fastapi import APIRouter, Request
+
+from maistro.http import shared_client
 
 router = APIRouter(tags=["daily-report"])
 
@@ -54,7 +55,7 @@ async def _fetch_jira(user_id: str) -> dict[str, Any]:
 
     jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.get(
                 f"{jira_server_url}/rest/api/2/search",
                 params={
@@ -130,7 +131,7 @@ async def _fetch_airtable(user_id: str) -> dict[str, Any]:
     base_id = "appXXXXXXXXXXXXXX"  # MAISTRO base
     headers = {"Authorization": f"Bearer {airtable_pat}"}
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with shared_client(timeout=15.0) as client:
             r = await client.get(
                 f"https://api.airtable.com/v0/meta/bases/{base_id}/tables",
                 headers=headers,

@@ -31,6 +31,20 @@ class GenomeRating:
 
 @dataclass
 class GenomeBattle:
+    """
+    Represents a battle between two genomes in a benchmark.
+
+    Fields:
+        id: Unique identifier for the battle.
+        benchmark: Name of the benchmark used for the battle.
+        genome_a_id: Identifier for the first genome.
+        genome_b_id: Identifier for the second genome.
+        winner_id: Identifier for the winning genome, or "draw" if tied.
+        score_a: Score achieved by the first genome.
+        score_b: Score achieved by the second genome.
+        timestamp: Time when the battle was recorded.
+    """
+
     id: int = 0
     benchmark: str = ""
     genome_a_id: str = ""
@@ -115,22 +129,49 @@ class EloTournament:
         return sum(r.elo for r in ratings) / len(ratings)
 
     def get_leaderboard(self, benchmark: str | None = None) -> list[dict[str, Any]]:
-        genome_elos: dict[str, list[float]] = {}
+        """Ranked entries, aggregating battle counts across the matched ratings.
+
+        Two bugs lived in the unfiltered (``benchmark=None``) path, both caused
+        by looking up a rating under the literal benchmark name ``"overall"``:
+
+        1. No battle is ever recorded against ``"overall"``, so every row
+           reported ``total_battles=0`` and ``win_rate=0.0`` — a genome with a
+           perfect record read as unproven. The record is now summed over the
+           per-benchmark ratings that actually hold it.
+        2. ``_get_rating`` *creates* a rating on miss, so simply reading the
+           leaderboard inserted a phantom 1200-elo ``"overall"`` row per genome.
+           ``get_avg_elo`` averages over every rating for a genome, so it then
+           returned a value dragged toward the default — a read corrupting the
+           number that feeds ``compute_fitness``'s elo component. Nothing here
+           mutates state any more.
+
+        With an explicit ``benchmark``, exactly one rating matches per genome
+        and this reduces to the previous behaviour.
+        """
+        grouped: dict[str, list[GenomeRating]] = {}
         for rating in self._ratings.values():
             if benchmark is not None and rating.benchmark != benchmark:
                 continue
-            genome_elos.setdefault(rating.genome_id, []).append(rating.elo)
+            grouped.setdefault(rating.genome_id, []).append(rating)
 
         entries: list[dict[str, Any]] = []
-        for gid, elos in genome_elos.items():
-            avg = sum(elos) / len(elos)
-            r = self._get_rating(gid, benchmark or "overall")
+        for gid, ratings in grouped.items():
+            # A throwaway aggregate, deliberately NOT stored in _ratings; it
+            # exists so total_battles/win_rate keep a single definition.
+            agg = GenomeRating(
+                genome_id=gid,
+                benchmark=benchmark or "overall",
+                elo=sum(r.elo for r in ratings) / len(ratings),
+                wins=sum(r.wins for r in ratings),
+                losses=sum(r.losses for r in ratings),
+                draws=sum(r.draws for r in ratings),
+            )
             entries.append(
                 {
                     "genome_id": gid,
-                    "avg_elo": round(avg, 1),
-                    "total_battles": r.total_battles,
-                    "win_rate": r.win_rate,
+                    "avg_elo": round(agg.elo, 1),
+                    "total_battles": agg.total_battles,
+                    "win_rate": agg.win_rate,
                 }
             )
         entries.sort(key=lambda e: e["avg_elo"], reverse=True)
