@@ -64,7 +64,8 @@ jobs:
           uv lock --check
           uv sync --locked --extra dev
           uv pip freeze --exclude-editable > /tmp/deps.txt
-          uvx pip-audit --strict -r /tmp/deps.txt
+          uvx pip-audit --strict --format=json -r /tmp/deps.txt > /tmp/pip-audit.json || true
+          uv run python scripts/pip_audit_gate.py /tmp/pip-audit.json
           cd packages/maistro-canvas/frontend
           npm audit --audit-level=high
       - name: Remove one-shot scaffolding and commit generated changes
