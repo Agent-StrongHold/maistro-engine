@@ -38,17 +38,16 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
   uv run pytest formal --collect-only -q | tail -3
 ```
 
-## Counts as of `develop` @ #352
+## Counts as of current `develop`
 
-Refreshed after #341, #347, #348, #351 and #352 landed. Each added tests but
-predated this gate, so none refreshed the table on the way in and the baseline
-drifted +89 (maistro-core +61, hive-conductor +28). Both moved *upward* and
-every other suite matched exactly, which is the added-tests case, not the
-silently-stopped-collecting case the gate exists to catch.
+Refreshed after the runtime cleanup queue (#355, #359, #361). #359 added the
+new graph-concurrency tests and #361 added the Warden regex-equivalence tests;
+their branches had independently refreshed the same baseline, so the combined
+count had to be reconciled after both merged. Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5917 | `ci.yml` |
+| `packages/maistro-core/tests` | 5936 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 628 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
