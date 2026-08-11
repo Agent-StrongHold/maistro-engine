@@ -18,6 +18,17 @@ from pathlib import Path
 import generate_repo_tasks_impl as _impl
 from generate_repo_tasks_impl import Rejection, Task, validate  # re-export public API
 
+# Preserve the module-level admission-filter surface used by the benchmark tests.
+# These helpers intentionally remain implemented in generate_repo_tasks_impl;
+# the CLI wrapper only re-exports them so importing this historical script path
+# behaves the same way it did before the implementation was split out.
+_SELF_AUTHORED_RE = _impl._SELF_AUTHORED_RE
+_DEFAULT_MIN_ISSUE_CHARS = _impl._DEFAULT_MIN_ISSUE_CHARS
+_DEFAULT_MAX_ISSUE_CHARS = _impl._DEFAULT_MAX_ISSUE_CHARS
+_DEFAULT_MAX_PATCH_LINES = _impl._DEFAULT_MAX_PATCH_LINES
+_DEFAULT_MAX_SRC_FILES = _impl._DEFAULT_MAX_SRC_FILES
+_classify = _impl._classify
+
 
 def _development_history_ref() -> str:
     """Return an explicit retained develop ref instead of implicitly using HEAD."""
