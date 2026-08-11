@@ -5,7 +5,7 @@ Pydantic-validated config loaded from YAML.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class RoutingConfig(BaseModel):
@@ -55,6 +55,34 @@ class SecurityConfig(BaseModel):
     warden_enabled: bool = True
     gate_query_improve: bool = True
     gate_model: str = "auto"
+
+    @field_validator("warden_enabled")
+    @classmethod
+    def _refuse_to_pretend_to_disable(cls, value: bool) -> bool:
+        """Inert despite living on the config `create_container` receives.
+
+        Nothing reads it, so `warden_enabled=False` silently leaves every
+        trust boundary scanning. Refuse the weakening value rather than let
+        an operator believe they turned scanning off.
+        """
+        if not value:
+            msg = (
+                "warden_enabled=False is not implemented — nothing reads this field, "
+                "and Warden scans at every trust boundary regardless. Remove the "
+                "setting rather than relying on it to turn protection off."
+            )
+            raise ValueError(msg)
+        return value
+
+    # Selects a maistro.security.permission_policy.PERMISSION_PRESETS entry.
+    permission_preset: str = "none"
+    # Explicit tool_name -> [role, ...] overrides, applied on top of the preset.
+    permissions: dict[str, list[str]] = Field(default_factory=dict)
+    # Defaults False: no admin unlock path exists yet for the 3-strike ladder
+    # (InMemoryStrikeTracker.unlock()/.enable() have no HTTP route, CLI
+    # command, or admin surface) -- enabling this can lock an owner out of
+    # their own homelab instance with no recovery short of a process restart.
+    strike_tracking_enabled: bool = False
 
 
 class CORSConfig(BaseModel):
@@ -113,6 +141,7 @@ class AgentConfig(BaseModel):
     database_url: str = ""
     redis_url: str = ""
     agents_dir: str = ""
+    provider_config_path: str = ""
     litellm_url: str = "http://litellm:4000"
     litellm_key: str = ""
     router_api_key: str = ""

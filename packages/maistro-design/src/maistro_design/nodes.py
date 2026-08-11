@@ -51,7 +51,8 @@ class DesignOrchestrateNode(BaseNode[DesignOrchestrateIn, DesignOrchestrateOut])
     """
 
     kind: ClassVar[str] = "design.orchestrate"
-    kind_category: ClassVar[str] = "composite"
+    # Bare ClassVar (not [str]) to inherit BaseNode's KindCategory literal type.
+    kind_category: ClassVar = "composite"
     input_schema: ClassVar[type[BaseModel]] = DesignOrchestrateIn
     output_schema: ClassVar[type[BaseModel]] = DesignOrchestrateOut
     cost_hint: ClassVar[float] = 1.0

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type ReactNode } from "react";
+import { usePmPoc } from "../context/PocMode";
 
 type Role = "user" | "assistant";
 type StepStatus = "running" | "done" | "error";
@@ -28,11 +29,19 @@ interface Session {
   createdAt: Date;
 }
 
-const SUGGESTED_PROMPTS_HEADING = "AI Project Manager — ask about your sprint, run research, generate documents";
-const SUGGESTED_PROMPTS = [
+const PM_SUGGESTED_PROMPTS_HEADING =
+  "AI Project Manager — ask about your sprint, run research, generate documents";
+const PM_SUGGESTED_PROMPTS = [
   "What are my top blockers this sprint?",
   "Research competitors to Cursor AI",
   "Draft a PRD for real-time collaboration",
+];
+
+const SUGGESTED_PROMPTS_HEADING = "Chat, then turn it into an agent, a DAG, or a recurring workflow";
+const SUGGESTED_PROMPTS = [
+  "What agents and workflows do I already have?",
+  "Build a DAG workflow for this and run it",
+  "Turn this into an agent I can reuse",
 ];
 
 // Keep the request payload bounded — mirrors the shipped client (messages.slice(-20)).
@@ -175,6 +184,9 @@ function ToolSteps({ steps }: { steps: ToolStep[] }) {
 }
 
 export default function ChatPage() {
+  const pmPoc = usePmPoc();
+  const suggestedPromptsHeading = pmPoc ? PM_SUGGESTED_PROMPTS_HEADING : SUGGESTED_PROMPTS_HEADING;
+  const suggestedPrompts = pmPoc ? PM_SUGGESTED_PROMPTS : SUGGESTED_PROMPTS;
   const [models, setModels] = useState<string[]>([]);
   const MODELS = models;
   const [sessions, setSessions] = useState<Session[]>([createSession()]);
@@ -466,9 +478,9 @@ export default function ChatPage() {
             {isEmpty && (
               <div className="empty-state">
                 <p className="empty-title">What can I help you with?</p>
-                <p className="empty-subtitle">{SUGGESTED_PROMPTS_HEADING}</p>
+                <p className="empty-subtitle">{suggestedPromptsHeading}</p>
                 <div className="suggested-prompts">
-                  {SUGGESTED_PROMPTS.map((p) => (
+                  {suggestedPrompts.map((p) => (
                     <button
                       key={p}
                       className="card prompt-btn"

@@ -19,7 +19,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.eval_bootstrap")
 
@@ -44,7 +44,7 @@ async def discover_quality_bar(topic: str, audience: str = "") -> dict[str, Any]
     for q in queries:
         await asyncio.sleep(1.1)
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
+            async with shared_client(timeout=15.0) as client:
                 r = await client.get(
                     "https://api.search.brave.com/res/v1/web/search",
                     headers={"X-Subscription-Token": brave_key, "Accept": "application/json"},
@@ -116,7 +116,7 @@ Example for children's books:
 Output JSON: {{"criteria": [{{"name": str, "description": str, "weight": int, "positive_signals": [str], "negative_signals": [str]}}]}}"""
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

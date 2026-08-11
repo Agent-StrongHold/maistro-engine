@@ -9,11 +9,63 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 
+from maistro.http import shared_client
+
 logger = logging.getLogger(__name__)
+
+OnResponseHook = Callable[[dict[str, Any], httpx.Response], None]
+
+
+class StubLLMNotAllowedError(RuntimeError):
+    """No LLM gateway is configured and the stub opt-in is off.
+
+    F3 (loud degraded modes): the graph runner used to hand back a
+    success-shaped `{"response": "stub: no LLM configured", "done": true}`
+    whenever `LITELLM_*` was unset, so a misconfigured deployment produced
+    fake successes. It now refuses instead.
+    """
+
+
+#: Actionable message for `StubLLMNotAllowedError` — names what is unset and
+#: both ways forward (configure a real gateway, or opt in to labelled stubs).
+STUB_LLM_REFUSAL = (
+    "No LLM gateway is configured: neither LITELLM_API_BASE nor LITELLM_PROXY_URL "
+    "is set. Refusing to run against a stub LLM, because a stub answer is noise "
+    "and would look like a real result. Either set LITELLM_API_BASE (with "
+    "LITELLM_API_KEY) to a real gateway, or set ALLOW_STUB_LLM=true "
+    "(Settings.allow_stub_llm) to explicitly opt in to clearly-labelled stub "
+    "responses."
+)
+
+
+def llm_gateway_configured() -> bool:
+    """True when a real LLM gateway base URL is configured.
+
+    The single source of truth for "is this conductor degraded?" — used by
+    `_build_llm_call` to decide whether to refuse, and by the health endpoint
+    to report `degraded`.
+    """
+    return bool(os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL"))
+
+
+def stub_llm_allowed() -> bool:
+    """True when the operator explicitly opted in to stub LLM responses.
+
+    Fails closed: if settings cannot be loaded at all, the opt-in is off and
+    `_build_llm_call` refuses rather than silently stubbing.
+    """
+    try:
+        from config import get_settings
+
+        return bool(get_settings().allow_stub_llm)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("allow_stub_llm_settings_unavailable: %s", exc)
+        return False
 
 
 # Static subprocess body. All untrusted values (system prompt, task description,
@@ -47,8 +99,23 @@ r = httpx.post(
     timeout=120,
 )
 r.raise_for_status()
-print(r.json()["choices"][0]["message"]["content"])
+data = r.json()
+print(json.dumps({"content": data["choices"][0]["message"]["content"], "usage": data.get("usage")}))
 """
+
+
+def _parse_node_script_output(raw_output: str) -> tuple[str, dict[str, Any] | None]:
+    """Parse `_NODE_SCRIPT`'s stdout JSON envelope into (content, usage).
+
+    Falls back to treating `raw_output` itself as the content with no usage
+    if it isn't the expected JSON shape -- a malformed envelope must degrade
+    gracefully, not break sandboxed execution.
+    """
+    try:
+        envelope = json.loads(raw_output.strip())
+        return str(envelope.get("content") or ""), envelope.get("usage")
+    except (json.JSONDecodeError, AttributeError, TypeError):
+        return raw_output.strip(), None
 
 
 def _run_node_subprocess(
@@ -87,11 +154,13 @@ def _run_node_subprocess(
             )
         )
         if result["success"]:
+            content, usage = _parse_node_script_output(result["output"])
             return {
                 "role": node.get("role", "worker"),
-                "response": result["output"].strip(),
+                "response": content,
                 "success": True,
                 "isolation": result.get("isolation", "unknown"),
+                "usage": usage,
             }
         return {
             "role": node.get("role", "worker"),
@@ -255,6 +324,7 @@ async def _run_llm_node(
     inbound: dict[str, set[str]],
     results: dict[str, dict[str, Any]],
     task_desc: str,
+    on_response: OnResponseHook | None = None,
 ) -> None:
     """Run an in-process node: a tool node, or an LLM call. Writes into ``results``."""
     role = node.get("role", "worker")
@@ -280,10 +350,35 @@ async def _run_llm_node(
         {"role": "user", "content": user_content},
     ]
     try:
-        response = await _build_llm_call()(messages, model=model)
+        response = await _build_llm_call(on_response)(messages, model=model)
         results[nid] = {"role": role, "response": response, "success": True}
     except Exception as e:
         results[nid] = {"role": role, "response": str(e), "success": False}
+
+
+def _invoke_subprocess_usage_hooks(
+    subprocess_nodes: list[str],
+    results: dict[str, dict[str, Any]],
+    on_response: OnResponseHook | None,
+) -> None:
+    """After a subprocess wave's results are in, invoke `on_response` for
+    every node result carrying a usage payload. Extracted from
+    `_run_subprocess_wave` so this parent-process-only logic is directly
+    unit-testable without needing a real `ProcessPoolExecutor` fork -- a
+    sandboxed node's actual `httpx.Response` never leaves its child process,
+    so a synthetic one carrying just the usage body stands in for the hook.
+    """
+    if on_response is None:
+        return
+    for nid in subprocess_nodes:
+        usage = results.get(nid, {}).get("usage")
+        if usage is None:
+            continue
+        try:
+            synthetic_response = httpx.Response(200, json={"usage": usage})
+            on_response({"usage": usage}, synthetic_response)
+        except Exception:
+            logger.warning("graph_runner_subprocess_on_response_hook_failed", exc_info=True)
 
 
 async def _run_subprocess_wave(
@@ -294,8 +389,16 @@ async def _run_subprocess_wave(
     task_desc: str,
     node_env: dict[str, str],
     execution_mode: str = "autonomous",
+    on_response: OnResponseHook | None = None,
 ) -> None:
-    """Run heavy/risky nodes each in their own process; write results in place."""
+    """Run heavy/risky nodes each in their own process; write results in place.
+
+    `on_response`, if given, is invoked afterward via
+    `_invoke_subprocess_usage_hooks` -- restoring the primary usage-based
+    recording path this tier skipped entirely before (ambient header
+    reconciliation still isn't available here; headers aren't captured
+    across the subprocess boundary).
+    """
     if not subprocess_nodes:
         return
     import asyncio
@@ -324,6 +427,7 @@ async def _run_subprocess_wave(
         subprocess_results = await asyncio.gather(*futures)
         for nid, res in zip(subprocess_nodes, subprocess_results, strict=True):
             results[nid] = res
+        _invoke_subprocess_usage_hooks(subprocess_nodes, results, on_response)
 
 
 async def execute_dag(
@@ -332,6 +436,7 @@ async def execute_dag(
     user_id: str = "",
     user_credentials: dict[str, str] | None = None,
     execution_mode: str = "autonomous",
+    on_response: OnResponseHook | None = None,
 ) -> dict[str, Any]:
     """Execute a DAG — each node is its own process, scoped to user context. No cross-user data leakage.
 
@@ -339,6 +444,9 @@ async def execute_dag(
     (unattended — scheduler, optimizer, evolve harness). Autonomous is the
     default and requires gVisor-or-better sandbox isolation (ADR-093); on a
     shared-kernel-only host, sandboxed nodes refuse rather than run full-auto.
+
+    `on_response`, if given, is forwarded to every in-process LLM node's
+    `_build_llm_call` -- the additive quota-recording seam described there.
     """
     import asyncio
 
@@ -395,14 +503,23 @@ async def execute_dag(
 
         # Run sandboxed nodes (isolated execution)
         await _run_subprocess_wave(
-            sandbox_nodes, node_map, inbound, results, task_desc, node_env, execution_mode
+            sandbox_nodes,
+            node_map,
+            inbound,
+            results,
+            task_desc,
+            node_env,
+            execution_mode,
+            on_response=on_response,
         )
 
         # Run async nodes concurrently (light, safe — in-process, no GIL issue for I/O)
         if async_nodes:
             await asyncio.gather(
                 *[
-                    _run_llm_node(node_map[nid], nid, inbound, results, task_desc)
+                    _run_llm_node(
+                        node_map[nid], nid, inbound, results, task_desc, on_response=on_response
+                    )
                     for nid in async_nodes
                 ]
             )
@@ -479,7 +596,17 @@ async def execute_champion() -> dict[str, Any]:
     return result
 
 
-def _build_llm_call():
+def _build_llm_call(on_response: OnResponseHook | None = None):
+    """Build the `llm_call` graph nodes/DAGs call through.
+
+    `on_response`, if given, is invoked with the parsed body and the raw
+    response right after a real (non-stub) call succeeds -- the same
+    additive quota-recording seam `pm_llm_call.maistro_llm_call` /
+    `conductor._call_gateway` expose in maistro-core, so `maistro.quota.recorder`
+    can be wired into hive-conductor's Graph Runner traffic too. A failing
+    hook is logged and swallowed since instrumentation on an already-
+    successful call must never turn into a failure the caller has to handle.
+    """
     import os
 
     base = os.environ.get("LITELLM_API_BASE") or os.environ.get("LITELLM_PROXY_URL") or ""
@@ -487,9 +614,19 @@ def _build_llm_call():
     model = os.environ.get("CHAT_DEFAULT_MODEL", "gemini-3.5-flash")
 
     if not base:
+        # F3: hard-fail by default. A stub answer dressed up as a success is
+        # worse than no answer — refuse unless the operator opted in.
+        if not stub_llm_allowed():
+            logger.error("llm_not_configured_refusing_stub")
+            raise StubLLMNotAllowedError(STUB_LLM_REFUSAL)
 
         async def _stub_llm(messages: list[dict], **kwargs: Any) -> str:
-            return json.dumps({"response": "stub: no LLM configured", "done": True})
+            logger.warning("llm_stub_response_emitted (ALLOW_STUB_LLM opt-in is on)")
+            # `response`/`done` keep the shape callers already parse; `stub`
+            # is the unambiguous marker (same flag maistro-evolve refuses to
+            # verify against, SPEC-202 signal honesty) so a stub result can
+            # never be mistaken for a real one downstream.
+            return json.dumps({"response": "stub: no LLM configured", "done": True, "stub": True})
 
         return _stub_llm
 
@@ -517,10 +654,15 @@ def _build_llm_call():
             }
         else:
             payload["response_format"] = {"type": "json_object"}
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with shared_client(timeout=120.0) as client:
             resp = await client.post(f"{base}/chat/completions", json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()
+            if on_response is not None:
+                try:
+                    on_response(data, resp)
+                except Exception:
+                    logger.warning("graph_runner_on_response_hook_failed", exc_info=True)
             content = data["choices"][0]["message"]["content"]
             logger.info(
                 "graph_llm_response model=%s content_len=%d content_start=%s",
@@ -533,8 +675,12 @@ def _build_llm_call():
     return _httpx_llm
 
 
-async def execute_dag_streaming(dag_data: dict):
-    """Yield progress events as the DAG executes, one per node completion."""
+async def execute_dag_streaming(dag_data: dict, *, on_response: OnResponseHook | None = None):
+    """Yield progress events as the DAG executes, one per node completion.
+
+    `on_response`, if given, is forwarded to the graph's `llm_call` -- see
+    `_build_llm_call` for the additive quota-recording seam this exposes.
+    """
     from maistro.graph.executor import run_graph
     from maistro.graph.types import GraphBlackboard, GraphConfig, GraphEdge, NodeConfig
 
@@ -575,11 +721,12 @@ async def execute_dag_streaming(dag_data: dict):
         task_objective=dag_data.get("name", "Unnamed DAG"),
         workspace=dag_data.get("workspace", "/tmp/maistro-workspace"),  # nosec B108
     )
-    llm_call = _build_llm_call()
-
     yield {"status": "started", "node_count": len(nodes_cfg), "entry": entry_node}
 
     try:
+        # Inside the try so an unconfigured LLM (F3) surfaces as a structured
+        # `failed` event on the stream instead of raising out of the generator.
+        llm_call = _build_llm_call(on_response)
         result = await run_graph(
             task=dag_data.get("description", dag_data.get("name", "")),
             config=config,

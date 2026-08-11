@@ -81,9 +81,18 @@ Turing / deferred-to-vN) and **`DECISION-BACKLOG.md`** (in-scope but not yet dec
 | ADR-069 | v1 | Proposed | 2026-05-30 | — | 2026-05-30 00:14 CDT | Code registry — versioned, signed, microVM-isolated execution of code refs. |
 | ADR-070 | v1 | Proposed | 2026-05-30 | — | 2026-05-30 08:10 CDT | The Repertoire pattern — reuse-first cascade (perform/improvise/rehearse/compose). |
 | ADR-071 | v1 | Proposed | 2026-05-30 | — | 2026-05-30 08:10 CDT | General task planner & orchestration — SuperPlanner waves as a Repertoire ensemble. |
+| ADR-076 | v2 | Accepted | 2026-05-30 | 2026-06-10 | 2026-07-29 | HTTP API versioning via content negotiation on `Accept`/`api_version` — not yet implemented; business routes remain plain `/v1`-path-mounted (tracked in KNOWN-GAPS.md). |
 | ADR-091 | v1 | Proposed | 2026-06-02 | — | 2026-06-02 | Memory model reconciliation — storage types vs context assembly layers (7-tier filter, Layer 0-4 taxonomy, ContextAssemblyPolicy). |
 | ADR-099 | v1 | Proposed | 2026-06-12 | — | 2026-06-12 | Builders pipeline as a DAG (Epic-15 recreation) with gated verify-and-revise loops and iteration budgets. |
 | ADR-100 | v1 | Accepted | 2026-06-14 | 2026-06-14† | 2026-06-14 | Bundled (T1) + cataloged (T2) Open Design design systems for maistro-design, with a content scan and one-click catalog import. |
+| ADR-070426-3a1f | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Adopt the A2UI declarative agent-driven UI protocol (v0.10 pin); catalog approval maps to TrustTier; closes [engine-090]/[engine-091]. |
+| ADR-070426-c4b2 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | CapabilityProfile — per-agent (capability, intent_class) → permission / EMA skill score / measured cost vector; router substrate. |
+| ADR-070426-77d1 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Substrate / tool / agent taxonomy — light agents structurally hold zero tools; substrate-purity validation at registration. |
+| ADR-070426-b5e9 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Six-tier priority system (P0–P5) refining ADR-010 lanes — routing weight, model bias, token multiplier, eviction order. |
+| ADR-070426-e8a3 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Session Trust Floor — monotonically non-increasing per-session trust reducer; compaction cannot heal it; WardenVerdict.confidence. |
+| ADR-070426-9f47 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Autonoetic self-model threat model — guardrail invariants G1–G18 as mandatory AC for the turing migration. |
+| ADR-070426-e9da | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Header-based CSRF defense (`X-Maistro-Request`) for hive-conductor's cookie-authenticated mutations; docs-only, flags the conftest fixture update as acceptance-blocking. |
+| ADR-070426-ac56 | v1 | Proposed | 2026-07-04 | — | 2026-07-04 | Wire `CostAwareRouter.fallback_chain()` into the conductor's retry loop for cross-model fallback; docs-only, DI change deferred to SPEC-280. |
 
 *Turing-specific ADRs (autonoetic self-model) are tracked as a separate set — see `OUT-OF-SCOPE.md`
 §Turing and `DECISION-BACKLOG.md` §Turing. ADR-061 (maistro-design-package) and ADR-100 (its

@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 import httpx
 
+from maistro.http import shared_client
 from maistro.tasks.models import TaskCreate, TaskResponse, TaskStatus
 
 _TERMINAL = frozenset({"completed", "failed"})
@@ -175,7 +176,7 @@ class MaistroServerTaskBackend:
         return headers
 
     async def submit(self, create: TaskCreate, *, user_id: str) -> TaskRecord:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.post(
                 f"{self._base}/tasks",
                 headers=self._headers(),
@@ -203,7 +204,7 @@ class MaistroServerTaskBackend:
             return [TaskRecord(t) for t in items]
 
     async def cancel(self, task_id: str) -> bool:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.delete(f"{self._base}/tasks/{task_id}", headers=self._headers())
             if r.status_code == 404:
                 return False
@@ -213,7 +214,7 @@ class MaistroServerTaskBackend:
             return bool(r.json().get("cancelled", False))
 
     async def iter_events(self, task_id: str) -> AsyncIterator[dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             while True:
                 r = await client.get(f"{self._base}/tasks/{task_id}", headers=self._headers())
                 if r.status_code == 404:

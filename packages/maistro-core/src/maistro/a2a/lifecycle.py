@@ -45,6 +45,7 @@ class TaskQueue:
             Task ID
         """
         task_id = str(uuid.uuid4())
+        task["id"] = task_id
         if priority not in self._queue:
             self._queue[priority] = []
         self._queue[priority].append(task)

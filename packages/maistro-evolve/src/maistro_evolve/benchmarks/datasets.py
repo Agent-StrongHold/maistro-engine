@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 IFEVAL_SAMPLES: list[dict[str, Any]] = [
@@ -838,6 +839,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["recursive", "isinstance", "extend", "flatten"],
         "test_input": "[[1, [2, 3]], [4, [5, [6]]]]",
         "expected_output": "[1, 2, 3, 4, 5, 6]",
+        "call_args": [[[1, [2, 3]], [4, [5, [6]]]]],
+        "expected_value": [1, 2, 3, 4, 5, 6],
     },
     {
         "id": "swe_02",
@@ -846,6 +849,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["@", ".", "split"],
         "test_input": "'test@com'",
         "expected_output": "False",
+        "call_args": ["test@com"],
+        "expected_value": False,
     },
     {
         "id": "swe_03",
@@ -854,6 +859,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["isinstance", "dict", "recursive"],
         "test_input": "({'a': {'b': 1, 'c': 2}}, {'a': {'b': 3, 'd': 4}})",
         "expected_output": "{'a': {'b': 3, 'c': 2, 'd': 4}}",
+        "call_args": [{"a": {"b": 1, "c": 2}}, {"a": {"b": 3, "d": 4}}],
+        "expected_value": {"a": {"b": 3, "c": 2, "d": 4}},
     },
     {
         "id": "swe_04",
@@ -862,6 +869,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["fromisoformat", "timezone", "strptime"],
         "test_input": "'2024-01-15T10:30:00+00:00'",
         "expected_output": "datetime(2024, 1, 15, 10, 30, tzinfo=timezone.utc)",
+        "call_args": ["2024-01-15T10:30:00+00:00"],
+        "expected_value": datetime(2024, 1, 15, 10, 30, tzinfo=UTC),
     },
     {
         "id": "swe_05",
@@ -870,6 +879,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["range", "len", "lst"],
         "test_input": "([1, 2, 3, 4, 5], 2)",
         "expected_output": "[[1, 2], [3, 4], [5]]",
+        "call_args": [[1, 2, 3, 4, 5], 2],
+        "expected_value": [[1, 2], [3, 4], [5]],
     },
     {
         "id": "swe_06",
@@ -878,6 +889,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["strip", "lower", "punctuation"],
         "test_input": "'Hello, hello! World. world?'",
         "expected_output": "{'hello': 2, 'world': 2}",
+        "call_args": ["Hello, hello! World. world?"],
+        "expected_value": {"hello": 2, "world": 2},
     },
     {
         "id": "swe_07",
@@ -886,6 +899,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["float", "ZeroDivisionError", "ValueError"],
         "test_input": "(10, '0')",
         "expected_output": "None",
+        "call_args": [10, "0"],
+        "expected_value": None,
     },
     {
         "id": "swe_08",
@@ -894,6 +909,17 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["set", "seen", "dict"],
         "test_input": "[3, 1, 2, 3, 2, 1, 4]",
         "expected_output": "[3, 1, 2, 4]",
+        # The stated bug is complexity, not correctness — the O(n^2) original
+        # already returns the right answer on small input, so a small
+        # call_args/expected_value pair (matching test_input/expected_output
+        # above, which stay small for the prompt shown to the model) couldn't
+        # ever fail it. call_args here is deliberately large enough (120k
+        # elements, 60k unique, real duplicates) that an O(n^2) "fix" reliably
+        # exceeds run_function_check's default 10s timeout (~19s measured)
+        # while a real O(n) fix finishes in milliseconds — the timeout is the
+        # check, same mechanism swe_10 (fibonacci) already relies on.
+        "call_args": [[i % 60_000 for i in range(120_000)]],
+        "expected_value": list(range(60_000)),
     },
     {
         "id": "swe_09",
@@ -902,6 +928,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["re", "sub", "lower"],
         "test_input": "'myCamelCaseString'",
         "expected_output": "'my_camel_case_string'",
+        "call_args": ["myCamelCaseString"],
+        "expected_value": "my_camel_case_string",
     },
     {
         "id": "swe_10",
@@ -910,90 +938,8 @@ SWEBENCH_SAMPLES: list[dict[str, Any]] = [
         "expected_keywords": ["memo", "cache", "iter", "dict", "loop"],
         "test_input": "100",
         "expected_output": "354224848179261915075",
-    },
-]
-
-
-TERMINALBENCH_SAMPLES: list[dict[str, Any]] = [
-    {
-        "id": "tb_01",
-        "task": "Find all Python files in the current directory tree that contain the word 'TODO'",
-        "expected_command_keywords": ["grep", "find", "-r", "*.py", "TODO"],
-        "accept_alternatives": ["rg TODO --type py", "grep -rn TODO --include='*.py'"],
-    },
-    {
-        "id": "tb_02",
-        "task": "Kill the process listening on port 8080",
-        "expected_command_keywords": ["lsof", "kill", "8080", "fuser"],
-        "accept_alternatives": ["kill $(lsof -ti:8080)", "fuser -k 8080/tcp"],
-    },
-    {
-        "id": "tb_03",
-        "task": "Show the last 50 lines of a file called app.log, following new lines as they're added",
-        "expected_command_keywords": ["tail", "-f", "-n", "50", "app.log"],
-        "accept_alternatives": ["tail -fn 50 app.log", "tail --follow -n 50 app.log"],
-    },
-    {
-        "id": "tb_04",
-        "task": "Create a compressed tar archive of the directory 'myproject' named 'backup.tar.gz'",
-        "expected_command_keywords": ["tar", "-czf", "backup.tar.gz", "myproject"],
-        "accept_alternatives": [
-            "tar -czvf backup.tar.gz myproject",
-            "tar --create --gzip --file backup.tar.gz myproject",
-        ],
-    },
-    {
-        "id": "tb_05",
-        "task": "Show disk usage of all directories in the current path, sorted by size, human readable",
-        "expected_command_keywords": ["du", "-h", "sort"],
-        "accept_alternatives": ["du -sh * | sort -h", "du -h --max-depth=1 | sort -h"],
-    },
-    {
-        "id": "tb_06",
-        "task": "Find and delete all files larger than 100MB in /tmp/",
-        "expected_command_keywords": ["find", "/tmp", "-size", "+100M", "-delete"],
-        "accept_alternatives": ["find /tmp -size +100M -exec rm {} \\;"],
-    },
-    {
-        "id": "tb_07",
-        "task": "Count the number of lines in all .py files in the current directory",
-        "expected_command_keywords": ["find", "wc", "-l", ".py"],
-        "accept_alternatives": [
-            "wc -l $(find . -name '*.py')",
-            "find . -name '*.py' -exec cat {} + | wc -l",
-        ],
-    },
-    {
-        "id": "tb_08",
-        "task": "Download a file from a URL and show download progress",
-        "expected_command_keywords": ["curl", "-O", "wget", "progress"],
-        "accept_alternatives": ["curl -O --progress-bar URL", "wget URL"],
-    },
-    {
-        "id": "tb_09",
-        "task": "List all Docker containers including stopped ones, showing only their names and status",
-        "expected_command_keywords": ["docker", "ps", "-a", "format"],
-        "accept_alternatives": ["docker ps -a --format 'table {{.Names}}\\t{{.Status}}'"],
-    },
-    {
-        "id": "tb_10",
-        "task": "Replace all occurrences of 'old_string' with 'new_string' in file.txt, creating a backup",
-        "expected_command_keywords": ["sed", "-i", ".bak", "s/old_string/new_string/g", "file.txt"],
-        "accept_alternatives": ["sed -i.bak 's/old_string/new_string/g' file.txt"],
-    },
-    {
-        "id": "tb_11",
-        "task": "Show all established TCP connections",
-        "expected_command_keywords": ["ss", "netstat", "ESTABLISHED", "tcp"],
-        "accept_alternatives": ["ss -t state established", "netstat -tn state established"],
-    },
-    {
-        "id": "tb_12",
-        "task": "Recursively change permissions of all directories to 755 and files to 644 in /var/www/",
-        "expected_command_keywords": ["find", "chmod", "755", "644", "/var/www"],
-        "accept_alternatives": [
-            "find /var/www -type d -exec chmod 755 {} \\; && find /var/www -type f -exec chmod 644 {} \\;"
-        ],
+        "call_args": [100],
+        "expected_value": 354224848179261915075,
     },
 ]
 

@@ -27,7 +27,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.ui_auto")
 
@@ -86,7 +86,7 @@ Criteria:
 Reply JSON: {"score": int, "clarity": int, "density": int, "speed": int, "hierarchy": int, "functionality": int, "top_issue": str, "fix": str}"""
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -137,7 +137,7 @@ Return JSON: {{"description": "what this fixes", "old": "exact substring to find
 The "old" MUST be an exact substring of the code above."""
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with shared_client(timeout=60.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

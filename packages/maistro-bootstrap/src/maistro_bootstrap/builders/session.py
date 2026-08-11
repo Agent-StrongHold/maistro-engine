@@ -6,14 +6,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from maistro_bootstrap.builders.sandbox import LocalWorktreeSandbox
+from maistro_bootstrap.builders.sandbox import BuilderSandbox
 
 
 @dataclass
 class BuilderSession:
     """Holds the sandbox and conversation history for one coding session."""
 
-    sandbox: LocalWorktreeSandbox
+    # The `BuilderSandbox` protocol, not the concrete local sandbox — the RSI
+    # loop drops a `ContainerBuilderSandbox` in here for ADR-093 isolation.
+    sandbox: BuilderSandbox
     messages: list[dict[str, Any]] = field(default_factory=list)
     workspace_path: Path | None = None
 

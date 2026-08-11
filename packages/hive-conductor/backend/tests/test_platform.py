@@ -34,7 +34,7 @@ def client(app):
     return TestClient(app)
 
 
-# authed_client comes from conftest.py — real POST /v1/auth/login session.
+# admin_client comes from conftest.py — real POST /v1/auth/login session.
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -59,13 +59,13 @@ class TestHealth:
 
 
 class TestDashboardLayout:
-    def test_get_layout(self, authed_client):
-        r = authed_client.get("/v1/dashboard/layout")
+    def test_get_layout(self, admin_client):
+        r = admin_client.get("/v1/dashboard/layout")
         assert r.status_code == 200
         data = r.json()
         assert "tabs" in data or "widgets" in data
 
-    def test_put_layout_with_tabs(self, authed_client):
+    def test_put_layout_with_tabs(self, admin_client):
         layout = {
             "tabs": [
                 {
@@ -83,10 +83,10 @@ class TestDashboardLayout:
             ],
             "activeTab": 0,
         }
-        r = authed_client.put("/v1/dashboard/layout", json=layout)
+        r = admin_client.put("/v1/dashboard/layout", json=layout)
         assert r.status_code == 200
 
-    def test_layout_persists(self, authed_client):
+    def test_layout_persists(self, admin_client):
         layout = {
             "tabs": [
                 {
@@ -98,34 +98,34 @@ class TestDashboardLayout:
             ],
             "activeTab": 0,
         }
-        authed_client.put("/v1/dashboard/layout", json=layout)
-        r = authed_client.get("/v1/dashboard/layout")
+        admin_client.put("/v1/dashboard/layout", json=layout)
+        r = admin_client.get("/v1/dashboard/layout")
         assert r.json()["tabs"][0]["name"] == "T1"
 
-    def test_metrics_endpoint(self, authed_client):
-        r = authed_client.get("/v1/dashboard/metrics")
+    def test_metrics_endpoint(self, admin_client):
+        r = admin_client.get("/v1/dashboard/metrics")
         assert r.status_code == 200
         data = r.json()
         assert "active_agents" in data
 
-    def test_widget_examples(self, authed_client):
-        r = authed_client.get("/v1/dashboard/widget-examples")
+    def test_widget_examples(self, admin_client):
+        r = admin_client.get("/v1/dashboard/widget-examples")
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
-    def test_demos_list(self, authed_client):
-        r = authed_client.get("/v1/dashboard/demos")
+    def test_demos_list(self, admin_client):
+        r = admin_client.get("/v1/dashboard/demos")
         assert r.status_code == 200
 
-    def test_deck_templates(self, authed_client):
-        r = authed_client.get("/v1/dashboard/deck-templates")
+    def test_deck_templates(self, admin_client):
+        r = admin_client.get("/v1/dashboard/deck-templates")
         assert r.status_code == 200
         templates = r.json()
         assert len(templates) >= 30
         assert all("id" in t and "category" in t and "html" in t for t in templates)
 
-    def test_deck_templates_filter_by_category(self, authed_client):
-        r = authed_client.get("/v1/dashboard/deck-templates?category=KPI")
+    def test_deck_templates_filter_by_category(self, admin_client):
+        r = admin_client.get("/v1/dashboard/deck-templates?category=KPI")
         assert r.status_code == 200
         templates = r.json()
         assert all(t["category"] == "KPI" for t in templates)
@@ -137,15 +137,15 @@ class TestDashboardLayout:
 
 
 class TestWidgets:
-    def test_airtable_widget_no_creds(self, authed_client):
-        r = authed_client.get("/v1/widgets/airtable?table=test&group_by=Status&max_records=10")
+    def test_airtable_widget_no_creds(self, admin_client):
+        r = admin_client.get("/v1/widgets/airtable?table=test&group_by=Status&max_records=10")
         assert r.status_code == 200
         data = r.json()
         # Should return error (no creds), not crash
         assert "error" in data or "breakdown" in data
 
-    def test_jira_widget_no_creds(self, authed_client):
-        r = authed_client.get("/v1/widgets/jira?project=TEST")
+    def test_jira_widget_no_creds(self, admin_client):
+        r = admin_client.get("/v1/widgets/jira?project=TEST")
         assert r.status_code == 200
         data = r.json()
         assert "error" in data or "issues" in data
@@ -157,8 +157,8 @@ class TestWidgets:
 
 
 class TestCredentials:
-    def test_list_credentials(self, authed_client):
-        r = authed_client.get("/v1/credentials")
+    def test_list_credentials(self, admin_client):
+        r = admin_client.get("/v1/credentials")
         assert r.status_code == 200
         data = r.json()
         assert "credentials" in data
@@ -166,20 +166,20 @@ class TestCredentials:
         ids = [c["id"] for c in data["credentials"]]
         assert "airtable" in ids
 
-    def test_get_credential_config(self, authed_client):
-        r = authed_client.get("/v1/credentials/airtable/config")
+    def test_get_credential_config(self, admin_client):
+        r = admin_client.get("/v1/credentials/airtable/config")
         assert r.status_code == 200
         assert "config" in r.json()
 
-    def test_save_credential_config(self, authed_client):
-        r = authed_client.put(
+    def test_save_credential_config(self, admin_client):
+        r = admin_client.put(
             "/v1/credentials/airtable/config", json={"config": {"base_id": "appTEST123"}}
         )
         assert r.status_code == 200
         assert r.json()["config"]["base_id"] == "appTEST123"
 
-    def test_reject_unknown_config_fields(self, authed_client):
-        r = authed_client.put(
+    def test_reject_unknown_config_fields(self, admin_client):
+        r = admin_client.put(
             "/v1/credentials/airtable/config", json={"config": {"evil_field": "hack"}}
         )
         assert r.status_code == 400
@@ -292,8 +292,8 @@ class TestChatCompletion:
 
 
 class TestAgents:
-    def test_list_agents(self, authed_client):
-        r = authed_client.get("/v1/agents")
+    def test_list_agents(self, admin_client):
+        r = admin_client.get("/v1/agents")
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
@@ -304,12 +304,12 @@ class TestAgents:
 
 
 class TestSettings:
-    def test_get_settings(self, authed_client):
-        r = authed_client.get("/v1/settings")
+    def test_get_settings(self, admin_client):
+        r = admin_client.get("/v1/settings")
         assert r.status_code == 200
 
-    def test_get_models(self, authed_client):
-        r = authed_client.get("/v1/settings/models")
+    def test_get_models(self, admin_client):
+        r = admin_client.get("/v1/settings/models")
         assert r.status_code == 200
         data = r.json()
         assert "models" in data
@@ -321,17 +321,17 @@ class TestSettings:
 
 
 class TestDAGs:
-    def test_list_dags(self, authed_client):
-        r = authed_client.get("/v1/dags")
+    def test_list_dags(self, admin_client):
+        r = admin_client.get("/v1/dags")
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
-    def test_dag_runs(self, authed_client):
-        r = authed_client.get("/v1/dag-runs")
+    def test_dag_runs(self, admin_client):
+        r = admin_client.get("/v1/dag-runs")
         assert r.status_code == 200
 
-    def test_dag_metrics(self, authed_client):
-        r = authed_client.get("/v1/dag-metrics")
+    def test_dag_metrics(self, admin_client):
+        r = admin_client.get("/v1/dag-metrics")
         assert r.status_code == 200
 
 
@@ -341,13 +341,13 @@ class TestDAGs:
 
 
 class TestMemory:
-    def test_list_entries(self, authed_client):
-        r = authed_client.get("/v1/memory/entries")
+    def test_list_entries(self, admin_client):
+        r = admin_client.get("/v1/memory/entries")
         assert r.status_code == 200
         assert isinstance(r.json(), list)
 
-    def test_list_namespaces(self, authed_client):
-        r = authed_client.get("/v1/memory/namespaces")
+    def test_list_namespaces(self, admin_client):
+        r = admin_client.get("/v1/memory/namespaces")
         assert r.status_code == 200
 
 
@@ -377,12 +377,12 @@ class TestPersistence:
 
 
 class TestMCP:
-    def test_list_servers(self, authed_client):
-        r = authed_client.get("/v1/mcp/servers")
+    def test_list_servers(self, admin_client):
+        r = admin_client.get("/v1/mcp/servers")
         assert r.status_code == 200
 
-    def test_list_tools(self, authed_client):
-        r = authed_client.get("/v1/mcp/tools")
+    def test_list_tools(self, admin_client):
+        r = admin_client.get("/v1/mcp/tools")
         assert r.status_code == 200
 
 
@@ -392,18 +392,18 @@ class TestMCP:
 
 
 class TestSchedules:
-    def test_list_schedules(self, authed_client):
-        r = authed_client.get("/v1/schedules")
+    def test_list_schedules(self, admin_client):
+        r = admin_client.get("/v1/schedules")
         assert r.status_code == 200
 
 
 class TestQuotas:
-    def test_providers(self, authed_client):
-        r = authed_client.get("/v1/quotas/providers")
+    def test_providers(self, admin_client):
+        r = admin_client.get("/v1/quotas/providers")
         assert r.status_code == 200
 
-    def test_models(self, authed_client):
-        r = authed_client.get("/v1/quotas/models")
+    def test_models(self, admin_client):
+        r = admin_client.get("/v1/quotas/models")
         assert r.status_code == 200
 
 

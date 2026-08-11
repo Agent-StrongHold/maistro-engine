@@ -152,3 +152,11 @@ class TestJudgeScore:
 
     def test_incorrect_keyword(self):
         assert judge_score("This is wrong.") <= 0.4
+
+    def test_yes_no_uses_word_boundaries(self):
+        # "yes"/"no" must be matched as whole words, not as substrings of
+        # other words. "eyes" contains "yes" and "knowledge" contains "no",
+        # but neither expresses a yes/no vote, so both should fall through to
+        # the neutral default rather than skewing the ratio.
+        assert judge_score("eyes") == 0.3
+        assert judge_score("knowledge") == 0.3

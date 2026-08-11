@@ -248,7 +248,7 @@ const api = {
         const h = img.naturalHeight * (ly.scale || 1);
         ctx.drawImage(img, 0, 0, w, h);
         ctx.restore();
-      } catch {}
+      } catch { /* best-effort draw; a tainted or unloadable source leaves the canvas as-is */ }
     }
     ctx.globalAlpha = 1;
 
@@ -276,7 +276,6 @@ const api = {
   },
 };
 
-export { IMAGE_MODELS };
 const PLANNER_MODEL = "gemini-flash";
 const PLANNER_PROMPT = `You are a scene decomposition engine for a layered image compositor. 
 

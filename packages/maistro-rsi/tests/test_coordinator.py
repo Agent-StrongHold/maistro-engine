@@ -155,9 +155,22 @@ class TestCycleResultBridge:
         import importlib
         import sys
 
-        for mod in ("maistro_rsi.coordinator", "maistro_rsi.runner", "maistro_rsi.selfbranch"):
-            sys.modules.pop(mod, None)
+        mod_names = ("maistro_rsi.coordinator", "maistro_rsi.runner", "maistro_rsi.selfbranch")
+        # Popping these from sys.modules (to force a fresh import below) mutates
+        # *process-global* interpreter state. Restoring the originals in a
+        # finally block is essential: leaving them popped corrupts every other
+        # test in the session that resolves "maistro_rsi.runner"/".selfbranch"
+        # by dotted string (e.g. monkeypatch.setattr("maistro_rsi.runner.x", ...)),
+        # since Python re-imports (and, once the popped originals are garbage
+        # collected, permanently replaces) those modules the next time anything
+        # references them.
+        saved = {name: sys.modules[name] for name in mod_names if name in sys.modules}
+        try:
+            for name in mod_names:
+                sys.modules.pop(name, None)
 
-        importlib.import_module("maistro_rsi.coordinator")
-        assert "maistro_rsi.runner" not in sys.modules
-        assert "maistro_rsi.selfbranch" not in sys.modules
+            importlib.import_module("maistro_rsi.coordinator")
+            assert "maistro_rsi.runner" not in sys.modules
+            assert "maistro_rsi.selfbranch" not in sys.modules
+        finally:
+            sys.modules.update(saved)

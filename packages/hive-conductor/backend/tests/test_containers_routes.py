@@ -186,40 +186,40 @@ def _no_docker_socket(monkeypatch):
     monkeypatch.setattr(containers_mod.os.path, "exists", lambda path: False)
 
 
-def test_list_containers_no_socket_returns_empty(authed_client: Any) -> None:
-    r = authed_client.get("/v1/containers")
+def test_list_containers_no_socket_returns_empty(admin_client: Any) -> None:
+    r = admin_client.get("/v1/containers")
     assert r.status_code == 200
     assert r.json() == []
 
 
-def test_get_container_no_socket_503(authed_client: Any) -> None:
-    r = authed_client.get("/v1/containers/abc")
+def test_get_container_no_socket_503(admin_client: Any) -> None:
+    r = admin_client.get("/v1/containers/abc")
     assert r.status_code == 503
     assert r.json()["detail"] == "Docker socket not available"
 
 
-def test_start_container_no_socket_503(authed_client: Any) -> None:
-    r = authed_client.post("/v1/containers/abc/start")
+def test_start_container_no_socket_503(admin_client: Any) -> None:
+    r = admin_client.post("/v1/containers/abc/start")
     assert r.status_code == 503
 
 
-def test_stop_container_no_socket_503(authed_client: Any) -> None:
-    r = authed_client.post("/v1/containers/abc/stop")
+def test_stop_container_no_socket_503(admin_client: Any) -> None:
+    r = admin_client.post("/v1/containers/abc/stop")
     assert r.status_code == 503
 
 
-def test_restart_container_no_socket_503(authed_client: Any) -> None:
-    r = authed_client.post("/v1/containers/abc/restart")
+def test_restart_container_no_socket_503(admin_client: Any) -> None:
+    r = admin_client.post("/v1/containers/abc/restart")
     assert r.status_code == 503
 
 
-def test_delete_container_no_socket_503(authed_client: Any) -> None:
-    r = authed_client.delete("/v1/containers/abc")
+def test_delete_container_no_socket_503(admin_client: Any) -> None:
+    r = admin_client.delete("/v1/containers/abc")
     assert r.status_code == 503
 
 
-def test_get_container_logs_no_socket_503(authed_client: Any) -> None:
-    r = authed_client.get("/v1/containers/abc/logs")
+def test_get_container_logs_no_socket_503(admin_client: Any) -> None:
+    r = admin_client.get("/v1/containers/abc/logs")
     assert r.status_code == 503
 
 
@@ -263,7 +263,7 @@ def _patch_client(monkeypatch, handler) -> None:
     monkeypatch.setattr(containers_mod, "_docker_client", lambda: _FakeAsyncClient(handler))
 
 
-def test_list_containers_socket_present_success(authed_client: Any, monkeypatch) -> None:
+def test_list_containers_socket_present_success(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
     raw = [
         {
@@ -279,7 +279,7 @@ def test_list_containers_socket_present_success(authed_client: Any, monkeypatch)
         return httpx.Response(200, json=raw)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers")
+    r = admin_client.get("/v1/containers")
     assert r.status_code == 200
     body = r.json()
     assert body[0]["id"] == "abcdef012345"
@@ -287,7 +287,7 @@ def test_list_containers_socket_present_success(authed_client: Any, monkeypatch)
 
 
 def test_list_containers_socket_present_api_error_returns_empty(
-    authed_client: Any, monkeypatch
+    admin_client: Any, monkeypatch
 ) -> None:
     _socket_present(monkeypatch)
 
@@ -295,12 +295,12 @@ def test_list_containers_socket_present_api_error_returns_empty(
         return httpx.Response(500)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers")
+    r = admin_client.get("/v1/containers")
     assert r.status_code == 200
     assert r.json() == []
 
 
-def test_get_container_socket_present_success(authed_client: Any, monkeypatch) -> None:
+def test_get_container_socket_present_success(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
     raw = {"Id": "abcdef0123456789", "Names": ["/c1"], "Image": "img", "State": "running"}
 
@@ -310,176 +310,176 @@ def test_get_container_socket_present_success(authed_client: Any, monkeypatch) -
         return httpx.Response(200, json=raw)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers/abcdef012345")
+    r = admin_client.get("/v1/containers/abcdef012345")
     assert r.status_code == 200
     assert r.json()["id"] == "abcdef012345"
 
 
-def test_get_container_socket_present_404(authed_client: Any, monkeypatch) -> None:
+def test_get_container_socket_present_404(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(404, json={"message": "no such container"})
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers/missing")
+    r = admin_client.get("/v1/containers/missing")
     assert r.status_code == 404
     assert r.json()["detail"] == "container not found"
 
 
-def test_get_container_socket_present_other_error(authed_client: Any, monkeypatch) -> None:
+def test_get_container_socket_present_other_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         raise httpx.ConnectError("boom")
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers/abc")
+    r = admin_client.get("/v1/containers/abc")
     assert r.status_code == 503
     assert "Docker API error" in r.json()["detail"]
 
 
-def test_start_container_socket_present_success(authed_client: Any, monkeypatch) -> None:
+def test_start_container_socket_present_success(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(204)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/start")
+    r = admin_client.post("/v1/containers/abc/start")
     assert r.status_code == 200
     assert r.json() == {"status": "started", "id": "abc"}
 
 
-def test_start_container_socket_present_http_error(authed_client: Any, monkeypatch) -> None:
+def test_start_container_socket_present_http_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(404)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/start")
+    r = admin_client.post("/v1/containers/abc/start")
     assert r.status_code == 404
     assert r.json()["detail"] == "start failed"
 
 
-def test_stop_container_socket_present_success(authed_client: Any, monkeypatch) -> None:
+def test_stop_container_socket_present_success(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(204)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/stop")
+    r = admin_client.post("/v1/containers/abc/stop")
     assert r.json() == {"status": "stopped", "id": "abc"}
 
 
-def test_stop_container_socket_present_http_error(authed_client: Any, monkeypatch) -> None:
+def test_stop_container_socket_present_http_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(500)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/stop")
+    r = admin_client.post("/v1/containers/abc/stop")
     assert r.status_code == 500
     assert r.json()["detail"] == "stop failed"
 
 
-def test_stop_container_socket_present_other_error(authed_client: Any, monkeypatch) -> None:
+def test_stop_container_socket_present_other_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         raise httpx.ConnectError("boom")
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/stop")
+    r = admin_client.post("/v1/containers/abc/stop")
     assert r.status_code == 503
 
 
-def test_restart_container_socket_present_success(authed_client: Any, monkeypatch) -> None:
+def test_restart_container_socket_present_success(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(204)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/restart")
+    r = admin_client.post("/v1/containers/abc/restart")
     assert r.json() == {"status": "restarted", "id": "abc"}
 
 
-def test_restart_container_socket_present_http_error(authed_client: Any, monkeypatch) -> None:
+def test_restart_container_socket_present_http_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(404)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/restart")
+    r = admin_client.post("/v1/containers/abc/restart")
     assert r.status_code == 404
     assert r.json()["detail"] == "restart failed"
 
 
-def test_restart_container_socket_present_other_error(authed_client: Any, monkeypatch) -> None:
+def test_restart_container_socket_present_other_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         raise httpx.ConnectError("boom")
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.post("/v1/containers/abc/restart")
+    r = admin_client.post("/v1/containers/abc/restart")
     assert r.status_code == 503
 
 
-def test_delete_container_socket_present_success(authed_client: Any, monkeypatch) -> None:
+def test_delete_container_socket_present_success(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(204)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.delete("/v1/containers/abc")
+    r = admin_client.delete("/v1/containers/abc")
     assert r.status_code == 200
 
 
-def test_delete_container_socket_present_http_error(authed_client: Any, monkeypatch) -> None:
+def test_delete_container_socket_present_http_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(404)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.delete("/v1/containers/abc")
+    r = admin_client.delete("/v1/containers/abc")
     assert r.status_code == 404
     assert r.json()["detail"] == "remove failed"
 
 
-def test_delete_container_socket_present_other_error(authed_client: Any, monkeypatch) -> None:
+def test_delete_container_socket_present_other_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         raise httpx.ConnectError("boom")
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.delete("/v1/containers/abc")
+    r = admin_client.delete("/v1/containers/abc")
     assert r.status_code == 503
 
 
-def test_get_container_logs_socket_present_success(authed_client: Any, monkeypatch) -> None:
+def test_get_container_logs_socket_present_success(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(200, text="log line 1\nlog line 2\n")
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers/abc/logs")
+    r = admin_client.get("/v1/containers/abc/logs")
     assert r.status_code == 200
     body = r.json()
     assert body["id"] == "abc"
     assert "log line 1" in body["logs"]
 
 
-def test_get_container_logs_custom_tail_param(authed_client: Any, monkeypatch) -> None:
+def test_get_container_logs_custom_tail_param(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
     captured = {}
 
@@ -488,30 +488,30 @@ def test_get_container_logs_custom_tail_param(authed_client: Any, monkeypatch) -
         return httpx.Response(200, text="")
 
     _patch_client(monkeypatch, handler)
-    authed_client.get("/v1/containers/abc/logs", params={"tail": 50})
+    admin_client.get("/v1/containers/abc/logs", params={"tail": 50})
     assert "tail=50" in captured["url"]
 
 
-def test_get_container_logs_socket_present_http_error(authed_client: Any, monkeypatch) -> None:
+def test_get_container_logs_socket_present_http_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         return httpx.Response(404)
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers/abc/logs")
+    r = admin_client.get("/v1/containers/abc/logs")
     assert r.status_code == 404
     assert r.json()["detail"] == "logs not found"
 
 
-def test_get_container_logs_socket_present_other_error(authed_client: Any, monkeypatch) -> None:
+def test_get_container_logs_socket_present_other_error(admin_client: Any, monkeypatch) -> None:
     _socket_present(monkeypatch)
 
     def handler(method, url):
         raise httpx.ConnectError("boom")
 
     _patch_client(monkeypatch, handler)
-    r = authed_client.get("/v1/containers/abc/logs")
+    r = admin_client.get("/v1/containers/abc/logs")
     assert r.status_code == 503
 
 
@@ -520,13 +520,13 @@ def test_get_container_logs_socket_present_other_error(authed_client: Any, monke
 # --------------------------------------------------------------------------- #
 
 
-def test_build_container(authed_client: Any) -> None:
-    r = authed_client.post("/v1/containers/build", json={"name": "x", "dockerfile": "FROM x"})
+def test_build_container(admin_client: Any) -> None:
+    r = admin_client.post("/v1/containers/build", json={"name": "x", "dockerfile": "FROM x"})
     assert r.status_code == 200
     assert r.json() == {"status": "building", "log": "Building..."}
 
 
-def test_suggest_dockerfile(authed_client: Any) -> None:
-    r = authed_client.post("/v1/containers/suggest", json={"description": "a python app"})
+def test_suggest_dockerfile(admin_client: Any) -> None:
+    r = admin_client.post("/v1/containers/suggest", json={"description": "a python app"})
     assert r.status_code == 200
     assert "FROM python" in r.json()["dockerfile"]

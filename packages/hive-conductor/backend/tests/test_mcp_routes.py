@@ -47,9 +47,9 @@ def _make_server(sid: str = "s1", url: str = "http://example.invalid") -> MCPSer
 # --------------------------------------------------------------------------- #
 
 
-def test_list_servers_marks_non_atlassian_unreachable_as_disconnected(authed_client: Any) -> None:
+def test_list_servers_marks_non_atlassian_unreachable_as_disconnected(admin_client: Any) -> None:
     stores.mcp_servers["s1"] = _make_server()
-    r = authed_client.get("/v1/mcp/servers")
+    r = admin_client.get("/v1/mcp/servers")
     assert r.status_code == 200
     body = r.json()
     assert body[0]["status"] == "disconnected"
@@ -57,7 +57,7 @@ def test_list_servers_marks_non_atlassian_unreachable_as_disconnected(authed_cli
 
 
 def test_list_servers_atlassian_rovo_url_uses_mcp_health_check(
-    authed_client: Any, monkeypatch
+    admin_client: Any, monkeypatch
 ) -> None:
     stores.mcp_servers["s1"] = _make_server(url="https://mcp.atlassian.com/foo")
 
@@ -66,13 +66,13 @@ def test_list_servers_atlassian_rovo_url_uses_mcp_health_check(
 
     monkeypatch.setattr("services.mcp_client.test_mcp_server", fake_test)
 
-    r = authed_client.get("/v1/mcp/servers")
+    r = admin_client.get("/v1/mcp/servers")
     body = r.json()
     assert body[0]["status"] == "connected"
 
 
 def test_list_servers_atlassian_rovo_url_failed_check_is_connecting(
-    authed_client: Any, monkeypatch
+    admin_client: Any, monkeypatch
 ) -> None:
     stores.mcp_servers["s1"] = _make_server(url="https://mcp.atlassian.com/foo")
 
@@ -81,13 +81,13 @@ def test_list_servers_atlassian_rovo_url_failed_check_is_connecting(
 
     monkeypatch.setattr("services.mcp_client.test_mcp_server", fake_test)
 
-    r = authed_client.get("/v1/mcp/servers")
+    r = admin_client.get("/v1/mcp/servers")
     body = r.json()
     assert body[0]["status"] == "connecting"
 
 
-def test_list_servers_empty(authed_client: Any) -> None:
-    r = authed_client.get("/v1/mcp/servers")
+def test_list_servers_empty(admin_client: Any) -> None:
+    r = admin_client.get("/v1/mcp/servers")
     assert r.status_code == 200
     assert r.json() == []
 
@@ -97,15 +97,15 @@ def test_list_servers_empty(authed_client: Any) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_get_server_found(authed_client: Any) -> None:
+def test_get_server_found(admin_client: Any) -> None:
     stores.mcp_servers["s1"] = _make_server()
-    r = authed_client.get("/v1/mcp/servers/s1")
+    r = admin_client.get("/v1/mcp/servers/s1")
     assert r.status_code == 200
     assert r.json()["id"] == "s1"
 
 
-def test_get_server_missing_404(authed_client: Any) -> None:
-    r = authed_client.get("/v1/mcp/servers/missing")
+def test_get_server_missing_404(admin_client: Any) -> None:
+    r = admin_client.get("/v1/mcp/servers/missing")
     assert r.status_code == 404
 
 
@@ -164,7 +164,7 @@ def test_scan_server_missing_404(admin_client: Any) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_test_connection_specific_server(authed_client: Any, monkeypatch) -> None:
+def test_test_connection_specific_server(admin_client: Any, monkeypatch) -> None:
     stores.mcp_servers["s1"] = _make_server()
     captured = {}
 
@@ -175,18 +175,18 @@ def test_test_connection_specific_server(authed_client: Any, monkeypatch) -> Non
 
     monkeypatch.setattr("services.mcp_client.test_mcp_server", fake_test)
 
-    r = authed_client.post("/v1/mcp/test", json={"server_id": "s1"})
+    r = admin_client.post("/v1/mcp/test", json={"server_id": "s1"})
     assert r.status_code == 200
     assert r.json() == {"ok": True, "mode": "stub"}
     assert captured["server_id"] == "s1"
 
 
-def test_test_connection_missing_server_404(authed_client: Any) -> None:
-    r = authed_client.post("/v1/mcp/test", json={"server_id": "missing"})
+def test_test_connection_missing_server_404(admin_client: Any) -> None:
+    r = admin_client.post("/v1/mcp/test", json={"server_id": "missing"})
     assert r.status_code == 404
 
 
-def test_test_connection_no_server_id_tests_all(authed_client: Any, monkeypatch) -> None:
+def test_test_connection_no_server_id_tests_all(admin_client: Any, monkeypatch) -> None:
     stores.mcp_servers["s1"] = _make_server(sid="s1")
     stores.mcp_servers["s2"] = _make_server(sid="s2")
 
@@ -195,14 +195,14 @@ def test_test_connection_no_server_id_tests_all(authed_client: Any, monkeypatch)
 
     monkeypatch.setattr("services.mcp_client.test_mcp_server", fake_test)
 
-    r = authed_client.post("/v1/mcp/test", json={})
+    r = admin_client.post("/v1/mcp/test", json={})
     assert r.status_code == 200
     results = r.json()["results"]
     assert {res["server_id"] for res in results} == {"s1", "s2"}
 
 
-def test_test_connection_no_servers_returns_empty_results(authed_client: Any) -> None:
-    r = authed_client.post("/v1/mcp/test", json={})
+def test_test_connection_no_servers_returns_empty_results(admin_client: Any) -> None:
+    r = admin_client.post("/v1/mcp/test", json={})
     assert r.json() == {"results": []}
 
 
@@ -211,17 +211,17 @@ def test_test_connection_no_servers_returns_empty_results(authed_client: Any) ->
 # --------------------------------------------------------------------------- #
 
 
-def test_list_tools(authed_client: Any) -> None:
+def test_list_tools(admin_client: Any) -> None:
     stores.mcp_tools["t1"] = MCPTool(
         id="t1", server_id="s1", name="tool", description="d", category="general"
     )
-    r = authed_client.get("/v1/mcp/tools")
+    r = admin_client.get("/v1/mcp/tools")
     assert r.status_code == 200
     assert [t["id"] for t in r.json()] == ["t1"]
 
 
-def test_list_tools_empty(authed_client: Any) -> None:
-    r = authed_client.get("/v1/mcp/tools")
+def test_list_tools_empty(admin_client: Any) -> None:
+    r = admin_client.get("/v1/mcp/tools")
     assert r.json() == []
 
 
@@ -230,7 +230,7 @@ def test_list_tools_empty(authed_client: Any) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def test_discover_tools(authed_client: Any) -> None:
-    r = authed_client.post("/v1/mcp/discover", json={"url": "http://x"})
+def test_discover_tools(admin_client: Any) -> None:
+    r = admin_client.post("/v1/mcp/discover", json={"url": "http://x"})
     assert r.status_code == 200
     assert r.json() == {"tools": [], "status": "scanning"}

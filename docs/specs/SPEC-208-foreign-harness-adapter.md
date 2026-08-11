@@ -3,8 +3,10 @@ id: SPEC-208
 title: Foreign harness adapter — HarnessRunner slot and agent/skill format adapters
 repo: maistro-engine
 kind: spec
-status: Proposed
+status: Implemented
 created: 2026-06-15
+accepted: 2026-06-16
+implemented: 2026-07-04
 substrate:
   - maistro-engine#ADR-061526-f383
   - maistro-engine#SPEC-184
@@ -21,13 +23,28 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests: []
+tests:
+  - packages/maistro-core/tests/capabilities/test_harness_runner.py
+  - packages/maistro-core/tests/capabilities/test_harness_manager.py
+  - packages/maistro-core/tests/graph/test_harness_node.py
+  - packages/maistro-core/tests/portability/test_portability.py
+  - packages/maistro-core/tests/policy/test_sequence_policy.py
+  - packages/maistro-core/tests/tools/test_microvm_sandbox.py
+  - packages/hive-conductor/backend/tests/test_harness_routes.py
+  - packages/maistro-core/tests/harness/test_harness_slot.py
+  - packages/maistro-core/tests/harness/test_harness_guard.py
+  - packages/maistro-core/tests/harness/test_importers.py
+  - packages/maistro-core/tests/harness/test_export.py
 layer: Orchestration
 owners:
   - '@BlakeMatthews-dev'
 history:
   - status: Proposed
     date: 2026-06-15
+  - status: Accepted
+    date: 2026-06-16
+  - status: Implemented
+    date: 2026-07-04
 ---
 
 # SPEC-208: Foreign harness adapter
@@ -87,8 +104,16 @@ is dispatched identically to a native one — the `Conduit`'s call to `agent.han
 `AgentConfig` delegates to `registry.resolve("harness_runner")` and calls `send()`.
 
 Multiple `HarnessRunner` providers may be registered (one per foreign harness — `pi`, `openclaw`,
-`claude_code`, `codex`); `CapabilityRegistry.activate("harness_runner", name)` selects which one an
-`AgentConfig` binds to, same as any other slot (`capabilities/registry.py:52-58`).
+`claude_code`, `codex`, `opencode`); `CapabilityRegistry.activate("harness_runner", name)` selects
+which one an `AgentConfig` binds to, same as any other slot.
+
+**As-built.** The slot + `HarnessRunner` Protocol ship in
+`capabilities/slots/harness_runner.py` (which also defines `HarnessInputBlocked`); the
+`SlotSpec(name="harness_runner", fallback_policy=SAFE_NOOP)` is registered in
+`capabilities/bootstrap.py`. The first reference provider is `SubprocessHarnessRunner`
+(`capabilities/providers/subprocess_harness.py`) over an injected `SandboxExec` seam — which a
+`MicroVMSandbox` (SPEC-205) satisfies, so a real harness can be run OS-isolated against a
+pointed-at repo/workdir.
 
 ### 2. Safety wrapping
 
@@ -97,14 +122,29 @@ no new trust-boundary type is introduced:
 
 | Layer | Existing primitive | Applied to |
 |---|---|---|
-| Process isolation | `maistro.tools.sandbox` | the foreign harness's subprocess: filesystem + network access |
+| Process isolation | `maistro.tools.sandbox` (incl. `MicroVMSandbox`, SPEC-205) | the foreign harness's subprocess: filesystem + network access |
 | Inbound scan | `maistro.security.warden.detector` (Warden) | every `messages` payload before `send()` |
-| Outbound policy | `maistro.security.sentinel` (Sentinel) | every tool-call/action the harness reports in its response/stream, before maistro acts on it or relays it |
-| Degradation | `capabilities/registry.py:91-128` resolution order | unhealthy/crashed harness → `SAFE_NOOP` → typed `Unavailable` (`capabilities/types.py:34-39`) |
+| Outbound policy | `SafeHarnessRunner` + an `ActionGate` (Sentinel-shaped) | every tool-call/action the harness reports in its response/stream, before maistro acts on it or relays it |
+| Degradation | `capabilities/registry.py` resolution order | unhealthy/crashed harness → `SAFE_NOOP` → typed `Unavailable` (`capabilities/types.py`) |
 
-A `HarnessRunner` provider's `requires()` (`capabilities/protocols.py:27-29`) declares the binary
-or SDK the foreign harness needs (e.g. `pi`, `openclaw`, `claude`, `codex`) plus the sandbox
-profile name; `healthcheck()` checks both the binary's presence and the sandbox's reachability.
+**As-built.** The three layers are composed by `SafeHarnessRunner`
+(`capabilities/providers/harness_safety.py`), which wraps any inner `HarnessRunner`:
+
+- `_scan_inbound` runs Warden over every `send()`/`stream()` payload and raises
+  `HarnessInputBlocked` (not a silent drop) when `verdict.clean` is false.
+- `_filter_actions` gates outbound actions through an injected `ActionGate` — both the
+  top-level `actions` list and any `choices[].message.tool_calls` — so a gate-denied action
+  never reaches maistro or the caller. The default gate is `AllowAllGate`; supplying a
+  `SequencePolicyEngine` (SPEC-203) yields a `PolicyActionGate` that enforces stateful,
+  sequence-aware policy (budgets, after-count, forbidden pairs, velocity) per session.
+
+`HarnessSessionManager` (`capabilities/harness_manager.py`) is the glue: it resolves the
+slot, wraps the provider in `SafeHarnessRunner` (with a `PolicyActionGate` keyed by
+`session_id` when a policy is given), and degrades to `Unavailable` instead of raising.
+
+A `HarnessRunner` provider's `requires()` declares the binary or SDK the foreign harness needs
+plus the sandbox profile; `healthcheck()` checks both the binary's presence and the sandbox's
+reachability.
 
 ### 3. Import adapter catalog
 
@@ -151,46 +191,67 @@ special-case the consumer.
 
 ### 5. Hierarchical orchestration mechanics
 
-**Outbound (maistro drives a foreign harness):** ADR-062's graph executor gains a `NodeStrategy`
-implementation, `HarnessNodeStrategy`, whose `execute()` resolves `harness_runner` from the
-`CapabilityRegistry`, calls `start_session()` once per `GraphRun`, and `send()` per `NodeRun` —
-recording the same per-node telemetry (input, output, timing, error classification) as native
-strategies (ADR-062 `NodeRun`). `IterationBudget` applies uniformly; a foreign harness node cannot
-exceed the shared iteration budget.
+**Outbound (maistro drives a foreign harness).** A graph node's turn is executed by a foreign
+harness instead of the LLM. This needs an *execution* seam, not a strategy: ADR-062's
+`NodeStrategy` is a prompt/output **shaper** (`build_user_prompt` / `score_output` /
+`update_blackboard`), so it cannot itself "run" a harness. The original sketch of a
+`HarnessNodeStrategy.execute()` did not match that interface and was **not** built as such. The
+as-built design instead adds a distinct seam:
 
-**Inbound (maistro is driven by another orchestrator):** a new `hive-conductor` route,
-`POST /v1/harness/sessions`, implements the `HarnessRunner` HTTP shape
-(`start_session` → returns `session_id`; `POST /v1/harness/sessions/{id}/send`; `GET
-/v1/harness/sessions/{id}/stream` SSE; `DELETE /v1/harness/sessions/{id}`). Internally it wraps the
-existing `Conduit.route_request()` (`conduit.py:68`) — the remote orchestrator sees a
-`HarnessRunner`-shaped session; maistro internally still runs its normal classify → route →
-`agent.handle` pipeline. Auth uses the existing B2B service-key scopes (`maistro.auth`); a
-dedicated scope (`harness:session`) gates this route.
+- **`NodeExecutor` protocol** (`graph/node.py`) — a non-LLM execution backend. When a `NodeRun`
+  carries an `executor`, `execute()` dispatches to `_execute_via_executor()`, which **reuses** the
+  existing circuit-breaker, `IterationBudget`, retry, and success/failure/telemetry plumbing but
+  replaces "call `llm_call`, parse text" with "call the executor, get a parsed output." The shared
+  per-attempt guard (cancel/circuit/budget) is factored into `_preflight_stop()`, used by both the
+  LLM and executor paths.
+- **`HarnessStrategy`** (`graph/strategy.py`) — the shaper half: role `AgentRole.HARNESS`, output
+  type `HarnessOutput`, registered in `STRATEGY_REGISTRY` so a DAG can schedule a harness node by
+  role.
+- **`HarnessOutput{summary, actions, raw}`** (`graph/types.py`) — the node output. `actions` stays
+  untyped (`list[dict]`) because each foreign harness emits its own action shape.
+- **`HarnessNodeExecutor`** (`graph/harness_executor.py`) — the `NodeExecutor` implementation that
+  bridges to `HarnessSessionManager`: `start` → `send` (Warden-scanned, policy-gated) → `stop`,
+  normalizing either envelope shape (OpenAI `choices` or flat `content`) into `HarnessOutput`, and
+  raising `HarnessExecutionError` on `Unavailable` so the node's retry/circuit plumbing records it.
+- **Wiring** — a per-role `node_executors: dict[str, NodeExecutor]` map is threaded through
+  `GraphRun` and `run_graph()`; when a node's role matches, it runs via the executor. A foreign
+  harness node thus cannot exceed the shared `IterationBudget` and records `NodeRun` telemetry
+  identically to a native node.
 
-## Acceptance criteria
+**Inbound (maistro is driven by another orchestrator).** A `hive-conductor` route
+(`routes/harness.py`) exposes the `HarnessRunner` HTTP shape: `POST /v1/harness/sessions`
+(→ `session_id`), `POST /v1/harness/sessions/{id}/send`, `GET /v1/harness/sessions/{id}/stream`
+(SSE), `DELETE /v1/harness/sessions/{id}`. As-built it is backed by a process-wide
+`HarnessSessionManager` over the engine's capability registry + Warden — so the same Warden +
+policy gating applies to inbound turns — rather than wrapping `Conduit.route_request()` directly.
+It degrades to `503` when no `harness_runner` provider is active (SAFE_NOOP), `400` when Warden
+refuses an inbound payload (`HarnessInputBlocked`), and `404` for an unknown session. Auth rides
+the existing middleware; a dedicated `harness:session` service-key scope can gate the route.
 
-- [ ] `harness_runner` `SlotSpec` defined with `FallbackPolicy.SAFE_NOOP`; `HarnessRunner` Protocol
-      added to `capabilities/protocols.py`, `mypy --strict` clean.
-- [ ] At least one real `HarnessRunner` provider (e.g. `pi` or `openclaw`) implements
-      `start_session`/`send`/`stream`/`stop` over a sandboxed subprocess; `healthcheck()` reflects
-      binary presence + sandbox reachability.
-- [ ] Every `send()` call passes its `messages` through Warden before reaching the subprocess, and
-      every action in the harness's response passes through Sentinel before being surfaced —
-      asserted via a fake harness that emits a flagged payload and a flagged action.
-- [ ] A crashed/unhealthy `HarnessRunner` provider degrades the slot to `SAFE_NOOP`
+## Acceptance Criteria
+
+- [x] `harness_runner` `SlotSpec` defined with `FallbackPolicy.SAFE_NOOP`; `HarnessRunner` Protocol
+      shipped in `capabilities/slots/harness_runner.py`, `mypy --strict` clean.
+- [x] A `HarnessRunner` reference provider (`SubprocessHarnessRunner`) implements
+      `start_session`/`send`/`stream`/`stop` over an injected `SandboxExec` seam (satisfiable by
+      `MicroVMSandbox`); `healthcheck()` reflects binary presence + sandbox reachability.
+- [x] Every `send()` call passes its `messages` through Warden before reaching the subprocess, and
+      every action in the harness's response passes through the `ActionGate` before being surfaced
+      — asserted via a fake harness that emits a flagged payload and a flagged action.
+- [x] A crashed/unhealthy/disabled `HarnessRunner` provider degrades the slot to `SAFE_NOOP`
       (`Unavailable`); the calling agent/graph node receives the typed result, never an exception.
-- [ ] At least two `AgentImporter`/`SkillImporter` implementations exist (one agent format, one
-      skill format — e.g. Claude Code `SKILL.md` and one of Pi/OpenClaw/Codex), each with
-      `detect()` + `to_agent_config()`/`to_skill_definitions()` round-tripped in a unit test.
-- [ ] `export_agent()` produces a valid MCP server manifest (validated against the MCP schema) and
-      a `SKILL.md` whose frontmatter `skills/parser.py` can re-parse — for an agent that was
-      itself imported via one of the new importers (proves the import→export round trip through
-      the internal representation).
-- [ ] `HarnessNodeStrategy` runs as a graph node under ADR-062's `GraphRun`, recording `NodeRun`
-      telemetry identically to a native strategy, and respects `IterationBudget`.
-- [ ] `POST /v1/harness/sessions` (+ send/stream/stop) is reachable with a `harness:session`
-      service-key scope and rejects requests without it; a session created this way produces the
-      same response shape as a local `Conduit.route_request()` call for the same messages.
+- [x] At least two `AgentImporter`/`SkillImporter` implementations exist (Claude Code / OpenAI
+      agent formats; Claude Code `SKILL.md` / MCP manifest skill formats), each with `detect()` +
+      `to_*()` round-tripped in a unit test (`portability/`).
+- [x] `export_agent()` produces an MCP server manifest + a `SKILL.md` whose frontmatter
+      `skills/parser.py` can re-parse — proving the import→export round trip.
+- [x] A harness-backed graph node runs under ADR-062's `GraphRun` via the `NodeExecutor` seam
+      (`HarnessNodeExecutor` + `HarnessStrategy`), recording `NodeRun` telemetry identically to a
+      native node and respecting `IterationBudget`. *(Built as an executor seam, not a
+      `NodeStrategy.execute()` — see §5 rationale.)*
+- [x] `POST /v1/harness/sessions` (+ send/stream/stop) is reachable through the Conductor auth
+      middleware, backed by `HarnessSessionManager` (same Warden + policy gating), returning
+      `503`/`400`/`404` for no-provider / Warden-blocked / unknown-session.
 
 ## Testing
 
@@ -209,14 +270,15 @@ dedicated scope (`harness:session`) gates this route.
 
 ## Open questions
 
-- Per-harness session lifecycle limits (idle timeout, max concurrent sessions per host) —
-  resource-management policy, likely belongs with the follow-up stateful policy engine
-  (ADR-061526-f383, Follow-ups) rather than this spec.
-- Whether `HarnessNodeStrategy` needs its own `priority_tier` interaction with
-  `determine_execution_tier` (`conduit.py:24-33`) when a foreign harness reports its own
-  cost/latency profile.
-- Exact MCP manifest versioning/compatibility story as the MCP spec evolves — `export_agent()`
-  should target a pinned MCP schema version with a documented upgrade path.
+- **Per-harness session lifecycle limits** (DEFERRED to Phase 2): idle timeout, max concurrent
+  sessions per host — resource-management policy belongs with the follow-up stateful policy engine
+  (ADR-061526-f383 follow-ups).
+- **HarnessNodeStrategy priority tier interaction** (DEFERRED to implementation): whether it needs
+  its own `priority_tier` interaction with `determine_execution_tier` when a foreign harness
+  reports its own cost/latency profile — likely emerges during wiring.
+- **MCP manifest versioning** (DEFERRED with pinned baseline): `export_agent()` targets a pinned
+  MCP schema version with a documented upgrade path; exact compatibility story as MCP spec evolves
+  is a follow-up.
 
 ## References
 

@@ -179,3 +179,97 @@ def test_list_rollbacks_applies_limit() -> None:
     limited = manager.list_rollbacks(limit=2)
     assert len(limited) == 2
     assert [r["skill_name"] for r in limited] == ["s3", "s4"]
+
+
+class TestCheckPromotionBoundaryMatrix:
+    """Boundary-focused cross-product over (requests met, error_rate vs
+    threshold, elapsed vs stage_duration) — representative threshold-adjacent
+    values per axis rather than a full Cartesian explosion (mirrors the
+    self-repair governor matrix's approach)."""
+
+    def _manager_with_deployment(
+        self, *, error_threshold: float, min_requests: int, stage_duration: float
+    ) -> tuple[CanaryManager, CanaryDeployment]:
+        manager = CanaryManager(
+            error_threshold=error_threshold,
+            min_requests_per_stage=min_requests,
+            stage_duration_secs=stage_duration,
+        )
+        deployment = manager.start_canary("s", 1, 2)
+        return manager, deployment
+
+    def test_error_rate_exactly_at_threshold_is_ok_not_rollback(self) -> None:
+        manager, deployment = self._manager_with_deployment(
+            error_threshold=0.5, min_requests=2, stage_duration=300.0
+        )
+        manager.record_result("s", success=False)
+        manager.record_result("s", success=True)
+        assert deployment.error_rate == 0.5
+        assert manager.check_promotion_or_rollback("s") != "rollback"
+
+    def test_error_rate_just_above_threshold_rolls_back(self) -> None:
+        manager, deployment = self._manager_with_deployment(
+            error_threshold=0.4, min_requests=5, stage_duration=300.0
+        )
+        for _ in range(3):
+            manager.record_result("s", success=False)
+        for _ in range(2):
+            manager.record_result("s", success=True)
+        assert deployment.error_rate == 0.6
+        assert manager.check_promotion_or_rollback("s") == "rollback"
+
+    def test_requests_one_below_minimum_never_rolls_back_even_at_100pct_errors(self) -> None:
+        manager, deployment = self._manager_with_deployment(
+            error_threshold=0.1, min_requests=5, stage_duration=300.0
+        )
+        for _ in range(4):
+            manager.record_result("s", success=False)
+        assert deployment.total_requests == 4
+        assert manager.check_promotion_or_rollback("s") == "hold"
+
+    def test_requests_exactly_at_minimum_with_high_errors_rolls_back(self) -> None:
+        manager, deployment = self._manager_with_deployment(
+            error_threshold=0.1, min_requests=5, stage_duration=300.0
+        )
+        for _ in range(5):
+            manager.record_result("s", success=False)
+        assert deployment.total_requests == 5
+        assert manager.check_promotion_or_rollback("s") == "rollback"
+
+    def test_elapsed_one_second_below_duration_holds_even_with_good_error_rate(
+        self, monkeypatch
+    ) -> None:
+        manager, deployment = self._manager_with_deployment(
+            error_threshold=0.5, min_requests=1, stage_duration=300.0
+        )
+        manager.record_result("s", success=True)
+        monkeypatch.setattr(
+            "maistro.skills.canary.time.time", lambda: deployment.stage_started_at + 299.0
+        )
+        assert manager.check_promotion_or_rollback("s") == "hold"
+
+    def test_elapsed_exactly_at_duration_advances(self, monkeypatch) -> None:
+        manager, deployment = self._manager_with_deployment(
+            error_threshold=0.5, min_requests=1, stage_duration=300.0
+        )
+        manager.record_result("s", success=True)
+        monkeypatch.setattr(
+            "maistro.skills.canary.time.time", lambda: deployment.stage_started_at + 300.0
+        )
+        assert manager.check_promotion_or_rollback("s") == "advance"
+
+    def test_rollback_takes_priority_over_advance_when_both_conditions_met(
+        self, monkeypatch
+    ) -> None:
+        """If time has elapsed AND requests are sufficient AND error_rate
+        exceeds threshold, rollback must win — the function checks rollback
+        before advance, so a stale/high-error canary can't sneak through
+        on stage-duration alone."""
+        manager, deployment = self._manager_with_deployment(
+            error_threshold=0.1, min_requests=1, stage_duration=10.0
+        )
+        manager.record_result("s", success=False)
+        monkeypatch.setattr(
+            "maistro.skills.canary.time.time", lambda: deployment.stage_started_at + 20.0
+        )
+        assert manager.check_promotion_or_rollback("s") == "rollback"

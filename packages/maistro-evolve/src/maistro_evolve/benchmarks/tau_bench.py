@@ -130,6 +130,24 @@ async def _simulate_turns(
 
 
 async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score tool-use conversations by name-mention, not verified invocation.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official tau-bench corpus. ``_score_tool_usage`` is NOT a check of what
+    the response actually invoked: alongside real JSON/regex-extracted tool
+    calls, ``mentioned_tools`` treats ANY available tool's name appearing
+    anywhere in the response text as a "call" — including inside a negation
+    ("I cannot invoke refund_order" scores identically to actually invoking
+    it). The final score is ``recall * 0.7 + precision * 0.3`` over that
+    mention set, not recall alone, and both terms inherit the same
+    mention-detection weakness.
+    """
+    if llm_call is None:
+        raise ValueError(
+            "run_tau_bench requires an llm_call — there is no stub/heuristic "
+            "fallback (SPEC-202: never produce a fabricated score)"
+        )
+
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -152,23 +170,18 @@ async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         full_messages.insert(0, {"role": "system", "content": effective_system})
 
         try:
-            if llm_call is not None:
-                max_turns = sample.get("max_turns", 3)
-                response, cost = await _simulate_turns(
-                    sample, full_messages, llm_call, model_config, max_turns
-                )
-                total_cost += cost
+            max_turns = sample.get("max_turns", 3)
+            response, cost = await _simulate_turns(
+                sample, full_messages, llm_call, model_config, max_turns
+            )
+            total_cost += cost
 
-                all_responses = " ".join(
-                    m["content"] for m in full_messages if m["role"] == "assistant"
-                )
-                score = _score_tool_usage(all_responses or response, sample)
-                total_score += score
-                evaluated += 1
-            else:
-                score = _heuristic_score(sample)
-                total_score += score
-                evaluated += 1
+            all_responses = " ".join(
+                m["content"] for m in full_messages if m["role"] == "assistant"
+            )
+            score = _score_tool_usage(all_responses or response, sample)
+            total_score += score
+            evaluated += 1
         except (TimeoutError, Exception):
             evaluated += 1
 
@@ -176,18 +189,10 @@ async def run_tau_bench(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="tau_bench",
+        benchmark="proxy_tau_bench",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real"},
+        metadata={"total_samples": samples, "fidelity": "proxy"},
     )
-
-
-def _heuristic_score(sample: dict[str, Any]) -> float:
-    import random
-
-    num_tools = len(sample.get("expected_tool_calls", []))
-    base = 0.7 if num_tools == 1 else 0.5 if num_tools == 2 else 0.35
-    return max(0.1, min(0.9, base + random.uniform(-0.05, 0.05)))

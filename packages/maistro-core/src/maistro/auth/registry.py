@@ -34,6 +34,13 @@ class ServiceKeyRegistry:
     def services(self) -> dict[str, ServiceIdentity]:
         return dict(self._services)
 
+    def _register_key(self, name: str, key: str) -> None:
+        """Register key -> name, dropping any stale key(s) previously mapped to name."""
+        stale = [k for k, n in self._key_to_name.items() if n == name and k != key]
+        for k in stale:
+            del self._key_to_name[k]
+        self._key_to_name[key] = name
+
     def load_dict(self, data: dict[str, dict[str, Any]]) -> None:
         """Load from a dict: {service_name: {key: str, scopes: [str, ...]}}."""
         for name, cfg in data.items():
@@ -49,11 +56,15 @@ class ServiceKeyRegistry:
                 scopes=scopes,
             )
             self._services[name] = identity
-            self._key_to_name[key] = name
+            self._register_key(name, key)
             logger.info("Registered service %s with %d scopes", name, len(scopes))
 
     def load_yaml(self, path: str | Path) -> None:
-        """Load from a YAML file with top-level 'services' key."""
+        """Load from a YAML file with top-level 'services' key.
+
+        Never raises — malformed YAML or a malshaped 'services' value is logged
+        and skipped, matching discover_into's resilience philosophy.
+        """
         path = Path(path)
         if not path.exists():
             logger.warning("Service keys file not found: %s", path)
@@ -64,14 +75,26 @@ class ServiceKeyRegistry:
             logger.error("PyYAML not installed, cannot load %s", path)
             return
 
-        with path.open() as f:
-            data = yaml.safe_load(f)
+        try:
+            with path.open() as f:
+                data = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            logger.error("Malformed YAML in %s: %s", path, exc)
+            return
 
-        if not data or "services" not in data:
+        if not isinstance(data, dict) or "services" not in data:
             logger.warning("No 'services' key in %s", path)
             return
 
-        self.load_dict(data["services"])
+        services = data["services"]
+        if not isinstance(services, dict):
+            logger.error("'services' in %s is not a mapping, skipping", path)
+            return
+
+        try:
+            self.load_dict(services)
+        except (AttributeError, TypeError) as exc:
+            logger.error("Malformed 'services' entries in %s: %s", path, exc)
 
     def load_env(self) -> None:
         """Load from SERVICE_KEY_<NAME> env vars with optional SERVICE_SCOPES_<NAME>."""
@@ -92,7 +115,7 @@ class ServiceKeyRegistry:
                 scopes=scopes,
             )
             self._services[name] = identity
-            self._key_to_name[value] = name
+            self._register_key(name, value)
             logger.info("Registered service %s from env with %d scopes", name, len(scopes))
 
     def load_all(self, yaml_path: str | Path | None = None) -> None:

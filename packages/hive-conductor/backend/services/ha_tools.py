@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ async def fetch_devices() -> list[dict]:
     if not ha_available():
         return []
     try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
+        async with shared_client(timeout=10.0) as c:
             r = await c.get(
                 f"{HA_URL}/api/states",
                 headers={"Authorization": f"Bearer {HA_TOKEN}"},
@@ -176,7 +176,7 @@ async def execute_ha_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
 
     if action == "get_state":
         try:
-            async with httpx.AsyncClient(timeout=10.0) as c:
+            async with shared_client(timeout=10.0) as c:
                 r = await c.get(
                     f"{HA_URL}/api/states/{entity_id}",
                     headers={"Authorization": f"Bearer {HA_TOKEN}"},
@@ -201,7 +201,7 @@ async def execute_ha_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
         elif not preset:
             preset = "high"
         try:
-            async with httpx.AsyncClient(timeout=10.0) as c:
+            async with shared_client(timeout=10.0) as c:
                 r = await c.post(
                     f"{HA_URL}/api/services/fan/set_preset_mode",
                     headers={
@@ -228,7 +228,7 @@ async def execute_ha_tool(args: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
         service = action
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
+        async with shared_client(timeout=10.0) as c:
             r = await c.post(
                 f"{HA_URL}/api/services/{domain}/{service}",
                 headers={"Authorization": f"Bearer {HA_TOKEN}", "Content-Type": "application/json"},
@@ -287,7 +287,7 @@ async def respond_confirm(confirm_id: str, response: str) -> dict:
 
 async def _fire_event(event_type: str, event_data: dict) -> None:
     try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
+        async with shared_client(timeout=5.0) as c:
             await c.post(
                 f"{HA_URL}/api/events/{event_type}",
                 headers={"Authorization": f"Bearer {HA_TOKEN}", "Content-Type": "application/json"},
@@ -299,7 +299,7 @@ async def _fire_event(event_type: str, event_data: dict) -> None:
 
 async def _set_state(entity_id: str, state: str, attributes: dict | None = None) -> None:
     try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
+        async with shared_client(timeout=5.0) as c:
             await c.post(
                 f"{HA_URL}/api/states/{entity_id}",
                 headers={"Authorization": f"Bearer {HA_TOKEN}", "Content-Type": "application/json"},
@@ -311,7 +311,7 @@ async def _set_state(entity_id: str, state: str, attributes: dict | None = None)
 
 async def _get_state(entity_id: str) -> str | None:
     try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
+        async with shared_client(timeout=5.0) as c:
             r = await c.get(
                 f"{HA_URL}/api/states/{entity_id}",
                 headers={"Authorization": f"Bearer {HA_TOKEN}"},
@@ -360,7 +360,7 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
     )
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as c:
+        async with shared_client(timeout=10.0) as c:
             await c.post(
                 f"{HA_URL}/api/services/{domain}/{service}",
                 headers={"Authorization": f"Bearer {HA_TOKEN}", "Content-Type": "application/json"},
@@ -386,7 +386,7 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
         current = await _get_state(state_entity)
         if current in ("approved", "denied"):
             try:
-                async with httpx.AsyncClient(timeout=5.0) as _c:
+                async with shared_client(timeout=5.0) as _c:
                     await _c.delete(
                         f"{HA_URL}/api/states/{state_entity}",
                         headers={"Authorization": f"Bearer {HA_TOKEN}"},
@@ -402,7 +402,7 @@ async def send_confirm(message: str, target: str, timeout_seconds: int = 120) ->
             return {"result": current, "confirm_id": confirm_id}
 
         try:
-            async with httpx.AsyncClient(timeout=5.0) as _c:
+            async with shared_client(timeout=5.0) as _c:
                 r = await _c.get(
                     f"{HA_URL}/api/events/mobile_app_notification_action",
                     headers={"Authorization": f"Bearer {HA_TOKEN}"},

@@ -151,6 +151,9 @@ in `OUT-OF-SCOPE.md`, not here. `(←ADR-NNN)` marks an item the named ADR expli
 ### Memory & learning
 - ☐ **Memory consolidation ADR** — when/how memories merge, contradiction resolution, hallucination
   detection, decay schedule detail (←ADR-016 underspecified).
+- ☐ **Algorithmic prompt compression SPEC** — token-level compression (e.g. LLMLingua-style) of the
+  SPEC-189 verbatim tail / low-fidelity summary bands, distinct from LLM summarization (←ADR-063026-a91f
+  gap: SPEC-189's `fidelity` controls what's kept, not how densely the kept portion is encoded).
 - ☐ **Vector store + embedding-model versioning** — pgvector vs external, re-embedding on model change
   (←ADR-016/048 semantic-search deferred).
 - ☐ **Cross-scope memory sharing & consent** — promotion (user→team→org), read-authority, cross-agent

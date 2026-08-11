@@ -135,7 +135,12 @@ class TestMarkOutcome:
 
     async def test_empty_ids_noop(self) -> None:
         store = InMemoryLearningStore()
+        learning_id = await store.store(_lr(keys=["key"], org="org-1"))
         await store.mark_outcome([], success=True, org_id="org-1")
+
+        learning = next(lr for lr in await store.list_all() if lr.id == learning_id)
+        assert learning.success_after_use == 0
+        assert learning.failure_after_use == 0
 
 
 class TestListIneffective:

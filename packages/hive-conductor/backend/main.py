@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib import import_module
 from pathlib import Path
 
 from config import get_settings
@@ -12,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from logging_setup import configure_logging
 from middleware.auth import AuthMiddleware
 from middleware.request_log import RequestLogMiddleware
+from middleware.security_headers import SecurityHeadersMiddleware
 from pydantic import BaseModel, ConfigDict
 from routes import (
     agents,
@@ -28,13 +32,16 @@ from routes import (
     design,
     eval_judge,
     feedback,
+    harness,
     health,
     install,
     mcp,
     memory,
     messages,
     missions,
+    profile,
     program,
+    providers,
     quotas,
     schedules,
     setup,
@@ -44,6 +51,7 @@ from routes import (
     voice,
     widgets,
     work_items,
+    workspaces,
     ws,
 )
 from routes import (
@@ -59,6 +67,26 @@ from services.ha_tools import get_all_confirms, get_pending_confirms, respond_co
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "frontend" / "dist"
+_log = logging.getLogger("hive.lifespan")
+
+
+def _include_optional_router(
+    app: FastAPI,
+    module_name: str,
+    *,
+    prefix: str = "",
+) -> None:
+    """Mount an optional feature router, making degraded startup observable."""
+    try:
+        module = import_module(module_name)
+        app.include_router(module.router, prefix=prefix)
+    except Exception as exc:
+        _log.warning(
+            "optional_router_unavailable: module=%s error=%s",
+            module_name,
+            exc,
+            exc_info=True,
+        )
 
 
 class ConfirmResponseBody(BaseModel):
@@ -82,6 +110,30 @@ def list_pending():
 @_confirms_router.post("/{confirm_id}/respond")
 async def respond_to_confirm(confirm_id: str, body: ConfirmResponseBody):
     return await respond_confirm(confirm_id, body.response)
+
+
+async def _shutdown_background_services() -> None:
+    """Stop the optional background services, one bad stop never blocking the rest.
+
+    Extracted from `lifespan` so adding a service does not push that function past
+    the complexity gate; the ordering here mirrors the order they were started in.
+    """
+    # (service_module, stop_attr) — imported inside the loop so a module that
+    # fails to import only skips its own stop, as when each had its own try.
+    stoppers: tuple[tuple[str, str], ...] = (
+        ("services.design_service", "stop_design_service"),
+        ("services.evolution", "stop_evolution"),
+        ("services.scheduler", "stop_scheduler"),
+        ("services.memory_decay", "stop_memory_decay"),
+    )
+    for module_name, attr in stoppers:
+        name = module_name.rsplit(".", 1)[-1]
+        try:
+            result = getattr(import_module(module_name), attr)()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as exc:
+            _log.warning("%s_stop_failed: %s", name, exc)
 
 
 @asynccontextmanager
@@ -132,37 +184,29 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception as exc:
         _lifespan_log.warning("scheduler_start_failed: %s", exc, exc_info=True)
     try:
+        # SPEC-080126-9e42: the episodic decay cadence. A process-lifetime task,
+        # not a /v1/schedules record — decay is a system cadence and should live
+        # exactly as long as the process does.
+        from services.memory_decay import start_memory_decay
+
+        await start_memory_decay(get_settings())
+    except Exception as exc:
+        _lifespan_log.warning("memory_decay_start_failed: %s", exc, exc_info=True)
+    try:
         from services.evolution import start_evolution
 
         await start_evolution()
     except Exception as exc:
         _lifespan_log.warning("evolution_start_failed: %s", exc, exc_info=True)
     yield
-    try:
-        from services.design_service import stop_design_service
-
-        await stop_design_service()
-    except Exception as exc:
-        _lifespan_log.warning("design_service_stop_failed: %s", exc)
-    try:
-        from services.evolution import stop_evolution
-
-        await stop_evolution()
-    except Exception as exc:
-        _lifespan_log.warning("evolution_stop_failed: %s", exc)
-    try:
-        from services.scheduler import stop_scheduler
-
-        stop_scheduler()
-    except Exception as exc:
-        _lifespan_log.warning("scheduler_stop_failed: %s", exc)
+    await _shutdown_background_services()
     await engine_service.stop_engine()
     await foundation_service.stop_foundation()
 
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="Hive Conductor", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Hive Conductor", version="0.9.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_settings().cors_origins,
@@ -173,10 +217,16 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLogMiddleware)
     app.add_middleware(AuthMiddleware)
 
+    # Security headers — the true outermost middleware (added last), so
+    # headers land on every response, including early rejections from the
+    # middlewares added above (e.g. 401s from AuthMiddleware).
+    app.add_middleware(SecurityHeadersMiddleware)
+
     app.include_router(health.router)
     app.include_router(auth.router, prefix="/v1/auth")
     app.include_router(credentials.router, prefix="/v1/credentials")
     app.include_router(install.router, prefix="/v1/install")
+    app.include_router(providers.router, prefix="/v1/providers")
     app.include_router(chat.router, prefix="/v1/chat")
     app.include_router(missions.router, prefix="/v1/tasks")
     app.include_router(schedules.router, prefix="/v1/schedules")
@@ -184,12 +234,15 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/v1/agents")
     app.include_router(program.router, prefix="/v1/program")
     app.include_router(work_items.router, prefix="/v1/work-items")
+    app.include_router(workspaces.router, prefix="/v1/workspaces")
     app.include_router(mcp.router, prefix="/v1/mcp")
     app.include_router(cli.router, prefix="/v1/cli")
     app.include_router(containers.router, prefix="/v1/containers")
     app.include_router(memory.router, prefix="/v1/memory")
+    app.include_router(profile.router, prefix="/v1/profile")
     app.include_router(settings_r.router, prefix="/v1/settings")
     app.include_router(capabilities.router, prefix="/v1/capabilities")
+    app.include_router(harness.router, prefix="/v1/harness")
     app.include_router(voice.router, prefix="/v1/voice")
     app.include_router(ws.router, prefix="/v1/ws")
     app.include_router(setup.router, prefix="/v1/setup")
@@ -200,7 +253,6 @@ def create_app() -> FastAPI:
     app.include_router(daily_report_v2.router, prefix="/v1/daily-report")
     app.include_router(dags.router, prefix="/v1/dags")
     app.include_router(dashboard_layout.router)
-    app.include_router(widgets.router, prefix="/v1/widgets")
     app.include_router(dag_runs.router, prefix="/v1/dag-runs")
     # Phase 5 Signal #4: thumbs feedback piggybacks on /v1/dag-runs path
     # space so the SSE stream + feedback live together for the client.
@@ -224,36 +276,18 @@ def create_app() -> FastAPI:
     app.include_router(_confirms_router, prefix="/v1/confirms")
     app.include_router(design.router, prefix="/v1")
 
-    # Phase 6 — Canvas/Davinci DAG
-    try:
-        from routes.canvas import router as canvas_router
-
-        app.include_router(canvas_router)
-    except Exception:
-        pass
-
-    # Phase 7 — PM Fleet v2 (distillation, GitHub/GitLab tools, topK)
-    try:
-        from routes.pm_fleet_v2 import router as pm_fleet_v2_router
-
-        app.include_router(pm_fleet_v2_router)
-    except Exception:
-        pass
-
-    try:
-        from routes.evolution import router as evolution_router
-
-        app.include_router(evolution_router, prefix="/v1/evolution")
-    except Exception as exc:
-        import logging as _logging
-
-        _logging.getLogger("hive.lifespan").warning(
-            "evolution_router_unavailable: %s",
-            exc,
-        )
+    # Optional feature slices degrade explicitly: a missing dependency may keep
+    # the base API available, but it must never make an entire route family
+    # disappear without an actionable startup log.
+    _include_optional_router(app, "routes.canvas")
+    _include_optional_router(app, "routes.pm_fleet_v2")
+    _include_optional_router(app, "routes.evolution", prefix="/v1/evolution")
+    _include_optional_router(app, "routes.rsi", prefix="/v1/rsi")
 
     if STATIC_DIR.is_dir():
         from starlette.responses import FileResponse
+
+        static_root = STATIC_DIR.resolve()
 
         @app.get("/{full_path:path}")
         async def spa_fallback(full_path: str):
@@ -262,10 +296,21 @@ def create_app() -> FastAPI:
                 from starlette.responses import JSONResponse
 
                 return JSONResponse(status_code=404, content={"detail": "Not Found"})
-            fp = STATIC_DIR / full_path
-            if fp.is_file():
+            # SECURITY: this route is UNAUTHENTICATED — AuthMiddleware only gates
+            # paths starting with "/v1/" (middleware/auth.py), and this catch-all
+            # matches everything else. So `full_path` is fully attacker-controlled
+            # and must be contained to static_root before anything is served.
+            #
+            # Containment cannot be done by inspecting the string: `Path.__truediv__`
+            # DISCARDS the left operand when the right one is absolute, so
+            # `STATIC_DIR / "/etc/passwd"` is `/etc/passwd` — no dot-segments needed,
+            # and the "v1/" guard above never fires for such a path. `..` traversal
+            # is the other half. resolve() collapses both (and any symlink escape),
+            # and is_relative_to() is the actual boundary check.
+            fp = (static_root / full_path).resolve()
+            if fp.is_relative_to(static_root) and fp.is_file():
                 return FileResponse(fp)
-            return FileResponse(STATIC_DIR / "index.html")
+            return FileResponse(static_root / "index.html")
 
     return app
 

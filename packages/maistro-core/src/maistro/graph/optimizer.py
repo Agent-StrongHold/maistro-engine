@@ -84,6 +84,59 @@ def _describe_pipeline(config: GraphConfig) -> str:
     return ", ".join(parts)
 
 
+def _node_metric_values(
+    signal: OptimizationSignal, role: AgentRole | str
+) -> tuple[float, int, float]:
+    """Look up (success_rate, run_count, bottleneck_score) for role, with defaults."""
+    node_metric = next((m for m in signal.node_metrics if m.role == role), None)
+    success_rate = node_metric.success_rate if node_metric else 1.0
+    run_count = node_metric.run_count if node_metric else 0
+    bottleneck = node_metric.bottleneck_score if node_metric else 0.0
+    return success_rate, run_count, bottleneck
+
+
+def _rank_with_suffix(signal: OptimizationSignal, role: AgentRole | str) -> tuple[int, str]:
+    """1-based rank of role within signal.node_metrics, plus its ordinal suffix."""
+    rank = next((i + 1 for i, m in enumerate(signal.node_metrics) if m.role == role), 1)
+    rank_suffix = {1: "st", 2: "nd", 3: "rd"}.get(rank, "th")
+    return rank, rank_suffix
+
+
+def _review_context_line(signal: OptimizationSignal) -> str:
+    if signal.avg_review_score is None:
+        return ""
+    return f"- Pipeline average review score: {signal.avg_review_score:.1f}/10"
+
+
+def _format_failures(failure_examples: list[str]) -> str:
+    if not failure_examples:
+        return "  No recorded failures."
+    return "\n\n".join(f"  [{i + 1}] {f}" for i, f in enumerate(failure_examples))
+
+
+def _other_nodes_text(config: GraphConfig, role: AgentRole | str) -> str:
+    other_roles = [r for r in config.nodes if r != role]
+    if not other_roles:
+        return "none"
+    return ", ".join(_role_name(r) for r in other_roles)
+
+
+def _role_context(role: AgentRole | str) -> tuple[str, str, str]:
+    """Resolve the (upstream, output_spec, downstream) description strings for a role."""
+    try:
+        role_enum: AgentRole | None = role if isinstance(role, AgentRole) else AgentRole(role)
+    except ValueError:
+        role_enum = None
+    upstream = _ROLE_UPSTREAM.get(role_enum, "task inputs") if role_enum else "task inputs"
+    output_spec = (
+        _ROLE_OUTPUT_SPEC.get(role_enum, "structured output") if role_enum else "structured output"
+    )
+    downstream = (
+        _ROLE_DOWNSTREAM.get(role_enum, "next pipeline node") if role_enum else "next pipeline node"
+    )
+    return upstream, output_spec, downstream
+
+
 class GraphOptimizer:
     def __init__(
         self,
@@ -182,45 +235,12 @@ class GraphOptimizer:
         if self.llm_call is None:
             raise RuntimeError("llm_call is required for prompt optimization")
 
-        node_metric = next((m for m in signal.node_metrics if m.role == role), None)
-
-        success_rate = node_metric.success_rate if node_metric else 1.0
-        run_count = node_metric.run_count if node_metric else 0
-        bottleneck = node_metric.bottleneck_score if node_metric else 0.0
-
-        rank = next((i + 1 for i, m in enumerate(signal.node_metrics) if m.role == role), 1)
-        rank_suffix = {1: "st", 2: "nd", 3: "rd"}.get(rank, "th")
-
-        review_context = (
-            f"- Pipeline average review score: {signal.avg_review_score:.1f}/10"
-            if signal.avg_review_score is not None
-            else ""
-        )
-
-        failures_text = (
-            "\n\n".join(f"  [{i + 1}] {f}" for i, f in enumerate(failure_examples))
-            if failure_examples
-            else "  No recorded failures."
-        )
-
-        other_roles = [r for r in config.nodes if r != role]
-        other_nodes_text = ", ".join(_role_name(r) for r in other_roles) if other_roles else "none"
-
-        try:
-            role_enum: AgentRole | None = role if isinstance(role, AgentRole) else AgentRole(role)
-        except ValueError:
-            role_enum = None
-        upstream = _ROLE_UPSTREAM.get(role_enum, "task inputs") if role_enum else "task inputs"
-        output_spec = (
-            _ROLE_OUTPUT_SPEC.get(role_enum, "structured output")
-            if role_enum
-            else "structured output"
-        )
-        downstream = (
-            _ROLE_DOWNSTREAM.get(role_enum, "next pipeline node")
-            if role_enum
-            else "next pipeline node"
-        )
+        success_rate, run_count, bottleneck = _node_metric_values(signal, role)
+        rank, rank_suffix = _rank_with_suffix(signal, role)
+        review_context = _review_context_line(signal)
+        failures_text = _format_failures(failure_examples)
+        other_nodes_text = _other_nodes_text(config, role)
+        upstream, output_spec, downstream = _role_context(role)
 
         meta_prompt = (
             f"## Pipeline Objective\n{self.task_description}\n\n"

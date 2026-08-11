@@ -3,6 +3,15 @@
 Public API surface. Import from here for stable, ADR-061-governed access.
 """
 
+import importlib.metadata
+from typing import Any
+
+# Single source of truth for version — read from installed package metadata.
+try:
+    __version__ = importlib.metadata.version("maistro-design")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/unbuilt checkout
+    __version__ = "0.9.0-dev"
+
 from maistro_design.engine import DesignEngine
 from maistro_design.protocols import (
     DesignEngineProtocol,
@@ -12,6 +21,16 @@ from maistro_design.protocols import (
     HTMLRenderer,
     SVGRenderer,
     TypographyRenderer,
+)
+from maistro_design.providers import OpenDesignConfig, OpenDesignProvider
+from maistro_design.renderers import (
+    NATIVE_SLOTS,
+    RendererDiscovery,
+    RendererRegistry,
+    RenderProvider,
+    RenderProviderError,
+    RenderSlotUnavailableError,
+    available_skills,
 )
 from maistro_design.scan import ScanReport, scan_design_output
 from maistro_design.skills.builtins import load_builtins
@@ -47,6 +66,7 @@ from maistro_design.types import (
     DiscoveryResult,
     IncompatibleDesignSystemError,
     OutputFormat,
+    RenderSlot,
     SkillMode,
     SkillModeError,
     SkillNotFoundError,
@@ -57,6 +77,7 @@ from maistro_design.types import (
 )
 
 __all__ = [
+    "NATIVE_SLOTS",
     "ArtifactKind",
     "ArtifactNode",
     "ColorToken",
@@ -82,8 +103,16 @@ __all__ = [
     "InMemoryTrustBanishList",
     "InMemoryTrustReviewQueue",
     "IncompatibleDesignSystemError",
+    "OpenDesignConfig",
+    "OpenDesignProvider",
     "OutputFormat",
     "PgDesignProjectStore",
+    "RenderProvider",
+    "RenderProviderError",
+    "RenderSlot",
+    "RenderSlotUnavailableError",
+    "RendererDiscovery",
+    "RendererRegistry",
     "SVGRenderer",
     "ScanReport",
     "SkillMode",
@@ -96,6 +125,8 @@ __all__ = [
     "TrustUpgradeRequiredError",
     "TypographyRenderer",
     "TypographyToken",
+    "__version__",
+    "available_skills",
     "import_from_catalog",
     "import_open_design_system",
     "load_builtins",
@@ -106,7 +137,7 @@ __all__ = [
 ]
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Lazy-load PgDesignProjectStore to avoid requiring sqlalchemy at import time."""
     if name == "PgDesignProjectStore":
         from maistro_design.stores import PgDesignProjectStore

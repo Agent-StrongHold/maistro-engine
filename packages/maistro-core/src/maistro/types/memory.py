@@ -81,6 +81,20 @@ SCOPE_RANK: dict[MemoryScope, int] = {
 }
 
 
+@dataclass(frozen=True)
+class DecaySweep:
+    """Outcome of one pass of periodic decay over an episodic store (SPEC-080126-9e42).
+
+    ``scanned`` counts live (non-deleted) entries considered, ``decayed`` counts
+    entries whose weight actually moved, ``at_floor`` counts entries already
+    resting on their tier floor (the "structurally unforgettable" set).
+    """
+
+    scanned: int = 0
+    decayed: int = 0
+    at_floor: int = 0
+
+
 @dataclass
 class Learning:
     """A self-improving correction learned from tool call patterns."""

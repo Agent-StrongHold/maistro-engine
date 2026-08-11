@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -168,6 +169,10 @@ def test_plan_includes_environment_and_generated_artifacts() -> None:
     service = artifacts["compose_override_preview"]["services"]["maistro-reactor"]
     assert service["read_only"] is True
     assert service["cap_drop"] == ["ALL"]
+    # A service with neither image: nor build: fails `docker compose config`
+    # when the override is merged by install.sh.
+    assert "image" in service or "build" in service
+    assert service["profiles"] == ["reactor"]
     assert any("sandbox_profile=safe" in note for note in plan["preview_notes"])
 
 
@@ -228,13 +233,16 @@ def test_materialize_install_artifacts_writes_reviewable_files(tmp_path: Path) -
     assert "unsupported-options.json" in names
     assert "tutorial-todo.md" in names
     assert "install.sh" in names
+    assert "install.ps1" in names
     assert "driver" in (tmp_path / "bootstrap-users.json").read_text(encoding="utf-8")
     assert "image_pull" in (tmp_path / "delivery.json").read_text(encoding="utf-8")
     assert "MAISTRO_CRYPTO_PROFILE" in (tmp_path / "compose.override.yml").read_text(
         encoding="utf-8"
     )
     assert "Maistro first-run setup" in (tmp_path / "tutorial-todo.md").read_text(encoding="utf-8")
-    assert (tmp_path / "install.sh").stat().st_mode & 0o100
+    assert "Set-Location $PSScriptRoot" in (tmp_path / "install.ps1").read_text(encoding="utf-8")
+    if os.name != "nt":
+        assert (tmp_path / "install.sh").stat().st_mode & 0o100
 
 
 def test_source_build_delivery_has_same_behavior_contract() -> None:

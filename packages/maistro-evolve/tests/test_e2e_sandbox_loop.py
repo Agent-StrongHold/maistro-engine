@@ -141,7 +141,7 @@ class TestSandboxEvolveE2E:
         assert bad_output == "Traceback: NameError\n"
 
         # --- Step 2: harness turns sandbox exit codes into scores --------------
-        harness = EvalHarness(use_real_benchmarks=False)
+        harness = EvalHarness()
 
         async def _sandbox_backed_runner(genome: PipelineGenome, llm_call: object) -> object:
             from maistro_evolve.types import EvalResult

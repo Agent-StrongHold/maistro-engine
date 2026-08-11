@@ -6,6 +6,7 @@ import { ModeProvider } from "./components/ModeToggle";
 import { Onboarding } from "./components/Onboarding";
 import { ToastProvider } from "./components/shared";
 import { PocModeProvider, usePmPoc } from "./context/PocMode";
+import { WorkspaceProvider } from "./context/WorkspaceContext";
 import Agents from "./pages/Agents";
 import Fleet from "./pages/Fleet";
 import AuditLog from "./pages/AuditLog";
@@ -18,6 +19,7 @@ import Dashboard from "./pages/Dashboard";
 import DesignStudio from "./pages/DesignStudio";
 import Docs from "./pages/Docs";
 import Evolution from "./pages/Evolution";
+import RSI from "./pages/RSI";
 import Login from "./pages/Login";
 import MCP from "./pages/MCP";
 import Memory from "./pages/Memory";
@@ -106,7 +108,24 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return <Login onAuthenticated={handleAuthenticated} />;
   }
 
-  return <UserCtx.Provider value={user}>{children}</UserCtx.Provider>;
+  return (
+    <UserCtx.Provider value={user}>
+      <WorkspaceProvider>
+        <OnboardingGate />
+        {children}
+      </WorkspaceProvider>
+    </UserCtx.Provider>
+  );
+}
+
+// Rendered only once authenticated: on a fresh install the Setup wizard and
+// Login screen must never be covered by the onboarding modal.
+function OnboardingGate() {
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("hive_onboarded"));
+  if (!showOnboarding) {
+    return null;
+  }
+  return <Onboarding onComplete={() => setShowOnboarding(false)} />;
 }
 
 function AppRoutes() {
@@ -146,6 +165,7 @@ function AppRoutes() {
                 <Route path="containers" element={<Containers />} />
                 <Route path="docs" element={<Docs />} />
                 <Route path="evolution" element={<Evolution />} />
+                <Route path="rsi" element={<RSI />} />
                 <Route path="memory" element={<Memory />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="profile" element={<Profile />} />
@@ -165,20 +185,10 @@ export default function App() {
       <ToastProvider>
         <ModeProvider>
           <PocModeProvider>
-            <AppRoutesWithOnboarding />
+            <AppRoutes />
           </PocModeProvider>
         </ModeProvider>
       </ToastProvider>
     </ErrorBoundary>
-  );
-}
-
-function AppRoutesWithOnboarding() {
-  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem("hive_onboarded"));
-  return (
-    <>
-      {showOnboarding && <Onboarding onComplete={() => setShowOnboarding(false)} />}
-      <AppRoutes />
-    </>
   );
 }

@@ -16,8 +16,17 @@ if TYPE_CHECKING:
 
 # Max in-budget scarcity cost is 1/ln(2.0) (remaining floored at 2.0). Over-quota
 # paid usage must sit strictly above this ceiling so free in-budget quota always
-# wins on the router's cost-in-denominator score.
-_OVER_QUOTA_FLOOR: float = 1.0 / math.log(2.0) + 1.0
+# wins on the router's cost-in-denominator score. Public: the scorer's
+# normalizer anchors its paygo band on this same value — one constant, not two
+# modules that happen to agree today.
+OVER_QUOTA_FLOOR: float = 1.0 / math.log(2.0) + 1.0
+_OVER_QUOTA_FLOOR = OVER_QUOTA_FLOOR  # backwards-compat alias
+
+# Returned for over-quota-without-paygo providers; the scorer FILTERS on this
+# (returns None) rather than scoring it. Shared constant, not a magic number
+# duplicated across two modules — changing one side used to silently disable
+# the filter.
+INELIGIBLE_COST: float = 999.0
 
 
 def _daily_budget(provider: ProviderConfig) -> float:
@@ -35,7 +44,7 @@ def compute_effective_cost(usage_pct: float, provider: ProviderConfig) -> float:
 
     - Providers with large budgets are naturally cheap
     - Cost rises smoothly as tokens deplete
-    - Over quota without paygo: 999.0
+    - Over quota without paygo: INELIGIBLE_COST (the scorer filters, never scores)
     - Over quota with paygo: above the in-budget ceiling, scaled by overage rate
     - Zero free tokens: 1.0
     """
@@ -54,7 +63,7 @@ def compute_effective_cost(usage_pct: float, provider: ProviderConfig) -> float:
                 provider.overage_cost_per_1k_input + provider.overage_cost_per_1k_output
             ) / 2.0
             return _OVER_QUOTA_FLOOR + avg_rate
-        return 999.0
+        return INELIGIBLE_COST
 
     daily = _daily_budget(provider)
     if daily <= 0:

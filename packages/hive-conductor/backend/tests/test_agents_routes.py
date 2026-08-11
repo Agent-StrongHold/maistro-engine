@@ -170,7 +170,7 @@ def test_scan_agent_normal_mode_missing_404(admin_client: Any, monkeypatch) -> N
 def test_scan_agent_pm_poc_mode_found(admin_client: Any, monkeypatch) -> None:
     monkeypatch.setattr("routes.agents.is_pm_poc_mode", lambda: True)
     monkeypatch.setattr(
-        "routes.agents.get_pm_def" if False else "maistro.agents.pm_fleet.get_pm_def",
+        "maistro.agents.pm_fleet.get_pm_def",
         lambda aid: {"id": aid},
     )
     r = admin_client.post("/v1/agents/pm-1/scan")

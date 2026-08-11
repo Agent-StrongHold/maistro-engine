@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,12 @@ from maistro_bootstrap.builders.sandbox import (
     SandboxedShell,
 )
 from maistro_bootstrap.builders.session import BuilderSession
+
+# Portable interpreter name for probe scripts. sys.executable can't be used:
+# it is an absolute path outside the sandbox root, which the shell rightly
+# rejects as an escape. POSIX CI images guarantee python3 on the fixed
+# _SAFE_ENV PATH; Windows resolves python from the forwarded real PATH.
+_PY = "python" if os.name == "nt" else "python3"
 
 
 @pytest.fixture()
@@ -81,14 +88,19 @@ def test_dotdot_escape_blocked(tmp_root: Path) -> None:
 
 
 @pytest.mark.ac("SPEC-201/AC-3")
-def test_safe_command_executes(shell: SandboxedShell) -> None:
-    out = shell.run("echo maistro")
+def test_safe_command_executes(shell: SandboxedShell, tmp_root: Path) -> None:
+    # A python script probe, not `echo`: portable (echo/sleep are POSIX shell
+    # builtins, not executables — shell=False on Windows has nothing to launch)
+    # and it proves real child processes work under _SAFE_ENV on every platform.
+    (tmp_root / "hello.py").write_text("print('maistro')", encoding="utf-8")
+    out = shell.run(f"{_PY} hello.py")
     assert "maistro" in out
 
 
-def test_timeout_raises(shell: SandboxedShell) -> None:
+def test_timeout_raises(shell: SandboxedShell, tmp_root: Path) -> None:
+    (tmp_root / "slow.py").write_text("import time\ntime.sleep(30)", encoding="utf-8")
     with pytest.raises(CommandTimeoutError):
-        shell.run("sleep 10", timeout=1)
+        shell.run(f"{_PY} slow.py", timeout=1)
 
 
 def test_command_substitution_blocked(shell: SandboxedShell) -> None:
@@ -107,11 +119,74 @@ def test_semicolon_injection_blocked(shell: SandboxedShell) -> None:
 
 
 def test_env_does_not_contain_os_environ(
-    shell: SandboxedShell, monkeypatch: pytest.MonkeyPatch
+    shell: SandboxedShell, tmp_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Dump the child's ENTIRE env — a real leak test, not `echo nodump` (which
+    # could never print the environment in the first place). The secret set in
+    # the parent must be absent from what the sandboxed child can see.
     monkeypatch.setenv("SECRET_API_KEY", "super-secret-value")
-    out = shell.run("echo nodump")
+    (tmp_root / "dumpenv.py").write_text(
+        "import os\nprint(repr(dict(os.environ)))", encoding="utf-8"
+    )
+    out = shell.run(f"{_PY} dumpenv.py")
+    assert "SECRET_API_KEY" not in out
     assert "super-secret-value" not in out
+
+
+def test_env_points_temp_inside_sandbox_on_windows(
+    tmp_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Codex review (#256): forwarding the HOST's real TEMP/TMP let an
+    agent-authored script escape the sandbox via `tempfile` at runtime —
+    invisible to _check_paths, which only scans the literal command string.
+    TEMP/TMP must resolve INSIDE the sandbox root instead of being inherited."""
+    import maistro_bootstrap.builders.sandbox as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod.os, "name", "nt")
+    monkeypatch.setenv("TEMP", r"C:\Users\real-user\AppData\Local\Temp")
+    monkeypatch.setenv("TMP", r"C:\Users\real-user\AppData\Local\Temp")
+
+    env = SandboxedShell(tmp_root)._env()
+
+    # String comparisons, not Path(env["TEMP"]) — os.name is faked to "nt" for
+    # this test, and Python 3.13's pathlib refuses to instantiate a WindowsPath
+    # on a real POSIX system (a CI-only failure this exact test exists to
+    # avoid: it only ran on Windows locally, where the mismatch is invisible).
+    sandboxed_tmp = str(tmp_root.resolve() / ".sandbox-tmp")
+    assert env["TEMP"] == sandboxed_tmp
+    assert env["TMP"] == sandboxed_tmp
+    assert (tmp_root / ".sandbox-tmp").is_dir()  # created, not just named
+    assert env["TEMP"] != r"C:\Users\real-user\AppData\Local\Temp"
+
+
+def test_env_has_no_windows_only_keys_on_posix(
+    tmp_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import maistro_bootstrap.builders.sandbox as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod.os, "name", "posix")
+
+    env = SandboxedShell(tmp_root)._env()
+
+    assert "TEMP" not in env
+    assert "TMP" not in env
+
+
+@pytest.mark.skipif(os.name != "nt", reason="proves the Windows-only escape is closed")
+def test_tempfile_writes_stay_inside_sandbox_on_windows(
+    shell: SandboxedShell, tmp_root: Path
+) -> None:
+    """The concrete attack Codex described: a relative `python script.py` with
+    no absolute path anywhere in the command, where the script itself calls
+    `tempfile` at runtime. Must land inside the sandbox root, not the host's
+    real Temp directory that a naive TEMP/TMP forward would have handed it."""
+    (tmp_root / "probe.py").write_text(
+        "import tempfile\np = tempfile.mktemp()\nopen(p, 'w').write('escaped')\nprint(p)\n",
+        encoding="utf-8",
+    )
+    out = shell.run(f"{_PY} probe.py")
+    written_path = Path(out.strip().splitlines()[-1])
+    assert written_path.resolve().is_relative_to(tmp_root.resolve())
 
 
 def test_run_argv_blocks_absolute_path_escape(shell: SandboxedShell) -> None:
@@ -142,6 +217,30 @@ def test_run_argv_blocks_dangerous_command(shell: SandboxedShell) -> None:
 def test_write_and_read_file(sandbox: LocalWorktreeSandbox) -> None:
     sandbox.write_file("hello.txt", "world")
     assert sandbox.read_file("hello.txt") == "world"
+
+
+def test_edit_file_replaces_unique_string(sandbox: LocalWorktreeSandbox) -> None:
+    sandbox.write_file("m.py", "a = 1\nb = 2\nc = 3\n")
+    out = sandbox.edit_file("m.py", "b = 2", "b = 22")
+    assert "1 replacement" in out
+    assert sandbox.read_file("m.py") == "a = 1\nb = 22\nc = 3\n"
+
+
+def test_edit_file_missing_string_raises(sandbox: LocalWorktreeSandbox) -> None:
+    sandbox.write_file("m.py", "a = 1\n")
+    with pytest.raises(ValueError, match="not found"):
+        sandbox.edit_file("m.py", "z = 9", "z = 10")
+
+
+def test_edit_file_ambiguous_string_raises(sandbox: LocalWorktreeSandbox) -> None:
+    sandbox.write_file("m.py", "x = 1\nx = 1\n")
+    with pytest.raises(ValueError, match="appears 2 times"):
+        sandbox.edit_file("m.py", "x = 1", "x = 2")
+
+
+def test_edit_file_escape_blocked(sandbox: LocalWorktreeSandbox) -> None:
+    with pytest.raises(SandboxEscapeError):
+        sandbox.edit_file("../escape.txt", "a", "b")
 
 
 def test_write_creates_parent_dirs(sandbox: LocalWorktreeSandbox) -> None:

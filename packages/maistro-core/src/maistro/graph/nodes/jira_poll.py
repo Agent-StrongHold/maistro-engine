@@ -17,8 +17,9 @@ from __future__ import annotations
 import logging
 from typing import Any, ClassVar, Literal
 
-import httpx
 from pydantic import BaseModel, Field
+
+from maistro.http import shared_client
 
 from . import register_node
 from .base import BaseNode, NodeContext
@@ -92,7 +93,7 @@ class JiraPollNode(BaseNode[JiraPollIn, JiraPollOut]):
             "fields": ",".join(inputs.fields),
         }
 
-        async with httpx.AsyncClient(timeout=inputs.timeout_s) as client:
+        async with shared_client(timeout=inputs.timeout_s) as client:
             resp = await client.get(f"{base}{api_path}", params=params, headers=headers, auth=auth)
 
         if resp.status_code == 401:

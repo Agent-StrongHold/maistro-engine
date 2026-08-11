@@ -3,7 +3,7 @@ id: ADR-057
 title: Memory exposure mode — configurable system-managed vs agent-managed
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-011
@@ -13,7 +13,7 @@ implements: []
 related:
   - maistro-engine#ADR-019
   - maistro-engine#ADR-053
-  - maistro-engine#SPEC-261
+  - maistro-engine#SPEC-062126-6a31
 supersedes: []
 blocks: []
 blocked-by: []
@@ -111,7 +111,7 @@ memory:
 
 ## Open questions
 
-Resolved by maistro-engine#SPEC-261:
+Resolved by maistro-engine#SPEC-062126-6a31:
 
 1. **Hybrid as a distinct enum value vs emergent from per-block tags.** Resolved: keep `HYBRID` explicit, as recommended.
 2. **Default mode for new agents.** Resolved: moot — there is no implicit default at all (see #3); every agent declares explicitly.

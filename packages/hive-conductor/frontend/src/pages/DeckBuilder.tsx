@@ -108,8 +108,7 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
     setMsgs(m => [...m, { role: "user", content: userMsg }]);
     setLoading(true);
     try {
-      const deckContext = slides.map((s, i) => `Slide ${i + 1}: ${s.html.replace(/<[^>]+>/g, " ").slice(0, 100)}`).join("\n");
-      const contextPrefix = `[DECK CONTEXT: ${slides.length} slides, active=#${activeIdx + 1}. I want stunning presentation slides with gradients, big numbers, SVG charts. Wrap each slide in <slide> tags. Use dark backgrounds, color:#a78bfa accents. Data context: 152 active use cases, Automations 58%, Human Enhancement 28%, Data Analysis 14%, v2 migration 24 in pipeline.]\n\n`;
+      const contextPrefix = `[DECK CONTEXT: ${slides.length} slides, active=#${activeIdx + 1}. I want stunning presentation slides with gradients, big numbers, SVG charts where relevant to the topic. Wrap each slide in <slide> tags. Use dark backgrounds, color:#a78bfa accents.]\n\n`;
       const r = await fetch("/v1/chat/complete", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
@@ -127,7 +126,7 @@ function DeckChat({ slides, onUpdateSlides, activeIdx }: { slides: Slide[]; onUp
       // Parse <slide> tags from response and apply them
       const slideMatches = [...reply.matchAll(/<slide(?:\s+index="(\d+)")?>([\s\S]*?)<\/slide>/gi)];
       if (slideMatches.length > 0) {
-        let newSlides = [...slides];
+        const newSlides = [...slides];
         for (const match of slideMatches) {
           const idx = match[1] ? parseInt(match[1]) - 1 : -1;
           const html = match[2].trim();
@@ -208,7 +207,7 @@ ${slides.map(s => `<div class="slide">${s.html}</div>`).join("\n")}</div></body>
     return (
       <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 9999, overflow: "hidden" }}>
         <div style={{ height: "100vh", overflowY: "scroll", scrollSnapType: "y mandatory" }}>
-          {slides.map((s, i) => (
+          {slides.map((s) => (
             <div key={s.id} style={{ height: "100vh", scrollSnapAlign: "start", display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem", flexDirection: "column" }}
               dangerouslySetInnerHTML={{ __html: s.html }} />
           ))}

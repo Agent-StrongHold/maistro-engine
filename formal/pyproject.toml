@@ -3,6 +3,10 @@ name = "maistro-formal-models"
 version = "0.1.0"
 description = "Machine-checkable security models for Maistro Engine (Hypothesis stateful property tests)"
 requires-python = ">=3.12"
+# No license-files here: this project is installed only for its dependencies
+# (packages = [] below) and is never distributed, so there is no wheel to carry
+# the text. The root LICENSE governs.
+license = "Apache-2.0"
 dependencies = [
     "hypothesis>=6.130",
     "pytest>=8.0",
@@ -20,7 +24,7 @@ dev = [
 # Without an explicit empty package list, setuptools auto-discovery fails on
 # the multiple top-level directories (models/, extractors/, generated/).
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # >=77 for PEP 639 SPDX `license` expression
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -30,6 +34,10 @@ packages = []
 testpaths = ["models"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
+markers = [
+    "contract: ADR-032 contract axis (boundary | behavioral | cross_service)",
+    "scope: test scope axis (unit | integration | e2e | property)",
+]
 
 [tool.hypothesis]
 max_examples = 100

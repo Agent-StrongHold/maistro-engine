@@ -16,6 +16,8 @@ import os
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from maistro.http import shared_client
+
 logger = logging.getLogger("hive.canvas_dag")
 
 CANVAS_DAG = {
@@ -82,7 +84,6 @@ CANVAS_DAG = {
 
 async def visual_quality_eval(output: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
     """LLM-as-judge eval for visual quality scoring."""
-    import httpx
 
     base = os.environ.get("LITELLM_API_BASE", "").rstrip("/")
     if not base.endswith("/v1"):
@@ -100,7 +101,7 @@ async def visual_quality_eval(output: str, context: dict[str, Any] | None = None
     )
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},

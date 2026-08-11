@@ -1,4 +1,9 @@
-"""Coverage for skills/connectors.py."""
+"""Coverage for skills/connectors.py.
+
+The demo fallback was removed (SPEC-204 §1): a registry outage raises
+MarketplaceUnavailableError instead of serving fabricated skills. These tests
+pin both the success paths and the fail-closed behavior.
+"""
 
 from __future__ import annotations
 
@@ -8,10 +13,9 @@ import pytest
 
 from maistro.skills import connectors
 from maistro.skills.connectors import (
+    MarketplaceUnavailableError,
     _matches,
     _normalize,
-    get_demo_agent_content,
-    get_demo_skill_content,
     search_claude_plugins,
     search_clawhub,
     search_gitagent_repos,
@@ -68,23 +72,12 @@ def test_matches_returns_false_when_a_term_missing() -> None:
     assert _matches("github pr", "web search", "desc") is False
 
 
-async def test_search_clawhub_returns_demo_data_when_no_client() -> None:
-    results = await search_clawhub()
-    assert len(results) == 8
-    assert results[0].name == "web-search"
+# ── ClawHub ──────────────────────────────────────────────────────
 
 
-async def test_search_clawhub_filters_demo_data_by_query() -> None:
-    results = await search_clawhub(query="github")
-    assert len(results) == 1
-    assert results[0].name == "github-manager"
-
-
-async def test_search_clawhub_paginates_demo_data() -> None:
-    page1 = await search_clawhub(page=1, per_page=2)
-    page2 = await search_clawhub(page=2, per_page=2)
-    assert [s.name for s in page1] == ["web-search", "github-manager"]
-    assert [s.name for s in page2] == ["database-query", "slack-notifications"]
+async def test_search_clawhub_raises_without_client() -> None:
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub()
 
 
 async def test_search_clawhub_uses_client_list_response() -> None:
@@ -120,34 +113,50 @@ async def test_search_clawhub_uses_client_dict_items_response() -> None:
     assert results[0].name == "z"
 
 
-async def test_search_clawhub_falls_back_to_demo_when_results_empty() -> None:
+async def test_search_clawhub_empty_results_are_returned_not_replaced() -> None:
+    """A genuine empty result set is [], never substituted fixtures."""
     client = _FakeHttpClient(response=_FakeResponse(200, {"items": []}))
-    results = await search_clawhub(http_client=client)
-    assert len(results) == 8
+    assert await search_clawhub(http_client=client) == []
 
 
-async def test_search_clawhub_falls_back_to_demo_on_non_200() -> None:
+async def test_search_clawhub_raises_on_non_200() -> None:
     client = _FakeHttpClient(response=_FakeResponse(404, {}))
-    results = await search_clawhub(http_client=client)
-    assert len(results) == 8
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
 
 
-async def test_search_clawhub_falls_back_to_demo_on_exception() -> None:
-    client = _FakeHttpClient(error=RuntimeError("network down"))
-    results = await search_clawhub(http_client=client)
-    assert len(results) == 8
+async def test_search_clawhub_raises_on_transport_error() -> None:
+    client = _FakeHttpClient(error=ConnectionError("registry down"))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
 
 
-async def test_search_claude_plugins_returns_demo_when_no_client() -> None:
-    results = await search_claude_plugins()
-    assert len(results) == 5
-    assert results[0].name == "mcp-filesystem"
+async def test_search_clawhub_raises_on_scalar_payload() -> None:
+    """A 200 with an unusable shape is the typed error, not AttributeError."""
+    client = _FakeHttpClient(response=_FakeResponse(200, "not-a-container"))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
 
 
-async def test_search_claude_plugins_filters_demo_by_query_and_tags() -> None:
-    results = await search_claude_plugins(query="github")
-    assert len(results) == 1
-    assert results[0].name == "mcp-github"
+async def test_search_clawhub_raises_on_null_items() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": None}))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
+
+
+async def test_search_clawhub_raises_on_malformed_entry_schema() -> None:
+    """A schema failure inside an entry (scalar tags) is the typed error."""
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": [{"name": "x", "tags": 7}]}))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_clawhub(http_client=client)
+
+
+# ── Claude plugins ───────────────────────────────────────────────
+
+
+async def test_search_claude_plugins_raises_without_client_or_cache() -> None:
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_claude_plugins()
 
 
 async def test_search_claude_plugins_builds_cache_from_client() -> None:
@@ -157,69 +166,86 @@ async def test_search_claude_plugins_builds_cache_from_client() -> None:
             {
                 "plugins": [
                     {
-                        "name": "p1",
-                        "description": "d1",
-                        "homepage": "h1",
-                        "author": {"name": "auth1"},
-                        "tags": ["a", "b"],
-                    },
-                    {
-                        "name": "p2",
-                        "description": "d2",
-                        "author": "auth2",
-                        "keywords": ["c"],
-                    },
+                        "name": "mcp-filesystem",
+                        "description": "files",
+                        "homepage": "h",
+                        "author": {"name": "Anthropic"},
+                        "keywords": ["mcp"],
+                    }
                 ]
             },
         )
     )
     results = await search_claude_plugins(http_client=client)
-    assert len(results) == 2
-    assert results[0].author == "auth1"
-    assert results[1].author == "auth2"
-    assert results[1].tags == ("c",)
-    assert connectors._claude_cache_ts != 0.0
+    assert [s.name for s in results] == ["mcp-filesystem"]
+    assert results[0].author == "Anthropic"
+    assert connectors._claude_cache
 
 
 async def test_search_claude_plugins_uses_cache_within_ttl() -> None:
-    connectors._claude_cache = [connectors.SkillMetadata(name="cached", description="d")]
-    connectors._claude_cache_ts = connectors.time.monotonic()
-    client = _FakeHttpClient(error=AssertionError("should not be called"))
-    results = await search_claude_plugins(http_client=client)
-    assert len(results) == 1
-    assert results[0].name == "cached"
-    assert client.calls == []
+    client = _FakeHttpClient(
+        response=_FakeResponse(200, {"plugins": [{"name": "cached", "homepage": "h"}]})
+    )
+    await search_claude_plugins(http_client=client)
+    # Second call must not hit the network — and works with no client at all.
+    results = await search_claude_plugins()
+    assert [s.name for s in results] == ["cached"]
+    assert len(client.calls) == 1
 
 
-async def test_search_claude_plugins_falls_back_to_demo_on_non_200() -> None:
+async def test_search_claude_plugins_filters_by_query_and_tags() -> None:
+    client = _FakeHttpClient(
+        response=_FakeResponse(
+            200,
+            {
+                "plugins": [
+                    {"name": "mcp-github", "description": "gh", "keywords": ["mcp"]},
+                    {"name": "other", "description": "misc", "keywords": []},
+                ]
+            },
+        )
+    )
+    results = await search_claude_plugins(query="mcp", http_client=client)
+    assert [s.name for s in results] == ["mcp-github"]
+
+
+async def test_search_claude_plugins_raises_on_non_200() -> None:
     client = _FakeHttpClient(response=_FakeResponse(500, {}))
-    results = await search_claude_plugins(http_client=client)
-    assert len(results) == 5
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_claude_plugins(http_client=client)
 
 
-async def test_search_claude_plugins_falls_back_to_demo_on_exception() -> None:
-    client = _FakeHttpClient(error=RuntimeError("down"))
-    results = await search_claude_plugins(http_client=client)
-    assert len(results) == 5
+async def test_search_claude_plugins_raises_on_transport_error() -> None:
+    client = _FakeHttpClient(error=ConnectionError("index down"))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_claude_plugins(http_client=client)
 
 
-async def test_search_gitagent_repos_returns_demo_when_no_client() -> None:
-    results = await search_gitagent_repos()
-    assert len(results) == 5
-    assert results[0]["name"] == "code-reviewer"
+async def test_search_claude_plugins_raises_on_non_dict_payload() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, ["not", "a", "dict"]))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_claude_plugins(http_client=client)
 
 
-async def test_search_gitagent_repos_returns_demo_when_no_query_even_with_client() -> None:
-    client = _FakeHttpClient(error=AssertionError("should not be called"))
-    results = await search_gitagent_repos(http_client=client)
-    assert len(results) == 5
-    assert client.calls == []
+async def test_search_claude_plugins_empty_index_is_cached() -> None:
+    """A valid empty index must be served from cache — one fetch, then a
+    clientless call returns [] instead of raising (Codex review on #306)."""
+    client = _FakeHttpClient(response=_FakeResponse(200, {"plugins": []}))
+    assert await search_claude_plugins(http_client=client) == []
+    assert await search_claude_plugins() == []
+    assert len(client.calls) == 1
 
 
-async def test_search_gitagent_repos_filters_demo_by_query() -> None:
-    results = await search_gitagent_repos(query="devops")
-    assert len(results) == 1
-    assert results[0]["name"] == "devops-agent"
+# ── GitAgent ─────────────────────────────────────────────────────
+
+
+async def test_search_gitagent_repos_empty_query_returns_empty() -> None:
+    assert await search_gitagent_repos() == []
+
+
+async def test_search_gitagent_repos_raises_without_client() -> None:
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_gitagent_repos(query="planner")
 
 
 async def test_search_gitagent_repos_uses_client_response() -> None:
@@ -229,59 +255,62 @@ async def test_search_gitagent_repos_uses_client_response() -> None:
             {
                 "items": [
                     {
-                        "name": "repo1",
-                        "description": "desc1",
-                        "html_url": "url1",
-                        "owner": {"login": "owner1"},
-                        "stargazers_count": 10,
+                        "name": "agent-kit",
+                        "description": "d",
+                        "html_url": "u",
+                        "owner": {"login": "me"},
+                        "stargazers_count": 7,
                     }
                 ]
             },
         )
     )
-    results = await search_gitagent_repos(query="repo1", http_client=client)
-    assert len(results) == 1
-    assert results[0]["name"] == "repo1"
-    assert results[0]["author"] == "owner1"
-    assert results[0]["stars"] == 10
+    results = await search_gitagent_repos(query="agent", http_client=client)
+    assert results == [
+        {
+            "name": "agent-kit",
+            "description": "d",
+            "repo_url": "u",
+            "author": "me",
+            "stars": 7,
+            "source_type": "gitagent",
+        }
+    ]
 
 
-async def test_search_gitagent_repos_falls_back_to_demo_when_no_items() -> None:
+async def test_search_gitagent_repos_empty_items_returned_not_replaced() -> None:
     client = _FakeHttpClient(response=_FakeResponse(200, {"items": []}))
-    results = await search_gitagent_repos(query="anything", http_client=client)
-    assert len(results) == 0
+    assert await search_gitagent_repos(query="agent", http_client=client) == []
 
 
-async def test_search_gitagent_repos_falls_back_to_demo_on_non_200() -> None:
-    client = _FakeHttpClient(response=_FakeResponse(503, {}))
-    results = await search_gitagent_repos(query="devops", http_client=client)
-    assert len(results) == 1
-    assert results[0]["name"] == "devops-agent"
+async def test_search_gitagent_repos_raises_on_non_200() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(403, {}))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_gitagent_repos(query="agent", http_client=client)
 
 
-async def test_search_gitagent_repos_falls_back_to_demo_on_exception() -> None:
-    client = _FakeHttpClient(error=RuntimeError("down"))
-    results = await search_gitagent_repos(query="devops", http_client=client)
-    assert len(results) == 1
-    assert results[0]["name"] == "devops-agent"
+async def test_search_gitagent_repos_raises_on_transport_error() -> None:
+    client = _FakeHttpClient(error=ConnectionError("api down"))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_gitagent_repos(query="agent", http_client=client)
 
 
-def test_get_demo_skill_content_returns_content_for_known_url() -> None:
-    content = get_demo_skill_content("https://clawhub.ai/skills/community/web-search")
-    assert content is not None
-    assert "web_search" in content
+async def test_search_gitagent_repos_raises_on_non_list_items() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": "nope"}))
+    with pytest.raises(MarketplaceUnavailableError):
+        await search_gitagent_repos(query="agent", http_client=client)
 
 
-def test_get_demo_skill_content_returns_none_for_unknown_url() -> None:
-    assert get_demo_skill_content("https://unknown.example/x") is None
+async def test_search_gitagent_repos_skips_non_dict_entries() -> None:
+    client = _FakeHttpClient(response=_FakeResponse(200, {"items": ["junk", {"name": "ok"}]}))
+    results = await search_gitagent_repos(query="agent", http_client=client)
+    assert [r["name"] for r in results] == ["ok"]
 
 
-def test_get_demo_agent_content_returns_content_for_known_url() -> None:
-    content = get_demo_agent_content("https://github.com/gitagent-community/devops-agent")
-    assert content is not None
-    assert "agent.yaml" in content
-    assert "SOUL.md" in content
+def test_no_adversarial_fixture_names_ship() -> None:
+    """The removed fixtures must not resurface anywhere in the module."""
+    import inspect
 
-
-def test_get_demo_agent_content_returns_none_for_unknown_url() -> None:
-    assert get_demo_agent_content("https://unknown.example/x") is None
+    src = inspect.getsource(connectors)
+    for name in ("code-executor-unlimited", "credential-helper", "admin-override"):
+        assert name not in src

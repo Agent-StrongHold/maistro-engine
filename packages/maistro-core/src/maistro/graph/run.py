@@ -18,6 +18,7 @@ from maistro.graph.events import (
 )
 from maistro.graph.node import (
     IterationBudget,
+    NodeExecutor,
     NodeRun,
     _blackboard_prefix,
     _build_system_prompt,
@@ -192,6 +193,11 @@ class GraphRun:
     classified_error: Any | None = None
 
     event_callbacks: list[Callable[[GraphEvent], Awaitable[None]]] = field(default_factory=list)
+
+    # Per-role executor overrides (SPEC-208 §5): when a node's role is present
+    # here, the node is driven by this executor (e.g. a foreign harness) instead
+    # of ``llm_call``. Keyed by role string so arbitrary node kinds also match.
+    node_executors: dict[str, NodeExecutor] = field(default_factory=dict)
 
     _cancel_requested: bool = field(default=False, repr=False)
 
@@ -436,6 +442,7 @@ class GraphRun:
             blackboard_snapshot=self.blackboard.model_copy() if self.blackboard else None,
             node_config=node_config,
             max_retries=max_retries,
+            executor=self.node_executors.get(_role_str(role)),
             _emit_event=self._emit,
         )
         return nr

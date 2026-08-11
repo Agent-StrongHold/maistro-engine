@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 
 class HTTPToolExecutor:
@@ -17,7 +17,7 @@ class HTTPToolExecutor:
     async def call(self, tool_name: str, args: dict[str, Any]) -> str:
         url = f"{self._base_url}/tools/{tool_name}"
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with shared_client(timeout=120.0) as client:
                 resp = await client.post(url, json=args)
                 if resp.status_code != 200:
                     return f"Error: HTTP {resp.status_code} - {resp.text[:200]}"
@@ -38,7 +38,7 @@ class HTTPToolExecutor:
 
     async def list_tools(self) -> list[dict[str, str]]:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with shared_client(timeout=10.0) as client:
                 resp = await client.get(f"{self._base_url}/tools")
                 if resp.status_code == 200:
                     data: dict[str, Any] = resp.json()

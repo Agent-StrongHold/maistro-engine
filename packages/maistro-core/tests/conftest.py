@@ -74,3 +74,17 @@ def mock_executor():
         )
 
     return executor
+
+
+@pytest.fixture(autouse=True)
+def _reset_shared_http() -> Iterator[None]:
+    """Drop any test transport override and pooled clients between tests.
+
+    A leaked override would silently route a later test's requests into an
+    unrelated MockTransport — the kind of cross-test coupling that shows up as
+    an unrelated failure days later.
+    """
+    from maistro.http import set_test_transport
+
+    yield
+    set_test_transport(None)

@@ -253,13 +253,18 @@ async def test_propose_prompt_builds_meta_prompt_and_returns_stripped_result() -
 
 
 async def test_propose_prompt_omits_review_context_when_avg_review_score_none() -> None:
+    captured: dict[str, Any] = {}
+
     async def llm_call(messages: list[dict[str, str]], *, model: str) -> str:
+        captured["messages"] = messages
         return "x"
 
     optimizer = GraphOptimizer(task_description="t", llm_call=llm_call)
     config = GraphConfig(nodes=[AgentRole.CODER])
     signal = optimizer.extract_signal([_trace([_node_result(AgentRole.CODER, True, 10)])])
     await optimizer._propose_prompt(config, signal, AgentRole.CODER, "p", [])
+
+    assert "Pipeline average review score" not in captured["messages"][1]["content"]
 
 
 async def test_propose_prompt_uses_no_recorded_failures_text_when_empty() -> None:

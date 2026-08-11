@@ -44,9 +44,7 @@ def _genome(name: str = "test") -> PipelineGenome:
 async def test_run_tournament_battles_returns_early_with_fewer_than_two_genomes() -> None:
     population = PopulationStore()
     population.add(_genome("only"))
-    cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
-    )
+    cycle = EvolutionCycle(harness=EvalHarness(), tournament=EloTournament())
 
     await cycle._run_tournament_battles(population, EvolutionConfig())
 
@@ -57,28 +55,27 @@ async def test_run_tournament_battles_returns_early_with_fewer_than_two_genomes(
 async def test_run_tournament_battles_returns_early_with_fewer_than_two_scored_genomes() -> None:
     population = PopulationStore()
     g1 = _genome("a")
-    g1.eval_scores = {"ifeval": 0.5}
+    g1.eval_scores = {"proxy_ifeval": 0.5}
     g2 = _genome("b")
     population.add(g1)
     population.add(g2)
-    cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
-    )
+    cycle = EvolutionCycle(harness=EvalHarness(), tournament=EloTournament())
 
     await cycle._run_tournament_battles(population, EvolutionConfig())
 
     assert cycle.tournament.get_stats()["total_battles"] == 0
 
 
-def test_tournament_select_parents_returns_empty_list_for_empty_population() -> None:
+def test_breed_island_does_nothing_for_empty_island() -> None:
+    from maistro_evolve.population import IslandPopulation
+
     population = PopulationStore()
-    cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
-    )
+    cycle = EvolutionCycle(harness=EvalHarness(), tournament=EloTournament())
+    island_pop = IslandPopulation(island_count=1)
 
-    parents = cycle._tournament_select_parents(population, EvolutionConfig(), count=3)
+    cycle._breed_island(island_pop, 0, population, EvolutionConfig(), cap=5)
 
-    assert parents == []
+    assert population.list_all() == []
 
 
 @pytest.mark.asyncio
@@ -87,9 +84,7 @@ async def test_self_improve_top_returns_early_when_no_positively_scored_genomes(
     g = _genome("unscored")
     g.fitness_score = None
     population.add(g)
-    cycle = EvolutionCycle(
-        harness=EvalHarness(use_real_benchmarks=False), tournament=EloTournament()
-    )
+    cycle = EvolutionCycle(harness=EvalHarness(), tournament=EloTournament())
 
     async def llm_call(*args: object, **kwargs: object) -> str:
         raise AssertionError("llm_call should not be invoked when no scored genomes exist")
@@ -111,14 +106,13 @@ async def test_run_cycle_uses_breeding_pool_path_when_tournament_has_few_rated_g
     # No genome carries eval_scores, so _run_tournament_battles' "scored < 2"
     # guard fires and total_genomes_rated stays at 0 — below the "< 2" gate in
     # run_cycle, forcing the get_breeding_pool fallback branch (lines 205-220).
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness()
     tournament = EloTournament()
     config = EvolutionConfig(
         population_size=8,
         eval_batch_size=0,
-        target_benchmarks=["ifeval"],
+        target_benchmarks=["proxy_ifeval"],
         self_improve=False,
-        diversity_threshold=-1.0,
     )
 
     cycle = EvolutionCycle(harness=harness, tournament=tournament)
@@ -134,14 +128,13 @@ async def test_run_cycle_breeding_pool_fallback_with_fewer_than_two_candidates()
     population = PopulationStore()
     population.add(_genome("solo"))
 
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness()
     tournament = EloTournament()
     config = EvolutionConfig(
         population_size=4,
         eval_batch_size=0,
-        target_benchmarks=["ifeval"],
+        target_benchmarks=["proxy_ifeval"],
         self_improve=False,
-        diversity_threshold=-1.0,
         cull_pct=1.0,
     )
 

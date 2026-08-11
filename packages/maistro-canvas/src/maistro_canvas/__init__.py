@@ -6,6 +6,22 @@ Uses canvas protocols from maistro-core for the image generation pipeline.
 
 from __future__ import annotations
 
+import importlib.metadata
+
+# Single source of truth for version — read from installed package metadata.
+try:
+    __version__ = importlib.metadata.version("maistro-canvas")
+except importlib.metadata.PackageNotFoundError:  # pragma: no cover - editable/unbuilt checkout
+    __version__ = "0.9.0-dev"
+
+from maistro_canvas.export import (
+    ExporterDependencyError,
+    ExportLayer,
+    ExportPage,
+    ExportText,
+    export_html,
+    export_pptx,
+)
 from maistro_canvas.layers import (
     POSE_GEOMETRY_FOR_KIND,
     Anchor,
@@ -89,6 +105,11 @@ __all__ = [
     "CharacterPose",
     "ChildProfile",
     "CompositorService",
+    # Structured exporters (SPEC-070426-457b)
+    "ExportLayer",
+    "ExportPage",
+    "ExportText",
+    "ExporterDependencyError",
     "FoundationFootprint",
     "GenerationJobRecord",
     "GroundPlane",
@@ -121,6 +142,9 @@ __all__ = [
     "WorldStyle",
     "WorldStyleConflictError",
     "WorldStylePartial",
+    "__version__",
+    "export_html",
+    "export_pptx",
     "layer_type_to_kind",
     "merge_world_style",
     "normalise_rotation",

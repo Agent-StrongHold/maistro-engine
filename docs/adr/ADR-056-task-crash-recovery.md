@@ -3,7 +3,7 @@ id: ADR-056
 title: Task crash recovery — durable resume with wave verification
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-038

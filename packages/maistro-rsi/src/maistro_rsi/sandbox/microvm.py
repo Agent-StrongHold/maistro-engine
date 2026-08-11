@@ -12,14 +12,87 @@ one wins; it only depends on `MicroVmSandbox`.
 
 from __future__ import annotations
 
+import os
 import uuid
 
 import structlog
 
 from maistro.config.settings import SandboxSettings
 from maistro.tools.sandbox.docker import SandboxContainer, create_sandbox
+from maistro_rsi.protocols import MicroVmSandbox
+from maistro_rsi.sandbox.local import LocalSandbox
 
 logger = structlog.get_logger()
+
+#: Env var that selects the RSI sandbox backend. ``"docker"`` (default) boots a
+#: nested container; ``"local"`` runs directly on the local FS — set by the sbx
+#: agent kit, because sbx has *already* provided an isolated microVM.
+SANDBOX_BACKEND_ENV = "MAISTRO_RSI_SANDBOX"
+
+#: Set by ``sbx/maistro-rsi/spec.yaml`` to attest the containment it creates, and
+#: available to an operator whose substrate this module cannot recognise.
+#:
+#: Auto-detection alone is not sufficient here, and that is not a theoretical
+#: worry: isolated environments exist that expose none of the markers in
+#: :func:`isolation_evidence` — no ``/.dockerenv``, a bare ``/proc/1/cgroup``,
+#: unreadable DMI. Refusing those would brick the RSI loop in exactly the
+#: environment it is designed for, so the layer that *provides* the microVM
+#: declares it, and detection stays a convenience for plain container hosts.
+#:
+#: Deliberately verbose: asserting containment by hand should have to be meant,
+#: and should be greppable in a shell history or CI config afterwards.
+SANDBOX_ATTEST_ENV = "MAISTRO_RSI_SANDBOX_ATTEST_ISOLATED"
+_ATTEST_VALUE = "i-am-inside-a-disposable-vm"
+
+
+# Filesystem markers consulted by isolation_evidence(). Module-level so tests
+# can point them at fixture paths and drive both verdicts deterministically.
+_CONTAINER_MARKER_FILES: tuple[str, ...] = (
+    "/.dockerenv",  # Docker/OCI runtimes create this at the container root
+    "/run/.containerenv",  # podman
+)
+_CGROUP_PATH = "/proc/1/cgroup"
+_CGROUP_RUNTIME_TOKENS: tuple[str, ...] = ("docker", "containerd", "kubepods", "libpod", "lxc")
+
+
+def isolation_evidence() -> list[str]:
+    """Return positive, checkable evidence that this process is inside a
+    disposable *container*.
+
+    ``LocalSandbox`` executes the coding agent directly against the mounted
+    filesystem with no containment of its own — the *sbx* microVM is the
+    boundary. Selecting it therefore encodes a claim about the environment, and
+    until now that claim was a single environment variable that anything in the
+    process tree could set. This function looks for the boundary instead of
+    taking its word for it.
+
+    Only container evidence counts. Generic VM-ness (a KVM/QEMU/VirtualBox
+    string in DMI) deliberately does NOT: an ordinary persistent development VM
+    reports those too, and its filesystem is exactly the thing an auto-approved
+    agent must not be handed — "inside a VM" is not "disposable". A genuinely
+    bare microVM with no container markers (the sbx case) is attested by the
+    layer that creates it (``SANDBOX_ATTEST_ENV`` in ``sbx/maistro-rsi/
+    spec.yaml``) rather than guessed at here.
+    """
+    found: list[str] = []
+
+    for marker in _CONTAINER_MARKER_FILES:
+        if os.path.exists(marker):
+            found.append(marker)
+
+    # PID 1's cgroup path names the supervising runtime on cgroup v1 and on v2
+    # under most container runtimes.
+    try:
+        with open(_CGROUP_PATH, encoding="utf-8", errors="replace") as fh:
+            cgroup = fh.read()
+    except OSError:
+        cgroup = ""
+    for token in _CGROUP_RUNTIME_TOKENS:
+        if token in cgroup:
+            found.append(f"{_CGROUP_PATH}:{token}")
+            break
+
+    return found
 
 
 class DockerMicroVmSandbox:
@@ -64,7 +137,7 @@ class DockerMicroVmSandbox:
     async def __aenter__(self) -> DockerMicroVmSandbox:
         return self
 
-    async def __aexit__(self, *exc_info: object) -> None:
+    async def __aexit__(self, *_: object) -> None:
         await self.destroy()
 
 
@@ -80,3 +153,49 @@ async def create_microvm_sandbox(
     """
     container = await create_sandbox(workspace, settings=settings, env=env)
     return DockerMicroVmSandbox(container)
+
+
+async def create_rsi_sandbox(
+    workspace: str,
+    settings: SandboxSettings | None = None,
+    env: dict[str, str] | None = None,
+    backend: str | None = None,
+) -> MicroVmSandbox:
+    """Create the RSI sandbox for ``workspace`` using the selected backend.
+
+    ``backend`` (or ``$MAISTRO_RSI_SANDBOX``) picks the isolation strategy:
+
+    - ``"local"`` → :class:`LocalSandbox`, for when the cycle already runs inside
+      an isolated microVM (a Docker Sandboxes / ``sbx`` agent) — no nested
+      Docker-in-Docker.
+    - ``"docker"`` (default) → :class:`DockerMicroVmSandbox`, which boots its own
+      container for standalone / dev runs.
+    """
+    resolved = (backend or os.environ.get(SANDBOX_BACKEND_ENV, "docker")).strip().lower()
+    if resolved == "local":
+        # `local` means "the environment is the containment". Require the
+        # environment to show it. MAISTRO_RSI_SANDBOX=local on a bare host
+        # would otherwise hand an auto-approved coding agent the real
+        # filesystem — the exact configuration LocalSandbox exists to *avoid*
+        # nesting inside, never to run without.
+        evidence = isolation_evidence()
+        if not evidence:
+            if os.environ.get(SANDBOX_ATTEST_ENV) == _ATTEST_VALUE:
+                logger.warning(
+                    "rsi_sandbox_isolation_attested_not_verified",
+                    attest_env=SANDBOX_ATTEST_ENV,
+                )
+            else:
+                raise RuntimeError(
+                    "MAISTRO_RSI_SANDBOX=local requires a verified isolated "
+                    "environment, and no container/VM evidence was found "
+                    "(checked /.dockerenv, /run/.containerenv, /proc/1/cgroup, "
+                    "DMI platform). LocalSandbox runs the coding agent directly "
+                    "on this filesystem. If this host truly is a disposable "
+                    f"VM this module cannot recognise, set {SANDBOX_ATTEST_ENV}="
+                    f"{_ATTEST_VALUE} to override explicitly."
+                )
+        else:
+            logger.info("rsi_sandbox_isolation_verified", evidence=evidence)
+        return LocalSandbox(workspace)
+    return await create_microvm_sandbox(workspace, settings=settings, env=env)

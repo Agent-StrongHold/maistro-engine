@@ -6,7 +6,11 @@ The Gate is the first thing user input touches. Three execution modes:
 - supervised: always returns clarifying questions (human-in-the-loop).
 
 Strike escalation (when Warden blocks):
-- Strike 1: Warning + elevated scrutiny (L3 classifier enabled)
+- Strike 1: Warning; the account's scrutiny level is recorded as "elevated"
+  and surfaced to callers in GateResult. (It does not change the scan path
+  today — an earlier version of this docstring promised "L3 classifier
+  enabled", but scan() takes no scrutiny input and the container wires no
+  LLM into the Warden, so that line claimed a code path that did not exist.)
 - Strike 2: 8-hour lockout (admin+ to unlock)
 - Strike 3: Account disabled (admin+ to re-enable)
 """
@@ -17,6 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from maistro.security._types import ClarifyingQuestion, GateResult
+from maistro.security.request_analyzer import analyze_request_sufficiency
 from maistro.security.warden.sanitizer import sanitize
 
 if TYPE_CHECKING:
@@ -161,10 +166,11 @@ def _check_sufficiency(
     task_type: str,
     context: list[dict[str, str]] | None,
 ) -> list[ClarifyingQuestion] | None:
-    """Basic request sufficiency check for persistent/supervised modes.
+    """Request sufficiency check for persistent/supervised modes.
 
-    Returns None if sufficient, list of ClarifyingQuestion if not.
-    Can be replaced with a more sophisticated analyzer.
+    Delegates to `analyze_request_sufficiency` for per-task-type WHAT/WHERE/
+    HOW/CONTEXT signal scoring and conversation-aware confirmation-hijack
+    guarding. Returns None if sufficient, list of ClarifyingQuestion if not.
     """
     if not text.strip():
         return [
@@ -173,4 +179,12 @@ def _check_sufficiency(
                 allow_freetext=True,
             )
         ]
-    return None
+
+    result = analyze_request_sufficiency(text, task_type, conversation_context=context)
+    if result.sufficient:
+        return None
+
+    return [
+        ClarifyingQuestion(question=detail.question, allow_freetext=True)
+        for detail in result.missing
+    ]

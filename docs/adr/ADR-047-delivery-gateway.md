@@ -3,7 +3,7 @@ id: ADR-047
 title: Outbound Delivery Gateway — Multi-channel notifier
 repo: maistro-engine
 kind: adr
-status: Proposed
+status: Implemented
 created: 2026-05-13
 substrate:
   - maistro-engine#ADR-014

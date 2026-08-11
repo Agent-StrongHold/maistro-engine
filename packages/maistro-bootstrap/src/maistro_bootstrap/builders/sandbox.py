@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 import re
 import shlex
 import subprocess
@@ -36,6 +37,24 @@ _DEFAULT_TIMEOUT = 30  # seconds
 # $(), backticks, semicolons, pipes, redirects, or newline smuggling.
 _INJECTION_CHARS = re.compile(r"[;|&<>`$\\\n\r]|\$\(|\}\{")
 
+# Approved network URLs (an okayed ``curl https://host/p`` / ``pip --index-url
+# https://…``) are blanked out before the absolute-path scan so their scheme
+# ``//`` isn't mistaken for a filesystem escape. Only network schemes are
+# stripped — ``file://`` is deliberately left in, so ``file:///run/reports`` is
+# still caught below.
+_URL_SCHEME = re.compile(r"\b(?:https?|ftp|ftps|wss?)://\S*", re.IGNORECASE)
+
+# An absolute POSIX path embedded anywhere in a token, where the leading "/"
+# is NOT preceded by a path-word char or dot. This distinguishes an absolute
+# path (``--file=/etc/passwd``, ``open('/run/reports/x')``, the bare root
+# ``/``, ``file:///etc/x``) from an innocuous relative one (``src/f.py``,
+# ``tests/``), whose "/" always follows a word char. The trailing ``*`` (not
+# ``+``) matches the bare root ``/`` too — e.g. ``os.chdir('/')``. Catches
+# flag-glued long forms and interpreter string arguments; short-flag clusters
+# (``-f/etc/x``, ``-RFf/etc/x``) follow the flag letters so they're handled
+# separately below.
+_EMBEDDED_ABS = re.compile(r"(?<![\w.])(/[^\s'\";,)]*)")
+
 _BLOCKED_PATTERNS = (
     "sudo",
     "su ",
@@ -54,12 +73,31 @@ _BLOCKED_PATTERNS = (
 # No os.environ spread — never leak API keys, tokens, or cloud credentials.
 # No HOME — setting HOME to the sandbox root creates a $HOME/.. escape primitive.
 _SAFE_ENV = {
-    "PATH": "/usr/local/bin:/usr/bin:/bin",
     "LANG": "C.UTF-8",
     "LC_ALL": "C.UTF-8",
     "TERM": "dumb",
     "PYTHONDONTWRITEBYTECODE": "1",
 }
+if os.name == "nt":
+    # Windows children are unusable without the system basics — python.exe
+    # cannot even start without SystemRoot (_Py_HashRandomization_init fails),
+    # and executable lookup by the child needs the real PATH (a POSIX PATH
+    # string is meaningless here). Each is forwarded by NAME from an
+    # allowlist — still no os.environ spread, and none of these carry
+    # credentials, so the no-secret-leak property holds unchanged.
+    # NOTE: TEMP/TMP are deliberately NOT forwarded here — see
+    # SandboxedShell._env(). The host's real values would let an
+    # agent-authored script escape the sandbox via tempfile at runtime,
+    # invisibly to _check_paths's command-string scanning.
+    _SAFE_ENV.update(
+        {
+            name: value
+            for name in ("PATH", "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC", "PATHEXT")
+            if (value := os.environ.get(name))
+        }
+    )
+else:
+    _SAFE_ENV["PATH"] = "/usr/local/bin:/usr/bin:/bin"
 
 
 @runtime_checkable
@@ -68,6 +106,7 @@ class BuilderSandbox(Protocol):
 
     def read_file(self, path: str) -> str: ...
     def write_file(self, path: str, content: str) -> None: ...
+    def edit_file(self, path: str, old_string: str, new_string: str) -> str: ...
     def run_command(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str: ...
     def run_argv(self, argv: list[str], *, timeout: int = _DEFAULT_TIMEOUT) -> str: ...
     def diff(self) -> str: ...
@@ -84,16 +123,76 @@ class SandboxedShell:
     def __init__(self, root: Path) -> None:
         self._root = root.resolve()
 
+    def _env(self) -> dict[str, str]:
+        """The subprocess environment for this instance's root.
+
+        Codex review (#256): forwarding the HOST's real TEMP/TMP on Windows let
+        an agent-authored script escape the sandbox without ever putting an
+        absolute path in the command line — `_check_paths` scans the command
+        string, but `tempfile.mktemp()` reads TEMP/TMP from the process
+        environment at runtime, so `python script.py` calling it landed files
+        in the real user Temp directory, outside `self._root` entirely.
+        TEMP/TMP now point at a directory INSIDE the sandbox root instead of
+        being inherited — python.exe/git only need `TEMP` to exist and be
+        writable, not to be any particular directory.
+        """
+        env = dict(_SAFE_ENV)
+        if os.name == "nt":
+            sandbox_tmp = self._root / ".sandbox-tmp"
+            sandbox_tmp.mkdir(parents=True, exist_ok=True)
+            env["TEMP"] = str(sandbox_tmp)
+            env["TMP"] = str(sandbox_tmp)
+        return env
+
+    def _assert_inside(self, path_str: str, *, token: str) -> None:
+        """Raise unless ``path_str`` resolves inside the sandbox root."""
+        try:
+            Path(path_str).resolve().relative_to(self._root)
+        except ValueError:
+            raise SandboxEscapeError(
+                f"Path escape detected: {path_str!r} in {token!r} escapes sandbox root {self._root}"
+            ) from None
+
     def _check_paths(self, tokens: list[str]) -> None:
-        """Raise SandboxEscapeError if any token resolves outside the root."""
+        """Raise SandboxEscapeError if any token references a path outside root.
+
+        Token inspection catches every *literal* absolute path — bare
+        (``/etc/passwd``), flag-glued (``--file=/etc/x``, ``-f/etc/x``), and
+        embedded in an interpreter string (``python -c "open('/run/x')"``). It
+        cannot see a path an interpreter *builds* at runtime
+        (``open('/ru'+'n/x')``); the report dir's real guarantee is the OS
+        filesystem boundary (non-root agent user + a 0700 report dir). This is
+        the defense-in-depth layer that stops the realistic cases.
+        """
         for token in tokens:
-            candidate = self._root / token
+            # Blank out approved network URLs first so an okayed
+            # `curl https://host/p` isn't read as a filesystem escape.
+            scannable = _URL_SCHEME.sub(" ", token)
+            # (1) The whole token as a path relative to root — catches a bare
+            #     absolute token and ../ traversal (absolute RHS replaces root,
+            #     then relative_to raises).
             try:
-                candidate.resolve().relative_to(self._root)
+                (self._root / token).resolve().relative_to(self._root)
             except ValueError:
                 raise SandboxEscapeError(
                     f"Path escape detected: {token!r} escapes sandbox root {self._root}"
                 ) from None
+            # (2) Any absolute path embedded in the token: a long-flag value
+            #     (--out=/etc/x), an interpreter string (open('/run/x')), the
+            #     bare root '/', or a file:// path.
+            for match in _EMBEDDED_ABS.finditer(scannable):
+                self._assert_inside(match.group(1), token=token)
+            # (3) A short-flag cluster with a glued path: -f/abs, -I/abs, and
+            #     clustered -RFf/abs — the "/" follows the flag letters, so
+            #     (2)'s lookbehind misses it. Any SINGLE-dash token carrying a
+            #     "/" has its tail (from the first "/") validated. Long options
+            #     (--x=rel/path) are double-dash and handled by (2), so their
+            #     relative values stay allowed. A single-dash flag glued to a
+            #     RELATIVE subpath (-Isrc/foo) is conservatively blocked too —
+            #     it's structurally identical to the -f/abs exfil form and can't
+            #     be told apart by token shape; use a space (-I src/foo).
+            if scannable.startswith("-") and not scannable.startswith("--") and "/" in scannable:
+                self._assert_inside(scannable[scannable.index("/") :], token=token)
 
     def run(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
         # 1. Reject shell-injection metacharacters before anything else.
@@ -125,7 +224,7 @@ class SandboxedShell:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env=_SAFE_ENV,
+                env=self._env(),
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeoutError(f"Command timed out after {timeout}s: {cmd!r}") from exc
@@ -167,7 +266,7 @@ class SandboxedShell:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env=_SAFE_ENV,
+                env=self._env(),
             )
         except subprocess.TimeoutExpired as exc:
             raise CommandTimeoutError(f"Command timed out after {timeout}s: {argv!r}") from exc
@@ -319,6 +418,32 @@ class LocalWorktreeSandbox:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
 
+    def edit_file(self, path: str, old_string: str, new_string: str) -> str:
+        """Replace an exact, unique occurrence of ``old_string`` with ``new_string``.
+
+        A targeted alternative to rewriting the whole file: the model supplies
+        only the snippet it wants changed, so it can't mangle untouched lines and
+        doesn't burn its token budget re-emitting the entire file. ``old_string``
+        must match byte-for-byte and appear exactly once — otherwise raise with
+        guidance the agent can act on.
+        """
+        target = self._resolve(path)
+        text = target.read_text(encoding="utf-8")
+        count = text.count(old_string)
+        if count == 0:
+            raise ValueError(
+                f"old_string not found in {path!r} — it must match the file exactly, "
+                "including whitespace and indentation. Re-read the file and copy the "
+                "exact text you want to replace."
+            )
+        if count > 1:
+            raise ValueError(
+                f"old_string appears {count} times in {path!r} — include more "
+                "surrounding context so it matches exactly one location."
+            )
+        target.write_text(text.replace(old_string, new_string, 1), encoding="utf-8")
+        return f"edited {path} (1 replacement)"
+
     def run_command(self, cmd: str, *, timeout: int = _DEFAULT_TIMEOUT) -> str:
         return self._require_shell().run(cmd, timeout=timeout)
 
@@ -340,7 +465,7 @@ class LocalWorktreeSandbox:
         root = self._ws.path if self._ws else self._repo_root
         root = root.resolve()
         glob_path = Path(glob)
-        if glob_path.is_absolute() or ".." in glob_path.parts:
+        if glob_path.is_absolute() or glob.startswith(("/", "\\")) or ".." in glob_path.parts:
             raise SandboxEscapeError(f"Glob escape detected: {glob!r} escapes sandbox root")
         matches = []
         for p in root.glob(glob):

@@ -6,6 +6,8 @@ import time
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from hypothesis import strategies as st
+from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, rule
 
 from maistro.credentials.pool import CredentialPool
 from maistro.credentials.rotation import RotationResult, execute_with_pool
@@ -478,3 +480,82 @@ class TestRotationIntegration:
         result = await execute_with_pool(pool, call_fn)
         assert isinstance(result, RotationResult)
         assert result.value == 42
+
+
+class CredentialPoolMachine(RuleBasedStateMachine):
+    """Stateful fuzz over interleaved select/record_failure/record_success/
+    clear_cooldown/remove calls — mirrors formal/models/test_strike_escalation.py's
+    RuleBasedStateMachine pattern. Random interleavings must never violate the
+    pool's core invariants: the stats partition always accounts for every key,
+    select() never returns a blocked or cooling-down entry, and mutating
+    methods on an unknown/already-removed key_id are silent no-ops rather than
+    raising (matching CredentialPool._find's documented behavior)."""
+
+    keys = Bundle("keys")
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.pool = CredentialPool("openai", strategy=SelectionStrategy.ROUND_ROBIN)
+        self.live_keys: set[str] = set()
+        self._next_id = 0
+
+    @rule(target=keys)
+    def add_key(self) -> str:
+        key_id = f"k{self._next_id}"
+        self._next_id += 1
+        self.pool.add(CredentialRecord(key_id=key_id, provider="openai", api_key=f"sk-{key_id}"))
+        self.live_keys.add(key_id)
+        return key_id
+
+    @rule(key=keys)
+    def remove_key(self, key: str) -> None:
+        if self.pool.remove(key):
+            self.live_keys.discard(key)
+
+    @rule(
+        key=keys,
+        status_code=st.sampled_from([429, 500, 401, 403, 0]),
+        cooldown_seconds=st.floats(
+            min_value=0, max_value=120, allow_nan=False, allow_infinity=False
+        ),
+        block=st.booleans(),
+    )
+    def record_failure(
+        self, key: str, status_code: int, cooldown_seconds: float, block: bool
+    ) -> None:
+        self.pool.record_failure(
+            key, status_code=status_code, cooldown_seconds=cooldown_seconds, block=block
+        )
+
+    @rule(key=keys)
+    def record_success(self, key: str) -> None:
+        self.pool.record_success(key)
+
+    @rule(key=keys)
+    def clear_cooldown(self, key: str) -> None:
+        self.pool.clear_cooldown(key)
+
+    @rule()
+    def try_select(self) -> None:
+        try:
+            rec = self.pool.select()
+        except PoolExhaustedError as exc:
+            assert exc.total_keys == self.pool.size
+            return
+        assert rec.is_available
+        assert not rec.blocked
+
+    @invariant()
+    def stats_partition_covers_every_key(self) -> None:
+        stats = self.pool.get_stats()
+        assert stats.total_keys == self.pool.size
+        assert (
+            stats.total_keys == stats.available_keys + stats.blocked_keys + stats.cooling_down_keys
+        )
+
+    @invariant()
+    def pool_size_matches_tracked_live_keys(self) -> None:
+        assert self.pool.size == len(self.live_keys)
+
+
+TestCredentialPoolMachine = CredentialPoolMachine.TestCase

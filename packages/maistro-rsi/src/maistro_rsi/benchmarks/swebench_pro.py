@@ -150,7 +150,7 @@ def _score_multi_file_fix(response: str, sample: dict[str, Any]) -> float:
 
     if max_score == 0:
         return 0.0
-    return min(1.0, score / max_score)
+    return float(min(1.0, score / max_score))
 
 
 async def _judge_cross_file_consistency(
@@ -251,12 +251,29 @@ async def run_swebench_pro(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="swebench_pro",
+        benchmark="proxy_swebench_pro",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real", "dataset": "embedded_sample_v0"},
+        metadata={
+            "total_samples": samples,
+            "fidelity": "proxy",
+            "dataset": "embedded_sample_v0",
+            # Unlike every maistro_evolve proxy scorer (which raises rather than
+            # fabricate a score), this adapter falls back to a candidate-independent
+            # random score (_heuristic_score) when no model is available — a
+            # deliberate choice per runner.py's own comment, so the RSI autorun
+            # loop degrades rather than halts when idle-quota headroom is
+            # temporarily exhausted. `stub` is maistro_evolve's established,
+            # already-consumed noise flag (see reflect.py/hyper_mutator.py:
+            # "SPEC-202 honesty: a stub score is noise — never verify against
+            # it"). Before this fix it was never set here, so a fabricated
+            # score was silently eligible to be treated as real signal by
+            # anything sharing this EvalHarness — exactly the gap that flag
+            # exists to close.
+            "stub": llm_call is None,
+        },
     )
 
 
@@ -265,4 +282,4 @@ def _heuristic_score(sample: dict[str, Any]) -> float:
 
     min_files = sample.get("min_files_touched", 1)
     base = 0.35 - (min_files * 0.04)
-    return max(0.05, min(0.6, base + random.uniform(-0.05, 0.1)))
+    return float(max(0.05, min(0.6, base + random.uniform(-0.05, 0.1))))

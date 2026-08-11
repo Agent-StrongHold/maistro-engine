@@ -38,31 +38,31 @@ def _seed(client: Any) -> str:
 # --- list / get -----------------------------------------------------------
 
 
-def test_list_dags_returns_array(authed_client: Any) -> None:
-    r = authed_client.get("/v1/dags")
+def test_list_dags_returns_array(admin_client: Any) -> None:
+    r = admin_client.get("/v1/dags")
     assert r.status_code == 200
     assert isinstance(r.json(), list)
 
 
-def test_get_dag_by_id_returns_payload(authed_client: Any) -> None:
-    dag_id = _seed(authed_client)
-    r = authed_client.get(f"/v1/dags/{dag_id}")
+def test_get_dag_by_id_returns_payload(admin_client: Any) -> None:
+    dag_id = _seed(admin_client)
+    r = admin_client.get(f"/v1/dags/{dag_id}")
     assert r.status_code == 200
     assert r.json()["id"] == dag_id
     assert r.json()["name"] == "seed"
 
 
-def test_get_dag_missing_returns_404(authed_client: Any) -> None:
-    r = authed_client.get("/v1/dags/missing-xyz")
+def test_get_dag_missing_returns_404(admin_client: Any) -> None:
+    r = admin_client.get("/v1/dags/missing-xyz")
     assert r.status_code == 404
 
 
 # --- POST /{id}/nodes + DELETE ------------------------------------------
 
 
-def test_add_and_remove_node(authed_client: Any) -> None:
-    dag_id = _seed(authed_client)
-    r = authed_client.post(
+def test_add_and_remove_node(admin_client: Any) -> None:
+    dag_id = _seed(admin_client)
+    r = admin_client.post(
         f"/v1/dags/{dag_id}/nodes",
         json={"role": "scout", "name": "Scout"},
     )
@@ -71,36 +71,36 @@ def test_add_and_remove_node(authed_client: Any) -> None:
     assert r.json()["role"] == "scout"
 
     # remove it
-    r2 = authed_client.delete(f"/v1/dags/{dag_id}/nodes/{node_id}")
+    r2 = admin_client.delete(f"/v1/dags/{dag_id}/nodes/{node_id}")
     assert r2.status_code == 200
     assert r2.json()["id"] == node_id
 
 
-def test_add_node_dag_404(authed_client: Any) -> None:
-    r = authed_client.post("/v1/dags/missing-dag/nodes", json={"role": "scout", "name": "x"})
+def test_add_node_dag_404(admin_client: Any) -> None:
+    r = admin_client.post("/v1/dags/missing-dag/nodes", json={"role": "scout", "name": "x"})
     assert r.status_code == 404
 
 
-def test_remove_node_dag_404(authed_client: Any) -> None:
-    r = authed_client.delete("/v1/dags/missing-dag/nodes/any")
+def test_remove_node_dag_404(admin_client: Any) -> None:
+    r = admin_client.delete("/v1/dags/missing-dag/nodes/any")
     assert r.status_code == 404
 
 
-def test_remove_node_not_found(authed_client: Any) -> None:
-    dag_id = _seed(authed_client)
-    r = authed_client.delete(f"/v1/dags/{dag_id}/nodes/no-such")
+def test_remove_node_not_found(admin_client: Any) -> None:
+    dag_id = _seed(admin_client)
+    r = admin_client.delete(f"/v1/dags/{dag_id}/nodes/no-such")
     assert r.status_code == 404
 
 
 # --- POST /{id}/edges + DELETE ------------------------------------------
 
 
-def test_add_and_remove_edge(authed_client: Any) -> None:
-    dag_id = _seed(authed_client)
-    r0 = authed_client.get(f"/v1/dags/{dag_id}")
+def test_add_and_remove_edge(admin_client: Any) -> None:
+    dag_id = _seed(admin_client)
+    r0 = admin_client.get(f"/v1/dags/{dag_id}")
     src = r0.json()["nodes"][0]["id"]
     dst = r0.json()["nodes"][1]["id"]
-    r = authed_client.post(
+    r = admin_client.post(
         f"/v1/dags/{dag_id}/edges",
         json={"from_node": src, "to_node": dst, "condition": "if x"},
     )
@@ -108,55 +108,55 @@ def test_add_and_remove_edge(authed_client: Any) -> None:
     edge_id = r.json()["id"]
     assert r.json()["condition"] == "if x"
 
-    r2 = authed_client.delete(f"/v1/dags/{dag_id}/edges/{edge_id}")
+    r2 = admin_client.delete(f"/v1/dags/{dag_id}/edges/{edge_id}")
     assert r2.status_code == 200
     assert r2.json()["id"] == edge_id
 
 
-def test_add_edge_dag_404(authed_client: Any) -> None:
-    r = authed_client.post(
+def test_add_edge_dag_404(admin_client: Any) -> None:
+    r = admin_client.post(
         "/v1/dags/missing/edges",
         json={"from_node": "a", "to_node": "b"},
     )
     assert r.status_code == 404
 
 
-def test_remove_edge_dag_404(authed_client: Any) -> None:
-    r = authed_client.delete("/v1/dags/missing/edges/any")
+def test_remove_edge_dag_404(admin_client: Any) -> None:
+    r = admin_client.delete("/v1/dags/missing/edges/any")
     assert r.status_code == 404
 
 
-def test_remove_edge_not_found(authed_client: Any) -> None:
-    dag_id = _seed(authed_client)
-    r = authed_client.delete(f"/v1/dags/{dag_id}/edges/no-such")
+def test_remove_edge_not_found(admin_client: Any) -> None:
+    dag_id = _seed(admin_client)
+    r = admin_client.delete(f"/v1/dags/{dag_id}/edges/no-such")
     assert r.status_code == 404
 
 
 # --- DELETE /{id} ---------------------------------------------------------
 
 
-def test_delete_dag_succeeds_and_then_404s(authed_client: Any) -> None:
-    dag_id = _seed(authed_client)
-    r = authed_client.delete(f"/v1/dags/{dag_id}")
+def test_delete_dag_succeeds_and_then_404s(admin_client: Any) -> None:
+    dag_id = _seed(admin_client)
+    r = admin_client.delete(f"/v1/dags/{dag_id}")
     assert r.status_code == 204
-    r2 = authed_client.get(f"/v1/dags/{dag_id}")
+    r2 = admin_client.get(f"/v1/dags/{dag_id}")
     assert r2.status_code == 404
 
 
-def test_delete_dag_missing_returns_404(authed_client: Any) -> None:
-    r = authed_client.delete("/v1/dags/never-existed")
+def test_delete_dag_missing_returns_404(admin_client: Any) -> None:
+    r = admin_client.delete("/v1/dags/never-existed")
     assert r.status_code == 404
 
 
 # --- POST /{id}/activate -------------------------------------------------
 
 
-def test_activate_dag(authed_client: Any) -> None:
+def test_activate_dag(admin_client: Any) -> None:
     import stores
 
     before_audit = len(stores.audit_log)
-    dag_id = _seed(authed_client)
-    r = authed_client.post(f"/v1/dags/{dag_id}/activate")
+    dag_id = _seed(admin_client)
+    r = admin_client.post(f"/v1/dags/{dag_id}/activate")
     assert r.status_code == 200
     assert r.json()["status"] == "active"
     # audit entry for activate
@@ -166,15 +166,15 @@ def test_activate_dag(authed_client: Any) -> None:
     )
 
 
-def test_activate_dag_missing_404(authed_client: Any) -> None:
-    r = authed_client.post("/v1/dags/missing-dag/activate")
+def test_activate_dag_missing_404(admin_client: Any) -> None:
+    r = admin_client.post("/v1/dags/missing-dag/activate")
     assert r.status_code == 404
 
 
 # --- POST /{id}/run (success + failure) -----------------------------------
 
 
-def test_run_dag_success_path(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_dag_success_path(admin_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """Stub services.graph_runner.execute_dag to return a deterministic
     payload; verify the wrapper returns status='completed' + execution_id."""
     import services.graph_runner as gr
@@ -183,8 +183,8 @@ def test_run_dag_success_path(authed_client: Any, monkeypatch: pytest.MonkeyPatc
         return {"final": "ok", "ran": True}
 
     monkeypatch.setattr(gr, "execute_dag", _ok)
-    dag_id = _seed(authed_client)
-    r = authed_client.post(f"/v1/dags/{dag_id}/run")
+    dag_id = _seed(admin_client)
+    r = admin_client.post(f"/v1/dags/{dag_id}/run")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "completed"
@@ -192,28 +192,28 @@ def test_run_dag_success_path(authed_client: Any, monkeypatch: pytest.MonkeyPatc
     assert body["execution_id"]
 
 
-def test_run_dag_failure_path(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_dag_failure_path(admin_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.graph_runner as gr
 
     async def _boom(dag_data: Any, **kwargs: Any) -> Any:
         raise RuntimeError("graph blew up")
 
     monkeypatch.setattr(gr, "execute_dag", _boom)
-    dag_id = _seed(authed_client)
-    r = authed_client.post(f"/v1/dags/{dag_id}/run")
+    dag_id = _seed(admin_client)
+    r = admin_client.post(f"/v1/dags/{dag_id}/run")
     assert r.status_code == 200  # the route never 500s; returns shape
     body = r.json()
     assert body["status"] == "failed"
     assert "graph blew up" in body["error"]
 
 
-def test_run_dag_missing_dag_returns_404(authed_client: Any) -> None:
-    r = authed_client.post("/v1/dags/missing-dag/run")
+def test_run_dag_missing_dag_returns_404(admin_client: Any) -> None:
+    r = admin_client.post("/v1/dags/missing-dag/run")
     assert r.status_code == 404
 
 
 def test_run_dag_records_node_events_and_metrics(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
+    admin_client: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Evidence: when execute_dag returns node_results, the run wrapper must
     append a dag-run-store event per node (success -> pm_node_completed,
@@ -238,8 +238,8 @@ def test_run_dag_records_node_events_and_metrics(
     metrics_store = nms.NodeMetricsStore()
     monkeypatch.setattr(nms, "_store", metrics_store)
 
-    dag_id = _seed(authed_client)
-    r = authed_client.post(f"/v1/dags/{dag_id}/run")
+    dag_id = _seed(admin_client)
+    r = admin_client.post(f"/v1/dags/{dag_id}/run")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "completed"
@@ -257,7 +257,7 @@ def test_run_dag_records_node_events_and_metrics(
 
 
 def test_run_dag_node_metrics_failure_is_swallowed(
-    authed_client: Any, monkeypatch: pytest.MonkeyPatch
+    admin_client: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Evidence: the node-metrics recording block is wrapped in a bare
     try/except Exception: pass, so a broken metrics store must not affect
@@ -278,8 +278,8 @@ def test_run_dag_node_metrics_failure_is_swallowed(
 
     monkeypatch.setattr(nms, "get_store", _boom)
 
-    dag_id = _seed(authed_client)
-    r = authed_client.post(f"/v1/dags/{dag_id}/run")
+    dag_id = _seed(admin_client)
+    r = admin_client.post(f"/v1/dags/{dag_id}/run")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "completed"
@@ -288,28 +288,28 @@ def test_run_dag_node_metrics_failure_is_swallowed(
 # --- POST /run-champion (success + failure) -------------------------------
 
 
-def test_run_champion_success(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_champion_success(admin_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.graph_runner as gr
 
     async def _ok() -> Any:
         return {"champion": True}
 
     monkeypatch.setattr(gr, "execute_champion", _ok)
-    r = authed_client.post("/v1/dags/run-champion")
+    r = admin_client.post("/v1/dags/run-champion")
     assert r.status_code == 200
     body = r.json()
     assert body["result"] == {"champion": True}
     assert body["execution_id"]
 
 
-def test_run_champion_failure(authed_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_champion_failure(admin_client: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import services.graph_runner as gr
 
     async def _boom() -> Any:
         raise RuntimeError("champion crash")
 
     monkeypatch.setattr(gr, "execute_champion", _boom)
-    r = authed_client.post("/v1/dags/run-champion")
+    r = admin_client.post("/v1/dags/run-champion")
     assert r.status_code == 200
     body = r.json()
     assert body["status"] == "failed"

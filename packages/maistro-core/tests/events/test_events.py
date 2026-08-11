@@ -288,24 +288,36 @@ class TestIntegrations:
         cs = CoinSwarmIntegration()
         await cs.emit_agent_fitness("agent-1")
 
+        assert cs._bus is None
+
     async def test_coinswarm_emit_with_bus(self):
         from maistro.integrations.coinswarm import CoinSwarmIntegration
 
         bus = EventBus()
         received = []
         bus.subscribe(lambda e: _append(received, e.event_type))
-        CoinSwarmIntegration(event_bus=bus)
+        cs = CoinSwarmIntegration(event_bus=bus)
+        await cs.emit_evolution_result({"generation": 5, "best_fitness": 0.85})
+
+        assert received == ["evolution_cycle_complete"]
 
     async def test_turing_handles_coinswarm_event(self):
         from maistro.integrations.turing import TuringIntegration
 
-        TuringIntegration(chat_url="http://not-real:9101")
-        Event(
+        turing = TuringIntegration(chat_url="http://not-real:9101")
+        event = Event(
             category=EventCategory.TRADING,
             event_type="evolution_cycle_complete",
             source="coinswarm",
             payload={"generation": 5, "best_fitness": 0.85},
         )
+        from unittest.mock import AsyncMock
+
+        turing.chat = AsyncMock()
+        await turing.handle_coinswarm_event(event)
+
+        turing.chat.assert_awaited_once()
+        assert "Evolution cycle 5" in turing.chat.await_args.args[0]
 
 
 def _append(lst, val):

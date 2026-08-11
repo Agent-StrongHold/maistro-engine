@@ -50,6 +50,17 @@ def _init_engine() -> None:
 
 
 @pytest.fixture(autouse=True)
+def _isolate_persona_authoring_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Redirect wizard-authored persona templates to tmp_path so tests never
+    write YAML files into the developer's real ~/.conductor."""
+    import services.persona_authoring as persona_authoring
+
+    monkeypatch.setattr(
+        persona_authoring, "user_templates_dir", lambda: tmp_path / "persona_templates"
+    )
+
+
+@pytest.fixture(autouse=True)
 def _isolate_dashboard_layouts(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     """Redirect layout persistence to tmp_path so tests never mutate the
     checked-in data/dashboard_layouts.json."""
@@ -114,3 +125,16 @@ def admin_client():
     r = client.post("/v1/auth/login", json={"username": "testadmin", "password": "adminpass"})
     assert r.status_code == 200
     return client
+
+
+@pytest.fixture(autouse=True)
+def _isolate_vault_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Redirect first-run vault provisioning to tmp_path so tests never write
+    age keys or vault files into the developer's real ~/.conductor."""
+    import routes.setup as setup_routes
+
+    monkeypatch.setattr(
+        setup_routes,
+        "_vault_paths",
+        lambda: (str(tmp_path / "secrets.age"), str(tmp_path / "admin.key")),
+    )

@@ -16,6 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from maistro.config.settings import Settings, get_settings
+from maistro.graph.concurrency import configure_graph_concurrency
+from maistro.http import aclose_shared_clients, configure_shared_http
 from maistro.observability.logging import configure_logging
 from maistro.observability.middleware import RequestIDMiddleware
 from maistro.tasks.progress_webhook import ProgressWebhookNotifier
@@ -24,6 +26,7 @@ from maistro.tasks.runner import TaskRunner
 from maistro.tools.sandbox.server import cleanup_all_containers
 from maistro_server.api import (
     agents,
+    canvas,
     chat_completions,
     health,
     metrics,
@@ -32,6 +35,7 @@ from maistro_server.api import (
     webhooks,
     ws,
 )
+from maistro_server.api.middleware import PayloadSizeLimitMiddleware, SecurityHeadersMiddleware
 from maistro_server.api.rate_limit import RateLimitMiddleware
 from maistro_server.api.schemas import ErrorDetail, ErrorResponse
 
@@ -43,7 +47,7 @@ _runner: TaskRunner | None = None
 try:
     APP_VERSION = importlib.metadata.version("maistro-server")
 except importlib.metadata.PackageNotFoundError:
-    APP_VERSION = "0.1.0-dev"
+    APP_VERSION = "0.9.0-dev"
 
 # Graceful shutdown drain timeout (seconds)
 SHUTDOWN_DRAIN_TIMEOUT = 30.0
@@ -55,6 +59,14 @@ def _validate_startup(settings: Settings) -> None:
         raise RuntimeError(
             "CRITICAL: No API keys configured and REQUIRE_AUTH is true. "
             "Set API_KEYS env var or set REQUIRE_AUTH=false for local development."
+        )
+    if settings.require_webhook_secrets and not (
+        settings.github_webhook_secret and settings.ci_webhook_secret
+    ):
+        raise RuntimeError(
+            "CRITICAL: REQUIRE_WEBHOOK_SECRETS is true but GITHUB_WEBHOOK_SECRET "
+            "and/or CI_WEBHOOK_SECRET is unset. Set both, or set "
+            "REQUIRE_WEBHOOK_SECRETS=false if this deployment receives no webhooks."
         )
 
 
@@ -69,6 +81,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Fail-fast startup validation
     _validate_startup(settings)
+
+    # Explicitly instantiate the graph LLM admission gate during application
+    # startup. Lazy construction remains a safe library fallback, but the server
+    # should own its runtime resource initialization rather than relying on the
+    # first graph node to do it implicitly.
+    configure_graph_concurrency()
+
+    # Size the shared outbound HTTP pool before the first request — clients
+    # already built keep the limits they were created with.
+    configure_shared_http(
+        max_connections=settings.http_max_connections,
+        max_keepalive_connections=settings.http_max_keepalive_connections,
+        keepalive_expiry=settings.http_keepalive_expiry_s,
+    )
 
     # Wire executor via import — the runner no longer imports conductor directly
     from maistro.agents.conductor import run_task
@@ -113,6 +139,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await cleanup_all_containers()
 
+    # Release pooled outbound connections. After the runner has drained, so
+    # in-flight tasks still have their client.
+    await aclose_shared_clients()
+
     # Dispose database engine
     from maistro.memory.store import get_engine, reset_engine_cache
 
@@ -156,6 +186,18 @@ app.add_middleware(RateLimitMiddleware)
 
 # Request correlation IDs
 app.add_middleware(RequestIDMiddleware)
+
+# Global payload size limit — rejects oversized/malformed bodies before
+# CORS/rate-limit/request-id do any work.
+app.add_middleware(
+    PayloadSizeLimitMiddleware,
+    max_bytes=_settings.max_request_body_bytes,
+)
+
+# Security headers — the true outermost middleware (added last), so headers
+# land on every response, including early rejections from the middlewares
+# added above (e.g. 413 from PayloadSizeLimitMiddleware, 429 from RateLimit).
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.exception_handler(HTTPException)
@@ -208,6 +250,12 @@ app.include_router(chat_completions.router, prefix=API_V1_PREFIX)
 app.include_router(models.router, prefix=API_V1_PREFIX)
 app.include_router(webhooks.router, prefix=API_V1_PREFIX)
 app.include_router(ws.router, prefix=API_V1_PREFIX)
+
+# API v2 — canvas ability boundary (ADR-045 / SPEC-070226-8239 Phase 1).
+# The router carries its own /v2/canvas prefix (ADR-042 mount). Deployments
+# must inject app.state.canvas_store (and optionally canvas_compositor,
+# canvas_events, canvas_asset_registry) — see maistro_server.api.canvas.
+app.include_router(canvas.router)
 
 # Backward compatibility — also mount at root (will be removed in v2)
 app.include_router(tasks.router)

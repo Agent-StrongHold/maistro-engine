@@ -164,8 +164,13 @@ export default function DagBuilder() {
   const loadAgents = useCallback(async () => {
     try {
       setAgents(await apiGet<Agent[]>("/v1/agents"));
-    } catch {}
-  }, []);
+    } catch (e) {
+      // Swallowing this left the node-type picker empty with no explanation:
+      // the builder renders fine, offers no agents, and looks like the fleet
+      // is empty rather than unreachable.
+      toast(`Could not load agents: ${e instanceof Error ? e.message : String(e)}`, "error");
+    }
+  }, [toast]);
 
   useEffect(() => {
     loadDags();
@@ -577,7 +582,7 @@ export default function DagBuilder() {
                         onClick={(e) => { e.stopPropagation(); setDeleteId(d.id); }}
                         style={{ background: "none", border: "none", cursor: "pointer", color: "var(--pencil)", fontSize: 12, padding: "2px 4px" }}
                       >
-                        \uD83D\uDDD1\uFE0F
+                        {"\uD83D\uDDD1\uFE0F"}
                       </button>
                     </div>
                   </div>
@@ -692,7 +697,7 @@ export default function DagBuilder() {
                           onClick={() => setPropsOpen(false)}
                           style={{ background: "none", border: "none", cursor: "pointer", color: "var(--pencil)", fontSize: 12 }}
                         >
-                          \u25BC
+                          {"\u25BC"}
                         </button>
                       </div>
                       <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px" }}>
@@ -820,7 +825,7 @@ export default function DagBuilder() {
                       cursor: "pointer", fontFamily: "var(--mono)", fontSize: 9, color: "var(--pencil)",
                     }}
                   >
-                    \u25B2 Show Properties
+                    {"\u25B2 Show Properties"}
                   </div>
                 )}
               </>
