@@ -29,6 +29,23 @@ _DEFAULT_MAX_PATCH_LINES = _impl._DEFAULT_MAX_PATCH_LINES
 _DEFAULT_MAX_SRC_FILES = _impl._DEFAULT_MAX_SRC_FILES
 _classify = _impl._classify
 
+# Keep the compatibility surface explicit. The repo-history benchmark imports
+# this historical script path directly, so splitting implementation details into
+# generate_repo_tasks_impl must not silently remove the names its tests consume.
+__all__ = [
+    "Rejection",
+    "Task",
+    "validate",
+    "_SELF_AUTHORED_RE",
+    "_DEFAULT_MIN_ISSUE_CHARS",
+    "_DEFAULT_MAX_ISSUE_CHARS",
+    "_DEFAULT_MAX_PATCH_LINES",
+    "_DEFAULT_MAX_SRC_FILES",
+    "_classify",
+    "candidates",
+    "main",
+]
+
 
 def _development_history_ref() -> str:
     """Return an explicit retained develop ref instead of implicitly using HEAD."""
