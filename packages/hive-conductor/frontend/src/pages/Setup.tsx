@@ -119,12 +119,27 @@ export default function Setup() {
     };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadPresets() {
-    try {
-      const data = await apiGet<{ presets: Record<string, Preset> }>("/v1/setup/presets");
-      setPresets(data.presets);
-    } catch { /* */ }
-  }
+  // Mount-only, and it has to stay that way. This was previously a bare
+  // `void loadPresets()` sitting in the component body, which re-ran on every
+  // render: the fetch resolved, setPresets stored a freshly-allocated object
+  // (never Object.is-equal, so React could not bail out), that re-rendered, and
+  // the call fired again — an unbounded request loop against
+  // /v1/setup/presets. It hammered the server for as long as the wizard was
+  // open and kept the page from ever settling, which is what made all 12
+  // Playwright specs in hive-conductor-e2e-ui time out at exactly 60s.
+  useEffect(() => {
+    let active = true;
+    apiGet<{ presets: Record<string, Preset> }>("/v1/setup/presets")
+      .then((data) => {
+        if (active) setPresets(data.presets);
+      })
+      .catch(() => {
+        /* pre-login 401 expected — the wizard renders without presets */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function finish() {
     setLoading(true);
@@ -175,8 +190,6 @@ export default function Setup() {
     // auto-redirects /pm/ → /pm/agents).
     window.location.href = import.meta.env.BASE_URL || "/";
   }
-
-  void loadPresets();
 
   if (mnemonic) {
     return (

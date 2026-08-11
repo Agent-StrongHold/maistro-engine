@@ -26,53 +26,97 @@ async function setupIfNeeded(page: Page) {
   const body = await page.textContent("body");
 
   if (body?.includes("Setup") || body?.includes("First boot")) {
-    // Step 1: Name
+    // Setup.tsx's non-PM-POC wizard is five steps:
+    //   ["Hive", "Hardware", "Accounts", "Modules", "Confirm"]
+    // This walkthrough used to skip "Accounts" entirely, which did not fail
+    // loudly — it parked on that step with `next` permanently disabled, because
+    // Setup.tsx gates it on `!adminPassword || !userUsername || !userPassword`.
+    // Every spec then died in beforeEach on the same disabled button.
+
+    // 1/5 — Hive
     await page.locator('input[placeholder="Hive Conductor"]').fill("PM Test Hive");
     await page.locator("button", { hasText: /next/i }).click();
 
-    // Step 2: Hardware
+    // 2/5 — Hardware
     await page.locator("text=Beast").first().click();
     await page.locator("button", { hasText: /next/i }).click();
 
-    // Step 3: Modules (skip)
+    // 3/5 — Accounts. These are the same credentials loginAsPM() logs in with
+    // below, so the accounts this creates are the ones the rest of the suite
+    // depends on. Both password fields share placeholder="password" (admin
+    // card first, daily-user card second), hence nth() rather than placeholder.
+    await page.locator('input[placeholder="admin"]').fill(ADMIN_USER);
+    await page.locator('input[type="password"]').nth(0).fill(ADMIN_PASS);
+    await page.locator('input[placeholder="username"]').fill(PM_USER);
+    await page.locator('input[type="password"]').nth(1).fill(PM_PASS);
     await page.locator("button", { hasText: /next/i }).click();
 
-    // Step 4: Confirm
-    await page.locator("button", { hasText: /launch/i }).click();
-    await page.waitForURL(/\/(chat|login)?/, { timeout: 15000 }).catch(() => {});
+    // 4/5 — Modules (skip)
+    await page.locator("button", { hasText: /next/i }).click();
+
+    // 5/5 — Confirm. Wait for the POST itself to land, not for a URL change:
+    // the old `waitForURL(/\/(chat|login)?/)` matched the current URL "/"
+    // immediately and returned without waiting for anything, so spec 01 could
+    // read /v1/setup/status while setup/complete was still in flight and see
+    // setup_complete: false.
+    await Promise.all([
+      page.waitForResponse(
+        (r) => r.url().includes("/v1/setup/complete") && r.request().method() === "POST",
+        { timeout: 15000 },
+      ),
+      page.locator("button", { hasText: /launch/i }).click(),
+    ]).catch(() => {});
   }
 }
 
+// Login.tsx's inputs carry NO `name` and no user-ish placeholder — they are
+// identified by autocomplete tokens:
+//   login mode     -> autocomplete="username" + autocomplete="current-password"
+//   register mode  -> autocomplete="username" + two autocomplete="new-password"
+//                     (password, then confirm)
+// The previous selectors here were 'input[name="username"], input[placeholder*="user"]',
+// which match nothing in either mode. That is why specs 02-12 each hung for the
+// full test timeout inside this helper rather than failing on an assertion.
+//
+// Mode is detected from the form itself rather than from body text: the login
+// view also renders a "Register" toggle, so a body.includes("Register") check
+// takes the register branch while sitting on the login form.
 async function loginAsPM(page: Page) {
   await page.goto("/login");
-  await page.waitForTimeout(500);
 
-  const body = await page.textContent("body");
-  if (body?.includes("Register") || body?.includes("Sign up")) {
-    // Register first
-    const usernameInput = page.locator('input[name="username"], input[placeholder*="user"]').first();
-    const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
-    const confirmInput = page.locator('input[name="confirm"], input[placeholder*="confirm"]').first();
+  const usernameInput = page.locator('input[autocomplete="username"]').first();
+  const passwordInput = page.locator('input[autocomplete="current-password"]').first();
 
-    await usernameInput.fill(PM_USER);
-    await passwordInput.fill(PM_PASS);
-    if (await confirmInput.isVisible()) {
-      await confirmInput.fill(PM_PASS);
-    }
-    await page.locator("button", { hasText: /register|sign up/i }).click();
-    await page.waitForTimeout(1000);
-  }
+  // The PM account is created by the setup wizard (setupIfNeeded fills the
+  // Accounts step with these same constants), so this only ever needs to log
+  // in — there is no register path to fall back to.
+  await usernameInput.waitFor({ state: "visible" });
+  await usernameInput.fill(PM_USER);
+  await passwordInput.fill(PM_PASS);
 
-  // Login
-  const usernameInput = page.locator('input[name="username"], input[placeholder*="user"]').first();
-  const passwordInput = page.locator('input[name="password"], input[type="password"]').first();
-
-  if (await usernameInput.isVisible()) {
-    await usernameInput.fill(PM_USER);
-    await passwordInput.fill(PM_PASS);
-    await page.locator("button", { hasText: /log.?in|sign.?in/i }).click();
-    await page.waitForTimeout(1000);
-  }
+  // Submit by type, NOT by text. Login.tsx renders two mode-TOGGLE buttons
+  // labelled "Sign in" / "Sign up" above the form, and the real submit button
+  // reads "enter the hive" (only "sign in" in PM-POC mode). The previous
+  // selector, hasText: /log.?in|sign.?in/i, therefore matched the *toggle*:
+  // it clicked it, switched to the mode it was already in, submitted nothing,
+  // and reported no error.
+  //
+  // That failed silently in the worst way. No POST /v1/auth/login was ever
+  // issued by this helper, so every spec ran unauthenticated — which is why
+  // the API specs got 401 (not the 403 the ci.yml comment predicted), and why
+  // the specs whose assertions are loose enough to pass while logged out
+  // (e.g. body matching /hive|conductor|chat/i, which the login page itself
+  // satisfies) reported green.
+  //
+  // Awaiting the response rather than a fixed timeout means a login that stops
+  // working fails here, loudly, instead of leaking into a downstream 401.
+  await Promise.all([
+    page.waitForResponse(
+      (r) => r.url().includes("/v1/auth/login") && r.request().method() === "POST",
+      { timeout: 15000 },
+    ),
+    page.locator('form button[type="submit"]').click(),
+  ]);
 }
 
 test.describe("PM Workflow — Full UI Walkthrough", () => {

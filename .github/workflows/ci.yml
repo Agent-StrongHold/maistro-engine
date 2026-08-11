@@ -208,29 +208,70 @@ jobs:
   # harness the API e2e suite uses) but no workflow had ever invoked it (C2/#287).
   #
   # continue-on-error: non-blocking for now, matching the v1 plan's own note
-  # that this job "may start non-blocking; blocking by G1". The spec's DAG
-  # mutation steps (tests 05-08) predate the task-scoped permission-elevation
-  # model (middleware/auth.py's _PROTECTED_OPS): they expect `POST /v1/dags` to
-  # return 201, but that route now requires an explicit `dags.write` elevate
-  # call the spec never makes, so it returns 403 — the same auth gap C1/#286
-  # already found and cited for 12 of the API e2e suite's tests. This job
-  # reports that failure (logs/status visible on the PR) without gating merges
-  # until the gap is closed; flip continue-on-error off at G1 once it is.
+  # that this job "may start non-blocking; blocking by G1".
+  #
+  # KNOWN BROKEN, AND NOT FOR THE REASON THIS COMMENT USED TO GIVE. It used to
+  # blame the task-scoped permission-elevation model (middleware/auth.py's
+  # _PROTECTED_OPS) making `POST /v1/dags` return 403 for the spec's DAG
+  # mutation steps. The logs do not support that: ALL 12 specs fail, each at
+  # exactly 1.0m (= playwright.config.ts's `timeout: 60000`), and the first is
+  # `01 — Setup wizard completes on first boot`, which never touches /v1/dags.
+  # A selective auth failure cannot produce a uniform timeout across specs that
+  # don't make the call.
+  #
+  # The uniformity is explained by the spec's `beforeEach`, which calls
+  # `setupIfNeeded()` -> `page.goto("/")` for every test. `goto` defaults to
+  # `waitUntil: "load"`, so if that navigation never completes, every test
+  # burns the full timeout before its body runs. Whether the app is unreachable,
+  # or reachable but never firing `load`, is not yet established.
+  #
+  # It has never been established because the diagnostic step below was
+  # `if: failure()` — and this job does not fail, it exceeds timeout-minutes and
+  # is CANCELLED, which `failure()` does not match. The one step meant to
+  # explain this has therefore never executed in any run. It is `always()` now,
+  # which does match cancellation.
+  #
+  # Do not re-blame the auth gap without reading a log dump first.
   hive-conductor-e2e-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      # Step timeout deliberately below the job's 20. A step that overruns
+      # FAILS the step and leaves the job alive to run the diagnostics below
+      # with headroom; letting the JOB hit timeout-minutes instead cancels it,
+      # which is what kept the dump from ever running.
       - name: Run PM workflow Playwright UI e2e against a live hive-conductor
+        timeout-minutes: 14
         working-directory: packages/hive-conductor
         run: |
           docker compose -f docker-compose.test.yml --profile test up --build \
             --abort-on-container-exit --exit-code-from e2e-tests e2e-tests
-      - name: Dump hive logs on failure
-        if: failure()
+      # always(), not failure(): this job's characteristic outcome is a timeout,
+      # and on the job-cancellation path failure() is not satisfied. See the
+      # block comment above this job.
+      - name: Diagnose — container state and per-service logs
+        if: always()
         working-directory: packages/hive-conductor
-        run: docker compose -f docker-compose.test.yml logs --tail=200
+        run: |
+          echo "::group::compose ps (did hive ever start and report healthy?)"
+          docker compose -f docker-compose.test.yml ps -a || true
+          echo "::endgroup::"
+          echo "::group::hive service logs"
+          docker compose -f docker-compose.test.yml logs --no-color --tail=300 hive || true
+          echo "::endgroup::"
+          echo "::group::e2e-tests (playwright) logs"
+          docker compose -f docker-compose.test.yml logs --no-color --tail=200 e2e-tests || true
+          echo "::endgroup::"
+          echo "::group::is the app reachable, and what does GET / return?"
+          # The spec's beforeEach does page.goto("/") for every test; if that
+          # never completes, all 12 specs burn the full per-test timeout. Probe
+          # the same origin the browser uses, from inside the compose network.
+          docker compose -f docker-compose.test.yml run --rm --no-deps -T \
+            --entrypoint sh e2e-tests -c \
+            'wget -S -T 10 -O /dev/null http://hive:8101/ 2>&1 | head -40; echo "exit=$?"' || true
+          echo "::endgroup::"
       - name: Tear down
         if: always()
         working-directory: packages/hive-conductor
@@ -263,10 +304,15 @@ jobs:
           # target still pulls in `hive` as its declared dependency.
           docker compose -f docker-compose.test.yml --profile test up --build \
             --abort-on-container-exit --exit-code-from api-tests api-tests
-      - name: Dump hive logs on failure
-        if: failure()
+      # always() for the same reason as the UI job above: a timeout cancels the
+      # job rather than failing it, and failure() would skip the dump exactly
+      # when it is most needed.
+      - name: Dump hive logs
+        if: always()
         working-directory: packages/hive-conductor
-        run: docker compose -f docker-compose.test.yml logs --tail=200
+        run: |
+          docker compose -f docker-compose.test.yml ps -a || true
+          docker compose -f docker-compose.test.yml logs --no-color --tail=200 || true
       - name: Tear down
         if: always()
         working-directory: packages/hive-conductor
