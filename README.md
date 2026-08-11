@@ -66,6 +66,8 @@ docker compose up -d                  # full local stack (Postgres + LiteLLM + L
 
 The repo is a `uv` workspace: **nine Python packages**, plus the **`packages/hive-conductor`** reference app (frontend + backend + Docker).
 
+> **Platform compatibility:** MAIstro targets modern 64-bit platforms. Intel (x86_64) Macs and 32-bit Windows have limited compatibility because `cryptography` 50.x no longer provides those upstream wheel/support paths. Apple Silicon Macs, 64-bit Windows, and supported 64-bit Linux platforms are the normal targets.
+
 | Package / tree | Purpose |
 |---|---|
 | `maistro-core` | The library: orchestration, agents, memory, security, skills, tools, router |
