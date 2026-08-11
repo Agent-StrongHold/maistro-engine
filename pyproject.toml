@@ -60,6 +60,14 @@ dev = [
     # nonzero exit as "the tests killed this mutant", and the gate reports a
     # vacuous 100% kill rate having verified nothing.
     "pytest-timeout>=2.3",
+    # Warden's RE2 acceleration is an *optional* extra on maistro-core, and
+    # `uv sync --all-extras` at this root does not pull a member package's
+    # extras — so without this line CI has no `re2`, the engine-equivalence
+    # test skips, and the suite goes green having verified nothing about the
+    # accelerated path. Same shape as the pytest-timeout note above: the gate
+    # existed, ran, and proved nothing. Consumers still opt in via
+    # `maistro-core[re2]`; this only guarantees *our* CI exercises both engines.
+    "google-re2>=1.1",
 ]
 browser = ["playwright>=1.49"]
 scheduling = ["apscheduler>=3.11"]

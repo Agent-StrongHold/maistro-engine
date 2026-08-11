@@ -12,7 +12,9 @@ from __future__ import annotations
 import base64
 import re
 
-_INSTRUCTION_TOKENS = re.compile(
+from maistro.security.warden._regex import compile_pattern
+
+_INSTRUCTION_TOKENS = compile_pattern(
     r"\b("
     r"ignore|disregard|forget|override|bypass|skip|"
     r"instead|actually|really|new instructions|"
@@ -27,7 +29,7 @@ _INSTRUCTION_TOKENS = re.compile(
     re.IGNORECASE,
 )
 
-_BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/]{40,}={0,2}")
+_BASE64_PATTERN = compile_pattern(r"[A-Za-z0-9+/]{40,}={0,2}")
 
 INSTRUCTION_DENSITY_THRESHOLD = 0.15
 

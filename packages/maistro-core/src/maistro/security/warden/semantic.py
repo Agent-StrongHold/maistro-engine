@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import re
 
-_DANGEROUS_ACTIONS: list[re.Pattern[str]] = [
-    re.compile(p, re.IGNORECASE)
+from maistro.security.warden._regex import PatternLike, compile_pattern
+
+_DANGEROUS_ACTIONS: list[PatternLike] = [
+    compile_pattern(p, re.IGNORECASE)
     for p in [
         r"disable\w*",
         r"bypass\w*",
@@ -43,8 +45,8 @@ _DANGEROUS_ACTIONS: list[re.Pattern[str]] = [
     ]
 ]
 
-_SENSITIVE_OBJECTS: list[re.Pattern[str]] = [
-    re.compile(p, re.IGNORECASE)
+_SENSITIVE_OBJECTS: list[PatternLike] = [
+    compile_pattern(p, re.IGNORECASE)
     for p in [
         r"(?:oauth|access|api|auth|bearer|session|jwt)\s*token",
         r"(?:api|secret|encryption|private|master)\s*key",
@@ -63,8 +65,8 @@ _SENSITIVE_OBJECTS: list[re.Pattern[str]] = [
     ]
 ]
 
-_PRESCRIPTIVE_PATTERNS: list[re.Pattern[str]] = [
-    re.compile(p, re.IGNORECASE)
+_PRESCRIPTIVE_PATTERNS: list[PatternLike] = [
+    compile_pattern(p, re.IGNORECASE)
     for p in [
         r"\bshould\s+(?:also\s+)?(?:\w+\s+)?(?:be|include|write|store|log|persist|forward|send|"
         r"disable|skip|bypass|grant|allow|treat|fall|have|capture|default|contain|"
