@@ -92,15 +92,6 @@ COPY packages/hive-conductor/dags/ /app/dags/
 COPY --from=frontend /build/dist /app/frontend/dist
 # Persistent conductor state dir, pre-owned by the nonroot uid (see pybuild).
 COPY --from=pybuild --chown=65532:65532 /app/state_seed /data
-# Chainguard embeds supplemental package SBOMs under /var/lib/db/sbom. This
-# runtime overlays a separately-built venv, so the base-image Python SBOM can
-# describe package versions that are no longer present (Trivy then reports the
-# stale inventory alongside the correct dist-info inventory). Remove only that
-# supplemental metadata from the final image. Trivy/Grype still inspect the
-# actual Wolfi package DB, Python dist-info, and binaries, and CI emits a fresh
-# Syft SBOM from the completed image after the vulnerability scans.
-USER 0
-RUN ["python", "-c", "import shutil; shutil.rmtree('/var/lib/db/sbom', ignore_errors=True)"]
 EXPOSE 8101
 WORKDIR /app/backend
 # Chainguard runs as nonroot (uid 65532) by default; make it explicit so the
