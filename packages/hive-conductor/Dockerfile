@@ -32,9 +32,9 @@ ENV PATH="/app/venv/bin:$PATH"
 # authenticated (apk add age fails without HTTP_AUTH), so fetch the official
 # static release with a pinned checksum instead.
 ARG TARGETARCH
-ARG AGE_VERSION=1.2.1
-ARG AGE_SHA256_AMD64=7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50
-ARG AGE_SHA256_ARM64=57fd79a7ece5fe501f351b9dd51a82fbee1ea8db65a8839db17f5c080245e99f
+ARG AGE_VERSION=1.3.1
+ARG AGE_SHA256_AMD64=bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
+ARG AGE_SHA256_ARM64=c6878a324421b69e3e20b00ba17c04bc5c6dab0030cfe55bf8f68fa8d9e9093a
 USER root
 RUN set -e; \
     arch="${TARGETARCH:-amd64}"; \
@@ -69,7 +69,8 @@ RUN pip install --no-cache-dir \
     /packages/maistro-design \
     /packages/maistro-evolve
 COPY packages/hive-conductor/backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt
+RUN pip install --no-cache-dir -r /app/backend/requirements.txt && \
+    pip install --no-cache-dir "setuptools>=78.1.1"
 # Seed dir for conductor state (SQLite/vault/state). Created under the writable
 # /app workdir because the -dev base runs as nonroot and cannot write to /. The
 # runtime stage COPY --chown's it to /data so a mounted named volume inherits
