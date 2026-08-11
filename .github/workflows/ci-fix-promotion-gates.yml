@@ -1,0 +1,56 @@
+name: One-shot promotion dependency repair
+
+on:
+  push:
+    branches: [ci/fix-promotion-gates]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ci/fix-promotion-gates
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Raise cryptography compatibility range
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('packages/maistro-core/pyproject.toml')
+          text = p.read_text()
+          old = '"cryptography>=48.0.1,<49"'
+          new = '"cryptography>=50.0.0,<51"'
+          if old not in text:
+              raise SystemExit(f'expected constraint not found: {old}')
+          p.write_text(text.replace(old, new, 1))
+          PY
+      - name: Regenerate Python lock for audited packages
+        run: uv lock --upgrade-package aiohttp --upgrade-package cryptography --upgrade-package gitpython
+      - name: Repair high-severity canvas npm advisories
+        working-directory: packages/maistro-canvas/frontend
+        run: npm audit fix --audit-level=high
+      - name: Verify lock and audits
+        run: |
+          uv lock --check
+          uv sync --locked --extra dev
+          uv pip freeze --exclude-editable > /tmp/deps.txt
+          uvx pip-audit --strict -r /tmp/deps.txt
+          cd packages/maistro-canvas/frontend
+          npm audit --audit-level=high
+      - name: Remove one-shot workflow and commit generated changes
+        run: |
+          rm .github/workflows/ci-fix-promotion-gates.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(ci): update vulnerable Python and npm dependencies'
+          git push origin HEAD:ci/fix-promotion-gates
