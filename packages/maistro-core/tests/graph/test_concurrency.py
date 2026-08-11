@@ -16,16 +16,17 @@ from maistro.graph.concurrency import (
     configure_graph_concurrency,
     get_graph_gate,
     llm_call_permit,
-    reset_graph_gate,
 )
 from maistro.tasks.lanes import Lane
 
 
 @pytest.fixture(autouse=True)
 def _fresh_gate():
-    reset_graph_gate()
+    # Reconfiguration replaces the process-wide gate, so tests do not need a
+    # production reset hook that exists only to satisfy test isolation.
+    configure_graph_concurrency()
     yield
-    reset_graph_gate()
+    configure_graph_concurrency()
 
 
 class TestBound:
