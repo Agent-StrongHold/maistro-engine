@@ -22,29 +22,28 @@ ARG VITE_BASE_PATH=/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 RUN npm run build
 
+# ---- age build ----
+# age v1.3.1 remains the latest upstream release, but its prebuilt Linux binary
+# was compiled before several 2026 Go/x/crypto and stdlib fixes. Build the exact
+# immutable release tag ourselves with a patched Go toolchain/dependency set so
+# the runtime does not inherit vulnerabilities from an otherwise-current source
+# release. The release tag resolves to b8564ad; fail if upstream ever disagrees.
+FROM golang:1.25.12-alpine AS agebuild
+ARG AGE_VERSION=1.3.1
+ARG AGE_COMMIT_SHORT=b8564ad
+RUN apk add --no-cache git && \
+    git clone --branch "v${AGE_VERSION}" --depth 1 https://github.com/FiloSottile/age.git /src/age && \
+    cd /src/age && \
+    test "$(git rev-parse --short=7 HEAD)" = "${AGE_COMMIT_SHORT}" && \
+    go get golang.org/x/crypto@v0.52.0 && \
+    mkdir -p /out && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/age ./cmd/age && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/age-keygen ./cmd/age-keygen
+
 # ---- fat Wolfi builder: self-contained venv (has shell/pip/apk, glibc) ----
 FROM cgr.dev/chainguard/python:latest-dev AS pybuild
 WORKDIR /app
 ENV PATH="/app/venv/bin:$PATH"
-# age powers the SPEC-011 secrets vault (maistro/vault.py shells out to it);
-# first-run setup provisions the vault, so the runtime image must carry the
-# static binaries (SPEC-072726-3439 Phase 3). The free Chainguard APK repo is
-# authenticated (apk add age fails without HTTP_AUTH), so fetch the official
-# static release with a pinned checksum instead.
-ARG TARGETARCH
-ARG AGE_VERSION=1.3.1
-ARG AGE_SHA256_AMD64=bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377
-ARG AGE_SHA256_ARM64=c6878a324421b69e3e20b00ba17c04bc5c6dab0030cfe55bf8f68fa8d9e9093a
-USER root
-RUN set -e; \
-    arch="${TARGETARCH:-amd64}"; \
-    if [ "$arch" = "arm64" ]; then sha="$AGE_SHA256_ARM64"; else sha="$AGE_SHA256_AMD64"; fi; \
-    wget -qO /tmp/age.tgz "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${arch}.tar.gz"; \
-    echo "$sha  /tmp/age.tgz" | sha256sum -c -; \
-    tar -xzf /tmp/age.tgz -C /tmp; \
-    install -m 0755 /tmp/age/age /tmp/age/age-keygen /usr/local/bin/; \
-    rm -rf /tmp/age /tmp/age.tgz
-USER 65532
 RUN python -m venv /app/venv
 # Install the maistro library packages (non-editable) so the venv is fully
 # self-contained — nothing from these source trees is needed at runtime.
@@ -85,7 +84,7 @@ ENV PATH="/app/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 COPY --from=pybuild /app/venv /app/venv
-COPY --from=pybuild /usr/local/bin/age /usr/local/bin/age-keygen /usr/bin/
+COPY --from=agebuild /out/age /out/age-keygen /usr/bin/
 COPY packages/hive-conductor/backend/ /app/backend/
 COPY packages/hive-conductor/cage/ /app/cage/
 COPY packages/hive-conductor/eval/ /app/eval/
