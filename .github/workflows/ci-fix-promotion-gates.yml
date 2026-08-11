@@ -1,8 +1,8 @@
 name: One-shot promotion dependency repair
 
 on:
-  push:
-    branches: [ci/fix-promotion-gates]
+  pull_request:
+    branches: [develop]
 
 permissions:
   contents: write
