@@ -159,11 +159,13 @@ jobs:
         run: docker build -t maistro-engine:pr-${{ github.event.pull_request.number || 'nightly' }} .
 
       - name: Trivy scan (HIGH/CRITICAL only)
-        # Pinned to the v0.36.0 tag's commit SHA: this is the supply-chain job,
-        # and @master meant any compromise of the action repo executed here
-        # with access to the images being attested.
+        # Pin the action itself to the immutable v0.36.0 commit, but explicitly
+        # install Trivy v0.73.0. The action's bundled v0.70.0 can ingest stale
+        # third-party Python SBOM metadata and report package versions that are no
+        # longer present in the final image.
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
+          version: v0.73.0
           image-ref: hive-conductor:pr-${{ github.event.pull_request.number || 'nightly' }}
           severity: HIGH,CRITICAL
           exit-code: "1"
