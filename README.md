@@ -171,8 +171,8 @@ tested modules with no call path, so "the code is there" is not the bar.
 | `maistro-core`, `-server`, `-evolve`, `-registry`, `-bootstrap`, `-design` | **Complete** | |
 | `maistro-canvas` (Python library) | **Complete** | Library only — no route in this repo mounts it. |
 | Canvas book-maker (Node app, Lulu print ordering) | **Partial** | Runs standalone; not in the root compose or installer. |
-| `maistro-turing` | **v1.1** | A separate FastAPI app + Astro frontend; not deployed by compose or the installer. |
-| Flutter gateway node | **v1.2** | README-only shell; no code. |
+| `maistro-turing` | **v1.1** | A separate FastAPI app; its former Astro frontend has been removed from this repo and it is not deployed by compose or the installer. |
+| Flutter gateway node | **v1.2** | Planned/spec-only; the former README shell was removed and no implementation is present in this tree. |
 
 ### Known non-features
 
