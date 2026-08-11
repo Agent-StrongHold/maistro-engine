@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from maistro.config.settings import Settings, get_settings
+from maistro.graph.concurrency import configure_graph_concurrency
 from maistro.http import aclose_shared_clients, configure_shared_http
 from maistro.observability.logging import configure_logging
 from maistro.observability.middleware import RequestIDMiddleware
@@ -80,6 +81,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     # Fail-fast startup validation
     _validate_startup(settings)
+
+    # Explicitly instantiate the graph LLM admission gate during application
+    # startup. Lazy construction remains a safe library fallback, but the server
+    # should own its runtime resource initialization rather than relying on the
+    # first graph node to do it implicitly.
+    configure_graph_concurrency()
 
     # Size the shared outbound HTTP pool before the first request — clients
     # already built keep the limits they were created with.
