@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from maistro.config.settings import Settings, get_settings
+from maistro.http import shared_client_stats
 from maistro_server.api.schemas import HealthResponse
 
 router = APIRouter(tags=["health"])
@@ -104,7 +105,7 @@ async def liveness() -> dict[str, str]:
 async def readiness(
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> DetailedHealthResponse | JSONResponse:
-    """Readiness probe — checks Docker, Postgres, and LLM circuit breaker."""
+    """Readiness probe — checks Docker, Postgres, LLM, and HTTP pool state."""
     from maistro.agents.circuit_breaker import llm_circuit
     from maistro_server.main import APP_VERSION
 
@@ -118,10 +119,26 @@ async def readiness(
         detail=f"circuit={circuit_state}",
     )
 
+    # The outbound pool is a process resource rather than an external
+    # dependency, so observing it cannot make readiness fail through a network
+    # probe. Surface its live occupancy and configured ceilings so operators can
+    # distinguish provider latency from local connection-pool pressure.
+    http_stats = shared_client_stats()
+    http_pool_result = ProbeResult(
+        status="ok",
+        detail=(
+            f"cached_clients={http_stats['cached_clients']}, "
+            f"clients_this_loop={http_stats['clients_this_loop']}, "
+            f"max_connections={http_stats['max_connections']}, "
+            f"max_keepalive_connections={http_stats['max_keepalive_connections']}"
+        ),
+    )
+
     checks = {
         "docker": docker_result,
         "postgres": postgres_result,
         "llm_provider": llm_result,
+        "http_pool": http_pool_result,
     }
     all_ok = all(c.status == "ok" for c in checks.values())
 
