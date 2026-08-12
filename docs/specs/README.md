@@ -27,5 +27,6 @@ Frozen **reference** trees that specs ported from (hyperagent bundle, gateway sn
 | SPEC-193 | [Slot-aware local inference gateway](SPEC-193-slot-aware-inference-gateway.md) |
 | SPEC-194 | [Ultra Think — tiered parallel diverse generation](SPEC-194-ultra-think-parallel-generation.md) |
 | SPEC-195 | [Operational training data collection](SPEC-195-operational-training-data.md) |
+| SPEC-196 | [Workspace → Run → Runtime spine](SPEC-196-workspace-run-runtime-spine.md) |
 
 Cross-repo inventory: [`docs/INVENTORY-ADRS-SPECS.md`](../INVENTORY-ADRS-SPECS.md). Pull sibling product specs with `./scripts/pull-sibling-product-specs.sh` (see root `AGENTS.md`).
