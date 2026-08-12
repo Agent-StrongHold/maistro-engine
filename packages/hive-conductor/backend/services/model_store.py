@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator, ValuesView
+from collections.abc import Callable, Iterator, ValuesView
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -17,6 +17,19 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
+
+# Domain services can register lifecycle invariants without making this generic
+# storage module import those domains (which would create circular imports).
+# Hooks run before the parent record is removed so a failing cascade leaves the
+# parent addressable/retryable rather than creating half-deleted state.
+_POP_HOOKS: dict[str, list[Callable[[str], None]]] = {}
+
+
+def register_pop_hook(store_name: str, hook: Callable[[str], None]) -> None:
+    """Register an idempotent callback that runs before a store item is removed."""
+    hooks = _POP_HOOKS.setdefault(store_name, [])
+    if hook not in hooks:
+        hooks.append(hook)
 
 
 class ModelStore:
@@ -74,6 +87,8 @@ class ModelStore:
 
     def pop(self, key: str, *default: Any) -> T | Any:
         if key in self._data:
+            for hook in _POP_HOOKS.get(self._store_name, ()):
+                hook(key)
             if self._persisted is not None:
                 self._persisted.delete(self._store_name, key)
             return self._data.pop(key)
