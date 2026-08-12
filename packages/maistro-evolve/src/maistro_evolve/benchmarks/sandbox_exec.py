@@ -115,20 +115,3 @@ async def run_function_checks(
     if output == _PASS_MARKER:
         return True, "ok"
     return False, (output or "no PASS marker in output")[:_MAX_OUTPUT_CHARS]
-
-
-async def run_function_check(
-    code: str,
-    function_name: str,
-    call_args: list[Any],
-    expected_value: Any,
-    *,
-    timeout: float = _DEFAULT_TIMEOUT,
-) -> tuple[bool, str]:
-    """Compatibility wrapper for callers that need a single assertion."""
-    return await run_function_checks(
-        code,
-        function_name,
-        [(call_args, expected_value)],
-        timeout=timeout,
-    )
