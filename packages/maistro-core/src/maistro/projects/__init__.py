@@ -5,19 +5,10 @@ domain can hold one or many PROJECTS. A project IS a hyperagent meta-DAG:
 its own integrations, dashboards, sub-agent DAGs, skills, and settings —
 all scoped per-meta-DAG.
 
-PM Fleet is the first user of the substrate. Other domains (canvas_creative,
-engineering_rfc) are token seats at v0.2: they prove the substrate is
-domain-neutral but ship with minimal default DAGs + no dedicated UI yet.
-
-Public surface:
-  Types          — Project, ProjectMember, ProjectMemberRole,
-                   ProjectSettings, JiraResourceBinding,
-                   AirtableResourceBinding, RepoResourceBinding.
-  Exceptions     — ProjectNotFound, ProjectAccessDenied,
-                   ProjectQuotaExceeded.
-  Stores         — ProjectStore Protocol + InMemoryProjectStore reference.
-  Domains        — KNOWN_DOMAINS (curated set), DomainConfig, domain_for(),
-                   domain_use_cases().
+`Workspace` is the canonical architectural/product term introduced by the
+runtime spine. It is an alias of `Project` during the compatibility migration,
+so existing persistence and callers keep working while new runtime APIs use
+workspace terminology.
 """
 
 from __future__ import annotations
@@ -37,6 +28,8 @@ from .types import (
     RepoResourceBinding,
 )
 
+Workspace = Project
+
 __all__ = [
     "KNOWN_DOMAINS",
     "AirtableResourceBinding",
@@ -52,6 +45,7 @@ __all__ = [
     "ProjectSettings",
     "ProjectStore",
     "RepoResourceBinding",
+    "Workspace",
     "domain_for",
     "domain_use_cases",
 ]
