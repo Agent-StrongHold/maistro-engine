@@ -14,6 +14,7 @@ from maistro.graph.durable_runs.executor import NodeResolver, resume_durable_dag
 from maistro.graph.durable_runs.protocol import DurableRunStore
 from maistro.graph.durable_runs.types import DurableRunRecord, RunStatus
 
+from .context import bind_execution_context
 from .types import ExecutionContext, RunContext, RunKind, RunState, WorkspaceRef
 
 
@@ -128,15 +129,16 @@ class ExecutionRuntime:
                 metadata=metadata,
             )
 
-        durable = await run_durable_dag(
-            dag,
-            store=self._durable_run_store,
-            node_resolver=node_resolver,
-            inputs=inputs,
-            user_id=context.actor_id,
-            project_id=context.workspace_id,
-            run_id=context.run_id,
-        )
+        with bind_execution_context(context):
+            durable = await run_durable_dag(
+                dag,
+                store=self._durable_run_store,
+                node_resolver=node_resolver,
+                inputs=inputs,
+                user_id=context.actor_id,
+                project_id=context.workspace_id,
+                run_id=context.run_id,
+            )
         durable = await self._persist_runtime_identity(durable, context)
         return GraphExecutionResult(
             context=self._context_from_durable(durable, previous=context),
@@ -154,11 +156,12 @@ class ExecutionRuntime:
         if before is None:
             raise KeyError(f"no such run: {run_id!r}")
         previous = self._context_from_persisted(before)
-        durable = await resume_durable_dag(
-            run_id,
-            store=self._durable_run_store,
-            node_resolver=node_resolver,
-        )
+        with bind_execution_context(previous):
+            durable = await resume_durable_dag(
+                run_id,
+                store=self._durable_run_store,
+                node_resolver=node_resolver,
+            )
         durable = await self._persist_runtime_identity(durable, previous)
         return GraphExecutionResult(
             context=self._context_from_durable(durable, previous=previous),
@@ -170,11 +173,7 @@ class ExecutionRuntime:
         durable: DurableRunRecord,
         context: ExecutionContext,
     ) -> DurableRunRecord:
-        """Write canonical identity into the adapter checkpoint.
-
-        This is additive to the durable graph schema, preserving readability of
-        old records while making all runtime-created records lineage-complete.
-        """
+        """Write canonical identity into the adapter checkpoint."""
         updated = durable.model_copy(
             update={
                 "run_kind": context.run.kind.value,
