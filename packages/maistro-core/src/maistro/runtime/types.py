@@ -1,8 +1,8 @@
 """Canonical execution contracts for the MAIstro runtime spine.
 
-These types intentionally stay small. Specialized executors keep their own
-adapter state; this module carries the identity, ownership, lineage, lifecycle,
-and correlation that must survive across every execution path.
+Specialized executors keep adapter-specific state. These types carry the
+identity, ownership, lineage, lifecycle, and correlation that must survive
+across every execution path and capability boundary.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class RunState(StrEnum):
 class WorkspaceRef(BaseModel):
     """Authorized workspace identity at an execution boundary."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     workspace_id: str = Field(min_length=1)
     actor_id: str | None = None
@@ -44,7 +44,7 @@ class WorkspaceRef(BaseModel):
 class RunContext(BaseModel):
     """Canonical identity and lineage for one unit of execution."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     run_id: str = Field(min_length=1)
     workspace_id: str = Field(min_length=1)
@@ -57,16 +57,18 @@ class RunContext(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def validate_root_lineage(self) -> "RunContext":
+    def validate_lineage(self) -> "RunContext":
         if self.parent_run_id is None and self.root_run_id != self.run_id:
             raise ValueError("top-level run must use its own run_id as root_run_id")
+        if self.parent_run_id == self.run_id:
+            raise ValueError("run cannot be its own parent")
         return self
 
 
 class ExecutionContext(BaseModel):
     """Context passed through adapters and cross-cutting capabilities."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True, frozen=True)
 
     run: RunContext
     services: dict[str, Any] = Field(default_factory=dict)
