@@ -51,11 +51,23 @@ def test_health_reports_degraded_when_no_llm_configured(
     assert data["llm_configured"] is False
 
 
-def test_health_not_degraded_when_llm_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_health_not_degraded_when_all_dependencies_healthy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("LITELLM_API_BASE", "http://gateway.example")
 
-    data = client.get("/health").json()
+    with (
+        patch(
+            "routes.health._memory_decay_state",
+            return_value={"enabled": True, "state": "running"},
+        ),
+        patch("routes.health._log_redaction_active", return_value=True),
+    ):
+        data = client.get("/health").json()
+
     assert data["llm_configured"] is True
+    assert data["memory_decay_enabled"] is True
+    assert data["log_redaction_active"] is True
     assert data["degraded"] is False
 
 
