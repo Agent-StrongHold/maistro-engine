@@ -6,111 +6,101 @@ Branch: `feature/workspace-run-runtime-spine`
 
 ## Why this audit exists
 
-The runtime-spine branch began by converging execution around `Workspace -> Run -> ExecutionRuntime -> Capabilities`. That is useful infrastructure work, but it starts too high in the abstraction stack to solve MAIstro's vocabulary sprawl safely.
+The runtime-spine branch began by converging execution around `Workspace -> Run -> ExecutionRuntime -> Capabilities`. That work may remain useful, but it starts too high in the abstraction stack to safely resolve MAIstro's vocabulary sprawl.
 
-Before extending that implementation, this audit derives the architecture bottom-up. The goal is to identify the smallest independently meaningful concepts, show how higher-order concepts compose from them, and find cases where multiple subsystem names are actually the same concept or one name hides several different concepts.
+This audit derives the architecture bottom-up. The goal is to identify the smallest independently meaningful concepts, recursively decompose higher-order concepts, and find cases where multiple subsystem names are the same concept or one name hides several concepts.
 
-This document is intentionally discovery rather than an ADR or SPEC. No migration should be treated as decided until the ontology is stable enough to make the decision explicit.
+No migration here is normative yet. Do not lock ADR/SPEC/AC until the ontology is sufficiently evidenced.
 
 ## Working test for a primitive
 
-A concept is a candidate primitive when it cannot be expressed as a composition of other MAIstro concepts without dropping into ordinary implementation detail.
-
-A concept is not primitive merely because it has a class, protocol, package, registry, database table, or execution path today.
+A concept is a candidate primitive when it cannot be expressed as a composition of other MAIstro concepts without dropping into ordinary implementation detail. A class, registry, package, database table, protocol, or execution path does not make a concept primitive.
 
 ## Working hierarchy
 
 ### Level 0: candidate primitives
 
-These are the current bottom-layer candidates. The audit may reduce this list further.
-
-- **Model**: an inference target/model identity.
-- **PromptTemplate**: reusable instruction/message structure with substitution points.
-- **ParameterSet**: inference/behavior configuration independent of the prompt and model.
-- **Schema**: a data contract for input, output, state, or events.
+- **Model**: inference target/model identity.
+- **PromptTemplate**: reusable instruction/message structure.
+- **ParameterSet**: inference/behavior configuration independent of prompt and model.
+- **Schema**: input/output/state/event contract.
 - **Protocol**: rules for communicating with or invoking a target.
 - **Credential**: authority material used by a binding.
-- **PolicyRule**: a rule that constrains an action or transition.
-- **Predicate**: a condition that evaluates data/state to a decision value.
+- **PolicyRule**: constraint on an action or transition.
+- **Predicate**: condition evaluated against data/state.
 - **Transform**: deterministic mapping from input to output.
 
-`Tool`, `Agent`, `Node`, `Graph`, `Run`, `Provider`, and `Workspace` are deliberately not listed as primitives. Current evidence shows they are compositions, runtime facts, roles/views, or product boundaries.
+`Tool`, `Agent`, `Node`, `Graph`, `Run`, `Provider`, `Session`, and `Workspace` are not primitives under current evidence.
 
 ### Level 1: semantic capability and fulfillment
 
-The audit now distinguishes four concepts that current subsystems often blur together:
+Current source supports five separate meanings:
 
 ```text
 Capability = semantic ability that may be requested
 Provider   = selectable implementation of a capability contract
-Binding    = authorized/configured route from a consumer to fulfillment
-Invocation = one concrete runtime use of a binding
+Binding    = consumer-scoped authorized/configured route to fulfillment
+Invocation = one concrete runtime use of a resolved Binding
+Session    = optional continuity handle across Invocations/Runs
 ```
 
-A provider is not a binding. `CapabilityRegistry` stores multiple providers under a slot, selects one by activation/fallback/trust, and health-checks the provider before returning it. The provider then implements the slot-specific protocol. That is implementation selection, not the consumer's authorization/configuration relationship.
+A Provider is not a Binding. `CapabilityRegistry` registers multiple providers under a slot, selects active/fallback/trust-ranked providers, and health-checks them. That is implementation resolution. It does not say which Agent may use the capability or with what credentials/policy.
 
-A binding is provisionally:
+A provisional Binding is:
 
 ```text
-Binding = Capability + Protocol/Contract + Target/Provider selection
-        + InputSchema + OutputSchema + Configuration/Credential + Policy
+Binding = Capability
+        + target/provider selection
+        + Protocol/contract
+        + input/output Schema
+        + configuration/Credential
+        + Policy
 ```
 
-The exact minimum fields remain under audit. The important invariant is that a binding answers "how may this consumer fulfill this capability?", while an invocation answers "what happened on this specific call?"
+The minimum fields remain under audit. The invariant is clearer than the representation:
 
-Possible fulfillment/binding forms include:
+- Capability answers **what may be requested?**
+- Provider answers **what implementation can fulfill it?**
+- Binding answers **how may this consumer reach authorized fulfillment?**
+- Invocation answers **what happened on this specific use?**
+- Session answers **what continuity must survive between uses?**
 
-- model provider
-- Python/function
-- HTTP/API
-- MCP
-- foreign harness
-- A2A/remote agent
-- subprocess/sandbox
-- human interaction
-- graph/subgraph
-
-This does not mean the product vocabulary must call all of these "bindings." It means they should not each invent a separate invocation architecture if their semantic difference is only protocol/target.
+Possible fulfillment forms include local Python/function, HTTP/API, MCP, foreign harness, A2A/local agent, subprocess/sandbox, human interaction, model provider, and graph/subgraph.
 
 ### Level 2: intelligence and behavior
 
 ```text
 Genome = Model + PromptTemplate + ParameterSet
-Agent  = Genome + authorized Bindings + Policy
+AgentDefinition = identity/classification + Genome
+Agent = AgentDefinition + authorized Bindings + Policy
 ```
 
-A **Tool** is provisionally a capability/binding exposed for agent invocation, not an independent execution primitive.
+Execution/spawn context is not intrinsic Agent identity.
 
-This also makes agents-as-tools ordinary rather than exceptional. If Agent A does not have a direct binding for Capability X, it may have a delegation binding to Agent B. Agent B can possess the model, genome, credentials, policy, context, and direct capability binding required to perform X successfully and safely.
+A **Tool** is increasingly supported as a role/view: a Binding or capability exposure rendered into a model-call schema. In `agents/base.py`, `AgentIdentity.tools` is merely a list of names. Those names are transformed into function schemas by `_build_tool_schema()` and passed with a separate `tool_executor` into the reasoning strategy. Tool schema exposure and tool execution are therefore already separate dimensions in source.
+
+Agents-as-tools follows naturally. If Agent A lacks a direct binding for Capability X, it can possess a delegation binding whose target is Agent B. Agent B may have the genome, credentials, context, policy, and direct bindings required to perform X safely and successfully.
 
 ```text
 Agent A
   -> capability request X
-  -> authorized delegation binding to Agent B
-  -> Agent B direct binding for X
-  -> invocation
+  -> authorized Agent-backed Binding
+  -> Agent B
+  -> Agent B's direct Binding for X
+  -> Invocation
 ```
 
-This decomposition is materially smaller than the current `AgentIdentity`/`AgentSpec` objects, which also carry task identity, scheduling, tracing, memory, delegation, security policy, provenance, and execution metadata. Those concerns should not define what an Agent intrinsically is.
+No special "agent tool" execution ontology is required.
 
 ### Level 3: executable envelope
 
 ```text
-Node<T> = an addressable composition/execution position containing T
+Node<T> = addressable composition/execution position containing T
 ```
 
-`T` may be:
+`T` may be Agent, Binding/invocation adapter, Transform, Human interaction, Graph, foreign harness adapter, or another executable/composition.
 
-- Agent
-- Binding/invocation adapter
-- Transform
-- Human interaction
-- Graph
-- another executable/composite type discovered later
-
-Node is therefore not synonymous with LLM call, Agent, Tool, or Graph. Those are things a node can contain or delegate to.
-
-The current `NodeRun` supports this conclusion indirectly: its `executor` can replace the default LLM path entirely, proving that graph position and execution backend are independent dimensions. However, `NodeRun` itself currently mixes the Node definition, payload configuration, invocation state, retry state, result, telemetry, and lifecycle. It is therefore not a clean canonical Node or Run.
+Node is not synonymous with LLM call, Agent, Tool, or Graph. Current `NodeRun.executor` can replace the default LLM path entirely, which is direct evidence that graph position and fulfillment backend are independent dimensions.
 
 ### Level 4: composition
 
@@ -119,323 +109,300 @@ Edge  = SourceNode + TargetNode + Predicate + DataMapping
 Graph = Nodes + Edges
 ```
 
-Graph is not primitive. A Graph may itself occupy a Node, allowing recursive composition without giving Graph a second execution ontology.
+Graph is composite. A Graph may itself occupy a Node, allowing recursive composition without creating a second graph execution ontology.
 
-Higher-order product terms such as workflow, team, fleet, wave, pipeline, and recipe should be tested against this layer. If they differ only by graph topology/configuration/policy, they are product or authoring concepts rather than new runtime primitives.
+Workflow, team, fleet, wave, pipeline, and recipe remain candidates for product/authoring views over Graph + policy unless a distinct invariant is found.
 
 ### Level 5: execution lifecycle
-
-The execution audit now supports a more precise decomposition:
 
 ```text
 WorkRequest = desired work + inputs + constraints + scheduling intent
 Run         = one execution instance of an executable/composition
-Attempt     = one retry-bounded attempt within a Run or Invocation
+Attempt     = one retry-bounded attempt within Run/Invocation
 Invocation  = one concrete use of a Binding
-Session     = continuity/context spanning interactions, not execution identity
 Checkpoint  = persisted event/snapshot from Run state
-Recovery    = policy + replay/resume procedure over Checkpoints
+Recovery    = replay/resume procedure + policy over Checkpoints
+Session     = separate continuity axis that may span Runs
 ```
 
-Events, checkpoints, artifacts, metrics, retry state, correlation, parent/root lineage, and child runs attach to a Run. They do not make `GraphRun`, `NodeRun`, `Task`, `HarnessSession`, etc. fundamentally different kinds of execution unless an invariant discovered later requires a separate concept.
+Events, artifacts, metrics, retry state, correlation, lineage, checkpoints, and child runs attach to Run. They do not make `GraphRun`, `NodeRun`, `Task`, `A2ATask`, or harness session separate root execution ontologies by default.
 
 ### Level 6: ownership/product organization
 
 ```text
-Workspace = ownership/container boundary over definitions, runs, artifacts, policy and credentials
+Workspace = ownership/container boundary over definitions, runs, artifacts,
+            credentials and policy
 ```
 
-Workspace is useful and likely canonical at the product boundary, but it is not a primitive of execution.
+Workspace is likely canonical at the product boundary but is not an execution primitive.
 
 ## Confirmed sprawl findings
 
-### 1. `HarnessRunner` is literally duplicated
+### 1. `HarnessRunner` is duplicated and drifted
 
-Core currently defines a `HarnessRunner` protocol in both:
+Core defines `HarnessRunner` in both `maistro.capabilities.protocols` and `maistro.capabilities.slots.harness_runner`. One path accepts `AgentIdentity`; the slot path accepts `AgentSpec`.
 
-- `maistro.capabilities.protocols`
-- `maistro.capabilities.slots.harness_runner`
+`HarnessSessionManager` resolves a provider from `CapabilityRegistry`, starts a harness session, wraps it with safety/policy, and retains a session handle for `send/stream/stop`. The slot's own documentation explicitly says the foreign harness installs/toggles/degrades like any other capability provider and normalizes responses into MAIstro's existing envelope.
 
-They are not byte-equivalent. One accepts `AgentIdentity` in `start_session`; the other accepts `AgentSpec`. This is a concrete example of duplicate vocabulary already producing contract drift.
+**Canonical direction:** one harness Provider/Protocol. Agent authorization/configuration belongs in Binding. The harness session ID is a remote continuity handle, not a new Run identity by itself.
 
-**Canonical direction:** one provider/protocol contract for a foreign harness. The Agent's authorization/configuration relationship to that provider should be represented as a binding. Harness session continuity should not define a new execution ontology.
-
-**Action:** MERGE after the Binding vocabulary is decided. Do not add a third runtime-facing harness contract.
+**Action:** MERGE duplicate protocols; RETAIN harness-session semantics as Provider/Session detail.
 
 ### 2. Agent definitions mix ontology levels
 
-`AgentIdentity` and `AgentSpec` contain fields from multiple layers: identity, model selection, prompt selection, inference parameters, tools, task/run context, security, scheduling, tracing, memory/context, delegation and provenance.
+`AgentIdentity` includes prompt/model/tool/skill/rule policy, trust, delegation, strategy, memory, phases, provenance, and review state. `AgentSpec` additionally carries task IDs, attempt, upstream outputs, lane/scheduling and tracing/spawn context.
 
-`AgentSpec` is especially execution-shaped: it carries task IDs, attempt, upstream outputs, lane/scheduling information, tracing, and other spawn context. That is not intrinsic Agent identity.
-
-**Canonical direction:** split reusable Agent definition from authorization/bindings/policy and from per-run invocation/spawn context. Test the minimum `Agent = Genome + authorized Bindings + Policy` model against all existing agent paths.
+**Canonical direction:** split reusable AgentDefinition/Genome from Bindings/Policy and from per-run invocation/spawn context.
 
 **Action:** DECOMPOSE.
 
-### 3. Agent role is defined more than once
+### 3. Tool exposure is not tool fulfillment
 
-`maistro.graph.types.AgentRole` and `maistro.agents.spec.agent_spec.AgentRole` are separate enums with overlapping but non-identical members. Graph has already widened role-bearing fields to arbitrary strings because node identity/kind and agent role are different dimensions.
+`agents/base.py` converts the names in `AgentIdentity.tools` to model-facing function schemas. The reasoning strategy receives both `tools=tool_defs` and a separate `tool_executor`.
 
-**Canonical direction:** role is metadata/classification on an Agent or composition, not Node identity and not an execution primitive.
-
-**Action:** MERGE/RENAME after usage inventory.
-
-### 4. Graph `ExecutionMode` encodes compositions as execution kinds
-
-`ExecutionMode` currently distinguishes `TASK`, `WORKFLOW`, `AGENT`, and `GRAPH`. Under the primitive-first model, these are not peer execution mechanisms. They are different executable definitions/product views consumed by a common Run mechanism.
-
-**Canonical direction:** eliminate or redefine this enum around actual execution semantics if such semantics exist.
-
-**Action:** DECOMPOSE/REMOVE candidate.
-
-### 5. `NodeConfig` mixes payload identity with node configuration
-
-`NodeConfig` carries `role`, `kind`, `system_prompt`, `temperature`, `model`, `max_tokens`, learned confidence, display name, and beam width. The comment explicitly says Phase 2 widened it for the "anything is a node" model.
-
-This is evidence that model/prompt/parameter information belongs to the payload, for example Genome/Agent, while Node needs only composition/execution-envelope concerns.
-
-**Canonical direction:** make Node payload-agnostic and move LLM/Agent configuration into the contained definition.
-
-**Action:** DECOMPOSE.
-
-### 6. `NodeRun` mixes definition, execution, retry, result, and telemetry
-
-`maistro.graph.node.NodeRun` contains node identity and role alongside model, temperature, system/user prompts, blackboard snapshot, executor, phase, retry count, timing, token accounting, beam candidates, parsed output, error state, circuit breaker, and event emission.
-
-It also supports either the default LLM call path or an arbitrary `NodeExecutor`, which confirms that the graph node and the backend that fulfills it are independent concepts.
-
-**Canonical direction:** separate Node definition/payload from Run/Invocation/Attempt state and telemetry. A node execution should be a child execution fact within the containing graph Run, not the Node definition itself.
-
-**Action:** DECOMPOSE.
-
-### 7. Edge mixes topology and learned/runtime policy
-
-`GraphEdge` includes source/target and condition, but also parallel, weight, trust, sign, and staleness decay. Some may be legitimate edge attributes; others may be policy/optimizer overlays rather than the minimum Edge concept.
-
-**Canonical direction:** derive a minimal Edge, then layer optimizer/policy annotations without redefining topology.
-
-**Action:** DECOMPOSE candidate.
-
-### 8. Task is a work request and a Run collapsed together
-
-`TaskCreate` contains desired work and scheduling/configuration intent: description, workspace path, constraints, lane, priority, task type, optional agent/capability targeting, program context, and session identity.
-
-`TaskResponse` then adds lifecycle status, progress, result, started/completed timestamps, phase, and execution outcome. `TaskRunner` drives those lifecycle transitions and invokes an injected executor.
-
-`TaskStatus` further embeds domain phases such as `PLANNING`, `CODING`, `REVIEWING`, and `TESTING` in the same enum as universal lifecycle states such as `QUEUED`, `COMPLETED`, `FAILED`, and `CANCELLED`.
-
-**Canonical direction:** split WorkRequest/Task intent from Run. Scheduling metadata belongs to admission/scheduling policy. Domain progress phases belong to the executable/composition or progress events, not the universal Run lifecycle.
-
-**Action:** DECOMPOSE, then MERGE the execution half into Run semantics.
-
-### 9. Canonical `RunContext` is identity/lineage context, not a complete Run record
-
-`maistro.runtime.types.RunContext` carries `run_id`, workspace ownership, kind, lifecycle state, root/parent lineage, actor, correlation, and metadata. `ExecutionContext` wraps it with services for propagation through adapters.
-
-This is useful common execution identity, but it is frozen context rather than the mutable/persisted Run record itself. Meanwhile graph durable runs have their own persisted status, node records, checkpoints, outputs, pause state, and timestamps.
-
-**Canonical direction:** retain common Run identity/lineage, but do not mistake `RunContext` for the full Run aggregate. The eventual canonical Run must separate immutable identity/context from mutable persisted execution state.
-
-**Action:** KEEP/REFINE.
-
-### 10. Durable graph runs are a specialized persisted Run view
-
-`DurableRunRecord` stores graph-specific execution state: DAG snapshot, graph inputs, node records, blackboard, HITL answers, pause/resume metadata, timestamps, and errors. It now also carries canonical run lineage/correlation fields.
-
-`DurableNodeRecord` stores per-node phase, output, latency, errors, tokens, model, cost, pause metadata, timing, and attempt count.
-
-The comments already describe this as the "persisted graph-adapter shape," which is strong evidence that durability is a persistence characteristic of a Run rather than a distinct ontology.
-
-**Canonical direction:** model durable graph state as a graph-specific Run state/projection attached to canonical Run identity. Preserve graph-specific snapshots without creating a second root lifecycle.
-
-**Action:** MERGE/VIEW.
-
-### 11. General Session is conversation continuity, not execution
-
-`maistro.sessions.store.InMemorySessionStore` stores ordered user/assistant messages by `session_id`, prunes them using TTL, and limits retained history using `SessionConfig`. `SessionMessage` is simply role + content.
-
-This is a distinct invariant from Run: a conversation may span multiple runs, and a run need not have a conversational session.
-
-**Canonical direction:** retain Session as continuity/context. Explicitly prevent Session from becoming a synonym for Run. Harness-specific "session" needs a separate audit because it may represent a remote process handle rather than conversation memory.
-
-**Action:** KEEP/CLARIFY.
-
-### 12. Checkpoint, replay, and recovery are Run services, not execution roots
-
-`TaskCheckpoint` is a sequenced persisted fact keyed by `task_id` with kinds such as tool-call boundaries, wave fan-out/completion, approval gates, spend updates, and memory promotion.
-
-`replay()` is a pure fold over checkpoints that reconstructs `ResumeState`. `CrashLoopPolicy` records failures/quarantine decisions, and `version_compatible()` gates replay against recipe/code-registry versions.
-
-These have clean lower-level meanings once Task is decomposed:
+That is strong source evidence that "Tool" currently conflates at least two things:
 
 ```text
-Checkpoint = persisted Run event/snapshot
-Replay     = deterministic state reconstruction
-Recovery   = policy/procedure over Run + Checkpoints
+ToolExposure = model-facing name + description + input schema
+Binding      = authorized/configured fulfillment route
+Invocation   = concrete execution through that route
 ```
 
-**Canonical direction:** re-key/attach them to canonical Run/Attempt identity rather than preserving Task as a second execution root solely because recovery currently uses `task_id`.
+A ToolExposure may reference a Binding, but it should not own execution semantics.
 
-**Action:** RETAIN semantics, REHOME lifecycle ownership.
+**Action:** DECOMPOSE current Tool vocabulary; formalize ToolExposure/Binding boundary before implementation migration.
 
-### 13. Capability Provider, Binding, and Invocation are distinct
+### 4. Agent-to-agent delegation is duplicated at least four ways
 
-The first audit suspected `CapabilityProvider` and Binding might be the same layer. Source inspection disproves that simplification.
+Current source contains overlapping delegation concepts:
 
-`CapabilityRegistry`:
+1. `types.agent.AgentTask`, described as an "A2A-shaped task" with sender, target, messages, execution mode, token budget, status, result, and trace.
+2. `a2a.delegate.A2ATask` plus `A2ADelegator`, with a second TaskStatus state machine and its own in-memory task registry/capability allow-list.
+3. `a2a.broker.A2ABroker`, which constructs another `A2ATask`, applies delegation budget/trust/allow-list policy, and invokes an injected `Transport`.
+4. `Agent._delegate()` in `agents/base.py`, which resolves another `Agent` directly and recursively calls `target.handle()` with its own delegation-depth guard.
 
-- defines slots
-- registers multiple providers per slot
-- tracks active/enabled provider state
-- selects fallback or trust-ranked providers
-- health-checks the selected provider before resolution
+These are not four distinct architectural invariants. They are parallel implementations of Agent-backed fulfillment plus policy and lifecycle projection.
 
-`CapabilityProvider` supplies metadata (`name`, `slot`, `trust_tier`, dependencies) and health. Concrete providers additionally implement slot-specific domain protocols.
-
-That makes Provider a selectable implementation. It does not express which Agent is authorized/configured to use which capability, and it is not one concrete call.
+`A2ABroker` is particularly informative: it already separates `AgentInvoker` from `Transport`, carries a delegation budget/policy envelope, and returns a `DelegationResult`. That maps cleanly onto Agent-backed Binding + Protocol/Transport + Invocation + Policy.
 
 **Canonical direction:**
 
 ```text
-Capability -> Provider/implementation
-Agent -> Binding/authorization+configuration -> Provider/fulfillment
-Binding -> Invocation at runtime
+Agent-backed Binding
+  target = AgentDefinition/Agent endpoint
+  protocol = local-call | A2A/federated transport
+  policy = delegation allow-list + trust + budget + loop guard
+  invocation = delegated capability use
 ```
 
-The exact relationship between Tool exposure and Binding still needs the tool/MCP/HTTP pass.
+`A2ATask` should become a protocol/Run projection only where independent delegated lifecycle is required, not a second universal Task aggregate.
 
-**Action:** KEEP Provider, ADD/FORMALIZE Binding, KEEP Invocation distinct.
+**Action:** MERGE delegation mechanisms behind one Binding/Invocation path; VIEW/DECOMPOSE `AgentTask` and `A2ATask`; RETAIN transport and delegation policy semantics.
 
-### 14. `Strategy` is an overloaded word
+### 5. Human approval already behaves like a capability provider
 
-Graph `NodeStrategy` is primarily prompt/output shaping. Agent `strategies` implement agent reasoning/execution approaches. These are not the same concept even though they share the name.
+`capabilities.slots.approval.Approval` extends `CapabilityProvider` and exposes one typed operation: `request(ApprovalRequest) -> ApprovalDecision`.
 
-**Canonical direction:** reserve distinct terms for payload shaping versus agent reasoning/control policy.
+The semantic difference from an HTTP, harness, or agent-backed capability is who/what fulfills the request and whether execution may pause while waiting. That does not justify a separate invocation root.
+
+**Canonical direction:** human approval is a human-backed Binding/Provider with typed input/output and pause/resume behavior. A Human Approval Node remains useful graph/product vocabulary when that binding occupies a Node.
+
+**Action:** KEEP Approval contract semantics; map to Capability/Provider/Binding/Invocation; KEEP HumanApprovalNode only as a Node specialization/view.
+
+### 6. HTTP is a protocol/transport seam, not a capability ontology
+
+`capabilities.http_client.HttpxAsyncHttp` is explicitly the concrete implementation of an `AsyncHttp` protocol injected into HTTP-backed providers. It carries base URL, bearer-token configuration, timeout, and transport, then performs GET/POST operations.
+
+This cleanly separates HTTP transport from semantic capability. A provider can be HTTP-backed without "HTTP tool" becoming a new architecture.
+
+**Canonical direction:** HTTP/API is Protocol + target/configuration used by a Provider/Binding. Invocation remains the runtime call.
+
+**Action:** KEEP transport seam; do not create a parallel HTTP execution abstraction.
+
+### 7. Agent role is defined more than once
+
+`maistro.graph.types.AgentRole` and `maistro.agents.spec.agent_spec.AgentRole` are separate enums with overlapping but non-identical members.
+
+**Canonical direction:** role is Agent/composition classification metadata, not Node identity or execution identity.
+
+**Action:** MERGE/RENAME after usage inventory.
+
+### 8. Graph `ExecutionMode` encodes composition kinds as execution kinds
+
+Graph `ExecutionMode` distinguishes `TASK`, `WORKFLOW`, `AGENT`, and `GRAPH`. These are executable/product-definition kinds, not necessarily different execution mechanisms.
+
+**Action:** DECOMPOSE/REMOVE candidate.
+
+### 9. `NodeConfig` mixes node envelope and payload definition
+
+`NodeConfig` carries role/kind plus prompt, temperature, model, max tokens, confidence, display name, and beam width.
+
+**Canonical direction:** Node should be payload-agnostic; model/prompt/parameters belong to Genome/payload definition.
+
+**Action:** DECOMPOSE.
+
+### 10. `NodeRun` mixes Node, Run, Attempt, Invocation and telemetry
+
+`NodeRun` includes node identity, model/prompt parameters, backend selection, retry state, timing, token accounting, parsed output, errors, circuit breaking and event emission. Its arbitrary `NodeExecutor` override proves node position and backend are separable.
+
+**Action:** DECOMPOSE into Node ref/payload + child execution fact + Attempt/Invocation + telemetry.
+
+### 11. Edge mixes topology with learned/runtime policy
+
+`GraphEdge` contains source/target/condition plus parallel, weight, trust, sign and staleness decay.
+
+**Canonical direction:** derive minimal topology Edge, then layer optimizer/policy annotations.
+
+**Action:** DECOMPOSE candidate.
+
+### 12. Task is WorkRequest + Run projection
+
+`TaskCreate` contains desired work and scheduling/configuration intent. `TaskResponse` adds lifecycle, progress, result and timestamps. `TaskRunner` drives lifecycle and dispatch. `TaskStatus` mixes universal states with domain phases such as planning/coding/review/testing.
+
+**Action:** DECOMPOSE Task into WorkRequest + Run view; move scheduling to scheduler/admission policy and domain phases to progress events/executable state.
+
+### 13. `RunContext` is identity/lineage context, not full Run aggregate
+
+`runtime.types.RunContext` carries run ID, workspace, kind, lifecycle state, lineage, actor, correlation and metadata. `ExecutionContext` adds propagated services. Graph durable state is persisted elsewhere.
+
+**Action:** KEEP/REFINE Run identity/context; distinguish it from mutable persisted Run state.
+
+### 14. Durable graph runs are specialized persisted Run views
+
+`DurableRunRecord` and `DurableNodeRecord` store graph-specific snapshots, node state, outputs, pause metadata, attempts, costs and errors while carrying canonical run lineage.
+
+**Action:** MERGE/VIEW under canonical Run + GraphRunState rather than preserving a second root lifecycle.
+
+### 15. General Session is conversation continuity
+
+The general session store retains ordered conversation messages with TTL/retention. A conversation may span Runs, and a Run need not have a conversation.
+
+Harness session IDs are a different session specialization: remote process/turn-loop continuity.
+
+**Canonical direction:** Session is a continuity concept with explicit kinds, not a synonym for Run.
+
+**Action:** KEEP/CLARIFY.
+
+### 16. Checkpoint/replay/recovery are Run services
+
+`TaskCheckpoint`, replay state reconstruction, crash-loop quarantine, and version compatibility are valid semantics currently keyed through Task.
+
+**Action:** RETAIN semantics and REHOME under canonical Run/Attempt identity.
+
+### 17. `Strategy` is overloaded
+
+Graph `NodeStrategy` primarily shapes prompts/output, while agent strategies implement reasoning/control approaches.
 
 **Action:** RENAME at least one family.
 
 ## Repository sprawl matrix, current evidence
 
-| Current concept | Package/path | Actual responsibility | Decomposes into | Canonical mapping | Action |
-|---|---|---|---|---|---|
-| `CapabilityProvider` | `capabilities.protocols` | provider metadata, dependencies, trust, health | implementation metadata + provider contract | Provider | KEEP |
-| `CapabilityRegistry` | `capabilities.registry` | slot registry, provider selection, fallback, health-gated resolution | capability slot catalog + provider selection policy | Capability catalog / Provider resolver | KEEP/RENAME candidate |
-| duplicated `HarnessRunner` | `capabilities.protocols`, `capabilities.slots.harness_runner` | foreign harness provider/session protocol | Provider + protocol + remote continuity handle | Provider/Protocol | MERGE |
-| `AgentIdentity` | `types.agent` and consumers | reusable identity plus model/prompt/tool/policy concerns | Agent definition + Genome + Bindings/Policy | Agent/Genome/Binding/Policy | DECOMPOSE |
-| `AgentSpec` | `agents.spec` | spawn definition plus task/attempt/upstream/scheduling/tracing context | Agent definition + invocation/run context | Agent + Run/Invocation context | DECOMPOSE |
-| multiple `AgentRole` | graph + agents | role labels with divergent members | classification metadata | AgentRole/classification | MERGE/RENAME |
-| `NodeConfig` | graph types | node plus embedded LLM/prompt/behavior config | Node envelope + payload definition + parameters | Node + Genome/payload config | DECOMPOSE |
-| `NodeRun` | `graph.node` | node execution object with retry/result/telemetry | Node ref + child Run/Invocation + Attempt + telemetry | Node + Run/Attempt/Invocation | DECOMPOSE |
-| `NodeExecutor` | `graph.node` | alternate backend owning a node turn loop | executable backend protocol | fulfillment/provider protocol | RETAIN, map after Binding audit |
-| `ExecutionMode` | graph types | labels task/workflow/agent/graph as execution modes | executable/product kind labels | view/definition kind | REMOVE/REDEFINE candidate |
-| `TaskCreate` | `tasks.models` | desired work + constraints + scheduling/target hints | WorkRequest + scheduling intent | WorkRequest | RENAME/DECOMPOSE |
-| `TaskResponse` | `tasks.models` | request plus lifecycle/progress/result | WorkRequest + Run projection | WorkRequest + Run view | DECOMPOSE |
-| `TaskStatus` | `tasks.models` | universal lifecycle + domain phases | RunState + Progress/Phase | RunState + progress events | DECOMPOSE |
-| `TaskRunner` | `tasks.runner` | queue admission + worker pool + execution dispatch + state transitions | Scheduler/Dispatcher + Run launcher | scheduling/execution service | DECOMPOSE/REHOME |
-| `RunContext` | `runtime.types` | immutable run identity, ownership, lineage, correlation | Run identity/context | RunIdentity/RunContext | KEEP/REFINE |
-| `ExecutionContext` | `runtime.types` | propagated run context + service bag | RunContext + runtime services | execution propagation context | KEEP/REFINE |
-| `DurableRunRecord` | `graph.durable_runs.types` | persisted graph run state | Run identity + graph-specific state/checkpoint projection | Run + GraphRunState | MERGE/VIEW |
-| `DurableNodeRecord` | `graph.durable_runs.types` | persisted node execution/result/attempt telemetry | Node ref + child execution state + metrics | child Run/Invocation state | DECOMPOSE/VIEW |
-| `SessionConfig` / session store | `types.session`, `sessions.store` | conversation history continuity + retention | message history + retention policy | Session | KEEP/CLARIFY |
-| `TaskCheckpoint` | `tasks.checkpoint` | sequenced recovery fact | run id + event kind + payload + definition versions | Checkpoint/Event | REHOME |
-| `ResumeState` / `replay()` | `tasks.replay` | deterministic reconstruction from checkpoints | fold/checkpoint projection | Run state reconstruction | KEEP/REHOME |
-| `CrashLoopPolicy` | `tasks.recovery` | quarantine decision using circuit breaker | recovery policy | PolicyRule/RecoveryPolicy | KEEP/REHOME |
-| Graph/DAG | `graph` | node/edge composition plus graph-specific runtime features | Nodes + Edges + annotations/policies | Graph | KEEP/DECOMPOSE overlays |
+| Current concept | Actual responsibility | Canonical mapping | Action |
+|---|---|---|---|
+| `CapabilityProvider` | implementation metadata/health + slot protocol | Provider | KEEP |
+| `CapabilityRegistry` | capability-slot catalog + provider selection/fallback | Capability catalog + Provider resolver | KEEP/RENAME candidate |
+| duplicated `HarnessRunner` | foreign harness provider/session protocol | Provider + Protocol + Session handle | MERGE |
+| `HarnessSessionManager` | provider resolution + safety/policy + remote continuity | Binding/Provider adapter + Session manager | DECOMPOSE/REHOME |
+| `Approval` | typed human approval provider | human-backed Provider/Binding | KEEP/MAP |
+| `AsyncHttp` / `HttpxAsyncHttp` | transport protocol + configured implementation | Protocol/transport | KEEP |
+| `AgentIdentity.tools` | names of model-visible actions | Binding references / ToolExposure declarations | DECOMPOSE |
+| `_TOOL_SCHEMAS` / `_build_tool_schema` | render model-facing function schemas | ToolExposure | KEEP/REHOME |
+| `tool_executor` | actual tool dispatch path | Binding resolver/invoker | RENAME/CONVERGE |
+| `AgentTask` | A2A-shaped delegated task + status/result | delegated WorkRequest/Run projection | DECOMPOSE/VIEW |
+| `A2ATask` | second delegated task lifecycle | delegated Invocation/child-Run projection | DECOMPOSE/VIEW |
+| `A2ADelegator` | delegation allow-list + routing + task registry | Binding authorization/routing + duplicate lifecycle | DECOMPOSE/MERGE |
+| `A2ABroker` | delegation policy + target resolution + transport | Agent-backed Binding resolver/invoker | RETAIN semantics, CONVERGE |
+| `Agent._delegate()` | direct local sub-agent invocation | local Agent-backed Binding invocation | MERGE |
+| `DelegationBudget` | deadline/token/depth/cycle policy | Invocation/Binding Policy | KEEP/REHOME |
+| `Transport` / `LocalTransport` | delegation wire/invocation mechanism | Protocol/Transport | KEEP |
+| `AgentIdentity` | reusable identity plus genome/tool/policy concerns | AgentDefinition + Genome + Bindings/Policy | DECOMPOSE |
+| `AgentSpec` | spawn definition plus task/attempt/upstream/tracing context | AgentDefinition + Run/Invocation context | DECOMPOSE |
+| multiple `AgentRole` | divergent classification labels | Agent/composition metadata | MERGE/RENAME |
+| `NodeConfig` | Node plus embedded LLM/prompt/behavior config | Node + payload/Genome config | DECOMPOSE |
+| `NodeRun` | node execution + retry/result/telemetry | Node ref + Run/Attempt/Invocation | DECOMPOSE |
+| `NodeExecutor` | alternate backend for a node turn loop | executable/fulfillment protocol | RETAIN, map to Binding/provider boundary |
+| graph `ExecutionMode` | task/workflow/agent/graph labels | executable/product kind | REMOVE/REDEFINE candidate |
+| `TaskCreate` | desired work + scheduling/target hints | WorkRequest | RENAME/DECOMPOSE |
+| `TaskResponse` | request + lifecycle/progress/result | WorkRequest + Run view | DECOMPOSE |
+| `TaskStatus` | universal lifecycle + domain phases | RunState + Progress/Phase | DECOMPOSE |
+| `TaskRunner` | queue/worker/dispatch/state transitions | Scheduler/Dispatcher + Run launcher | DECOMPOSE/REHOME |
+| `RunContext` | run identity/ownership/lineage/correlation | RunIdentity/RunContext | KEEP/REFINE |
+| `ExecutionContext` | propagated RunContext + services | execution propagation context | KEEP/REFINE |
+| `DurableRunRecord` | persisted graph run state | Run + GraphRunState | MERGE/VIEW |
+| `DurableNodeRecord` | persisted child node execution | Node ref + child execution state | DECOMPOSE/VIEW |
+| session store | conversation continuity/retention | Session | KEEP/CLARIFY |
+| `TaskCheckpoint` | sequenced recovery fact | Checkpoint/Event | REHOME |
+| `ResumeState` / replay | reconstruction from checkpoints | Run state reconstruction | KEEP/REHOME |
+| `CrashLoopPolicy` | quarantine/recovery decision | RecoveryPolicy/PolicyRule | KEEP/REHOME |
+| Graph/DAG | composition + graph-specific overlays | Graph = Nodes + Edges + annotations | KEEP/DECOMPOSE overlays |
 
-## Emerging canonical lifecycle
+## Emerging fulfillment model
 
-The lifecycle evidence currently points to this hierarchy:
+The strongest convergence from this pass is:
+
+```text
+Capability
+  "what can be requested"
+      |
+      v
+Provider
+  "what implementation can do it"
+      |
+consumer authorization/configuration
+      v
+Binding
+  capability + target/provider + protocol + schemas + credentials + policy
+      |
+      v
+Invocation
+  one concrete runtime use
+      |
+      +-- optional Session continuity
+      +-- Attempt/retry facts
+      +-- events/telemetry/artifacts
+```
+
+A model-visible Tool is an exposure of a Binding/Capability contract. It is not the Binding itself and not the Invocation.
+
+Fulfillment targets can differ without creating parallel architectures:
+
+```text
+Binding target/provider
+  +-- local function/tool
+  +-- HTTP/API service
+  +-- MCP server/tool
+  +-- Agent
+  +-- foreign harness
+  +-- human
+  +-- model provider
+  +-- subprocess/sandbox
+  +-- graph/subgraph
+```
+
+This is now source-supported for local model tools, HTTP-backed providers, human approval, foreign harnesses, and local/A2A agent delegation. MCP still needs direct source inspection before claiming complete convergence.
+
+## Emerging lifecycle
 
 ```text
 WorkRequest
-  describes desired work
-  may select or produce an Executable definition
+  -> selects/produces Executable definition
         |
         v
 Run
-  identity: run_id, workspace, actor, lineage, correlation
-  definition/executable reference
-  inputs
-  mutable lifecycle state
-  outputs/artifacts
+  identity + ownership + lineage + correlation
+  executable reference + inputs
+  mutable lifecycle + outputs/artifacts
   events/checkpoints
         |
         +-- Attempt(s)
-        |     retry-bounded execution attempts
-        |     errors/backoff/telemetry
-        |
         +-- Invocation(s)
-        |     concrete Binding uses
-        |     tool/model/agent/harness/human/etc.
-        |
-        +-- child Run(s)
-              nested graph/agent/subgraph/delegated execution where
-              independent lifecycle/lineage is actually required
+        +-- child Run(s) only where independent lifecycle/lineage is required
 
 Session
-  separate continuity axis that may span Runs
+  separate continuity axis that may span Invocations/Runs
 ```
 
-A key unresolved design question is when a Node execution is a child Run versus an Invocation/Attempt inside the parent Run. The answer should be based on independent lifecycle, resumability, ownership, and lineage requirements, not on the fact that the current class is named `NodeRun`.
-
-## Suspected duplicate families requiring full inventory
-
-### Invocation/binding family
-
-Current names likely describing variants of the same lower-level operation:
-
-- Tool/tool handler
-- HTTP tool/API call
-- MCP tool call
-- capability slot/provider operation
-- HarnessRunner call
-- NodeExecutor/HarnessNodeExecutor bridge
-- subprocess/sandbox exec
-- A2A delegation
-- human approval/question/review
-- integration client operation
-
-Question to answer: what invariant, if any, prevents these from sharing Capability + Binding + Invocation mechanics while retaining specialized protocols/providers?
-
-### Execution-instance family
-
-The first lifecycle pass has reduced some ambiguity but these remain to inspect:
-
-- Graph executor/non-durable graph run state
-- harness process/session handles
-- agent session/spawn
-- scheduled execution
-- RSI/evolve cycle/run
-- A2A task lifecycle
-- wave execution
-
-Question to answer: which require independent Run identity and lineage, versus Attempt/Invocation/Session projections under another Run?
-
-### Composition family
-
-- Graph
-- DAG
-- workflow
-- pipeline
-- team
-- fleet
-- wave
-- recipe
-
-Question to answer: which have semantics that cannot be represented as Node + Edge + policies/annotations?
-
-### Definition/configuration family
-
-- AgentIdentity
-- AgentSpec
-- NodeConfig
-- recipe agent definitions
-- portable AgentCard
-- PipelineGenome
-- prompt variants
-- model tier/resolution config
-
-Question to answer: what belongs intrinsically to a definition, what is a reusable primitive, and what belongs only to a Run?
+The unresolved rule is when a Node execution or delegated Agent call deserves a child Run versus being an Invocation/Attempt inside the parent Run. Decide from independent lifecycle, ownership, resumability, observability and lineage requirements, not class names.
 
 ## Canonical vocabulary, provisional
 
@@ -446,59 +413,60 @@ Question to answer: what belongs intrinsically to a definition, what is a reusab
 | ParameterSet | behavior/inference parameters | primitive |
 | Schema | typed data contract | primitive |
 | Protocol | interaction/invocation rules | primitive |
-| Credential | authority used by a binding | primitive |
+| Credential | authority used by Binding | primitive |
 | PolicyRule | constraint on action/transition | primitive |
 | Predicate | conditional decision | primitive |
-| Transform | deterministic data mapping | primitive |
-| Capability | semantic ability that can be requested | semantic contract |
-| Provider | selectable implementation of a capability/protocol | implementation |
-| Binding | authorized/configured fulfillment route available to a consumer | composition of primitives |
+| Transform | deterministic mapping | primitive |
+| Capability | semantic ability that may be requested | semantic contract |
+| Provider | selectable implementation | implementation |
+| Binding | consumer-scoped authorized/configured route to fulfillment | composition |
+| ToolExposure | model-visible presentation of an available capability/binding | role/view |
 | Invocation | one runtime use of a Binding | runtime fact |
 | Genome | Model + PromptTemplate + ParameterSet | composition |
-| Agent | Genome + authorized Bindings + Policy | composition |
-| Tool | agent-visible capability/binding exposure | role/view, not primitive |
-| Node | addressable envelope containing an executable/composition | composition primitive candidate |
-| Edge | connection between Nodes, minimally topology + predicate/mapping | composition |
+| AgentDefinition | durable identity/classification + Genome | definition |
+| Agent | AgentDefinition + authorized Bindings + Policy | composition |
+| Node | addressable envelope containing executable/composition | composition primitive candidate |
+| Edge | topology + minimal predicate/mapping | composition |
 | Graph | Nodes + Edges | composition |
 | WorkRequest | desired work + inputs/constraints/scheduling intent | request/product |
 | Run | execution instance of an executable/composition | runtime aggregate |
-| Attempt | retry-bounded attempt within execution | runtime child fact |
-| Session | continuity/context across interactions | context axis |
-| Checkpoint | persisted event/snapshot used for resume/recovery | runtime persistence |
+| Attempt | retry-bounded execution attempt | runtime child fact |
+| Session | continuity across interactions | context axis |
+| Checkpoint | persisted event/snapshot for resume/recovery | runtime persistence |
 | Workspace | ownership/product boundary | organizational |
 
 ## Migration rule
 
 Do not create a new architectural noun when an existing canonical concept plus specialization/metadata expresses the same invariant.
 
-For every existing noun encountered in the audit, classify it as one of:
+Classify every existing noun as:
 
 - **KEEP**: already matches one canonical meaning.
-- **MERGE**: semantic duplicate of another concept.
-- **RENAME**: useful concept, misleading/overloaded name.
-- **DECOMPOSE**: combines multiple ontology layers.
-- **VIEW**: useful product/UX term derived from canonical concepts.
-- **REMOVE**: no distinct invariant remains after decomposition.
-- **REHOME**: semantics are valid but lifecycle ownership/package boundary is wrong.
+- **MERGE**: semantic duplicate.
+- **RENAME**: valid concept with misleading/overloaded name.
+- **DECOMPOSE**: combines ontology layers.
+- **VIEW**: useful UX/product term derived from canonical concepts.
+- **REMOVE**: no distinct invariant remains.
+- **REHOME**: semantics valid but lifecycle/package ownership is wrong.
 
 ## Next inventory pass
 
-Continue the repository-wide matrix in this priority order:
+Continue in this order:
 
-1. tool definitions/registries, MCP, HTTP and integrations, specifically Tool vs Capability exposure vs Binding vs Provider vs Invocation
-2. human/HITL node contracts to test human-as-fulfillment without special execution ontology
-3. harness session/process handles and A2A delegation to test agents-as-tools
-4. AgentIdentity, AgentSpec, AgentCard and recipes to derive Genome/Agent boundaries fully
-5. graph Node/Edge/Graph definition types versus executor state
-6. scheduled execution and orchestration wave/fleet/team lifecycle
-7. RSI/evolve genome/cycle/pipeline concepts
-8. state/event/artifact vocabulary
-9. workspace/project persistence boundary
+1. MCP tool/server/client and integrations to finish ToolExposure/Binding/Provider/Invocation evidence.
+2. Human/HITL graph node implementations to verify Node specialization vs separate lifecycle.
+3. Harness node executors and session/process handles to finish Node-to-Binding mapping.
+4. `AgentIdentity`, `AgentSpec`, `AgentCard`, recipes and prompt/model configuration to fully derive Genome/AgentDefinition boundaries.
+5. Graph Node/Edge/Graph definition types versus executor state.
+6. scheduled execution, orchestration wave/fleet/team lifecycle.
+7. RSI/evolve genome/cycle/pipeline concepts.
+8. state/event/artifact vocabulary.
+9. workspace/project persistence boundary.
 
-Do not write a normative ADR/SPEC yet. The Tool/Binding/Invocation and Agent/Genome passes can still materially change the bottom half of the hierarchy.
+Do not write a normative ADR/SPEC yet. MCP and AgentDefinition/Genome evidence can still materially change the lower hierarchy.
 
 ## Effect on the current runtime-spine branch
 
-Existing `Workspace`, run identity/lineage/context propagation, and capability-provider work may still be reusable. However, no additional top-down execution path should be forced through `ExecutionRuntime` merely to satisfy the earlier spine shape until this audit determines whether `ExecutionRuntime`, Capability/Provider resolution, and the current Run contract map cleanly onto the canonical lower-level vocabulary.
+Existing Workspace, run identity/lineage/context propagation, and capability-provider work may remain reusable. Do not force additional execution paths through `ExecutionRuntime` merely to satisfy the earlier spine shape until the audit determines whether `ExecutionRuntime` itself is canonical, an orchestration service over Run/Binding/Invocation, or another abstraction to decompose.
 
-The branch should preserve working commits, avoid destructive rollback, and use the ontology audit to determine the next implementation slice.
+Preserve working commits, avoid destructive rollback, and let the ontology determine the next implementation slice.
