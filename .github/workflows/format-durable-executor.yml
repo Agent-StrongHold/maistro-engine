@@ -1,0 +1,39 @@
+name: Format durable executor
+
+on:
+  push:
+    branches: [chore/format-durable-executor-helper]
+    paths:
+      - .github/workflows/format-durable-executor.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chore/format-durable-executor-helper
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: 0.5.x
+      - name: Format exact failing file
+        run: uvx ruff@0.15.12 format packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+      - name: Verify formatter and lint
+        run: |
+          uvx ruff@0.15.12 format --check packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+          uvx ruff@0.15.12 check packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+          git diff --check
+      - name: Remove helper workflow and publish fix branch
+        run: |
+          rm .github/workflows/format-durable-executor.yml
+          git checkout -b fix/ruff-format-durable-executor
+          git config user.name "maistro-ci-fix"
+          git config user.email "maistro-ci-fix@users.noreply.github.com"
+          git add -A
+          git commit -m "style(core): format durable run executor"
+          git push origin HEAD:fix/ruff-format-durable-executor
