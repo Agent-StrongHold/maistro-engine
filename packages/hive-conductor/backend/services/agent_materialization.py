@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 import stores
 from config import get_settings
 from models.schemas import Agent
+from services.model_store import register_pop_hook
 
 from maistro.personas.expander import expand_persona
 from maistro.personas.schema import PersonaTemplate
@@ -66,3 +67,21 @@ def materialize_workspace_agents(workspace_id: str, template: PersonaTemplate) -
 def workspace_agents(workspace_id: str) -> list[Agent]:
     """Every agent materialized for this workspace."""
     return [a for a in stores.agents.values() if a.workspace_id == workspace_id]
+
+
+def delete_workspace_agents(workspace_id: str) -> None:
+    """Delete every materialized agent owned by ``workspace_id``.
+
+    Called as a pre-delete lifecycle hook for the workspaces store so both the
+    in-memory and persisted agent records disappear before their ownership
+    record does. Iterating over a snapshot avoids mutating the store while its
+    values view is live.
+    """
+    for agent in list(workspace_agents(workspace_id)):
+        stores.agents.pop(agent.id, None)
+
+
+# Register once when the workspace routes import this module. Keeping the
+# cascade at the store lifecycle boundary means future non-HTTP deletion paths
+# cannot accidentally recreate permanent orphan agents.
+register_pop_hook("workspaces", delete_workspace_agents)
