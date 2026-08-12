@@ -24,19 +24,17 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Apply review fixes
+      - name: Create remediation branch
+        run: git checkout -b fix/pr383-review-remaining
+
+      - name: Apply remaining review fixes
         run: python scripts/pr383_review_fixes.py
 
       - name: Validate patched syntax and whitespace
         run: |
           python -m py_compile \
-            packages/maistro-core/src/maistro/state.py \
-            packages/maistro-core/src/maistro/graph/durable_runs/executor.py \
-            packages/maistro-evolve/src/maistro_evolve/benchmarks/sandbox_exec.py \
             packages/maistro-evolve/src/maistro_evolve/benchmarks/swebench.py \
-            packages/hive-conductor/backend/middleware/auth.py \
-            packages/hive-conductor/backend/routes/workspaces.py \
-            packages/hive-conductor/backend/routes/health.py
+            packages/hive-conductor/backend/routes/workspaces.py
           node --check packages/maistro-canvas/frontend/server.js
           node --check packages/maistro-canvas/frontend/server/security.js
           git diff --check
@@ -46,10 +44,10 @@ jobs:
           rm scripts/pr383_review_fixes.py
           rm .github/workflows/pr383-review-fixes.yml
 
-      - name: Commit fixes to develop
+      - name: Commit and push remediation branch
         run: |
           git config user.name "maistro-review-fix"
           git config user.email "maistro-review-fix@users.noreply.github.com"
           git add -A
-          git commit -m "fix: address develop promotion review findings"
-          git push origin HEAD:develop
+          git commit -m "fix: address remaining develop promotion review findings"
+          git push origin HEAD:fix/pr383-review-remaining
