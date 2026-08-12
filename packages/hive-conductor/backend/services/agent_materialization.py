@@ -25,7 +25,7 @@ from models.schemas import Agent
 from maistro.personas.expander import expand_persona
 from maistro.personas.schema import PersonaTemplate
 
-from services.model_store import register_pop_hook
+from .model_store import register_pop_hook
 
 
 def agent_id_for(workspace_id: str, spawn_agent: str) -> str:
