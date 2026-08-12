@@ -1,8 +1,8 @@
 """Durable run record types.
 
-These are the *persisted* shape — what the executor checkpoints between
-node steps. JSON-serializable so any backend (SQLite, Postgres, …) can
-round-trip them.
+These are the persisted graph-adapter shape. Canonical execution identity is
+carried alongside graph-specific checkpoint state so resume/recovery never
+loses workspace ownership, lineage, or correlation.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ class RunStatus(StrEnum):
 
     PENDING = "pending"
     RUNNING = "running"
-    PAUSED_WAIT = "paused_wait"  # external condition (Jira subtasks, etc.)
-    PAUSED_HITL = "paused_hitl"  # waiting on human input
+    PAUSED_WAIT = "paused_wait"
+    PAUSED_HITL = "paused_hitl"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -44,7 +44,7 @@ class DurableNodeRecord(BaseModel):
     node_id: str
     kind: str = ""
     phase: NodePhase = NodePhase.PENDING
-    output: dict[str, Any] | None = None  # serialized output (Pydantic .model_dump())
+    output: dict[str, Any] | None = None
     latency_ms: int = 0
     error_code: str | None = None
     error_message: str | None = None
@@ -56,50 +56,43 @@ class DurableNodeRecord(BaseModel):
     resume_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    # Attempt count (incremented per resume so the optimizer can score
-    # "this node took N tries to converge").
     attempts: int = 0
 
 
 class DurableRunRecord(BaseModel):
-    """Top-level durable run snapshot.
+    """Top-level durable graph snapshot.
 
-    The full DAG topology is captured under `dag_snapshot` so a later
-    executor can replay or resume even if the live DagBuilder definition
-    has changed since the run started.
+    `project_id` remains the persisted compatibility name for workspace
+    ownership. New runtime-created records also persist root/parent/correlation
+    identity. Those fields are optional so records written before the runtime
+    spine remain readable and resumable through legacy entry points.
     """
 
     model_config = ConfigDict(extra="ignore")
 
     run_id: str
     dag_id: str
-    dag_snapshot: dict[str, Any]  # serialized DAGFile / GraphConfig
+    dag_snapshot: dict[str, Any]
     inputs: dict[str, Any] = Field(default_factory=dict)
     status: RunStatus = RunStatus.PENDING
-    # Cursor: which node is "next to run" after the current checkpoint. None
-    # at the start (use dag.entry); set after every step.
     current_node_id: str | None = None
-    # Ordered history of node results.
     node_records: list[DurableNodeRecord] = Field(default_factory=list)
-    # Lifted from the graph blackboard between checkpoints so dashboard
-    # accumulators, node_annotations, etc. survive a pause.
     blackboard_snapshot: dict[str, Any] = Field(default_factory=dict)
-    # HITL: keyed by node_id, value is the user's answer payload (set by
-    # POST /v1/dag-runs/{run_id}/answer).
     hitl_answers: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    # Wait: when status==paused_wait, the earliest time the executor should
-    # try to re-poll. The runtime scheduler reads this.
     resume_at: datetime | None = None
-    # Identity + scope.
+
+    # Identity + scope. `project_id` is workspace_id at the compatibility
+    # boundary until the persistence schema is deliberately migrated.
     user_id: str | None = None
     project_id: str | None = None
-    # Lifecycle timestamps.
+    run_kind: str = "graph"
+    root_run_id: str | None = None
+    parent_run_id: str | None = None
+    correlation_id: str | None = None
+
     started_at: datetime
     last_step_at: datetime
     finished_at: datetime | None = None
-    # On failure.
     error_code: str | None = None
     error_message: str | None = None
-    # Sequence number — bumps on every checkpoint write so concurrent
-    # writers can do optimistic concurrency control (avoid double-resume).
     version: int = 0
