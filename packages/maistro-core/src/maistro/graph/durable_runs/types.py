@@ -2,7 +2,7 @@
 
 These are the persisted graph-adapter shape. Canonical execution identity is
 carried alongside graph-specific checkpoint state so resume/recovery never
-loses workspace ownership, lineage, or correlation.
+loses workspace ownership, lineage, correlation, or runtime metadata.
 """
 
 from __future__ import annotations
@@ -89,6 +89,7 @@ class DurableRunRecord(BaseModel):
     root_run_id: str | None = None
     parent_run_id: str | None = None
     correlation_id: str | None = None
+    runtime_metadata: dict[str, Any] = Field(default_factory=dict)
 
     started_at: datetime
     last_step_at: datetime
