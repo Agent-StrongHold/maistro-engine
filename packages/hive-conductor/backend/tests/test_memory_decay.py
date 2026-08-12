@@ -264,13 +264,17 @@ class TestDisabledIsLoud:
         assert data["memory_decay"]["state"] == "disabled"
         assert data["degraded"] is True
 
-    def test_health_reports_decay_enabled_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_health_reports_unwired_decay_as_degraded_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Configured decay is not healthy until a real driver/store is running."""
         monkeypatch.setenv("LITELLM_API_BASE", "http://gateway.example")
 
         data = TestClient(app).get("/health").json()
 
-        assert data["memory_decay_enabled"] is True
-        assert data["degraded"] is False
+        assert data["memory_decay_enabled"] is False
+        assert data["memory_decay"]["state"] != "running"
+        assert data["degraded"] is True
 
     def test_ready_exposes_decay_without_flipping_ready(
         self, monkeypatch: pytest.MonkeyPatch
