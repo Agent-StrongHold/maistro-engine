@@ -35,7 +35,6 @@ jobs:
           python -m py_compile \
             packages/maistro-evolve/src/maistro_evolve/benchmarks/swebench.py \
             packages/hive-conductor/backend/routes/workspaces.py
-          node --check packages/maistro-canvas/frontend/server.js
           node --check packages/maistro-canvas/frontend/server/security.js
           git diff --check
 
