@@ -52,12 +52,31 @@ function tokensMatch(supplied, expected) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+function suppliedToken(req) {
+  const header = req.get("authorization") || "";
+  if (header.startsWith("Bearer ")) return header.slice(7);
+  if (header.startsWith("Basic ")) {
+    try {
+      const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+      const separator = decoded.indexOf(":");
+      return separator >= 0 ? decoded.slice(separator + 1) : "";
+    } catch {
+      return "";
+    }
+  }
+  return req.get("x-canvas-token") || "";
+}
+
 export function requireToken(config) {
   return (req, res, next) => {
     if (!config.token) return next();           // loopback-only mode
-    const header = req.get("authorization") || "";
-    const supplied = header.startsWith("Bearer ") ? header.slice(7) : req.get("x-canvas-token") || "";
-    if (!tokensMatch(supplied, config.token)) return res.status(401).json({ error: "unauthorized" });
+    const supplied = suppliedToken(req);
+    if (!tokensMatch(supplied, config.token)) {
+      if (typeof res.set === "function") {
+        res.set("WWW-Authenticate", 'Basic realm="MAIstro Canvas", charset="UTF-8"');
+      }
+      return res.status(401).json({ error: "unauthorized" });
+    }
     next();
   };
 }
