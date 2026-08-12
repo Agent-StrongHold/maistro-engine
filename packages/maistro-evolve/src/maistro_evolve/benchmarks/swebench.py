@@ -19,8 +19,8 @@ _FUNCTION_NAME_RE = re.compile(r"def\s+(\w+)\s*\(")
 # implementations from receiving credit for echoing the demonstrated example.
 _HIDDEN_CASES: dict[str, list[tuple[list[Any], Any]]] = {
     "swe_01": [
-        ([[1, [2, [3, [4]]]], 5], [1, 2, 3, 4, 5]),
-        ([[], ["a", ["b"]], "c"], ["a", "b", "c"]),
+        ([[[1, [2, [3, [4]]]], 5]], [1, 2, 3, 4, 5]),
+        ([[[], ["a", ["b"]], "c"]], ["a", "b", "c"]),
     ],
     "swe_02": [
         (["person@example.com"], True),
