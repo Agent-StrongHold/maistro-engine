@@ -1,8 +1,7 @@
-"""ExecutionRuntime: the canonical lifecycle boundary for MAIstro work.
+"""ExecutionRuntime: canonical lifecycle boundary for MAIstro work.
 
-The runtime delegates mechanics to specialized executors. Its job is to keep
-workspace ownership, run identity, lineage, and correlation intact while work
-moves through those executors.
+The runtime delegates mechanics to specialized executors while keeping
+workspace ownership, run identity, lineage, and correlation intact.
 """
 
 from __future__ import annotations
@@ -11,11 +10,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from maistro.graph.durable_runs.executor import (
-    NodeResolver,
-    resume_durable_dag,
-    run_durable_dag,
-)
+from maistro.graph.durable_runs.executor import NodeResolver, resume_durable_dag, run_durable_dag
 from maistro.graph.durable_runs.protocol import DurableRunStore
 from maistro.graph.durable_runs.types import DurableRunRecord, RunStatus
 
@@ -35,19 +30,16 @@ def _new_run_id() -> str:
 
 
 def _state_from_durable(status: RunStatus) -> RunState:
-    if status == RunStatus.PENDING:
-        return RunState.PENDING
-    if status == RunStatus.RUNNING:
-        return RunState.RUNNING
-    if status in (RunStatus.PAUSED_WAIT, RunStatus.PAUSED_HITL):
-        return RunState.PAUSED
-    if status == RunStatus.COMPLETED:
-        return RunState.COMPLETED
-    if status == RunStatus.FAILED:
-        return RunState.FAILED
-    if status == RunStatus.CANCELLED:
-        return RunState.CANCELLED
-    raise ValueError(f"unsupported durable run status: {status!r}")
+    mapping = {
+        RunStatus.PENDING: RunState.PENDING,
+        RunStatus.RUNNING: RunState.RUNNING,
+        RunStatus.PAUSED_WAIT: RunState.PAUSED,
+        RunStatus.PAUSED_HITL: RunState.PAUSED,
+        RunStatus.COMPLETED: RunState.COMPLETED,
+        RunStatus.FAILED: RunState.FAILED,
+        RunStatus.CANCELLED: RunState.CANCELLED,
+    }
+    return mapping[status]
 
 
 class ExecutionRuntime:
@@ -66,18 +58,19 @@ class ExecutionRuntime:
         metadata: dict[str, Any] | None = None,
     ) -> ExecutionContext:
         rid = run_id or _new_run_id()
-        run = RunContext(
-            run_id=rid,
-            workspace_id=workspace.workspace_id,
-            kind=kind,
-            state=RunState.PENDING,
-            root_run_id=rid,
-            parent_run_id=None,
-            actor_id=workspace.actor_id,
-            correlation_id=correlation_id or rid,
-            metadata=metadata or {},
+        return ExecutionContext(
+            run=RunContext(
+                run_id=rid,
+                workspace_id=workspace.workspace_id,
+                kind=kind,
+                state=RunState.PENDING,
+                root_run_id=rid,
+                parent_run_id=None,
+                actor_id=workspace.actor_id,
+                correlation_id=correlation_id or rid,
+                metadata=metadata or {},
+            )
         )
-        return ExecutionContext(run=run)
 
     def child_context(
         self,
@@ -88,46 +81,63 @@ class ExecutionRuntime:
         metadata: dict[str, Any] | None = None,
     ) -> ExecutionContext:
         rid = run_id or _new_run_id()
-        run = RunContext(
-            run_id=rid,
-            workspace_id=parent.workspace_id,
-            kind=kind,
-            state=RunState.PENDING,
-            root_run_id=parent.root_run_id,
-            parent_run_id=parent.run_id,
-            actor_id=parent.actor_id,
-            correlation_id=parent.correlation_id,
-            metadata=metadata or {},
+        return ExecutionContext(
+            run=RunContext(
+                run_id=rid,
+                workspace_id=parent.workspace_id,
+                kind=kind,
+                state=RunState.PENDING,
+                root_run_id=parent.root_run_id,
+                parent_run_id=parent.run_id,
+                actor_id=parent.actor_id,
+                correlation_id=parent.correlation_id,
+                metadata=metadata or {},
+            ),
+            services=parent.services,
         )
-        return ExecutionContext(run=run, services=parent.services)
 
     async def run_graph(
         self,
         dag: dict[str, Any],
         *,
-        workspace: WorkspaceRef,
+        workspace: WorkspaceRef | None = None,
+        parent: ExecutionContext | None = None,
         node_resolver: NodeResolver,
         inputs: dict[str, Any] | None = None,
         run_id: str | None = None,
         correlation_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> GraphExecutionResult:
-        context = self.root_context(
-            workspace,
-            kind=RunKind.GRAPH,
-            run_id=run_id,
-            correlation_id=correlation_id,
-            metadata=metadata,
-        )
+        """Execute a graph as a root run or a lineage-preserving child run."""
+        if (workspace is None) == (parent is None):
+            raise ValueError("provide exactly one of workspace or parent")
+        if parent is not None:
+            context = self.child_context(
+                parent,
+                kind=RunKind.GRAPH,
+                run_id=run_id,
+                metadata=metadata,
+            )
+        else:
+            assert workspace is not None
+            context = self.root_context(
+                workspace,
+                kind=RunKind.GRAPH,
+                run_id=run_id,
+                correlation_id=correlation_id,
+                metadata=metadata,
+            )
+
         durable = await run_durable_dag(
             dag,
             store=self._durable_run_store,
             node_resolver=node_resolver,
             inputs=inputs,
-            user_id=workspace.actor_id,
-            project_id=workspace.workspace_id,
+            user_id=context.actor_id,
+            project_id=context.workspace_id,
             run_id=context.run_id,
         )
+        durable = await self._persist_runtime_identity(durable, context)
         return GraphExecutionResult(
             context=self._context_from_durable(durable, previous=context),
             durable=durable,
@@ -139,34 +149,68 @@ class ExecutionRuntime:
         *,
         node_resolver: NodeResolver,
     ) -> GraphExecutionResult:
+        """Resume a durable graph without losing canonical identity."""
         before = await self._durable_run_store.get(run_id)
         if before is None:
             raise KeyError(f"no such run: {run_id!r}")
-        if not before.project_id:
-            raise ValueError(
-                "cannot resume graph through ExecutionRuntime without workspace ownership"
-            )
-        previous = ExecutionContext(
-            run=RunContext(
-                run_id=before.run_id,
-                workspace_id=before.project_id,
-                kind=RunKind.GRAPH,
-                state=_state_from_durable(before.status),
-                root_run_id=before.run_id,
-                parent_run_id=None,
-                actor_id=before.user_id,
-                correlation_id=before.run_id,
-                metadata={},
-            )
-        )
+        previous = self._context_from_persisted(before)
         durable = await resume_durable_dag(
             run_id,
             store=self._durable_run_store,
             node_resolver=node_resolver,
         )
+        durable = await self._persist_runtime_identity(durable, previous)
         return GraphExecutionResult(
             context=self._context_from_durable(durable, previous=previous),
             durable=durable,
+        )
+
+    async def _persist_runtime_identity(
+        self,
+        durable: DurableRunRecord,
+        context: ExecutionContext,
+    ) -> DurableRunRecord:
+        """Write canonical identity into the adapter checkpoint.
+
+        This is additive to the durable graph schema, preserving readability of
+        old records while making all runtime-created records lineage-complete.
+        """
+        updated = durable.model_copy(
+            update={
+                "run_kind": context.run.kind.value,
+                "root_run_id": context.root_run_id,
+                "parent_run_id": context.parent_run_id,
+                "correlation_id": context.correlation_id,
+                "runtime_metadata": dict(context.run.metadata),
+                "version": durable.version + 1,
+            }
+        )
+        return await self._durable_run_store.update(updated)
+
+    @staticmethod
+    def _context_from_persisted(durable: DurableRunRecord) -> ExecutionContext:
+        if not durable.project_id:
+            raise ValueError(
+                "cannot resume graph through ExecutionRuntime without workspace ownership"
+            )
+        root_run_id = durable.root_run_id or durable.run_id
+        correlation_id = durable.correlation_id or root_run_id
+        try:
+            kind = RunKind(durable.run_kind)
+        except ValueError:
+            kind = RunKind.GRAPH
+        return ExecutionContext(
+            run=RunContext(
+                run_id=durable.run_id,
+                workspace_id=durable.project_id,
+                kind=kind,
+                state=_state_from_durable(durable.status),
+                root_run_id=root_run_id,
+                parent_run_id=durable.parent_run_id,
+                actor_id=durable.user_id,
+                correlation_id=correlation_id,
+                metadata=dict(durable.runtime_metadata),
+            )
         )
 
     @staticmethod
@@ -187,7 +231,4 @@ class ExecutionRuntime:
         return previous.model_copy(update={"run": run})
 
 
-__all__ = [
-    "ExecutionRuntime",
-    "GraphExecutionResult",
-]
+__all__ = ["ExecutionRuntime", "GraphExecutionResult"]
