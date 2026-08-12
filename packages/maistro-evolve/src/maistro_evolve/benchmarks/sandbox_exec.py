@@ -28,42 +28,49 @@ _PASS_MARKER = "PASS"
 
 
 def _build_check_script(
-    code: str, function_name: str, call_args: list[Any], expected_value: Any
+    code: str,
+    function_name: str,
+    cases: list[tuple[list[Any], Any]],
 ) -> str:
-    """Candidate code followed by a real call + comparison, as plain source.
+    """Candidate code followed by evaluator-only calls and comparisons.
 
-    ``call_args``/``expected_value`` come only from the maintainer-authored
-    evaluator dataset, never from model output. The expected value is evaluated
-    in a separate namespace so candidate globals cannot accidentally rebind
-    names used by values such as ``datetime``.
+    Case arguments/expected values come only from the maintainer-authored
+    evaluator, never from model output. Expected values are evaluated in a
+    separate namespace so candidate globals cannot accidentally rebind names
+    used by values such as ``datetime``.
     """
-    expected_expr = repr(expected_value)
+    case_rows = ",\n".join(f"    ({args!r}, {repr(expected)!r})" for args, expected in cases)
     return (
         f"{code}\n\n"
         "import datetime as _maistro_datetime_module\n"
-        f"_result = {function_name}(*{call_args!r})\n"
-        f"_expected = eval({expected_expr!r}, {'{'}'datetime': _maistro_datetime_module{'}'})\n"
-        "print('PASS' if _result == _expected else "
-        "f'FAIL: got {_result!r}, expected {_expected!r}')\n"
+        f"_cases = [\n{case_rows}\n]\n"
+        "for _args, _expected_expr in _cases:\n"
+        f"    _result = {function_name}(*_args)\n"
+        "    _expected = eval(_expected_expr, {'datetime': _maistro_datetime_module})\n"
+        "    if _result != _expected:\n"
+        "        print(f'FAIL: args={_args!r}, got {_result!r}, expected {_expected!r}')\n"
+        "        raise SystemExit(1)\n"
+        "print('PASS')\n"
     )
 
 
-async def run_function_check(
+async def run_function_checks(
     code: str,
     function_name: str,
-    call_args: list[Any],
-    expected_value: Any,
+    cases: list[tuple[list[Any], Any]],
     *,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> tuple[bool, str]:
-    """Run one candidate assertion in the isolated Docker sandbox.
+    """Run a batch of candidate assertions in one isolated Docker sandbox.
 
-    Returns ``(passed, detail)``. There is deliberately no host-process
-    fallback: if Docker/core sandbox support is unavailable, the check fails
-    rather than executing model-generated Python with host filesystem/network
-    access.
+    There is deliberately no host-process fallback: if Docker/core sandbox
+    support is unavailable, the check fails rather than executing generated
+    Python with host filesystem/network access.
     """
-    script = _build_check_script(code, function_name, call_args, expected_value)
+    if not cases:
+        return False, "no evaluator cases provided"
+
+    script = _build_check_script(code, function_name, cases)
 
     try:
         from maistro.config.settings import SandboxSettings
@@ -108,3 +115,20 @@ async def run_function_check(
     if output == _PASS_MARKER:
         return True, "ok"
     return False, (output or "no PASS marker in output")[:_MAX_OUTPUT_CHARS]
+
+
+async def run_function_check(
+    code: str,
+    function_name: str,
+    call_args: list[Any],
+    expected_value: Any,
+    *,
+    timeout: float = _DEFAULT_TIMEOUT,
+) -> tuple[bool, str]:
+    """Compatibility wrapper for callers that need a single assertion."""
+    return await run_function_checks(
+        code,
+        function_name,
+        [(call_args, expected_value)],
+        timeout=timeout,
+    )
