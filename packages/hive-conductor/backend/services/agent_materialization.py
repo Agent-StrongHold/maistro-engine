@@ -20,9 +20,11 @@ from datetime import UTC, datetime
 
 import stores
 from config import get_settings
+from models.schemas import Agent
+
 from maistro.personas.expander import expand_persona
 from maistro.personas.schema import PersonaTemplate
-from models.schemas import Agent
+
 from services.model_store import register_pop_hook
 
 
