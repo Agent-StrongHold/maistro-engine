@@ -155,7 +155,7 @@ async def _walk(
         node_record = node_record.model_copy(
             update={
                 "phase": NodePhase.RUNNING,
-                "started_at": node_record.started_at and datetime.now(UTC),
+                "started_at": node_record.started_at or datetime.now(UTC),
                 "attempts": node_record.attempts + 1,
             }
         )
