@@ -6,8 +6,14 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from maistro.graph.durable_runs.stores import InMemoryDurableRunStore
-from maistro.graph.nodes.base import BaseNode, NodeContext, pause_until
-from maistro.runtime import ExecutionRuntime, RunKind, RunState, WorkspaceRef
+from maistro.graph.nodes.base import BaseNode, KindCategory, NodeContext, pause_until
+from maistro.runtime import (
+    ExecutionRuntime,
+    RunKind,
+    RunState,
+    WorkspaceRef,
+    current_execution_context,
+)
 
 
 class EmptyIn(BaseModel):
@@ -28,9 +34,30 @@ class DoneNode(BaseNode[EmptyIn, DoneOut]):
         return DoneOut()
 
 
+class ContextProbeNode(BaseNode[EmptyIn, DoneOut]):
+    kind: ClassVar[str] = "test.context_probe"
+    input_schema: ClassVar[type[BaseModel]] = EmptyIn
+    output_schema: ClassVar[type[BaseModel]] = DoneOut
+
+    def __init__(self) -> None:
+        self.observed: tuple[str, str, str, str | None, str] | None = None
+
+    async def _execute(self, inputs: EmptyIn, ctx: NodeContext) -> DoneOut:
+        execution = current_execution_context(required=True)
+        assert execution is not None
+        self.observed = (
+            execution.run_id,
+            execution.workspace_id,
+            execution.root_run_id,
+            execution.parent_run_id,
+            execution.correlation_id,
+        )
+        return DoneOut()
+
+
 class PauseOnceNode(BaseNode[EmptyIn, DoneOut]):
     kind: ClassVar[str] = "test.pause_once"
-    kind_category = "wait"
+    kind_category: ClassVar[KindCategory] = "wait"
     input_schema: ClassVar[type[BaseModel]] = EmptyIn
     output_schema: ClassVar[type[BaseModel]] = DoneOut
 
@@ -64,7 +91,7 @@ async def test_run_graph_uses_one_canonical_workspace_owned_identity() -> None:
     result = await runtime.run_graph(
         _dag(node.kind),
         workspace=WorkspaceRef(workspace_id="workspace-1", actor_id="user-1"),
-        node_resolver=lambda _node_id, _dag: node,
+        node_resolver=lambda _node_id, _snapshot: node,
         run_id="run-1",
         correlation_id="trace-1",
         metadata={"source": "contract-test"},
@@ -88,7 +115,7 @@ async def test_resume_preserves_workspace_and_canonical_lineage() -> None:
     store = InMemoryDurableRunStore()
     runtime = ExecutionRuntime(durable_run_store=store)
     node = PauseOnceNode()
-    resolver = lambda _node_id, _dag: node
+    resolver = lambda _node_id, _snapshot: node
 
     paused = await runtime.run_graph(
         _dag(node.kind),
@@ -127,7 +154,7 @@ async def test_child_graph_persists_parent_root_and_correlation() -> None:
     child = await runtime.run_graph(
         _dag(node.kind),
         parent=root,
-        node_resolver=lambda _node_id, _dag: node,
+        node_resolver=lambda _node_id, _snapshot: node,
         run_id="child-graph",
     )
 
@@ -139,3 +166,34 @@ async def test_child_graph_persists_parent_root_and_correlation() -> None:
     assert child.durable.parent_run_id == "root-agent"
     assert child.durable.root_run_id == "root-agent"
     assert child.durable.correlation_id == "trace-root"
+
+
+@pytest.mark.asyncio
+@pytest.mark.contract("behavioral")
+@pytest.mark.scope("integration")
+async def test_graph_nodes_and_capabilities_see_same_execution_scope() -> None:
+    store = InMemoryDurableRunStore()
+    runtime = ExecutionRuntime(durable_run_store=store)
+    root = runtime.root_context(
+        WorkspaceRef(workspace_id="workspace-7", actor_id="actor-7"),
+        kind=RunKind.TEAM,
+        run_id="team-root",
+        correlation_id="trace-7",
+    )
+    probe = ContextProbeNode()
+
+    await runtime.run_graph(
+        _dag(probe.kind),
+        parent=root,
+        node_resolver=lambda _node_id, _snapshot: probe,
+        run_id="graph-child",
+    )
+
+    assert probe.observed == (
+        "graph-child",
+        "workspace-7",
+        "team-root",
+        "team-root",
+        "trace-7",
+    )
+    assert current_execution_context() is None
