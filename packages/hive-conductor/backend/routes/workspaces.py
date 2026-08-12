@@ -22,7 +22,7 @@ from fastapi import APIRouter, HTTPException, Request
 from models.persona_feedback import PersonaFeedback, Thumb
 from models.workspace import AgentToolBinding, Workspace, WorkspaceMember, WorkspaceRole
 from pydantic import BaseModel, ConfigDict, Field
-from services.agent_materialization import materialize_workspace_agents
+from services.agent_materialization import materialize_workspace_agents, workspace_agents
 from services.persona_authoring import (
     PersonaTemplateIdConflict,
     all_persona_templates,
@@ -431,4 +431,6 @@ def delete_workspace(workspace_id: str, request: Request) -> None:
         raise HTTPException(status_code=404, detail="workspace not found")
     if _member_role(workspace, requester) != "owner":
         raise HTTPException(status_code=403, detail="only an owner can delete this workspace")
+    for agent in workspace_agents(workspace_id):
+        stores.agents.pop(agent.id, None)
     stores.workspaces.pop(workspace_id, None)
