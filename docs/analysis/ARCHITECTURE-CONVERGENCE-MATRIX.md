@@ -1,8 +1,6 @@
 # MAIstro Architecture Convergence Matrix
 
-Status: working implementation map for the post-sprawl convergence effort.
-
-This document maps the current repository into the canonical product/runtime hierarchy derived from the intended UX. It is deliberately not an ADR yet. The purpose is to identify what already exists, what is duplicated, and where each existing subsystem belongs before locking architecture.
+Status: working implementation map. This is intentionally not an ADR yet. It maps current repository concepts onto the UX-derived architecture so we can distinguish true domain concepts from duplicate ownership and compatibility layers.
 
 ## Canonical hierarchy
 
@@ -11,395 +9,407 @@ User
 └── Workspace[]
     ├── Persona
     │   ├── allowed surfaces
-    │   │   ├── UI
-    │   │   ├── Builders CLI
-    │   │   └── Builders RSI
     │   ├── NodeTemplate[]
     │   └── GraphTemplate[]
     │
     ├── Graph[]
     │   ├── source_template_id/version?
     │   ├── Node[]
-    │   │   ├── source_template_id/version?
-    │   │   ├── NodeType
-    │   │   ├── Parameters
-    │   │   ├── Bindings
-    │   │   ├── Permissions
-    │   │   └── Policy
     │   └── Edge[]
     │
+    ├── Session[]
+    ├── Artifact[]
     └── Run[]
-        ├── graph reference/snapshot
         ├── NodeRun[]
-        ├── Attempt[]
-        ├── Events
-        ├── Artifacts
-        └── Outputs
+        │   └── Attempt[]
+        ├── Event[]
+        ├── ArtifactRef[]
+        ├── Checkpoint[]
+        └── child Run[]
 ```
 
-Underlying reusable primitives:
+Working decisions:
+
+1. User owns one or more Workspaces.
+2. Workspace owns one Persona.
+3. Existing `Project` is the compatibility/storage ancestor of Workspace.
+4. Existing `maistro.personas.PersonaTemplate` is the Persona system to extend. Do not introduce a second Persona model.
+5. Persona owns reusable NodeTemplates and GraphTemplates plus purpose, brand, voice, allowed surfaces, defaults and evaluation definitions.
+6. Workspace owns mutable instantiated Graphs and execution history.
+7. Templates instantiate independent mutable objects with source-template provenance.
+8. A single-node Graph is valid.
+9. Run is universal logical execution history.
+10. NodeRun is universal per-Node execution history.
+11. Attempt is physical retry/execution identity.
+12. ExecutionRuntime owns execution mechanics only.
+13. Permissions narrow through `User -> Workspace -> Persona -> Graph -> Node -> Binding -> Invocation`.
+14. Builders CLI and Builders RSI are Persona-authorized surfaces over the same objects exposed by UI.
+
+## Primitive and fulfillment vocabulary
 
 ```text
-Model
-PromptTemplate
-ParameterSet
-Schema
-Protocol
+Definition primitives
+  Model
+  PromptTemplate
+  ParameterSet
+  Schema
+  Protocol
+  Credential
+  Permission
+  Policy
+  Predicate
+  Transform
+
+Genome
+  = Model + PromptTemplate + ParameterSet
+
+Agent
+  = Genome + authorized Bindings/ToolExposure + Permission/Policy + Memory config
+
 Capability
-Provider
-Binding
-Credential
-Permission
-Policy
-Predicate
-Transform
+  -> Provider
+      -> Binding
+          -> Invocation
 ```
 
-Execution vocabulary:
+`ToolExposure` is the model-facing view of an allowed Binding. A delegated Agent can be the fulfiller behind a Binding, which makes agents-as-tools an ordinary capability-routing case rather than a separate runtime architecture.
+
+Domain `Protocol` here means an interaction/transport contract such as HTTP, MCP, harness, human, process, or agent delegation. Python `typing.Protocol` interfaces are implementation contracts and are not themselves domain Protocol objects.
+
+## Core convergence matrix
+
+| Existing object / subsystem | Current owner | Canonical mapping | Action |
+| --- | --- | --- | --- |
+| Authenticated human/service | `auth`, security auth adapters | User/Principal | KEEP; standardize Principal/PermissionContext handoff |
+| `Project` / `project_id` | `projects`, persistence, APIs, durable runs, memory | Workspace compatibility representation | CONVERGE semantically; preserve storage/API compatibility |
+| `Project.use_case`, profile/UI purpose fields | `projects` | Persona reference/defaults | MOVE/PROXY toward existing Persona |
+| `PersonaTemplate(kind="workspace")` | `personas` | Persona | KEEP + EXTEND |
+| Persona brand/voice/ui_scope/interview | `personas` | Persona purpose/surface config | KEEP |
+| Persona spawns/tools/skills/evals | `personas.expander` | NodeTemplate/GraphTemplate/default Bindings/evaluation definitions | CONVERGE |
+| Agent recipes | `agents/recipes` | NodeTemplate or GraphTemplate depending shape | SPLIT by semantic shape |
+| PM Fleet definitions | `agents/pm_fleet` | Persona + Agent NodeTemplates + GraphTemplates | REHOME |
+| `AgentIdentity` | `types.agent`, agents | Agent definition / Agent NodeTemplate content | DECOMPOSE into Genome, bindings, permissions, memory, provenance |
+| `AgentCard` | portability/A2A | interoperable Agent template projection | KEEP projection |
+| reusable portion of `AgentSpec` | agents spec | Agent/Node definition | SPLIT from run-time context |
+| task/attempt/upstream fields in `AgentSpec` | agents spec | NodeRun/Attempt context | MOVE to execution record/context |
+| Agent strategies | `agents/strategies` | Agent Node execution behavior/policy | KEEP, no independent lifecycle |
+| model-facing agent tool list | agents | ToolExposure | CONVERGE from raw names to authorized Binding view |
+| `AgentTask` | `types.agent` | delegated WorkRequest + child Run projection | DECOMPOSE; remove status as independent lifecycle |
+| `AgentResponse` | `types.agent` | NodeRun/Invocation result projection | KEEP adapter; canonical result IDs/status elsewhere |
+| `ModelConfig`, `ProviderConfig`, `ModelSelection` | `types.model`, router/providers | model/provider routing value types | KEEP as routing DTOs, not domain ownership |
+| prompt approval types | `types.prompt`, prompts | domain-specific approval request over generic human approval capability | CONVERGE fulfillment, preserve prompt workflow |
+| prompt manager/store | `prompts` | PromptTemplate repository/version service | KEEP, attach to Persona/NodeTemplate |
+| graph definition / `GraphConfig` | `graph`, Hive DAGs | Graph / GraphTemplate | CONVERGE |
+| graph node definitions | `graph/nodes` | Node + NodeType | KEEP behavior, normalize envelope |
+| graph edge definitions | `graph` | Edge + Predicate/mapping | KEEP |
+| DAG registry | `graph/dag_registry` | Graph/GraphTemplate catalog/repository helper | KEEP specialized catalog, align ownership |
+| DAG validator | `graph/dag_validator` | Graph validation service | KEEP |
+| `NodeExecutor` | `graph/node` | Node fulfillment adapter seam | KEEP until Binding convergence proves cleaner replacement |
+| `NodeRun` | `graph/node` | NodeRun + Attempt mechanics currently mixed | DECOMPOSE |
+| `GraphRun` | `graph/run` | Run + GraphExecutionState | DECOMPOSE; preserve traversal semantics |
+| `DurableRunRecord` | `graph/durable_runs` | persisted Run + GraphExecutionState projection | CONVERGE behind canonical Run repository |
+| durable node record | durable runs | persisted NodeRun projection | CONVERGE |
+| durable executor | durable runs | Graph domain executor/checkpoint adapter | KEEP until graph parity tests permit consolidation |
+| graph concurrency helpers | `graph/concurrency` | runtime mechanics plus graph policy | SPLIT generic mechanics to ExecutionRuntime only where equivalent |
+| graph compaction/depth | `graph` | Graph-domain optimization/validation | KEEP |
+| `GraphOptimizer` | `graph/optimizer` | template/definition improvement proposal service | KEEP; promotion should create template versions rather than mutate execution history |
+| orchestration planner/validation | `orchestrator` | Graph construction/validation semantics | KEEP |
+| hierarchy/master orchestration | `orchestrator` | Graph coordination semantics | KEEP |
+| waves/fan-out/fan-in | `orchestrator/waves` | graph semantics + generic runtime mechanics | SPLIT only generic mechanics |
+| `Conduit` | core | front-door routing into Workspace/Persona/Graph/Run flow | KEEP; never merge into ExecutionRuntime |
+| classifier | `classifier` | request interpretation/planning service | KEEP |
+| router | `router` | model/provider selection policy | KEEP |
+| LLM provider registry/router | `providers` | Model Provider selection/service | KEEP, distinguish from generic capability Provider if needed by name |
+| process config/presets | `config` | deployment/default configuration | KEEP; may seed Persona/templates but not own mutable Workspace state |
+| `CapabilityRegistry` | `capabilities` | Capability + Provider registry | KEEP |
+| `CapabilityProvider` | capabilities | Provider | KEEP |
+| capability slots | capabilities | typed Capability/Provider contracts | KEEP |
+| consumer authorization/configuration for a provider | fragmented today | Binding | INTRODUCE/CONVERGE explicitly |
+| actual provider/tool/harness call | fragmented today | Invocation | INTRODUCE/CONVERGE explicitly |
+| `HarnessRunner` | capability slot/providers | foreign executor Protocol/Provider | KEEP |
+| `HarnessSessionManager` | capabilities | sessionful Binding/Invocation adapter | KEEP |
+| `HarnessNodeExecutor` | graph | Node fulfillment adapter using harness Binding | KEEP |
+| durable harness dispatch/handles | graph harness | durable-asynchronous Invocation variant | CONVERGE lifecycle vocabulary |
+| HTTP clients/integrations | tools/integrations/providers | Protocol + Provider/Binding implementations | KEEP |
+| MCP server/tool definitions | Hive/portability | Protocol + Binding + ToolExposure | KEEP as interoperability |
+| concrete tools | `tools` | Provider/Binding implementations | KEEP |
+| approval/reversibility/sandbox metadata | tools/security | Binding/Invocation policy attributes | CONVERGE |
+| `SkillDefinition` | skills/types | composite reusable package of prompt/schema/capability/exposure/binding/provenance | DECOMPOSE conceptually; keep Skill product format |
+| skills parser/loader/catalog/marketplace | skills | template/capability catalog/import services | KEEP |
+| portability import/export | portability | external-format adapter into canonical templates/capabilities | KEEP |
+| delivery protocol/registry | delivery | Capability/Provider/Binding family | KEEP |
+| Home Assistant/CoinSwarm/ntfy/Turing integrations | integrations | Providers/Bindings plus event sources/sinks | KEEP |
+| sandbox Docker/microVM/fake backends | tools/sandbox | process-isolation Provider/Binding infrastructure | KEEP |
+| credential pool/providers/store/rotation | credentials | Credential resource + resolution infrastructure | KEEP; resolve material at Invocation |
+| Conductor cryptographic seed/DID/signing | identity | root-of-trust infrastructure | KEEP |
+| agent identity lifecycle | identity/lifecycle | Agent identity/security resource | KEEP, link to canonical Agent definition |
+| `CapabilityToken` | identity/lifecycle | delegated authorization credential | KEEP; do not confuse with Capability |
+| auth scopes | auth | principal authorization input | CONVERGE into hierarchical PermissionContext |
+| Warden/Sentinel/Gate | security | security/policy enforcement | KEEP; require actual execution-path reachability |
+| sequence policy engine | policy | Policy evaluator | KEEP beneath Permission ceiling |
+| governance ConformanceEngine | governance | ADR/Spec/prior-policy conformance service | KEEP as governance/policy input; not Run lifecycle |
+| self-repair provider | capabilities/providers/self_repair | CapabilityProvider invoked by scheduled/event Node/Run | KEEP provider; remove need for private background lifecycle |
+| infra monitor/action slots | capabilities | Capabilities/Providers/Bindings | KEEP |
+| self-repair SafetyGovernor | capabilities | domain Policy | KEEP |
+| generic `State` SQLite singleton writer | `state.py` | persistence/backpressure infrastructure | KEEP below repositories; not execution state |
+| `PersistedStore` | `state.py` | generic persistence adapter | KEEP; avoid making KV namespace authoritative domain model |
+| Postgres/SQLite stores | persistence | repository adapters | KEEP |
+| memory stores/scopes/outcomes/learnings | memory | scoped resource/knowledge service | KEEP, align scope IDs |
+| repertoire recall/rehearse/compose | repertoire | learned-pattern/planning service | KEEP; `run.py` is naming collision only |
+| codebase index/parser | codebase | Workspace knowledge resource | KEEP |
+| code registry | code_registry | trusted-code/provenance resource | KEEP |
+| Session store/search | sessions | Session continuity | KEEP distinct from Run |
+| collaboration membership/presence/events | collaboration | Session collaboration resource | KEEP, inherit Workspace permission ceiling |
+| EventBus/durable log/invocations/triggers | events | canonical event infrastructure candidate | KEEP + CONVERGE other event families onto it |
+| graph events | graph/events | graph-specific Event projections | CONVERGE envelope/correlation |
+| Builders StageEvent | builders | NodeRun/Run Event projection | CONVERGE |
+| task progress/webhooks | tasks | Event projection/delivery adapter | CONVERGE |
+| observability logging/metrics/tracing/replay | observability | canonical event/ID projections | KEEP |
+| quota/billing/reconciliation | quota | accounting/entitlement service | KEEP; correlate to Workspace/Run/NodeRun/Invocation |
+| `TaskCreate`/Task | tasks | WorkRequest/ingress | KEEP request concept |
+| Task status | tasks | queue state + duplicate Run lifecycle + domain phases | SPLIT |
+| TaskQueue | tasks | ingress queue | KEEP |
+| TaskRunner | tasks | admission/dispatch adapter | DECOMPOSE; dequeued request eventually creates Run |
+| lane gate | tasks/lanes | scheduling/admission policy | KEEP; do not flatten policy into generic semaphore |
+| checkpoints/replay | tasks + durable graph | Checkpoint/reconstruction services | CONVERGE ownership under Run/NodeRun/Attempt |
+| task recovery | tasks/recovery | recovery eligibility/version/crash-loop Policy | KEEP, operate on canonical persisted execution |
+| resilience error classifier | resilience | Provider/Attempt failure classification | KEEP |
+| resilience retry/backoff | resilience | Attempt/Invocation retry Policy | KEEP |
+| resilience fallback | resilience | Provider/Binding fallback Policy | KEEP |
+| resilience rate coordination | resilience | shared provider/concurrency policy | KEEP, connect to runtime/provider metrics |
+| Schedule | scheduling | Schedule/trigger definition | KEEP distinct from Run |
+| schedule execution history | scheduling/Hive | Run reference/trigger history | CONVERGE |
+| A2A broker/delegator | a2a | Agent-backed Binding/routing service | KEEP transport/routing |
+| A2A task/lifecycle queue | a2a | duplicate child-work lifecycle | MERGE into child Run after parity |
+| guest peers | a2a | remote Agent Binding + trust | KEEP |
+| `agent.delegate_remote` node | graph nodes | delegation Node using child Run/wait | KEEP behavior |
+| HITL nodes | graph nodes | Node(type=human) | KEEP |
+| capability approval slot/provider | capabilities | generic human Approval Capability/Provider | KEEP as common fulfillment mechanism |
+| tool `ApprovalGate` | tools/approval | domain adapter to generic approval capability | CONVERGE fulfillment, preserve impact semantics |
+| learning promotion approval | memory/learnings | domain workflow using human approval | CONVERGE fulfillment, preserve promotion state machine |
+| prompt promotion approval | prompts/types | domain workflow using human approval | CONVERGE fulfillment, preserve versioning state machine |
+| self-repair approval | self_repair/infra_action | domain workflow using human approval | CONVERGE fulfillment |
+| governance/human review for prose invariants | governance | domain workflow using human approval | ADAPT to common mechanism when operationalized |
+| shared `maistro.types` package | core | DTO/value-type namespace | KEEP; living in `types` does not imply semantic ownership |
+
+## Product/application matrix
+
+| Existing application | Canonical expression | Action |
+| --- | --- | --- |
+| Builders | Persona + Frank/Mason/Auditor NodeTemplates + GraphTemplates + UI/CLI/RSI surfaces | CONVERGE contracts/runtime onto canonical objects |
+| Builders `RunRequest`/`RunResult` | Run/NodeRun adapter projections | MERGE lifecycle semantics |
+| BuildersRuntime | specialized node/stage handler dispatcher | KEEP adapter, stop presenting as universal runtime |
+| PM Fleet | Persona + Agent NodeTemplates + GraphTemplates | REHOME existing definitions |
+| Canvas/book maker | specialized Persona + domain artifacts + image/compositor/export Nodes/Bindings | KEEP domain semantics, share ownership/execution |
+| Design | specialized Persona/domain assets + renderer Providers/Bindings + design Nodes | KEEP domain semantics, share ownership/execution |
+| Turing | Persona/Agent semantic extensions + Memory + triggers + canonical Runs | KEEP semantics, remove parallel execution identity |
+| RSI | Persona surface/workload producer + Graph/Nodes + Run | CONVERGE private lifecycle |
+| Evolve | evolution domain state + Eval Nodes + template promotion | KEEP domain state, share execution/audit IDs |
+
+## Interface and shell matrix
+
+| Surface | Canonical role | Action |
+| --- | --- | --- |
+| Hive Conductor frontend/API | primary workspace-centric product shell | KEEP; thin duplicate services/stores onto canonical core services |
+| maistro-server | generic API/compatibility shell | KEEP; same domain services as Hive |
+| Builders CLI/TUI | Persona-authorized Builders surface | KEEP |
+| Builders RSI CLI | Persona-authorized Builders surface | KEEP |
+| maistro-rsi CLI | Persona-authorized RSI surface | KEEP, map work to Runs |
+| MCP | interoperability surface/protocol | KEEP |
+| harness session API | foreign-harness interface | KEEP, correlate durable work with Runs |
+| chat-completions API | compatibility interface | KEEP, route through Conduit/Persona/Run as appropriate |
+| WebSocket/SSE | event/progress transport | KEEP, consume canonical events |
+
+## Engineering/platform matrix
+
+| Existing subsystem | Plane | Action |
+| --- | --- | --- |
+| maistro-bootstrap installer/materializer | platform/install | KEEP; audit mixed Builders/runtime responsibilities before any split |
+| maistro-registry ADR/SPEC validator/DAG | engineering governance | KEEP; physical rename is only a candidate |
+| CI workflows | engineering control | KEEP |
+| formal conformance | engineering control | KEEP and add canonical architecture invariants |
+| mutation testing | engineering control | KEEP |
+| security scans | engineering control | KEEP |
+| quality reachability baseline | engineering control | KEEP and use as island burn-down metric |
+| radon/vulture/enumeration baselines | engineering control | KEEP |
+| repo-native `.claude`/`.cursor`/AGENTS/CONTRIBUTING guidance | engineering-agent control | UPDATE after vocabulary is locked |
+
+## Registry/catalog family
+
+Do not create one generic `Registry` abstraction just because the repository has many registries.
+
+| Registry/catalog | What it indexes | Canonical meaning |
+| --- | --- | --- |
+| CapabilityRegistry | Capability Providers | capability infrastructure |
+| ProviderRegistry | LLM Providers | model provider infrastructure |
+| DAG registry | Graph/GraphTemplate definitions | graph catalog/repository helper |
+| AgentCatalog | Agent definitions/templates | template catalog |
+| Skill registry/catalog | Skills | reusable package/catalog |
+| CodeRegistry | trusted code/provenance | trust resource |
+| IntentRegistry | classifier intent definitions | routing configuration |
+| maistro-registry | ADR/Spec documents | engineering governance |
+
+`Registry` is a storage/indexing pattern. The thing being registered determines domain ownership.
+
+## Approval family
+
+Do not merge domain state machines merely because they all need a human decision.
+
+Canonical split:
 
 ```text
-Run = logical execution/history owned by the Workspace
-NodeRun = execution record for one Node within a Run
-Attempt = one physical execution attempt of a Run or NodeRun
-ExecutionRuntime = mechanics for an Attempt, never domain meaning
-Session = continuity scope that may span Runs
-Invocation = one call/turn through a Binding
+Domain workflow
+  -> ApprovalRequest payload
+      -> human Approval Capability / Binding
+          -> ApprovalDecision
+              -> domain-specific transition
 ```
 
-Template semantics:
+Examples:
+
+- irreversible/reversible tool plan approval
+- prompt version promotion
+- learning promotion
+- HITL question/review/edit
+- self-repair action approval
+- governance human review
+- future template/evolution promotion
+
+Share the human fulfillment mechanism, event/correlation IDs, actor identity, timeout/escalation mechanics and audit trail. Preserve each domain's transition rules.
+
+## Identity and token family
+
+Keep these distinctions explicit:
+
+- Principal: authenticated human/service actor.
+- Agent identity: cryptographic/runtime identity of an Agent entity.
+- DID/signing key: proof material.
+- CapabilityToken: delegated authorization credential.
+- Permission: allowed action scope inherited through hierarchy.
+- Policy: contextual/stateful decision inside that scope.
+- Credential: secret/resource needed by a Binding.
+- Capability: semantic ability.
+
+A `CapabilityToken` authorizes; it is not a Capability and it is not a Binding.
+
+## Optimization and learning family
+
+Current improvement mechanisms include GraphOptimizer prompt rewriting, memory learnings/promotion, repertoire, Evolve mutation/crossover/tournament, Persona scoring/golden records, Agent feedback and RSI hypotheses.
+
+Canonical direction:
 
 ```text
-NodeTemplate  -> instantiate -> Node  -> mutate -> optionally save as new NodeTemplate
-GraphTemplate -> instantiate -> Graph -> mutate -> optionally save as new GraphTemplate
+observations / outcomes / traces
+  -> evaluation
+      -> proposed definition change
+          -> approval/policy
+              -> new NodeTemplate / GraphTemplate / Persona/domain-asset version
 ```
 
-Instantiation is copy + provenance, not live inheritance. Existing workspace objects must not silently change when their source template changes.
+Do not mutate completed Run history. Do not silently rewrite existing instantiated Graph/Node objects unless the product explicitly asks for live mutation. Learning should normally promote a reusable definition/version that future instances or Runs can choose.
 
-## Permission model
+## State vocabulary guardrail
 
-Permissions constrain downward:
+Several unrelated things are currently called state:
+
+- generic SQLite `State` writer infrastructure
+- Workspace/domain object persistence
+- GraphExecutionState/blackboard
+- Run lifecycle state
+- NodeRun state
+- Session continuity state
+- policy sequence state
+- provider health/circuit state
+- evolution population state
+- frontend/UI state
+
+Do not unify these into one `State` object. Normalize identity/ownership and persistence boundaries, not the data itself.
+
+## Duplicate-ownership families to eliminate
+
+1. **Execution lifecycle**: GraphRun, DurableRunRecord, Task status, A2A task status, Builders RunStatus, RSI/Hive run state -> Run/NodeRun/Attempt.
+2. **Delegation lifecycle**: direct Agent delegation, A2A broker/lifecycle, guest peers, remote-delegation Node -> Agent-backed Binding + child Run.
+3. **Fulfillment**: tool, harness, HTTP, MCP, sandbox, renderer, delegated Agent, human -> Capability/Provider/Binding/Invocation.
+4. **Definitions**: AgentIdentity/Card/recipes, Persona spawns, DAG configs, PM roles, Builders definitions, imported formats -> NodeTemplate/GraphTemplate/domain assets.
+5. **Events/correlation**: graph events, core events, Builders StageEvent, task progress, Hive streams, audit/observability -> canonical event envelope/IDs.
+6. **Permissions/trust**: auth scopes, Project roles, collaboration roles, trust tiers, tool allowlists, delegation modes, approvals, promotion gates -> hierarchical Permission ceiling + Policy/security mechanisms.
+7. **Product identity**: Project use_case/UI/profile and Persona workspace semantics -> Workspace ownership versus Persona purpose/surfaces/templates.
+8. **Product-shell state**: Hive/server local stores duplicating core domain ownership -> transport/application adapters.
+9. **Approval fulfillment**: multiple human decision plumbing implementations -> one approval capability with domain-specific adapters/state machines.
+10. **Improvement mutation**: graph optimizer, memory learning, Evolve/RSI promotion -> versioned template/domain-definition promotion rather than hidden live mutation.
+
+## Distinctions that must survive convergence
+
+- User != Workspace
+- Workspace != filesystem workdir
+- Workspace != Persona
+- Persona != Agent
+- Template != instantiated mutable object
+- Graph != Run
+- Node != NodeRun
+- Run != Attempt
+- Session != Run
+- Schedule != Run
+- WorkRequest != Run
+- Capability != Provider
+- Provider != Binding
+- Binding != Invocation
+- CapabilityToken != Capability
+- Permission != Policy
+- Credential != Binding
+- Event != Artifact
+- approval fulfillment != domain approval workflow
+- graph semantics != runtime mechanics
+- persistence `State` != execution state
+- evolution population state != Run state
+- product/domain packages != engineering control plane
+
+## Implementation sequence
+
+1. Lock vocabulary and object ownership in ADR/spec after the inventory stops producing new universal concepts.
+2. Preserve `Project`/`project_id` compatibility while introducing Workspace-facing naming and a first-class link to the existing Persona system.
+3. Extend/converge existing `PersonaTemplate`; add NodeTemplate/GraphTemplate ownership and provenance semantics.
+4. Define canonical Run/NodeRun/Attempt schema, persistence, terminalization, parent/child, cancellation, timeout, retry and pause/resume.
+5. Put durable graph execution behind ExecutionRuntime only after interruption terminalization is safe.
+6. Write behavior-parity tests for legacy GraphRun versus durable traversal before deleting either path.
+7. Route Schedule -> Run launcher and Task WorkRequest -> admission -> Run.
+8. Convert delegation to Agent-backed Bindings and child Runs.
+9. Normalize Agent -> Genome + authorized Bindings/ToolExposure + Permission/Policy + Memory configuration.
+10. Add explicit Binding/Invocation around existing CapabilityProvider machinery.
+11. Converge human approval fulfillment while preserving prompt/tool/learning/HITL/self-repair domain transitions.
+12. Make Builders UI/CLI/RSI Persona surfaces over canonical Graph/Node/Run objects.
+13. Route RSI/Evolve/Turing/self-repair periodic or proactive work through Schedule/Event -> Run.
+14. Converge event/correlation IDs and attach artifacts/memory/observability/quota to canonical ownership.
+15. Implement hierarchical Permission evaluation and route real Binding/Invocation paths through security/policy/credential resolution.
+16. Thin Hive and maistro-server duplicate lifecycle/storage wrappers.
+17. Burn down the existing reachability baseline as formerly disconnected features gain real product entry points.
+18. Update ADR/SPEC governance, formal invariants, architecture fitness rules and repo-agent guidance to the locked vocabulary.
+19. Remove compatibility adapters only after parity and migration tests are green.
+
+## Exit criteria for this matrix
+
+For every meaningful subsystem, the repository should be able to answer:
+
+```text
+thing
+-> canonical concept
+-> parent/owner
+-> lifecycle owner
+-> persistence owner
+-> permission scope
+-> product entry point
+-> keep / split / merge / rehome / remove
+```
+
+The architecture is converged when a Persona-authorized surface reaches the same objects everywhere:
 
 ```text
 User
-  ↓
-Workspace
-  ↓
-Persona
-  ↓
-Graph
-  ↓
-Node
-  ↓
-Binding
-  ↓
-Invocation
+ -> Workspace
+ -> Persona
+ -> Graph / Node
+ -> Run / NodeRun / Attempt
+ -> Binding / Invocation
 ```
 
-A child may narrow permissions but must never widen what its parent permits. Effective permission is the intersection of all applicable scopes.
-
-This is what makes agent-as-tool delegation safe: an Agent Node without a direct binding to a capability can invoke an Agent-backed Binding whose target is configured and authorized to perform that capability.
-
-## Convergence matrix
-
-| Existing object / subsystem | Current package or surface | Canonical concept | Parent | Children / contents | Runtime responsibility | Permission scope | Action |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Authenticated user / service identity | `auth/`, `security/auth_*` | User / Actor | none | workspace memberships, sessions | none | root actor constraints | KEEP, unify actor reference |
-| `Project` / `project_id` semantics | core persistence, memory, durable run records, APIs | Workspace | User | Persona, Graphs, Runs, artifacts, credentials, policy | none | workspace ceiling | RENAME/CONVERGE semantically to Workspace; preserve storage compatibility during migration |
-| No stable first-class equivalent | product architecture gap | Persona | Workspace | surfaces, NodeTemplates, GraphTemplates, defaults, policy | none | persona ceiling | INTRODUCE |
-| Agent recipe files / recipe registry | `agents/recipes` | likely NodeTemplate or GraphTemplate depending recipe shape | Persona | prompt/model/tool/binding defaults or multi-node composition | none | template maximum | SPLIT by semantic shape; do not keep `Recipe` as a universal parallel ontology |
-| PM fleet definitions | `agents/pm_fleet` | NodeTemplate catalog / Persona defaults | Persona | specialized Agent node definitions and delegation constraints | none | persona/node | REHOME |
-| Builders worker/stage registration | `builders/runtime.py` | NodeTemplate dispatch metadata / Binding registry | Persona or Builders GraphTemplate | handler, prompt version, allowed tools | invocation only | node/binding | DECOMPOSE `BuildersRuntime`; retire as separate runtime concept |
-| Builders `RunRequest` | `builders/contracts.py` | Run projection + NodeRun request | Workspace Run | worker/stage context, artifacts | none | inherited from Run/Node | MERGE into canonical Run/NodeRun adapter |
-| Builders `RunResult` | `builders/contracts.py` | NodeRun/Run result projection | Run | artifacts, claims, logs | none | inherited | MERGE |
-| Builders `StageEvent` | `builders/contracts.py` | canonical Event projection | Run / NodeRun | message, actor, stage | sequencing only | event visibility follows parent | MERGE |
-| Builders CLI | CLI surface | Persona-exposed interface | Persona | builders operations | none | Persona surface permission | KEEP as interface, not ontology |
-| Builders RSI | CLI / RSI surface | Persona-exposed interface + graph/node workload | Persona | RSI graph/node definitions | Runtime executes Runs only | Persona + Graph/Node | KEEP capability, route through shared objects |
-| `AgentIdentity` / persistent agent definitions | `agents/` | NodeTemplate or Node definition fragment | Persona / Graph | genome-ish fields, tools, policy | none | node template/node | DECOMPOSE |
-| `AgentSpec` | `agents/spec/agent_spec.py` | mixed Node definition + NodeRun invocation context | Graph / Run | role, task/subtask/attempt/context | none | mixed today | SPLIT definition from runtime context |
-| Agent `Genome` concepts in evolve | `maistro-evolve` | Genome primitive composition | Agent NodeTemplate / Node | Model + PromptTemplate + ParameterSet | none | bounded by Agent Node | KEEP concept, normalize representation |
-| Agent strategies (`direct`, `react`, `plan_execute`, etc.) | `agents/strategies` | NodeType execution policy / strategy | Agent Node | prompting/tool loop behavior | domain executor, not runtime | node | KEEP as Agent NodeType policy; remove lifecycle ownership if any |
-| Agent tool name lists / model-facing schemas | agents + tool rendering | ToolExposure | Agent Node | schemas/names for allowed bindings | none | node + binding | RENAME conceptually; generated view, not execution primitive |
-| `SkillDefinition` / skills catalog | `skills/`, portability | mixed Capability declaration + ToolExposure + Binding metadata + trust/prompt metadata | Persona / NodeTemplate | schema, endpoint/auth, prompt/trust/source | none | persona/node/binding | DECOMPOSE; keep portability format as projection |
-| Skill import/export | `portability/skills.py`, MCP export | serialization/interoperability adapter | templates/catalog | external formats | none | no widening during import/export | KEEP adapter |
-| Agent import/export / `AgentCard` | `portability/agents.py` | NodeTemplate interoperability projection | Persona | portable agent metadata/tools | none | template ceiling | KEEP projection |
-| `CapabilityRegistry` / capability slots | `capabilities/` | Capability + Provider registry | platform/workspace/persona depending registration | providers, health/fallback | provider selection only | capability availability ceiling | KEEP, clarify scope |
-| `CapabilityProvider` | `capabilities` | Provider | Capability | implementation/health | fulfillment only | cannot exceed Binding/parent permissions | KEEP |
-| `HarnessRunner` slot | capabilities | Protocol + Provider family | Capability | start/send/stream/stop | invocation/session mechanics inside provider | binding/node | KEEP, remove duplicate definitions if present |
-| `HarnessSessionManager` | capabilities | Binding/session adapter | Node / Session | selected provider, safety wrapper, sequence policy | sessionful invocation | node/binding | KEEP adapter |
-| `HarnessNodeExecutor` | `graph/harness_executor.py` | NodeType fulfillment adapter | Harness Node | Binding invocation | domain executor invokes; ExecutionRuntime wraps attempt | Node/Binding | KEEP |
-| inbound harness sessions API | Hive/FastAPI | external interface surface | Persona/Workspace policy | harness session operations | none itself | interface + binding | KEEP route, connect to canonical identity/run where work becomes durable |
-| HTTP integrations | tools/integrations/providers | Protocol + Binding implementations | Node | endpoint/config/schema | invocation | binding | KEEP, normalize |
-| MCP servers/tools | Hive MCP routes + portability | Protocol + Binding + ToolExposure | Persona/Node | server config, tool schemas | invocation | binding | KEEP, normalize; MCP is transport/interoperability, not execution ontology |
-| sandbox backends (Docker, microVM, fake) | `tools/sandbox` | Protocol + Provider / Binding infrastructure | Harness/API/Tool Node | process isolation | process supervision may be runtime mechanic only if generic | node/binding | KEEP implementations |
-| `GraphConfig`, DAG definitions | `graph/types`, Hive DAG config | Graph or GraphTemplate representation | Workspace/Persona | Nodes, Edges | none | graph ceiling | CONVERGE to canonical Graph/GraphTemplate models |
-| graph Node definitions / registered node kinds | `graph/nodes` | Node + NodeType | Graph | typed config/bindings | none | node | KEEP behavior; normalize envelope |
-| HITL nodes (`human.*`) | `graph/nodes` | Node(type=human/HITL) | Graph | interaction schema, timeout/escalation | pause/resume mechanics outside node semantics | node | KEEP; no separate HITL execution ontology |
-| `NodeExecutor` | `graph/node.py` | Node fulfillment protocol | NodeRun | backend invocation | executor is domain adapter; runtime wraps mechanics | node/binding | KEEP seam; rename only if needed after convergence |
-| `NodeRun` | `graph/node.py` | NodeRun, but currently overloaded | Run | node config, retry, result, telemetry, executor | currently owns too many mechanics | node effective permissions | DECOMPOSE to NodeRun record + Attempt/runtime mechanics + node executor |
-| `GraphRun` | `graph/run.py` | Run + GraphExecutionState | Workspace Run | NodeRuns, blackboard, traversal/cycles | currently owns lifecycle/cancel/fanout | graph/run | DECOMPOSE, not delete semantics |
-| `DurableRunRecord` | `graph/durable_runs/types.py` | Run persistence projection + GraphExecutionState snapshot | Workspace Run | durable node records, graph snapshot, pause data | none | run | REHOME behind canonical Run store |
-| `DurableNodeRecord` | durable runs | NodeRun persistence projection | Run | result, phase, attempts, metrics | none | node/run | CONVERGE with NodeRun |
-| durable DAG executor | `graph/durable_runs/executor.py` | Graph domain executor + checkpoint adapter | Run | graph walk | traversal belongs to graph adapter; runtime only mechanics | graph/node | KEEP until parity, then consolidate traversal |
-| Hive `graph_runner.py` | hive-conductor | product graph adapter | Workspace/Run | stream/API glue | should not own parallel execution lifecycle | inherited | MERGE/REMOVE parallel traversal after parity |
-| Hive DAG run store | hive-conductor | Run/GraphExecution persistence adapter | Workspace | run snapshots | none | workspace/run | MERGE into canonical Run repository |
-| `TaskCreate` / queued Task objects | `tasks/models.py` | WorkRequest / ingress request | User/Workspace | requested work, lane, capability | none | caller/workspace | KEEP request concept, remove lifecycle duplication |
-| `TaskStatus` | `tasks` | mixed ingress + Run lifecycle + domain phases | WorkRequest/Run | planning/coding/etc. | none | inherited | SPLIT; queue state != Run state != graph/node phase |
-| `TaskQueue` | `tasks/queue.py` | ingress queue | Workspace/service | WorkRequests | queue mechanics | admission permission | KEEP |
-| `TaskRunner` | `tasks/runner.py` | admission/scheduling adapter | WorkRequest -> Run | lane gate, executor call | generic mechanics should move to runtime only when lane semantics preserved | workspace/persona policy | DECOMPOSE |
-| `LaneGate` | `tasks/lanes.py` | scheduling policy + concurrency policy | ingress/runtime adapter | live/background/tier reservations | some generic slot mechanics overlap runtime | workspace/persona | KEEP policy, optionally delegate mechanics |
-| scheduling store / cron schedules | `scheduling/store.py`, Hive scheduler | Schedule definition + trigger history | Workspace/Persona | trigger metadata | scheduler creates Run; never executes work directly | schedule/target graph | KEEP definition; route trigger to Run launcher |
-| Hive scheduler private trigger bookkeeping | hive-conductor | Schedule trigger adapter | Schedule | last/next trigger | none | inherited | KEEP metadata, remove execution ownership |
-| `A2ADelegator`, `A2ATask` | `a2a/delegate.py` | Agent-backed Binding + child Run request; duplicate lifecycle | NodeRun/Run | target selection, task status | delegation dispatch only | caller Node + target Agent | DECOMPOSE; replace task lifecycle with child Run |
-| A2A lifecycle `TaskQueue/WorkerPool/TaskLifecycleManager` | `a2a/lifecycle` | another work queue/run lifecycle family | delegation service | statuses/workers | duplicate mechanics | delegation scope | MERGE/REMOVE lifecycle duplication after child Runs |
-| guest peers / remote delegation | `a2a/guest_peers.py` | remote Agent Binding + trust policy | Agent Node | peer transport | invocation | trust + binding permissions | KEEP |
-| `agent.delegate_remote` graph node | graph nodes | Node(type=agent delegation) | Graph | child work request + wait state | durable pause/resume | node/binding | KEEP behavior; target becomes child Run |
-| Session store | `sessions/store.py` | Session | User/Workspace | conversational continuity/messages | no Run ownership | session membership | KEEP separate from Run |
-| Session collaboration | `collaboration/` | Session ACL/presence/event collaboration | Session | members, roles, presence | live fan-out only | session-local ACL under workspace | KEEP; integrate with parent permission ceiling |
-| policy engine / sequence policy | `policy/` | Policy primitive + stateful policy evaluator | Workspace/Persona/Graph/Node/Binding | rules, sequence state | none | whichever scope attaches it | KEEP; standardize attachment points |
-| Warden / Sentinel / security gates | `security/` | Policy enforcement / security provider | Binding/Invocation + higher scopes | scans, action gates, strikes | none | inherited effective permissions | KEEP; expose through canonical policy pipeline |
-| approval gate protocols | `tools/approval` | Permission/Policy fulfillment protocol | Node/Binding | approval request | wait mechanics via Run/NodeRun | inherited | MERGE conceptually with HITL policy path |
-| credentials providers/store/rotation | `credentials/` | Credential primitive + provider/store | Workspace/Persona/Binding | secrets/reference/rotation | none | credential scope cannot widen binding | KEEP; explicit ownership hierarchy |
-| prompt manager/store | `prompts/` | PromptTemplate storage/versioning | Persona/NodeTemplate | prompt versions | none | template permissions | REHOME as template primitive service |
-| memory scopes/stores/outcomes/learnings | `memory/` | scoped capability/data service | Workspace/Persona/Graph/Node/Run depending memory kind | episodic, semantic, outcomes, learnings | none | scope intersection | KEEP; normalize scope IDs to canonical hierarchy |
-| artifacts (`ArtifactRef`, output files, dashboards) | builders + graph + delivery | Artifact | Workspace/Run/NodeRun | typed durable outputs | none | artifact inherits owner visibility | CONVERGE references/repository |
-| events (`GraphEvent`, Builders StageEvent, collaboration events, event bus) | `graph/events`, `events/`, builders, collaboration | Event with scoped projections | Run/NodeRun/Session/etc. | typed event payload | ExecutionRuntime may sequence opaque events only | owner scope | CONVERGE event envelope; preserve domain event types |
-| observability/tracing | `observability/` | telemetry projection | Run/NodeRun/Attempt/Invocation | spans/metrics/logs | runtime emits mechanics metrics | visibility follows owner | KEEP, correlate on canonical IDs |
-| retries/backoff/circuit breakers | resilience + NodeRun + agents | Attempt policy / Provider health policy | NodeRun/Binding | retry count/backoff | runtime can enforce mechanics but policy remains Python domain | node/binding | CONVERGE ownership |
-| task recovery | `tasks/recovery.py` | recovery eligibility policy | Run/Attempt | crash-loop/version compatibility | runtime performs mechanics only | run | KEEP policy, stop treating Task as recovery root |
-| checkpoints | tasks + durable graph | Checkpoint | Run/NodeRun/Attempt | state snapshot/provenance | none | owner scope | CONVERGE storage/envelope |
-| RSI service state in Hive | `backend/services/rsi.py` | Run producer + RSI Node/Graph domain state | Persona/Workspace | evaluation/improvement work | currently private task/cancel lifecycle | Persona/Graph/Node | REMOVE private Run lifecycle; route through canonical Run |
-| `EvolutionCycle` / Hive evolution background loop | `maistro-evolve`, `backend/services/evolution.py` | Node/Graph workload + Schedule | Persona | population/tournament/eval nodes | runtime runs attempts | Persona/Graph/Node | KEEP semantics; replace private 300s loop with schedule -> Run |
-| `PipelineGenome`, PopulationStore, promotion/rollback | `maistro-evolve` | Genome/templates + template promotion lifecycle | Persona | candidate definitions | none | explicit promotion gate | KEEP, connect promotion to Template provenance rather than live workspace mutation |
-| tournament implementations in core/evolve | agents + evolve | evaluation policy/service | Eval Node | scoring/ranking | none | eval node | DUPLICATE-FAMILY: converge if semantics identical; otherwise name differences explicitly |
-| evaluator/benchmark adapters | evolve benchmarks | NodeType(type=eval) / Binding | Graph | benchmark invocation/scoring | invocation | eval node/binding | KEEP |
-| Turing integration/runtime | `maistro-turing`, integrations/turing | external capability/provider or specialized NodeTypes depending use | Persona/Node | proactive producers/chat | avoid separate Run lifecycle | binding/node | MAP case-by-case; preserve service boundary |
-| Home Assistant / CoinSwarm integrations | `integrations/` | Binding/provider families + event producers | Node/Persona | REST/event adapters | invocation | binding | KEEP |
-| event-trigger recipes | events recipes | GraphTemplate/Schedule-like trigger definitions | Persona | event -> graph activation | launch Run | persona/graph | REHOME |
-| code registry | `code_registry/` | template/resource registry / Binding source | Persona/Node | executable code refs | none | scope | KEEP, clarify whether entries are templates, artifacts, or bindings |
-| classifier / intent registry / Conduit | classifier, agents/conduit | routing policy into Persona/GraphTemplate/NodeTemplate selection | Workspace/Persona | intent/tier/model decisions | none | cannot select forbidden target | KEEP policy; route to canonical definitions |
-| Hyperagent | agents/hyperagent | likely GraphTemplate/Graph composition, not primitive Agent type | Persona/Workspace | specialized node graph | graph execution | inherited | DECOMPOSE/MAP rather than preserve parallel execution ontology |
-| Artificer / multi-phase engineering strategy | agents/artificer | GraphTemplate or Agent Node policy depending actual topology | Persona | phases/tools | graph/node execution | inherited | MAP by composition |
-| PM orchestrator/waves/fan-in | orchestrator | Graph semantics / scheduling policy | Graph | parallel work/fan-in | generic mechanics through runtime | graph/node | KEEP semantics, remove duplicate mechanics |
-| `ExecutionRuntime` / `PythonExecutionRuntime` (feature branch) | `maistro.runtime` | ExecutionRuntime | Run Attempt | concurrency/cancel/deadline/event sequence/metrics | canonical mechanics owner | receives already-authorized execution | KEEP |
-
-## Node type normalization
-
-The current repository supports or strongly implies these NodeType families. They should share a common Node envelope while retaining type-specific configuration contracts.
-
-```text
-Node
-├── agent
-├── graph                 # subgraph/composite node
-├── harness
-├── api/http
-├── mcp
-├── function/tool
-├── human/hitl
-├── transform
-├── eval
-├── sandbox/process
-├── external-agent/a2a
-└── integration-specific  # preferably reducible to protocol/binding over time
-```
-
-A Graph containing one Node is valid. This lets most special top-level `XRun` concepts collapse into ordinary `Run -> NodeRun(type=X)` without losing type-specific behavior.
-
-A Graph Node may itself reference another Graph. That provides composition without making Graph primitive.
-
-## Template mapping
-
-### NodeTemplate candidates already in the repo
-
-The following current objects likely contribute fields to NodeTemplate rather than remaining separate reusable-definition systems:
-
-- Agent identity/spec definition fields
-- agent recipes
-- PM fleet definitions
-- Builders worker/stage prompt + tool registrations
-- Skill definitions after decomposition
-- registered graph node kind defaults
-- harness provider configuration presets
-- evaluator presets
-
-A NodeTemplate should be able to describe a concrete NodeType plus its default parameters, bindings, policy, permissions, schemas, and provenance.
-
-### GraphTemplate candidates already in the repo
-
-- saved DAG / `GraphConfig` definitions
-- multi-stage Builders workflow
-- Artificer/multi-phase workflows
-- Hyperagent compositions
-- event-trigger recipes where the trigger itself is separated from the graph definition
-- PM fleet orchestration graphs
-- reusable evolve/RSI workflows
-
-The audit should not mechanically rename every `Recipe` to `GraphTemplate`. A recipe containing only one node's definition belongs as NodeTemplate; a recipe containing composition belongs as GraphTemplate.
-
-## Builders mapping
-
-Builders should become a Persona-exposed surface over the canonical objects:
-
-```text
-Persona: Builders
-├── surfaces
-│   ├── UI
-│   ├── Builders CLI
-│   └── Builders RSI (when permitted)
-├── NodeTemplates
-│   ├── Frank
-│   ├── Mason
-│   └── Auditor
-└── GraphTemplates
-    └── Builders workflow
-```
-
-Execution:
-
-```text
-Graph instance
-├── Node(type=agent, template=Frank)
-├── Node(type=agent, template=Mason)
-└── Node(type=agent, template=Auditor)
-
-Run
-├── NodeRun(Frank/stage...)
-├── NodeRun(Mason/stage...)
-└── NodeRun(Auditor/stage...)
-```
-
-`BuildersRuntime` may remain temporarily as an adapter that knows how to dispatch these Node types, but it should not remain a second execution/runtime model.
-
-## Permission convergence
-
-Current permission/security concepts are spread across auth scopes, collaboration roles, delegation modes/allowlists, capability provider availability, tool allowlists, Warden/Sentinel gates, sequence policy, credential access, sandbox allowlists, promotion gates, and HITL approval.
-
-These are not all the same kind of permission, but they need one evaluation chain.
-
-Proposed evaluation shape:
-
-```text
-Identity authorization
-  -> Workspace policy
-  -> Persona policy
-  -> Graph policy
-  -> Node policy
-  -> Binding availability + authorization
-  -> Credential eligibility
-  -> Invocation policy/security gates
-  -> optional approval
-```
-
-Important distinction:
-
-- **Permission** answers whether an actor/object may request an operation.
-- **Policy** adds contextual/sequence/condition rules.
-- **Binding** determines how an allowed capability is fulfilled.
-- **Provider health** determines whether that fulfillment is currently available.
-
-Do not collapse these into one `allowed: bool` abstraction.
-
-## Lifecycle convergence
-
-The repository currently has many lifecycle owners:
-
-- Task status
-- A2A task status
-- A2A lifecycle manager
-- GraphRun phase
-- NodeRun phase
-- DurableRun status
-- DurableNodeRecord phase
-- RSI run state
-- Builders RunStatus
-- scheduler execution history
-- harness sessions
-- collaboration sessions
-- retries/circuit breakers
-
-They should reduce to distinct axes rather than one mega-state enum:
-
-```text
-WorkRequest / queue lifecycle    # admission before a Run
-Run lifecycle                    # logical work
-NodeRun lifecycle                # one graph node in the logical work
-Attempt lifecycle                # physical execution/retry/resume
-Session lifecycle                # continuity, separate from Run
-Provider health lifecycle        # availability, separate from Run
-Schedule lifecycle               # trigger definition, separate from Run
-```
-
-Domain-specific phases such as planning/coding/reviewing belong in Graph/Node state or events, not the universal Run status enum.
-
-## Storage and ownership rules
-
-Durable ownership should follow the UX/domain hierarchy rather than implementation packages.
-
-- User owns or participates in Workspaces.
-- Workspace owns Persona configuration, editable Graph objects, Run history, workspace artifacts, and workspace-scoped credentials/policy.
-- Persona owns reusable NodeTemplates and GraphTemplates visible within that Workspace context.
-- Graph owns Nodes and Edges as an editable working object.
-- Run references/snapshots the executable Graph; the Workspace owns the Run history.
-- Run owns NodeRuns, Attempts, Run events, and Run artifacts.
-- Session is owned at the appropriate user/workspace interaction scope and references Runs rather than containing their lifecycle.
-
-Do not make Graph deletion destroy Run history. Runs should preserve enough graph snapshot/provenance to remain intelligible after the working Graph or template changes.
-
-## Highest-value duplicate families to remove
-
-### 1. Execution lifecycle duplicates
-
-`TaskStatus`, `A2ATask`, `GraphRun`, `DurableRunRecord`, Builders `RunStatus`, and RSI local Run state currently overlap.
-
-Target: canonical Run + NodeRun + Attempt, with adapters during migration.
-
-### 2. Agent delegation duplicates
-
-Direct agent delegation, `A2ADelegator`, A2A lifecycle workers, guest-peer delegation, and graph `agent.delegate_remote` overlap.
-
-Target: Agent-backed Binding -> child Run -> durable wait/resume.
-
-### 3. Tool/capability/skill/harness/API fulfillment duplicates
-
-Target vocabulary:
-
-```text
-Capability -> Provider -> authorized Binding -> Invocation
-```
-
-ToolExposure is the model-visible projection of allowed bindings. Harness/MCP/HTTP/function/agent/human are fulfillment/protocol varieties, not independent execution roots.
-
-### 4. Reusable definition duplicates
-
-Agent recipes, skills, PM fleet definitions, Builders prompt/tool registries, DAG configs, and other recipe/config systems overlap with the new NodeTemplate/GraphTemplate model.
-
-Target: preserve specialized authoring/import formats as projections, but converge durable reusable definitions.
-
-### 5. Events and correlation IDs
-
-Graph events, Builders stage events, collaboration events, integration events, audit records, tracing IDs, task IDs, run IDs, A2A task IDs and harness session IDs currently create fragmented observability.
-
-Target: canonical owner IDs plus typed event projections. Session/provider IDs remain where semantically distinct.
-
-## Implementation sequence implied by this matrix
-
-1. Lock vocabulary and ownership semantics in ADR/spec after this matrix is reviewed.
-2. Introduce canonical Workspace-compatible naming without destructive Project storage migration.
-3. Introduce Persona and template provenance models.
-4. Define canonical Run, NodeRun and Attempt lifecycle/persistence.
-5. Adapt durable graph persistence to canonical Run without changing graph traversal semantics.
-6. Route scheduler triggers through Run creation.
-7. Convert TaskRunner from lifecycle owner to WorkRequest/admission -> Run adapter.
-8. Convert A2A delegated tasks to child Runs while preserving trust/routing.
-9. Normalize Agent definition into Genome + Bindings + Permission/Policy and remove runtime fields from reusable definitions.
-10. Normalize ToolExposure/Skill/Capability/Provider/Binding/Invocation boundaries.
-11. Map Builders CLI + Builders RSI to Persona-exposed surfaces and canonical Graph/Node templates.
-12. Route RSI/evolve through Graph/Node + Run rather than private loops/lifecycles.
-13. Converge artifacts/events/observability on canonical owner IDs.
-14. Apply hierarchical permissions across User -> Workspace -> Persona -> Graph -> Node -> Binding -> Invocation.
-15. Remove compatibility adapters and duplicate lifecycle/type families only after behavior-parity tests are green.
-
-## Guardrail
-
-Do not refactor a subsystem merely because its name differs from the canonical vocabulary. Merge only when semantics overlap. Preserve real distinctions such as Session vs Run, Provider vs Binding, Schedule vs Run, graph traversal vs runtime mechanics, and policy vs permission.
-
-The success criterion is not fewer class names by itself. It is that every product capability can be placed unambiguously in the hierarchy, every execution can be traced through one Run/NodeRun/Attempt model, and no subsystem invents a second owner for the same lifecycle or permission decision.
+with one execution identity model, one permission hierarchy, one event/correlation model, shared resources, and specialized packages contributing domain semantics without creating parallel universal runtimes.
