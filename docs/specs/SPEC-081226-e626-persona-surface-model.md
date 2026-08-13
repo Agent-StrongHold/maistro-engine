@@ -2,11 +2,12 @@
 
 - **Status:** Active
 - **Date:** 2026-08-12
+- **Updated:** 2026-08-13
 - **ADR:** `ADR-081226-e626`
 
 ## Required Persona shape
 
-Canonical Persona MUST expose or resolve:
+Canonical Persona must expose or resolve:
 
 ```text
 persona_id
@@ -24,37 +25,58 @@ model/provider defaults?
 created_at/updated_at
 ```
 
-Domain packages MAY attach namespaced extension metadata without redefining Persona lifecycle.
+Domain packages may attach namespaced extension metadata without redefining
+Persona lifecycle.
 
 ## Requirements
 
-1. Workspace MUST support more than one Persona.
-2. Persona MUST have exactly one owning Workspace unless explicitly defined as a platform/global template-like Persona in a future ADR; current user Personas are Workspace-owned.
-3. Selecting/using a Persona MUST be request/session/surface context, not a single global Workspace lock preventing concurrent Personas.
-4. Persona MUST NOT own execution status, retry, cancellation or checkpoint state.
-5. Launching work through a Persona MUST create/use canonical Graph/Node/Run services.
-6. Run SHOULD retain `persona_id` provenance when a Persona initiated/configured the work.
-7. Persona template catalogs MUST reference canonical template identities/versions/visibility; catalog membership MUST NOT mutate template content.
-8. Persona permission ceiling MUST be a subset of Workspace effective permission.
-9. Persona Binding availability MUST NOT expose a Binding disallowed by Workspace/User permission.
-10. Surface availability MUST be checked at the product/API layer but MUST NOT replace Invocation permission checks.
-11. Changing Persona defaults MUST NOT mutate already-instantiated Nodes/Graphs or active Runs.
-12. Model/provider defaults MUST resolve through canonical Model/Provider/Binding policy, not direct provider calls from UI.
-13. Specialized package Personas MAY add surfaces/templates/domain metadata but MUST use the canonical execution lifecycle.
+1. A live Persona must have exactly one owning Workspace.
+2. Canonical persistence must reject a second live Persona for a Workspace.
+3. A Workspace may transiently have zero Personas only during onboarding,
+   migration, deletion/replacement, or another explicitly bounded transition.
+4. Canonical product flows should converge the Workspace to one live Persona.
+5. Workspace must not maintain an active-Persona selector or concurrent live
+   Persona collection.
+6. Specialized actors are Agents/Nodes, not additional Personas.
+7. Persona must not own execution status, retry, cancellation or checkpoint
+   state.
+8. Launching work through the Persona must create/use canonical Graph/Node/Run
+   services.
+9. Run should retain `persona_id` provenance when Persona configuration shaped
+   the execution.
+10. Persona template catalogs reference canonical template identities and must
+    not copy/mutate template content.
+11. Persona settings may narrow inherited Workspace behavior but cannot widen
+    authority available at the Workspace boundary.
+12. Workspace owner scope is required to modify Persona configuration; member and
+    contributor roles consume the Workspace through that Persona.
+13. Surface availability is a product-interface rule and does not replace the
+    lower execution authorization checks.
+14. Persona default changes are non-retroactive for existing Nodes, Graphs and
+    active Runs.
+15. Specialized packages may add surfaces/templates/metadata to the one Persona
+    while preserving canonical Run lifecycle.
 
 ## Acceptance Criteria
 
-1. Create two Personas in one Workspace and use them concurrently without changing a Workspace-wide active-persona field.
-2. Each Persona exposes a distinct template catalog while both reference shared canonical templates without copying content.
-3. A Persona cannot add a Binding permission absent from Workspace authority.
-4. Disabling a Builders CLI surface prevents that surface from operating under the Persona while UI/API security still uses canonical permission checks.
-5. Launching a Graph from Persona A creates a Run correlated to the same Workspace and records Persona A provenance.
-6. Editing Persona A defaults after Run start does not alter the Run's effective snapshot.
-7. Persona B can launch the same Graph/template with different allowed defaults/bindings and produces its own Run provenance.
-8. Builders mapping proves UI/CLI/RSI surfaces operate on the same underlying Graph/Run records.
-9. A Canvas/Book Builder mapping can reference Canvas-specific templates/bindings while book-domain objects remain Canvas-owned.
-10. Turing persona-level defaults can be represented without requiring Turing runtime to own a separate Run status model.
+1. Creating a Persona for a Workspace succeeds when none exists.
+2. Creating a second Persona for that Workspace is rejected.
+3. Two different Workspaces may each own one Persona.
+4. Deleting/replacing the Persona preserves the one-live-Persona invariant.
+5. Updating Persona defaults leaves an already-started Run snapshot unchanged.
+6. A specialized actor is represented as Agent/Node configuration while the
+   Workspace continues to have only one Persona.
+7. Builders UI/CLI/RSI can operate through the same Persona and underlying
+   Graph/Run records.
+8. Canvas/Turing-specific fields can be represented as namespaced extensions
+   without creating secondary live Personas.
+9. A member or contributor can operate through the Persona but cannot perform an
+   owner-scoped Persona modification.
+10. A Run shaped by the Persona remains correlated to the same Workspace and
+    records Persona provenance.
 
 ## Non-goals
 
-This SPEC does not prescribe Persona UI design, require every Workspace to have multiple Personas, or make all agent personality/self-model data Persona-level.
+This specification does not make agent personality/self-model data Persona-level,
+does not require Persona to own Workspace membership, and does not define a
+multi-Persona switching UX.
