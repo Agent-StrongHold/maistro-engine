@@ -40,16 +40,19 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 
 ## Counts as of current `develop`
 
-Refreshed after the runtime cleanup queue (#355, #359, #361) and the promotion
-CI reconciliation. The repo-task wrapper compatibility regression adds one
-maistro-evolve node ID. Workspace creation was deliberately moved out of the
-scope-gated parametrized Hive cases and into the ordinary product-surface check,
-so Hive loses one collected node ID while retaining the intended assertion.
-Other suite counts are unchanged.
+Refreshed after the runtime cleanup queue (#355, #359, #361), the promotion
+CI reconciliation, and the Workspace/Persona convergence slice. The convergence
+work adds 44 maistro-core node IDs covering ExecutionRuntime mechanics, Project
+to Workspace compatibility, WorkspaceMembership role semantics, the live
+Persona model, and one-Persona-per-Workspace persistence. The repo-task wrapper
+compatibility regression adds one maistro-evolve node ID. Workspace creation was
+deliberately moved out of the scope-gated parametrized Hive cases and into the
+ordinary product-surface check, so Hive loses one collected node ID while
+retaining the intended assertion. Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5936 | `ci.yml` |
+| `packages/maistro-core/tests` | 5980 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
