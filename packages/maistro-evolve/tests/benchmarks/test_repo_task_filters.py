@@ -40,6 +40,18 @@ def gen():
     return _generator()
 
 
+def test_generator_wrapper_preserves_benchmark_compatibility_surface(gen) -> None:
+    expected = {
+        "_DEFAULT_MAX_ISSUE_CHARS",
+        "_DEFAULT_MAX_PATCH_LINES",
+        "_DEFAULT_MAX_SRC_FILES",
+        "_DEFAULT_MIN_ISSUE_CHARS",
+        "_SELF_AUTHORED_RE",
+        "_classify",
+    }
+    assert all(hasattr(gen, name) for name in expected)
+
+
 class TestSelfAuthoredFilter:
     """Independence, not quality.
 
