@@ -2,128 +2,110 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-12
+- **Updated:** 2026-08-13
 - **Deciders:** MAIstro maintainers
 - **Technical Area:** Domain architecture, ownership, execution boundaries
 
 ## Context
 
-MAIstro has accumulated strong capabilities across `maistro-core`, Hive, server, Builders, Canvas, Design, Turing, RSI, Evolve, scheduling, durable graphs, task execution, A2A, sessions, memory, credentials, security and integrations. The ecosystem inventory shows that many of these systems are individually useful but overlap in lifecycle ownership, naming, persistence and product entry paths.
+MAIstro has accumulated useful but overlapping ownership and execution concepts
+across core, Hive, server, Builders, Canvas, Design, Turing, RSI, Evolve,
+scheduling, durable graphs, tasks, sessions, memory, security and integrations.
+The convergence program needs one durable product root and one execution root
+without flattening legitimate product packages.
 
-The convergence program needs one product hierarchy that can connect these systems without flattening legitimate domain packages or introducing another parallel runtime.
-
-The architectural spine is:
+The architectural spine remains:
 
 ```text
 Workspace -> Run -> ExecutionRuntime -> Capabilities
 ```
 
-The ecosystem audit adds the product and execution structure around that spine:
+Product review clarified two parts of the original hierarchy:
 
-```text
-User
-└── Workspace[]
-    ├── Persona[]
-    ├── Graph[]
-    │   ├── Node[]
-    │   └── Edge[]
-    ├── Run[]
-    │   └── NodeRun[]
-    │       └── Attempt[]
-    ├── Session[]
-    ├── Artifact[]
-    ├── Schedule[]
-    └── other workspace-scoped resources
-```
-
-Fulfillment uses a separate relationship:
-
-```text
-Capability -> Provider -> Binding -> Invocation
-```
-
-The inventory also confirms that some current names are overloaded. In particular, `workspace` can mean either the product ownership boundary or a filesystem directory. Existing `Project` / `project_id` semantics overlap with the product Workspace concept. Several packages also contain private execution lifecycle concepts that must eventually converge on Run rather than remain competing roots.
+1. user access to a Workspace is a separate many-to-many
+   `WorkspaceMembership` relationship; and
+2. the normal live Workspace-to-Persona relationship is 1:1, not a collection of
+   simultaneously active Personas.
 
 ## Decision
 
-### 1. Workspace is the durable product ownership root
+### 1. Workspace is the durable product environment and ownership root
 
-A **Workspace** is the canonical product/domain ownership boundary beneath a User.
+A Workspace is the canonical durable environment/body of work. Durable product
+objects either resolve to exactly one Workspace or document an intentional
+global/enterprise scope.
 
-Every durable product object must either:
+Workspace owns or scopes at least Graphs/Nodes, Runs, Sessions, Artifacts,
+Memory, Credentials, Schedules, Integrations, Policies, Templates and its single
+live Persona.
 
-1. be directly owned/scoped by a Workspace; or
-2. have an explicit compatibility or global-scope reason for not being Workspace-owned.
+Existing `Project` / `project_id` persistence migrates through compatibility
+adapters. This decision does not require a blind database-column rename.
 
-Workspace owns or scopes at least:
+### 2. User access is modeled through WorkspaceMembership
 
-- Persona
-- Graph and Node objects
-- Runs, NodeRuns and Attempts
-- Sessions
-- Artifacts
-- Memory
-- Credentials
-- Schedules
-- Integrations
-- Policies
-- NodeTemplates and GraphTemplates
+Users and Workspaces are many-to-many:
 
-Existing Project storage and `project_id` semantics will migrate through compatibility adapters. This ADR does not require a blind database-column rename.
+```text
+User[] <-> WorkspaceMembership[] <-> Workspace[]
+```
 
-### 2. Product Workspace and filesystem work directory are distinct concepts
+WorkspaceMembership answers who can access/control a Workspace. It is distinct
+from Workspace identity and distinct from Persona.
 
-`Workspace` means the product ownership object.
+Canonical roles are:
 
-Filesystem execution roots must use unambiguous names such as:
+- **member**: use/chat/run existing workflows, instantiate/use templates,
+  provide inputs, participate in Sessions/HITL and consume permitted outputs;
+  member does not modify shared Graph/Node/Template definitions.
+- **contributor**: member rights plus create/modify shared Graphs, Nodes and
+  Templates.
+- **owner**: contributor rights plus modify the Workspace Persona, manage
+  membership/roles, and administer Workspace settings/policy.
 
-- `workdir`
-- `workspace_path`
-- `sandbox_root`
+Legacy `owner_user_id` plus editor/viewer member storage may remain behind an
+adapter until durable membership persistence is normalized.
 
-Compatibility fields may remain temporarily, but new APIs and domain objects must not introduce an ambiguous `workspace` string/path where a Workspace identity is expected.
+### 3. Workspace has one live Persona
 
-### 3. Persona is a Workspace-owned product context
+Normal state is:
 
-A **Persona** describes the purpose, defaults, surfaces, templates, policy ceiling and available bindings through which a user works in a Workspace.
+```text
+Workspace 1 ----- 1 Persona
+```
 
-Persona does not execute work and does not own a separate execution lifecycle.
+A Workspace may transiently have no Persona during migration/onboarding, but
+canonical persistence must not allow two live Personas for one Workspace.
+Persona describes how MAIstro behaves in that environment: purpose, defaults,
+surfaces, template catalogs, policy ceiling and available bindings.
 
-Persona can expose product surfaces such as UI, Builders CLI or Builders RSI while all of those surfaces operate on the same underlying Workspace objects and Runs.
+Specialized actors are Agents/Nodes, not secondary Personas.
 
-Detailed Persona field semantics are specified separately.
+### 4. Product Workspace and filesystem work directory are distinct
 
-### 4. Templates and mutable objects are distinct
+`Workspace` means the product ownership object. Filesystem execution roots use
+unambiguous names such as `workdir`, `workspace_path` or `sandbox_root`.
+Compatibility fields may remain temporarily.
 
-Reusable definitions and editable Workspace objects are distinct categories:
+### 5. Templates and mutable objects are distinct
 
 ```text
 NodeTemplate  -> instantiate -> Node
 GraphTemplate -> instantiate -> Graph
 ```
 
-Instantiation produces an independent object with source provenance. Template/object versioning and provenance semantics are defined by a dedicated ADR.
+Instantiation produces an independent editable object with source provenance.
 
-### 5. Graph and Node are the universal composition objects
+### 6. Graph and Node are the universal composition objects
 
-A **Graph** is an editable composition of Nodes and Edges. A one-node Graph is valid.
+Graph is an editable composition of Nodes and Edges. A one-node Graph is valid.
+Node is the universal executable position in a Graph. NodeType supplies
+specialized behavior without introducing another top-level lifecycle.
 
-A **Node** is the universal executable position within a Graph. Different NodeTypes do not create different top-level execution lifecycle classes.
+### 7. Run is the universal logical execution root
 
-### 6. Run is the universal logical execution root
-
-A **Run** represents one logical execution regardless of whether it originated from:
-
-- a manual UI action
-- a single agent
-- a multi-agent graph
-- a scheduled trigger
-- Builders
-- RSI
-- Evolve
-- a tool-oriented workflow
-- delegation from another Run
-
-A Run contains logical NodeRuns. A NodeRun contains one or more physical Attempts.
+Manual, agent, graph, scheduled, Builders, RSI, Evolve, tool-oriented and
+delegated workload all converge on canonical Run/NodeRun/Attempt semantics:
 
 ```text
 Run
@@ -131,116 +113,96 @@ Run
     └── Attempt[]
 ```
 
-Detailed lifecycle states, persistence and transition rules are defined by a dedicated Run/NodeRun/Attempt ADR.
+### 8. Session and Schedule remain distinct from Run
 
-### 7. Session and Schedule remain distinct from Run
+Session owns conversation/collaboration continuity and may span multiple Runs.
+Schedule owns trigger/cadence metadata and creates or resumes a canonical Run.
+Neither becomes a competing execution truth.
 
-A **Session** owns conversation/collaboration continuity and may span multiple Runs.
+### 9. ExecutionRuntime owns mechanics, not product semantics
 
-A **Schedule** owns trigger/cadence metadata. When it fires, it creates or resumes a canonical Run. A scheduler must not become a competing execution lifecycle authority.
-
-### 8. ExecutionRuntime owns mechanics, not product semantics
-
-`ExecutionRuntime` owns execution mechanics such as bounded concurrency, cancellation propagation, deadlines, backpressure, process supervision, event sequencing mechanics and runtime metrics.
-
-It does not own:
-
-- Workspace ownership
-- graph traversal meaning
-- permission semantics
-- business lifecycle policy
-- retry eligibility policy
-- delegation policy
-- Run persistence semantics
+ExecutionRuntime owns bounded concurrency, cancellation propagation, deadlines,
+backpressure, process supervision, event sequencing mechanics and runtime
+metrics. It does not own Workspace, membership, Persona, graph traversal,
+permission policy, retry eligibility or Run persistence semantics.
 
 Python domain code remains authoritative for product semantics.
 
-### 9. Capability fulfillment is separate from product ownership
+### 10. Capability fulfillment is separate from ownership
 
-Nodes consume authorized capability bindings. Fulfillment is modeled as:
+Fulfillment remains:
 
 ```text
 Capability -> Provider -> Binding -> Invocation
 ```
 
-This hierarchy does not replace Workspace/Graph/Run ownership. It describes how authorized work is fulfilled.
+This does not replace Workspace/Graph/Run ownership. It describes how authorized
+work is fulfilled.
 
-### 10. Specialized packages extend the hierarchy instead of replacing it
+### 11. Specialized packages extend the hierarchy
 
-Canvas, Design, Turing, Builders, RSI, Evolve, Hive and future product/domain packages may provide:
+Canvas, Design, Turing, Builders, RSI, Evolve, Hive and future packages may
+provide surfaces, NodeTypes, templates, capabilities/providers/bindings,
+policies and domain assets. They must not introduce another universal ownership
+root or Run lifecycle.
 
-- Personas and surfaces
-- NodeTypes
-- NodeTemplates and GraphTemplates
-- capabilities/providers/bindings
-- policies
-- domain assets and metadata
+### 12. Existing global and enterprise scopes are preserved where real
 
-They must not introduce a second universal product root or a second universal execution lifecycle.
+Organization/team/global infrastructure scopes may remain where they represent
+real enterprise boundaries. They map explicitly around the Workspace model
+rather than being deleted for noun-count symmetry.
 
-Package names and physical moves are not dictated by this ADR. Package ownership and dependency direction are handled by a separate ADR after semantic mapping is complete.
+## Canonical relationship sketch
 
-### 11. Existing global and enterprise scopes are not deleted for symmetry
-
-Legacy organization/team/global concepts may remain where they represent real infrastructure or enterprise boundaries. They must map explicitly around the User/Workspace/Persona product hierarchy rather than being deleted solely to reduce noun count.
+```text
+User[]
+  <-> WorkspaceMembership[]
+        <-> Workspace[]
+              ├── Persona (1:1 live)
+              ├── Graph[]
+              │    ├── Node[]
+              │    └── Edge[]
+              ├── Run[]
+              │    └── NodeRun[]
+              │         └── Attempt[]
+              ├── Session[]
+              ├── Artifact[]
+              ├── Schedule[]
+              └── other Workspace-scoped resources
+```
 
 ## Consequences
 
 ### Positive
 
-- Gives every product capability a common ownership root.
-- Establishes one execution identity that schedules, agents, graphs, Builders, RSI, Evolve and delegation can share.
-- Lets specialized packages remain specialized without becoming architectural islands.
-- Separates continuity (Session), triggering (Schedule), execution (Run) and fulfillment (Capability/Binding).
-- Makes Workspace-centric UI, auditing, observability, permissions and recovery structurally possible.
-- Provides a stable target for eliminating implemented-but-unreachable subsystems.
+- Shared and personal Workspaces use one access model.
+- Persona no longer duplicates Agent as a specialization mechanism.
+- Workspace has one coherent behavior/configuration point.
+- One execution identity can be shared by schedules, graphs, Builders, RSI,
+  Evolve and delegation.
+- Workspace-centric auditing, recovery and UI become structurally consistent.
 
 ### Negative
 
-- Existing Project, Task, GraphRun, A2A, Builders and package-specific lifecycle APIs require compatibility adapters during migration.
-- Some current fields named `workspace`, `run`, `task` or `session` will need semantic cleanup.
-- Durable persistence cannot be normalized safely in one change; migrations must proceed behind parity tests.
-
-### Neutral
-
-- This decision does not require a package rename.
-- This decision does not prescribe a storage engine.
-- This decision does not make every domain asset a Graph or Node.
-- This decision does not collapse Session, Schedule, Artifact, Credential, Permission or Policy into Run.
-
-## Alternatives Considered
-
-### Keep package-specific lifecycle models and connect them through adapters indefinitely
-
-Rejected as the end state. It preserves the current duplication in cancellation, retries, recovery, events and ownership and makes cross-product inspection unreliable.
-
-### Make GraphRun the universal root
-
-Rejected. Graph traversal state is important but is not universal execution lifecycle. Graph-specific state belongs beside/inside a canonical Run rather than defining all execution.
-
-### Make Task the universal root
-
-Rejected. Current Task concepts combine ingress/work request, queue/scheduling information and execution state. These responsibilities need separation.
-
-### Force all specialized packages into `maistro-core`
-
-Rejected. Convergence is semantic, not a package-count reduction exercise. Specialized product/domain behavior remains outside core when that boundary is useful.
+- Existing Project roles and owner fields need compatibility mapping.
+- Existing assumptions about multiple Personas require migration.
+- Task/GraphRun/package-specific lifecycle APIs still need adapters.
+- Persistence normalization must proceed incrementally behind parity tests.
 
 ## Compliance
 
-Architecture changes comply with this ADR when:
+Architecture changes comply when:
 
-- every new durable product object declares its Workspace ownership/scope;
-- new product APIs resolve Workspace context before creating durable workload state;
-- a subsystem does not introduce another universal Run lifecycle;
-- a NodeType implementation does not become the owner of Run persistence;
-- a scheduler creates/resumes Runs instead of executing workload under a private lifecycle;
-- filesystem paths are not confused with product Workspace identity;
-- Session remains continuity rather than execution identity;
-- specialized packages map execution onto canonical Run/NodeRun/Attempt semantics;
-- capability fulfillment uses explicit authorization/binding boundaries rather than bypassing product ownership and policy.
-
-Enforcement begins with specifications and compatibility tests, then graduates into architecture fitness checks as migrations land.
+- every new durable product object declares Workspace scope or a documented
+  non-Workspace scope;
+- Workspace access resolves through WorkspaceMembership semantics;
+- canonical roles use member/contributor/owner behavior;
+- a Workspace cannot have two live Personas;
+- specialized actors are represented as Agents/Nodes instead of extra Personas;
+- new execution enters canonical Run semantics;
+- schedulers create/resume Runs rather than owning workload truth;
+- filesystem paths are not confused with product Workspace identity; and
+- specialized packages extend rather than replace the canonical hierarchy.
 
 ## References
 
@@ -248,4 +210,5 @@ Enforcement begins with specifications and compatibility tests, then graduates i
 - `docs/analysis/ARCHITECTURE-CONVERGENCE-MATRIX.md`
 - `docs/analysis/EXECUTION-RUNTIME-SEAM-MAP.md`
 - `docs/analysis/PACKAGE-OWNERSHIP-DECISIONS.md`
-- `ADR-062026-9b30`: Date-based ADR/SPEC identifiers
+- `ADR-081226-e626`
+- `ADR-081226-6e34`
