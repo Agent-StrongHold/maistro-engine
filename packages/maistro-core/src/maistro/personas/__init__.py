@@ -1,15 +1,4 @@
-"""Persona authoring + live product-context domain.
-
-Public surface:
-
-- :mod:`maistro.personas.model` — live Workspace-owned ``Persona`` and known surfaces.
-- :mod:`maistro.personas.vocabulary` — declarative check vocabulary (P0).
-- :mod:`maistro.personas.rubric` — ``RubricEval`` + generic YAML loader (P0).
-- :mod:`maistro.personas.scorer` — ``RubricScorer`` / optional ``DeepEvalScorer`` (P0/P1).
-- :mod:`maistro.personas.schema` — reusable persona template schema (P1).
-- :mod:`maistro.personas.expander` — persona template → ``AgentRecipe`` roster expansion (P1).
-- :mod:`maistro.personas.golden` — versioned ``GoldenRecord`` store (P1).
-"""
+"""Persona authoring and live product-context domain."""
 
 from __future__ import annotations
 
@@ -38,6 +27,13 @@ from maistro.personas.schema import (
     VoiceSpec,
 )
 from maistro.personas.scorer import DeepEvalScorer, RubricScorer, create_judge_scorer
+from maistro.personas.store import (
+    InMemoryPersonaStore,
+    PersonaAlreadyExists,
+    PersonaNotFound,
+    PersonaStore,
+    WorkspacePersonaAlreadyExists,
+)
 
 __all__ = [
     "BrandSpec",
@@ -53,7 +49,11 @@ __all__ = [
     "GoldenRecordDiff",
     "GoldenRecordStore",
     "InMemoryGoldenRecordStore",
+    "InMemoryPersonaStore",
     "Persona",
+    "PersonaAlreadyExists",
+    "PersonaNotFound",
+    "PersonaStore",
     "PersonaSurface",
     "PersonaTemplate",
     "RubricEval",
@@ -61,6 +61,7 @@ __all__ = [
     "SourceEvidence",
     "SpawnSpec",
     "VoiceSpec",
+    "WorkspacePersonaAlreadyExists",
     "capability_checklist",
     "create_judge_scorer",
     "default_checklist_ids",
