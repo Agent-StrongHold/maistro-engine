@@ -1,12 +1,12 @@
-# MAIstro Package Ownership Decisions
+# MAIstro Package Ownership Working Map
 
-Status: architecture convergence working decisions
+Status: architecture convergence working hypotheses. Package ownership conclusions may guide mapping work, but physical package renames/moves are not approved merely by appearing here.
 
-This document records package-level decisions that emerged while validating the ecosystem inventory against the actual repository tree. These decisions are descriptive enough to guide the remaining inventory work and specific enough to prevent package names from dictating incorrect domain ownership.
+This document records package-level observations that emerged while validating the ecosystem inventory against the actual repository tree. The goal is to prevent historical package names from dictating incorrect domain ownership while avoiding premature churn before the canonical vocabulary is locked.
 
 ## Naming and ownership rule
 
-A package name should communicate the domain or product responsibility it owns. Historical implementation location does not define canonical architecture.
+A package name should eventually communicate the domain or product responsibility it owns. Historical implementation location does not define canonical architecture, but naming cleanup follows semantic convergence rather than preceding it.
 
 The canonical runtime spine remains:
 
@@ -21,9 +21,9 @@ User -> Workspace -> Persona -> Graph/Node -> Run -> NodeRun -> Attempt
 Capability -> Provider -> Binding -> Invocation
 ```
 
-## Package decisions
+## Package map
 
-| Package | Current reality | Canonical role | Disposition |
+| Package | Current reality | Canonical role | Working disposition |
 |---|---|---|---|
 | `maistro-core` | Shared domain/runtime/platform primitives | Authoritative reusable MAIstro domain semantics and generic platform mechanisms | KEEP; move duplicated domain ownership here only when semantics are truly generic |
 | `maistro-server` | Generic FastAPI/API surface including tasks, agents, Canvas, chat compatibility, webhooks, websocket progress, health | Transport/application adapter over canonical Workspace/Persona/Graph/Run services | KEEP; remove independent lifecycle truth |
@@ -33,14 +33,14 @@ Capability -> Provider -> Binding -> Invocation
 | `maistro-evolve` | Evolutionary optimization/evaluation domain | Optimization/evaluation graphs, nodes, policies and template promotion behavior | KEEP; remove private execution lifecycle where present |
 | `maistro-rsi` | Recursive self-improvement product/domain with sandbox, git, evaluation and autorun | Persona capability + Graph/Node definitions + canonical Runs | KEEP; converge execution semantics |
 | `maistro-turing` | Self-model, personality/drives, proactive producers, cognition, memory bridge, actor/chat runtime, providers/tools | Persona/Agent semantic extensions plus capabilities/triggers; runtime-facing behavior must create canonical Runs | KEEP; do not misclassify as merely evaluation tooling |
-| `maistro-bootstrap` | Installer/materializer plus Builders agent loop, model selector, sandbox/container execution, credentials, delivery and sessions | Bootstrap/install tooling plus misplaced runtime/Builders responsibilities | SPLIT; retain installation/materialization here, migrate runtime-like pieces to canonical Builders/runtime/capability owners |
-| `maistro-registry` | ADR/spec parser, linker, DAG, generator, validator and CLI | Architecture/spec governance tooling | RENAME to `maistro-arch-governance` |
+| `maistro-bootstrap` | Installer/materializer plus Builders agent loop, model selector, sandbox/container execution, credentials, delivery and sessions | Bootstrap/install tooling plus runtime/Builders responsibilities that may belong elsewhere | KEEP package during audit; candidate responsibility split after parity mapping |
+| `maistro-registry` | ADR/spec parser, linker, DAG, generator, validator and CLI | Architecture/spec governance tooling | KEEP during audit; naming cleanup is a candidate, not a decision |
 
-## `maistro-arch-governance`
+## `maistro-registry` naming candidate
 
-The current `maistro-registry` name is misleading because the package does not own MAIstro runtime registries. It owns architecture/specification governance tooling.
+The current `maistro-registry` name can be confused with runtime registries even though the package owns architecture/specification governance tooling.
 
-Target naming:
+A future naming cleanup could use a more explicit name such as:
 
 ```text
 Distribution/package: maistro-arch-governance
@@ -48,7 +48,9 @@ Python import:         maistro_arch_governance
 CLI:                   maistro-arch
 ```
 
-Target responsibilities:
+This is **not approved for physical rename by this audit**. The repository should first lock the ontology, references, compatibility requirements and package ownership boundaries.
+
+Current responsibilities to preserve regardless of final name:
 
 - ADR/spec parsing
 - architecture dependency/DAG analysis
@@ -59,7 +61,7 @@ Target responsibilities:
 - conformance checks
 - documentation/code architecture governance
 
-This intentionally leaves `Registry` terminology available for semantically specific runtime/domain concepts such as:
+Keep `Registry` terminology available for semantically specific runtime/domain concepts such as:
 
 - `NodeTypeRegistry`
 - `TemplateRegistry`
@@ -70,11 +72,11 @@ This intentionally leaves `Registry` terminology available for semantically spec
 
 Do not introduce one generic runtime `Registry` abstraction merely because several catalogs exist.
 
-## `maistro-bootstrap` split
+## `maistro-bootstrap` responsibility candidate
 
-The package currently mixes deployment/bootstrap concerns with actual user-work execution concerns. Treat the split as conceptual first, then migrate code behind parity tests.
+The package currently mixes deployment/bootstrap concerns with user-work execution concerns. Treat the split as conceptual during the audit, then migrate only where code-level evidence and parity tests justify it.
 
-Remain in bootstrap:
+Likely bootstrap-owned responsibilities:
 
 - installer/wizard
 - platform detection
@@ -83,7 +85,7 @@ Remain in bootstrap:
 - bootstrap configuration/schema
 - bootstrap-specific credential acquisition required only for installation
 
-Migrate or converge elsewhere:
+Responsibilities to map against canonical owners before moving:
 
 - Builders agent loop -> Builders Agent Node/NodeTemplate execution
 - model selector -> model Provider/Binding selection policy
@@ -128,7 +130,7 @@ Workspace
     └── Canvas/book UI surface
 ```
 
-Do not move these app-specific concepts into `maistro-core` merely to reduce package count.
+Do not move app-specific concepts into `maistro-core` merely to reduce package count.
 
 ## `maistro-turing` boundary
 
@@ -144,9 +146,17 @@ Map its responsibilities as follows:
 - providers/tools -> Capability/Provider/Binding/ToolExposure
 - Turing backend/API -> product surface, not lifecycle authority
 
-## Physical rename timing
+## Physical package-change rule
 
-Record the `maistro-registry` -> `maistro-arch-governance` decision now. Perform the physical package/import/CLI rename in the convergence branch before architecture fitness rules start depending on package names, but keep it as a mechanically isolated commit so compatibility issues are easy to identify.
+Do not physically rename or split packages during the inventory phase solely to make names match the emerging ontology.
+
+A physical package move/rename requires:
+
+1. canonical semantic owner is locked;
+2. dependency/import impact is known;
+3. compatibility plan is explicit;
+4. behavior/reachability tests exist;
+5. the change is mechanically isolated enough to diagnose regressions.
 
 ## Inventory completion gate
 
