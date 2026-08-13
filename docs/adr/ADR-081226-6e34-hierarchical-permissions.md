@@ -2,97 +2,81 @@
 
 - **Status:** Accepted
 - **Date:** 2026-08-12
+- **Updated:** 2026-08-13
 - **Deciders:** MAIstro maintainers
 - **Technical Area:** Authorization, policy, credentials, security
 
 ## Context
 
-MAIstro currently has auth scopes, collaboration roles, agent/tool allowlists, A2A trust/delegation modes, capability trust, approval gates, Warden/Sentinel/Gate controls, sandbox restrictions, credential policies and package-specific trust systems. These mechanisms must converge on the actual execution path so documented security is also runtime security.
+MAIstro has auth scopes, collaboration roles, agent/tool allowlists, approval
+checks, sandbox restrictions, credential rules and package-specific trust
+systems. These controls need one path that follows the actual Workspace and Run
+model.
+
+Product review clarified that Workspace access is not a property of Workspace
+itself. It is the User-to-Workspace `WorkspaceMembership` relationship.
 
 ## Decision
 
-Authorization forms a narrowing hierarchy:
+Authorization narrows through:
 
 ```text
 User
-  -> Workspace
-    -> Persona
-      -> Graph
-        -> Node
-          -> Binding
-            -> Invocation
+  -> WorkspaceMembership
+    -> Workspace
+      -> Persona
+        -> Graph
+          -> Node
+            -> Binding
+              -> Invocation
 ```
 
-### Effective permission
+WorkspaceMembership contributes the collaboration role for that User in that
+Workspace. Canonical roles are member, contributor and owner.
 
-Each level contributes an authorization ceiling. A child may inherit or narrow its parent; it may not self-grant authority absent from an ancestor.
+- member may operate existing Workspace workflows/resources within the remaining
+  effective limits;
+- contributor adds shared Graph/Node/Template editing;
+- owner adds Workspace-level Persona, membership/role and administrative changes.
 
-Conceptually:
+Each later level may inherit or narrow what came before. A child does not create
+new authority absent from its ancestors.
 
-```text
-effective = intersection(User, Workspace, Persona, Graph, Node, Binding, Invocation request)
-```
+Permission and Policy remain distinct. Permission determines whether an action
+is available at all. Policy determines whether an otherwise available action may
+proceed under current conditions. Policy can deny, defer or add conditions; it
+does not manufacture unavailable authority.
 
-An omitted child restriction means "inherit", not "allow everything". Explicit denial wins over allowance at the same/effective chain.
+Invocation remains the final execution enforcement boundary for external/tool/
+model/provider/harness/sandbox/agent-backed fulfillment. Earlier product checks
+remain useful for UX and defense in depth.
 
-### Permission and Policy are distinct
+Child Runs inherit Workspace and authorization context and may narrow it.
+Cross-Workspace behavior requires an explicit mechanism rather than implicit
+parentage.
 
-Permission answers whether the actor/context may perform an action at all.
-
-Policy evaluates whether an otherwise permitted action may proceed now under current state/context, and may require conditions such as approval, reversibility constraints, budget, trust, sandboxing or human review.
-
-Policy may deny, defer or condition permitted behavior. Policy MUST NOT grant authority beyond the effective permission ceiling.
-
-### Invocation is the final enforcement boundary
-
-All external/tool/model/provider/harness/sandbox/agent-backed fulfillment MUST evaluate effective permission before Invocation. Earlier UI/API checks are defense in depth and UX, not substitutes for runtime enforcement.
-
-### Child Runs inherit and may narrow
-
-Delegated child Runs inherit the parent Workspace and authorization context unless an explicitly authorized cross-Workspace Binding is used. Child execution may narrow permissions; it cannot automatically widen them.
-
-### Privilege elevation
-
-Privilege elevation cannot be implemented by a child Node/Binding simply widening itself. Any elevation must be represented as an explicit authorized change/grant at an appropriate ancestor/security boundary, remain bounded by User/Workspace entitlement, be policy/audit visible, and produce a new effective authorization context before Invocation.
-
-### Credentials follow permission
-
-Permission to reference a Binding does not automatically expose all credentials. Credential resolution occurs only for an authorized Binding/Invocation and is further constrained by credential scope/policy.
-
-### Existing security systems become evaluators/inputs
-
-Existing systems remain useful but participate in the canonical envelope:
-
-- auth/JWT/service-key scopes establish actor/root authority;
-- collaboration ACL contributes Workspace/Session surface permissions;
-- Warden/Sentinel/security scanning can deny/quarantine;
-- Gate/approval can condition permitted operations;
-- reversibility classification influences policy/approval;
-- sandbox policy constrains execution environment;
-- skill/provider trust contributes policy evidence;
-- credential policy constrains secret resolution;
-- A2A peer trust constrains agent-backed Bindings.
-
-No subsystem bypasses the canonical Invocation check because it performed its own earlier trust check.
-
-### Cross-Workspace behavior is explicit
-
-Cross-Workspace reads, bindings, delegation or artifact access are denied by default unless an explicit product/security mechanism authorizes them.
+Credential resolution follows an allowed Binding/Invocation and remains subject
+to credential scope. Existing Warden/Sentinel/Gate/trust/sandbox systems become
+inputs/evaluators on this canonical path rather than alternate roots.
 
 ## Consequences
 
-- Security applies to the real execution path.
-- Agents-as-tools cannot gain more authority than the calling context.
-- Collaboration/trust/approval mechanisms can coexist without becoming separate authorization roots.
-- Privilege elevation becomes explicit and auditable.
-- Some existing permissive direct-provider/tool calls will need adapters or migration.
+- Collaboration roles are part of the same effective authorization path as
+  Persona, Graph, Node and Binding restrictions.
+- Shared Workspaces no longer need a parallel collaboration security model.
+- Agent-backed tools cannot exceed the calling context.
+- Existing direct provider/tool paths need convergence where they bypass this
+  boundary.
 
 ## Compliance
 
-A path complies when effective authorization is computed from the full applicable chain, Binding/Invocation cannot widen ancestors, policy cannot manufacture permission, credential resolution follows authorization, and security/trust decisions are correlated to the canonical execution IDs.
+A path complies when it resolves the actor's WorkspaceMembership, applies the
+role contribution, narrows through Workspace/Persona/Graph/Node/Binding, checks
+the Invocation before fulfillment, and keeps policy incapable of widening the
+result.
 
 ## References
 
 - `ADR-081226-9944`
+- `ADR-081226-e626`
 - `ADR-081226-6b46`
-- `docs/analysis/ARCHITECTURE-CONVERGENCE-MATRIX.md`
