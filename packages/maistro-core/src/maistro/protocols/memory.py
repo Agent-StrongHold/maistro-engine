@@ -5,7 +5,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from maistro.types.memory import EpisodicMemory, Learning, Outcome, SkillMutation
+    from datetime import datetime
+
+    from maistro.types.memory import (
+        DecaySweep,
+        EpisodicMemory,
+        Learning,
+        Outcome,
+        SkillMutation,
+    )
     from maistro.types.security import AuditEntry
 
 
@@ -112,6 +120,23 @@ class EpisodicStore(Protocol):
         limit: int = 50,
     ) -> list[EpisodicMemory]:
         """Scope-filtered memories at or above min_weight, no content matching."""
+        ...
+
+
+@runtime_checkable
+class DecayableEpisodicStore(Protocol):
+    """An :class:`EpisodicStore` that can apply periodic decay to itself.
+
+    Split out from ``EpisodicStore`` so a store that cannot sweep (e.g. a
+    read-only or remote projection) stays a valid ``EpisodicStore`` and the
+    decay driver reports "no decayable store" loudly instead of crashing.
+    """
+
+    async def apply_decay(self, *, now: datetime | None = None) -> DecaySweep:
+        """Apply one pass of time-based decay to every live memory.
+
+        Returns what the sweep touched, so a driver can report it (SPEC-080126-9e42).
+        """
         ...
 
 

@@ -7,6 +7,7 @@ skipping the isolation-guarantee assertions.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -250,8 +251,17 @@ async def test_destroy_logs_warning_on_nonzero_exit() -> None:
     with patch(
         "maistro.tools.sandbox.docker.asyncio.create_subprocess_exec",
         new=AsyncMock(return_value=fake_proc),
-    ):
+    ) as mock_exec:
         await container.destroy()
+
+    mock_exec.assert_awaited_once_with(
+        "docker",
+        "rm",
+        "-f",
+        "abc123",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
 
 
 async def test_create_sandbox_builds_expected_docker_run_args(tmp_path: Any) -> None:

@@ -40,6 +40,19 @@ class NodeStatus(StrEnum):
     ABANDONED = "abandoned"
 
 
+class FrontierExhausted(ValueError):
+    """No node remains to refine: the root is abandoned and no EXPLORED branch
+    survives it. An ordinary end state for a run, not a fault.
+
+    A ``ValueError`` subclass so callers written against the old contract keep
+    working, but a distinct type so no caller has to recognise it by matching
+    on the message text. Message matching is what made this worth naming: a
+    caller catching ``ValueError`` and testing for ``"abandoned"`` also
+    swallows unrelated ``ValueError``s from injected proposers and executors,
+    which turns a real failure into a tidy "frontier exhausted" stop.
+    """
+
+
 @dataclass(frozen=True)
 class HypothesisEvidence:
     """The returned result of executing one hypothesis: did the self-change
@@ -287,14 +300,15 @@ class HypothesisTree:
     def select_seed(self) -> HypothesisNode:
         """The node a fresh hypothesis should refine when nothing is queued:
         the most promising explored branch, or the root while the tree is still
-        young (nothing explored yet). Raises ValueError if the root is abandoned
-        and no EXPLORED branches exist — the tree is a dead end."""
+        young (nothing explored yet). Raises :class:`FrontierExhausted` if the
+        root is abandoned and no EXPLORED branches exist — the tree is a dead
+        end."""
         seeds = self.expandable_seeds()
         if seeds:
             return seeds[0]
         root = self.nodes[self.root_id]
         if root.status is NodeStatus.ABANDONED:
-            raise ValueError("root is abandoned and no explored branches exist")
+            raise FrontierExhausted("root is abandoned and no explored branches exist")
         return root
 
     # -- lineage / insight propagation --------------------------------------

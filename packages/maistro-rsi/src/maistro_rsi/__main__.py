@@ -333,7 +333,7 @@ def _evolve(args: argparse.Namespace) -> int:
         agent_turns=args.agent_turns,
         isolation=args.isolation,
     )
-    harness = EvalHarness(use_real_benchmarks=False)
+    harness = EvalHarness(benchmark_fidelity="proxy")
     harness.register_benchmark("code_rsi", make_code_rsi_runner(fixer.fix_and_score, args.target))
     from maistro_rsi.free_router import (
         DEFAULT_FREE_MODEL,

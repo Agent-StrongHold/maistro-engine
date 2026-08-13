@@ -9,6 +9,7 @@ lower-level and dependency-light. It maps a harness action dict onto a policy
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from maistro.policy.engine import SequencePolicyEngine
@@ -16,10 +17,22 @@ from maistro.policy.types import Action
 
 
 def _as_number(value: Any) -> float:
+    """Coerce a charge value from the foreign harness's action envelope.
+
+    Clamped to finite, non-negative: these numbers debit cumulative budgets,
+    so a provider reporting a negative token count would *credit* the session,
+    and a NaN cost poisons every later ``value > limit`` comparison (NaN
+    compares False), silently disabling BudgetRule enforcement. Malformed or
+    hostile values charge zero — the action is still recorded, just never
+    allowed to widen the budget.
+    """
     try:
-        return float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return 0.0
+    if not math.isfinite(number) or number < 0:
+        return 0.0
+    return number
 
 
 class PolicyActionGate:

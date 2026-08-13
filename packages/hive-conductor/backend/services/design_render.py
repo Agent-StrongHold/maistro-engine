@@ -219,19 +219,33 @@ class DesignRenderService:
             raise
 
     async def render_to_png(self, content: str, metadata: dict[str, Any]) -> bytes:
-        """Render HTML to PNG via Playwright.
+        """Render HTML to PNG via Playwright — not implemented yet.
 
-        Phase 2B.3: Full implementation. For now, stub.
+        Phase 2B.3 will implement this. Until then it raises an
+        `HTTPException(501)` rather than a bare `NotImplementedError`, so the
+        caller gets an honest "this backend does not implement PNG" instead of
+        a 500 that reads like a crash. Raised at the service boundary because
+        `routes/design.py` re-raises `HTTPException` untouched and funnels every
+        other exception into a generic 500 — a domain error would need each
+        current and future PNG-dispatching route to translate it identically.
 
         Args:
             content: HTML content
             metadata: Image metadata (width, height, etc.)
 
-        Returns:
-            PNG bytes
+        Raises:
+            HTTPException: always, with status 501.
         """
+        from fastapi import HTTPException
+
         logger.warning("PNG rendering not yet implemented (Phase 2B.3)")
-        raise NotImplementedError("PNG rendering deferred to Phase 2B.3 (Playwright)")
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "PNG rendering is not implemented. It is deferred to Phase 2B.3 "
+                "(Playwright renderer). Use pdf, pptx or docx instead."
+            ),
+        )
 
 
 # Singleton instance

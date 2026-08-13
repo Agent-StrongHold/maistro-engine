@@ -11,37 +11,40 @@ Four layers (cheap to expensive, short-circuit on detection):
 from __future__ import annotations
 
 import logging
-import unicodedata
 from typing import TYPE_CHECKING
 
 from maistro.security._types import WardenVerdict
+from maistro.security.normalize import normalize_for_detection
 from maistro.security.warden.heuristics import heuristic_scan
 from maistro.security.warden.patterns import REJECT_PATTERNS
 from maistro.security.warden.semantic import semantic_tool_poisoning_scan
 
 if TYPE_CHECKING:
+    import regex
+
     from maistro.security._types import LLMClient
 
 logger = logging.getLogger("maistro.warden")
 
+# Per-search ceiling. A reject pattern that cannot finish in half a second on a
+# 50KB window is catastrophically backtracking; `regex` raises TimeoutError,
+# which the loop below records as a fail-closed flag.
 _PATTERN_TIMEOUT_S = 0.5
 
-_HAS_REGEX_TIMEOUT = hasattr(REJECT_PATTERNS[0][0].search, "__code__") if REJECT_PATTERNS else False
 
-
-def _pattern_search(pattern: object, text: str) -> bool:
-    import re as _re
-
-    p: _re.Pattern[str] = pattern  # type: ignore[assignment]
-    try:
-        return bool(p.search(text))
-    except Exception:
-        return False
+def _pattern_search(pattern: regex.Pattern[str], text: str) -> bool:
+    """One pattern, one window, bounded time. Exceptions propagate — a scanner
+    that swallows its own failure and answers "no threat" is fail-open, and an
+    earlier version of this helper did exactly that, making the ``regex_error:``
+    handler below unreachable."""
+    return bool(pattern.search(text, timeout=_PATTERN_TIMEOUT_S))
 
 
 def _scan_reject_patterns(scan_content: str) -> list[str]:
     """Run every reject pattern against ``scan_content``, collecting flag
-    descriptions (and ``regex_error:`` markers for patterns that raise)."""
+    descriptions — and ``regex_error:`` markers for patterns that raise or time
+    out, so an engine failure surfaces as a non-clean verdict instead of
+    passing silently."""
     flags: list[str] = []
     for pattern, description in REJECT_PATTERNS:
         try:
@@ -80,7 +83,12 @@ class Warden:
         # Window: 50KB with 2KB overlap so patterns spanning a boundary are caught.
         window_size = 50 * 1024
         overlap = 2 * 1024
-        content_norm = unicodedata.normalize("NFKD", content)
+        # Full fold (NFKD + invisible stripping + homoglyph folding) so a
+        # zero-width space inside "ignore", or a Cyrillic i in it, doesn't
+        # walk past patterns written in ASCII. Applied here rather than in the
+        # Gate so every caller gets it — the RSI quarantine gate calls scan()
+        # directly and used to miss the Gate's sanitize pass entirely.
+        content_norm = normalize_for_detection(content)
 
         if len(content_norm) <= window_size:
             flags.extend(_scan_reject_patterns(content_norm))

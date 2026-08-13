@@ -9,10 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
 from maistro.auth.client import ServiceKeyClient
 from maistro.events.bus import Event, Trigger
+from maistro.http import shared_client
 
 logger = logging.getLogger("maistro.events.handlers")
 
@@ -84,7 +83,7 @@ async def webhook_action(trigger: Trigger, event: Event) -> None:
     if svc:
         resp = await svc.request(method, url, json=body, headers=headers, timeout=timeout)
     else:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with shared_client(timeout=timeout) as client:
             resp = await client.request(method, url, json=body, headers=headers)
     logger.info("Webhook %s %s → %d", method, url, resp.status_code)
 
@@ -120,7 +119,7 @@ async def conductor_chat_action(trigger: Trigger, event: Event) -> None:
             f"{base_url}/v1/chat/completions", json=payload, headers=headers, timeout=30
         )
     else:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with shared_client(timeout=30) as client:
             resp = await client.post(
                 f"{base_url}/v1/chat/completions",
                 json=payload,
@@ -144,7 +143,7 @@ async def coinswarm_action(trigger: Trigger, event: Event) -> None:
     if svc:
         resp = await svc.post(url, json=resolved_params, timeout=15)
     else:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with shared_client(timeout=15) as client:
             resp = await client.post(url, json=resolved_params)
     logger.info("CoinSwarm action %s %s → %d", trigger.name, endpoint, resp.status_code)
 
@@ -170,7 +169,7 @@ async def ha_action(trigger: Trigger, event: Event) -> None:
     if svc:
         resp = await svc.post(url, json=payload, headers=headers, timeout=10)
     else:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             resp = await client.post(url, json=payload, headers=headers)
     logger.info("HA action %s %s.%s → %d", trigger.name, domain, service, resp.status_code)
 
@@ -207,7 +206,7 @@ async def ntfy_action(trigger: Trigger, event: Event) -> None:
 
     url = f"{base_url}/{topic}"
     content = message.encode("utf-8")
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with shared_client(timeout=10) as client:
         resp = await client.post(url, content=content, headers=headers)
     logger.info("ntfy action %s → %d", trigger.name, resp.status_code)
 

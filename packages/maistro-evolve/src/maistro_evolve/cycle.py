@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import random
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +16,8 @@ from .population import IslandPopulation, PopulationStore, migrate_islands
 from .reflect import reflective_improve
 from .tournament import EloTournament
 from .types import PipelineGenome
+
+logger = logging.getLogger("maistro_evolve.cycle")
 
 # Hard, non-overridable ceilings on per-cycle resource/compute consumption.
 # These are RSI safety bounds (not tuning knobs): an evolution loop with no
@@ -39,7 +42,12 @@ class EvolutionConfig(BaseModel):
     cull_pct: float = 0.3
     breed_pct: float = 0.2
     eval_batch_size: int = Field(default=5, ge=0, le=MAX_EVAL_BATCH_SIZE)
-    target_benchmarks: list[str] = ["ifeval", "bfcl", "swebench", "tau_bench"]
+    target_benchmarks: list[str] = [
+        "proxy_ifeval",
+        "proxy_bfcl",
+        "proxy_swebench",
+        "proxy_tau_bench",
+    ]
     tournament_size: int = Field(default=3, gt=0, le=MAX_TOURNAMENT_SIZE)
     self_improve: bool = True
     self_improve_top_n: int = Field(default=3, ge=0, le=MAX_SELF_IMPROVE_TOP_N)
@@ -390,6 +398,14 @@ class EvolutionCycle:
         config: EvolutionConfig | None = None,
     ) -> PopulationStore:
         cfg = config or EvolutionConfig()
+
+        if self.harness.fidelity != "real":
+            logger.warning(
+                "evolve_cycle_fidelity: this run's fitness signal is '%s' — "
+                "heuristic/lite scoring against handcrafted samples, not the "
+                "official benchmarks. See SPEC-202.",
+                self.harness.fidelity,
+            )
 
         await self._evaluate_unevaluated(population, cfg, llm_call)
 

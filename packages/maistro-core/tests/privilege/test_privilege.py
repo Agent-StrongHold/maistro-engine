@@ -277,3 +277,118 @@ class TestAdminOnlyTools:
         heartbeat_identity = guard.identity_for_subsystem("heartbeat")
         assert heartbeat_identity.role == "user"
         assert heartbeat_identity.public_key == "pk_user"
+
+
+class TestAdminKeyConstantTimeCompare:
+    """M1: admin-key comparisons must use secret_equal, not `!=`."""
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_admin_key_comparisons_are_constant_time(self) -> None:
+        import inspect
+
+        import maistro.privilege
+
+        source = inspect.getsource(maistro.privilege)
+        assert "!= self._admin_key" not in source
+        assert source.count("secret_equal(") >= 4
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_elevation_grant_repr_hides_admin_key(self, tmp_path: Path) -> None:
+        from maistro.privilege import ElevationRequest, PrivilegeGuard
+
+        guard = PrivilegeGuard(data_dir=str(tmp_path))
+        guard.initialize(
+            admin_public_key="pk_admin",
+            user_public_key="pk_user",
+        )
+
+        request = ElevationRequest(
+            user_public_key="pk_user",
+            scope="shell:execute",
+            justification="test",
+        )
+        token = guard.propose_elevation(request)
+        grant = guard.admin_sign_elevation(token, admin_key="pk_admin")
+
+        rendered = repr(grant)
+        assert "pk_admin" not in rendered
+        assert grant.admin_key == "pk_admin"
+        assert "shell:execute" in rendered
+        assert "pk_user" in rendered
+
+    @pytest.mark.contract("boundary")
+    @pytest.mark.scope("unit")
+    def test_policy_repr_hides_admin_key(self, tmp_path: Path) -> None:
+        from maistro.privilege import PrivilegeGuard
+
+        guard = PrivilegeGuard(data_dir=str(tmp_path))
+        guard.initialize(
+            admin_public_key="pk_admin",
+            user_public_key="pk_user",
+        )
+
+        policy_id = guard.create_policy(
+            admin_key="pk_admin",
+            user_public_key="pk_user",
+            scope="file:read:/data/*",
+            description="User can read data files",
+        )
+
+        policy = next(p for p in guard._policies if p.policy_id == policy_id)
+        rendered = repr(policy)
+        assert "pk_admin" not in rendered
+        assert policy.admin_key == "pk_admin"
+        assert "file:read:/data/*" in rendered
+        assert "pk_user" in rendered
+
+    @pytest.mark.contract("behavioral")
+    @pytest.mark.scope("unit")
+    def test_wrong_admin_key_still_denied_after_constant_time_swap(self, tmp_path: Path) -> None:
+        from maistro.privilege import ElevationDeniedError, ElevationRequest, PrivilegeGuard
+
+        guard = PrivilegeGuard(data_dir=str(tmp_path))
+        guard.initialize(
+            admin_public_key="pk_admin",
+            user_public_key="pk_user",
+        )
+
+        request = ElevationRequest(
+            user_public_key="pk_user",
+            scope="shell:execute",
+            justification="test",
+        )
+        token = guard.propose_elevation(request)
+
+        with pytest.raises(ElevationDeniedError):
+            guard.admin_sign_elevation(token, admin_key="pk_wrong")
+        grant = guard.admin_sign_elevation(token, admin_key="pk_admin")
+        assert grant.is_valid
+
+        with pytest.raises(ElevationDeniedError):
+            guard.rotate_admin_key(old_key="pk_wrong", new_key="pk_admin_v2")
+        guard.rotate_admin_key(old_key="pk_admin", new_key="pk_admin_v2")
+
+        with pytest.raises(ElevationDeniedError):
+            guard.create_policy(
+                admin_key="pk_wrong",
+                user_public_key="pk_user",
+                scope="file:read:/data/*",
+                description="should be denied",
+            )
+        policy_id = guard.create_policy(
+            admin_key="pk_admin_v2",
+            user_public_key="pk_user",
+            scope="file:read:/data/*",
+            description="should succeed",
+        )
+
+        with pytest.raises(ElevationDeniedError):
+            guard.revoke_policy(policy_id, admin_key="pk_wrong")
+        guard.revoke_policy(policy_id, admin_key="pk_admin_v2")
+        assert not guard.policy_allows(
+            policy_id=policy_id,
+            user_public_key="pk_user",
+            action="file:read:/data/report.csv",
+        )

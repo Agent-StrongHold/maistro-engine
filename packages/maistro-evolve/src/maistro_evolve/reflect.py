@@ -33,20 +33,20 @@ from .types import NodeGenome, PipelineGenome
 # MIPROv2-style grounding: describe what each benchmark measures so the
 # proposal targets the skill, not the benchmark name.
 BENCHMARK_SUMMARIES: dict[str, str] = {
-    "ifeval": (
+    "proxy_ifeval": (
         "instruction following — satisfy explicit constraints "
         "(word counts, keywords, format, casing) exactly"
     ),
-    "bfcl": (
+    "proxy_bfcl": (
         "function calling — choose the right tool and emit a well-formed "
         "call with correct arguments"
     ),
-    "swebench": "software engineering — localize and patch repository bugs so tests pass",
-    "terminalbench": "terminal use — solve tasks with correct shell commands",
-    "tau_bench": "tool-agent dialogues — follow domain policy while using tools across turns",
-    "gaia": "general assistant reasoning — multi-step questions requiring planning and precision",
-    "ragas": "retrieval-augmented generation — ground answers in provided context only",
-    "osworld": "OS/GUI control — translate goals into correct desktop interactions",
+    "proxy_swebench": "software engineering — localize and patch repository bugs so tests pass",
+    "proxy_terminalbench": "terminal use — solve tasks with correct shell commands",
+    "proxy_tau_bench": "tool-agent dialogues — follow domain policy while using tools across turns",
+    "proxy_gaia": "general assistant reasoning — multi-step questions requiring planning and precision",
+    "proxy_ragas": "retrieval-augmented generation — ground answers in provided context only",
+    "proxy_osworld": "OS/GUI control — translate goals into correct desktop interactions",
 }
 
 # MIPROv2-style proposal tips: a different tip per candidate diversifies the

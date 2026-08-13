@@ -7,7 +7,6 @@ import pytest
 from maistro_evolve.benchmarks.datasets import TAU_BENCH_SAMPLES
 from maistro_evolve.benchmarks.tau_bench import (
     _extract_tool_calls_from_response,
-    _heuristic_score,
     _score_tool_usage,
     _simulate_turns,
     run_tau_bench,
@@ -285,63 +284,12 @@ class TestSimulateTurns:
         assert seen_kwargs["max_tokens"] == 1024
 
 
-class TestHeuristicScore:
-    def test_one_expected_tool_call(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {"expected_tool_calls": ["only_one"]}
-        assert _heuristic_score(sample) == pytest.approx(0.7)
-
-    def test_two_expected_tool_calls(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {"expected_tool_calls": ["one", "two"]}
-        assert _heuristic_score(sample) == pytest.approx(0.5)
-
-    def test_three_or_more_expected_tool_calls(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {"expected_tool_calls": ["a", "b", "c"]}
-        assert _heuristic_score(sample) == pytest.approx(0.35)
-
-    def test_zero_expected_tool_calls_falls_into_else_branch(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {"expected_tool_calls": []}
-        assert _heuristic_score(sample) == pytest.approx(0.35)
-
-    def test_clamped_to_upper_bound(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.05)
-        sample = {"expected_tool_calls": ["only_one"]}
-        # base 0.7 + 0.05 = 0.75, well under 0.9 clamp -- use a case that actually clamps
-        assert _heuristic_score(sample) == pytest.approx(0.75)
-
-    def test_clamped_to_upper_bound_extreme(self, monkeypatch):
-        # force a value that would exceed 0.9 absent the clamp
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.5)
-        sample = {"expected_tool_calls": ["only_one"]}
-        # base 0.7 + 0.5 = 1.2 -> clamp to 0.9
-        assert _heuristic_score(sample) == pytest.approx(0.9)
-
-    def test_clamped_to_lower_bound_extreme(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: -0.5)
-        sample = {"expected_tool_calls": ["a", "b", "c"]}
-        # base 0.35 - 0.5 = -0.15 -> clamp to 0.1
-        assert _heuristic_score(sample) == pytest.approx(0.1)
-
-    def test_no_expected_tool_calls_key_uses_default_empty_list(self, monkeypatch):
-        monkeypatch.setattr("random.uniform", lambda a, b: 0.0)
-        sample = {}
-        assert _heuristic_score(sample) == pytest.approx(0.35)
-
-
 class TestRunTauBench:
     @pytest.mark.asyncio
-    async def test_heuristic_path_when_llm_call_is_none(self):
+    async def test_llm_call_none_raises(self):
         genome = make_genome()
-        result = await run_tau_bench(genome, None)
-
-        assert result.benchmark == "tau_bench"
-        assert result.samples_evaluated == 12
-        assert result.metadata == {"total_samples": 12, "runner": "real"}
-        assert result.cost_usd == 0.0
-        assert 0.0 <= result.score <= 1.0
+        with pytest.raises(ValueError, match="requires an llm_call"):
+            await run_tau_bench(genome, None)
 
     @pytest.mark.asyncio
     async def test_normal_flow_with_fake_llm_call_yields_nonzero_score(self):
@@ -367,9 +315,9 @@ class TestRunTauBench:
 
         result = await run_tau_bench(genome, llm_call)
 
-        assert result.benchmark == "tau_bench"
+        assert result.benchmark == "proxy_tau_bench"
         assert result.samples_evaluated == 12
-        assert result.metadata == {"total_samples": 12, "runner": "real"}
+        assert result.metadata == {"total_samples": 12, "fidelity": "proxy"}
         assert result.cost_usd > 0.0
         assert result.score > 0.0
 
@@ -414,4 +362,4 @@ class TestRunTauBench:
         # but no score is added for that sample.
         assert result.samples_evaluated == 1
         assert result.score == 0.0
-        assert result.metadata == {"total_samples": 1, "runner": "real"}
+        assert result.metadata == {"total_samples": 1, "fidelity": "proxy"}

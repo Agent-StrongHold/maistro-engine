@@ -26,6 +26,7 @@ from typing import Any
 
 import httpx
 
+from maistro.http import shared_client
 from maistro.quota.rate_profile import LimitUnit
 from maistro.quota.reconciliation import ProviderQuotaSnapshot
 
@@ -70,7 +71,7 @@ class MistralAdminApiVerifier:
 
     async def verify(self, scope_key: str) -> ProviderQuotaSnapshot:
         headers = {"x-api-key": self._admin_api_key}
-        async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+        async with shared_client(timeout=self._timeout, transport=self._transport) as client:
             response = await client.get(f"{self._base_url}/rate-limit", headers=headers)
             response.raise_for_status()
             payload = response.json()

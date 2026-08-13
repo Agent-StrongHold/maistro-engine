@@ -6,7 +6,11 @@ The Gate is the first thing user input touches. Three execution modes:
 - supervised: always returns clarifying questions (human-in-the-loop).
 
 Strike escalation (when Warden blocks):
-- Strike 1: Warning + elevated scrutiny (L3 classifier enabled)
+- Strike 1: Warning; the account's scrutiny level is recorded as "elevated"
+  and surfaced to callers in GateResult. (It does not change the scan path
+  today — an earlier version of this docstring promised "L3 classifier
+  enabled", but scan() takes no scrutiny input and the container wires no
+  LLM into the Warden, so that line claimed a code path that did not exist.)
 - Strike 2: 8-hour lockout (admin+ to unlock)
 - Strike 3: Account disabled (admin+ to re-enable)
 """

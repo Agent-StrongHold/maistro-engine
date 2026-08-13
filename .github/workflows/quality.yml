@@ -31,6 +31,12 @@ on:
   push:
     branches: [main, integration, develop, feat/*]
 
+# See the rationale in ci.yml: supersede PR runs, let protected-branch pushes
+# finish so their pass/fail record survives.
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   quality-gate:
     name: Quality gate (Pillars 1–4, 7, 8)
@@ -50,7 +56,7 @@ jobs:
         run: uv python install 3.12
 
       - name: uv sync (full dev deps)
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
 
       # formal/ imports maistro_evolve (RSI conformance suites); not a uv
       # workspace member, so `uv sync` alone doesn't install it.
@@ -63,7 +69,8 @@ jobs:
       - name: install age + age-keygen
         run: |
           set -e
-          sudo apt-get update && sudo apt-get install -y age || true
+          sudo apt-get update || true
+          sudo apt-get install -y age || true
           if ! command -v age-keygen &> /dev/null; then
             mkdir -p /tmp/age && cd /tmp/age
             curl -fsSL https://dl.filippo.io/age/latest/age-linux-amd64.tar.gz | tar xz
@@ -83,8 +90,24 @@ jobs:
       - name: ruff format check
         run: uv run ruff format --check .
 
-      - name: radon CC (no function rated C+ allowed; baseline tolerates legacy until touched)
+      # The workflow header has claimed since Phase 20 that radon findings are
+      # gated against quality/radon-baseline.json — but the checker was never
+      # invoked (Codex, #262): the plain `radon cc` below reports blocks and
+      # exits 0 regardless, so the documented gate did not exist. Now it does:
+      # fails on any unbaselined C-or-worse block, or a baselined block whose
+      # complexity grew; stale entries are pruned as hotspots are refactored.
+      - name: radon CC ratchet (new/regressed hotspots vs quality/radon-baseline.json)
+        run: uv run python scripts/check-radon-baseline.py
+
+      - name: radon CC (report; the ratchet above is the gate)
         run: uv run radon cc packages/maistro-core/src --min B --total-average
+
+      # Single-sourced version (E1/#294): VERSION is the source of truth, and
+      # every package's pyproject.toml/__version__ fallback, inter-package
+      # dependency lower bound, and app-level FastAPI(version=...) literal
+      # must agree with it — catches drift before merge, not just at bump time.
+      - name: version consistency check (VERSION vs. every version site)
+        run: uv run python scripts/bump_version.py --check
 
       # Unlike the ratchets below, this one is a *count-free* ratchet: the
       # baseline names every tolerated gap, and a gap that gets fixed but left
@@ -98,6 +121,19 @@ jobs:
       # for the four findings that motivated it.
       - name: enumeration coverage (derived control lists — ratchet)
         run: uv run python scripts/check_enumerations.py
+
+      # The vendored IFEval grader and corpus are the *exam* the RSI loop is
+      # scored against, so they must stay byte-comparable to what Google
+      # published. This verifies the committed tree still matches its pinned
+      # content hashes and that no upstream import survived the documented
+      # rewrite — i.e. that nobody (human or loop) hand-edited the grader into
+      # something more forgiving while keeping the official name on it.
+      # Offline by design: it checks invariants, it does not re-fetch.
+      - name: vendored benchmark provenance (IFEval grader + corpus)
+        run: uv run python scripts/vendor_ifeval.py --check
+
+      - name: vendored benchmark provenance (BFCL checker + corpus)
+        run: uv run python scripts/vendor_bfcl.py --check
 
       # Ratchet, not a 0-baseline: full backlog (77 ERROR blocks measured
       # 2026-06-29) is too large to clear in one PR (Phase 18 code-health
@@ -149,9 +185,18 @@ jobs:
       #        back-compat scout_objective.
       - name: vulture (dead-code; confidence ≥ 60 — ratchet)
         env:
-          VULTURE_BASELINE: 1317
+          # Measured 2026-07-28 after WS-B: 1,313 findings. Lowering the
+          # previous 1,317 ceiling banks those four removals so the debt cannot
+          # silently grow back while the classified baseline is completed.
+          VULTURE_BASELINE: 1313
         run: |
-          uv run vulture packages/*/src --min-confidence 60 > vulture.log 2>&1 || true
+          # `third_party/` is vendored upstream source (Google's IFEval verifier,
+          # BFCL's AST checker), kept byte-faithful so the benchmarks run the
+          # official implementation. Linting someone else's tree for dead names
+          # measures nothing we can act on, and 'fixing' a finding there would
+          # turn the next re-vendor into a merge conflict.
+          uv run vulture packages/*/src --min-confidence 60 \
+            --exclude '*/third_party/*' > vulture.log 2>&1 || true
           count=$(wc -l < vulture.log | tr -d ' ')
           cat vulture.log
           echo "vulture finding count: $count (baseline: $VULTURE_BASELINE)"
@@ -159,6 +204,14 @@ jobs:
             echo "::error::vulture regression — $count findings exceeds baseline of $VULTURE_BASELINE; KEEP/DEPRECATE/DELETE inventory per Phase 9"
             exit 1
           fi
+
+      # Vulture works at symbol granularity inside a file, so it is structurally
+      # blind to a whole module that only its own siblings and tests import —
+      # every symbol in it looks used. That is the shape of #344/#346/#347 and
+      # ADR-064's unwired redact(): correct, well-covered code with no caller.
+      # This ratchet closes that blind spot at module granularity.
+      - name: reachability ratchet (built-but-never-wired modules)
+        run: uv run python scripts/check-reachability.py
 
       # ----- Pillar 4: types -----
       - name: mypy --strict
@@ -194,25 +247,56 @@ jobs:
           fi
 
       # ----- Pillar 1: coverage (line + branch ≥95% on touched files) -----
+      # C2/#287: measured over the PyPI publish set (core, canvas, evolve, rsi,
+      # bootstrap — docs/product/V1-RELEASE-PLAN.md's "Decisions of record"),
+      # not maistro-core alone. Each package runs as its own `coverage run
+      # --append` invocation rather than one combined pytest call: an earlier
+      # attempt at a single `pytest packages/maistro-core/tests
+      # packages/maistro-canvas/tests ...` invocation broke an unrelated
+      # maistro-rsi test (structlog's capture_logs() picks up stale global
+      # config when another package's tests configure structlog first) — the
+      # same cross-package state-pollution risk ci.yml's `test` job already
+      # avoids by giving every package its own pytest step.
       - name: pytest with coverage (line + branch)
         env:
-          PYTHONPATH: packages/maistro-core/src
+          PYTHONPATH: >-
+            packages/maistro-core/src:packages/maistro-canvas/src:
+            packages/maistro-rsi/src:packages/maistro-evolve/src
+          REQUIRE_AUTH: "false"
+          MAISTRO_DRY_RUN: "1"
         run: |
           uv run coverage erase
           uv run coverage run --branch --source=packages/maistro-core/src/maistro \
             -m pytest packages/maistro-core/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-canvas/src/maistro_canvas \
+            -m pytest packages/maistro-canvas/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-evolve/src/maistro_evolve \
+            -m pytest packages/maistro-evolve/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-rsi/src/maistro_rsi \
+            -m pytest packages/maistro-rsi/tests --timeout=30 -q
+          uv run coverage run --append --branch --source=packages/maistro-bootstrap/src/maistro_bootstrap \
+            -m pytest packages/maistro-bootstrap/tests --timeout=30 -q
           uv run coverage report -m --skip-covered
 
-      - name: Coverage gate (95% line + 95% branch on touched files)
+      - name: Coverage gate (publish-set floor, 88%)
         env:
           PYTHONPATH: packages/maistro-core/src
         run: |
-          # Compare against baseline (docs/QA-BASELINE.md) — fails if overall drops.
-          # Touched-files-must-reach-gate enforcement runs in a separate matrix
-          # job (changed-files filter); this top-level check is the project-wide
-          # rolling-baseline guard.
-          uv run coverage report --fail-under=20 || \
-            (echo "::error::project-wide coverage below rolling baseline" && exit 1)
+          # Re-floored for C2/#287: extending the measured scope from
+          # maistro-core alone (97%) to the full 5-package publish set drops the
+          # combined number, because canvas/evolve/rsi/bootstrap don't carry
+          # core's coverage discipline yet — measured 2026-07-29: 89.63%
+          # (3,152 missed of 35,656 statements + branches). 88 is a deliberate
+          # floor below that, not the measured value, leaving headroom for
+          # in-flight work while still catching a real regression — same
+          # philosophy as the previous core-only 95-vs-97 gap. Raise as the
+          # newer packages' coverage improves.
+          #
+          # TODO(touched-files): implement per-file enforcement with diff-cover
+          # against origin/${{ github.base_ref }}; until then this project-wide
+          # floor is the only coverage gate.
+          uv run coverage report --fail-under=88 || \
+            (echo "::error::publish-set coverage below the 88% floor" && exit 1)
 
       # ----- Pillar 2: Hypothesis property tests -----
       # The property suite lives in formal/ (also run by formal-conformance.yml
@@ -228,12 +312,11 @@ jobs:
       - name: Architecture fitness functions
         env:
           PYTHONPATH: packages/maistro-core/src
-        run: |
-          if [ -d "packages/maistro-core/tests/fitness" ]; then
-            uv run pytest packages/maistro-core/tests/fitness -v --timeout=30
-          else
-            echo "::warning::fitness functions not yet authored — Phase 3 step 3 owns"
-          fi
+        # The directory guard was removed along with the warning it emitted:
+        # while the suite did not exist, this pillar passed green having
+        # asserted nothing, and would have silently gone back to doing so if
+        # the directory were ever deleted. It is now a hard step.
+        run: uv run pytest packages/maistro-core/tests/fitness -v --timeout=30
 
       # ----- Pillar 8: docstring coverage on touched modules -----
       # Per-module floors are RATCHET BASELINES set at measured coverage

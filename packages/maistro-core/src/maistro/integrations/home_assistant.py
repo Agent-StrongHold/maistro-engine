@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from maistro.events.bus import Event, EventBus, EventCategory
+from maistro.http import shared_client
 
 logger = logging.getLogger("maistro.integrations.ha")
 
@@ -45,14 +46,14 @@ class HomeAssistantIntegration:
         return {"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"}
 
     async def get_states(self) -> list[dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.get(f"{self._url}/api/states", headers=self._headers())
             r.raise_for_status()
             states: list[dict[str, Any]] = r.json()
             return states
 
     async def get_state(self, entity_id: str) -> dict[str, Any] | None:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.get(
                 f"{self._url}/api/states/{entity_id}",
                 headers=self._headers(),
@@ -70,7 +71,7 @@ class HomeAssistantIntegration:
         service_data: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         payload = service_data or {}
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.post(
                 f"{self._url}/api/services/{domain}/{service}",
                 json=payload,

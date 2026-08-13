@@ -16,7 +16,7 @@ import logging
 import os
 from typing import Any
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("hive.tool_executor")
 
@@ -111,7 +111,7 @@ async def _resolve_safe_url(url: str, *, max_redirects: int = 5) -> str:
         blocked = _ssrf_blocked(current)
         if blocked:
             raise PermissionError(blocked)
-        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as c:
+        async with shared_client(timeout=15.0, follow_redirects=False) as c:
             resp = await c.get(current)
         location = resp.headers.get("location")
         if resp.is_redirect and location:
@@ -146,7 +146,7 @@ async def browse_url(url: str, task: str = "Extract key facts and quotes") -> di
     except Exception:
         # Fallback: simple HTTP fetch (redirects disabled — safe_url is final).
         try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as c:
+            async with shared_client(timeout=15.0, follow_redirects=False) as c:
                 r = await c.get(safe_url)
                 text = r.text[:5000]
                 return {"url": safe_url, "title": safe_url, "text": text, "duration_ms": 0}
@@ -178,7 +178,7 @@ async def clarify(questions: list[str], context: dict[str, Any]) -> dict[str, st
     )
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -201,7 +201,7 @@ async def _brave_search(query: str, max_results: int, api_key: str) -> dict[str,
     """Web search via Brave Search API. Rate limited to 1 req/sec (free tier)."""
     await asyncio.sleep(1.1)  # Free tier: 1 req/sec
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with shared_client(timeout=15.0) as client:
             r = await client.get(
                 "https://api.search.brave.com/res/v1/web/search",
                 headers={"X-Subscription-Token": api_key, "Accept": "application/json"},
@@ -246,7 +246,7 @@ async def _gemini_grounded_search(query: str, max_results: int) -> dict[str, Any
     )
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.post(
                 f"{base}/chat/completions",
                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
@@ -278,7 +278,7 @@ async def _gemini_grounded_search(query: str, max_results: int) -> dict[str, Any
 
 async def _serper_search(query: str, max_results: int, api_key: str) -> dict[str, Any]:
     """Google search via Serper.dev API."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with shared_client(timeout=15.0) as client:
         r = await client.post(
             "https://google.serper.dev/search",
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
@@ -298,7 +298,7 @@ async def _serper_search(query: str, max_results: int, api_key: str) -> dict[str
 
 async def _tavily_search(query: str, max_results: int, api_key: str) -> dict[str, Any]:
     """Web search via Tavily API."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with shared_client(timeout=15.0) as client:
         r = await client.post(
             "https://api.tavily.com/search",
             json={

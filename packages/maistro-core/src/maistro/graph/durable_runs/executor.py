@@ -209,7 +209,40 @@ async def _walk(
         )
         record = await store.update(record)
 
-    # No next node — completed.
+    return await _finish_walk(record, store=store, max_steps=max_steps)
+
+
+async def _finish_walk(
+    record: DurableRunRecord,
+    *,
+    store: DurableRunStore,
+    max_steps: int,
+) -> DurableRunRecord:
+    """Record the terminal status for a walk that left its loop.
+
+    There are two ways out of that loop and they are not the same outcome.
+    Falling out because `current_node_id` is empty means the graph ran to its
+    end. Falling out because `steps` hit `max_steps` means it did NOT — the run
+    still has a live node and a partial blackboard. Both used to fall through
+    to `_mark_completed`, so a cycling or over-long DAG was persisted as a
+    success with partial results. That is worse than a failure record:
+    downstream consumers trust COMPLETED.
+
+    Split out of `_walk` rather than inlined so the added branch does not push
+    that function over the radon complexity ratchet — the gate flagged exactly
+    that, which is the gate doing its job.
+    """
+    if record.current_node_id:
+        return await _mark_failed(
+            record,
+            error_code="StepBudgetExhausted",
+            error_message=(
+                f"run exceeded max_steps={max_steps} with node "
+                f"{record.current_node_id!r} still pending; the graph may cycle"
+            ),
+            store=store,
+        )
+
     return await _mark_completed(record, store=store)
 
 
@@ -324,13 +357,20 @@ def _actually_spawned(kind: str, result: NodeResult) -> bool:
     `NodeResult` (the executor sees a normal completion; only the node's own
     output says nothing was spawned) -- that refusal must not burn a depth
     level for the next node, or a workflow that tries an alternate synth
-    after a blocked one hits the cap prematurely. `agent.spawn_harness` never
-    reaches this check on a fresh dispatch (that exits earlier via
+    after a blocked one hits the cap prematurely. But `success=False` also
+    covers a *different* case: synthesis was approved and the sub-graph WAS
+    dispatched via `run_graph`, and only the sub-graph's own execution
+    failed -- that's a real spawn attempt and must still burn a depth level
+    (otherwise a chained retry after a failed child bypasses the recursion
+    budget). `SynthDagOut.dispatched` disambiguates the two: it's True only
+    on the branch that actually called `run_graph`. `agent.spawn_harness`
+    never reaches this check on a fresh dispatch (that exits earlier via
     `_checkpoint_pause`); getting here for that kind always means a resumed,
     already-completed external invocation, so it counts unconditionally.
     """
     if kind == "agent.synth_dag":
-        return bool(getattr(result.output, "success", True))
+        output = result.output
+        return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
     return True
 
 

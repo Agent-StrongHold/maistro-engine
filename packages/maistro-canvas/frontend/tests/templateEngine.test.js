@@ -24,7 +24,7 @@ describe("POSES", () => {
 
   it("all poses have anchor type ground_contact or seat_contact", async () => {
     const { POSES } = await importEngine();
-    for (const [key, pose] of Object.entries(POSES)) {
+    for (const [, pose] of Object.entries(POSES)) {
       expect(["ground_contact", "seat_contact"]).toContain(pose.anchor);
     }
   });

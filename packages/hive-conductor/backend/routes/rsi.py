@@ -182,6 +182,26 @@ def decide_review(run_id: str, sha: str, body: ReviewDecisionBody) -> dict:
     if review_data is None:
         raise HTTPException(status_code=404, detail=f"no review for sha {sha[:12]}")
 
+    # ── 0. idempotency: a decided review is settled ──
+    # Every POST used to retrain Ralph before checking for an existing
+    # decision, so a double-click or client retry applied the same feature
+    # vector repeatedly (drifting weights and theta) and could overwrite an
+    # earlier decision with the opposite one. First decision wins; repeats get
+    # the recorded outcome back without touching the model.
+    decision_file = review_dir / f"{sha[:12]}.decision.json"
+    if decision_file.exists():
+        prior = json.loads(decision_file.read_text(encoding="utf-8"))
+        return {
+            "sha": sha[:12],
+            "decision": prior.get("decision"),
+            "target": review_data.get("target", ""),
+            "pr_url": None,
+            "rlphd_updated": False,
+            "weight_delta": {},
+            "already_decided": True,
+            "resolved_at": prior.get("resolved_at"),
+        }
+
     # ── 1. train Ralph — capture weight delta for the UI ──
     weight_delta = {}
     try:
@@ -215,7 +235,6 @@ def decide_review(run_id: str, sha: str, body: ReviewDecisionBody) -> dict:
         pass
 
     # mark resolved + store reason
-    decision_file = review_dir / f"{sha[:12]}.decision.json"
     from datetime import datetime
 
     decision_file.write_text(
@@ -311,13 +330,26 @@ def _create_pr_from_patch(
         )
         if result.returncode != 0:
             return None
-        subprocess.run(
+        am = subprocess.run(
             ["git", "am", "--3way", str(patch_file)],
             cwd=repo_path,
             capture_output=True,
             text=True,
             timeout=30,
         )
+        if am.returncode != 0:
+            # A conflicting patch used to fall through to push/PR anyway,
+            # leaving the operator's checkout stuck mid-`git am`. Abort to
+            # restore the original branch state, clean up, and report failure.
+            subprocess.run(["git", "am", "--abort"], cwd=repo_path, capture_output=True, timeout=30)
+            subprocess.run(["git", "checkout", "-"], cwd=repo_path, capture_output=True, timeout=30)
+            subprocess.run(
+                ["git", "branch", "-D", branch_name],
+                cwd=repo_path,
+                capture_output=True,
+                timeout=30,
+            )
+            return None
         subprocess.run(
             ["git", "push", "-u", "origin", branch_name],
             cwd=repo_path,

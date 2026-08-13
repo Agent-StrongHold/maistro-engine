@@ -2,7 +2,7 @@
 
 **Project:** Maistro Engine — Shared Python runtime for AI agent platforms
 **License:** Apache 2.0
-**Python:** 3.11+
+**Python:** 3.12+ (the version CI actually tests; 3.11 was claimed but never tested)
 
 ---
 
@@ -18,9 +18,10 @@ packages/
 ├── maistro-turing/    # Autonoetic self-model extensions
 ├── maistro-evolve/    # Elo tournament optimizer for agent self-improvement
 ├── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check for docs
+├── maistro-rsi/       # Recursive self-improvement: autorun loop, quarantine gate, sandbox
+├── maistro-design/    # Open Design integration (renderer registry, SSE ingest)
 ├── hive-conductor/    # Agent Conductor app (FastAPI backend + React frontend)
-├── maistro-bootstrap/ # Bootstrap stub (WIP)
-└── maistro-registry/  # ADR/spec registry CLI — walk, validate, lint, link-check docs
+└── maistro-bootstrap/ # Bootstrap installer and planner
 ```
 
 ### Product relationship — contains vs. imports
@@ -39,7 +40,7 @@ maistro-engine (this monorepo)
 
 Agent Conductor ships **here**; the Canvas book-maker and Stronghold are downstream products that **import** the engine (Stronghold is a planned refactor, not yet done).
 
-**ADR-019** defines the canonical source split: maistro-core = product-agnostic shared runtime (no `org_id`); multi-tenancy/security-posture/feature-toggles live in the importing product (Stronghold). 64 ADRs (ADR-000 through ADR-057); notable: ADR-036 (ontology), ADR-038 (reliability), ADR-062 (graph execution protocol), ADR-057 (memory exposure mode).
+**ADR-019** defines the canonical source split: maistro-core = product-agnostic shared runtime (no `org_id`); multi-tenancy/security-posture/feature-toggles live in the importing product (Stronghold). Notable decisions include ADR-036 (ontology), ADR-038 (reliability), ADR-062 (graph execution protocol), and ADR-057 (memory exposure mode).
 
 ### Naming convention
 
@@ -54,7 +55,7 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 |-----------|--------|------|
 | **Memory** | `maistro.memory` | Learnings, episodic, scopes, outcomes |
 | **Security** | `maistro.security` | Warden (threat detection), Sentinel (policy), PII filter |
-| **Classifier** | `maistro.classifier` | 3-phase intent: keywords → LLM → complexity |
+| **Classifier** | `maistro.classifier` | Keyword classification, optional LLM fallback for ambiguous requests, then complexity estimation |
 | **Router** | `maistro.router` | Scoring formula + RouterEngine |
 | **Agents** | `maistro.agents` | Base class, factory, strategies, roster |
 | **Builders** | `maistro.builders` | Pipeline: spec → tests → code → review |
@@ -77,7 +78,7 @@ Every subsystem is importable. Consumers add `maistro-core` to their requirement
 | **Identity** | `maistro.identity` | Identity management |
 | **Scheduling** | `maistro.scheduling` | Scheduling (distinct from the scheduler/ placeholder) |
 | **Prompts** | `maistro.prompts` | Prompt templates |
-| **Capabilities** | `maistro.capabilities` | Slots, providers, registry, discovery; self-repair governor (SPEC-184/188) |
+| **Capabilities** | `maistro.capabilities` | Slots, providers, registry, and discovery; SPEC-184/188 self-repair remains proposed |
 | **Credentials** | `maistro.credentials` | Per-user encrypted credentials for PM integrations |
 | **Projects** | `maistro.projects` | User workspaces: domains, meta-DAGs, PM Fleet, Canvas/Engineering |
 | **Testing** | `maistro.testing` | Shared test utilities/fixtures |
@@ -112,7 +113,7 @@ packages/maistro-canvas/
 
 ### maistro-turing (autonoetic self-model)
 
-Implementation in progress: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security. Note: tests/ now has suites (protocols, reactor, tiers, types); CI type-checks turing's src, but ci.yml's pytest matrix doesn't run its suite.
+Implementation in progress: Mood, HEXACO personality, drives, proactive producers (blog, reflection, curiosity, emotion). Bridges to maistro-core for memory and security. `tests/` has suites (protocols, reactor, tiers, types) and `backend/tests` is a second FastAPI service's suite (its own auth lanes); both run in `ci.yml`'s pytest matrix alongside the src type-check.
 
 ---
 
@@ -175,7 +176,7 @@ print('OK')
 1. **Library-first, app is optional.** Core is a pure Python library. FastAPI app is a thin wrapper.
 2. **Protocol-driven DI.** All business logic depends on protocols (abstract interfaces), never concrete implementations.
 3. **Agents are data.** An agent is rows in a store, prompts in YAML. The runtime is shared.
-4. **Scoring formula.** `quality^(qw*p) / cost^cw` with scarcity-based cost and task-type speed bonuses.
+4. **Scoring formula.** `quality^(qw*p) / (1 + normalized_cost)^cw` with scarcity-based cost (normalized against the realistic budget band) and task-type speed bonuses.
 5. **Memory must forget.** Decay without reinforcement, weight floors for wisdom/regrets.
 6. **All input is untrusted.** Warden scans at every trust boundary. Sentinel validates tool calls.
 7. **Scope axes in core; hard tenancy in Stronghold (ADR-068).** maistro-core keeps the *soft* scope axes `global → org → team → user → agent → session` (a user may be in multiple teams/orgs). Only the *hard* `tenant` boundary — fully segmented, one tenant per user — is Stronghold-specific. (Supersedes the older "no org_id in core" shorthand, which conflated scope with tenancy.)
@@ -274,9 +275,8 @@ maistro-engine/
 │       └── frontend/            # React SPA
 │
 ├── formal/                      # Property-based conformance tests (Hypothesis); separate CI flow
-├── docs/adr/                    # Architecture Decision Records (ADR-000 through ADR-057)
-├── docs/specs/                  # SPEC-NNN design specs (e.g. SPEC-184 capabilities, SPEC-188 self-repair)
+├── docs/adr/                    # Architecture Decision Records
+├── docs/specs/                  # Engine design specifications
 ├── specs/                       # Topical spec notes (channels, conductor, infra, intelligence, security, tools)
-├── src/maistro/                 # Old layout (agent spec/spawner/recipes + model pricing)
 └── pyproject.toml               # uv workspace root (uv.lock is source of truth)
 ```

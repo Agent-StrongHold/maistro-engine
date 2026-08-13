@@ -72,6 +72,33 @@ class PgSessionStore:
                     )
                     next_seq += 1
 
+            # Purge inline. TTL was a read-time filter only
+            # (`timestamp > to_timestamp($2)` in get_history), so expired
+            # conversation content was hidden but never deleted — unbounded
+            # growth and indefinite retention of user messages. There is no
+            # scheduled sweeper to defer this to, which is precisely why
+            # nothing was ever removed. Same shape as
+            # security/pg_strikes.py:187-190, which clears its expired windows
+            # as part of the normal path.
+            await conn.execute(
+                "DELETE FROM sessions WHERE timestamp <= to_timestamp($1)",
+                time.time() - self._ttl_seconds,
+            )
+
+    async def purge_expired(self, ttl_seconds: int | None = None) -> int:
+        """Delete messages older than the TTL. Returns the number removed."""
+        ttl = ttl_seconds or self._ttl_seconds
+        async with self._pool.acquire() as conn:
+            status = await conn.execute(
+                "DELETE FROM sessions WHERE timestamp <= to_timestamp($1)",
+                time.time() - ttl,
+            )
+        # asyncpg returns a command tag such as "DELETE 12".
+        try:
+            return int(str(status).rsplit(" ", 1)[-1])
+        except ValueError:  # pragma: no cover - defensive
+            return 0
+
     async def delete_session(self, session_id: str) -> None:
         """Delete a session."""
         async with self._pool.acquire() as conn:

@@ -186,7 +186,6 @@ const mock = {
     const jobId = jobUid();
 
     setTimeout(() => {
-      const count = body.count || 1;
       const img = makeFakeImage(
         256 + Math.floor(Math.random() * 256),
         256 + Math.floor(Math.random() * 256)

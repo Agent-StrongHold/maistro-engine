@@ -9,9 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import httpx
-
 from maistro.events.bus import Event, EventBus, EventCategory
+from maistro.http import shared_client
 
 logger = logging.getLogger("maistro.integrations.coinswarm")
 
@@ -26,21 +25,21 @@ class CoinSwarmIntegration:
         self._bus = event_bus
 
     async def get_status(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.get(f"{self._url}/status")
             r.raise_for_status()
             data: dict[str, Any] = r.json()
             return data
 
     async def list_agents(self) -> list[dict[str, Any]]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.get(f"{self._url}/agents")
             r.raise_for_status()
             data: list[dict[str, Any]] = r.json()
             return data
 
     async def get_agent(self, agent_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.get(f"{self._url}/agents/{agent_id}")
             r.raise_for_status()
             data: dict[str, Any] = r.json()
@@ -49,7 +48,7 @@ class CoinSwarmIntegration:
     async def trigger_backtest(
         self, agent_id: str, config: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with shared_client(timeout=30) as client:
             r = await client.post(
                 f"{self._url}/actions/backtest/canonical",
                 json={"agent_id": agent_id, **(config or {})},
@@ -59,21 +58,21 @@ class CoinSwarmIntegration:
             return data
 
     async def trigger_evolution(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with shared_client(timeout=60) as client:
             r = await client.post(f"{self._url}/system/evolution/trigger")
             r.raise_for_status()
             data: dict[str, Any] = r.json()
             return data
 
     async def pause_agent(self, agent_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.post(f"{self._url}/agents/{agent_id}/pause")
             r.raise_for_status()
             data: dict[str, Any] = r.json()
             return data
 
     async def resume_agent(self, agent_id: str) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with shared_client(timeout=10) as client:
             r = await client.post(f"{self._url}/agents/{agent_id}/resume")
             r.raise_for_status()
             data: dict[str, Any] = r.json()

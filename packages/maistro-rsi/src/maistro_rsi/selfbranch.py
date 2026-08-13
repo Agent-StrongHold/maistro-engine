@@ -163,7 +163,12 @@ async def run_self_branch_attempt(
         quarantine_verdict = await quarantine_check(diff, paths_touched_by_diff(diff))
 
     pr_url: str | None = None
-    cleared_to_ship = quarantine_verdict is None or quarantine_verdict.cleared
+    # A missing quarantine check is a DENY, not a bypass: shipping requires an
+    # affirmative cleared verdict. The old `is None or ...` made the safety
+    # property of a self-modifying system hang on a comment asking callers to
+    # please pass the parameter — fail-open by convention. Callers that don't
+    # open PRs are unaffected; callers that do must wire quarantine.
+    cleared_to_ship = quarantine_verdict is not None and quarantine_verdict.cleared
     if open_pr and exit_code == 0 and cleared_to_ship:
         await git_push(workspace, attempt.branch_name)
         pr = await github_create_pr(

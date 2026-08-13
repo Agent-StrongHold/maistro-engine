@@ -48,6 +48,19 @@ PermissionTable = dict[str, frozenset[str]]
 
 @dataclass
 class WardenVerdict:
+    """Outcome of a Warden scan.
+
+    ``blocked`` is a severity tier, not a duplicate of ``not clean``: it is
+    True only when two or more independent reject patterns hit (detector sets
+    it; heuristic/semantic/LLM layers never do). ``blocked=True`` therefore
+    implies ``clean=False``, never the reverse. Consumers choose the threshold
+    their boundary warrants: the Gate refuses user input on ANY non-clean
+    verdict (strictest boundary), while dag-shape evaluation hard-blocks a
+    proposed DAG only on the high-confidence tier and records the flags
+    otherwise. Both behaviors are asserted by tests — do not repurpose the
+    field without updating both consumers.
+    """
+
     clean: bool = True
     blocked: bool = False
     flags: tuple[str, ...] = ()

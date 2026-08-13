@@ -14,6 +14,7 @@ import {
   type WorkItemType,
 } from "../lib/pmCapabilities";
 import { usePmPoc } from "../context/PocMode";
+import { useWorkspaces } from "../context/WorkspaceContext";
 import { PM_NAV_DRAFTS, PM_PRODUCT_TAGLINE } from "../lib/pmBranding";
 import { LoadingSpinner, PageHeader, useToast } from "../components/shared";
 
@@ -59,13 +60,19 @@ type DraftModalState =
 
 export default function Fleet() {
   const pmPoc = usePmPoc();
+  const { activeWorkspaceId } = useWorkspaces();
   const toast = useToast();
   const [agents, setAgents] = useState<FleetAgent[]>([]);
   const [program, setProgram] = useState<ProgramResponse | null>(null);
   const [suggestions, setSuggestions] = useState<WorkItemSuggestion[]>([]);
   const [lastPulse, setLastPulse] = useState<PulseResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [invokingId, setInvokingId] = useState<string | null>(null);
+  // Permanently null, and honestly so: `handleInvoke` either opens the gated
+  // draft modal or does a full-page `window.location.href` navigation, so there
+  // is no async window to show a busy state in. AgentFleetCard implements
+  // `invoking` (disables the button, shows "Running…") and will light up on its
+  // own if invocation ever becomes an in-page request.
+  const [invokingId] = useState<string | null>(null);
   const [interviewAnswer, setInterviewAnswer] = useState("");
   const [guidance, setGuidance] = useState("");
   const [submittingInterview, setSubmittingInterview] = useState(false);
@@ -75,9 +82,15 @@ export default function Fleet() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Persona/Workspace system: scope the interview to the active tab so
+      // two workspaces (even two of the same persona) track independent
+      // progress, instead of sharing the one legacy global interview.
+      const contextPath = activeWorkspaceId
+        ? `/v1/program/context?workspace_id=${encodeURIComponent(activeWorkspaceId)}`
+        : "/v1/program/context";
       const [agentData, progData] = await Promise.all([
         apiGet<FleetAgent[]>("/v1/agents"),
-        apiGet<ProgramResponse>("/v1/program/context"),
+        apiGet<ProgramResponse>(contextPath),
       ]);
       setAgents(agentData);
       setProgram(progData);
@@ -87,7 +100,7 @@ export default function Fleet() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, activeWorkspaceId]);
 
   const runPulse = useCallback(async () => {
     if (!program?.interview.complete) return;
@@ -125,8 +138,11 @@ export default function Fleet() {
     if (!interviewAnswer.trim()) return;
     setSubmittingInterview(true);
     try {
+      const answerPath = activeWorkspaceId
+        ? `/v1/program/interview/answer?workspace_id=${encodeURIComponent(activeWorkspaceId)}`
+        : "/v1/program/interview/answer";
       const res = await apiPost<ProgramResponse & { queued_tasks?: { task_id: string }[] }>(
-        "/v1/program/interview/answer",
+        answerPath,
         { answer: interviewAnswer.trim() },
       );
       setInterviewAnswer("");

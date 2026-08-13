@@ -124,12 +124,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--benchmarks",
         nargs="*",
         default=None,
-        help="Override the default benchmark set (default: swebench, swebench_pro, terminalbench)",
-    )
-    run.add_argument(
-        "--stub-benchmarks",
-        action="store_true",
-        help="Score with stub (non-real) benchmarks instead of the real suite",
+        help="Override the default benchmark set "
+        "(default: proxy_swebench, proxy_swebench_pro, proxy_terminalbench)",
     )
     run.add_argument(
         "--open-prs", action="store_true", help="Push and open a PR if the attempt passes"
@@ -235,7 +231,7 @@ async def _run(args: argparse.Namespace) -> int:
         return 2
 
     config = _build_config(args)
-    harness = build_harness(use_real_benchmarks=not args.stub_benchmarks)
+    harness = build_harness(benchmark_fidelity="proxy")
     tournament = EloTournament()
     scheduler = QuotaBurnScheduler(InMemoryQuotaTracker())
     apply_patch = make_builders_apply_patch(

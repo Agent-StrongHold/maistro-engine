@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 import httpx
 
 from maistro.events.invocations import MAX_ATTEMPTS, InvocationStatus
+from maistro.http import shared_client
 
 if TYPE_CHECKING:
     from maistro.events.durable_log import EventLogStore, LoggedEvent
@@ -60,7 +61,7 @@ class HTTPHandlerCaller:
                     trigger.handler_url, json=event.to_dict(), timeout=self._timeout
                 )
             else:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                async with shared_client(timeout=self._timeout) as client:
                     response = await client.post(trigger.handler_url, json=event.to_dict())
         except httpx.HTTPError as exc:
             raise HandlerCallError(f"transport error calling {trigger.handler_url}: {exc}") from exc

@@ -47,8 +47,26 @@ class AllowAllGate:
 
 
 def _message_text(message: dict[str, Any]) -> str:
+    """Serialize the WHOLE message for scanning, not just ``content``.
+
+    An OpenAI-style message can carry prompt-injection text or executable
+    arguments in ``tool_calls``, attachments, or any other structured field
+    while ``content`` stays empty — scanning content alone handed the foreign
+    harness the unscanned remainder (Codex, #262). JSON-serializing the full
+    dict puts every string the harness will see in front of Warden.
+    """
+    import json
+
     content = message.get("content", "")
-    return content if isinstance(content, str) else str(content)
+    content_text = content if isinstance(content, str) else str(content)
+    extra_fields = {k: v for k, v in message.items() if k not in ("content", "role")}
+    if not extra_fields:
+        return content_text
+    try:
+        serialized = json.dumps(extra_fields, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        serialized = str(extra_fields)
+    return f"{content_text}\n{serialized}" if content_text else serialized
 
 
 class SafeHarnessRunner:

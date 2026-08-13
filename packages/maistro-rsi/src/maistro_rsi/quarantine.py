@@ -47,9 +47,6 @@ SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     # agent's own command template cleared on Warden alone.
     "maistro_rsi/autorun.py",
     "maistro_rsi/apply_agents.py",
-    # Depth/attempt state that survives sandbox disposal — the budgets bounding
-    # how far a run may go.
-    "maistro_rsi/durable_runs/",
     # SafeHarnessRunner composes Warden and the ActionGate but lives under
     # capabilities/, so the "maistro/security/" pattern above never saw it.
     "maistro/capabilities/providers/",
@@ -69,6 +66,41 @@ SENSITIVE_PATH_PATTERNS: tuple[str, ...] = (
     # itself. Matched at directory granularity: the whole package persists
     # depth state, so `executor.py` alone left its siblings uncovered.
     "maistro/graph/durable_runs/",
+    # --- the measurement surface -------------------------------------------
+    # Everything above protects what the loop is *allowed* to do. These
+    # protect how the loop is *scored*, which is the same problem wearing a
+    # different hat: a candidate that edits its own exam passes trivially, and
+    # nothing else in this list notices. `benchmarks/` holds the task corpora,
+    # the graders, and the train/holdout split; `fitness.py` holds the breeding
+    # thresholds; `scorecard.py`, `candidate_fitness.py` and `harvest.py` decide
+    # what gets promoted and what opens a PR. All of them were listed as
+    # improvement targets while being unprotected.
+    "maistro_evolve/benchmarks/",
+    "maistro_evolve/fitness.py",
+    "maistro_evolve/scorecard.py",
+    "maistro_rsi/candidate_fitness.py",
+    "maistro_rsi/harvest.py",
+    # Protecting the exam is not enough while the code that *administers* it is
+    # unprotected. Each of these changes a score without touching a benchmark
+    # file: `harness.py` decides which runners are registered and can redirect
+    # or omit them; `cycle.py` folds results into `eval_scores` before culling,
+    # so it can fold whatever it likes; `tournament.py` turns scores into the
+    # Elo that feeds fitness; `types.py` holds `EvalWeights`, the per-benchmark
+    # weighting. A Warden-clean diff to any one of them was clearing without
+    # adversarial review while the corpus beside it was guarded.
+    "maistro_evolve/harness.py",
+    "maistro_evolve/cycle.py",
+    "maistro_evolve/tournament.py",
+    "maistro_evolve/types.py",
+    # The ratchets and vendoring scripts that assert all of the above is intact.
+    # `scripts/` matched no pattern, so a diff could edit a checker and the list
+    # it guards in one commit and still leave CI green — a guard outside the
+    # surface it guards is not a guard. The `vendor_*.py` scripts additionally
+    # carry the pinned digests of the vendored graders, so weakening one of them
+    # is equivalent to editing the grader itself.
+    "scripts/check_enumerations.py",
+    "scripts/vendor_ifeval.py",
+    "scripts/vendor_bfcl.py",
 )
 
 
@@ -94,12 +126,36 @@ class QuarantineVerdict:
     reason: str | None = None
 
 
+def _normalize_touched_path(path: str) -> str:
+    normalized = path.replace("\\", "/")
+    # removeprefix, not lstrip("./"): lstrip takes a character set and would
+    # eat the leading dot of ".github/..." — turning a containment surface
+    # into an unmatched path. That exact bug shipped once.
+    while normalized.startswith("./"):
+        normalized = normalized.removeprefix("./")
+    return normalized
+
+
+def matches_sensitive_pattern(path: str) -> bool:
+    """True if ``path`` falls on the containment surface.
+
+    Segment-boundary matching, not raw substring: directory patterns match at
+    the path start or after a ``/``; file patterns must match a whole trailing
+    path segment. Raw ``pattern in path`` accepted ``notmaistro/security/x``
+    and rejected nothing adjacent — both directions were wrong.
+    """
+    normalized = _normalize_touched_path(path)
+    for pattern in SENSITIVE_PATH_PATTERNS:
+        if pattern.endswith("/"):
+            if normalized.startswith(pattern) or f"/{pattern}" in normalized:
+                return True
+        elif normalized == pattern or normalized.endswith(f"/{pattern}"):
+            return True
+    return False
+
+
 def _touches_sensitive_surface(touched_paths: list[str]) -> list[str]:
-    return [
-        path
-        for path in touched_paths
-        if any(pattern in path for pattern in SENSITIVE_PATH_PATTERNS)
-    ]
+    return [path for path in touched_paths if matches_sensitive_pattern(path)]
 
 
 async def quarantine_scan(

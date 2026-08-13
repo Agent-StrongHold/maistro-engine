@@ -21,6 +21,8 @@ import stores
 from fastapi import APIRouter, HTTPException, Request
 from services import user_credentials as cred_svc
 
+from maistro.http import shared_client
+
 router = APIRouter(tags=["daily-report"])
 logger = logging.getLogger(__name__)
 
@@ -78,7 +80,7 @@ async def _poll_jira(user_id: str) -> dict[str, Any]:
 
     jql = "project = MY_PROJECT AND updated >= -7d ORDER BY updated DESC"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with shared_client(timeout=30.0) as client:
             r = await client.get(
                 f"{jira_server_url}/rest/api/2/search",
                 params={
@@ -137,7 +139,7 @@ async def _poll_airtable(user_id: str) -> dict[str, Any]:
 
     cutoff = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with shared_client(timeout=8.0) as client:
             r = await client.get(
                 f"https://api.airtable.com/v0/{base_id}/{table_name}",
                 headers={"Authorization": f"Bearer {pat}"},
@@ -417,7 +419,7 @@ async def search_jira_projects(request: Request, q: str = "") -> dict[str, Any]:
         auth = (email or pat, pat)
 
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with shared_client(timeout=8.0) as client:
             r = await client.get(
                 f"{base_url}{api_path}",
                 headers=headers,

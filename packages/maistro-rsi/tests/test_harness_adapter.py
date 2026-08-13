@@ -342,6 +342,30 @@ async def test_dispatch_starts_num_cycles_concurrently() -> None:
     assert len(result.metadata["cycles"]) == 3
 
 
+async def test_dispatch_with_zero_num_cycles_starts_no_tasks() -> None:
+    runner = _FakeRunner(_cycle_result())
+    adapter = RsiCycleHarnessAdapter(runner)
+
+    handle = await adapter.dispatch(
+        _request(
+            baseline_genome=_genome("a"),
+            candidate_genome=_genome("b"),
+            available_models=["m1"],
+            num_cycles=0,
+        )
+    )
+    assert not runner.calls  # no RsiCycle.run task was ever created
+
+    result = await adapter.poll(handle)
+
+    assert result is not None
+    assert result.success is True
+    assert result.error is None
+    assert result.metadata["cycles_completed"] == 0
+    assert result.metadata["cycles_improved"] == 0
+    assert result.metadata["cycles_failed"] == 0
+
+
 async def test_multi_cycle_succeeds_if_any_cycle_improved_despite_a_failure() -> None:
     runner = _SequencedRunner(
         [

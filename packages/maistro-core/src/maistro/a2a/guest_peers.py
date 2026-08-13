@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-import httpx
+from maistro.http import shared_client
 
 logger = logging.getLogger("maistro.a2a.guest_peers")
 
@@ -142,7 +142,7 @@ class GuestPeerManager:
             headers["Authorization"] = f"Bearer {peer.auth_credential}"
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with shared_client(timeout=30.0) as client:
                 resp = await client.post(
                     f"{peer.peer_url.rstrip('/')}/a2a/tasks/create",
                     json={"agent_id": agent_id, "messages": messages},

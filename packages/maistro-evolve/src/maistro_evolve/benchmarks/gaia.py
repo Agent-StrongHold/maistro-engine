@@ -74,6 +74,25 @@ async def _judge_answer(
 
 
 async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score Q&A responses with a fuzzy heuristic that gates a real LLM-judge fallback.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official GAIA corpus. Despite the name, ``_exact_match_score`` is NOT
+    exact-match: it awards 1.0 for exact equality, but also 0.9 for the
+    expected answer appearing anywhere as a raw substring of the response,
+    0.85 for the same set of digit-sequences appearing in both, and up to
+    0.7 for plain word-set overlap. Any of those non-exact tiers can reach
+    the 0.7 threshold that skips the LLM-as-judge call (``_judge_answer``)
+    entirely — so a short expected answer (e.g. a single letter) can be
+    trivially satisfied by an unrelated response that happens to contain
+    that substring, without the judge ever running.
+    """
+    if llm_call is None:
+        raise ValueError(
+            "run_gaia requires an llm_call — there is no stub/heuristic "
+            "fallback (SPEC-202: never produce a fabricated score)"
+        )
+
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -92,34 +111,27 @@ async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         messages = build_messages(system_prompt, user_msg)
 
         try:
-            if llm_call is not None:
-                response = await asyncio.wait_for(
-                    llm_call(
-                        messages,
-                        temperature=model_config.get("temperature", 0.1),
-                        max_tokens=model_config.get("max_tokens", 256),
-                    ),
-                    timeout=30.0,
-                )
+            response = await asyncio.wait_for(
+                llm_call(
+                    messages,
+                    temperature=model_config.get("temperature", 0.1),
+                    max_tokens=model_config.get("max_tokens", 256),
+                ),
+                timeout=30.0,
+            )
 
-                exact = _exact_match_score(response, sample["answer"])
-                if exact >= 0.7:
-                    total_score += exact
-                elif llm_call is not None:
-                    judged = await _judge_answer(
-                        sample["question"], response, sample["answer"], llm_call
-                    )
-                    total_score += max(exact, judged)
-                    total_cost += 0.0005
-                else:
-                    total_score += exact
-
-                total_cost += 0.001
-                evaluated += 1
+            exact = _exact_match_score(response, sample["answer"])
+            if exact >= 0.7:
+                total_score += exact
             else:
-                score = _heuristic_score(sample)
-                total_score += score
-                evaluated += 1
+                judged = await _judge_answer(
+                    sample["question"], response, sample["answer"], llm_call
+                )
+                total_score += max(exact, judged)
+                total_cost += 0.0005
+
+            total_cost += 0.001
+            evaluated += 1
         except (TimeoutError, Exception):
             evaluated += 1
 
@@ -127,18 +139,10 @@ async def run_gaia(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="gaia",
+        benchmark="proxy_gaia",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real"},
+        metadata={"total_samples": samples, "fidelity": "proxy"},
     )
-
-
-def _heuristic_score(sample: dict[str, Any]) -> float:
-    import random
-
-    level = sample.get("level", 1)
-    base = 0.75 if level == 1 else 0.55
-    return max(0.1, min(0.95, base + random.uniform(-0.1, 0.1)))

@@ -166,7 +166,7 @@ describe("renderCharacterReferences", () => {
 
   it("calls azureImageEdit when reference photos provided", async () => {
     const calls = [];
-    global.fetch = async (url, opts) => {
+    global.fetch = async (url) => {
       calls.push(url);
       if (url.includes("/images/edits")) {
         return { ok: true, json: async () => ({ data: [{ b64_json: "dGVzdA==" }] }) };

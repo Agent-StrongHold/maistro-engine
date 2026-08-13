@@ -139,29 +139,16 @@ class TestDiscoverModels:
             ],
         }
 
-        # Patch httpx.AsyncClient.get to return our mock response
-        class MockResponse:
-            def raise_for_status(self):
-                pass
+        # A MockTransport rather than a stand-in client: the shared client is
+        # real, so this exercises the actual request-building path.
+        import httpx
 
-            def json(self):
-                return payload
+        from maistro.http import override_transport
 
-        class MockClient:
-            async def get(self, url, headers):
-                return MockResponse()
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=payload)
 
-            async def __aenter__(self):
-                return self
-
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
-                pass
-
-        import unittest.mock
-
-        with unittest.mock.patch(
-            "maistro_rsi.quota_burn.httpx.AsyncClient", return_value=MockClient()
-        ):
+        with override_transport(httpx.MockTransport(handler)):
             models = await discover_models(base_url="http://fake.example", api_key="fake-key")
 
         # Should extract all "id" fields from the "data" array

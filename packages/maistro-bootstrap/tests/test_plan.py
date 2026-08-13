@@ -169,6 +169,10 @@ def test_plan_includes_environment_and_generated_artifacts() -> None:
     service = artifacts["compose_override_preview"]["services"]["maistro-reactor"]
     assert service["read_only"] is True
     assert service["cap_drop"] == ["ALL"]
+    # A service with neither image: nor build: fails `docker compose config`
+    # when the override is merged by install.sh.
+    assert "image" in service or "build" in service
+    assert service["profiles"] == ["reactor"]
     assert any("sandbox_profile=safe" in note for note in plan["preview_notes"])
 
 
