@@ -17,6 +17,7 @@ from maistro.projects import (
     Project,
     ProjectMemberRole,
     Workspace,
+    WorkspaceMember,
     WorkspaceOwnershipError,
     WorkspaceRole,
     WorkspaceStore,
@@ -73,11 +74,7 @@ def test_workspace_role_preserves_existing_permission_semantics() -> None:
     workspace = workspace.model_copy(
         update={
             "members": [
-                # A canonical Workspace viewer must remain unable to mutate;
-                # adopting the new noun must not widen authorization.
-                __import__("maistro.projects", fromlist=["WorkspaceMember"]).WorkspaceMember(
-                    user_id="bob", role=WorkspaceRole.VIEWER
-                )
+                WorkspaceMember(user_id="bob", role=WorkspaceRole.VIEWER),
             ]
         }
     )
