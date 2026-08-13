@@ -83,10 +83,20 @@ async def run_function_checks(
     # an arbitrary tempfile path that the sandbox correctly refuses to mount.
     sandbox_root = Path(tempfile.gettempdir()) / "maistro-workspace" / "swebench-eval"
     sandbox_root.mkdir(parents=True, exist_ok=True)
+    sandbox_root.chmod(0o755)
 
     with tempfile.TemporaryDirectory(prefix="case-", dir=sandbox_root) as tmp_name:
         tmp = Path(tmp_name)
-        (tmp / "check.py").write_text(script, encoding="utf-8")
+
+        # TemporaryDirectory deliberately creates directories as 0700. The
+        # sandbox drops CAP_DAC_OVERRIDE, so container root cannot traverse a
+        # host-owned 0700 bind mount. Make only the case directory traversable
+        # and the evaluator script read-only: the container can execute it but
+        # untrusted candidate code cannot modify the mounted evaluator.
+        tmp.chmod(0o755)
+        check_path = tmp / "check.py"
+        check_path.write_text(script, encoding="utf-8")
+        check_path.chmod(0o444)
 
         # Keep the container alive slightly longer than the per-command budget;
         # network isolation is forced on even if an operator's general sandbox
