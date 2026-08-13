@@ -1,9 +1,4 @@
-"""Canonical Workspace compatibility tests.
-
-Workspace is deliberately introduced over the existing Project persistence
-contract.  These tests prevent a migration from silently creating a second
-ownership root, changing durable IDs, or widening Project membership rules.
-"""
+"""Workspace compatibility tests over the legacy Project persistence shape."""
 
 from __future__ import annotations
 
@@ -17,7 +12,7 @@ from maistro.projects import (
     Project,
     ProjectMemberRole,
     Workspace,
-    WorkspaceMember,
+    WorkspaceMembership,
     WorkspaceOwnershipError,
     WorkspaceRole,
     WorkspaceStore,
@@ -46,14 +41,12 @@ def test_workspace_is_identity_preserving_project_compatibility_alias() -> None:
     workspace = Workspace(id="ws-1", owner_user_id="alice", name="Alpha")
     assert isinstance(workspace, Project)
     assert workspace.id == "ws-1"
-    # No new storage column is introduced merely by adopting canonical naming.
     assert "workspace_id" not in workspace.model_dump()
 
 
-def test_workspace_store_is_existing_project_store_contract() -> None:
-    assert InMemoryWorkspaceStore is InMemoryProjectStore
-    # The Protocol alias also stays the exact same runtime contract.
-    assert WorkspaceStore.__name__ == "ProjectStore"
+def test_workspace_store_extends_existing_project_store_without_second_root() -> None:
+    assert issubclass(InMemoryWorkspaceStore, InMemoryProjectStore)
+    assert WorkspaceStore.__name__ == "WorkspaceStore"
 
 
 async def test_workspace_store_preserves_durable_id_and_legacy_read_path() -> None:
@@ -68,21 +61,14 @@ async def test_workspace_store_preserves_durable_id_and_legacy_read_path() -> No
     assert legacy_read.name == "Alpha"
 
 
-def test_workspace_role_preserves_existing_permission_semantics() -> None:
-    assert WorkspaceRole is ProjectMemberRole
-    workspace = Workspace(id="ws-1", owner_user_id="alice", name="Alpha")
-    workspace = workspace.model_copy(
-        update={
-            "members": [
-                WorkspaceMember(user_id="bob", role=WorkspaceRole.VIEWER),
-            ]
-        }
+def test_workspace_role_uses_canonical_collaboration_vocabulary() -> None:
+    assert WorkspaceRole is not ProjectMemberRole
+    assert {role.value for role in WorkspaceRole} == {"owner", "contributor", "member"}
+    membership = WorkspaceMembership(
+        workspace_id="ws-1", user_id="bob", role=WorkspaceRole.MEMBER
     )
-
-    assert workspace.role_of("alice") == WorkspaceRole.OWNER
-    assert workspace.can_mutate("alice") is True
-    assert workspace.role_of("bob") == WorkspaceRole.VIEWER
-    assert workspace.can_mutate("bob") is False
+    assert membership.can_use is True
+    assert membership.can_contribute is False
 
 
 @pytest.mark.parametrize(
