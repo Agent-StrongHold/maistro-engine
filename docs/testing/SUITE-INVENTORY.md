@@ -40,15 +40,17 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 
 ## Counts as of current `develop`
 
-Refreshed after the runtime cleanup queue (#355, #359, #361). #359 added the
-new graph-concurrency tests and #361 added the Warden regex-equivalence tests;
-their branches had independently refreshed the same baseline, so the combined
-count had to be reconciled after both merged. Other suite counts are unchanged.
+Refreshed after the runtime cleanup queue (#355, #359, #361) and the promotion
+CI reconciliation. The repo-task wrapper compatibility regression adds one
+maistro-evolve node ID. Workspace creation was deliberately moved out of the
+scope-gated parametrized Hive cases and into the ordinary product-surface check,
+so Hive loses one collected node ID while retaining the intended assertion.
+Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
 | `packages/maistro-core/tests` | 5936 | `ci.yml` |
-| `packages/maistro-evolve/tests` | 628 | `ci.yml` |
+| `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
@@ -58,7 +60,7 @@ count had to be reconciled after both merged. Other suite counts are unchanged.
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 612 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1231 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1230 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
