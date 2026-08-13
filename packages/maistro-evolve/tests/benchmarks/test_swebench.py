@@ -14,11 +14,12 @@ from maistro_evolve.benchmarks.swebench import (
 
 from .conftest import make_genome
 
-# A single small, fast sample used for most run_swebench tests — avoids the
-# real dataset's deliberately-slow swe_08/swe_10 timeout-discriminating
-# entries, which take 10+ seconds by design (see datasets.py).
+# A single small, fast sample used for most run_swebench tests. It deliberately
+# uses the real swe_01 identity so the production evaluator supplies its
+# undisclosed cases instead of letting a synthetic fixture bypass the hidden-
+# case contract introduced to prevent prompt-example overfitting.
 _FAST_SAMPLE = {
-    "id": "test_flatten",
+    "id": "swe_01",
     "problem": "flatten_list only handles one level of nesting.",
     "buggy_code": (
         "def flatten_list(lst):\n"
@@ -116,7 +117,7 @@ class TestRunSwebench:
         assert result.score == 1.0
         assert result.cost_usd > 0.0
         assert result.metadata["fidelity"] == "proxy"
-        assert result.metadata["check"] == "real_assertion_execution"
+        assert result.metadata["check"] == "isolated_hidden_assertion_batch"
         assert result.metadata["total_samples"] == 1
         assert result.metadata["failures"] == []
 
@@ -132,7 +133,7 @@ class TestRunSwebench:
         assert result.samples_evaluated == 1
         assert result.score == 0.0
         assert len(result.metadata["failures"]) == 1
-        assert result.metadata["failures"][0]["id"] == "test_flatten"
+        assert result.metadata["failures"][0]["id"] == "swe_01"
 
     async def test_malformed_response_fails_via_sandboxed_syntax_error(
         self, monkeypatch: pytest.MonkeyPatch

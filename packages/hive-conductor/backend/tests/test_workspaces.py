@@ -80,11 +80,15 @@ def test_get_unknown_workspace_404s(admin_client) -> None:
     assert r.status_code == 404
 
 
-def test_zero_permission_user_cannot_create_workspace(authed_client) -> None:
+def test_zero_permission_user_can_create_own_workspace(authed_client) -> None:
     r = authed_client.post(
         "/v1/workspaces", json={"persona_template_id": "pm_fleet", "name": "PM Fleet"}
     )
-    assert r.status_code == 403
+    assert r.status_code == 201
+    body = r.json()
+    assert body["name"] == "PM Fleet"
+    assert len(body["members"]) == 1
+    assert body["members"][0]["role"] == "owner"
 
 
 def test_workspaces_are_not_visible_to_other_users(authed_client, admin_client) -> None:

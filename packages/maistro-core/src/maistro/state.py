@@ -44,6 +44,10 @@ class State:
         self._max_queue_depth = max_queue_depth
         self._writer: sqlite3.Connection | None = None
         self._writer_lock = threading.Lock()
+        # Serializes the accept/close boundary separately from DB access. A
+        # submit that wins this lock is guaranteed to enqueue before close's
+        # drain marker; once close wins it, no later submit can be accepted.
+        self._lifecycle_lock = threading.Lock()
         self._writer_open = False
         self._tx_queue: queue.Queue[Callable[[sqlite3.Connection], None]] = queue.Queue(
             maxsize=max_queue_depth
@@ -52,21 +56,22 @@ class State:
         self._shutdown = threading.Event()
 
     def open_writer(self) -> sqlite3.Connection:
-        if self._writer_open:
-            raise RuntimeError("open_writer may be called exactly once")
-        conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT)"
-        )
-        conn.commit()
-        self._writer = conn
-        self._writer_open = True
+        with self._lifecycle_lock:
+            if self._writer_open:
+                raise RuntimeError("open_writer may be called exactly once")
+            conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT)"
+            )
+            conn.commit()
+            self._writer = conn
+            self._writer_open = True
 
-        self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
-        self._writer_thread.start()
+            self._writer_thread = threading.Thread(target=self._writer_loop, daemon=True)
+            self._writer_thread.start()
 
-        return conn
+            return conn
 
     def open_reader(self) -> sqlite3.Connection:
         conn = sqlite3.connect(f"file:{self._db_path}?mode=ro", uri=True, check_same_thread=False)
@@ -82,17 +87,18 @@ class State:
         and doing so deadlocks the writer thread permanently. No current caller
         does; `PersistedStore` only issues `conn.execute`.
         """
-        if not self._writer_open:
-            raise RuntimeError(
-                "State writer is not open: call open_writer() first, or this "
-                "State has been closed and can no longer accept writes"
-            )
-        try:
-            self._tx_queue.put_nowait(fn)
-        except queue.Full:
-            raise RuntimeError(
-                f"backpressure: submit queue full (depth={self._max_queue_depth})"
-            ) from None
+        with self._lifecycle_lock:
+            if not self._writer_open:
+                raise RuntimeError(
+                    "State writer is not open: call open_writer() first, or this "
+                    "State has been closed and can no longer accept writes"
+                )
+            try:
+                self._tx_queue.put_nowait(fn)
+            except queue.Full:
+                raise RuntimeError(
+                    f"backpressure: submit queue full (depth={self._max_queue_depth})"
+                ) from None
 
     def flush(self, timeout: float = 30.0) -> None:
         done = threading.Event()
@@ -188,16 +194,14 @@ class State:
     def close(self, timeout: float = 5.0) -> None:
         """Drain queued writes, then stop the writer thread.
 
-        Order matters and used to be wrong: `_shutdown` was set *before* the
-        sentinel was enqueued, and `_writer_loop`'s guard is
-        `while not self._shutdown.is_set()` — so the loop exited at its next
-        check and everything still queued was silently dropped. Because
-        `PersistedStore.put`/`delete` are fire-and-forget, callers got no error
-        and had every reason to believe their writes had landed.
-
-        Draining first makes `close()` mean "the writes you handed me are on
-        disk". A drain that times out is logged rather than swallowed.
+        Close first flips the acceptance gate under `_lifecycle_lock`. Any
+        submit accepted before that point is already in the queue, and no
+        submit can be accepted after it. The drain marker can therefore safely
+        mean "all accepted writes before close are on disk".
         """
+        with self._lifecycle_lock:
+            self._writer_open = False
+
         if self._writer_thread is not None:
             drained = threading.Event()
             try:
@@ -219,14 +223,6 @@ class State:
             self._writer_thread = None
         else:
             self._shutdown.set()
-
-        # `submit()` must stop accepting work. Without this, `_writer_open`
-        # stayed True after close() and put() kept succeeding — the write was
-        # queued to a thread that would never run again and vanished silently,
-        # which is the exact fire-and-forget failure H7 exists to remove. The
-        # contract is "close() means the writes you handed me are on disk", and
-        # that has to include refusing writes handed over afterwards.
-        self._writer_open = False
 
         if self._writer is not None:
             # Take the lock: a migration or backup on another thread may still

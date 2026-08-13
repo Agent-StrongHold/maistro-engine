@@ -80,9 +80,9 @@ _PROTECTED_OPS: dict[str, dict[str, str]] = {
         "/v1/optimizer": "dags.write",
         # A schedule is recurring autonomous execution.
         "/v1/schedules": "schedules.write",
-        # Creating a workspace tab (Persona/Workspace system) instantiates a
-        # persona's agent roster/tools for this user — same write-scope
-        # posture as agents.write, not left open to any authenticated caller.
+        # Workspace sub-resource mutations (membership, persona authoring, etc.)
+        # remain privileged. Creating one's own workspace tab is handled as an
+        # ordinary authenticated operation in _required_permission() below.
         "/v1/workspaces": "workspaces.write",
         # The evolution tournament is the self-improvement loop's other door.
         "/v1/evolution": "rsi.execute",
@@ -257,6 +257,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     },
                 )
 
+            # Persona-level feedback aggregates raw entries across all
+            # workspaces using that persona. A normal workspace member may not
+            # inspect other workspaces' user ids, comments, or identifiers.
+            # Keep the aggregate endpoint available to operators only.
+            if (
+                request.method == "GET"
+                and path.startswith("/v1/workspaces/persona-templates/")
+                and path.endswith("/feedback")
+                and user.get("role") != "admin"
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Admin permission required for persona-wide feedback"},
+                )
+
             required_perm = self._required_permission(request)
             if required_perm and not self._check_permission(user, required_perm):
                 return JSONResponse(
@@ -286,6 +301,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
     def _required_permission(self, request: Request) -> str | None:
         method_perms = _PROTECTED_OPS.get(request.method, {})
         path = request.url.path
+        # Creating a workspace tab is a normal authenticated-user action. The
+        # route makes the caller its owner, so requiring task-scoped elevation
+        # here made the first-run daily account's workspace UI unusable.
+        if request.method == "POST" and path.rstrip("/") == "/v1/workspaces":
+            return None
         # Agent invoke (POST /v1/agents/{id}/invoke) is autonomous read — don't
         # gate behind elevation. Match the trailing segment, not a bare
         # substring: "in path" would also exempt any future route that merely

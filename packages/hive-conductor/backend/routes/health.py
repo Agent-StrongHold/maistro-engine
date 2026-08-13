@@ -44,6 +44,15 @@ def _memory_decay_state() -> dict:
         return {"enabled": False, "state": "unavailable"}
 
 
+def _memory_decay_running(status: dict) -> bool:
+    """True only when decay is actually wired and ticking.
+
+    Configuration alone is insufficient: the driver can be enabled while in
+    ``no_store`` state, which means no episodic memory will ever decay.
+    """
+    return status.get("state") == "running"
+
+
 def _log_redaction_active() -> bool:
     """ADR-064 log-redaction state. Same defensive contract as the probes above:
     unreadable reports as inactive, because a false "secrets are scrubbed" is the
@@ -77,7 +86,7 @@ def health() -> dict:
 
     llm_configured, allow_stub_llm = _llm_state()
     memory_decay = _memory_decay_state()
-    memory_decay_enabled = bool(memory_decay.get("enabled"))
+    memory_decay_enabled = _memory_decay_running(memory_decay)
     log_redaction = _log_redaction_active()
 
     return {
@@ -124,6 +133,6 @@ def ready() -> ReadyResponse:
     # Informational only: `ready` stays keyed on "api" so a missing LLM gateway
     # degrades the conductor without taking it out of rotation.
     checks["llm"] = _llm_state()[0]
-    checks["memory_decay"] = bool(_memory_decay_state().get("enabled"))
+    checks["memory_decay"] = _memory_decay_running(_memory_decay_state())
     checks["log_redaction"] = _log_redaction_active()
     return ReadyResponse(ready=checks["api"], checks=checks)

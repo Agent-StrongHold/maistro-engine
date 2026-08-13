@@ -1,123 +1,126 @@
-"""Minimal, self-contained subprocess sandbox for checking model-generated code.
+"""Execute model-generated benchmark code inside MAIstro's Docker sandbox.
 
-Executes a candidate function against a real assertion (call it, compare the
-return value to a known-good expected value) instead of scoring the response
-text with keyword/line-diff heuristics. This is genuine pass/fail signal, not
-an approximation of one.
+The proxy SWE-bench evaluator receives raw LLM output, so candidate code is
+untrusted by definition. It must never execute directly on the evaluator host.
+This module therefore delegates execution to ``maistro.tools.sandbox`` and
+fails closed when the isolated runtime is unavailable.
 
-Isolation posture — read before reusing elsewhere: this provides **process-level
-isolation only** (subprocess boundary, wall-clock timeout, process-group kill on
-timeout — mirroring the tested pattern in
-``maistro_rsi.sandbox.local.LocalSandbox.exec``). It does **not** disable
-networking, cap memory, or restrict the filesystem the way
-``maistro.tools.sandbox.docker.SandboxContainer`` does. ``maistro-evolve`` has
-zero dependency on ``maistro-core``/``maistro-rsi`` by design (see
-``pyproject.toml``; the dependency direction is the reverse — ``maistro-rsi``
-depends on ``maistro-evolve``), so this module stays self-contained rather than
-reaching for that container-backed sandbox. That is a proportionate choice for
-the current dataset (``SWEBENCH_SAMPLES`` — pure list/string/arithmetic
-functions, no filesystem or network calls) and matches ``LocalSandbox``'s own
-documented caveat that it provides no isolation of its own and must run inside
-an already-isolated context. Do not point this at untrusted code in a
-context that isn't already sandboxed (container, CI runner, VM).
-
-POSIX-only (``start_new_session``/``os.killpg``), matching the same
-precedent set by ``LocalSandbox.exec``.
+The sandbox provides the controls the benchmark needs at this trust boundary:
+network isolation, bounded memory/CPU/PIDs, a restricted temporary workspace
+mount, environment sanitization, timeout handling, and container teardown.
+``maistro-evolve`` intentionally does not add a package dependency on
+``maistro-core`` because the dependency direction is otherwise reversed. The
+import is runtime-only: MAIstro's integrated RSI/evolve runtime provides core;
+a standalone evolve installation simply cannot execute this untrusted-code
+benchmark and returns a failed check instead of weakening isolation.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
-import os
-import signal
-import sys
+import math
 import tempfile
 from pathlib import Path
 from typing import Any
 
 _DEFAULT_TIMEOUT = 10.0
 _MAX_OUTPUT_CHARS = 500
-_REAP_GRACE_SECONDS = 1.0
 _PASS_MARKER = "PASS"
 
 
 def _build_check_script(
-    code: str, function_name: str, call_args: list[Any], expected_value: Any
+    code: str,
+    function_name: str,
+    cases: list[tuple[list[Any], Any]],
 ) -> str:
-    """Candidate code followed by a real call + comparison, as plain source.
+    """Candidate code followed by evaluator-only calls and comparisons.
 
-    ``call_args``/``expected_value`` come only from the maintainer-authored
-    dataset (never from model output), so embedding their ``repr()`` is safe —
-    ``repr()`` of the list/dict/str/int/None/datetime types used there always
-    round-trips to valid Python source.
-
-    The expected value's repr is evaluated in an isolated namespace (its own
-    ``eval()`` globals dict, keyed only on a module reference the candidate
-    code cannot see) rather than as plain top-level statements sharing the
-    candidate's globals. A sample like swe_04's ``from datetime import
-    datetime`` at module scope would otherwise rebind the name ``datetime`` in
-    the shared namespace, and since Python functions resolve globals at *call*
-    time, ``parse_date``'s later call to ``datetime.fromisoformat`` would
-    silently resolve to whatever this harness bound that name to last.
+    Case arguments/expected values come only from the maintainer-authored
+    evaluator, never from model output. Expected values are evaluated in a
+    separate namespace so candidate globals cannot accidentally rebind names
+    used by values such as ``datetime``.
     """
-    expected_expr = repr(expected_value)
+    case_rows = ",\n".join(f"    ({args!r}, {repr(expected)!r})" for args, expected in cases)
     return (
         f"{code}\n\n"
         "import datetime as _maistro_datetime_module\n"
-        f"_result = {function_name}(*{call_args!r})\n"
-        f"_expected = eval({expected_expr!r}, {{'datetime': _maistro_datetime_module}})\n"
-        "print('PASS' if _result == _expected else "
-        "f'FAIL: got {_result!r}, expected {_expected!r}')\n"
+        f"_cases = [\n{case_rows}\n]\n"
+        "for _args, _expected_expr in _cases:\n"
+        f"    _result = {function_name}(*_args)\n"
+        "    _expected = eval(_expected_expr, {'datetime': _maistro_datetime_module})\n"
+        "    if _result != _expected:\n"
+        "        print(f'FAIL: args={_args!r}, got {_result!r}, expected {_expected!r}')\n"
+        "        raise SystemExit(1)\n"
+        "print('PASS')\n"
     )
 
 
-async def run_function_check(
+async def run_function_checks(
     code: str,
     function_name: str,
-    call_args: list[Any],
-    expected_value: Any,
+    cases: list[tuple[list[Any], Any]],
     *,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> tuple[bool, str]:
-    """Run ``function_name(*call_args)`` from ``code`` in a subprocess and
-    compare the result to ``expected_value``.
+    """Run a batch of candidate assertions in one isolated Docker sandbox.
 
-    Returns ``(passed, detail)`` — ``detail`` is ``"ok"`` on pass, or a short
-    (truncated) description of the failure: a mismatch, an exception from the
-    candidate code, or a timeout.
+    There is deliberately no host-process fallback: if Docker/core sandbox
+    support is unavailable, the check fails rather than executing generated
+    Python with host filesystem/network access.
     """
-    script = _build_check_script(code, function_name, call_args, expected_value)
-    with tempfile.TemporaryDirectory(prefix="maistro-swebench-") as tmp_name:
+    if not cases:
+        return False, "no evaluator cases provided"
+
+    script = _build_check_script(code, function_name, cases)
+
+    try:
+        from maistro.config.settings import SandboxSettings
+        from maistro.tools.sandbox.docker import create_sandbox
+    except ImportError as exc:
+        return False, f"isolated sandbox unavailable: {exc}"[:_MAX_OUTPUT_CHARS]
+
+    # ``ensure_workspace`` only permits MAIstro's dedicated temporary root (or
+    # /repos). Build the evaluator directory under that root rather than using
+    # an arbitrary tempfile path that the sandbox correctly refuses to mount.
+    sandbox_root = Path(tempfile.gettempdir()) / "maistro-workspace" / "swebench-eval"
+    sandbox_root.mkdir(parents=True, exist_ok=True)
+    sandbox_root.chmod(0o755)
+
+    with tempfile.TemporaryDirectory(prefix="case-", dir=sandbox_root) as tmp_name:
         tmp = Path(tmp_name)
-        script_path = tmp / "check.py"
-        script_path.write_text(script, encoding="utf-8")
 
-        proc = await asyncio.create_subprocess_exec(
-            sys.executable,
-            str(script_path),
-            cwd=str(tmp),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            env={"PATH": os.environ.get("PATH", "")},
-            start_new_session=True,
+        # TemporaryDirectory deliberately creates directories as 0700. The
+        # sandbox drops CAP_DAC_OVERRIDE, so container root cannot traverse a
+        # host-owned 0700 bind mount. Make only the case directory traversable
+        # and the evaluator script read-only: the container can execute it but
+        # untrusted candidate code cannot modify the mounted evaluator.
+        tmp.chmod(0o755)
+        check_path = tmp / "check.py"
+        check_path.write_text(script, encoding="utf-8")
+        check_path.chmod(0o444)
+
+        # Keep the container alive slightly longer than the per-command budget;
+        # network isolation is forced on even if an operator's general sandbox
+        # defaults are looser.
+        settings = SandboxSettings(
+            memory_limit="256m",
+            cpu_count=1,
+            timeout=max(15, math.ceil(timeout) + 5),
+            network_disabled=True,
         )
-        try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except TimeoutError:
-            # Kill the whole process group, not just the direct child — a
-            # candidate "fix" that spawns children (or never terminates) must
-            # not outlive the check.
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(proc.pid, signal.SIGKILL)
-            proc.kill()
-            with contextlib.suppress(Exception):
-                await asyncio.wait_for(proc.wait(), timeout=_REAP_GRACE_SECONDS)
-            return False, f"timed out after {timeout}s"
 
-    output = stdout.decode(errors="replace").strip()
-    if proc.returncode != 0:
-        detail = output or f"exit code {proc.returncode}"
+        try:
+            sandbox = await create_sandbox(str(tmp), settings=settings, env={})
+            async with sandbox:
+                exit_code, output = await sandbox.exec(
+                    "python check.py",
+                    timeout=max(1, math.ceil(timeout)),
+                )
+        except (FileNotFoundError, PermissionError, RuntimeError, ValueError, OSError) as exc:
+            return False, f"isolated sandbox unavailable: {exc}"[:_MAX_OUTPUT_CHARS]
+
+    output = output.strip()
+    if exit_code != 0:
+        detail = output or f"exit code {exit_code}"
         return False, detail[:_MAX_OUTPUT_CHARS]
     if output == _PASS_MARKER:
         return True, "ok"

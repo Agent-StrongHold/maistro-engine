@@ -118,5 +118,10 @@ describe("requireToken", () => {
     const b = vi.fn();
     requireToken({ token: "secret" })(req({ "x-canvas-token": "secret" }), res(), b);
     expect(b).toHaveBeenCalled();
+
+    const c = vi.fn();
+    const basic = Buffer.from("canvas:secret").toString("base64");
+    requireToken({ token: "secret" })(req({ authorization: `Basic ${basic}` }), res(), c);
+    expect(c).toHaveBeenCalled();
   });
 });
