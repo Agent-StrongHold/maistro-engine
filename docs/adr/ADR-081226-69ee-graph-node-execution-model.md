@@ -21,10 +21,10 @@ history:
 
 Graph is the Workspace-scoped editable composition object. Node is its universal executable position. A one-node Graph is valid.
 
-A Run executes a stable Graph snapshot. Selecting a Node creates a NodeRun; each physical try is an Attempt.
+Every persisted Graph contains its canonical `workspace_id`. A Run captures a stable Graph snapshot including graph identity, Workspace identity, content hash and serialized definition. Editing the source Graph after Run creation cannot change that Run.
 
-Existing GraphRun semantics decompose into `Run + GraphExecutionState`. GraphExecutionState owns traversal state. Run owns universal lifecycle and correlation.
+Selecting a Node creates a NodeRun; each physical try is an Attempt. GraphExecutionState owns traversal state. Run owns universal lifecycle and correlation.
 
 Graph traversal remains domain logic. ExecutionRuntime owns concurrency, cancellation, deadlines and process supervision mechanics only.
 
-Subgraph execution normally creates a child Run. Durable graph records migrate to canonical Run/NodeRun projections after behavior parity is proven.
+Subgraph execution normally creates a child Run. `GraphRun`, `GraphConfig`, durable graph lifecycle records and similar duplicate concepts are implementation debt to remove as their callers move to Graph/Run/NodeRun/Attempt. They do not require compatibility adapters or parity-preserving public aliases.
