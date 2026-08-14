@@ -130,11 +130,13 @@ def graph_config_to_graph(
     if terminal_edges:
         legacy_metadata["terminal_edges"] = terminal_edges
 
-    return Graph(
-        graph_id=graph_id or None,
-        name=name,
-        description=description,
-        nodes=nodes,
-        edges=edges,
-        metadata={"legacy_graph_config": legacy_metadata},
-    )
+    graph_values: dict[str, Any] = {
+        "name": name,
+        "description": description,
+        "nodes": nodes,
+        "edges": edges,
+        "metadata": {"legacy_graph_config": legacy_metadata},
+    }
+    if graph_id is not None:
+        graph_values["graph_id"] = graph_id
+    return Graph(**graph_values)
