@@ -10,11 +10,10 @@ from typing import Any
 import structlog
 
 from maistro.graph.conditions import (
-    CONDITION_OPERATORS as _OPERATORS,
     MISSING as _MISSING,
-    compare_condition_values as _compare,
+    compare_condition_values,
     evaluate_predicate,
-    parse_condition_rhs as _parse_rhs,
+    parse_condition_rhs,
 )
 from maistro.graph.events import (
     GraphEvent,
@@ -73,6 +72,16 @@ def _resolve_path(
     if obj is None:
         return _MISSING
     return getattr(obj, attr, _MISSING)
+
+
+def _parse_rhs(value: str) -> object:
+    """Compatibility wrapper for the shared graph predicate literal parser."""
+    return parse_condition_rhs(value)
+
+
+def _compare(lhs: object, operator: str, rhs: object) -> bool:
+    """Compatibility wrapper for the shared graph predicate comparator."""
+    return compare_condition_values(lhs, operator, rhs)
 
 
 def evaluate_condition(
