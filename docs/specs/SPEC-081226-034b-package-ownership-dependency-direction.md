@@ -1,3 +1,37 @@
+---
+id: SPEC-081226-034b
+title: Package Ownership and Dependency Direction
+repo: maistro-engine
+kind: spec
+status: AC Defined
+created: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+  - status: AC Defined
+    date: 2026-08-12
+substrate:
+  - maistro-engine#ADR-081226-034b
+implements:
+  - maistro-engine#ADR-081226-034b
+related: []
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests: []
+source:
+  - packages
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # SPEC-081226-034b: Package Ownership and Dependency Direction
 
 - **Status:** Active
