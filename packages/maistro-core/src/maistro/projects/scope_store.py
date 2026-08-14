@@ -64,6 +64,12 @@ class ProjectScopeStore(Protocol):
         self, project_id: str, *, resource_type: str | None = None
     ) -> list[ProjectScopedResource]: ...
 
+    async def validate_required_resources(
+        self,
+        project_id: str,
+        resource_ids: set[str],
+    ) -> None: ...
+
 
 class InMemoryProjectScopeStore:
     """Reference Project tree with downward-only scoped-resource visibility."""
