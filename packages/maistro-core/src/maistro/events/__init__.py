@@ -43,6 +43,7 @@ from maistro.events.invocations import (
     InvocationStore,
     SqliteInvocationStore,
 )
+from maistro.events.outbox import SqliteEventOutbox
 from maistro.events.processing import (
     HANDLER_FAILED_EVENT,
     HandlerCaller,
@@ -80,6 +81,12 @@ _CHECKPOINT_STORE_OPERATIONS = (
     SqliteCheckpointStore.latest,
     SqliteCheckpointStore.list_run,
 )
+_OUTBOX_OPERATIONS = (
+    SqliteEventOutbox.ensure_schema,
+    SqliteEventOutbox.stage,
+    SqliteEventOutbox.publish_pending,
+    SqliteEventOutbox.pending_count,
+)
 
 __all__ = [
     "CHECKPOINT_SCHEMA_VERSION",
@@ -113,6 +120,7 @@ __all__ = [
     "LoggedEvent",
     "SqliteCheckpointStore",
     "SqliteEventLog",
+    "SqliteEventOutbox",
     "SqliteEventStore",
     "SqliteInvocationStore",
     "SqliteTriggerStore",
