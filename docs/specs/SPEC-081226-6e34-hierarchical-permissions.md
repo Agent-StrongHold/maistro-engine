@@ -1,3 +1,39 @@
+---
+id: SPEC-081226-6e34
+title: Hierarchical Permissions
+repo: maistro-engine
+kind: spec
+status: Accepted
+created: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+substrate:
+  - maistro-engine#ADR-081226-6e34
+implements:
+  - maistro-engine#ADR-081226-6e34
+related:
+  - maistro-engine#ADR-081226-9944
+  - maistro-engine#ADR-081226-6b46
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests:
+  - packages/maistro-core/tests/workspaces/test_membership.py
+source:
+  - packages/maistro-core/src/maistro/workspaces
+  - packages/maistro-core/src/maistro/policy
+layer: Governance
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # SPEC-081226-6e34: Hierarchical Permissions
 
 - **Status:** Active
