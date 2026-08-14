@@ -18,9 +18,17 @@ from maistro.projects.scope import (
 
 @runtime_checkable
 class ProjectScopeStore(Protocol):
-    async def create_root(self, workspace_id: str) -> Project: ...
+    """Persistence boundary for the canonical Workspace Project tree."""
 
-    async def root_for_workspace(self, workspace_id: str) -> Project: ...
+    async def create_root(self, workspace_id: str) -> Project:
+        """Create or return the Workspace's single Root Project."""
+
+        ...
+
+    async def root_for_workspace(self, workspace_id: str) -> Project:
+        """Return the canonical Root Project for a Workspace."""
+
+        ...
 
     async def create(
         self,
@@ -30,19 +38,40 @@ class ProjectScopeStore(Protocol):
         name: str,
         defaults: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> Project: ...
+    ) -> Project:
+        """Create a child Project beneath a same-Workspace parent."""
 
-    async def get(self, project_id: str) -> Project | None: ...
+        ...
 
-    async def lineage(self, project_id: str) -> list[Project]: ...
+    async def get(self, project_id: str) -> Project | None:
+        """Return a Project by ID, or ``None`` when it does not exist."""
 
-    async def list_children(self, project_id: str) -> list[Project]: ...
+        ...
 
-    async def move_project(self, project_id: str, *, parent_project_id: str) -> Project: ...
+    async def lineage(self, project_id: str) -> list[Project]:
+        """Return the Project lineage ordered from Root Project to target."""
 
-    async def update_defaults(self, project_id: str, *, defaults: dict[str, Any]) -> Project: ...
+        ...
 
-    async def delete(self, project_id: str) -> None: ...
+    async def list_children(self, project_id: str) -> list[Project]:
+        """Return the target Project's direct children."""
+
+        ...
+
+    async def move_project(self, project_id: str, *, parent_project_id: str) -> Project:
+        """Move a non-root Project beneath a valid same-Workspace parent."""
+
+        ...
+
+    async def update_defaults(self, project_id: str, *, defaults: dict[str, Any]) -> Project:
+        """Replace the defaults owned by a Project."""
+
+        ...
+
+    async def delete(self, project_id: str) -> None:
+        """Delete an empty non-root Project."""
+
+        ...
 
     async def resolve_creation_defaults(
         self,
@@ -50,37 +79,59 @@ class ProjectScopeStore(Protocol):
         *,
         workspace_defaults: dict[str, Any] | None = None,
         persona_defaults: dict[str, Any] | None = None,
-    ) -> dict[str, Any]: ...
+    ) -> dict[str, Any]:
+        """Resolve creation defaults from Workspace, Persona, and ancestry."""
 
-    async def set_membership(self, membership: ProjectMembership) -> ProjectMembership: ...
+        ...
+
+    async def set_membership(self, membership: ProjectMembership) -> ProjectMembership:
+        """Create or replace a Project-scoped membership."""
+
+        ...
 
     async def memberships_for(
         self, project_id: str, *, principal_id: str | None = None
-    ) -> list[ProjectMembership]: ...
+    ) -> list[ProjectMembership]:
+        """List memberships at one Project, optionally for one principal."""
 
-    async def put_resource(self, resource: ProjectScopedResource) -> ProjectScopedResource: ...
+        ...
+
+    async def put_resource(self, resource: ProjectScopedResource) -> ProjectScopedResource:
+        """Create or replace a resource owned by a Project."""
+
+        ...
 
     async def visible_resources(
         self, project_id: str, *, resource_type: str | None = None
-    ) -> list[ProjectScopedResource]: ...
+    ) -> list[ProjectScopedResource]:
+        """List resources visible from the target Project's ancestry."""
+
+        ...
 
     async def validate_required_resources(
         self,
         project_id: str,
         resource_ids: set[str],
-    ) -> None: ...
+    ) -> None:
+        """Reject required resources that are not visible at the target."""
+
+        ...
 
 
 class InMemoryProjectScopeStore:
     """Reference Project tree with downward-only scoped-resource visibility."""
 
     def __init__(self) -> None:
+        """Initialize an empty isolated Project tree store."""
+
         self._projects: dict[str, Project] = {}
         self._root_by_workspace: dict[str, str] = {}
         self._memberships: dict[str, ProjectMembership] = {}
         self._resources: dict[str, ProjectScopedResource] = {}
 
     async def create_root(self, workspace_id: str) -> Project:
+        """Create or return the Workspace's single Root Project."""
+
         if not workspace_id.strip():
             raise ValueError("workspace_id must be a non-empty string")
         existing_id = self._root_by_workspace.get(workspace_id)
@@ -98,6 +149,8 @@ class InMemoryProjectScopeStore:
         return root.model_copy(deep=True)
 
     async def root_for_workspace(self, workspace_id: str) -> Project:
+        """Return the canonical Root Project for a Workspace."""
+
         root_id = self._root_by_workspace.get(workspace_id)
         if root_id is None:
             raise ProjectNotFound(f"Root Project for Workspace {workspace_id!r}")
@@ -112,6 +165,8 @@ class InMemoryProjectScopeStore:
         defaults: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> Project:
+        """Create a child Project beneath a same-Workspace parent."""
+
         parent = self._require(parent_project_id)
         if parent.workspace_id != workspace_id:
             raise ProjectIntegrityError("Project parent must belong to the same Workspace")
@@ -126,10 +181,14 @@ class InMemoryProjectScopeStore:
         return project.model_copy(deep=True)
 
     async def get(self, project_id: str) -> Project | None:
+        """Return a detached Project snapshot by ID when present."""
+
         project = self._projects.get(project_id)
         return project.model_copy(deep=True) if project is not None else None
 
     async def lineage(self, project_id: str) -> list[Project]:
+        """Return validated ancestry ordered from Root Project to target."""
+
         lineage: list[Project] = []
         seen: set[str] = set()
         current = self._require(project_id)
@@ -152,6 +211,8 @@ class InMemoryProjectScopeStore:
         return [project.model_copy(deep=True) for project in lineage]
 
     async def list_children(self, project_id: str) -> list[Project]:
+        """Return detached snapshots of the target's direct children."""
+
         self._require(project_id)
         children = [
             project.model_copy(deep=True)
@@ -162,6 +223,8 @@ class InMemoryProjectScopeStore:
         return children
 
     async def move_project(self, project_id: str, *, parent_project_id: str) -> Project:
+        """Move a non-root Project without crossing Workspaces or forming a cycle."""
+
         project = self._require(project_id)
         if project.is_root:
             raise ProjectIntegrityError("Root Project cannot be moved")
@@ -190,6 +253,8 @@ class InMemoryProjectScopeStore:
         *,
         defaults: dict[str, Any],
     ) -> Project:
+        """Replace a Project's defaults and advance its update timestamp."""
+
         project = self._require(project_id)
         updated = project.model_copy(
             deep=True,
@@ -199,6 +264,8 @@ class InMemoryProjectScopeStore:
         return updated.model_copy(deep=True)
 
     async def delete(self, project_id: str) -> None:
+        """Delete an empty non-root Project while preserving owned records."""
+
         project = self._require(project_id)
         if project.is_root:
             raise ProjectIntegrityError("Root Project cannot be deleted")
@@ -217,6 +284,8 @@ class InMemoryProjectScopeStore:
         workspace_defaults: dict[str, Any] | None = None,
         persona_defaults: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Merge creation defaults in Workspace, Persona, then lineage order."""
+
         resolved = dict(workspace_defaults or {})
         resolved.update(persona_defaults or {})
         for project in await self.lineage(project_id):
@@ -224,6 +293,8 @@ class InMemoryProjectScopeStore:
         return resolved
 
     async def set_membership(self, membership: ProjectMembership) -> ProjectMembership:
+        """Create or replace a membership after validating Project ownership."""
+
         project = self._require(membership.project_id)
         if project.workspace_id != membership.workspace_id:
             raise ProjectIntegrityError("ProjectMembership Workspace does not match Project")
@@ -237,6 +308,8 @@ class InMemoryProjectScopeStore:
         *,
         principal_id: str | None = None,
     ) -> list[ProjectMembership]:
+        """List detached memberships at a Project, optionally for one principal."""
+
         self._require(project_id)
         memberships = [
             membership.model_copy(deep=True)
@@ -248,6 +321,8 @@ class InMemoryProjectScopeStore:
         return memberships
 
     async def put_resource(self, resource: ProjectScopedResource) -> ProjectScopedResource:
+        """Create or replace a Project resource without crossing Workspaces."""
+
         project = self._require(resource.project_id)
         if project.workspace_id != resource.workspace_id:
             raise ProjectIntegrityError("resource Workspace does not match Project")
@@ -263,6 +338,8 @@ class InMemoryProjectScopeStore:
         *,
         resource_type: str | None = None,
     ) -> list[ProjectScopedResource]:
+        """Return resources owned by the target Project or its ancestors."""
+
         ancestry = {project.project_id for project in await self.lineage(project_id)}
         resources = [
             resource.model_copy(deep=True)
@@ -278,6 +355,8 @@ class InMemoryProjectScopeStore:
         project_id: str,
         resource_ids: set[str],
     ) -> None:
+        """Reject resource IDs outside the target Project's visible ancestry."""
+
         visible = {resource.resource_id for resource in await self.visible_resources(project_id)}
         missing = sorted(resource_ids - visible)
         if missing:

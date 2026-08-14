@@ -68,6 +68,8 @@ class SqliteProjectScopeStore:
     """Durable Project tree, membership, defaults, and scoped-resource store."""
 
     def __init__(self, conn: aiosqlite.Connection) -> None:
+        """Bind the store to an application-owned SQLite connection."""
+
         self._conn = conn
 
     async def ensure_schema(self) -> None:
@@ -77,6 +79,8 @@ class SqliteProjectScopeStore:
         await self._conn.commit()
 
     async def create_root(self, workspace_id: str) -> Project:
+        """Create or return the Workspace's durable Root Project."""
+
         if not workspace_id.strip():
             raise ValueError("workspace_id must be a non-empty string")
         existing = await self._root_or_none(workspace_id)
@@ -99,6 +103,8 @@ class SqliteProjectScopeStore:
         return await self.root_for_workspace(workspace_id)
 
     async def root_for_workspace(self, workspace_id: str) -> Project:
+        """Return the canonical Root Project for a Workspace."""
+
         root = await self._root_or_none(workspace_id)
         if root is None:
             raise ProjectNotFound(f"Root Project for Workspace {workspace_id!r}")
@@ -113,6 +119,8 @@ class SqliteProjectScopeStore:
         defaults: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> Project:
+        """Persist a child Project beneath a same-Workspace parent."""
+
         parent = await self._require(parent_project_id)
         if parent.workspace_id != workspace_id:
             raise ProjectIntegrityError("Project parent must belong to the same Workspace")
@@ -127,6 +135,8 @@ class SqliteProjectScopeStore:
         return project
 
     async def get(self, project_id: str) -> Project | None:
+        """Load a Project by ID, or return ``None`` when absent."""
+
         row = await self._fetchone(
             "SELECT payload FROM canonical_projects WHERE project_id = ?",
             (project_id,),
@@ -134,6 +144,8 @@ class SqliteProjectScopeStore:
         return Project.model_validate_json(row[0]) if row is not None else None
 
     async def lineage(self, project_id: str) -> list[Project]:
+        """Load validated ancestry ordered from Root Project to target."""
+
         current = await self._require(project_id)
         workspace_id = current.workspace_id
         lineage: list[Project] = []
@@ -156,6 +168,8 @@ class SqliteProjectScopeStore:
         return lineage
 
     async def list_children(self, project_id: str) -> list[Project]:
+        """Load the target Project's direct children in stable order."""
+
         await self._require(project_id)
         cursor = await self._conn.execute(
             "SELECT payload FROM canonical_projects WHERE parent_project_id = ?",
@@ -167,6 +181,8 @@ class SqliteProjectScopeStore:
         return children
 
     async def move_project(self, project_id: str, *, parent_project_id: str) -> Project:
+        """Move a non-root Project without crossing Workspaces or forming a cycle."""
+
         project = await self._require(project_id)
         if project.is_root:
             raise ProjectIntegrityError("Root Project cannot be moved")
@@ -194,6 +210,8 @@ class SqliteProjectScopeStore:
         *,
         defaults: dict[str, Any],
     ) -> Project:
+        """Replace a Project's defaults and persist its update timestamp."""
+
         project = await self._require(project_id)
         updated = project.model_copy(
             deep=True,
@@ -203,6 +221,8 @@ class SqliteProjectScopeStore:
         return updated
 
     async def delete(self, project_id: str) -> None:
+        """Delete an empty non-root Project while retaining integrity checks."""
+
         project = await self._require(project_id)
         if project.is_root:
             raise ProjectIntegrityError("Root Project cannot be deleted")
@@ -234,6 +254,8 @@ class SqliteProjectScopeStore:
         workspace_defaults: dict[str, Any] | None = None,
         persona_defaults: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Merge creation defaults in Workspace, Persona, then lineage order."""
+
         resolved = dict(workspace_defaults or {})
         resolved.update(persona_defaults or {})
         for project in await self.lineage(project_id):
@@ -241,6 +263,8 @@ class SqliteProjectScopeStore:
         return resolved
 
     async def set_membership(self, membership: ProjectMembership) -> ProjectMembership:
+        """Upsert a membership after validating its Workspace ownership."""
+
         project = await self._require(membership.project_id)
         if project.workspace_id != membership.workspace_id:
             raise ProjectIntegrityError("ProjectMembership Workspace does not match Project")
@@ -274,6 +298,8 @@ class SqliteProjectScopeStore:
         *,
         principal_id: str | None = None,
     ) -> list[ProjectMembership]:
+        """Load memberships at one Project, optionally for one principal."""
+
         await self._require(project_id)
         sql = "SELECT payload FROM canonical_project_memberships WHERE project_id = ?"
         params: tuple[str, ...] = (project_id,)
@@ -287,6 +313,8 @@ class SqliteProjectScopeStore:
         return memberships
 
     async def put_resource(self, resource: ProjectScopedResource) -> ProjectScopedResource:
+        """Upsert a Project resource without allowing cross-Workspace reuse."""
+
         project = await self._require(resource.project_id)
         if project.workspace_id != resource.workspace_id:
             raise ProjectIntegrityError("resource Workspace does not match Project")
@@ -319,6 +347,8 @@ class SqliteProjectScopeStore:
         *,
         resource_type: str | None = None,
     ) -> list[ProjectScopedResource]:
+        """Load resources owned by the target Project or its ancestors."""
+
         lineage = await self.lineage(project_id)
         project_ids = {project.project_id for project in lineage}
         workspace_id = lineage[-1].workspace_id
@@ -342,6 +372,8 @@ class SqliteProjectScopeStore:
         project_id: str,
         resource_ids: set[str],
     ) -> None:
+        """Reject resource IDs outside the target Project's visible ancestry."""
+
         visible = {resource.resource_id for resource in await self.visible_resources(project_id)}
         missing = sorted(resource_ids - visible)
         if missing:

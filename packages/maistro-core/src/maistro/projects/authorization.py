@@ -17,9 +17,13 @@ class EffectiveAuthorization:
     delegable_grants: frozenset[str]
 
     def allows(self, action: str) -> bool:
+        """Return whether the resolved scope permits an action."""
+
         return action in self.grants and action not in self.denies
 
     def can_delegate(self, action: str) -> bool:
+        """Return whether the action is both allowed and delegable."""
+
         return self.allows(action) and action in self.delegable_grants
 
 
