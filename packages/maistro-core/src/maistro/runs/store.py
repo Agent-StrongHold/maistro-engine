@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from maistro.graph.definitions import Graph
+from maistro.projects.scope_store import ProjectScopeStore
 from maistro.runs.lifecycle import (
     transition_attempt,
     transition_node_run,
@@ -68,6 +69,8 @@ class RunStore(Protocol):
 
     async def create_node_run(self, run_id: str, *, node_id: str) -> NodeRun: ...
 
+    async def get_node_run(self, node_run_id: str) -> NodeRun | None: ...
+
     async def list_node_runs(self, run_id: str) -> list[NodeRun]: ...
 
     async def transition_node_run(
@@ -90,6 +93,8 @@ class RunStore(Protocol):
         resume_checkpoint_id: str | None = None,
     ) -> Attempt: ...
 
+    async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
+
     async def list_attempts(self, node_run_id: str) -> list[Attempt]: ...
 
     async def transition_attempt(
@@ -105,9 +110,15 @@ class RunStore(Protocol):
 
 
 class InMemoryRunStore:
-    """Reference lifecycle store for canonical Run -> NodeRun -> Attempt state."""
+    """Reference lifecycle store for canonical Run -> NodeRun -> Attempt state.
 
-    def __init__(self) -> None:
+    A Run store is always attached to the canonical Project scope store. Run
+    creation therefore validates the Graph's Project identity before the Graph
+    snapshot becomes durable execution identity.
+    """
+
+    def __init__(self, *, project_store: ProjectScopeStore) -> None:
+        self._project_store = project_store
         self._runs: dict[str, Run] = {}
         self._node_runs: dict[str, NodeRun] = {}
         self._attempts: dict[str, Attempt] = {}
@@ -123,6 +134,8 @@ class InMemoryRunStore:
         actor_principal_id: str | None = None,
         provenance: dict[str, Any] | None = None,
     ) -> Run:
+        await self._validate_graph_scope(graph)
+
         if parent_node_run_id is not None and parent_run_id is None:
             raise RunIntegrityError("parent_node_run_id requires parent_run_id")
 
@@ -184,6 +197,10 @@ class InMemoryRunStore:
         node_run = NodeRun(run_id=run_id, node_id=node_id, ordinal=ordinal)
         self._node_runs[node_run.node_run_id] = node_run
         return node_run.model_copy(deep=True)
+
+    async def get_node_run(self, node_run_id: str) -> NodeRun | None:
+        node_run = self._node_runs.get(node_run_id)
+        return node_run.model_copy(deep=True) if node_run is not None else None
 
     async def list_node_runs(self, run_id: str) -> list[NodeRun]:
         self._require_run(run_id)
@@ -248,6 +265,10 @@ class InMemoryRunStore:
         self._attempts[attempt.attempt_id] = attempt
         return attempt.model_copy(deep=True)
 
+    async def get_attempt(self, attempt_id: str) -> Attempt | None:
+        attempt = self._attempts.get(attempt_id)
+        return attempt.model_copy(deep=True) if attempt is not None else None
+
     async def list_attempts(self, node_run_id: str) -> list[Attempt]:
         self._require_node_run(node_run_id)
         attempts = [
@@ -279,6 +300,15 @@ class InMemoryRunStore:
         )
         self._attempts[attempt_id] = updated
         return updated.model_copy(deep=True)
+
+    async def _validate_graph_scope(self, graph: Graph) -> None:
+        project = await self._project_store.get(graph.project_id)
+        if project is None:
+            raise RunIntegrityError(
+                f"Graph Project {graph.project_id!r} does not exist in canonical Project scope"
+            )
+        if project.workspace_id != graph.workspace_id:
+            raise RunIntegrityError("Graph Project does not belong to the Graph Workspace")
 
     def _require_run(self, run_id: str) -> Run:
         run = self._runs.get(run_id)
