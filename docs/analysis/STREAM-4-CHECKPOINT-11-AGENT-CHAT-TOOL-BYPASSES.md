@@ -100,9 +100,17 @@ This means the live chat tool path and the live Agent HTTP CRUD path have differ
 
 Canonical migration should have one ownership/resource resolution path shared by UI/API/chat surfaces. Chat should not be able to mutate a broader flat Agent namespace than the HTTP resource API permits.
 
-## 7. Chat workflow execution is another caller of the private Hive graph executor
+## 7. Hive `execute_dag` has more live production callers than the primary DAG route and chat
 
-`_tool_run_workflow()`:
+The private Hive graph executor is reached from multiple mounted/product paths:
+
+- mounted `POST /v1/dags/{id}/run`
+- chat `_tool_run_workflow()`
+- the mounted optimizer endpoint through `routes/optimizer.py`
+- optimizer validation through `validation_gate.py`
+- the registered chat `hill_climb` tool through `services/substrate_tools.py`, which can call it repeatedly
+
+`_tool_run_workflow()` itself:
 
 - reads DAG from `stores.dags`
 - creates a synthetic DagRun ID/store record
@@ -111,12 +119,11 @@ Canonical migration should have one ownership/resource resolution path shared by
 - adapts the result into eval-judge shape
 - returns `status=completed`
 
-So the live private Hive executor is used from both:
+Classification: `live private execution authority with multiple production consumers`.
 
-- mounted `/v1/dags/{id}/run`
-- chat's workflow tool
+### Stream 5 acceptance requirement
 
-This strengthens the priority of migrating `execute_dag` as a real production consumer.
+Migration of `execute_dag` is not complete when only the normal DAG route and chat workflow tool are moved. The optimizer, validation-gate, and hill-climb consumers must move in the same convergence inventory or retain an explicit tested compatibility adapter until they do. Their optimizer/iteration semantics are specialized behavior to preserve; their private universal execution lifecycle is not.
 
 ## 8. Chat workflow event/result projection loses failure semantics
 
@@ -197,7 +204,7 @@ Unify Agent/workflow resource ownership across HTTP and chat. `/invoke` cannot r
 
 ### Stream 5
 
-Count chat `_tool_run_workflow` as another production consumer of Hive `execute_dag`; migrate both callers together.
+Treat all verified `execute_dag` consumers as migration callers: the mounted DAG route, chat `_tool_run_workflow`, optimizer route/validation path, and chat `hill_climb`/substrate path. Do not declare the private Hive executor retired while any of these production consumers still depend on it.
 
 ### Stream 6
 
