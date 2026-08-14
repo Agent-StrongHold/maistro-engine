@@ -65,14 +65,18 @@ def test_envelope_preserves_canonical_correlation_fields() -> None:
     assert event.sequence is None
 
 
-def test_stream_scope_prefers_run_then_workspace_then_system() -> None:
-    assert EventEnvelope(type="x", run_id="r1", workspace_id="w1").stream_id == "run:r1"
-    assert EventEnvelope(type="x", workspace_id="w1").stream_id == "workspace:w1"
-    assert EventEnvelope(type="x").stream_id == "system"
+def test_stream_scope_precedence() -> None:
+    run_event = EventEnvelope(type="x", run_id="r1", workspace_id="w1")
+    workspace_event = EventEnvelope(type="x", workspace_id="w1")
+    system_event = EventEnvelope(type="x")
+
+    assert run_event.stream_id == "run:r1"
+    assert workspace_event.stream_id == "workspace:w1"
+    assert system_event.stream_id == "system"
 
 
 class TestEventStoreContract:
-    async def test_assigns_monotonic_sequence_per_run(self, store: EventStore) -> None:
+    async def test_assigns_sequence_per_run(self, store: EventStore) -> None:
         first = await store.append(EventEnvelope(type="run.started", run_id="run-1"))
         second = await store.append(EventEnvelope(type="node.started", run_id="run-1"))
 
@@ -88,24 +92,21 @@ class TestEventStoreContract:
         assert run_b.sequence == 1
         assert run_a_2.sequence == 2
 
-    async def test_append_is_idempotent_by_event_id(self, store: EventStore) -> None:
-        event = EventEnvelope(
-            type="node.completed", run_id="r1", event_id="stable-event"
-        )
+    async def test_append_is_idempotent(self, store: EventStore) -> None:
+        event = EventEnvelope(type="node.completed", run_id="r1", event_id="stable")
         first = await store.append(event)
         duplicate = await store.append(event)
+        history = await store.list_stream("run:r1")
 
         assert duplicate == first
-        assert [e.event_id for e in await store.list_stream("run:r1")] == [
-            "stable-event"
-        ]
+        assert [item.event_id for item in history] == ["stable"]
 
-    async def test_store_rejects_caller_assigned_sequence(self, store: EventStore) -> None:
+    async def test_rejects_caller_sequence(self, store: EventStore) -> None:
         event = EventEnvelope(type="x", run_id="r1", sequence=99)
         with pytest.raises(ValueError, match="store-assigned"):
             await store.append(event)
 
-    async def test_get_round_trips_payload_and_provenance(self, store: EventStore) -> None:
+    async def test_round_trips_payload(self, store: EventStore) -> None:
         event = EventEnvelope(
             type="invocation.completed",
             run_id="r1",
@@ -118,39 +119,41 @@ class TestEventStoreContract:
 
         assert loaded == persisted
 
-    async def test_list_stream_uses_sequence_cursor(self, store: EventStore) -> None:
+    async def test_stream_cursor(self, store: EventStore) -> None:
         for index in range(5):
-            await store.append(EventEnvelope(type=f"event.{index}", run_id="r1"))
+            event = EventEnvelope(type=f"event.{index}", run_id="r1")
+            await store.append(event)
 
         page = await store.list_stream("run:r1", after_sequence=2, limit=2)
         assert [event.sequence for event in page] == [3, 4]
         assert [event.type for event in page] == ["event.2", "event.3"]
         assert await store.list_stream("run:r1", limit=0) == []
 
-    async def test_concurrent_appends_do_not_duplicate_sequences(
-        self, store: EventStore
-    ) -> None:
-        persisted = await asyncio.gather(
-            *(
-                store.append(EventEnvelope(type="node.progress", run_id="r1"))
-                for _ in range(25)
-            )
+    async def test_concurrent_sequences(self, store: EventStore) -> None:
+        events = [EventEnvelope(type="node.progress", run_id="r1") for _ in range(25)]
+        persisted = await asyncio.gather(*(store.append(event) for event in events))
+        sequences = [event.sequence for event in persisted]
+
+        assert all(sequence is not None for sequence in sequences)
+        assert sorted(sequence for sequence in sequences if sequence is not None) == list(
+            range(1, 26)
         )
 
-        sequences = sorted(
-            event.sequence for event in persisted if event.sequence is not None
+    async def test_retries_share_run_history(self, store: EventStore) -> None:
+        first_attempt = EventEnvelope(
+            type="attempt.failed",
+            run_id="r1",
+            attempt_id="attempt-1",
         )
-        assert sequences == list(range(1, 26))
-
-    async def test_retry_attempts_share_run_history(self, store: EventStore) -> None:
-        failed = await store.append(
-            EventEnvelope(type="attempt.failed", run_id="r1", attempt_id="attempt-1")
+        second_attempt = EventEnvelope(
+            type="attempt.started",
+            run_id="r1",
+            attempt_id="attempt-2",
         )
-        retried = await store.append(
-            EventEnvelope(type="attempt.started", run_id="r1", attempt_id="attempt-2")
-        )
+        failed = await store.append(first_attempt)
+        retried = await store.append(second_attempt)
+        history = await store.list_stream("run:r1")
 
         assert failed.sequence == 1
         assert retried.sequence == 2
-        history = await store.list_stream("run:r1")
         assert [event.attempt_id for event in history] == ["attempt-1", "attempt-2"]
