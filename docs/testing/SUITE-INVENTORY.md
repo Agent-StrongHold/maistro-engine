@@ -45,11 +45,12 @@ CI reconciliation. The repo-task wrapper compatibility regression adds one
 maistro-evolve node ID. Workspace creation was deliberately moved out of the
 scope-gated parametrized Hive cases and into the ordinary product-surface check,
 so Hive loses one collected node ID while retaining the intended assertion.
+Stream 5 parity characterization adds four maistro-core node IDs.
 Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5936 | `ci.yml` |
+| `packages/maistro-core/tests` | 5940 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
