@@ -14,6 +14,23 @@ def _id() -> str:
     return uuid.uuid4().hex
 
 
+def _require_non_empty(value: str, field_name: str) -> None:
+    if not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+
+
+def _validate_finished_at(
+    *,
+    terminal: bool,
+    finished_at: datetime | None,
+    subject: str,
+) -> None:
+    if terminal and finished_at is None:
+        raise ValueError(f"terminal {subject} requires finished_at")
+    if not terminal and finished_at is not None:
+        raise ValueError(f"non-terminal {subject} cannot have finished_at")
+
+
 class RunStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"
@@ -117,21 +134,23 @@ class Run(BaseModel):
 
     @model_validator(mode="after")
     def _validate_run(self) -> Run:
-        if not self.workspace_id.strip():
-            raise ValueError("workspace_id must be a non-empty string")
-        if not self.project_id.strip():
-            raise ValueError("project_id must be a non-empty string")
+        _require_non_empty(self.workspace_id, "workspace_id")
+        _require_non_empty(self.project_id, "project_id")
+        self._validate_scope_identity()
+        if self.parent_run_id == self.run_id:
+            raise ValueError("Run cannot be its own parent")
+        _validate_finished_at(
+            terminal=self.status in TERMINAL_RUN_STATUSES,
+            finished_at=self.finished_at,
+            subject="Run",
+        )
+        return self
+
+    def _validate_scope_identity(self) -> None:
         if self.graph.workspace_id != self.workspace_id:
             raise ValueError("Run and Graph snapshot must belong to the same Workspace")
         if self.graph.project_id != self.project_id:
             raise ValueError("Run and Graph snapshot must belong to the same Project")
-        if self.parent_run_id == self.run_id:
-            raise ValueError("Run cannot be its own parent")
-        if self.status in TERMINAL_RUN_STATUSES and self.finished_at is None:
-            raise ValueError("terminal Run requires finished_at")
-        if self.status not in TERMINAL_RUN_STATUSES and self.finished_at is not None:
-            raise ValueError("non-terminal Run cannot have finished_at")
-        return self
 
 
 class NodeRun(BaseModel):
@@ -153,12 +172,13 @@ class NodeRun(BaseModel):
 
     @model_validator(mode="after")
     def _validate_node_run(self) -> NodeRun:
-        if not self.run_id.strip() or not self.node_id.strip():
-            raise ValueError("run_id and node_id must be non-empty strings")
-        if self.status in TERMINAL_RUN_STATUSES and self.finished_at is None:
-            raise ValueError("terminal NodeRun requires finished_at")
-        if self.status not in TERMINAL_RUN_STATUSES and self.finished_at is not None:
-            raise ValueError("non-terminal NodeRun cannot have finished_at")
+        _require_non_empty(self.run_id, "run_id")
+        _require_non_empty(self.node_id, "node_id")
+        _validate_finished_at(
+            terminal=self.status in TERMINAL_RUN_STATUSES,
+            finished_at=self.finished_at,
+            subject="NodeRun",
+        )
         return self
 
 
@@ -184,12 +204,12 @@ class Attempt(BaseModel):
 
     @model_validator(mode="after")
     def _validate_attempt(self) -> Attempt:
-        if not self.node_run_id.strip():
-            raise ValueError("node_run_id must be a non-empty string")
-        if self.status in TERMINAL_ATTEMPT_STATUSES and self.finished_at is None:
-            raise ValueError("terminal Attempt requires finished_at")
-        if self.status not in TERMINAL_ATTEMPT_STATUSES and self.finished_at is not None:
-            raise ValueError("non-terminal Attempt cannot have finished_at")
+        _require_non_empty(self.node_run_id, "node_run_id")
+        _validate_finished_at(
+            terminal=self.status in TERMINAL_ATTEMPT_STATUSES,
+            finished_at=self.finished_at,
+            subject="Attempt",
+        )
         return self
 
 
