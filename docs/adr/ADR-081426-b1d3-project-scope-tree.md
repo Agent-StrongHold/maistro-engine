@@ -6,7 +6,7 @@ kind: adr
 status: Accepted
 created: 2026-08-14
 accepted: 2026-08-14
-layer: Domain
+layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
 history:
