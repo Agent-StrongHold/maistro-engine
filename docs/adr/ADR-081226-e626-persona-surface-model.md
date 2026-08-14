@@ -1,3 +1,39 @@
+---
+id: ADR-081226-e626
+title: Persona and Surface Model
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-08-12
+accepted: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+substrate: []
+implements: []
+related:
+  - maistro-engine#ADR-081226-9944
+  - maistro-engine#ADR-081226-bb3a
+  - maistro-engine#ADR-081226-6e34
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests:
+  - packages/maistro-core/tests/personas/test_model.py
+  - packages/maistro-core/tests/personas/test_store.py
+source:
+  - packages/maistro-core/src/maistro/personas
+layer: UserClient
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-081226-e626: Persona and Surface Model
 
 - **Status:** Accepted
