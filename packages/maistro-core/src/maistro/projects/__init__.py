@@ -1,7 +1,13 @@
-"""Legacy Project domain retained only until its consumers move to Workspace.
+"""Project package during convergence from legacy ownership to canonical scope.
 
-New code must use :mod:`maistro.workspaces`. Project is no longer a Workspace
-alias or persistence authority for canonical product state.
+Project is canonical beneath Workspace as a nested organization, configuration,
+authorization, and resource scope. The canonical model and stores live in
+:mod:`maistro.projects.scope`, :mod:`maistro.projects.scope_store`, and
+:mod:`maistro.projects.sqlite_scope_store`.
+
+The exports in this module are the older ownership-root Project API. They remain
+reachable during caller migration and must not be mistaken for the canonical
+Project scope model or used as a new Workspace alias.
 """
 
 from __future__ import annotations
