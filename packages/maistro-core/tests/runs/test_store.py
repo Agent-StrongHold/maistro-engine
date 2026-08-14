@@ -68,13 +68,17 @@ async def test_run_creation_rejects_project_from_different_workspace() -> None:
     store, _, project = await _store_with_project(workspace_id="workspace-1")
 
     with pytest.raises(RunIntegrityError, match="does not belong"):
-        await store.create_run(_graph(workspace_id="workspace-2", project_id=project.project_id))
+        await store.create_run(
+            _graph(workspace_id="workspace-2", project_id=project.project_id)
+        )
 
 
 @pytest.mark.asyncio
 async def test_retry_creates_new_attempt_under_same_node_run_and_run() -> None:
     store, _, project = await _store_with_project()
-    run = await store.create_run(_graph(workspace_id=project.workspace_id, project_id=project.project_id))
+    run = await store.create_run(
+        _graph(workspace_id=project.workspace_id, project_id=project.project_id)
+    )
     await store.transition_run(run.run_id, RunStatus.QUEUED)
     await store.transition_run(run.run_id, RunStatus.RUNNING)
 
@@ -99,7 +103,9 @@ async def test_retry_creates_new_attempt_under_same_node_run_and_run() -> None:
 @pytest.mark.asyncio
 async def test_node_run_allows_repeated_execution_of_same_graph_node() -> None:
     store, _, project = await _store_with_project()
-    run = await store.create_run(_graph(workspace_id=project.workspace_id, project_id=project.project_id))
+    run = await store.create_run(
+        _graph(workspace_id=project.workspace_id, project_id=project.project_id)
+    )
 
     first = await store.create_node_run(run.run_id, node_id="first")
     second = await store.create_node_run(run.run_id, node_id="first")
@@ -112,7 +118,9 @@ async def test_node_run_allows_repeated_execution_of_same_graph_node() -> None:
 @pytest.mark.asyncio
 async def test_node_run_must_reference_node_in_captured_graph() -> None:
     store, _, project = await _store_with_project()
-    run = await store.create_run(_graph(workspace_id=project.workspace_id, project_id=project.project_id))
+    run = await store.create_run(
+        _graph(workspace_id=project.workspace_id, project_id=project.project_id)
+    )
 
     with pytest.raises(RunIntegrityError, match="not present"):
         await store.create_node_run(run.run_id, node_id="missing")
@@ -121,7 +129,9 @@ async def test_node_run_must_reference_node_in_captured_graph() -> None:
 @pytest.mark.asyncio
 async def test_only_one_active_attempt_per_node_run() -> None:
     store, _, project = await _store_with_project()
-    run = await store.create_run(_graph(workspace_id=project.workspace_id, project_id=project.project_id))
+    run = await store.create_run(
+        _graph(workspace_id=project.workspace_id, project_id=project.project_id)
+    )
     node_run = await store.create_node_run(run.run_id, node_id="first")
     await store.create_attempt(node_run.node_run_id)
 
@@ -176,7 +186,10 @@ async def test_child_run_cross_project_is_explicit_but_same_workspace_only() -> 
     other_project = await _project(project_store, workspace_id="workspace-2", name="Other")
     with pytest.raises(RunIntegrityError, match="cross Workspace"):
         await store.create_run(
-            _graph(workspace_id=other_project.workspace_id, project_id=other_project.project_id),
+            _graph(
+                workspace_id=other_project.workspace_id,
+                project_id=other_project.project_id,
+            ),
             parent_run_id=parent.run_id,
             allow_cross_project=True,
         )
