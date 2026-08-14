@@ -13,7 +13,7 @@ def _id() -> str:
 
 
 def _content_hash(payload: dict[str, Any]) -> str:
-    """Return a stable digest for template provenance."""
+    """Return a stable digest for template and graph snapshot provenance."""
 
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -57,9 +57,10 @@ class Edge(BaseModel):
 
 
 class Graph(BaseModel):
-    """Canonical mutable composition of Nodes and Edges."""
+    """Canonical mutable Workspace-owned composition of Nodes and Edges."""
 
     graph_id: str = Field(default_factory=_id)
+    workspace_id: str
     name: str
     description: str = ""
     nodes: list[Node] = Field(default_factory=list)
@@ -68,14 +69,25 @@ class Graph(BaseModel):
     source_template: TemplateProvenance | None = None
 
     @model_validator(mode="after")
-    def _validate_edges(self) -> Graph:
+    def _validate_graph(self) -> Graph:
+        if not self.workspace_id.strip():
+            raise ValueError("workspace_id must be a non-empty string")
         node_ids = {node.node_id for node in self.nodes}
+        if len(node_ids) != len(self.nodes):
+            raise ValueError("node_id values must be unique within a Graph")
         for edge in self.edges:
             if edge.from_node not in node_ids or edge.to_node not in node_ids:
                 raise ValueError(
                     f"edge {edge.edge_id} references a node outside graph {self.graph_id}"
                 )
         return self
+
+    def _snapshot_content(self) -> dict[str, Any]:
+        return self.model_dump(exclude={"graph_id", "workspace_id"}, mode="json")
+
+    @property
+    def content_hash(self) -> str:
+        return _content_hash(self._snapshot_content())
 
 
 class NodeTemplate(BaseModel):
@@ -181,6 +193,7 @@ class GraphTemplate(BaseModel):
         ]
         return Graph(
             graph_id=graph_id or _id(),
+            workspace_id=self.workspace_id,
             name=name if name is not None else self.name,
             description=self.description,
             nodes=nodes,
@@ -198,7 +211,6 @@ class GraphTemplate(BaseModel):
         cls,
         graph: Graph,
         *,
-        workspace_id: str,
         template_id: str | None = None,
         version: int = 1,
         name: str | None = None,
@@ -206,7 +218,7 @@ class GraphTemplate(BaseModel):
         snapshot = graph.model_copy(deep=True)
         return cls(
             template_id=template_id or _id(),
-            workspace_id=workspace_id,
+            workspace_id=snapshot.workspace_id,
             version=version,
             name=name if name is not None else snapshot.name,
             description=snapshot.description,
@@ -214,3 +226,13 @@ class GraphTemplate(BaseModel):
             edges=snapshot.edges,
             metadata=snapshot.metadata,
         )
+
+
+__all__ = [
+    "Edge",
+    "Graph",
+    "GraphTemplate",
+    "Node",
+    "NodeTemplate",
+    "TemplateProvenance",
+]
