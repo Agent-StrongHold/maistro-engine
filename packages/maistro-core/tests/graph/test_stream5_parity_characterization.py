@@ -11,12 +11,39 @@ about another temporary lifecycle model.
 
 from __future__ import annotations
 
-import pytest
+from typing import ClassVar
 
+import pytest
+from pydantic import BaseModel
+
+from maistro.graph.durable_runs import InMemoryDurableRunStore, run_durable_dag
 from maistro.graph.durable_runs.executor import _next_node
-from maistro.graph.nodes.base import NodeResult
+from maistro.graph.nodes.base import BaseNode, NodeContext, NodeResult
 from maistro.graph.run import _next_nodes
 from maistro.graph.types import AgentRole, GraphConfig, GraphEdge, ReviewOutput
+
+
+class _PassInput(BaseModel):
+    text: str = "x"
+
+
+class _PassOutput(BaseModel):
+    text: str
+
+
+class _PassNode(BaseNode[_PassInput, _PassOutput]):
+    """Minimal deterministic node for exercising durable traversal state."""
+
+    kind: ClassVar[str] = "test.stream5.pass"
+    input_schema: ClassVar[type[BaseModel]] = _PassInput
+    output_schema: ClassVar[type[BaseModel]] = _PassOutput
+
+    async def _execute(self, inputs: _PassInput, ctx: NodeContext) -> _PassOutput:
+        return _PassOutput(text=inputs.text)
+
+
+def _pass_resolver(node_id: str, dag: dict[str, object]) -> _PassNode:
+    return _PassNode()
 
 
 def test_graphrun_conditional_routing_follows_matching_edge() -> None:
@@ -80,30 +107,30 @@ def test_graphrun_frontier_contains_sequential_and_parallel_targets() -> None:
     strict=True,
     reason=(
         "Stream 5 gap: durable _next_node chooses the first conditional edge "
-        "instead of evaluating predicates"
+        "instead of evaluating canonical predicates"
     ),
 )
 def test_durable_routing_must_reject_false_condition() -> None:
-    """Migration target: durable routing must agree with canonical predicates."""
+    """Migration target: durable routing must use the canonical predicate dialect."""
     dag = {
         "nodes": [{"id": "start"}, {"id": "wrong"}, {"id": "right"}],
         "edges": [
             {
                 "from_node": "start",
                 "to_node": "wrong",
-                "condition": "approved == false",
+                "condition": "review.approved == False",
             },
             {
                 "from_node": "start",
                 "to_node": "right",
-                "condition": "approved == true",
+                "condition": "review.approved == True",
             },
         ],
     }
     result = NodeResult(
         success=True,
         status="completed",
-        output={"approved": True},
+        output={"review": {"approved": True}},
     )
 
     assert _next_node(dag, "start", result) == "right"
@@ -113,20 +140,29 @@ def test_durable_routing_must_reject_false_condition() -> None:
     strict=True,
     reason=(
         "Stream 5 gap: durable traversal stores one current_node_id and cannot "
-        "represent the multi-node frontier required for fan-out"
+        "execute and persist the multi-node frontier required for fan-out"
     ),
 )
-def test_durable_routing_must_preserve_parallel_frontier() -> None:
-    """Migration target: durable graph state represents all selected targets."""
+async def test_durable_run_must_execute_and_persist_parallel_frontier() -> None:
+    """Migration target: the durable entrypoint executes and persists both branches."""
     dag = {
-        "nodes": [{"id": "start"}, {"id": "left"}, {"id": "right"}],
+        "id": "stream5-fanout",
+        "entry_node": "start",
+        "nodes": [
+            {"id": "start", "kind": _PassNode.kind, "inputs": {"text": "start"}},
+            {"id": "left", "kind": _PassNode.kind, "inputs": {"text": "left"}},
+            {"id": "right", "kind": _PassNode.kind, "inputs": {"text": "right"}},
+        ],
         "edges": [
             {"from_node": "start", "to_node": "left", "parallel": True},
             {"from_node": "start", "to_node": "right", "parallel": True},
         ],
     }
-    result = NodeResult(success=True, status="completed", output=None)
+    store = InMemoryDurableRunStore()
 
-    # The canonical GraphExecutionState frontier is intentionally expressed as
-    # a collection here. Today's durable helper returns a single string.
-    assert _next_node(dag, "start", result) == ["left", "right"]
+    record = await run_durable_dag(dag, store=store, node_resolver=_pass_resolver)
+    persisted = await store.get(record.run_id)
+
+    assert persisted is not None
+    assert {node.node_id for node in persisted.node_records} == {"start", "left", "right"}
+    assert all(node.phase.value == "completed" for node in persisted.node_records)
