@@ -48,12 +48,13 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     runtime = PythonExecutionRuntime(max_concurrency=args.concurrency)
     delay_s = args.task_delay_ms / 1000.0
     lag_samples: list[float] = []
+    stop_sampling = asyncio.Event()
 
     async def executor(_graph: Any, _context: Any) -> None:
         await asyncio.sleep(delay_s)
 
     async def sample_lag() -> None:
-        for _ in range(args.lag_samples):
+        while not stop_sampling.is_set() and len(lag_samples) < args.lag_samples:
             lag_samples.append(await runtime.sample_event_loop_lag(0.01))
 
     before = runtime.metrics()
@@ -61,12 +62,18 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     sampler = asyncio.create_task(sample_lag())
     await asyncio.gather(
         *[
-            runtime.execute(None, None, run_id=f"bench-{index}", executor=executor)
+            runtime.execute(
+                None,
+                None,
+                execution_id=f"bench-{index}",
+                executor=executor,
+            )
             for index in range(args.runs)
         ]
     )
-    await sampler
     wall_s = time.perf_counter() - started
+    stop_sampling.set()
+    await sampler
     after = runtime.metrics()
 
     average_wait = after.scheduling_wait_seconds_total / after.executions_started
@@ -81,9 +88,11 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         "peak_concurrency": after.peak_concurrency,
         "scheduling_wait_seconds_total": after.scheduling_wait_seconds_total,
         "scheduling_wait_ms_average": average_wait * 1000.0,
-        "event_loop_lag_ms_average": statistics.fmean(lag_samples),
+        "event_loop_lag_ms_average": (
+            statistics.fmean(lag_samples) if lag_samples else 0.0
+        ),
         "event_loop_lag_ms_p99": _percentile(lag_samples, 0.99),
-        "event_loop_lag_ms_max": max(lag_samples),
+        "event_loop_lag_ms_max": max(lag_samples, default=0.0),
         "executions_completed": after.executions_completed,
         "executions_failed": after.executions_failed,
         "executions_cancelled": after.executions_cancelled,
