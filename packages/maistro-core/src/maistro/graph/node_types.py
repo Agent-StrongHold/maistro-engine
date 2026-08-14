@@ -32,7 +32,10 @@ class NodeTypeSpec:
 
     def __post_init__(self) -> None:
         identifiers = (self.type_id, *self.aliases)
-        if any(not value or value != value.strip() or any(ch.isspace() for ch in value) for value in identifiers):
+        if any(
+            not value or value != value.strip() or any(ch.isspace() for ch in value)
+            for value in identifiers
+        ):
             raise ValueError("NodeType identifiers must be non-empty and contain no whitespace")
         if self.type_id in self.aliases:
             raise ValueError("NodeType cannot alias itself")
