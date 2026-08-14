@@ -143,6 +143,82 @@ async def test_deadline_is_enforced() -> None:
 
 
 @pytest.mark.asyncio
+async def test_deadline_includes_waiting_for_capacity() -> None:
+    runtime = PythonExecutionRuntime(max_concurrency=1)
+    await runtime.acquire_slot("blocker")
+
+    with pytest.raises(TimeoutError):
+        await runtime.execute(
+            None,
+            None,
+            execution_id="attempt-wait-timeout",
+            executor=lambda _work, _context: asyncio.sleep(0),
+            timeout_s=0.001,
+        )
+
+    runtime.release_slot("blocker")
+    metrics = runtime.metrics()
+    assert metrics.executions_timed_out == 1
+    assert metrics.executions_failed == 0
+
+
+@pytest.mark.asyncio
+async def test_executor_timeout_is_a_failure_not_runtime_deadline() -> None:
+    runtime = PythonExecutionRuntime()
+
+    async def executor(_work_item: Any, _context: Any) -> None:
+        raise TimeoutError("downstream operation timed out")
+
+    with pytest.raises(TimeoutError, match="downstream"):
+        await runtime.execute(
+            None,
+            None,
+            execution_id="attempt-executor-timeout",
+            executor=executor,
+            timeout_s=1,
+        )
+
+    metrics = runtime.metrics()
+    assert metrics.executions_failed == 1
+    assert metrics.executions_timed_out == 0
+
+
+@pytest.mark.asyncio
+async def test_public_slot_acquisition_records_metrics_and_reserves_waiters() -> None:
+    runtime = PythonExecutionRuntime(max_concurrency=1)
+    await runtime.acquire_slot("blocker")
+    waiting = asyncio.create_task(runtime.acquire_slot("waiting"))
+    await asyncio.sleep(0)
+
+    with pytest.raises(ValueError, match="already acquiring"):
+        await runtime.acquire_slot("waiting")
+
+    runtime.release_slot("blocker")
+    await waiting
+    metrics = runtime.metrics()
+    assert metrics.active_slots == 1
+    assert metrics.peak_concurrency == 1
+    assert metrics.scheduling_wait_seconds_total >= 0
+    runtime.release_slot("waiting")
+
+
+@pytest.mark.asyncio
+async def test_event_sink_can_emit_follow_up_without_deadlock() -> None:
+    runtime: PythonExecutionRuntime
+
+    async def sink(envelope: Any) -> None:
+        if envelope.event == "first":
+            await runtime.emit("follow-up")
+
+    runtime = PythonExecutionRuntime(event_sink=sink)
+    first = await asyncio.wait_for(runtime.emit("first"), timeout=1)
+
+    assert first.sequence == 1
+    assert runtime.metrics().event_sequence == 2
+    assert runtime.metrics().events_emitted == 2
+
+
+@pytest.mark.asyncio
 async def test_events_receive_monotonic_sequence() -> None:
     seen: list[int] = []
 
