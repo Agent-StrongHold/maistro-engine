@@ -1,7 +1,7 @@
 """Project-tree authorization and resource visibility contracts.
 
 This module is deliberately independent from Persona and from the legacy
-``Project.members`` role model.  It defines the authorization seam that can be
+``Project.members`` role model. It defines the authorization seam that can be
 backed by durable WorkspaceMembership/ProjectMembership persistence without
 making authorization depend on product presentation concepts.
 
@@ -11,10 +11,10 @@ Resolution rules:
 * workspace grants establish the maximum permission ceiling;
 * project grants may narrow that ceiling but never widen it;
 * denies are sticky and always win;
-* project-scoped resources are visible only from their project subtree;
+* project-scoped resources are visible only in their exact owning project;
 * workspace-scoped resources are visible anywhere in the workspace.
 
-The caller supplies the canonical project ancestry from root to target.  Tree
+The caller supplies the canonical project ancestry from root to target. Tree
 storage remains owned by the Project domain rather than this module.
 """
 
@@ -50,9 +50,9 @@ class WorkspaceMembership:
 class ProjectMembership:
     """A principal's authorization overlay at one project in a project tree.
 
-    ``grants`` is a narrowing allowlist.  An empty grant set means "inherit the
-    current ceiling unchanged".  A non-empty grant set intersects the current
-    ceiling.  Consequently a child project can never grant a permission that
+    ``grants`` is a narrowing allowlist. An empty grant set means "inherit the
+    current ceiling unchanged". A non-empty grant set intersects the current
+    ceiling. Consequently a child project can never grant a permission that
     was unavailable at its parent or workspace.
     """
 
@@ -109,7 +109,7 @@ class AuthorizationResolver:
     """Resolve permissions and resource visibility over a canonical project path.
 
     ``project_path`` arguments are ordered root -> target and contain project
-    IDs only.  The resolver intentionally has no Persona input or dependency.
+    IDs only. The resolver intentionally has no Persona input or dependency.
     """
 
     def resolve(
@@ -172,8 +172,12 @@ class AuthorizationResolver:
     ) -> bool:
         """Return whether a principal can see a scoped resource.
 
-        This is ownership visibility only.  Call ``resolve`` separately for the
+        This is ownership visibility only. Call ``resolve`` separately for the
         action permission required to read/use/mutate that resource.
+
+        ``project_path`` is root -> target. Project-scoped resources are exact:
+        only the target project may use a resource it owns. Ancestors,
+        descendants, and siblings do not inherit project-scoped resources.
         """
         if (
             workspace_membership is None
@@ -183,7 +187,8 @@ class AuthorizationResolver:
             return False
         if scope.kind is ResourceScopeKind.WORKSPACE:
             return True
-        return scope.project_id in tuple(project_path)
+        path = tuple(project_path)
+        return bool(path) and scope.project_id == path[-1]
 
     @staticmethod
     def _overlays_for_path(
