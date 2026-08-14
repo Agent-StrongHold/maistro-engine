@@ -4,15 +4,19 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from maistro.graph.definitions import Graph
-from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
+from maistro.runs.lifecycle import (
+    transition_attempt,
+    transition_node_run,
+    transition_run,
+)
 from maistro.runs.model import (
+    TERMINAL_RUN_STATUSES,
     Attempt,
     AttemptStatus,
     GraphSnapshot,
     NodeRun,
     Run,
     RunStatus,
-    TERMINAL_RUN_STATUSES,
 )
 
 
@@ -123,11 +127,15 @@ class InMemoryRunStore:
         if parent_run_id is not None:
             parent = self._require_run(parent_run_id)
             if parent.workspace_id != graph.workspace_id:
-                raise RunIntegrityError("child Run cannot implicitly cross Workspace boundaries")
+                raise RunIntegrityError(
+                    "child Run cannot implicitly cross Workspace boundaries"
+                )
             if parent_node_run_id is not None:
                 parent_node_run = self._require_node_run(parent_node_run_id)
                 if parent_node_run.run_id != parent_run_id:
-                    raise RunIntegrityError("parent_node_run_id does not belong to parent_run_id")
+                    raise RunIntegrityError(
+                        "parent_node_run_id does not belong to parent_run_id"
+                    )
 
         run = Run(
             workspace_id=graph.workspace_id,
@@ -166,9 +174,13 @@ class InMemoryRunStore:
 
         graph = run.graph.materialize()
         if not any(node.node_id == node_id for node in graph.nodes):
-            raise RunIntegrityError(f"node_id {node_id!r} is not present in the Run Graph snapshot")
+            raise RunIntegrityError(
+                f"node_id {node_id!r} is not present in the Run Graph snapshot"
+            )
 
-        ordinal = 1 + sum(node_run.run_id == run_id for node_run in self._node_runs.values())
+        ordinal = 1 + sum(
+            node_run.run_id == run_id for node_run in self._node_runs.values()
+        )
         node_run = NodeRun(run_id=run_id, node_id=node_id, ordinal=ordinal)
         self._node_runs[node_run.node_run_id] = node_run
         return node_run.model_copy(deep=True)
@@ -217,13 +229,17 @@ class InMemoryRunStore:
             raise RunIntegrityError("cannot create Attempt under a terminal NodeRun")
 
         existing = [
-            attempt for attempt in self._attempts.values() if attempt.node_run_id == node_run_id
+            attempt
+            for attempt in self._attempts.values()
+            if attempt.node_run_id == node_run_id
         ]
         if any(
             attempt.status in {AttemptStatus.CREATED, AttemptStatus.RUNNING}
             for attempt in existing
         ):
-            raise ActiveAttemptExists(f"NodeRun {node_run_id!r} already has an active Attempt")
+            raise ActiveAttemptExists(
+                f"NodeRun {node_run_id!r} already has an active Attempt"
+            )
 
         ordinal = max((attempt.ordinal for attempt in existing), default=0) + 1
         attempt = Attempt(
