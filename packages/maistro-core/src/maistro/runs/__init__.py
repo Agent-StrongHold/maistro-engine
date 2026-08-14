@@ -20,6 +20,7 @@ from maistro.runs.model import (
     RunStatus,
 )
 from maistro.runs.reconciliation import AttemptLifecycleReconciler
+from maistro.runs.service import RunExecutionService
 from maistro.runs.sqlite_store import SqliteRunStore
 from maistro.runs.store import (
     ActiveAttemptExists,
@@ -49,6 +50,7 @@ __all__ = [
     "NodeRun",
     "NodeRunNotFound",
     "Run",
+    "RunExecutionService",
     "RunIntegrityError",
     "RunNotFound",
     "RunStatus",
