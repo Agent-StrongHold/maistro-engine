@@ -162,7 +162,9 @@ So even within one service module, normal and streaming execution have different
 
 That is a convergence smell and creates behavioral drift risk.
 
-## 10. The streaming core bridge has already drifted out of interface compatibility
+## 10. The mounted WebSocket streaming route is a live broken caller
+
+`main.py` mounts `routes.ws`, and `/v1/ws/dags/{dag_id}/run` calls `execute_dag_streaming()` from `routes/ws.py`.
 
 Current Hive `execute_dag_streaming()` calls core `run_graph()` with:
 
@@ -179,11 +181,13 @@ Current core `run_graph()` signature accepts:
 
 and does not accept `config` or `blackboard` keyword arguments.
 
-This bridge is therefore incompatible with the current core API if invoked.
+This is not merely a dormant compatibility bridge. It is a mounted production caller with an incompatible execution call. Because the generator catches the resulting failure, a WebSocket request can emit `started` and then `failed` instead of surfacing an obvious server exception.
 
 ### Migration direction
 
-Do not spend convergence time repairing this old bridge as a separate public contract unless a live caller requires an immediate hotfix. Move the streaming product surface directly onto the canonical production execution entrypoint.
+Treat the WebSocket route as an explicit live migration/hotfix requirement. Do not make repair conditional on finding a caller; the caller is already mounted and verified.
+
+The preferred convergence path is to move WebSocket streaming directly onto the same canonical production execution entrypoint and canonical Event stream as the non-streaming product path, preserving streaming transport behavior while eliminating the incompatible second executor bridge.
 
 ## 11. User credentials are injected directly into node process environments
 
@@ -238,6 +242,13 @@ into canonical Stream 6 contracts.
 -> private LLM/tool/subprocess dispatch
 -> synthetic DagRunStore events
 
+Parallel live streaming path:
+
+`Hive /v1/ws/dags/{id}/run`
+-> `execute_dag_streaming`
+-> incompatible core `run_graph()` bridge
+-> caught failure / WebSocket failure projection
+
 ### Canonical target
 
 `Hive DAG authoring projection`
@@ -249,7 +260,7 @@ into canonical Stream 6 contracts.
 -> Binding/Provider/Invocation
 -> ExecutionRuntime
 -> canonical Event/Checkpoint
--> Hive list/detail/SSE projections
+-> Hive list/detail/SSE/WebSocket projections
 
 ## Immediate handoffs
 
@@ -259,11 +270,11 @@ Production execution entrypoint must become the owner of Run/Attempt/ExecutionRu
 
 ### Stream 2
 
-Replace synthetic DagRun event storage/correlation with canonical Event persistence and sequence IDs; retain SSE projection behavior.
+Replace synthetic DagRun event storage/correlation with canonical Event persistence and sequence IDs; retain SSE and WebSocket projection behavior.
 
 ### Stream 5
 
-Add live Hive `execute_dag` to the parity/convergence matrix. Preserve isolation hooks but replace routing/lifecycle. Fix conditions, failure semantics, cycles/deadlock, cancellation, and project/run identity through canonical execution.
+Add both live Hive execution surfaces to the parity/convergence matrix: normal `execute_dag` callers and the mounted broken WebSocket `execute_dag_streaming` caller. Preserve isolation hooks but replace routing/lifecycle. Fix conditions, failure semantics, cycles/deadlock, cancellation, project/run identity, and streaming integration through canonical execution.
 
 ### Stream 6
 
