@@ -185,18 +185,10 @@ jobs:
       #        back-compat scout_objective.
       - name: vulture (dead-code; confidence ≥ 60 — ratchet)
         env:
-          # Measured 2026-08-14 after the canonical spine inventory:
-          # 1,415 findings. The original reviewed delta to 1,396 was 85 new
-          # public model/protocol/API declarations, offset by two removals.
-          # The subsequent +18 accompanies the persistent Project/Run spine:
-          # 17 reported public store/service methods or Pydantic validators in
-          # sqlite_scope_store, runs/model, runs/service, runs/sqlite_store,
-          # and runs/store, plus one net line-count delta from those modules.
-          # The final +1 is ProjectScopeStore.validate_required_resources, added
-          # to make the validated implementation behavior part of the protocol.
-          # These contracts are exercised by tests; vulture scans production
-          # only and cannot see protocol dispatch, Pydantic hooks, or consumers.
-          VULTURE_BASELINE: 1415
+          # Measured 2026-07-28 after WS-B: 1,313 findings. Lowering the
+          # previous 1,317 ceiling banks those four removals so the debt cannot
+          # silently grow back while the classified baseline is completed.
+          VULTURE_BASELINE: 1313
         run: |
           # `third_party/` is vendored upstream source (Google's IFEval verifier,
           # BFCL's AST checker), kept byte-faithful so the benchmarks run the
