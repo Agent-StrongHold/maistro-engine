@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from collections.abc import AsyncIterator
 
 import aiosqlite
@@ -17,6 +19,7 @@ from maistro.events.checkpoints import (
     CheckpointVersionError,
     InMemoryCheckpointStore,
     SqliteCheckpointStore,
+    checkpoint_created_event,
     resolve_checkpoint,
 )
 
@@ -39,24 +42,81 @@ def _checkpoint(**overrides: object) -> Checkpoint:
         "workspace_id": "ws-1",
         "project_id": "project-1",
         "run_id": "run-1",
+        "executable_version": "runtime-v1",
         "state": {"cursor": "node-2", "blackboard": {"answer": 42}},
     }
     values.update(overrides)
     return Checkpoint(**values)  # type: ignore[arg-type]
 
 
-def test_checkpoint_requires_canonical_scope() -> None:
+def test_checkpoint_requires_canonical_scope_and_compatibility() -> None:
     with pytest.raises(ValueError, match="workspace_id"):
         _checkpoint(workspace_id="")
     with pytest.raises(ValueError, match="project_id"):
         _checkpoint(project_id="")
     with pytest.raises(ValueError, match="run_id"):
         _checkpoint(run_id="")
+    with pytest.raises(ValueError, match="executable_version"):
+        _checkpoint(executable_version="")
+
+
+def test_checkpoint_requires_inline_or_external_state() -> None:
+    with pytest.raises(ValueError, match="inline state or state_locator"):
+        _checkpoint(state={})
+    with pytest.raises(ValueError, match="requires state_hash"):
+        _checkpoint(state={}, state_locator="artifact://checkpoint/1")
+
+
+def test_inline_state_gets_stable_hash() -> None:
+    state = {"b": 2, "a": {"value": 1}}
+    checkpoint = _checkpoint(state=state)
+    expected = hashlib.sha256(
+        json.dumps(state, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    assert checkpoint.state_hash == expected
+
+
+def test_external_state_retains_locator_and_hash() -> None:
+    checkpoint = _checkpoint(
+        state={},
+        state_locator="artifact://checkpoint/1",
+        state_hash="sha256:abc123",
+    )
+    assert checkpoint.state == {}
+    assert checkpoint.state_locator == "artifact://checkpoint/1"
+    assert checkpoint.state_hash == "sha256:abc123"
 
 
 def test_checkpoint_ref_preserves_schema_version() -> None:
     checkpoint = _checkpoint(checkpoint_id="cp-1", schema_version=3)
     assert checkpoint.ref == CheckpointRef(checkpoint_id="cp-1", schema_version=3)
+
+
+def test_checkpoint_created_event_preserves_canonical_correlation() -> None:
+    checkpoint = _checkpoint(
+        checkpoint_id="cp-event",
+        sequence=4,
+        event_sequence=17,
+        node_run_id="node-run-1",
+        attempt_id="attempt-2",
+        graph_id="graph-1",
+        graph_snapshot_hash="graph-sha",
+        reason="provider-yield",
+        provenance={"runtime": "python"},
+    )
+    event = checkpoint_created_event(checkpoint)
+
+    assert event.type == "checkpoint.created"
+    assert event.workspace_id == "ws-1"
+    assert event.project_id == "project-1"
+    assert event.run_id == "run-1"
+    assert event.node_run_id == "node-run-1"
+    assert event.attempt_id == "attempt-2"
+    assert event.provenance == {"runtime": "python"}
+    assert event.payload["checkpoint_id"] == "cp-event"
+    assert event.payload["checkpoint_sequence"] == 4
+    assert event.payload["event_sequence"] == 17
+    assert event.payload["graph_snapshot_hash"] == "graph-sha"
 
 
 class TestCheckpointStoreContract:
@@ -92,6 +152,9 @@ class TestCheckpointStoreContract:
             event_sequence=17,
             previous_checkpoint_id="cp-previous",
             reason="provider-yield",
+            state_locator="artifact://checkpoint/roundtrip",
+            graph_id="graph-1",
+            graph_snapshot_hash="graph-sha",
             provenance={"runtime": "python"},
         )
         persisted = await checkpoint_store.append(checkpoint)
@@ -101,6 +164,9 @@ class TestCheckpointStoreContract:
         assert loaded is not None
         assert loaded.event_sequence == 17
         assert loaded.attempt_id == "attempt-2"
+        assert loaded.executable_version == "runtime-v1"
+        assert loaded.graph_snapshot_hash == "graph-sha"
+        assert loaded.state_hash == checkpoint.state_hash
 
     async def test_latest_and_cursor_reads(self, checkpoint_store: CheckpointStore) -> None:
         for index in range(5):
@@ -127,7 +193,7 @@ class TestCheckpointStoreContract:
             range(1, 21)
         )
 
-    async def test_resolve_checkpoint_validates_version(
+    async def test_resolve_checkpoint_validates_schema_version(
         self,
         checkpoint_store: CheckpointStore,
     ) -> None:
@@ -153,6 +219,20 @@ class TestCheckpointStoreContract:
                 checkpoint_store,
                 CheckpointRef("cp-versioned", schema_version=1),
                 supported_schema_versions=frozenset({1, 2}),
+            )
+
+    async def test_resolve_checkpoint_rejects_executable_incompatibility(
+        self,
+        checkpoint_store: CheckpointStore,
+    ) -> None:
+        persisted = await checkpoint_store.append(
+            _checkpoint(checkpoint_id="cp-runtime", executable_version="runtime-v2")
+        )
+        with pytest.raises(CheckpointVersionError, match="executable version"):
+            await resolve_checkpoint(
+                checkpoint_store,
+                persisted.ref,
+                supported_executable_versions=frozenset({"runtime-v1"}),
             )
 
     async def test_resolve_checkpoint_requires_existing_checkpoint(
