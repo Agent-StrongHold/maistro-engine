@@ -20,6 +20,7 @@ from maistro.runs.model import (
     RunStatus,
 )
 from maistro.runs.reconciliation import AttemptLifecycleReconciler
+from maistro.runs.sqlite_store import SqliteRunStore
 from maistro.runs.store import (
     ActiveAttemptExists,
     AttemptNotFound,
@@ -52,6 +53,7 @@ __all__ = [
     "RunNotFound",
     "RunStatus",
     "RunStore",
+    "SqliteRunStore",
     "transition_attempt",
     "transition_node_run",
     "transition_run",
