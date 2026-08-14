@@ -9,6 +9,7 @@ stream scope so no implicit global ordering authority is created.
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import time
 from dataclasses import asdict, dataclass, field, replace
@@ -51,12 +52,16 @@ class EventEnvelope:
     def __post_init__(self) -> None:
         if not self.type.strip():
             raise ValueError("type must be a non-empty string")
+        if not self.event_id.strip():
+            raise ValueError("event_id must be a non-empty string")
         if not self.workspace_id.strip() and not self.stream_scope.strip():
             raise ValueError("non-Workspace events require an explicit stream_scope")
         if self.workspace_id.strip() and self.stream_scope.strip():
             raise ValueError("Workspace events must not define a competing stream_scope")
         if self.sequence is not None and self.sequence < 1:
             raise ValueError("sequence must be positive when present")
+        object.__setattr__(self, "payload", copy.deepcopy(self.payload))
+        object.__setattr__(self, "provenance", copy.deepcopy(self.provenance))
 
     @property
     def stream_id(self) -> str:
@@ -110,7 +115,12 @@ class InMemoryEventStore:
                 raise ValueError("sequence is store-assigned and must be None on append")
 
             stream = self._streams.setdefault(event.stream_id, [])
-            persisted = replace(event, sequence=len(stream) + 1)
+            persisted = replace(
+                event,
+                sequence=len(stream) + 1,
+                payload=copy.deepcopy(event.payload),
+                provenance=copy.deepcopy(event.provenance),
+            )
             stream.append(persisted)
             self._events_by_id[persisted.event_id] = persisted
             return persisted
@@ -202,7 +212,12 @@ class SqliteEventStore:
                 )
                 row = await cursor.fetchone()
                 sequence = int(row[0]) if row is not None else 1
-                persisted = replace(event, sequence=sequence)
+                persisted = replace(
+                    event,
+                    sequence=sequence,
+                    payload=copy.deepcopy(event.payload),
+                    provenance=copy.deepcopy(event.provenance),
+                )
                 await self._conn.execute(
                     """INSERT INTO canonical_event_log (
                         event_id, stream_id, sequence, type, timestamp,
