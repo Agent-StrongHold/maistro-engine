@@ -95,9 +95,12 @@ Its own package contract is:
 - generate the canonical ADR/spec registry
 - expose this through the `maistro-registry` console script
 
+It is live repository infrastructure, not dormant library code. `.github/workflows/registry.yml` installs the package, runs the dedicated registry tests, and executes `python -m maistro_registry.cli lint . --strict` on relevant pull requests and pushes to `main`, `integration`, and `develop`.
+
 Classification:
 
 - retain as repository governance/build tooling
+- preserve its CI contract
 - do not merge it with CapabilityRegistry, template registries, model registries, or artifact registries merely because they share the word `registry`
 - its DAG/linker/generator/parser/schema/validator modules operate on documentation metadata, not product execution objects
 
@@ -111,7 +114,7 @@ Turing provider/security bridge behavior is useful adapter input, but actual LLM
 
 Turing should remain a specialized product/domain adapter. Preserve its self-model/cognition/producer/chat semantics while replacing generic provider/memory/security/session/artifact plumbing with canonical services.
 
-Bootstrap and maistro-registry should remain outside normal product execution migration except for narrow integration seams. Bootstrap's live Hive install-session adapter is a compatibility requirement, not evidence that install operations should become Runs.
+Bootstrap and maistro-registry should remain outside normal product execution migration except for narrow integration seams. Bootstrap's live Hive install-session adapter is a compatibility requirement, not evidence that install operations should become Runs. Registry CI is an architectural governance boundary, not a product runtime boundary.
 
 ## Delete-after candidate
 
