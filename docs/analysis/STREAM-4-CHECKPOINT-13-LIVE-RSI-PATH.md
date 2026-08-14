@@ -21,7 +21,7 @@ This is a real product/control surface when `maistro-rsi` is installed in the Hi
 
 Classification: `live optional RSI product surface`.
 
-## 2. Live Hive RSI owns another private Run lifecycle
+## 2. Live Hive RSI owns another private Run lifecycle, and cleanup cancellation is broken
 
 `services/rsi.py` defines:
 
@@ -37,9 +37,9 @@ Classification: `live optional RSI product surface`.
 
 `start_run()` mints a local run ID, stores the RunState in an in-memory dictionary, launches `_drive()` as an asyncio task, and sets status running.
 
-`stop_run()` cancels that task and marks the run stopped.
+`stop_run()` cancels that asyncio task and marks the run stopped. For cleanup mode, however, `_drive_cleanup()` is awaiting `asyncio.to_thread(loop.run)`. Cancelling the asyncio waiter does **not** terminate the executor thread. `LocalRsiLoop` can therefore continue model calls, tests, worktree mutations, and artifact/report writes after the API-visible RunState says `stopped`.
 
-This is a live duplicate universal lifecycle and should migrate to canonical Run/Attempt rather than being preserved as a second durable source.
+This is a live duplicate universal lifecycle and a broken cancellation edge. Migration must not preserve the current apparent stop semantics as parity. Canonical cancellation has to reach the physical RSI worker or the product must report that cancellation is pending until the worker actually terminates.
 
 ## 3. Cleanup mode is the actual live execution behavior
 
@@ -66,12 +66,14 @@ The live service forwards operator controls including:
 
 These values are real product behavior and belong in Stream 7 migration acceptance criteria.
 
+The thread boundary is also a Stream 1/6 migration requirement: cancellation of the outer asyncio Task alone is insufficient. Any canonical adapter around this synchronous loop needs a cooperative cancellation token, process isolation/termination boundary, or equivalent mechanism that actually stops physical work.
+
 ## 4. `LocalRsiLoop` is a deliberately bounded recursive improvement workflow
 
 Its documented invariants include:
 
 - throwaway/local worktrees rather than mutating the user's checkout
-- native Builders-agent patch generation
+- native builder-agent patch generation
 - test gate on every promotion
 - each accepted cycle becomes the next baseline
 - fixed maximum cycle count
@@ -81,17 +83,20 @@ The implementation also contains provider-transient classification/fallback beha
 
 This is specialized RSI behavior worth preserving.
 
-## 5. Cleanup mode currently composes directly with Builders implementation
+## 5. Cleanup mode depends on Bootstrap's separate builder-agent implementation, not `maistro.builders`
 
 Hive creates its patch function with `make_builders_apply_patch(...)` from `maistro_rsi.local_loop`.
 
-Therefore the live RSI product path depends on Builders-style patch-generation behavior even though the standalone `maistro.builders` subsystem remains structurally unreachable as a process island.
+Despite the helper name, its lazy implementation imports `BuilderSession`, `TurnRunner`, and `ResponsesAPICallable` from `maistro_bootstrap.builders`. It does **not** depend on the structurally unreachable `maistro.builders` subsystem audited elsewhere.
 
-This is exactly the kind of hidden behavioral dependency Stream 4 is meant to surface: “Builders is unreachable” does **not** mean every Builders-derived behavior is irrelevant to live products.
+That distinction matters during convergence:
+
+- `maistro.builders` is a separate product/orchestration subsystem whose private lifecycle is a Stream 7 migration target.
+- `maistro_bootstrap.builders` is live Bootstrap builder-agent behavior consumed by RSI cleanup and belongs to the Bootstrap/control-plane compatibility surface.
 
 ### Stream 7 handoff
 
-When Builders execution migrates onto canonical Graph/Run, preserve the patch-generation adapter contract used by RSI or replace it with an equivalent canonical Node/GraphTemplate interface.
+Do not use RSI cleanup as evidence that the unreachable `maistro.builders` package is a live dependency. Preserve or deliberately replace the `maistro_bootstrap.builders` patch-generation contract used by RSI while separately migrating the `maistro.builders` subsystem on its own evidence and callers.
 
 ## 6. Greenfield mode is explicitly not wired
 
@@ -117,8 +122,9 @@ This distinction should be explicit in product migration planning:
 
 ### Must preserve for current product parity
 
-- cleanup start/stop/status
-- LocalRsiLoop bounded/test-gated behavior
+- cleanup start/status behavior
+- bounded/test-gated LocalRsiLoop behavior
+- a **working physical cancellation** replacement for the current broken cleanup `stop`
 - report/export/review flow
 - approve/deny idempotency
 - Ralph feedback state
@@ -158,7 +164,7 @@ Canonical Run persistence can improve this without inventing a second RSI-specif
 
 ### Stream 1
 
-RSI should become another producer/consumer of canonical Run rather than retain private RunState lifecycle.
+RSI should become another producer/consumer of canonical Run rather than retain private RunState lifecycle. Cancellation must not terminalize the canonical Run/Attempt as stopped while an uncancelled cleanup worker continues mutating state.
 
 ### Stream 5
 
@@ -166,12 +172,12 @@ If RSI cleanup is represented as Graph behavior, preserve bounded cycle/test-gat
 
 ### Stream 6
 
-Provider fallback/capacity behavior inside LocalRsiLoop should be reconciled with canonical Provider/Invocation rather than retained as a fully separate provider-selection plane.
+Provider fallback/capacity behavior inside LocalRsiLoop should be reconciled with canonical Provider/Invocation rather than retained as a fully separate provider-selection plane. If the physical RSI operation stays thread-backed temporarily, its Invocation/Attempt cancellation adapter must stop or cooperatively halt the underlying work.
 
 ### Stream 7
 
-Prioritize live cleanup-mode parity first. Preserve review/Ralph/promotion domain behavior. Treat greenfield/autorun as future behavior sources unless explicitly activated.
+Prioritize live cleanup-mode parity first. Preserve review/Ralph/promotion domain behavior. Treat greenfield/autorun as future behavior sources unless explicitly activated. Track Bootstrap's builder-agent implementation separately from `maistro.builders`.
 
 ## Reachability lesson
 
-Subsystem-level unreachability is not transitive to every behavior associated with that subsystem. The live RSI cleanup path composes Builders-derived patch behavior even while the standalone Builders package remains a closed island from process entry points.
+Subsystem names are not enough to infer dependencies. The live RSI cleanup path composes `maistro_bootstrap.builders` behavior; that does not make the separate `maistro.builders` subsystem reachable. Migration ownership must follow the actual imported implementation and rooted caller chain.
