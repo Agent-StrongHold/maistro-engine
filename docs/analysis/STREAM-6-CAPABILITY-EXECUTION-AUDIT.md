@@ -14,45 +14,43 @@ Stream 6 owns the convergence of:
 
 plus credentials, ToolExposure, MCP, HTTP, harness execution, provider health/fallback, and the security/tool machinery that must sit on the real invocation path.
 
-This audit does not introduce Binding, Invocation, Attempt, or authorization semantics while those contracts are still owned by other streams. Safe pre-implementation work may add characterization tests that pin behavior the later convergence must preserve.
+This audit does not redefine Binding, Invocation, Attempt, or authorization semantics while those contracts are owned by the canonical architecture streams. Safe pre-implementation work may add characterization tests that pin behavior the later convergence must preserve.
 
 ## Current dependency status
 
 ### Stream 1: core domain spine
 
-Required before Stream 6 can implement the canonical invocation path.
+The required canonical seam is now implemented on PR #388 (`feat/execution-runtime-spine-373`) but is not yet merged to `develop`.
 
-Needed contracts:
+PR #388 now provides:
 
 - canonical Project ownership/persistence and `project_id` propagation
 - canonical Run / NodeRun / Attempt model
 - authoritative `attempt_id`
 - Attempt -> ExecutionRuntime execution seam
-- lifecycle/terminalization behavior sufficient for Invocation to report one physical call into one Attempt
+- `AttemptExecutionService`
+- `RunExecutionService`
+- lifecycle/terminalization behavior for physical execution
+- accepted `ADR-081426-1f7c-execution-runtime-contract.md`
 
-Current `develop` still exposes the legacy graph-owned execution model:
+The accepted runtime ADR makes `Attempt.attempt_id` the physical `ExecutionRuntime.execution_id` and explicitly keeps permissions, retry policy, Provider selection, Graph semantics, and business lifecycle outside Runtime.
 
-- `GraphRun` owns universal run lifecycle state and cancellation
-- `NodeRun` owns retry counters and retry loops
-- there is no canonical first-class Attempt record on `develop`
-- the graph `NodeExecutor` seam is a specialized execution-backend hook, not the canonical Invocation/Attempt seam
-
-Therefore Stream 1 is the hard blocker for production Invocation integration.
+Current `develop` still lacks this merged spine, so production Stream 6 integration remains gated on #388 reaching the common base. Stream 6 should target #388's contracts and avoid inventing substitutes while it is in review.
 
 ### Stream 2: events/checkpoints
 
-The canonical EventEnvelope is strongly preferred before Stream 6 migrates real invocation producers because Invocation should not invent another event/correlation representation.
+PR #395 provides the canonical EventEnvelope slice. It is strongly preferred before Stream 6 migrates real invocation producers because Invocation should not invent another event/correlation representation.
 
-Stream 6 can define static adapters/types after Stream 1/3 without waiting for the complete checkpoint/outbox implementation.
+Stream 6 can define static adapters/types after Streams 1/3 land without waiting for the complete checkpoint/outbox implementation.
 
 ### Stream 3: authorization/resources
 
-Required before real Binding/Invocation enforcement.
+PR #393 provides the first authorization/resource-scope contract, but one scope semantic must be corrected before Stream 6 consumes it: canonical Project scope is exact-project ownership, not descendant inheritance. A project-scoped Binding, credential, or policy is usable only in that exact project. Workspace-scoped resources remain workspace-wide.
 
-Needed contracts:
+Required before real Binding/Invocation enforcement:
 
 - WorkspaceMembership / ProjectMembership resolution
-- workspace/project resource visibility
+- exact-project and workspace resource visibility
 - credential scope
 - Binding scope
 - policy scope
@@ -67,6 +65,20 @@ These are not prerequisites for initial Stream 6 implementation.
 - Stream 4 continuously supplies reachability/migration findings.
 - Stream 5 consumes the canonical capability path as graph/durable execution converges.
 - Stream 7 consumes it from products/services/UI.
+
+## Governing architecture decisions
+
+Stream 6 should consume existing accepted architecture rather than define a competing capability model. The key decisions now visible on #388 are:
+
+- `ADR-081226-6b46-capability-provider-binding-invocation.md`
+- `ADR-081226-a66b-run-noderun-attempt-lifecycle.md`
+- `ADR-081226-69ee-graph-node-execution-model.md`
+- `ADR-081226-6e34-hierarchical-permissions.md`
+- `ADR-081226-7248-event-checkpoint-model.md`
+- `ADR-081426-1f7c-execution-runtime-contract.md`
+- `ADR-081426-b1d3-project-scope-tree.md`
+
+These are the authoritative integration target once their implementing branches reach `develop`.
 
 ## Current capability execution inventory
 
@@ -244,23 +256,23 @@ Useful provider-key mechanics, but not authorization and not provider selection 
 
 ### From Stream 1
 
-Stream 6 needs an authoritative answer for:
+PR #388 now answers the central execution questions. Stream 6 must consume those answers after merge/rebase rather than restating them locally:
 
-1. How a new Attempt is created for a NodeRun.
-2. Whether one Invocation maps one-to-one to an Attempt or whether an Attempt may contain multiple lower-level provider operations.
-3. Where retry creation occurs.
-4. How cancellation/deadline reaches the physical provider call.
-5. How Invocation output/error is returned to Attempt terminalization.
-6. Which IDs are required at execution entry (`workspace_id`, `project_id`, `run_id`, `node_run_id`, `attempt_id`).
+1. Attempt is the unit of physical execution.
+2. `Attempt.attempt_id` is the Runtime execution ID.
+3. Runtime does not own retry policy.
+4. Runtime mechanics propagate cancellation/deadline to the physical call.
+5. Domain services terminalize Attempt/NodeRun/Run after Runtime returns.
+6. Project/Run/NodeRun/Attempt IDs remain domain provenance above Runtime.
 
-Stream 6 must consume these answers, not invent them.
+The remaining dependency is integration state, not architectural uncertainty: #388 must reach the common `develop` base.
 
 ### From Stream 3
 
 Stream 6 needs:
 
 1. permission required to use a Binding
-2. project/workspace resource-scope representation
+2. exact-project/workspace resource-scope representation
 3. credential visibility/use permission
 4. policy visibility/use permission
 5. project ancestry lookup adapter or accepted caller-supplied path contract
@@ -301,11 +313,11 @@ These tests intentionally exercise only current provider-selection mechanics. Th
 
 ### Slice 1: canonical static objects/adapters
 
-Once Stream 1 and Stream 3 contracts are merged:
+Once #388 and corrected Stream 3 contracts are merged:
 
 - Capability adapter over existing slot definitions
 - Provider adapter over existing CapabilityProvider implementations
-- Binding with workspace/project scope and credential references
+- Binding with workspace/exact-project scope and credential references
 - Invocation request/result identity/provenance fields
 - no production caller switch yet
 
@@ -319,8 +331,8 @@ Once Stream 1 and Stream 3 contracts are merged:
 ### Slice 3: Attempt integration
 
 - invoke provider under the existing Stream 1 Attempt
-- propagate deadline/cancellation from ExecutionRuntime seam
-- no retry loop inside Invocation if Attempt owns retries
+- propagate deadline/cancellation through ExecutionRuntime
+- no retry loop inside Invocation because retry policy remains above Runtime
 
 ### Slice 4: events
 
@@ -343,8 +355,8 @@ Behavior-parity tests must stay green while compatibility layers are removed.
 
 Required common-base order for production Stream 6 work:
 
-1. Stream 1 canonical Run/NodeRun/Attempt seam onto `develop`
-2. Stream 3 authorization/resource-scope contract onto `develop`
+1. PR #388 canonical Project/Run/NodeRun/Attempt/Runtime seam onto `develop`
+2. corrected Stream 3 authorization/resource-scope contract onto `develop`
 3. Stream 6 rebase/branch from that common `develop`
 4. Stream 2 EventEnvelope should be consumed before real producer migration if available
 
@@ -356,10 +368,10 @@ Avoid cherry-picking partial canonical contracts into Stream 6. Canonical choke 
 
 Stream 6 is ready to leave audit/characterization mode when all are true:
 
-- canonical Attempt exists on `develop`
-- Attempt -> ExecutionRuntime execution seam is authoritative
-- `project_id` ownership/propagation is authoritative
-- Stream 3 authorization/resource-scope contract is on `develop`
+- PR #388 is merged/rebased into the common `develop` base
+- canonical Attempt -> ExecutionRuntime seam is authoritative on `develop`
+- `project_id` ownership/propagation is authoritative on `develop`
+- corrected Stream 3 authorization/resource-scope contract is on `develop`
 - provider-selection parity tests are green
 
 At that point Stream 6 should begin Slice 1 immediately rather than perform another broad architecture audit.
