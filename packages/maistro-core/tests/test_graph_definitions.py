@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from maistro.graph.definitions import Edge, Graph, GraphTemplate, Node, NodeTemplate
 
 
@@ -70,6 +72,7 @@ def test_graph_template_instantiation_allocates_independent_topology() -> None:
     first = template.instantiate(graph_id="graph-1")
     second = template.instantiate(graph_id="graph-2")
 
+    assert first.workspace_id == "workspace-1"
     assert first.source_template is not None
     assert first.source_template.template_id == "graph-template"
     assert first.source_template.template_version == 4
@@ -108,12 +111,12 @@ def test_objects_can_be_saved_as_new_templates_without_inheriting_object_identit
 
     graph = Graph(
         graph_id="live-graph",
+        workspace_id="workspace-1",
         name="Edited Pipeline",
         nodes=[node],
     )
     graph_template = GraphTemplate.from_graph(
         graph,
-        workspace_id="workspace-1",
         template_id="saved-graph-template",
         version=1,
     )
@@ -125,6 +128,40 @@ def test_objects_can_be_saved_as_new_templates_without_inheriting_object_identit
     assert new_node.source_template is not None
     assert new_node.source_template.template_id == "saved-node-template"
     assert new_graph.graph_id != graph.graph_id
+    assert new_graph.workspace_id == graph.workspace_id
     assert new_graph.source_template is not None
     assert new_graph.source_template.template_id == "saved-graph-template"
     assert new_graph.nodes[0].node_id != node.node_id
+
+
+def test_graph_requires_workspace_scope_and_unique_node_ids() -> None:
+    with pytest.raises(ValueError, match="workspace_id"):
+        Graph(workspace_id="", name="Bad", nodes=[Node(node_id="one", node_type="agent")])
+
+    with pytest.raises(ValueError, match="node_id values must be unique"):
+        Graph(
+            workspace_id="workspace-1",
+            name="Bad",
+            nodes=[
+                Node(node_id="duplicate", node_type="agent"),
+                Node(node_id="duplicate", node_type="transform"),
+            ],
+        )
+
+
+def test_graph_content_hash_changes_with_effective_definition_not_identity() -> None:
+    first = Graph(
+        graph_id="graph-a",
+        workspace_id="workspace-1",
+        name="Pipeline",
+        nodes=[Node(node_id="node", node_type="agent", parameters={"model": "a"})],
+    )
+    same_definition = first.model_copy(
+        deep=True,
+        update={"graph_id": "graph-b", "workspace_id": "workspace-2"},
+    )
+    changed = first.model_copy(deep=True)
+    changed.nodes[0].parameters["model"] = "b"
+
+    assert first.content_hash == same_definition.content_hash
+    assert first.content_hash != changed.content_hash
