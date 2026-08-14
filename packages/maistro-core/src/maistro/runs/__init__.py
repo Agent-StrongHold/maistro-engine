@@ -19,6 +19,7 @@ from maistro.runs.model import (
     Run,
     RunStatus,
 )
+from maistro.runs.reconciliation import AttemptLifecycleReconciler
 from maistro.runs.store import (
     ActiveAttemptExists,
     AttemptNotFound,
@@ -37,6 +38,7 @@ __all__ = [
     "ActiveAttemptExists",
     "Attempt",
     "AttemptExecutionService",
+    "AttemptLifecycleReconciler",
     "AttemptNotFound",
     "AttemptReconciler",
     "AttemptStatus",
