@@ -38,7 +38,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
   uv run pytest formal --collect-only -q | tail -3
 ```
 
-## Counts as of current `develop`
+## Counts as of current branch
 
 Refreshed after the runtime cleanup queue (#355, #359, #361) and the promotion
 CI reconciliation. The repo-task wrapper compatibility regression adds one
@@ -47,12 +47,13 @@ scope-gated parametrized Hive cases and into the ordinary product-surface check,
 so Hive loses one collected node ID while retaining the intended assertion.
 Stream 5 parity characterization adds four maistro-core node IDs.
 Stream 7 product-adapter parity adds four maistro-core and two maistro-canvas
+node IDs. Stream 3 authorization/resource-scope coverage adds 18 maistro-core
 node IDs, and Stream 6 provider parity adds five maistro-core node IDs.
 Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5949 | `ci.yml` |
+| `packages/maistro-core/tests` | 5967 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
