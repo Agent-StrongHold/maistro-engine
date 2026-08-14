@@ -9,14 +9,14 @@ from maistro.runs.lifecycle import (
     transition_run,
 )
 from maistro.runs.model import (
-    TERMINAL_ATTEMPT_STATUSES,
-    TERMINAL_RUN_STATUSES,
     Attempt,
     AttemptStatus,
     GraphSnapshot,
     NodeRun,
     Run,
     RunStatus,
+    TERMINAL_ATTEMPT_STATUSES,
+    TERMINAL_RUN_STATUSES,
 )
 from maistro.runs.store import (
     ActiveAttemptExists,
