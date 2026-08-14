@@ -2,12 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from maistro.projects import Project, ProjectMember, ProjectMemberRole
-from maistro.workspaces import Workspace, WorkspaceMembership, WorkspaceRole, memberships_for
-
-
-def test_workspace_remains_project_compatibility_identity() -> None:
-    assert Workspace is Project
+from maistro.workspaces import WorkspaceMembership, WorkspaceRole
 
 
 @pytest.mark.parametrize(
@@ -30,20 +25,19 @@ def test_workspace_role_tiers(
     assert membership.can_administer is can_administer
 
 
-def test_legacy_members_project_to_canonical_memberships() -> None:
-    workspace = Workspace(
-        id="ws-1",
-        owner_user_id="alice",
-        name="Alpha",
-        members=[
-            ProjectMember(user_id="bob", role=ProjectMemberRole.EDITOR),
-            ProjectMember(user_id="cara", role=ProjectMemberRole.VIEWER),
-        ],
+def test_membership_represents_ownership_separately_from_workspace_identity() -> None:
+    owner = WorkspaceMembership(
+        workspace_id="ws-1",
+        user_id="alice",
+        role=WorkspaceRole.OWNER,
+    )
+    co_owner = WorkspaceMembership(
+        workspace_id="ws-1",
+        user_id="bob",
+        role=WorkspaceRole.OWNER,
     )
 
-    projected = {item.user_id: item.role for item in memberships_for(workspace)}
-    assert projected == {
-        "alice": WorkspaceRole.OWNER,
-        "bob": WorkspaceRole.CONTRIBUTOR,
-        "cara": WorkspaceRole.MEMBER,
-    }
+    assert owner.workspace_id == co_owner.workspace_id
+    assert owner.user_id != co_owner.user_id
+    assert owner.can_administer is True
+    assert co_owner.can_administer is True
