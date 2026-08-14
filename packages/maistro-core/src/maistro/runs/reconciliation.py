@@ -67,9 +67,7 @@ class AttemptLifecycleReconciler:
             raise RunIntegrityError("cannot execute Attempt under a terminal Run")
         if run.status is RunStatus.RUNNING:
             return run
-        if run.status is RunStatus.CREATED:
-            run = await self._store.transition_run(run.run_id, RunStatus.QUEUED)
-        elif run.status is RunStatus.PAUSED:
+        if run.status in {RunStatus.CREATED, RunStatus.PAUSED}:
             run = await self._store.transition_run(run.run_id, RunStatus.QUEUED)
         if run.status in {RunStatus.QUEUED, RunStatus.WAITING}:
             return await self._store.transition_run(run.run_id, RunStatus.RUNNING)
@@ -80,12 +78,7 @@ class AttemptLifecycleReconciler:
             raise RunIntegrityError("cannot execute Attempt under a terminal NodeRun")
         if node_run.status is RunStatus.RUNNING:
             return node_run
-        if node_run.status is RunStatus.CREATED:
-            node_run = await self._store.transition_node_run(
-                node_run.node_run_id,
-                RunStatus.QUEUED,
-            )
-        elif node_run.status is RunStatus.PAUSED:
+        if node_run.status in {RunStatus.CREATED, RunStatus.PAUSED}:
             node_run = await self._store.transition_node_run(
                 node_run.node_run_id,
                 RunStatus.QUEUED,
