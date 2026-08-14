@@ -1,15 +1,8 @@
-"""maistro.auth — B2B service key authentication for the unified platform.
+"""maistro.auth — authentication plus canonical resource authorization contracts.
 
-Long-lived service keys with scoped permissions for cross-service communication.
-Supports category-level grants (e.g. "trading:*") and individual scope overrides.
-
-Usage:
-    from maistro.auth import ServiceKeyRegistry, ServiceKeyAuthProvider, Scope
-
-    registry = ServiceKeyRegistry()
-    registry.load_dict({"conductor-router": {"key": "sk-svc-xxx", "scopes": ["llm:*", "events:*"]}})
-    provider = ServiceKeyAuthProvider(registry)
-    identity = provider.authenticate({"x-service-key": "sk-svc-xxx"})
+Long-lived service keys provide scoped permissions for cross-service communication.
+Project-tree authorization is exposed separately through ``AuthorizationResolver``;
+it is independent from Persona and from the legacy inline Project member-role model.
 """
 
 from maistro.auth._types import (
@@ -22,6 +15,17 @@ from maistro.auth.checker import ServiceKeyChecker
 from maistro.auth.client import ServiceKeyClient
 from maistro.auth.provider import ServiceKeyAuthProvider
 from maistro.auth.registry import ServiceKeyRegistry
+from maistro.auth.resources import (
+    AuthorizationDecision,
+    AuthorizationResolver,
+    MembershipStatus,
+    Permission,
+    ProjectMembership,
+    ResourceKind,
+    ResourceScope,
+    ResourceScopeKind,
+    WorkspaceMembership,
+)
 
 _OAUTH_EXPORTS = (
     "IdentityLinkStore",
@@ -64,12 +68,15 @@ def __getattr__(name: str) -> object:
 
 
 __all__ = [
+    "AuthorizationDecision",
+    "AuthorizationResolver",
     "IdTokenVerifier",
     "IdentityLinkStore",
     "IdentityLinker",
     "InMemoryIdentityLinkStore",
     "InMemoryStateStore",
     "JWKSIdTokenVerifier",
+    "MembershipStatus",
     "OAuth2Client",
     "OAuthError",
     "OAuthExchange",
@@ -80,6 +87,11 @@ __all__ = [
     "OAuthStateError",
     "OAuthToken",
     "OAuthTokenValidationError",
+    "Permission",
+    "ProjectMembership",
+    "ResourceKind",
+    "ResourceScope",
+    "ResourceScopeKind",
     "Scope",
     "ScopeCategory",
     "ServiceIdentity",
@@ -89,6 +101,7 @@ __all__ = [
     "ServiceKeyRegistry",
     "StateStore",
     "UnverifiedJWTClaimsValidator",
+    "WorkspaceMembership",
     "default_id_token_verifier",
     "expand_scopes",
     "extract_service_identity",

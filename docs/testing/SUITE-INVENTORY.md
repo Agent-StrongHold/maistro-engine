@@ -38,7 +38,7 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
   uv run pytest formal --collect-only -q | tail -3
 ```
 
-## Counts as of current `develop`
+## Counts as of current branch
 
 Refreshed after the runtime cleanup queue (#355, #359, #361), the promotion
 CI reconciliation, the Workspace/Persona convergence slice, and Stream 5 parity
@@ -49,6 +49,7 @@ one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
+Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs.
 The repo-task wrapper compatibility regression adds one maistro-evolve node ID.
 Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
@@ -57,7 +58,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6044 | `ci.yml` |
+| `packages/maistro-core/tests` | 6062 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
