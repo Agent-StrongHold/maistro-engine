@@ -13,32 +13,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install dependencies
         run: uv sync --locked --extra dev --extra bootstrap
-      - name: Annotate Vulture findings
+      - name: Annotate Vulture delta from reviewed baseline
         run: |
           uv run vulture packages/*/src --min-confidence 60 \
-            --exclude '*/third_party/*' > /tmp/vulture.log 2>&1 || true
+            --exclude '*/third_party/*' > /tmp/head-vulture.log 2>&1 || true
+          git worktree add --detach /tmp/vulture-baseline f3ab4cfe5b02c92a38315757f81f71a6f0870504
+          uv run vulture /tmp/vulture-baseline/packages/*/src --min-confidence 60 \
+            --exclude '*/third_party/*' > /tmp/base-vulture.log 2>&1 || true
           python - <<'PY'
           from pathlib import Path
-          lines = Path('/tmp/vulture.log').read_text().splitlines()
-          print(f'Vulture findings: {len(lines)}')
-          for line in lines:
+
+          def normalized(path: str, prefix: str = "") -> set[str]:
+              lines = set()
+              for raw in Path(path).read_text().splitlines():
+                  line = raw.removeprefix(prefix)
+                  lines.add(line)
+              return lines
+
+          head = normalized('/tmp/head-vulture.log')
+          base = normalized('/tmp/base-vulture.log', '/tmp/vulture-baseline/')
+          added = sorted(head - base)
+          removed = sorted(base - head)
+          print(f'Head findings: {len(head)}; reviewed baseline findings: {len(base)}')
+          print(f'Added findings: {len(added)}; removed findings: {len(removed)}')
+          for line in added:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-              print(f'::warning title=Vulture::{escaped}')
+              print(f'::warning title=VultureAdded::{escaped}')
+          for line in removed:
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::notice title=VultureRemoved::{escaped}')
           PY
-      - name: Locate inventory test
+      - name: Annotate inventory test source
         run: |
-          echo "Tracked inventory-like files:"
-          git ls-files | grep -Ei 'suite.*inventory|inventory.*suite|test.*inventory' || true
-          echo "Filesystem inventory-like files after uv sync:"
-          find . -type f | grep -Ei 'suite.*inventory|inventory.*suite|test.*inventory' || true
           uv run pytest tests/ --ignore=tests/tools/registry --collect-only -q > /tmp/collect.log 2>&1 || true
-          grep -n 'inventory_matches_implemented_runtime' /tmp/collect.log || true
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          tracked = subprocess.run(['git', 'ls-files'], check=True, capture_output=True, text=True).stdout.splitlines()
+          candidates = [p for p in tracked if re.search(r'(suite.*inventory|inventory.*suite|test.*inventory)', p, re.I)]
+          filesystem = [
+              str(p) for root in (Path('tests'), Path('packages')) if root.exists()
+              for p in root.rglob('*.py')
+              if re.search(r'(suite.*inventory|inventory.*suite|test.*inventory)', str(p), re.I)
+          ]
+          collected = [line for line in Path('/tmp/collect.log').read_text().splitlines() if 'inventory_matches_implemented_runtime' in line]
+          for label, lines in [('TrackedInventory', candidates), ('FilesystemInventory', filesystem), ('CollectedInventory', collected)]:
+              if not lines:
+                  print(f'::warning title={label}::NONE')
+              for line in lines:
+                  escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+                  print(f'::warning title={label}::{escaped}')
+          PY
       - name: Annotate root test failures
         run: |
           uv run pytest tests/ --ignore=tests/tools/registry -v --tb=short > /tmp/root-tests.log 2>&1 || true
@@ -52,7 +87,6 @@ jobs:
               or line.startswith('E   ')
               or 'inventory_matches_implemented_runtime' in line
           ]
-          print(f'Root-test diagnostic lines: {len(interesting)}')
           for line in interesting:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print(f'::warning title=RootTests::{escaped}')
