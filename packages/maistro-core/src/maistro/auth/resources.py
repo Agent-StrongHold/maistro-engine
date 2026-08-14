@@ -20,9 +20,9 @@ storage remains owned by the Project domain rather than this module.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Iterable
 
 
 Permission = str
