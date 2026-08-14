@@ -32,6 +32,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from ..nodes.base import BaseNode, NodeContext, NodeResult
+from ..run import _OPERATORS, _compare, _parse_rhs
 from .protocol import DurableRunStore
 from .types import DurableNodeRecord, DurableRunRecord, NodePhase, RunStatus
 
@@ -43,6 +44,7 @@ NodeResolver = Callable[[str, dict[str, Any]], BaseNode[Any, Any]]
 # the spawning node's own invocation. Kept in sync with `agent_synth_dag.py`
 # and `agent_spawn_harness.py`'s registered `kind` ClassVars.
 _DEPTH_INCREMENTING_KINDS = frozenset({"agent.synth_dag", "agent.spawn_harness"})
+_MISSING_RESULT_VALUE = object()
 
 
 # --- Entrypoint: start a new run ------------------------------------------
@@ -269,29 +271,50 @@ def _node_spec(dag: dict[str, Any], node_id: str) -> dict[str, Any] | None:
     return None
 
 
-def _next_node(dag: dict[str, Any], current_id: str, _result: NodeResult) -> str | None:
-    """Pick the next node to run after `current_id` succeeds.
+def _result_value(result: NodeResult, path: str) -> object:
+    """Resolve a dotted predicate path against a durable node result payload."""
+    value: object = result.output
+    for part in path.split("."):
+        if isinstance(value, BaseModel):
+            value = getattr(value, part, _MISSING_RESULT_VALUE)
+        elif isinstance(value, dict):
+            value = value.get(part, _MISSING_RESULT_VALUE)
+        else:
+            return _MISSING_RESULT_VALUE
+        if value is _MISSING_RESULT_VALUE:
+            return value
+    return value
 
-    Phase 1 implementation: take the first non-conditional outgoing edge; if
-    every outgoing edge has a `condition`, take the first one whose condition
-    evaluates truthy against the result.output (or skip if none match).
 
-    The optimizer in Phase 6 will rewrite edges + weights; this resolver only
-    needs to be correct for the user-authored DAG shape.
+def _result_matches_condition(condition: str, result: NodeResult) -> bool:
+    """Evaluate the canonical GraphRun predicate dialect against durable output."""
+    for operator in _OPERATORS:
+        if operator not in condition:
+            continue
+        lhs_text, rhs_text = condition.split(operator, 1)
+        lhs = _result_value(result, lhs_text.strip())
+        if lhs is _MISSING_RESULT_VALUE:
+            return False
+        return _compare(lhs, operator, _parse_rhs(rhs_text.strip()))
+    return False
+
+
+def _next_node(dag: dict[str, Any], current_id: str, result: NodeResult) -> str | None:
+    """Pick the first outgoing edge whose canonical predicate is satisfied.
+
+    Durable execution still has a single-node frontier; parallel fan-out is a
+    separate convergence target. Within that constraint, edge selection now
+    follows GraphRun's predicate operators and document-order precedence.
     """
     edges = dag.get("edges") or []
     outgoing = [e for e in edges if str(e.get("from_node") or e.get("from_role")) == current_id]
-    if not outgoing:
-        return None
-    for e in outgoing:
-        if not e.get("condition"):
-            target = e.get("to_node") or e.get("to_role")
-            return str(target) if target else None
-    # All have conditions — Phase 1 takes the first; the optimizer can
-    # widen this later.
-    first = outgoing[0]
-    target = first.get("to_node") or first.get("to_role")
-    return str(target) if target else None
+    for edge in outgoing:
+        condition = edge.get("condition")
+        if condition and not _result_matches_condition(str(condition), result):
+            continue
+        target = edge.get("to_node") or edge.get("to_role")
+        return str(target) if target else None
+    return None
 
 
 def _resolve_inputs(
