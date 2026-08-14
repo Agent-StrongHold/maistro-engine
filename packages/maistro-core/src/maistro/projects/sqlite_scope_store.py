@@ -319,18 +319,23 @@ class SqliteProjectScopeStore:
         *,
         resource_type: str | None = None,
     ) -> list[ProjectScopedResource]:
-        project_ids = [project.project_id for project in await self.lineage(project_id)]
-        placeholders = ",".join("?" for _ in project_ids)
-        sql = f"SELECT payload FROM canonical_project_resources WHERE project_id IN ({placeholders})"
-        params: list[str] = list(project_ids)
-        if resource_type is not None:
-            sql += " AND resource_type = ?"
-            params.append(resource_type)
-        cursor = await self._conn.execute(sql, params)
+        lineage = await self.lineage(project_id)
+        project_ids = {project.project_id for project in lineage}
+        workspace_id = lineage[-1].workspace_id
+        cursor = await self._conn.execute(
+            "SELECT payload FROM canonical_project_resources WHERE workspace_id = ?",
+            (workspace_id,),
+        )
         rows = await cursor.fetchall()
         resources = [ProjectScopedResource.model_validate_json(row[0]) for row in rows]
-        resources.sort(key=lambda item: (item.resource_type, item.resource_id))
-        return resources
+        visible = [
+            resource
+            for resource in resources
+            if resource.project_id in project_ids
+            and (resource_type is None or resource.resource_type == resource_type)
+        ]
+        visible.sort(key=lambda item: (item.resource_type, item.resource_id))
+        return visible
 
     async def validate_required_resources(
         self,
