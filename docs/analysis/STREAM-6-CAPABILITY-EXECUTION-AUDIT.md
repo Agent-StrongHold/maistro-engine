@@ -14,7 +14,7 @@ Stream 6 owns the convergence of:
 
 plus credentials, ToolExposure, MCP, HTTP, harness execution, provider health/fallback, and the security/tool machinery that must sit on the real invocation path.
 
-This audit is intentionally documentation-only. It does not introduce Binding, Invocation, Attempt, or authorization semantics while those contracts are still owned by other streams.
+This audit does not introduce Binding, Invocation, Attempt, or authorization semantics while those contracts are still owned by other streams. Safe pre-implementation work may add characterization tests that pin behavior the later convergence must preserve.
 
 ## Current dependency status
 
@@ -39,116 +39,68 @@ Current `develop` still exposes the legacy graph-owned execution model:
 
 Therefore Stream 1 is the hard blocker for production Invocation integration.
 
-There is no current open Stream 1 PR. PR #388 contains the ExecutionRuntime/convergence work, but its own follow-up sequence places canonical Run / NodeRun / Attempt after that runtime foundation. Stream 6 should not infer or invent the missing Attempt contract.
+### Stream 2: events/checkpoints
 
-### Stream 2: event/checkpoint/persistence
+The canonical EventEnvelope is strongly preferred before Stream 6 migrates real invocation producers because Invocation should not invent another event/correlation representation.
 
-Open PR: #395 `feat(events): canonical event envelope and sequencing contract`.
+Stream 6 can define static adapters/types after Stream 1/3 without waiting for the complete checkpoint/outbox implementation.
 
-Stream 6 can design without this merged, but implementation should consume the canonical event envelope rather than invent invocation-specific callbacks or telemetry records.
+### Stream 3: authorization/resources
 
-Required integration points once available:
+Required before real Binding/Invocation enforcement.
 
-- Invocation started/completed/failed events
-- `workspace_id`, `run_id`, `node_run_id`, `attempt_id`, `invocation_id` correlation
-- provider-selection/fallback events where operationally meaningful
-- credential/security decisions represented as domain payloads, not alternate event envelopes
+Needed contracts:
 
-Checkpoint work itself is not a direct Stream 6 blocker.
+- WorkspaceMembership / ProjectMembership resolution
+- workspace/project resource visibility
+- credential scope
+- Binding scope
+- policy scope
+- explainable authorization decision seam
 
-### Stream 3: project authorization + resources
+Persona must remain absent from authorization.
 
-Open PR: #393 `feat(auth): project authorization and resource scopes`.
+### Streams 4, 5, and 7
 
-This is a direct Stream 6 dependency and should land before canonical Binding/Invocation enforcement is wired.
+These are not prerequisites for initial Stream 6 implementation.
 
-The proposed contract already establishes the seams Stream 6 needs:
+- Stream 4 continuously supplies reachability/migration findings.
+- Stream 5 consumes the canonical capability path as graph/durable execution converges.
+- Stream 7 consumes it from products/services/UI.
 
-- WorkspaceMembership / ProjectMembership
-- sticky denies and narrowing grants
-- ResourceScope for workspace/project resources
-- resource kinds for credential, Binding, and policy
-- `AuthorizationResolver.resolve(...)`
-- `AuthorizationResolver.can_view_resource(...)`
-- Persona explicitly excluded from authorization
+## Current capability execution inventory
 
-Stream 6 should consume this contract, not create a parallel capability-specific permission evaluator.
+### Capability registry
 
-Remaining Stream 3 work that can follow later without blocking the first Stream 6 implementation:
+`maistro.capabilities.registry.CapabilityRegistry` already provides substantial behavior worth preserving:
 
-- repository-backed membership persistence
-- adapter from canonical Project ancestry rather than caller-supplied project paths
-
-### Stream 4: legacy Project + reachability audit
-
-Open PR: #394 `docs: start Stream 4 legacy Project and reachability audit`.
-
-Not a hard implementation dependency. Its findings should be continuously consumed, but Stream 6 does not need to wait for the audit PR to merge before doing its own capability inventory.
-
-Relevant handoff pattern for Stream 6:
-
-- identify capability/security/credential systems that are implemented but off the real production path
-- preserve behavior that has real callers
-- classify compatibility-only abstractions for later deletion
-
-### Stream 5: graph + durable execution convergence
-
-Not required before Stream 6 can define and implement capability/provider/binding/invocation objects after Stream 1 and Stream 3 are stable.
-
-Stream 5 becomes a consumer of Stream 6 when graph nodes need to invoke capabilities through Bindings. Stream 6 must not depend on GraphRun/durable convergence to establish the capability contract.
-
-### Stream 7: product adapters
-
-Blocked on the canonical spine and on Stream 6 contracts for product paths that expose capabilities/tools. No Stream 7 work is required before Stream 6 starts.
-
-## Merge-order conclusion
-
-Stream 6 should not wait for every stream to merge.
-
-Minimum safe order for implementation:
-
-1. Stream 1 lands canonical Run / NodeRun / Attempt plus `project_id` and Attempt -> ExecutionRuntime seam.
-2. Stream 3 lands authorization/resource-scope contract.
-3. Stream 6 rebases on current `develop` and implements Binding/Invocation against those contracts.
-
-Strongly preferred before producer migration:
-
-4. Stream 2 canonical EventEnvelope lands, so Invocation emits canonical events from day one.
-
-Not required before Stream 6 starts:
-
-- Stream 4 audit merge
-- Stream 5 graph/durable migration
-- Stream 7 product adapters
-
-PR #388's ExecutionRuntime foundation also needs to be on the branch Stream 6 consumes if it has not already been absorbed by the canonical Stream 1 work. Stream 6 should rebase after the relevant spine merges rather than cherry-pick partial canonical contracts from several branches.
-
-## Existing capability system on develop
-
-### CapabilityRegistry is useful and should be preserved
-
-`maistro.capabilities.registry.CapabilityRegistry` already provides:
-
-- slot definition
+- slot definitions
 - provider registration
-- active provider selection
+- explicit activation
 - enable/disable state
-- health checking
-- fallback policy
-- baseline provider support
-- boot validation
+- health checks on resolution
+- fallback policies
+- baseline providers
+- trust-tier-based implicit selection
+- boot validation for hard-required slots
 
-This maps cleanly to part of the target Provider-selection layer.
+This should be adapted into the canonical model rather than replaced wholesale.
 
-Migration direction:
+### Capability provider protocol
 
-`CapabilityRegistry slot + Provider` -> canonical `Capability + Provider`
+`maistro.capabilities.protocols.CapabilityProvider` already defines useful provider metadata/mechanics:
 
-The registry should remain responsible for platform/provider availability. It should not become the owner of consumer authorization, Binding configuration, Invocation lifecycle, or Attempt state.
+- `name`
+- `slot`
+- `trust_tier`
+- `requires()`
+- `healthcheck()`
 
-### Existing capability slots
+The eventual canonical Provider can wrap/normalize this behavior. Provider health is provider-selection mechanics, not Run/Attempt lifecycle.
 
-The core bootstrap currently defines:
+### Current canonical-slot bootstrap
+
+`maistro.capabilities.bootstrap.default_capability_registry()` currently defines:
 
 - `infra_monitor`
 - `infra_action`
@@ -156,296 +108,258 @@ The core bootstrap currently defines:
 - `self_repair`
 - `harness_runner`
 
-These are real existing capability families and should become canonical Capability records/projections rather than being replaced with a second registry.
+This is an existing capability inventory, not the complete future product Capability set.
 
-### Existing Provider protocol
+### Harness execution
 
-`CapabilityProvider` already carries:
+Harness is the most complete existing example of the future capability path.
 
-- provider name
-- slot identifier
-- trust tier
-- dependency requirements
-- async healthcheck
+Current shape:
 
-This is a strong base for the canonical Provider concept, but it currently lacks canonical identity/scope/provenance fields and is coupled to a string `slot` instead of a first-class Capability identifier.
+`Node -> NodeExecutor/HarnessNodeExecutor -> HarnessSessionManager -> CapabilityRegistry -> HarnessRunner provider`
 
-Do not break existing providers during the first convergence slice. Add adapters/projections first.
+Preserve:
 
-### Provider selection/fallback semantics
+- provider abstraction
+- health/fallback behavior
+- Warden input filtering
+- action-policy gating
+- session cleanup
+- sandbox/microVM boundary
+- typed unavailable behavior
 
-Current registry behavior:
+Converge later to:
 
-- explicit active provider if selected
-- otherwise first provider sorted by trust tier
-- unhealthy provider falls back according to SlotSpec fallback policy
-- SAFE_NOOP can return no provider
-- BASELINE can return a baseline provider
+`Node -> Binding -> authorization -> Provider selection -> Invocation -> Harness adapter -> Attempt/ExecutionRuntime`
 
-This behavior must be preserved in parity tests before canonical provider selection replaces direct registry resolution.
+Do not preserve HarnessSessionManager as a second universal execution lifecycle.
 
-The eventual provider selector should produce an explicit selection result suitable for Invocation provenance, rather than returning only the provider instance.
+### HTTP
 
-Required provenance fields should include at least:
+`maistro.capabilities.http_client` and HTTP-backed providers are execution mechanisms/providers.
 
-- requested capability
-- selected provider
-- whether selection was explicit/default/fallback
-- health/fallback reason
-- Binding id
-- Invocation id
+They should become provider implementations behind Binding/Invocation, not a parallel lifecycle.
 
-### Harness system
-
-Harness execution is already one of the most complete examples of capability/provider composition:
-
-- `HarnessRunner` extends CapabilityProvider
-- `harness_runner` is a canonical slot
-- `HarnessSessionManager` resolves providers through CapabilityRegistry
-- `SafeHarnessRunner` wraps providers with Warden and ActionGate/sequence-policy controls
-- subprocess harness providers supply concrete fulfillment
-- graph `NodeExecutor` can route a node into a harness session
-
-This behavior should be preserved, but the current path predates canonical Binding/Invocation.
-
-Target migration:
-
-`Node -> harness role/executor -> HarnessSessionManager -> CapabilityRegistry -> provider`
-
-becomes:
-
-`Node -> Binding(harness capability) -> provider selection -> Invocation -> Attempt/ExecutionRuntime`
-
-with HarnessSessionManager retained as a protocol/session adapter underneath Invocation where sessionful fulfillment is required.
-
-Do not flatten HarnessSession into Invocation. A single Invocation may start/send/stop against an external session depending on protocol semantics.
-
-### HTTP capability path
-
-`maistro.capabilities.http` and `http_client` are existing fulfillment infrastructure. They should be classified as protocol/provider mechanics, not a second capability ontology.
-
-Target:
-
-`Binding(protocol=http, provider=...) -> Invocation -> HTTP adapter`
-
-The HTTP client should not decide authorization or resource scope.
+Preserve HTTP transport behavior, timeouts, errors, health checks, and safety controls.
 
 ### Credentials
 
-The credential subsystem is mature operationally but not yet scoped to the canonical ownership hierarchy.
+`maistro.credentials` currently contains provider/store/pool/rotation mechanisms and credential records.
 
-Current `CredentialRecord` contains provider/key operational state such as priority, cooldown, blocking, usage counters, and error counters, but no canonical workspace/project resource scope.
+Preserve:
 
-This is exactly where Stream 3's ResourceScope contract should be attached.
+- secret storage/provider abstraction
+- rotation/pool mechanics
+- availability/cooldown behavior
+- references to credentials
 
-Target split:
+Do not place credential secret values onto Node, Graph, Binding, Run, Event, or Invocation records.
 
-- Credential metadata/reference: scoped resource owned by Workspace or Project
-- secret material: stays in credential store/provider
-- Binding: references an authorized credential resource
-- Invocation: resolves credential material only after authorization succeeds
-
-Never copy raw `api_key` values into Graph, Node, Binding serialization, Event payloads, or Invocation provenance.
-
-Existing credential pool/rotation behavior should remain provider mechanics.
+Once Stream 3 lands resource scope, credentials should be selected through authorized scoped references.
 
 ### Skills and ToolExposure
 
-The repo already has a broad skills framework and portability projections, but there is no canonical first-class `ToolExposure` object on `develop` and no canonical Binding object.
+Existing skills/tool/MCP surfaces contain descriptions, schemas, adapters, handlers, and exposure mechanisms.
 
-Target:
+Canonical target:
 
-`SkillDefinition` is decomposed into reusable pieces rather than used as another execution root:
+- Skill/package metadata may describe reusable behavior.
+- Capability describes what can be done.
+- Provider implements a Capability.
+- Binding authorizes/configures a Node to use it.
+- ToolExposure projects authorized Bindings into model-consumable tool schemas.
+- Invocation records an actual use.
 
-- Capability declaration
-- input/output schema
-- prompt/tool presentation metadata
-- Binding defaults/configuration where portable
-- source/trust metadata
-
-`ToolExposure` should be generated from authorized Bindings for a particular consumer context.
-
-A model requesting a tool does not call SkillDefinition or Provider directly:
-
-`ToolExposure -> Binding -> authorization -> provider selection -> Invocation`
+ToolExposure must not become another capability registry or authorization source.
 
 ### MCP
 
-MCP should remain a protocol/exposure surface.
+MCP is a provider/interface protocol, not a new universal execution object.
 
-Two directions must remain distinct:
+Preserve:
 
-- outbound: MAIstro consumes an MCP server as a Provider/protocol behind a Binding
-- inbound: MAIstro exposes authorized capabilities/tools over MCP
+- discovery
+- schemas
+- server/client adapters
+- transport
+- health
+- tool-call conversion
 
-Neither direction should own Run/Attempt lifecycle.
+Route actual calls through Binding -> Provider -> Invocation.
 
-Inbound tool listing must eventually be generated from Bindings visible to the requesting principal/project, not from every installed provider.
+### Approval/security/policy
 
-### Approval/security
+Existing Warden, Sentinel/policy, ApprovalGate, SafeHarnessRunner, and sequence-policy machinery contain useful enforcement behavior.
 
-Existing safety systems include at least:
+The migration rule is:
 
-- Warden input scanning
-- ActionGate / sequence policy
-- approval capability/inbox
-- sandboxing for harness/process execution
-- provider trust tiers
+- authorization answers whether a principal/Node may use a Binding/resource
+- policy evaluates contextual constraints on a permitted action
+- approval can suspend/continue a permitted Invocation when policy requires it
+- provider safety wrappers enforce provider-specific safety boundaries
 
-These controls are valuable but currently compose differently by subsystem.
+Do not merge these concepts into one generic permission object.
 
-Canonical Invocation should become the shared enforcement choke point for external/tool/model capability calls.
+## Existing execution systems that must not become canonical by accident
 
-The ordering should be explicit and testable:
+### `NodeExecutor`
 
-1. resolve Binding visibility
-2. authorize requested action
-3. resolve credential visibility/use permission
-4. apply policy/approval requirements
-5. select healthy Provider
-6. create Invocation
-7. execute through protocol adapter / ExecutionRuntime as appropriate
-8. emit canonical events/provenance
-9. record terminal result/error
+Useful specialized backend seam, but not the canonical Invocation contract.
 
-Warden-style content scanning remains protocol/domain-specific preprocessing where appropriate and should not be confused with resource authorization.
+### `HarnessSessionManager`
 
-## Missing canonical objects on develop
+Useful harness adapter/session machinery, but not universal Run/Attempt ownership.
 
-### Binding
+### `CapabilityRegistry.resolve()`
 
-No canonical Binding class exists on `develop`.
+Useful provider-selection implementation, but currently lacks canonical Binding authorization and Invocation provenance.
 
-Binding must eventually own consumer-specific configuration and authorization references, for example:
+### credential pool selection
 
-- binding_id
-- workspace_id
-- project_id or ResourceScope
-- capability_id
-- provider constraints/preferences
-- protocol configuration
-- credential reference(s)
-- policy reference(s)
-- timeout/retry policy references where domain-owned
-- enabled state
-- provenance
+Useful provider-key mechanics, but not authorization and not provider selection by itself.
 
-It must not contain secret values.
+## Preservation map
 
-### Invocation
+| Existing behavior/system | Canonical destination | Action |
+| --- | --- | --- |
+| Capability slot | Capability | normalize/adapt |
+| CapabilityProvider | Provider | preserve/adapt |
+| CapabilityRegistry | provider inventory/selection implementation | preserve behind canonical seam |
+| registry active provider | Binding/provider preference or provider-selection input | migrate carefully |
+| provider health | provider selection | preserve |
+| fallback policy | provider selection | preserve |
+| HarnessRunner | Provider protocol | preserve |
+| HarnessSessionManager | provider adapter mechanics | narrow |
+| HarnessNodeExecutor | graph-to-capability compatibility adapter | migrate/remove after canonical path |
+| HTTP client/providers | Provider mechanics | preserve |
+| CredentialProvider/store | credential infrastructure | preserve |
+| CredentialPool | provider credential mechanics | preserve |
+| Skill/MCP tool schema | ToolExposure input | adapt |
+| Warden | invocation safety boundary | preserve |
+| SequencePolicyEngine | policy evaluation | preserve |
+| ApprovalGate | invocation approval seam | preserve |
+| Graph `NodeExecutor` retry/cancel interaction | Attempt lifecycle | consume Stream 1 semantics, do not redefine |
 
-No canonical Invocation class exists on `develop`.
+## Required canonical inputs before implementation
 
-Invocation should represent one actual capability fulfillment request and carry correlation/provenance:
+### From Stream 1
 
-- invocation_id
-- workspace_id
-- project_id
-- run_id
-- node_run_id
-- attempt_id
-- binding_id
-- capability_id
-- selected provider_id
-- protocol
-- started/finished timestamps
-- terminal status
-- result/error reference
-- provider-selection provenance
-- policy/authorization decision references where appropriate
+Stream 6 needs an authoritative answer for:
 
-Invocation is not a retry container. Physical retry ownership belongs to Attempt/domain retry policy once Stream 1 defines that boundary.
+1. How a new Attempt is created for a NodeRun.
+2. Whether one Invocation maps one-to-one to an Attempt or whether an Attempt may contain multiple lower-level provider operations.
+3. Where retry creation occurs.
+4. How cancellation/deadline reaches the physical provider call.
+5. How Invocation output/error is returned to Attempt terminalization.
+6. Which IDs are required at execution entry (`workspace_id`, `project_id`, `run_id`, `node_run_id`, `attempt_id`).
 
-## Retry ownership conflict to resolve with Stream 1
+Stream 6 must consume these answers, not invent them.
 
-Current `NodeRun` owns `retry_count`, `max_retries`, and loops attempts internally.
+### From Stream 3
 
-The convergence model says:
+Stream 6 needs:
 
-`NodeRun -> Attempt[]`
+1. permission required to use a Binding
+2. project/workspace resource-scope representation
+3. credential visibility/use permission
+4. policy visibility/use permission
+5. project ancestry lookup adapter or accepted caller-supplied path contract
+6. explainable deny result suitable for Invocation rejection
 
-Therefore Stream 6 must not create a second invocation retry loop that competes with NodeRun/Attempt.
+## Safe work before blockers land
 
-Expected separation:
+The following are safe because they characterize or adapt existing behavior without defining a canonical choke point:
 
-- domain retry policy decides whether another Attempt is allowed
-- Attempt is one physical execution attempt
-- one Attempt may contain one or more Invocations only when the node's semantics require multiple external calls within that physical attempt
-- provider-level transparent fallback may occur inside a single Invocation only if the canonical contract explicitly treats it as fulfillment selection rather than a domain retry; provider changes must remain visible in provenance
+- provider registry behavioral-parity tests
+- provider health/fallback characterization
+- Harness provider-path characterization
+- HTTP/provider error-mapping characterization
+- credential-reference inventory and leak tests
+- MCP/tool-schema inventory
+- existing caller/reachability mapping
+- compatibility adapters that remain intentionally ignorant of Binding/Invocation IDs
 
-This needs to be pinned in Stream 1/Stream 6 integration tests.
+Do not add canonical Binding/Invocation records merely to make these tests compile.
 
-## First implementation slices once blockers land
+## Provider selection parity floor
 
-### Slice 1: canonical types and adapters
+Stream 6 now has executable characterization tests in:
 
-- add Capability identity projection over existing slot definitions
-- add Provider identity/provenance adapter over CapabilityProvider
-- add Binding model using Stream 3 ResourceScope
-- add Invocation model using Stream 1 Attempt identifiers
-- no production caller migration yet
+`packages/maistro-core/tests/capabilities/test_stream6_provider_parity.py`
 
-### Slice 2: provider selector
+They pin five existing behaviors that the canonical Binding/Invocation path must preserve unless an explicit architecture decision changes them:
 
-- wrap existing CapabilityRegistry resolution
-- return explicit selection provenance
-- parity tests for active provider, default selection, unhealthy fallback, BASELINE, SAFE_NOOP
+1. an explicitly activated healthy provider wins even when another provider has a lower trust tier;
+2. an unhealthy active provider falls back to the declared baseline for `BASELINE` slots;
+3. disabling a `BASELINE` slot resolves to its baseline rather than its active primary;
+4. an unhealthy active provider resolves to typed absence (`None`) for `SAFE_NOOP` slots;
+5. when no provider is explicitly activated, implicit selection prefers the lowest trust tier.
 
-### Slice 3: authorization/credential enforcement
+These tests intentionally exercise only current provider-selection mechanics. They do not define Binding, Invocation, authorization, Attempt, events, or retry semantics.
 
-- resolve Binding visibility through Stream 3
-- resolve action permission
-- resolve credential visibility and `credential:use`
-- fail closed before provider execution
-- never expose secret material in result/provenance/events
+## First implementation slices after unblock
 
-### Slice 4: canonical Invocation executor
+### Slice 1: canonical static objects/adapters
 
-- one invocation service/choke point
-- protocol adapters for existing HTTP/MCP/harness/provider implementations
-- Attempt correlation from Stream 1
-- canonical events from Stream 2
+Once Stream 1 and Stream 3 contracts are merged:
 
-### Slice 5: ToolExposure
+- Capability adapter over existing slot definitions
+- Provider adapter over existing CapabilityProvider implementations
+- Binding with workspace/project scope and credential references
+- Invocation request/result identity/provenance fields
+- no production caller switch yet
 
-- generate model-facing tool schema from authorized Bindings
-- route requested tool call back through Binding/Invocation
-- no direct provider calls from model-facing tool implementations
+### Slice 2: authorized provider selection
 
-### Slice 6: migrate existing consumers
+- resolve Binding visibility/use permission
+- resolve credential visibility/use permission
+- select healthy Provider/fallback
+- return an explainable failure if no authorized provider is available
 
-Priority migration candidates:
+### Slice 3: Attempt integration
 
-1. harness graph execution
-2. MCP/tool paths
-3. HTTP integrations
-4. skills/tool exposure
-5. direct capability consumers that currently call registry/providers themselves
+- invoke provider under the existing Stream 1 Attempt
+- propagate deadline/cancellation from ExecutionRuntime seam
+- no retry loop inside Invocation if Attempt owns retries
 
-Each migration needs behavior-parity tests before compatibility paths are removed.
+### Slice 4: events
 
-## Architecture invariants for Stream 6
+- emit canonical invocation/provider-selection events through Stream 2 EventEnvelope
+- correlate workspace/project/run/node_run/attempt/invocation IDs
 
-- Provider does not own consumer authorization.
-- Binding does not widen Workspace/Project permissions.
-- Invocation never bypasses Binding authorization for user/project work.
-- Credential secret values never enter Graph/Node/Binding/Event/provenance serialization.
-- CapabilityRegistry health/fallback semantics are preserved until explicitly superseded with parity coverage.
-- ToolExposure is a projection of authorized Bindings, not an execution primitive.
-- MCP/HTTP/Harness are protocols/fulfillment mechanics, not alternate Run lifecycles.
-- Invocation does not own Run/NodeRun/Attempt lifecycle.
-- Stream 6 consumes the canonical Event envelope; it does not create a parallel event bus.
-- Persona is not part of authorization resolution.
+### Slice 5: adapters
 
-## Ready condition
+Migrate, one at a time:
 
-Stream 6 is ready to begin implementation when all of the following are true on a common base branch:
+- Harness
+- HTTP
+- MCP tools
+- native tools/skills
+- LLM/provider path where applicable
 
-- canonical `project_id` ownership/propagation is available
-- canonical Run / NodeRun / Attempt contract is available
-- Attempt -> ExecutionRuntime seam is available
-- Stream 3 authorization/resource-scope contract is available
+Behavior-parity tests must stay green while compatibility layers are removed.
 
-Canonical EventEnvelope is strongly preferred on the same base before the Invocation executor is wired, but it is not required for initial model/adaptor work.
+## Merge order
 
-The capability audit itself is complete enough to begin implementation immediately after those contracts land. No further broad discovery pass is required before Slice 1; remaining reachability findings can arrive continuously from Stream 4.
+Required common-base order for production Stream 6 work:
+
+1. Stream 1 canonical Run/NodeRun/Attempt seam onto `develop`
+2. Stream 3 authorization/resource-scope contract onto `develop`
+3. Stream 6 rebase/branch from that common `develop`
+4. Stream 2 EventEnvelope should be consumed before real producer migration if available
+
+Stream 4, 5, and 7 do not need to merge first.
+
+Avoid cherry-picking partial canonical contracts into Stream 6. Canonical choke points should reach the common integration branch before consumers build on them.
+
+## Exit condition for pre-implementation phase
+
+Stream 6 is ready to leave audit/characterization mode when all are true:
+
+- canonical Attempt exists on `develop`
+- Attempt -> ExecutionRuntime execution seam is authoritative
+- `project_id` ownership/propagation is authoritative
+- Stream 3 authorization/resource-scope contract is on `develop`
+- provider-selection parity tests are green
+
+At that point Stream 6 should begin Slice 1 immediately rather than perform another broad architecture audit.
