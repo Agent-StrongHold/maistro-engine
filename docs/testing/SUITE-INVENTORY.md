@@ -46,11 +46,13 @@ maistro-evolve node ID. Workspace creation was deliberately moved out of the
 scope-gated parametrized Hive cases and into the ordinary product-surface check,
 so Hive loses one collected node ID while retaining the intended assertion.
 Stream 5 parity characterization adds four maistro-core node IDs.
+Stream 7 product-adapter parity adds four maistro-core and two maistro-canvas
+node IDs, and Stream 6 provider parity adds five maistro-core node IDs.
 Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5944 | `ci.yml` |
+| `packages/maistro-core/tests` | 5949 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
