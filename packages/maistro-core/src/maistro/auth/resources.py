@@ -119,7 +119,10 @@ class AuthorizationResolver:
         project_path: Iterable[str] = (),
         project_memberships: Iterable[ProjectMembership] = (),
     ) -> AuthorizationDecision:
-        if workspace_membership is None or workspace_membership.status is not MembershipStatus.ACTIVE:
+        if (
+            workspace_membership is None
+            or workspace_membership.status is not MembershipStatus.ACTIVE
+        ):
             return AuthorizationDecision(
                 allowed=False,
                 permission=permission,
@@ -159,7 +162,9 @@ class AuthorizationResolver:
             permission=permission,
             effective_permissions=frozenset(effective),
             denied_permissions=frozenset(denied),
-            reason="allowed" if allowed else "permission outside effective project ceiling or explicitly denied",
+            reason="allowed"
+            if allowed
+            else "permission outside effective project ceiling or explicitly denied",
         )
 
     def can_view_resource(
@@ -206,4 +211,6 @@ class AuthorizationResolver:
                 raise ValueError(f"duplicate project membership for {membership.project_id}")
             by_project[membership.project_id] = membership
 
-        return tuple(by_project[project_id] for project_id in project_path if project_id in by_project)
+        return tuple(
+            by_project[project_id] for project_id in project_path if project_id in by_project
+        )

@@ -23,7 +23,9 @@ def workspace_member() -> WorkspaceMembership:
     return WorkspaceMembership(
         workspace_id="ws-1",
         principal_id="user-1",
-        grants=frozenset({"run:read", "run:execute", "credential:use", "binding:use", "policy:read"}),
+        grants=frozenset(
+            {"run:read", "run:execute", "credential:use", "binding:use", "policy:read"}
+        ),
     )
 
 
