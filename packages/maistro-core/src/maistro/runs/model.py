@@ -185,12 +185,12 @@ class Attempt(BaseModel):
 
 
 __all__ = [
+    "TERMINAL_ATTEMPT_STATUSES",
+    "TERMINAL_RUN_STATUSES",
     "Attempt",
     "AttemptStatus",
     "GraphSnapshot",
     "NodeRun",
     "Run",
     "RunStatus",
-    "TERMINAL_ATTEMPT_STATUSES",
-    "TERMINAL_RUN_STATUSES",
 ]
