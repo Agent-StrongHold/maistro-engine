@@ -1,3 +1,37 @@
+---
+id: ADR-081226-a66b
+title: Run, NodeRun and Attempt Lifecycle
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-08-12
+accepted: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+substrate: []
+implements: []
+related:
+  - maistro-engine#ADR-081226-9944
+  - maistro-engine#ADR-081226-69ee
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests:
+  - packages/maistro-core/tests/runtime/test_execution.py
+source:
+  - packages/maistro-core/src/maistro/runtime
+layer: Orchestration
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-081226-a66b: Run, NodeRun and Attempt Lifecycle
 
 - **Status:** Accepted
