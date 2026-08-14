@@ -32,7 +32,9 @@ The current Project model combines several concerns that should not be migrated 
 
 The model explicitly documents `enabled_skills` and `enabled_mcp_servers` as product defaults rather than security boundaries. This distinction must survive migration. They must not become authorization grants merely because they are currently stored on Project.
 
-The Project store is real persistence, not a throwaway DTO. It owns persisted project records plus membership and quota-related behavior. Do not delete it before canonical ownership/scoping migration has a compatibility path.
+The Project **domain/store API is real**, but the current container wires `InMemoryProjectStore`, whose records live only in its process-local `_projects` dictionary. The audit found no SQLite/JSON-backed canonical Project store or Hive `stores.projects` adapter for this `maistro.projects.Project` model. Therefore this checkpoint must not claim existing durable Project records or a live persistence-compatibility surface merely because the store abstraction exists or the module is reachable.
+
+What must be preserved before replacement is the Project **behavior/contract** that has real callers or tests, plus any external/persisted data only if a later audit locates an actual backing store or migration source.
 
 #### Handoffs
 
@@ -44,7 +46,7 @@ The Project store is real persistence, not a throwaway DTO. It owns persisted pr
 | `use_case` | Stream 7 | Product/surface intent; evaluate against Persona/surface model |
 | `meta_dag_id`, `agent_dag_ids` | Streams 1 + 5 + 7 | Preserve provenance/composition behavior while converging onto Graph/Node |
 | optimizer/evaluation settings | Streams 5 + 7 | Classify by domain owner before migration; do not copy wholesale into canonical Project |
-| persistence/membership compatibility | Streams 1 + 3 | Must precede deletion of legacy Project store |
+| store/domain compatibility | Streams 1 + 3 | Preserve tested/live behavior; require a data-migration gate only if an actual durable backing store is found |
 
 ### 2. There are at least two unrelated `Project` concepts
 
@@ -134,13 +136,13 @@ This is valuable existing behavior and vocabulary, but it should not be treated 
 
 The `maistro-server/src/maistro_server/api/` tree exposes agents, auth, canvas, chat completions, health, metrics, models, tasks, webhooks, and websocket-related API modules, but no Project or Workspace route module.
 
-For this checkpoint, the conflicting externally exposed ownership/product nouns are concentrated in Hive, while the older persistent Project domain lives in `maistro-core`.
+For this checkpoint, the conflicting externally exposed ownership/product nouns are concentrated in Hive, while the older in-memory Project domain lives in `maistro-core`.
 
 ## Current deletion classifications
 
 ### Do not delete yet
 
-- `maistro.projects` model/store: real persisted semantics and compatibility surface
+- `maistro.projects` model/store API: live/tested behavior needs ownership/scoping migration, but no durable backing store has been verified by this audit
 - Hive Workspace model/routes: live product semantics need migration even though the noun is wrong for the canonical ownership root
 - Persona template schema: live reusable product behavior needs decomposition/preservation
 
@@ -158,7 +160,7 @@ Likewise, lack of GitHub code-search results is not sufficient evidence of dead 
 
 For every candidate island:
 
-1. identify definition and persistence owner
+1. identify definition and persistence owner, distinguishing store interfaces from verified durable backing stores
 2. identify production entry points
 3. trace direct callers/importers
 4. identify tests that encode behavior worth preserving
@@ -170,7 +172,7 @@ For every candidate island:
 
 The next Stream 4 slices, in order, are:
 
-1. `maistro.projects` store/domain callers and tests
+1. `maistro.projects` store/domain callers and tests, including verification of any real backing persistence before making data-migration claims
 2. Hive Workspace routes/store and their real UI/service callers
 3. GraphRun vs durable graph execution behavior inventory for Stream 5
 4. Task/queue/runner/recovery lifecycle duplication
