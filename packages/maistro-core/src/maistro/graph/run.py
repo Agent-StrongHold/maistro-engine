@@ -10,9 +10,9 @@ from typing import Any
 import structlog
 
 from maistro.graph.conditions import (
-    MISSING as _MISSING,
     compare_condition_values,
     evaluate_predicate,
+    MISSING as _MISSING,
     parse_condition_rhs,
 )
 from maistro.graph.events import (
