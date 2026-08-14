@@ -47,11 +47,12 @@ scope-gated parametrized Hive cases and into the ordinary product-surface check,
 so Hive loses one collected node ID while retaining the intended assertion.
 Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs
 relative to this branch's 5,936-node starting inventory. Stream 5 parity
-characterization adds four more. Other suite counts are unchanged.
+characterization adds four more, and Stream 6 provider parity adds five.
+Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5958 | `ci.yml` |
+| `packages/maistro-core/tests` | 5963 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
