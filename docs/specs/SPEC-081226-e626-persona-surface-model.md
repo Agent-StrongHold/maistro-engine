@@ -30,7 +30,7 @@ contracts:
 tests: []
 source:
   - packages/maistro-core/src/maistro/personas
-layer: Domain
+layer: UserClient
 owners:
   - '@BlakeMatthews-dev'
 ---
