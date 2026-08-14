@@ -14,6 +14,12 @@ class OpenNodeParameters(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+def _is_valid_identifier(value: str) -> bool:
+    return bool(value) and value == value.strip() and not any(
+        character.isspace() for character in value
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class NodeTypeSpec:
     """Domain metadata required to validate and dispatch a Node definition.
@@ -32,10 +38,7 @@ class NodeTypeSpec:
 
     def __post_init__(self) -> None:
         identifiers = (self.type_id, *self.aliases)
-        if any(
-            not value or value != value.strip() or any(ch.isspace() for ch in value)
-            for value in identifiers
-        ):
+        if not all(_is_valid_identifier(value) for value in identifiers):
             raise ValueError("NodeType identifiers must be non-empty and contain no whitespace")
         if self.type_id in self.aliases:
             raise ValueError("NodeType cannot alias itself")
