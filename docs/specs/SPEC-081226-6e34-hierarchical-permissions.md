@@ -24,13 +24,13 @@ superseded-by: []
 blocks: []
 blocked-by: []
 contracts:
-  - security
+  - boundary
   - behavioral
 tests: []
 source:
   - packages/maistro-core/src/maistro/projects
   - packages/maistro-core/src/maistro/security
-layer: Security
+layer: Governance
 owners:
   - '@BlakeMatthews-dev'
 ---
