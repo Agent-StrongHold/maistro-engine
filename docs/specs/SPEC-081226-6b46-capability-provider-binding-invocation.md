@@ -1,3 +1,38 @@
+---
+id: SPEC-081226-6b46
+title: Capability, Provider, Binding and Invocation
+repo: maistro-engine
+kind: spec
+status: AC Defined
+created: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+  - status: AC Defined
+    date: 2026-08-12
+substrate:
+  - maistro-engine#ADR-081226-6b46
+implements:
+  - maistro-engine#ADR-081226-6b46
+related:
+  - maistro-engine#ADR-081226-6e34
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests: []
+source:
+  - packages/maistro-core/src/maistro/capabilities
+layer: Ability
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # SPEC-081226-6b46: Capability, Provider, Binding and Invocation
 
 - **Status:** Active
