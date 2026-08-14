@@ -169,15 +169,16 @@ async def test_project_resources_flow_downward_not_upward_or_to_siblings() -> No
     await store.put_resource(root_credential)
     await store.put_resource(left_credential)
 
-    assert {
-        item.resource_id for item in await store.visible_resources(left_child.project_id)
-    } == {"credential-root", "credential-left"}
-    assert {
-        item.resource_id for item in await store.visible_resources(root.project_id)
-    } == {"credential-root"}
-    assert {
-        item.resource_id for item in await store.visible_resources(right.project_id)
-    } == {"credential-root"}
+    assert {item.resource_id for item in await store.visible_resources(left_child.project_id)} == {
+        "credential-root",
+        "credential-left",
+    }
+    assert {item.resource_id for item in await store.visible_resources(root.project_id)} == {
+        "credential-root"
+    }
+    assert {item.resource_id for item in await store.visible_resources(right.project_id)} == {
+        "credential-root"
+    }
 
 
 @pytest.mark.asyncio
