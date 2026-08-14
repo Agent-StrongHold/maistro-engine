@@ -7,6 +7,7 @@ to canonical Run/NodeRun/Attempt execution.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -16,31 +17,30 @@ from maistro_canvas.types import BookLayer, GenerationJobRecord, JobAction, JobS
 
 
 class _SingleJobStore:
-    """Minimal store with an explicit serialization boundary for one logical job."""
+    """Minimal store with a detached persistence boundary for one logical job."""
 
     def __init__(self, job: GenerationJobRecord) -> None:
-        self.job = self._round_trip(job)
-
-    @staticmethod
-    def _round_trip(job: GenerationJobRecord) -> GenerationJobRecord:
-        return GenerationJobRecord.model_validate(job.model_dump(mode="python"))
+        self.job = deepcopy(job)
 
     async def claim_next_pending(
         self, worker_id: str, lease_seconds: int
     ) -> GenerationJobRecord | None:
-        job = self._round_trip(self.job)
-        if job.status != JobStatus.PENDING:
+        claimed = deepcopy(self.job)
+        if claimed.status != JobStatus.PENDING:
             return None
-        job.status = JobStatus.RUNNING
-        job.leased_by = worker_id
-        job.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
-        job.attempts += 1
-        self.job = self._round_trip(job)
-        return self._round_trip(self.job)
+        claimed.status = JobStatus.RUNNING
+        claimed.leased_by = worker_id
+        claimed.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
+        claimed.attempts += 1
+        self.job = deepcopy(claimed)
+        return deepcopy(self.job)
 
     async def update_job(self, job: GenerationJobRecord) -> GenerationJobRecord:
-        self.job = self._round_trip(job)
-        return self._round_trip(self.job)
+        self.job = deepcopy(job)
+        return deepcopy(self.job)
+
+    def reload(self) -> GenerationJobRecord:
+        return deepcopy(self.job)
 
 
 class _FailOnceExecutor:
@@ -60,7 +60,7 @@ async def test_retry_preserves_one_logical_generation_job_and_domain_request() -
 
     Canonical migration target: one logical NodeRun/job with multiple Attempts.
     Canvas-specific request identity and generation parameters must survive the
-    retry unchanged, including across persistence round-trips.
+    retry unchanged across persistence round-trips.
     """
 
     job = GenerationJobRecord(
@@ -79,7 +79,7 @@ async def test_retry_preserves_one_logical_generation_job_and_domain_request() -
     runner = CanvasJobRunner(store=store, executor=executor)  # type: ignore[arg-type]
 
     await runner.tick_once()
-    reloaded = _SingleJobStore._round_trip(store.job)
+    reloaded = store.reload()
     assert reloaded.status == JobStatus.PENDING
     assert reloaded.attempts == 1
     assert reloaded.id == "job-17"
@@ -89,10 +89,17 @@ async def test_retry_preserves_one_logical_generation_job_and_domain_request() -
     assert reloaded.model_id == "proof-model"
     assert reloaded.prompt == "keep the character pose; improve lighting"
     assert reloaded.params == {"count": 1, "seed": 421, "strength": 0.35}
+    assert reloaded.max_attempts == 3
+    assert reloaded.leased_by is None
+    assert reloaded.lease_expires_at is None
+
+    # Caller-owned state must be detached from what the store persisted.
+    job.prompt = "caller mutation must not leak into persisted retry state"
+    job.params["seed"] = -1
 
     await runner.tick_once()
 
-    reloaded = _SingleJobStore._round_trip(store.job)
+    reloaded = store.reload()
     assert reloaded.status == JobStatus.DONE
     assert reloaded.attempts == 2
     assert reloaded.id == "job-17"
@@ -102,6 +109,7 @@ async def test_retry_preserves_one_logical_generation_job_and_domain_request() -
     assert reloaded.model_id == "proof-model"
     assert reloaded.prompt == "keep the character pose; improve lighting"
     assert reloaded.params == {"count": 1, "seed": 421, "strength": 0.35}
+    assert reloaded.max_attempts == 3
     assert reloaded.result_paths == ["artifacts/canvas-7/layer-3/final.png"]
     assert reloaded.leased_by is None
     assert reloaded.lease_expires_at is None
