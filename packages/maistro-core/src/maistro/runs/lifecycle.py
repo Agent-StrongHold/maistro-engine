@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TypeVar
+from typing import Any
 
 from maistro.runs.model import (
+    TERMINAL_ATTEMPT_STATUSES,
+    TERMINAL_RUN_STATUSES,
     Attempt,
     AttemptStatus,
     NodeRun,
     Run,
     RunStatus,
-    TERMINAL_ATTEMPT_STATUSES,
-    TERMINAL_RUN_STATUSES,
 )
 
 RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
@@ -29,7 +29,13 @@ RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
         }
     ),
     RunStatus.WAITING: frozenset(
-        {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.PAUSED, RunStatus.CANCELLED, RunStatus.TIMED_OUT}
+        {
+            RunStatus.QUEUED,
+            RunStatus.RUNNING,
+            RunStatus.PAUSED,
+            RunStatus.CANCELLED,
+            RunStatus.TIMED_OUT,
+        }
     ),
     RunStatus.PAUSED: frozenset(
         {RunStatus.QUEUED, RunStatus.CANCELLED, RunStatus.TIMED_OUT}
@@ -63,9 +69,6 @@ class InvalidLifecycleTransition(ValueError):
     pass
 
 
-TLogical = TypeVar("TLogical", Run, NodeRun)
-
-
 def _now(value: datetime | None) -> datetime:
     return value if value is not None else datetime.now(UTC)
 
@@ -75,14 +78,14 @@ def _validate_run_transition(current: RunStatus, target: RunStatus) -> None:
         raise InvalidLifecycleTransition(f"illegal transition: {current.value} -> {target.value}")
 
 
-def _transition_logical(
-    record: TLogical,
+def _logical_values(
+    record: Run | NodeRun,
     target: RunStatus,
     *,
-    at: datetime | None = None,
-    result: object | None = None,
-    error: str | None = None,
-) -> TLogical:
+    at: datetime | None,
+    result: object | None,
+    error: str | None,
+) -> dict[str, Any]:
     _validate_run_transition(record.status, target)
     timestamp = _now(at)
     values = record.model_dump(mode="python")
@@ -94,7 +97,7 @@ def _transition_logical(
         values["started_at"] = timestamp
     if target in TERMINAL_RUN_STATUSES:
         values["finished_at"] = timestamp
-    return type(record).model_validate(values)
+    return values
 
 
 def transition_run(
@@ -105,7 +108,9 @@ def transition_run(
     result: object | None = None,
     error: str | None = None,
 ) -> Run:
-    return _transition_logical(run, target, at=at, result=result, error=error)
+    return Run.model_validate(
+        _logical_values(run, target, at=at, result=result, error=error)
+    )
 
 
 def transition_node_run(
@@ -116,7 +121,9 @@ def transition_node_run(
     result: object | None = None,
     error: str | None = None,
 ) -> NodeRun:
-    return _transition_logical(node_run, target, at=at, result=result, error=error)
+    return NodeRun.model_validate(
+        _logical_values(node_run, target, at=at, result=result, error=error)
+    )
 
 
 def transition_attempt(
@@ -149,8 +156,8 @@ def transition_attempt(
 
 __all__ = [
     "ATTEMPT_TRANSITIONS",
-    "InvalidLifecycleTransition",
     "RUN_TRANSITIONS",
+    "InvalidLifecycleTransition",
     "transition_attempt",
     "transition_node_run",
     "transition_run",
