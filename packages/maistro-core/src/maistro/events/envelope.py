@@ -1,10 +1,9 @@
 """Canonical event envelope and append-only persistence contract.
 
 The envelope carries stable execution correlation IDs while leaving domain payloads
-opaque. Sequence numbers are allocated by the store within a logical stream:
-Run when ``run_id`` is present, otherwise Workspace, otherwise the system stream.
-This gives execution consumers deterministic per-Run ordering without claiming a
-meaningful global event order.
+opaque. The canonical durable store assigns sequence numbers monotonically within a
+Workspace event stream. Events outside a Workspace require an explicit alternate
+stream scope so no implicit global ordering authority is created.
 """
 
 from __future__ import annotations
@@ -25,8 +24,9 @@ class EventEnvelope:
     """Immutable canonical event envelope.
 
     ``sequence`` is ``None`` until the event is durably appended. Stores assign a
-    monotonically increasing sequence within :attr:`stream_id`. Domain-specific
-    event data belongs in ``payload`` rather than additional envelope fields.
+    monotonically increasing sequence within :attr:`stream_id`. Workspace events
+    always derive that stream from ``workspace_id``; non-Workspace events must set
+    ``stream_scope`` explicitly. Domain-specific data belongs in ``payload``.
     """
 
     type: str
@@ -35,6 +35,7 @@ class EventEnvelope:
     sequence: int | None = None
     timestamp: float = field(default_factory=time.time)
     workspace_id: str = ""
+    stream_scope: str = ""
     project_id: str = ""
     run_id: str = ""
     node_run_id: str = ""
@@ -47,14 +48,22 @@ class EventEnvelope:
     actor_id: str = ""
     provenance: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if not self.type.strip():
+            raise ValueError("type must be a non-empty string")
+        if not self.workspace_id.strip() and not self.stream_scope.strip():
+            raise ValueError("non-Workspace events require an explicit stream_scope")
+        if self.workspace_id.strip() and self.stream_scope.strip():
+            raise ValueError("Workspace events must not define a competing stream_scope")
+        if self.sequence is not None and self.sequence < 1:
+            raise ValueError("sequence must be positive when present")
+
     @property
     def stream_id(self) -> str:
-        """Return the ordering scope for this event."""
-        if self.run_id:
-            return f"run:{self.run_id}"
+        """Return the canonical ordering scope for this event."""
         if self.workspace_id:
             return f"workspace:{self.workspace_id}"
-        return "system"
+        return f"scope:{self.stream_scope}"
 
     def to_dict(self) -> dict[str, Any]:
         """Return a serialization-ready copy of the envelope."""
@@ -133,6 +142,7 @@ CREATE TABLE IF NOT EXISTS canonical_event_log (
     type TEXT NOT NULL,
     timestamp REAL NOT NULL,
     workspace_id TEXT NOT NULL DEFAULT '',
+    stream_scope TEXT NOT NULL DEFAULT '',
     project_id TEXT NOT NULL DEFAULT '',
     run_id TEXT NOT NULL DEFAULT '',
     node_run_id TEXT NOT NULL DEFAULT '',
@@ -157,9 +167,8 @@ CREATE INDEX IF NOT EXISTS idx_canonical_event_run
 class SqliteEventStore:
     """SQLite implementation of the canonical EventStore contract.
 
-    Sequence allocation and insertion are serialized by an in-process lock. The
-    table-level ``UNIQUE(stream_id, sequence)`` constraint also protects the
-    ordering invariant if another writer violates that assumption.
+    ``BEGIN IMMEDIATE`` makes sequence allocation a single SQLite write authority
+    across connections. The uniqueness constraint remains a final invariant guard.
     """
 
     def __init__(self, conn: aiosqlite.Connection) -> None:
@@ -172,49 +181,62 @@ class SqliteEventStore:
 
     async def append(self, event: EventEnvelope) -> EventEnvelope:
         async with self._lock:
-            existing = await self.get(event.event_id)
-            if existing is not None:
-                return existing
             if event.sequence is not None:
                 raise ValueError("sequence is store-assigned and must be None on append")
 
-            cursor = await self._conn.execute(
-                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM canonical_event_log WHERE stream_id = ?",
-                (event.stream_id,),
-            )
-            row = await cursor.fetchone()
-            sequence = int(row[0]) if row is not None else 1
-            persisted = replace(event, sequence=sequence)
-            await self._conn.execute(
-                """INSERT INTO canonical_event_log (
-                    event_id, stream_id, sequence, type, timestamp,
-                    workspace_id, project_id, run_id, node_run_id, attempt_id,
-                    invocation_id, session_id, correlation_id, causation_id,
-                    source, actor_id, payload, provenance
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    persisted.event_id,
-                    persisted.stream_id,
-                    persisted.sequence,
-                    persisted.type,
-                    persisted.timestamp,
-                    persisted.workspace_id,
-                    persisted.project_id,
-                    persisted.run_id,
-                    persisted.node_run_id,
-                    persisted.attempt_id,
-                    persisted.invocation_id,
-                    persisted.session_id,
-                    persisted.correlation_id,
-                    persisted.causation_id,
-                    persisted.source,
-                    persisted.actor_id,
-                    json.dumps(persisted.payload),
-                    json.dumps(persisted.provenance),
-                ),
-            )
-            await self._conn.commit()
-            return persisted
+            await self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self._conn.execute(
+                    "SELECT * FROM canonical_event_log WHERE event_id = ?",
+                    (event.event_id,),
+                )
+                existing = await cursor.fetchone()
+                if existing is not None:
+                    await self._conn.commit()
+                    return self._row_to_event(tuple(existing))
+
+                cursor = await self._conn.execute(
+                    "SELECT COALESCE(MAX(sequence), 0) + 1 "
+                    "FROM canonical_event_log WHERE stream_id = ?",
+                    (event.stream_id,),
+                )
+                row = await cursor.fetchone()
+                sequence = int(row[0]) if row is not None else 1
+                persisted = replace(event, sequence=sequence)
+                await self._conn.execute(
+                    """INSERT INTO canonical_event_log (
+                        event_id, stream_id, sequence, type, timestamp,
+                        workspace_id, stream_scope, project_id, run_id, node_run_id,
+                        attempt_id, invocation_id, session_id, correlation_id, causation_id,
+                        source, actor_id, payload, provenance
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        persisted.event_id,
+                        persisted.stream_id,
+                        persisted.sequence,
+                        persisted.type,
+                        persisted.timestamp,
+                        persisted.workspace_id,
+                        persisted.stream_scope,
+                        persisted.project_id,
+                        persisted.run_id,
+                        persisted.node_run_id,
+                        persisted.attempt_id,
+                        persisted.invocation_id,
+                        persisted.session_id,
+                        persisted.correlation_id,
+                        persisted.causation_id,
+                        persisted.source,
+                        persisted.actor_id,
+                        json.dumps(persisted.payload),
+                        json.dumps(persisted.provenance),
+                    ),
+                )
+                await self._conn.commit()
+                return persisted
+            except Exception:
+                await self._conn.rollback()
+                raise
 
     async def get(self, event_id: str) -> EventEnvelope | None:
         cursor = await self._conn.execute(
@@ -250,16 +272,17 @@ class SqliteEventStore:
             type=row[3],
             timestamp=row[4],
             workspace_id=row[5],
-            project_id=row[6],
-            run_id=row[7],
-            node_run_id=row[8],
-            attempt_id=row[9],
-            invocation_id=row[10],
-            session_id=row[11],
-            correlation_id=row[12],
-            causation_id=row[13],
-            source=row[14],
-            actor_id=row[15],
-            payload=json.loads(row[16]),
-            provenance=json.loads(row[17]),
+            stream_scope=row[6],
+            project_id=row[7],
+            run_id=row[8],
+            node_run_id=row[9],
+            attempt_id=row[10],
+            invocation_id=row[11],
+            session_id=row[12],
+            correlation_id=row[13],
+            causation_id=row[14],
+            source=row[15],
+            actor_id=row[16],
+            payload=json.loads(row[17]),
+            provenance=json.loads(row[18]),
         )
