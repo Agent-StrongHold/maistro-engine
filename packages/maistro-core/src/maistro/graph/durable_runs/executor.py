@@ -111,6 +111,7 @@ async def resume_durable_dag(
     if record.status not in (RunStatus.RUNNING, RunStatus.PAUSED_WAIT, RunStatus.PAUSED_HITL):
         raise ValueError(f"cannot resume run in status {record.status!r}")
 
+    # Flip back to RUNNING for the walk.
     if record.status != RunStatus.RUNNING:
         record = record.model_copy(
             update={
@@ -161,10 +162,19 @@ async def _walk(
         )
         record = _patch_node_record(record, node_record)
 
+        # Build the per-step inputs: for the FIRST node we use record.inputs;
+        # for downstream nodes we pass the prior node's output. (More complex
+        # input mapping is a Phase 6 enhancement — the optimizer will pick
+        # which upstream output flows where.)
         node_inputs = _resolve_inputs(record, node_id, spec)
         ctx = _build_ctx(record, node_id)
 
         result = await node.run(node_inputs, ctx)
+
+        # Lift in-place blackboard mutations back into the durable snapshot
+        # BEFORE checkpointing. This is how dashboard.append_section's
+        # `metadata['dashboard:<id>']` accumulator + compliance.block's
+        # `metadata['halt_requested']` survive across steps.
         record = _lift_blackboard(record, ctx)
 
         if result.status == "paused":
@@ -173,8 +183,11 @@ async def _walk(
         if not result.success:
             return await _checkpoint_failure(record, node_id, node_record, result, store=store)
 
+        # Success → store the result, advance to next node.
         record = await _checkpoint_success(record, node_id, node_record, result, store=store)
 
+        # Honor halt requests from negative-signal nodes (compliance.block,
+        # risk.veto). Check AFTER the lift so halt_requested is visible.
         meta = record.blackboard_snapshot.get("metadata", {}) or {}
         if meta.get("halt_requested"):
             reason = meta.get("halt_reason") or "halt_requested"
@@ -208,8 +221,17 @@ async def _finish_walk(
 ) -> DurableRunRecord:
     """Record the terminal status for a walk that left its loop.
 
-    Falling out because ``current_node_id`` is empty means the graph ran to
-    its end. Hitting ``max_steps`` with a live node means it did not.
+    There are two ways out of that loop and they are not the same outcome.
+    Falling out because `current_node_id` is empty means the graph ran to its
+    end. Falling out because `steps` hit `max_steps` means it did NOT — the run
+    still has a live node and a partial blackboard. Both used to fall through
+    to `_mark_completed`, so a cycling or over-long DAG was persisted as a
+    success with partial results. That is worse than a failure record:
+    downstream consumers trust COMPLETED.
+
+    Split out of `_walk` rather than inlined so the added branch does not push
+    that function over the radon complexity ratchet — the gate flagged exactly
+    that, which is the gate doing its job.
     """
     if record.current_node_id:
         return await _mark_failed(
@@ -236,6 +258,7 @@ def _entry_node(dag: dict[str, Any]) -> str:
     nodes = dag.get("nodes") or []
     if not nodes:
         raise ValueError("DAG has no nodes")
+    # First node by document order.
     first = nodes[0]
     return str(first.get("id") or first)
 
@@ -292,10 +315,25 @@ def _resolve_inputs(
 ) -> dict[str, Any]:
     """Build the inputs dict for the given node.
 
-    Merge order (later wins): static inputs, run inputs, then the most recent
-    completed upstream output.
+    Merge order (later wins):
+      1. spec.inputs / spec.config — DAG-author-supplied defaults (used when
+         no upstream provides the key).
+      2. record.inputs — the run's initial inputs (entry-node case).
+      3. Last completed node's output — flows forward as the default for the
+         next node's matching input keys. Pydantic on the receiving node will
+         drop any keys it doesn't recognize (extra='ignore'), so over-broad
+         outputs don't break narrow inputs.
+
+    Upstream output WINS over static so a node placed downstream of a
+    transform gets the transformed value, not the original spec.input. A
+    DAG author who needs the original static value to win can use an
+    `input_map` (Phase 6 enhancement; not present in this v1 executor).
     """
     static_inputs = spec.get("inputs") or spec.get("config") or {}
+    # Walk records in reverse to find the most recent COMPLETED upstream
+    # output. We skip the current node (whose record was added with
+    # phase=RUNNING before input resolution) and any earlier paused / failed
+    # records.
     upstream_output: dict[str, Any] | None = None
     for nr in reversed(record.node_records):
         if nr.node_id == node_id:
@@ -310,7 +348,10 @@ def _resolve_inputs(
 
 
 def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRecord:
-    """Persist blackboard metadata and node-annotation mutations."""
+    """Persist blackboard.metadata + node_annotations mutations the node
+    made in-place. Without this, every step rebuilds a fresh blackboard
+    from the snapshot, so cross-step accumulators (dashboard sections,
+    halt_requested, node_annotations) get lost."""
     bb = ctx.blackboard
     if bb is None or not hasattr(bb, "metadata"):
         return record
@@ -323,7 +364,24 @@ def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRe
 
 
 def _actually_spawned(kind: str, result: NodeResult) -> bool:
-    """Return whether a depth-incrementing node actually dispatched child work."""
+    """Did this node actually dispatch/execute a child graph, or just decline to?
+
+    `agent.synth_dag` encodes a depth-cap or security-review refusal as
+    `SynthDagOut(success=False, ...)` inside an otherwise-successful
+    `NodeResult` (the executor sees a normal completion; only the node's own
+    output says nothing was spawned) -- that refusal must not burn a depth
+    level for the next node, or a workflow that tries an alternate synth
+    after a blocked one hits the cap prematurely. But `success=False` also
+    covers a *different* case: synthesis was approved and the sub-graph WAS
+    dispatched via `run_graph`, and only the sub-graph's own execution
+    failed -- that's a real spawn attempt and must still burn a depth level
+    (otherwise a chained retry after a failed child bypasses the recursion
+    budget). `SynthDagOut.dispatched` disambiguates the two: it's True only
+    on the branch that actually called `run_graph`. `agent.spawn_harness`
+    never reaches this check on a fresh dispatch (that exits earlier via
+    `_checkpoint_pause`); getting here for that kind always means a resumed,
+    already-completed external invocation, so it counts unconditionally.
+    """
     if kind == "agent.synth_dag":
         output = result.output
         return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
@@ -333,7 +391,14 @@ def _actually_spawned(kind: str, result: NodeResult) -> bool:
 def _maybe_increment_synth_depth(
     record: DurableRunRecord, spec: dict[str, Any], result: NodeResult
 ) -> DurableRunRecord:
-    """Bump ``synth_depth`` after a node that actually spawned child work."""
+    """Bump `synth_depth` after a node that can spawn a sub-graph completes.
+
+    Depth increments for whatever runs *next*, not for the spawning node's
+    own invocation -- descending into the spawned sub-graph is one level
+    deeper; the spawning node itself already ran at its own depth. Mirrors
+    `agent_synth_dag.py`'s `can_spawn(get_role(depth, max_depth))` check,
+    which reads this same counter back out via `_build_ctx`.
+    """
     kind = spec.get("kind")
     if kind not in _DEPTH_INCREMENTING_KINDS or not _actually_spawned(kind, result):
         return record
@@ -345,7 +410,15 @@ def _maybe_increment_synth_depth(
 
 
 def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
-    """Reconstruct NodeContext from the durable run snapshot."""
+    """Reconstruct the NodeContext, lifting hitl_answers + blackboard
+    snapshot so HITL/wait nodes see the same state across pauses.
+
+    `synth_depth` is surfaced into `NodeContext.metadata` (not
+    `blackboard.metadata`) because that's where `agent_synth_dag.py`'s
+    `can_spawn(get_role(depth, max_depth))` check reads it from — mirroring
+    how `hitl_answers` also lives in this same top-level metadata dict rather
+    than the blackboard's.
+    """
     from ..types import GraphBlackboard
 
     bb_snap = record.blackboard_snapshot or {}
@@ -422,6 +495,17 @@ async def _checkpoint_success(
         }
     )
     record = _patch_node_record(record, new_nr)
+    # Lift blackboard mutations from the ctx that the node may have touched.
+    # The blackboard reference is on ctx but we don't have ctx here; the node
+    # mutates `blackboard.metadata` in-place. Our _build_ctx reconstructed
+    # the blackboard from snapshot so we need to capture changes via the
+    # node's output_dump path — for nodes that mutate the blackboard (like
+    # dashboard.append_section), they ALSO return a NodeResult whose output
+    # tells us what changed. For Phase 1 we re-derive the blackboard by
+    # re-running the snapshot reconciliation: re-build_ctx attaches a fresh
+    # blackboard each invocation, so changes are local. The dashboard.append
+    # node compensates by writing to ctx.metadata when blackboard is None;
+    # in Phase 6 we'll add explicit blackboard-mutation events.
     record = record.model_copy(
         update={"version": record.version + 1, "last_step_at": datetime.now(UTC)}
     )
