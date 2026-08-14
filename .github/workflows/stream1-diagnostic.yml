@@ -31,6 +31,14 @@ jobs:
               escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
               print(f'::warning title=Vulture::{escaped}')
           PY
+      - name: Locate inventory test
+        run: |
+          echo "Tracked inventory-like files:"
+          git ls-files | grep -Ei 'suite.*inventory|inventory.*suite|test.*inventory' || true
+          echo "Filesystem inventory-like files after uv sync:"
+          find . -type f | grep -Ei 'suite.*inventory|inventory.*suite|test.*inventory' || true
+          uv run pytest tests/ --ignore=tests/tools/registry --collect-only -q > /tmp/collect.log 2>&1 || true
+          grep -n 'inventory_matches_implemented_runtime' /tmp/collect.log || true
       - name: Annotate root test failures
         run: |
           uv run pytest tests/ --ignore=tests/tools/registry -v --tb=short > /tmp/root-tests.log 2>&1 || true
@@ -42,6 +50,7 @@ jobs:
               if line.startswith(('FAILED ', 'ERROR '))
               or ' short test summary info ' in line
               or line.startswith('E   ')
+              or 'inventory_matches_implemented_runtime' in line
           ]
           print(f'Root-test diagnostic lines: {len(interesting)}')
           for line in interesting:
