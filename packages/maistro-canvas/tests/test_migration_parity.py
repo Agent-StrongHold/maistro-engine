@@ -16,25 +16,31 @@ from maistro_canvas.types import BookLayer, GenerationJobRecord, JobAction, JobS
 
 
 class _SingleJobStore:
-    """Minimal store implementing the runner contract for one logical job."""
+    """Minimal store with an explicit serialization boundary for one logical job."""
 
     def __init__(self, job: GenerationJobRecord) -> None:
-        self.job = job
+        self.job = self._round_trip(job)
+
+    @staticmethod
+    def _round_trip(job: GenerationJobRecord) -> GenerationJobRecord:
+        return GenerationJobRecord.model_validate(job.model_dump(mode="python"))
 
     async def claim_next_pending(
         self, worker_id: str, lease_seconds: int
     ) -> GenerationJobRecord | None:
-        if self.job.status != JobStatus.PENDING:
+        job = self._round_trip(self.job)
+        if job.status != JobStatus.PENDING:
             return None
-        self.job.status = JobStatus.RUNNING
-        self.job.leased_by = worker_id
-        self.job.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
-        self.job.attempts += 1
-        return self.job
+        job.status = JobStatus.RUNNING
+        job.leased_by = worker_id
+        job.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
+        job.attempts += 1
+        self.job = self._round_trip(job)
+        return self._round_trip(self.job)
 
     async def update_job(self, job: GenerationJobRecord) -> GenerationJobRecord:
-        self.job = job
-        return job
+        self.job = self._round_trip(job)
+        return self._round_trip(self.job)
 
 
 class _FailOnceExecutor:
@@ -54,7 +60,7 @@ async def test_retry_preserves_one_logical_generation_job_and_domain_request() -
 
     Canonical migration target: one logical NodeRun/job with multiple Attempts.
     Canvas-specific request identity and generation parameters must survive the
-    retry unchanged.
+    retry unchanged, including across persistence round-trips.
     """
 
     job = GenerationJobRecord(
@@ -73,23 +79,32 @@ async def test_retry_preserves_one_logical_generation_job_and_domain_request() -
     runner = CanvasJobRunner(store=store, executor=executor)  # type: ignore[arg-type]
 
     await runner.tick_once()
-    assert job.status == JobStatus.PENDING
-    assert job.attempts == 1
+    reloaded = _SingleJobStore._round_trip(store.job)
+    assert reloaded.status == JobStatus.PENDING
+    assert reloaded.attempts == 1
+    assert reloaded.id == "job-17"
+    assert reloaded.canvas_id == "canvas-7"
+    assert reloaded.layer_id == "layer-3"
+    assert reloaded.action == JobAction.REFINE
+    assert reloaded.model_id == "proof-model"
+    assert reloaded.prompt == "keep the character pose; improve lighting"
+    assert reloaded.params == {"count": 1, "seed": 421, "strength": 0.35}
 
     await runner.tick_once()
 
-    assert job.status == JobStatus.DONE
-    assert job.attempts == 2
-    assert job.id == "job-17"
-    assert job.canvas_id == "canvas-7"
-    assert job.layer_id == "layer-3"
-    assert job.action == JobAction.REFINE
-    assert job.model_id == "proof-model"
-    assert job.prompt == "keep the character pose; improve lighting"
-    assert job.params == {"count": 1, "seed": 421, "strength": 0.35}
-    assert job.result_paths == ["artifacts/canvas-7/layer-3/final.png"]
-    assert job.leased_by is None
-    assert job.lease_expires_at is None
+    reloaded = _SingleJobStore._round_trip(store.job)
+    assert reloaded.status == JobStatus.DONE
+    assert reloaded.attempts == 2
+    assert reloaded.id == "job-17"
+    assert reloaded.canvas_id == "canvas-7"
+    assert reloaded.layer_id == "layer-3"
+    assert reloaded.action == JobAction.REFINE
+    assert reloaded.model_id == "proof-model"
+    assert reloaded.prompt == "keep the character pose; improve lighting"
+    assert reloaded.params == {"count": 1, "seed": 421, "strength": 0.35}
+    assert reloaded.result_paths == ["artifacts/canvas-7/layer-3/final.png"]
+    assert reloaded.leased_by is None
+    assert reloaded.lease_expires_at is None
 
 
 def test_layer_retry_and_upgrade_preserve_canvas_domain_state_and_image_history() -> None:
