@@ -8,6 +8,7 @@ from maistro.graph.definitions import (
     NodeTemplate,
     TemplateProvenance,
 )
+from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
 from maistro.graph.executor import run_graph
 from maistro.graph.harness_executor import HarnessExecutionError, HarnessNodeExecutor
 from maistro.graph.node import NodeExecutor
@@ -56,6 +57,8 @@ __all__ = [
     "GraphBlackboard",
     "GraphConfig",
     "GraphEdge",
+    "GraphEdgeDecision",
+    "GraphExecutionState",
     "GraphNodeResult",
     "GraphOptimizer",
     "GraphTask",
