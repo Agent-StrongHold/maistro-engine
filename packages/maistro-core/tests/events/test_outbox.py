@@ -32,7 +32,12 @@ async def test_domain_state_and_event_stage_commit_together(
     connection: aiosqlite.Connection,
 ) -> None:
     outbox, event_store = await _stores(connection)
-    event = EventEnvelope(type="run.updated", run_id="run-1", event_id="evt-commit")
+    event = EventEnvelope(
+        type="run.updated",
+        workspace_id="ws-1",
+        run_id="run-1",
+        event_id="evt-commit",
+    )
 
     await connection.execute("BEGIN")
     await connection.execute(
@@ -42,7 +47,8 @@ async def test_domain_state_and_event_stage_commit_together(
     await outbox.stage(event)
     await connection.commit()
 
-    state = await (await connection.execute("SELECT value FROM domain_state WHERE id = 'run-1'" )).fetchone()
+    cursor = await connection.execute("SELECT value FROM domain_state WHERE id = 'run-1'")
+    state = await cursor.fetchone()
     assert state == ("running",)
     assert await outbox.pending_count() == 1
 
@@ -57,7 +63,12 @@ async def test_domain_state_and_event_stage_roll_back_together(
     connection: aiosqlite.Connection,
 ) -> None:
     outbox, event_store = await _stores(connection)
-    event = EventEnvelope(type="run.updated", run_id="run-1", event_id="evt-rollback")
+    event = EventEnvelope(
+        type="run.updated",
+        workspace_id="ws-1",
+        run_id="run-1",
+        event_id="evt-rollback",
+    )
 
     await connection.execute("BEGIN")
     await connection.execute(
@@ -67,7 +78,8 @@ async def test_domain_state_and_event_stage_roll_back_together(
     await outbox.stage(event)
     await connection.rollback()
 
-    state = await (await connection.execute("SELECT value FROM domain_state WHERE id = 'run-1'" )).fetchone()
+    cursor = await connection.execute("SELECT value FROM domain_state WHERE id = 'run-1'")
+    state = await cursor.fetchone()
     assert state is None
     assert await outbox.pending_count() == 0
     assert await outbox.publish_pending(event_store) == 0
@@ -76,7 +88,12 @@ async def test_domain_state_and_event_stage_roll_back_together(
 
 async def test_stage_is_idempotent_by_event_id(connection: aiosqlite.Connection) -> None:
     outbox, _ = await _stores(connection)
-    event = EventEnvelope(type="run.updated", run_id="run-1", event_id="stable")
+    event = EventEnvelope(
+        type="run.updated",
+        workspace_id="ws-1",
+        run_id="run-1",
+        event_id="stable",
+    )
 
     first = await outbox.stage(event)
     second = await outbox.stage(event)
@@ -90,7 +107,12 @@ async def test_publish_recovers_after_event_append_before_outbox_mark(
     connection: aiosqlite.Connection,
 ) -> None:
     outbox, event_store = await _stores(connection)
-    event = EventEnvelope(type="attempt.completed", run_id="run-1", event_id="evt-crash")
+    event = EventEnvelope(
+        type="attempt.completed",
+        workspace_id="ws-1",
+        run_id="run-1",
+        event_id="evt-crash",
+    )
     await outbox.stage(event)
     await connection.commit()
 
@@ -99,7 +121,7 @@ async def test_publish_recovers_after_event_append_before_outbox_mark(
     assert await outbox.pending_count() == 1
 
     assert await outbox.publish_pending(event_store) == 1
-    history = await event_store.list_stream("run:run-1")
+    history = await event_store.list_stream("workspace:ws-1")
     assert [item.event_id for item in history] == ["evt-crash"]
     assert await outbox.pending_count() == 0
 
@@ -108,7 +130,12 @@ async def test_publish_stops_on_store_failure_and_leaves_row_pending(
     connection: aiosqlite.Connection,
 ) -> None:
     outbox, _ = await _stores(connection)
-    event = EventEnvelope(type="attempt.failed", run_id="run-1", event_id="evt-fail")
+    event = EventEnvelope(
+        type="attempt.failed",
+        workspace_id="ws-1",
+        run_id="run-1",
+        event_id="evt-fail",
+    )
     await outbox.stage(event)
     await connection.commit()
 
@@ -136,4 +163,6 @@ async def test_publish_stops_on_store_failure_and_leaves_row_pending(
 async def test_stage_rejects_presequenced_event(connection: aiosqlite.Connection) -> None:
     outbox, _ = await _stores(connection)
     with pytest.raises(ValueError, match="store-assigned sequence"):
-        await outbox.stage(EventEnvelope(type="x", run_id="r1", sequence=9))
+        await outbox.stage(
+            EventEnvelope(type="x", workspace_id="ws-1", run_id="r1", sequence=9)
+        )
