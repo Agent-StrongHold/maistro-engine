@@ -150,15 +150,11 @@ class PythonExecutionRuntime:
         self._event_sequence = 0
         self._event_loop_lag_ms_last = 0.0
 
-    async def execute(
+    def _validate_execution_request(
         self,
-        compiled_graph: Any,
-        run_context: Any,
-        *,
         run_id: str,
-        executor: ExecutionCallable,
-        timeout_s: float | None = None,
-    ) -> Any:
+        timeout_s: float | None,
+    ) -> asyncio.Task[Any]:
         if not run_id:
             raise ValueError("run_id is required")
         if run_id in self._active:
@@ -169,6 +165,18 @@ class PythonExecutionRuntime:
         task = asyncio.current_task()
         if task is None:  # pragma: no cover - asyncio always supplies one here
             raise RuntimeError("execute() requires an asyncio task")
+        return task
+
+    async def execute(
+        self,
+        compiled_graph: Any,
+        run_context: Any,
+        *,
+        run_id: str,
+        executor: ExecutionCallable,
+        timeout_s: float | None = None,
+    ) -> Any:
+        task = self._validate_execution_request(run_id, timeout_s)
 
         self._active[run_id] = task
         self._executions_started += 1
