@@ -25,7 +25,7 @@ MAIstro converges on the product spine:
 Workspace -> Run -> ExecutionRuntime -> Capabilities
 ```
 
-Workspace is the durable product environment and ownership root. Existing `Project`/`project_id` persistence is a compatibility representation during migration rather than a second root.
+Workspace is the durable product environment and ownership root. `Project` is not a compatibility persistence identity for Workspace; consumers must move to the canonical Workspace model directly.
 
 User access is many-to-many through `WorkspaceMembership`:
 
@@ -35,7 +35,9 @@ User[] <-> WorkspaceMembership[] <-> Workspace[]
 
 Canonical Workspace roles are `member`, `contributor`, and `owner`. Members operate existing workflows and templates. Contributors additionally create or modify shared Graphs, Nodes, and Templates. Owners additionally control the Workspace Persona, membership/roles, and Workspace administration/policy.
 
-A Workspace has one live Persona in normal product state. Temporary zero-Persona states are allowed only during bounded onboarding/migration/replacement. Specialized executable actors are Agents/Nodes rather than secondary Personas.
+Workspace identity and ownership are separate. A personal Workspace is simply one with one owner membership. A shared Workspace may have multiple members and multiple owners. Workspace records do not contain a primary-owner field.
+
+A Workspace has one live Persona in normal product state. Temporary zero-Persona states are allowed only during bounded onboarding or replacement. Specialized executable actors are Agents/Nodes rather than secondary Personas.
 
 Workspace owns or scopes Graphs, Runs, Sessions, Artifacts, Schedules, Memory, Credentials, Integrations, Policies, Templates, and its Persona. A one-node Graph is valid.
 
@@ -53,4 +55,4 @@ Capability fulfillment remains orthogonal:
 Capability -> Provider -> Binding -> Invocation
 ```
 
-Specialized packages extend this hierarchy without introducing alternate universal ownership or execution roots.
+Specialized packages extend this hierarchy without introducing alternate universal ownership or execution roots. Duplicate legacy concepts are removed as their consumers are converted; preserving backward-compatible aliases is not an architectural requirement.
