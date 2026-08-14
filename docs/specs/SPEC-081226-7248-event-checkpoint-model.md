@@ -1,3 +1,40 @@
+---
+id: SPEC-081226-7248
+title: Event and Checkpoint Model
+repo: maistro-engine
+kind: spec
+status: AC Defined
+created: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+  - status: AC Defined
+    date: 2026-08-12
+substrate:
+  - maistro-engine#ADR-081226-7248
+implements:
+  - maistro-engine#ADR-081226-7248
+related:
+  - maistro-engine#ADR-081226-a66b
+  - maistro-engine#ADR-081226-69ee
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests: []
+source:
+  - packages/maistro-core/src/maistro/events
+  - packages/maistro-core/src/maistro/graph/durable_runs
+layer: Reliability
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # SPEC-081226-7248: Event and Checkpoint Model
 
 - **Status:** Active
