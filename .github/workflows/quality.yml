@@ -185,10 +185,13 @@ jobs:
       #        back-compat scout_objective.
       - name: vulture (dead-code; confidence ≥ 60 — ratchet)
         env:
-          # Measured 2026-07-28 after WS-B: 1,313 findings. Lowering the
-          # previous 1,317 ceiling banks those four removals so the debt cannot
-          # silently grow back while the classified baseline is completed.
-          VULTURE_BASELINE: 1313
+          # Measured 2026-08-14 after the project authorization resource
+          # contracts: 1,321 findings. The +8 are four public StrEnum members,
+          # three public dataclass result/scope fields, and
+          # AuthorizationResolver.can_view_resource. Each is exercised by the
+          # authorization tests; vulture scans production only and therefore
+          # cannot see those consumers.
+          VULTURE_BASELINE: 1321
         run: |
           # `third_party/` is vendored upstream source (Google's IFEval verifier,
           # BFCL's AST checker), kept byte-faithful so the benchmarks run the
