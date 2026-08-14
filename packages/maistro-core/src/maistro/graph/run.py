@@ -9,6 +9,13 @@ from typing import Any
 
 import structlog
 
+from maistro.graph.conditions import (
+    CONDITION_OPERATORS as _OPERATORS,
+    MISSING as _MISSING,
+    compare_condition_values as _compare,
+    evaluate_predicate,
+    parse_condition_rhs as _parse_rhs,
+)
 from maistro.graph.events import (
     GraphEvent,
     cycle_started,
@@ -52,11 +59,6 @@ def _get_temperature(
     return default
 
 
-_OPERATORS = [" is not ", " is ", " >= ", " <= ", " != ", " == ", " > ", " < "]
-
-_MISSING = object()
-
-
 def _resolve_path(
     path: str,
     plan: PlanOutput | None,
@@ -73,58 +75,16 @@ def _resolve_path(
     return getattr(obj, attr, _MISSING)
 
 
-def _parse_rhs(s: str) -> object:
-    if s == "True":
-        return True
-    if s == "False":
-        return False
-    if s == "None":
-        return None
-    try:
-        return float(s) if "." in s else int(s)
-    except ValueError:
-        return s.strip("\"'")
-
-
-def _compare(lhs: object, op: str, rhs: object) -> bool:
-    stripped = op.strip()
-    if stripped in ("is", "=="):
-        return lhs == rhs
-    if stripped in ("is not", "!="):
-        return lhs != rhs
-    # Ordering comparisons are dynamic: operands come from a runtime-parsed
-    # condition string and may be any comparable type. Mismatched types raise
-    # TypeError, which we treat as "condition not satisfied".
-    a: Any = lhs
-    b: Any = rhs
-    try:
-        if stripped == "<":
-            return bool(a < b)
-        if stripped == ">":
-            return bool(a > b)
-        if stripped == "<=":
-            return bool(a <= b)
-        if stripped == ">=":
-            return bool(a >= b)
-    except TypeError:
-        return False
-    return False
-
-
 def evaluate_condition(
     condition: str,
     plan: PlanOutput | None,
     code: CodeOutput | None,
     review: ReviewOutput | None,
 ) -> bool:
-    for op in _OPERATORS:
-        if op in condition:
-            lhs_str, rhs_str = condition.split(op, 1)
-            lhs = _resolve_path(lhs_str.strip(), plan, code, review)
-            if lhs is _MISSING:
-                return False
-            return _compare(lhs, op, _parse_rhs(rhs_str.strip()))
-    return False
+    return evaluate_predicate(
+        condition,
+        lambda path: _resolve_path(path, plan, code, review),
+    )
 
 
 def _role_str(role: AgentRole | str) -> str:
