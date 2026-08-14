@@ -88,7 +88,9 @@ async def test_retry_creates_new_attempt_under_same_node_run_and_run() -> None:
 
     first = await store.create_attempt(node_run.node_run_id, executor_id="agent")
     await store.transition_attempt(first.attempt_id, AttemptStatus.RUNNING)
-    await store.transition_attempt(first.attempt_id, AttemptStatus.FAILED, error="transient")
+    await store.transition_attempt(
+        first.attempt_id, AttemptStatus.FAILED, error="transient"
+    )
 
     second = await store.create_attempt(node_run.node_run_id, executor_id="agent")
 
@@ -183,7 +185,9 @@ async def test_child_run_cross_project_is_explicit_but_same_workspace_only() -> 
     assert child.workspace_id == parent.workspace_id
     assert child.project_id == publishing.project_id
 
-    other_project = await _project(project_store, workspace_id="workspace-2", name="Other")
+    other_project = await _project(
+        project_store, workspace_id="workspace-2", name="Other"
+    )
     with pytest.raises(RunIntegrityError, match="cross Workspace"):
         await store.create_run(
             _graph(
@@ -201,7 +205,9 @@ async def test_parent_node_run_must_belong_to_declared_parent_run() -> None:
     graph = _graph(workspace_id=project.workspace_id, project_id=project.project_id)
     first_parent = await store.create_run(graph)
     second_parent = await store.create_run(graph)
-    second_parent_node = await store.create_node_run(second_parent.run_id, node_id="first")
+    second_parent_node = await store.create_node_run(
+        second_parent.run_id, node_id="first"
+    )
 
     with pytest.raises(RunIntegrityError, match="does not belong"):
         await store.create_run(
