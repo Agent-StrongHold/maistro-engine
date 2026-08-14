@@ -59,9 +59,7 @@ async def test_workspace_store_preserves_durable_identity() -> None:
 def test_workspace_role_uses_canonical_collaboration_vocabulary() -> None:
     assert WorkspaceRole is not ProjectMemberRole
     assert {role.value for role in WorkspaceRole} == {"owner", "contributor", "member"}
-    membership = WorkspaceMembership(
-        workspace_id="ws-1", user_id="bob", role=WorkspaceRole.MEMBER
-    )
+    membership = WorkspaceMembership(workspace_id="ws-1", user_id="bob", role=WorkspaceRole.MEMBER)
     assert membership.can_use is True
     assert membership.can_contribute is False
 
@@ -74,9 +72,7 @@ def test_workspace_role_uses_canonical_collaboration_vocabulary() -> None:
         ({"workspace_id": "ws-3"}, "ws-3"),
     ],
 )
-def test_resolve_workspace_id_accepts_canonical_scopes(
-    value: object, expected: str
-) -> None:
+def test_resolve_workspace_id_accepts_canonical_scopes(value: object, expected: str) -> None:
     assert resolve_workspace_id(value) == expected
 
 
