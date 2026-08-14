@@ -65,13 +65,14 @@ class InMemoryWorkspaceStore:
         description: str = "",
     ) -> Workspace:
         workspace = Workspace(name=name, description=description)
-        self._workspaces[workspace.workspace_id] = workspace
-        self._memberships[(workspace.workspace_id, creator_user_id)] = WorkspaceMembership(
+        owner = WorkspaceMembership(
             workspace_id=workspace.workspace_id,
             user_id=creator_user_id,
             role=WorkspaceRole.OWNER,
             added_at=workspace.created_at,
         )
+        self._workspaces[workspace.workspace_id] = workspace
+        self._memberships[(workspace.workspace_id, creator_user_id)] = owner
         return workspace.model_copy(deep=True)
 
     async def get(self, workspace_id: str) -> Workspace | None:
@@ -95,8 +96,8 @@ class InMemoryWorkspaceStore:
     async def list_for_user(self, user_id: str) -> list[Workspace]:
         workspace_ids = {
             workspace_id
-            for (workspace_id, member_user_id), membership in self._memberships.items()
-            if member_user_id == user_id and membership.role in WorkspaceRole
+            for (workspace_id, member_user_id) in self._memberships
+            if member_user_id == user_id
         }
         workspaces = [
             self._workspaces[workspace_id].model_copy(deep=True)
@@ -135,7 +136,11 @@ class InMemoryWorkspaceStore:
     ) -> WorkspaceMembership:
         self._require_workspace(workspace_id)
         existing = self._memberships.get((workspace_id, user_id))
-        if existing is not None and existing.role is WorkspaceRole.OWNER and role is not WorkspaceRole.OWNER:
+        if (
+            existing is not None
+            and existing.role is WorkspaceRole.OWNER
+            and role is not WorkspaceRole.OWNER
+        ):
             self._ensure_another_owner(workspace_id, excluding_user_id=user_id)
 
         membership = WorkspaceMembership(
