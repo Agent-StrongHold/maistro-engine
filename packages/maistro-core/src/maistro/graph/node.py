@@ -13,6 +13,7 @@ import structlog
 from pydantic import BaseModel
 
 from maistro.agents.circuit_breaker import CircuitBreaker
+from maistro.graph.concurrency import llm_call_permit
 from maistro.graph.events import (
     node_completed,
     node_failed,
@@ -386,15 +387,18 @@ class NodeRun:
                     if self.strategy and hasattr(self.strategy, "output_type")
                     else None
                 )
-                result = await asyncio.wait_for(
-                    llm_call(
-                        messages,
-                        model=self.model,
-                        temperature=self.temperature,
-                        response_schema=schema,
-                    ),
-                    timeout=timeout,
-                )
+                # One permit per in-flight LLM call. The permit is held only
+                # for the call, so the wait is not counted against `timeout`.
+                async with llm_call_permit():
+                    result = await asyncio.wait_for(
+                        llm_call(
+                            messages,
+                            model=self.model,
+                            temperature=self.temperature,
+                            response_schema=schema,
+                        ),
+                        timeout=timeout,
+                    )
                 raw, tokens_in, tokens_out = _normalize_llm_result(result)
                 self.circuit.record_success()
                 self.raw_response = raw
@@ -623,10 +627,14 @@ class NodeRun:
         if iteration_budget is not None and not iteration_budget.consume():
             raise LLMProviderError("Iteration budget exhausted")
 
-        result = await asyncio.wait_for(
-            llm_call(messages, model=self.model, temperature=self.temperature),
-            timeout=timeout,
-        )
+        # Beam attempts fan out inside a node, and the node gather fans out
+        # across roles — the two multiply. This is the only choke point both
+        # paths share, so it is where the bound goes.
+        async with llm_call_permit():
+            result = await asyncio.wait_for(
+                llm_call(messages, model=self.model, temperature=self.temperature),
+                timeout=timeout,
+            )
         raw, tokens_in, tokens_out = _normalize_llm_result(result)
         elapsed = time.monotonic() - start
 

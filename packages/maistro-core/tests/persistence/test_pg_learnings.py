@@ -127,8 +127,10 @@ async def test_store_inserts_new_learning_when_no_existing_match(
     assert len(conn.calls) == 2
     dedup_call, insert_call = conn.calls
     assert dedup_call.method == "fetch"
-    assert "WHERE tool_name = $1 AND status = 'active'" in dedup_call.query
-    assert dedup_call.args == ("bash",)
+    # H8: the dedup probe is scoped, so a store for one org cannot match,
+    # bump and return another org's row.
+    assert "WHERE tool_name = $1 AND org_id = $2 AND status = 'active'" in dedup_call.query
+    assert dedup_call.args == ("bash", "")
 
     assert insert_call.method == "fetchrow"
     assert "INSERT INTO learnings" in insert_call.query
@@ -140,6 +142,7 @@ async def test_store_inserts_new_learning_when_no_existing_match(
         "bash",
         "scribe",
         "u1",
+        "",
         MemoryScope.AGENT,
         "active",
         None,
@@ -228,8 +231,10 @@ async def test_find_relevant_filters_by_agent_id_when_given(
     await store.find_relevant("hello", agent_id="scribe")
 
     call = conn.calls[0]
-    assert "AND (agent_id = $1 OR agent_id = '')" in call.query
-    assert call.args == ("scribe",)
+    # $1 is now org_id (always bound); agent_id shifted to $2.
+    assert "AND org_id = $1" in call.query
+    assert "AND (agent_id = $2 OR agent_id = '')" in call.query
+    assert call.args == ("", "scribe")
 
 
 async def test_find_relevant_omits_agent_filter_when_agent_id_absent(
@@ -241,7 +246,10 @@ async def test_find_relevant_omits_agent_filter_when_agent_id_absent(
 
     call = conn.calls[0]
     assert "agent_id" not in call.query
-    assert call.args == ()
+    # The scope predicate is NOT optional — omitting org_id means global scope,
+    # not "no filter". H8: this query previously had no scope predicate at all.
+    assert "AND org_id = $1" in call.query
+    assert call.args == ("",)
 
 
 async def test_find_relevant_scores_and_sorts_by_keyword_match_count(
@@ -404,7 +412,8 @@ async def test_mark_outcome_success_increments_success_counter(
 
     call = conn.calls[0]
     assert "success_after_use = success_after_use + 1" in call.query
-    assert call.args == ([5],)
+    assert "AND org_id = $2" in call.query
+    assert call.args == ([5], "")
 
 
 async def test_mark_outcome_failure_increments_failure_counter(
@@ -416,7 +425,8 @@ async def test_mark_outcome_failure_increments_failure_counter(
 
     call = conn.calls[0]
     assert "failure_after_use = failure_after_use + 1" in call.query
-    assert call.args == ([5],)
+    assert "AND org_id = $2" in call.query
+    assert call.args == ([5], "")
 
 
 async def test_mark_outcome_is_noop_for_empty_list(
@@ -461,7 +471,8 @@ async def test_check_auto_promotions_promotes_rows_above_threshold(
     call = conn.calls[0]
     assert "UPDATE learnings SET status = 'promoted'" in call.query
     assert "hit_count >= $1" in call.query
-    assert call.args == (5,)
+    assert "AND org_id = $2" in call.query
+    assert call.args == (5, "")
     assert len(results) == 1
     assert results[0].status == "promoted"
 
@@ -473,7 +484,7 @@ async def test_check_auto_promotions_default_threshold_is_five(
 
     await store.check_auto_promotions()
 
-    assert conn.calls[0].args == (5,)
+    assert conn.calls[0].args == (5, "")
 
 
 # --------------------------------------------------------------------------
@@ -489,8 +500,9 @@ async def test_get_promoted_filters_by_task_type_when_given(
     await store.get_promoted(task_type="coding")
 
     call = conn.calls[0]
-    assert "AND category = $1" in call.query
-    assert call.args == ("coding",)
+    assert "AND category = $2" in call.query
+    assert "AND org_id = $1" in call.query
+    assert call.args == ("", "coding")
 
 
 async def test_get_promoted_omits_filter_when_task_type_absent(
@@ -502,7 +514,8 @@ async def test_get_promoted_omits_filter_when_task_type_absent(
 
     call = conn.calls[0]
     assert "category" not in call.query
-    assert call.args == ()
+    assert "AND org_id = $1" in call.query
+    assert call.args == ("",)
 
 
 # --------------------------------------------------------------------------
@@ -518,8 +531,8 @@ async def test_list_all_orders_by_id_desc_with_limit(
     await store.list_all(limit=50)
 
     call = conn.calls[0]
-    assert call.query == "SELECT * FROM learnings ORDER BY id DESC LIMIT $1"
-    assert call.args == (50,)
+    assert call.query == ("SELECT * FROM learnings WHERE org_id = $1 ORDER BY id DESC LIMIT $2")
+    assert call.args == ("", 50)
 
 
 async def test_list_all_default_limit_is_200(store: PgLearningStore, conn: FakeConnection) -> None:
@@ -527,7 +540,7 @@ async def test_list_all_default_limit_is_200(store: PgLearningStore, conn: FakeC
 
     await store.list_all()
 
-    assert conn.calls[0].args == (200,)
+    assert conn.calls[0].args == ("", 200)
 
 
 async def test_list_all_maps_rows_to_learning_dataclasses(

@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import random
 from typing import Any
 
 import pytest
 
 from maistro_evolve.benchmarks.datasets import RAGAS_SAMPLES
 from maistro_evolve.benchmarks.ragas import (
-    _heuristic_score,
     _judge_rag_quality,
     _score_faithfulness,
     _score_relevance,
@@ -210,13 +208,9 @@ class TestJudgeRagQuality:
 
 class TestRunRagas:
     @pytest.mark.asyncio
-    async def test_heuristic_path_when_llm_call_is_none(self, genome):
-        result = await run_ragas(genome, None)
-        assert result.benchmark == "ragas"
-        assert result.samples_evaluated == 12
-        assert result.metadata == {"total_samples": 12, "runner": "real"}
-        assert result.cost_usd == 0.0
-        assert 0.0 <= result.score <= 1.0
+    async def test_llm_call_none_raises(self, genome):
+        with pytest.raises(ValueError, match="requires an llm_call"):
+            await run_ragas(genome, None)
 
     @pytest.mark.asyncio
     async def test_faithfulness_sample_high_static_score_no_judge_call(self, genome):
@@ -289,34 +283,3 @@ class TestRunRagas:
         assert result.samples_evaluated == 12
         assert result.score == 0.0
         assert result.cost_usd == 0.0
-
-
-# ---------------------------------------------------------------------------
-# _heuristic_score
-# ---------------------------------------------------------------------------
-
-
-class TestHeuristicScore:
-    def test_faithfulness_base_with_zero_jitter(self, monkeypatch):
-        monkeypatch.setattr(random, "uniform", lambda lo, hi: 0.0)
-        sample = {"eval_type": "faithfulness"}
-        assert _heuristic_score(sample) == pytest.approx(0.6)
-
-    def test_relevance_base_with_zero_jitter(self, monkeypatch):
-        monkeypatch.setattr(random, "uniform", lambda lo, hi: 0.0)
-        sample = {"eval_type": "relevance"}
-        assert _heuristic_score(sample) == pytest.approx(0.55)
-
-    def test_missing_eval_type_defaults_to_relevance_base(self, monkeypatch):
-        monkeypatch.setattr(random, "uniform", lambda lo, hi: 0.0)
-        assert _heuristic_score({}) == pytest.approx(0.55)
-
-    def test_clamped_to_lower_bound(self, monkeypatch):
-        monkeypatch.setattr(random, "uniform", lambda lo, hi: -10.0)
-        sample = {"eval_type": "faithfulness"}
-        assert _heuristic_score(sample) == pytest.approx(0.2)
-
-    def test_clamped_to_upper_bound(self, monkeypatch):
-        monkeypatch.setattr(random, "uniform", lambda lo, hi: 10.0)
-        sample = {"eval_type": "faithfulness"}
-        assert _heuristic_score(sample) == pytest.approx(0.9)

@@ -9,17 +9,13 @@ import httpx
 import pytest
 
 from maistro.events.bus import Event, EventCategory
+from maistro.http import set_test_transport
 from maistro.integrations.coinswarm import CoinSwarmIntegration
-
-_RealAsyncClient = httpx.AsyncClient
 
 
 def _patched_client(monkeypatch: pytest.MonkeyPatch, handler: Any) -> None:
     transport = httpx.MockTransport(handler)
-    monkeypatch.setattr(
-        "maistro.integrations.coinswarm.httpx.AsyncClient",
-        lambda timeout: _RealAsyncClient(transport=transport, timeout=timeout),
-    )
+    set_test_transport(transport)
 
 
 class TestInit:

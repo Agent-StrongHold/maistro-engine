@@ -133,6 +133,25 @@ async def _judge_rag_quality(
 
 
 async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
+    """Score RAG faithfulness/relevance — and be honest that this one IS keyword overlap.
+
+    Proxy-tier (SPEC-202): the samples are a small handcrafted set, not the
+    official RAGAS methodology. Unlike this package's other proxy scorers,
+    the *primary* mechanism here (``_score_faithfulness`` / `_score_relevance`)
+    genuinely is word-set overlap between the response and the expected
+    answer/context — not a structural check. It escalates to a real
+    LLM-as-judge call (``_judge_rag_quality``) only when that static score
+    falls below 0.6, and even then takes ``max(static, judged)`` — so a
+    response can score highly on word overlap alone without ever reaching
+    the judge. Treat `proxy_ragas` scores as the least reliable proxy-tier signal
+    in this package for exactly that reason.
+    """
+    if llm_call is None:
+        raise ValueError(
+            "run_ragas requires an llm_call — there is no stub/heuristic "
+            "fallback (SPEC-202: never produce a fabricated score)"
+        )
+
     start = time.monotonic()
     system_prompt = build_system_prompt(genome)
     model_config = build_model_config(genome)
@@ -156,41 +175,32 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
         messages = build_messages(rag_system, user_msg)
 
         try:
-            if llm_call is not None:
-                response = await asyncio.wait_for(
-                    llm_call(
-                        messages,
-                        temperature=model_config.get("temperature", 0.1),
-                        max_tokens=model_config.get("max_tokens", 512),
-                    ),
-                    timeout=30.0,
-                )
-                total_cost += 0.001
+            response = await asyncio.wait_for(
+                llm_call(
+                    messages,
+                    temperature=model_config.get("temperature", 0.1),
+                    max_tokens=model_config.get("max_tokens", 512),
+                ),
+                timeout=30.0,
+            )
+            total_cost += 0.001
 
-                eval_type = sample.get("eval_type", "faithfulness")
-                if eval_type == "faithfulness":
-                    static = _score_faithfulness(
-                        response, sample["context"], sample["expected_answer"]
-                    )
-                else:
-                    static = _score_relevance(
-                        response, sample["question"], sample["expected_answer"]
-                    )
-
-                if static >= 0.6:
-                    total_score += static
-                else:
-                    judged = await _judge_rag_quality(
-                        sample["question"], sample["context"], response, eval_type, llm_call
-                    )
-                    total_score += max(static, judged)
-                    total_cost += 0.0005
-
-                evaluated += 1
+            eval_type = sample.get("eval_type", "faithfulness")
+            if eval_type == "faithfulness":
+                static = _score_faithfulness(response, sample["context"], sample["expected_answer"])
             else:
-                score = _heuristic_score(sample)
-                total_score += score
-                evaluated += 1
+                static = _score_relevance(response, sample["question"], sample["expected_answer"])
+
+            if static >= 0.6:
+                total_score += static
+            else:
+                judged = await _judge_rag_quality(
+                    sample["question"], sample["context"], response, eval_type, llm_call
+                )
+                total_score += max(static, judged)
+                total_cost += 0.0005
+
+            evaluated += 1
         except (TimeoutError, Exception):
             evaluated += 1
 
@@ -198,17 +208,10 @@ async def run_ragas(genome: PipelineGenome, llm_call: Any) -> EvalResult:
     elapsed = time.monotonic() - start
 
     return EvalResult(
-        benchmark="ragas",
+        benchmark="proxy_ragas",
         score=round(avg_score, 4),
         cost_usd=round(total_cost, 4),
         duration_seconds=round(elapsed, 3),
         samples_evaluated=evaluated,
-        metadata={"total_samples": samples, "runner": "real"},
+        metadata={"total_samples": samples, "fidelity": "proxy"},
     )
-
-
-def _heuristic_score(sample: dict[str, Any]) -> float:
-    import random
-
-    base = 0.6 if sample.get("eval_type") == "faithfulness" else 0.55
-    return max(0.2, min(0.9, base + random.uniform(-0.08, 0.08)))

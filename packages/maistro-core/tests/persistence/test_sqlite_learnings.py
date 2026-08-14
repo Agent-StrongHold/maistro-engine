@@ -98,7 +98,10 @@ async def test_mark_used_increments_hit_count(store: SqliteLearningStore) -> Non
 
 @pytest.mark.asyncio
 async def test_mark_used_empty_list_is_noop(store: SqliteLearningStore) -> None:
+    await store.store(make_learning())
     await store.mark_used([])
+
+    assert (await store.list_all())[0].hit_count == 0
 
 
 @pytest.mark.asyncio
@@ -125,7 +128,12 @@ async def test_mark_outcome_failure_increments_failure_after_use(
 
 @pytest.mark.asyncio
 async def test_mark_outcome_empty_list_is_noop(store: SqliteLearningStore) -> None:
+    await store.store(make_learning())
     await store.mark_outcome([], success=True)
+
+    learning = (await store.list_all())[0]
+    assert learning.success_after_use == 0
+    assert learning.failure_after_use == 0
 
 
 @pytest.mark.asyncio

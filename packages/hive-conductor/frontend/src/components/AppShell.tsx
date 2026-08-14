@@ -2,10 +2,14 @@ import { type ReactNode, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useUser } from "../App";
 import { ModeToggle } from "./ModeToggle";
+import { AppearanceToggle } from "./AppearanceToggle";
+import { WorkspaceTabs } from "./WorkspaceTabs";
+import { WorkspaceShare } from "./WorkspaceShare";
+import { WorkspaceToolBindings } from "./WorkspaceToolBindings";
+import { PersonaWizard } from "./PersonaWizard";
 import { usePmPoc } from "../context/PocMode";
 import {
   PM_NAV_CREDENTIALS,
-  PM_NAV_DRAFTS,
   PM_NAV_INTEGRATIONS,
   PM_NAV_MISSIONS,
   PM_NAV_PROGRAM,
@@ -94,6 +98,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
         <div className="drawer-header">
           <span style={{ fontFamily: "var(--hand)", fontSize: 20, fontWeight: 700 }}>{shellTitle}</span>
           <ModeToggle />
+          <AppearanceToggle />
           <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Close menu">&#x2715;</button>
         </div>
         {pmPoc ? (
@@ -147,6 +152,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
           </NavLink>
         ))}
         <div style={{ flex: 1 }} />
+        <AppearanceToggle />
         {user && (
           <div
             className="nav-icon"
@@ -201,6 +207,12 @@ export function AppShell({ children }: { children?: ReactNode }) {
         </button>
       </nav>
       <main className="main-content">
+        <div className="workspace-toolbar">
+          <WorkspaceTabs />
+          <WorkspaceShare />
+          <WorkspaceToolBindings />
+          <PersonaWizard />
+        </div>
         {children ?? <Outlet />}
       </main>
     </div>

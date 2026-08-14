@@ -21,6 +21,8 @@ from collections.abc import Awaitable, Callable
 import httpx
 import structlog
 
+from maistro.http import shared_client
+
 logger = structlog.get_logger()
 
 # What the evolve benchmark runners expect: given a chat-message list (and
@@ -72,7 +74,7 @@ def make_gateway_llm_call(
                 "LiteLLM gateway not configured — set LITELLM_URL (+ LITELLM_MASTER_KEY). "
                 "Benchmark scoring needs a live gateway to be real."
             )
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with shared_client(timeout=timeout) as client:
             resp = await client.post(
                 f"{base}/v1/chat/completions",
                 json={

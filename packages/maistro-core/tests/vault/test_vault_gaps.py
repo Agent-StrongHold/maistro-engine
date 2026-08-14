@@ -6,6 +6,7 @@ CalledProcessError re-encrypt-failure branch."""
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -131,3 +132,40 @@ class TestWriteFailure:
 
         with pytest.raises(RuntimeError, match="Failed to re-encrypt vault"):
             vault.add("baz", "qux")
+
+
+class TestInitVault:
+    """First-run provisioning (SPEC-072726-3439 Phase 3): init_vault creates
+    the identity key + empty encrypted vault, idempotently."""
+
+    def test_creates_key_and_vault_then_round_trips(self, tmp_path: Path) -> None:
+        if shutil.which("age") is None or shutil.which("age-keygen") is None:
+            pytest.skip("age not installed")
+        from maistro.vault import Vault, init_vault
+
+        vault_path = tmp_path / "data" / "secrets.age"
+        identity_path = tmp_path / "data" / "admin.key"
+        assert init_vault(vault_path, identity_path) is True
+        assert vault_path.exists() and identity_path.exists()
+
+        # Second call is a no-op.
+        assert init_vault(vault_path, identity_path) is False
+
+        # The fresh vault is empty but usable: add + use round-trips.
+        v = Vault(vault_path=vault_path, identity_path=identity_path)
+        v.add("FIRST_SECRET", "hunter2")
+        assert (
+            Vault(vault_path=vault_path, identity_path=identity_path).use(
+                "FIRST_SECRET", lambda s: s
+            )
+            == "hunter2"
+        )
+
+    def test_missing_age_toolchain_raises(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from maistro import vault as vault_mod
+
+        monkeypatch.setattr("shutil.which", lambda _cmd: None)
+        with pytest.raises(vault_mod.VaultUnavailableError, match="age"):
+            vault_mod.init_vault(tmp_path / "s.age", tmp_path / "a.key")

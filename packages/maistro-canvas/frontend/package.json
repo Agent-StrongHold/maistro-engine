@@ -8,8 +8,9 @@
     "server": "node server.js",
     "build": "vite build",
     "test": "vitest run",
+    "test:ci": "vitest run --exclude '**/node_modules/**' --exclude 'tests/renderingPipeline.test.js'",
     "test:watch": "vitest",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 13",
     "preview": "vite preview"
   },
   "dependencies": {

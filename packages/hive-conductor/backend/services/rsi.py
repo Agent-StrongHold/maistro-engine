@@ -135,13 +135,26 @@ class _RsiService:
 
     # ── cleanup / improvement (LocalRsiLoop) ────────────────────────────────
     async def _drive_cleanup(self, run: RunState) -> None:
+        import tempfile
+        from pathlib import Path
+
         from maistro_rsi.local_loop import LocalRsiConfig, LocalRsiLoop, make_builders_apply_patch
 
         cfg = run.config
+        # The UI omits work_root/report_dir; LocalRsiLoop requires the first
+        # (Path(None) → TypeError before a single cycle) and silently skips
+        # checkpoints + promotion review records without the second — which
+        # left the patch-review page permanently empty. Allocate both the way
+        # the CLI path does.
+        work_root = cfg.get("work_root") or tempfile.mkdtemp(prefix=f"rsi-{run.run_id}-")
+        report_dir = cfg.get("report_dir") or str(Path(work_root) / "reports")
+        genome_models = [
+            m.strip() for m in (cfg.get("genome_models") or "").split(",") if m.strip()
+        ]
         lc = LocalRsiConfig(
             repo_path=cfg["repo_path"],
             test_command=cfg["test_command"],
-            work_root=cfg["work_root"],
+            work_root=work_root,
             max_cycles=int(cfg.get("cycles", 3)),
             model=cfg.get("model"),
             agent_turns_per_cycle=int(cfg.get("agent_turns", 6)),
@@ -150,8 +163,15 @@ class _RsiService:
             use_fitness=bool(cfg.get("fitness", False)),
             coverage_source=cfg.get("coverage_source") or ".",
             coverage_pytest_args=cfg.get("coverage_pytest_args") or "",
-            report_dir=cfg.get("report_dir"),
+            report_dir=report_dir,
             export_patches=cfg.get("export_dir"),
+            # Tournament settings: the UI shows working roster/scout controls,
+            # so not forwarding them meant every run silently executed with
+            # different settings than the operator chose.
+            genome_db=str(Path(work_root) / "population.db") if genome_models else None,
+            genome_models=genome_models,
+            roster_size=int(cfg.get("roster_size", 4) or 4),
+            scout=bool(cfg.get("scout", False)),
         )
         run.report_dir = lc.report_dir
         run.export_dir = lc.export_patches
@@ -161,7 +181,10 @@ class _RsiService:
             max_agent_turns=lc.agent_turns_per_cycle,
         )
         loop = LocalRsiLoop(lc, apply_patch=apply_fn)
-        result = await loop.run()
+        # run() is synchronous: driven inline it would block the event loop for
+        # the whole multi-cycle run (status/stop unservable) and `await` on its
+        # dataclass result raised TypeError, marking every finished run errored.
+        result = await asyncio.to_thread(loop.run)
         run.cycles = getattr(result, "cycles_run", 0) or len(getattr(result, "cycles", []) or [])
         run.promotions = getattr(result, "promotions", 0)
         run.summary = result.summary() if hasattr(result, "summary") else None

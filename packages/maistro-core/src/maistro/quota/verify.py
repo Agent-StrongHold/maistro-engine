@@ -28,6 +28,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from maistro.http import shared_client
 from maistro.quota.verifiers.openrouter import (
     FREE_MODEL_RPD_NO_CREDITS,
     FREE_MODEL_RPD_WITH_CREDITS,
@@ -38,7 +39,7 @@ _BASE_URL = "https://openrouter.ai/api/v1"
 
 
 async def _get_key_status(api_key: str, *, base_url: str = _BASE_URL) -> dict[str, object]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with shared_client(timeout=15.0) as client:
         r = await client.get(f"{base_url}/key", headers={"Authorization": f"Bearer {api_key}"})
         r.raise_for_status()
         data = r.json().get("data")

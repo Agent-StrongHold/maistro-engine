@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import pg from "pg";
+import { resolveSecurityConfig, isOriginAllowed, requireToken } from "./server/security.js";
 
 const { Pool } = pg;
 const pool = new Pool({
@@ -11,9 +12,12 @@ const pool = new Pool({
   database: process.env.CANVAS_DB_NAME || "canvas_studio",
 });
 
+const security = resolveSecurityConfig();
+
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: "200mb" }));
+app.use(cors({ origin: (o, cb) => cb(null, isOriginAllowed(o, security.origins)), credentials: true }));
+app.use(express.json({ limit: security.bodyLimit }));
+app.use("/api", requireToken(security));
 
 function safeKey(key) {
   return (key || "untitled").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
@@ -75,6 +79,9 @@ app.delete("/api/books/:key", async (req, res) => {
 });
 
 app.delete("/api/books", async (_req, res) => {
+  if (!security.allowTruncate) {
+    return res.status(403).json({ error: "bulk delete disabled; set CANVAS_ALLOW_TRUNCATE=true" });
+  }
   try {
     await pool.query("TRUNCATE books");
     res.json({ ok: true });
@@ -230,7 +237,7 @@ app.get("/api/print/health", async (_req, res) => {
   }
 });
 
-const PORT = 5174;
+const PORT = Number(process.env.CANVAS_PORT || 5174);
 
 // ── Generation Attempts (training data) ──────────────────────────────────
 
@@ -331,17 +338,55 @@ import { tmpdir } from "os";
 
 const EXPORT_SCRIPT = join(import.meta.dirname, "server", "export_book.py");
 
+// /api/export spawns a python3 process per request with a caller-supplied page
+// list and a 100MB stdout buffer. Without a cap, one client can hold the box's
+// entire CPU and memory budget: N concurrent requests => N python processes.
+let activeExports = 0;
+
 app.post("/api/export", async (req, res) => {
   const { mode, title, author, product_id, pages, front_cover, back_cover } = req.body;
   if (!pages?.length) return res.status(400).json({ error: "pages required" });
-
+  if (pages.length > security.maxExportPages) {
+    return res.status(413).json({
+      error: `too many pages: ${pages.length} > ${security.maxExportPages} (CANVAS_MAX_EXPORT_PAGES)`,
+    });
+  }
+  if (activeExports >= security.maxConcurrentExports) {
+    return res.status(503).json({ error: "export queue full, retry shortly" });
+  }
+  activeExports += 1;
+  let released = false;
   let tmpDir;
+  let childProcess = null;
+  let streamStarted = false;
+
+  const release = () => {
+    if (released) return;
+    released = true;
+    activeExports -= 1;
+    if (tmpDir) rmdir(tmpDir, { recursive: true }).catch(() => {});
+  };
+
+  // A disconnected client must not free the slot while its renderer is still
+  // consuming CPU/memory. Kill the active renderer, but let execFile's exit
+  // callback/catch path release the slot only after the process is actually
+  // reaped. If rendering has already finished, either the file stream owns the
+  // remaining lifetime or there is nothing left to hold.
+  res.on("close", () => {
+    if (childProcess && childProcess.exitCode === null && !childProcess.killed) {
+      childProcess.kill("SIGKILL");
+      return;
+    }
+    if (!streamStarted) release();
+  });
+
   try {
     tmpDir = await mkdtemp(join(tmpdir(), "canvas-export-"));
     const payload = JSON.stringify({ mode: mode || "interior", title, author, product_id, pages, front_cover, back_cover, output_dir: tmpDir });
 
     await new Promise((resolve, reject) => {
-      const proc = execFile("python3", [EXPORT_SCRIPT], { maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
+      childProcess = execFile("python3", [EXPORT_SCRIPT], { maxBuffer: 100 * 1024 * 1024 }, (err, stdout, stderr) => {
+        childProcess = null;
         if (err) return reject(stderr || err.message);
         try {
           const result = JSON.parse(stdout.trim());
@@ -349,9 +394,17 @@ app.post("/api/export", async (req, res) => {
           resolve(result.path);
         } catch (e) { reject(e.message); }
       });
-      proc.stdin.write(payload);
-      proc.stdin.end();
+      childProcess.stdin.write(payload);
+      childProcess.stdin.end();
     });
+
+    // The response may have disappeared just as the child exited. There is no
+    // stream to own cleanup in that case, so release now and do not touch the
+    // destroyed socket.
+    if (res.destroyed && !res.writableEnded) {
+      release();
+      return;
+    }
 
     const pdfName = mode === "cover" ? "cover.pdf" : "interior.pdf";
     const pdfPath = join(tmpDir, pdfName);
@@ -363,13 +416,18 @@ app.post("/api/export", async (req, res) => {
 
     const { createReadStream } = await import("fs");
     const stream = createReadStream(pdfPath);
+    streamStarted = true;
+    // Once rendering is complete, the response stream owns the slot/tempdir.
+    // 'close' covers both normal completion and a torn-down pipe.
+    stream.on("close", release);
+    stream.on("error", release);
     stream.pipe(res);
-    stream.on("end", () => { rmdir(tmpDir, { recursive: true }).catch(() => {}); });
-    stream.on("error", () => { rmdir(tmpDir, { recursive: true }).catch(() => {}); });
   } catch (e) {
-    if (tmpDir) rmdir(tmpDir, { recursive: true }).catch(() => {});
+    release();
     console.error("Export error:", e);
-    res.status(500).json({ error: typeof e === "string" ? e : e.message });
+    if (!res.headersSent && !res.destroyed) {
+      res.status(500).json({ error: typeof e === "string" ? e : e.message });
+    }
   }
 });
 
@@ -655,6 +713,10 @@ app.post("/api/llm/image-edit", async (req, res) => {
   res.status(502).json({ error: `All Azure edit deployments failed: ${errors.join("; ")}` });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Canvas Studio API → Postgres :5440, listening on :${PORT}`);
+// Bind loopback by default. The previous hardcoded "0.0.0.0" published a server
+// that proxies operator LiteLLM/Azure/Gemini credentials and spawns python3 on
+// every interface of whatever machine ran it, with no authentication at all.
+// resolveSecurityConfig() refuses to return a non-loopback host without a token.
+app.listen(PORT, security.host, () => {
+  console.log(`Canvas Studio API → Postgres :5440, listening on ${security.host}:${PORT}`);
 });

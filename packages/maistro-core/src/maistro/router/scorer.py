@@ -1,20 +1,25 @@
-"""Model scoring: quality^(qw*p) / normalized_cost^cw with speed and strength bonuses.
+"""Model scoring: quality^(qw*p) / (1 + normalized_cost)^cw, with speed and
+strength adjustments folded into quality. This line, scorer.score_candidate's
+docstring, and README.md state the same formula on purpose — they drifted into
+three different ones once before.
 
 Cost normalization:
-  Raw effective_cost from scarcity lives in (0, ~1.44] for in-budget models.
-  Normalized to [0, 1] by dividing by the ceiling (1/ln(2) ≈ 1.44), so:
-    - Huge budgets barely used → near 0 (but never clamped to exactly 0)
-    - Budget nearly exhausted → near 1.0
-    - Over-quota with paygo → >1.0 (penalty)
+  Raw effective_cost from scarcity is 1/ln(remaining_tokens), and the range
+  REACHABLE in practice is narrow: ~0.048 (a 1B-token budget untouched) to
+  ~0.217 (a small budget 99% consumed). The old normalizer divided by the
+  theoretical ceiling 1/ln(2) ≈ 1.44 — reachable only with ~2 tokens left —
+  which compressed every realistic cost into [0.03, 0.15] and capped the cost
+  term's influence at ~10% of the score even at cost_weight=1.0. The docstring
+  claimed "cost and quality weighted equally"; measurement said otherwise.
 
-  cost_weight controls how much this matters:
-    0.0 → cost ignored (pure quality)
-    0.5 → cost and quality contribute equally at mid-range
-    1.0 → cost dominates
+  Now raw cost maps against the realistic band [_RAW_FLOOR, _RAW_CEIL] →
+  [0, 1], so at cost_weight=1.0 a fresh huge-budget provider (denominator 1.0)
+  genuinely scores 2x a nearly-exhausted small one (denominator 2.0).
 
 Over-quota handling:
-  Models over quota without paygo are FILTERED (return None, not scored).
-  Models over quota with paygo get a cost penalty above 1.0.
+  Models over quota without paygo are FILTERED (return None, not scored with a
+  sentinel). Models over quota with paygo are normalized above every in-budget
+  value, so free quota always wins while paid access stays rankable.
 """
 
 from __future__ import annotations
@@ -22,7 +27,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
-from maistro.router.scarcity import compute_effective_cost
+from maistro.router.scarcity import INELIGIBLE_COST, OVER_QUOTA_FLOOR, compute_effective_cost
 from maistro.router.speed import compute_speed_bonus
 
 if TYPE_CHECKING:
@@ -30,29 +35,38 @@ if TYPE_CHECKING:
     from maistro.types.intent import Intent
     from maistro.types.model import ModelCandidate, ModelConfig, ProviderConfig
 
-# The in-budget cost ceiling from scarcity: 1/ln(2) ≈ 1.44 (budget nearly exhausted).
-# Floor is 0 (effectively free — huge budget barely used). No hardcoded floor constant;
-# any positive cost maps proportionally into [0, 1].
-_COST_CEIL = 1.0 / math.log(2.0)  # ≈ 1.4427
+# The band of raw scarcity costs reachable with realistic budgets:
+#   floor — 1B-token daily budget, barely used (cheapest realistic supply)
+#   ceil  — a small (10k) budget at 99% consumption (remaining ≈ 100)
+# Providers between these map linearly onto [0, 1]; the old theoretical
+# ceiling 1/ln(2) sat 6x above the ceil and neutered the cost term.
+_RAW_FLOOR = 1.0 / math.log(1e9)  # ≈ 0.048
+_RAW_CEIL = 1.0 / math.log(100.0)  # ≈ 0.217
+
+# In-budget normalization cap: deeper exhaustion than _RAW_CEIL keeps rising
+# linearly up to here, so a provider running on fumes is strongly penalized
+# but still strictly cheaper than any paid overage (which starts above it).
+_NORM_CAP_IN_BUDGET = 3.0
 
 
 def _normalize_cost(raw_cost: float) -> float:
-    """Map raw effective_cost to [0, 1] within the in-budget range.
+    """Map raw effective_cost into the scoring domain.
 
-    0.0 = zero cost (provider.free_tokens=0 returns 1.0 from scarcity, mapped here)
-    ~0.0 = huge budget barely used
-    1.0 = most expensive in-budget (nearly exhausted, raw ≈ 1.44)
-    >1.0 = over-quota with paygo (penalty territory)
+    [0, 1]      — the realistic in-budget band (see module docstring)
+    (1, 3]      — in-budget but deeply exhausted (remaining < ~100 tokens)
+    > 3         — over-quota paygo: strictly above every in-budget value,
+                  ordered by overage rate
 
-    No hardcoded floor — providers with 100M and 1B budgets still differentiate
-    because their raw costs (0.054 vs 0.048) map to different points on [0, 1].
+    Monotonic in raw cost throughout, so providers with 100M and 1B budgets
+    still differentiate (raw 0.054 vs 0.048 → distinct points near 0).
     """
     if raw_cost <= 0:
         return 0.0
-    if raw_cost >= _COST_CEIL:
-        # Over-quota with paygo: scale linearly above 1.0
-        return 1.0 + (raw_cost - _COST_CEIL)
-    return raw_cost / _COST_CEIL
+    if raw_cost >= OVER_QUOTA_FLOOR:
+        # Paid overage: anchor above the in-budget cap, keep rate ordering.
+        return _NORM_CAP_IN_BUDGET + (raw_cost - OVER_QUOTA_FLOOR)
+    scaled = (raw_cost - _RAW_FLOOR) / (_RAW_CEIL - _RAW_FLOOR)
+    return min(max(scaled, 0.0), _NORM_CAP_IN_BUDGET)
 
 
 def score_candidate(
@@ -67,10 +81,10 @@ def score_candidate(
 
     Formula: quality^(quality_weight * priority_mult) / (1 + normalized_cost)^cost_weight
 
-    cost_weight semantics (after normalization):
+    cost_weight semantics (with normalization against the realistic band):
       0.0 → cost ignored entirely (pure quality routing)
-      0.4 → cost is a significant factor, quality still dominates
-      1.0 → cost and quality weighted equally at mid-range
+      0.5 → the cheapest/most expensive in-budget spread is worth ~√2 in score
+      1.0 → that spread is worth 2x — cost and quality genuinely trade off
     """
     from maistro.types.model import ModelCandidate
 
@@ -85,34 +99,35 @@ def score_candidate(
     model_strengths = set(model_cfg.strengths)
     base_quality = model_cfg.quality
 
-    if preferred & model_strengths:
-        strength_mult = 1.15
-    elif model_strengths:
-        strength_mult = 0.90
-    else:
-        strength_mult = 1.0
-    quality = min(1.0, base_quality * strength_mult)
+    # Declared-but-unmatched strengths score the same as declaring nothing.
+    # The old 0.90 penalty made deleting the strengths field strictly optimal
+    # for operators — metadata absence must never outscore metadata presence.
+    strength_mult = 1.15 if preferred & model_strengths else 1.0
+
+    # No clamp to 1.0 on either step: clamping meant every strong model
+    # saturated at exactly 1.0 (and 1.0**anything == 1.0), so ties were the
+    # rule and selection fell through to list order. Quality above 1.0 is
+    # fine — it's an ordering signal, not a probability.
+    quality = base_quality * strength_mult
 
     speed_bonus = compute_speed_bonus(intent.task_type, model_cfg.speed)
-    adjusted_quality = min(1.0, quality * (1.0 + speed_bonus))
+    adjusted_quality = quality * (1.0 + speed_bonus)
 
     # --- Cost ---
     effective_cost = compute_effective_cost(usage_pct, provider_cfg)
 
-    # Filter: over-quota without paygo → ineligible, not scored with a sentinel
     has_paygo = (
         provider_cfg.overage_cost_per_1k_input > 0 or provider_cfg.overage_cost_per_1k_output > 0
     )
-    if effective_cost >= 999.0:
+    if effective_cost >= INELIGIBLE_COST:
         return None  # Filtered — no quota, no paygo
 
-    # Normalize cost to a meaningful domain
     norm_cost = _normalize_cost(effective_cost)
 
     # --- Score ---
     q_factor = adjusted_quality**quality_exponent
-    # Use (1 + norm_cost) so cost=0 doesn't divide by zero and the denominator
-    # spans [1, 2+] — a clean, interpretable range.
+    # (1 + norm_cost) so cost=0 doesn't divide by zero; denominator spans
+    # [1, 2] across the realistic band, up to 4 on fumes, beyond for paygo.
     c_factor = (1.0 + norm_cost) ** cost_weight
     score = q_factor / c_factor
 

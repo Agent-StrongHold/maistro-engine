@@ -154,7 +154,6 @@ export default function BookWorkspace({ bookSpec, onReset }) {
     }, 3000);
   }, [step, bookSpec, rawDecomp, bookPlan, styleVersions, styleIdx, charSheets, sbVersions, sbIdx, pageLayers, currentScene, log]);
 
-  const persist = scheduleSave;
 
   useEffect(() => { scheduleSave(); }, [step, styleVersions, charSheets, sbVersions, pageLayers, currentScene]);
 
@@ -179,7 +178,7 @@ export default function BookWorkspace({ bookSpec, onReset }) {
           setStep(saved.step);
           return;
         }
-      } catch {}
+      } catch { /* no usable cached decomposition; fall through to doDecompose() */ }
       doDecompose();
     })();
   }, []);
@@ -379,7 +378,7 @@ export default function BookWorkspace({ bookSpec, onReset }) {
     let up = { ...page, approved: true };
     if (page.layers.every((l) => l.quality === "final") && !page.refined) {
       addLog("Running refinement...");
-      try { const r = await refineScene(up, bookPlan.style_token, (m) => addLog(m)); up = { ...r, approved: true }; } catch {}
+      try { const r = await refineScene(up, bookPlan.style_token, (m) => addLog(m)); up = { ...r, approved: true }; } catch (e) { addLog(`Refinement failed: ${e.message}`); }
     }
     setPageLayers((prev) => { const n = [...prev]; n[pi] = up; return n; });
     const next = pi + 1;
@@ -527,23 +526,6 @@ export default function BookWorkspace({ bookSpec, onReset }) {
       <div style={{ fontSize: 10, color: "var(--text-dim)", fontFamily: "var(--font)" }}>generating...</div>
     </div>
   ) : null;
-
-  const panel = (title, subtitle, content, actions) => (
-    <div className="main-layout">
-      {genOverlay}{stepNav}
-      <div className="left-panel">
-        <div className="panel-section"><h3>{title}</h3><div style={{ fontSize: 11, color: "var(--phosphor)" }}>{subtitle}</div></div>
-        <div className="scroll-area" style={{ padding: 12 }}>{content}</div>
-        <div className="panel-section" style={{ display: "flex", gap: 8 }}>{actions}</div>
-      </div>
-      <div className="viewport-area">
-        <img src="" alt="" style={{ display: "none" }} />
-      </div>
-      <div className="right-panel"><div className="panel-section scroll-area"><h3>Log</h3>
-        {log.slice(-20).map((m, i) => <div key={i} className="log-line">{m}</div>)}
-      </div></div>
-    </div>
-  );
 
   // ── Loading ──────────────────────────────────────────────────────────────
   if (step === S.loading) {

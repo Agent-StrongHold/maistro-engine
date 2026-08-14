@@ -93,6 +93,8 @@ class TaskQueue:
             capability=request.capability,
             program_context=request.program_context,
             tier=request.tier or 2,
+            lane=request.lane,
+            priority_tier=request.priority_tier,
             phase="queued",
             progress=TaskProgress(),
             created_at=datetime.now(UTC),

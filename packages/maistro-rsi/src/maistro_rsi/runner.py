@@ -23,7 +23,7 @@ from pathlib import Path as _Path
 
 import structlog
 
-from maistro_evolve.harness import EvalHarness
+from maistro_evolve.harness import BenchmarkFidelity, EvalHarness
 from maistro_evolve.tournament import EloTournament, GenomeBattle
 from maistro_evolve.types import EvalResult, PipelineGenome
 from maistro_rsi.benchmarks import RSI_BENCHMARKS
@@ -40,7 +40,7 @@ from maistro_rsi.selfbranch import (
 
 logger = structlog.get_logger()
 
-DEFAULT_BENCHMARKS = ["swebench", "swebench_pro", "terminalbench"]
+DEFAULT_BENCHMARKS = ["proxy_swebench", "proxy_swebench_pro", "proxy_terminalbench"]
 
 # Not a hardcoded /tmp literal (bandit B108): resolved via tempfile.gettempdir()
 # so it honors $TMPDIR / the platform temp dir instead of assuming /tmp exists
@@ -118,10 +118,26 @@ class RsiCycleResult:
         return self.branch_result.tests_passed and self.benchmarks_won > len(self.battles) / 2
 
 
-def build_harness(use_real_benchmarks: bool = True) -> EvalHarness:
-    """An `EvalHarness` carrying both maistro-evolve's stock benchmarks and
-    the longer-horizon ones added here (e.g. SWE-Bench Pro)."""
-    harness = EvalHarness(use_real_benchmarks=use_real_benchmarks)
+def build_harness(benchmark_fidelity: BenchmarkFidelity = "proxy") -> EvalHarness:
+    """An `EvalHarness` carrying maistro-evolve's stock benchmarks plus the
+    longer-horizon ones added here (e.g. SWE-Bench Pro).
+
+    ``RSI_BENCHMARKS`` are all proxy-tier, so at ``benchmark_fidelity="real"``
+    they are **omitted**, not registered. Adding them would leave a harness that
+    reports ``fidelity == "real"`` while returning handcrafted-sample scores —
+    and RSI results feed promotion evidence, which is the worst place for a
+    proxy number wearing a real label. ``EvalHarness.register_benchmark`` also
+    rejects this independently; the explicit skip here is so the caller gets a
+    working real harness instead of an exception.
+    """
+    harness = EvalHarness(benchmark_fidelity=benchmark_fidelity)
+    if benchmark_fidelity == "real":
+        logger.info(
+            "rsi_benchmarks_omitted_at_real_fidelity",
+            omitted=sorted(RSI_BENCHMARKS),
+            reason="proxy-tier runners cannot be registered on a real harness",
+        )
+        return harness
     for name, runner in RSI_BENCHMARKS.items():
         harness.register_benchmark(name, runner)
     return harness
@@ -148,8 +164,9 @@ class RsiCycle:
         # When None, run() builds a gateway-backed llm_call from the
         # scheduler-chosen model so benchmark scoring is real, not heuristic.
         self._llm_call = llm_call
-        # Without a quarantine_check, run_self_branch_attempt treats every
-        # diff as cleared; callers that open PRs should always supply one.
+        # Without a quarantine_check, run_self_branch_attempt refuses to ship:
+        # no verdict means DENY, so a driver that opens PRs must wire one — the
+        # type default is fail-closed rather than a comment asking nicely.
         self._quarantine_check = quarantine_check
 
     async def run(

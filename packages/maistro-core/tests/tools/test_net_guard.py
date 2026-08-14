@@ -107,12 +107,18 @@ class TestPrefixBlocklist:
 
 class TestDNSRebinding:
     def test_allows_public_dns_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        resolved = 0
+
         def fake_getaddrinfo(*a: object, **k: object) -> list[object]:
+            nonlocal resolved
+            resolved += 1
             return [_addrinfo_entry("93.184.216.34")]
 
         monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
         # Should not raise.
         validate_outbound_url("https://public.example.com/x")
+
+        assert resolved == 1
 
     def test_blocks_dns_rebinding_to_private_ip(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def fake_getaddrinfo(*a: object, **k: object) -> list[object]:
@@ -123,12 +129,18 @@ class TestDNSRebinding:
             validate_outbound_url("https://evil.example.com/x")
 
     def test_unresolvable_hostname_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        attempts = 0
+
         def fake_getaddrinfo(*a: object, **k: object) -> list[object]:
+            nonlocal attempts
+            attempts += 1
             raise socket.gaierror("no such host")
 
         monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
         # Unresolvable — will fail at connect time, not here.
         validate_outbound_url("https://missing.example.com/x")
+
+        assert attempts == 1
 
     def test_url_without_hostname_does_not_raise(self) -> None:
         # No netloc/hostname to resolve — nothing to block on.

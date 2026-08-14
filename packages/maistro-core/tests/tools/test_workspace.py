@@ -147,3 +147,25 @@ class TestEnsureWorkspace:
     def test_raises_for_disallowed_path(self) -> None:
         with pytest.raises(ValueError, match="not in an allowed location"):
             ensure_workspace("/etc/maistro-workspace")
+
+
+class TestPlatformTempDirAllowlist:
+    """Evidence: maistro_rsi.runner.DEFAULT_WORKSPACE_ROOT is built from
+    tempfile.gettempdir() (not a hardcoded /tmp literal) so it honors
+    $TMPDIR; the allowlist must actually cover that default or workspace
+    creation fails validation on any host where $TMPDIR isn't /tmp."""
+
+    def test_platform_tempdir_workspace_is_allowed(self) -> None:
+        import tempfile
+
+        from maistro.tools.sandbox.workspace import ALLOWED_HOST_ROOTS
+
+        expected = Path(tempfile.gettempdir()) / "maistro-workspace"
+        assert expected in ALLOWED_HOST_ROOTS
+
+    def test_platform_tempdir_workspace_passes_validation(self) -> None:
+        import tempfile
+
+        target = str(Path(tempfile.gettempdir()) / "maistro-workspace" / "rsi" / "run1")
+        resolved = validate_workspace_path(target)
+        assert str(resolved).endswith("maistro-workspace/rsi/run1")

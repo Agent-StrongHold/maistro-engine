@@ -5,6 +5,12 @@ Author-facing summary of the conventions you need to know to land changes here. 
 > Looking for the practical "where things go / how to commit / what *not* to do" field guide,
 > including the common CI-failure gotchas? See [`docs/WAYS-OF-WORKING.md`](docs/WAYS-OF-WORKING.md).
 
+## Feature freeze — in effect until `v1.0.0` is tagged
+
+**Any PR not tracked by [`docs/product/V1-RELEASE-PLAN.md`](docs/product/V1-RELEASE-PLAN.md) does not merge until `v1.0.0` is tagged.** Stabilization and deployability fixes for tracked items are allowed; new features are not.
+
+The plan is the tracking list of record (one `##` work item = one issue). The PR template ([`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md)) asks which item a PR belongs to — answer it, or expect the PR to sit. When the tag lands, delete this section.
+
 ## Branch model
 
 Four tiers; work flows **upward**, every promotion is a pull request (never a direct push):
@@ -20,7 +26,7 @@ feat/* bug/* idea/* doc/* chore/*  →  develop  →  integration  →  main
 
 All three branches are **protected**: PR required, no force-push, no deletion, **linear history**. Because linear history is enforced, **merge via squash or rebase — not merge commits.** Required CI status checks are added per-branch as each CI job reaches reliable green.
 
-Detail: [`ADR-060`](docs/adr/ADR-060-four-tier-branch-model.md) (supersedes [`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
+Detail: [`ADR-095`](docs/adr/ADR-095-four-tier-branch-model.md) (supersedes [`ADR-001`](docs/adr/ADR-001-branching-strategy.md)).
 
 ## How to add an ADR
 

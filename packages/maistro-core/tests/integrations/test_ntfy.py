@@ -24,7 +24,7 @@ async def test_ntfy_client_posts_message_with_headers() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         captured["body"] = request.content.decode()
-        captured["headers"] = dict(request.headers)
+        captured["headers"] = request.headers  # httpx.Headers: case-insensitive
         return httpx.Response(200)
 
     client = _mock_client(handler)
@@ -96,7 +96,11 @@ async def test_ntfy_client_skips_when_no_topic() -> None:
 
 @pytest.mark.asyncio
 async def test_ntfy_client_swallows_transport_errors() -> None:
+    attempts = 0
+
     def boom(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
         raise httpx.ConnectError("refused", request=request)
 
     client = _mock_client(boom)
@@ -104,6 +108,8 @@ async def test_ntfy_client_swallows_transport_errors() -> None:
     await ntfy.send(Notification(message="x"))
     await ntfy.aclose()
     await client.aclose()
+
+    assert attempts == 1
 
 
 def test_ntfy_client_satisfies_protocol() -> None:
@@ -119,25 +125,16 @@ def test_ntfy_action_registered_in_builtins() -> None:
 async def test_ntfy_action_posts_formatted_message(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
-    class FakeAsyncClient:
-        def __init__(self, *a: Any, **kw: Any) -> None:
-            pass
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = request.content.decode()
+        captured["headers"] = request.headers  # httpx.Headers: case-insensitive
+        return httpx.Response(200)
 
-        async def __aenter__(self) -> FakeAsyncClient:
-            return self
-
-        async def __aexit__(self, *a: Any) -> None:
-            return None
-
-        async def post(
-            self, url: str, *, content: bytes, headers: dict[str, str]
-        ) -> httpx.Response:
-            captured["url"] = url
-            captured["body"] = content.decode()
-            captured["headers"] = headers
-            return httpx.Response(200)
-
-    monkeypatch.setattr("maistro.events.handlers.httpx.AsyncClient", FakeAsyncClient)
+    # A MockTransport rather than a stand-in client class: the request is
+    # captured after httpx has built it, so the assertions below check what
+    # would actually go on the wire rather than what the call site passed.
+    monkeypatch.setattr("maistro.http._test_transport", httpx.MockTransport(handler), raising=False)
 
     trigger = Trigger(
         name="fitness-alert",
@@ -171,7 +168,7 @@ async def test_ntfy_action_posts_formatted_message(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
-async def test_ntfy_action_noop_without_url_or_topic() -> None:
+async def test_ntfy_action_noop_without_url_or_topic(caplog: pytest.LogCaptureFixture) -> None:
     trigger = Trigger(
         name="x",
         event_types=["t"],
@@ -180,3 +177,5 @@ async def test_ntfy_action_noop_without_url_or_topic() -> None:
     )
     event = Event(category=EventCategory.AGENT, event_type="t", source="s", payload={})
     await ntfy_action(trigger, event)
+
+    assert "missing ntfy_url or topic" in caplog.text

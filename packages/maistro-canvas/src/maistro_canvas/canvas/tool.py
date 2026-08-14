@@ -18,6 +18,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from maistro.http import shared_client
+
 logger = logging.getLogger("maistro_canvas.canvas.tool")
 
 # ---------------------------------------------------------------------------
@@ -146,7 +148,6 @@ async def _generate_image(
 
     Returns a list of PNG byte buffers.
     """
-    import httpx
 
     models = DRAFT_MODELS if tier == "draft" else PROOF_MODELS
     if source_image:
@@ -171,7 +172,7 @@ async def _generate_image(
         headers["Authorization"] = f"Bearer {litellm_key}"
 
     last_error: Exception | None = None
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with shared_client(timeout=120.0) as client:
         for model in models:
             body["model"] = model
             try:

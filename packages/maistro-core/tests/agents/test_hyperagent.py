@@ -82,6 +82,17 @@ class TestInterviewStatus:
         assert result["total_steps"] == 5
         assert result["message"] == ""
 
+    def test_custom_steps_override_total_steps_and_the_next_question(self) -> None:
+        custom = (
+            {"field": "program_name", "agent": "host", "question": "What's this for?"},
+            {"field": "vibe", "agent": "host", "question": "What vibe?"},
+        )
+        ctx = _ctx(interview_complete=False, interview_step=0)
+        result = interview_status(ctx, use_case="brand_new_persona", custom_steps=custom)
+        assert result["total_steps"] == 2
+        assert result["agent"] == "host"
+        assert result["question"] == "What's this for?"
+
 
 class TestProposeAutonomousActions:
     def test_interview_incomplete_returns_empty(self) -> None:

@@ -131,7 +131,14 @@ def _parse_clock_duration(s: str) -> float | None:
         if mult is None:
             # Trailing run carrying no recognised unit — read it as bare seconds.
             return _as_float(rest)
-        total += (float(rest[:i]) if i else 0.0) * mult
+        # _as_float, not float(): a header like "47..s" or ".s" is malformed
+        # input off the wire, and the docstring above promised None for it while
+        # this line raised ValueError — the 429 retry path calls this outside
+        # any exception handler, so a hostile header aborted the paced call.
+        numeral = _as_float(rest[:i]) if i else 0.0
+        if numeral is None:
+            return None
+        total += numeral * mult
         had_unit = True
         rest = rest[i + 1 :]
     return total if had_unit else _as_float(s)  # bare seconds / epoch
@@ -218,7 +225,11 @@ class RatePacer:
     def _budget(self) -> StaticBudget | None:
         return _STATIC_BUDGETS.get(self.provider_key)
 
-    async def _throttle_before(self) -> None:
+    # Hard ceiling on one throttle wait: a daily budget resets within 24h, and
+    # anything longer can only come from a hostile/garbage reset header.
+    _MAX_TOTAL_WAIT_S = 90_000.0
+
+    def _required_wait(self) -> float:
         snap = self._last
         wait = 0.0
         if snap is not None:
@@ -235,22 +246,43 @@ class RatePacer:
             bud = self._budget()
             if bud is not None:
                 wait = bud.wait_seconds()
-        if wait > 0:
-            wait = max(self.min_sleep, min(wait, self.max_sleep))
-            # False positive: the rule keys off "tokens" in the format string.
-            # These are LLM rate-limit quota counters (how many tokens/requests
-            # remain in the window) and a provider key name — no credential is
-            # in scope here, let alone logged. The suppression must sit on the
-            # line immediately before the match; semgrep ignores it otherwise.
-            # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
-            logger.info(
-                "rate_pacer throttle provider=%s sleeping %.1fs (remaining_tokens=%s remaining_requests=%s)",
-                self.provider_key,
-                wait,
-                snap.remaining_tokens if snap else None,
-                snap.remaining_requests if snap else None,
-            )
-            await asyncio.sleep(wait)
+        return min(wait, self._MAX_TOTAL_WAIT_S)
+
+    async def _throttle_before(self) -> None:
+        wait = self._required_wait()
+        if wait <= 0:
+            return
+        # Honor the FULL wait, sleeping in max_sleep chunks. The old clamp
+        # slept at most max_sleep once and then unconditionally sent: with an
+        # exhausted daily budget (reset at UTC midnight) that meant a request
+        # every 65 seconds until midnight, each one a fresh 429 — the exact
+        # behavior the pacer exists to prevent. The deadline is fixed up front
+        # (header snapshots don't tick down), the budget is re-consulted each
+        # chunk (it recomputes from wall clock and may extend).
+        snap = self._last
+        wait = max(self.min_sleep, wait)
+        deadline = time.monotonic() + wait
+        # False positive: the rule keys off "tokens" in the format string.
+        # These are LLM rate-limit quota counters (how many tokens/requests
+        # remain in the window) and a provider key name — no credential is
+        # in scope here, let alone logged. The suppression must sit on the
+        # line immediately before the match; semgrep ignores it otherwise.
+        # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+        logger.info(
+            "rate_pacer throttle provider=%s sleeping %.1fs (remaining_tokens=%s remaining_requests=%s)",
+            self.provider_key,
+            wait,
+            snap.remaining_tokens if snap else None,
+            snap.remaining_requests if snap else None,
+        )
+        while True:
+            remaining = deadline - time.monotonic()
+            bud = self._budget()
+            if bud is not None:
+                remaining = max(remaining, min(bud.wait_seconds(), self._MAX_TOTAL_WAIT_S))
+            if remaining <= 0:
+                return
+            await asyncio.sleep(min(remaining, self.max_sleep))
 
     def _observe(self, headers: dict[str, str] | None, status_code: int) -> None:
         if headers:

@@ -73,6 +73,55 @@ def _serialize_secrets(secrets: dict[str, str]) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
+def init_vault(vault_path: str | Path, identity_path: str | Path) -> bool:
+    """Create the age identity key and an empty encrypted vault if absent.
+
+    Idempotent first-run provisioning (SPEC-072726-3439 Phase 3): returns
+    True when anything was created, False when both files already exist.
+    Raises VaultUnavailableError when the age toolchain is missing — callers
+    decide whether that is fatal (a vault the operator asked for) or a loud
+    degradation (best-effort init on a host without age).
+    """
+    import shutil
+
+    vault_p = Path(vault_path)
+    ident_p = Path(identity_path)
+    if vault_p.exists() and ident_p.exists():
+        return False
+    if shutil.which("age") is None or shutil.which("age-keygen") is None:
+        raise VaultUnavailableError("VAULT_UNAVAILABLE: age/age-keygen not found on PATH")
+
+    if not ident_p.exists():
+        ident_p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # age-keygen creates the file 0600 and refuses to overwrite.
+            subprocess.run(  # nosec — age trust root, args fully controlled (B603 + B607)
+                ["age-keygen", "-o", str(ident_p)],
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise VaultUnavailableError(
+                f"VAULT_UNAVAILABLE: age-keygen failed: {e.stderr.decode(errors='replace')}"
+            ) from None
+
+    if not vault_p.exists():
+        public_key = _extract_public_key(ident_p)
+        vault_p.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            subprocess.run(  # nosec — age trust root, args fully controlled (B603 + B607)
+                ["age", "-r", public_key, "-o", str(vault_p)],
+                input=b"",
+                capture_output=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            raise VaultUnavailableError(
+                f"VAULT_UNAVAILABLE: vault encryption failed: {e.stderr.decode(errors='replace')}"
+            ) from None
+    return True
+
+
 class Vault:
     """Age-encrypted secrets vault with ``use``-only access API."""
 
@@ -122,6 +171,10 @@ class Vault:
         if name not in secrets:
             raise SecretMissingError(f"SECRET_MISSING: {name}")
         return callback(secrets[name])
+
+    def has(self, name: str) -> bool:
+        """True if a secret exists — presence check without exposing the value."""
+        return name in self._ensure_loaded()
 
     def add(self, key: str, value: str) -> None:
         secrets = self._ensure_loaded()

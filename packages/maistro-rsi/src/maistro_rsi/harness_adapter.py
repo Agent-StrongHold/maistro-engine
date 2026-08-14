@@ -160,7 +160,7 @@ class RsiCycleHarnessAdapter:
             raise ValueError(
                 "RsiCycleHarnessAdapter requires context['available_models']: list[str]"
             )
-        num_cycles = max(1, int(request.context.get("num_cycles", 1)))
+        num_cycles = int(request.context.get("num_cycles", 1))
 
         handle_id = uuid.uuid4().hex[:12]
         tasks = [
@@ -191,6 +191,24 @@ class RsiCycleHarnessAdapter:
             )
 
         del self._in_flight[handle.handle_id]
+
+        if not in_flight.tasks:
+            # num_cycles<=0 (e.g. the quota pacer signalling no headroom) is a
+            # deliberate no-op, not a failure -- must not read as "all cycles
+            # failed" (the aggregation path's message for an empty result set).
+            return HarnessResult(
+                handle_id=handle.handle_id,
+                success=True,
+                output="no cycles dispatched (num_cycles<=0)",
+                error=None,
+                metadata={
+                    "cycles": [],
+                    "cycles_completed": 0,
+                    "cycles_improved": 0,
+                    "cycles_failed": 0,
+                    "errors": [],
+                },
+            )
 
         results: list[RsiCycleResult] = []
         errors: list[str] = []

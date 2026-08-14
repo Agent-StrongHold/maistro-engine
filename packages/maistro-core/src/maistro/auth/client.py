@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from maistro.auth._types import ServiceIdentity
+from maistro.http import shared_client
 
 logger = logging.getLogger("maistro.auth.client")
 
@@ -60,7 +61,7 @@ class ServiceKeyClient:
         timeout: float | None = None,
     ) -> httpx.Response:
         merged = self._merge_headers(headers)
-        async with httpx.AsyncClient(timeout=timeout or self._default_timeout) as client:
+        async with shared_client(timeout=timeout or self._default_timeout) as client:
             response = await client.request(
                 method,
                 url,

@@ -49,7 +49,11 @@ def test_register_and_query(ontology: InMemoryOntology) -> None:
 
 def test_register_idempotent_same_model(ontology: InMemoryOntology) -> None:
     ontology.register("Person", Person)
-    ontology.register("Person", Person)  # no error
+    ontology.register("Person", Person)
+
+    alice = OntologyEntity(kind="Person").with_semantic({"name": "Alice", "age": 30})
+    ontology.upsert(alice)
+    assert ontology.get(alice.id) == alice
 
 
 def test_register_conflicting_model_raises(ontology: InMemoryOntology) -> None:

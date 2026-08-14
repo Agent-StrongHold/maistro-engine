@@ -109,7 +109,11 @@ class TestNonStreamingChatCompletions:
                 json={"messages": [{"role": "user", "content": "hi"}]},
             )
         assert response.status_code == 502
-        assert "upstream blew up" in response.json()["error"]["message"]
+        # Upstream detail must NOT be echoed to the client (June audit 3.5);
+        # it belongs in the server log only.
+        message = response.json()["error"]["message"]
+        assert "upstream blew up" not in message
+        assert message == "LLM provider error"
 
     def test_generic_exception_returns_500(self, client: TestClient) -> None:
         with patch(

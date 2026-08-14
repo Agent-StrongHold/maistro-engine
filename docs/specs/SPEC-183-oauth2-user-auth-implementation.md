@@ -3,10 +3,10 @@ id: SPEC-183
 title: OAuth2 user authentication — implementation
 repo: maistro-engine
 kind: spec
-status: Implemented
+status: In Progress
 created: 2026-05-29
 accepted: null
-implemented: 2026-07-02
+implemented: null
 substrate:
   - maistro-engine#ADR-059
 implements:
@@ -28,6 +28,8 @@ history:
     date: 2026-05-29
   - status: Implemented
     date: 2026-07-02
+  - status: In Progress
+    date: 2026-07-29
 ---
 
 # SPEC-183: OAuth2 user authentication — implementation
@@ -61,12 +63,16 @@ Phased PRs to `integration`, TDD throughout. Negative tests (no token on bad inp
 ### Phase 4 — audit + observability
 - `auth.oauth.login|link|refresh|failed` events; tokens never logged (ADR-044). No `org_id` anywhere (ADR-019 CI grep).
 
-## Implementation status (2026-07-02)
+## Implementation status (2026-07-02, status corrected 2026-07-29)
 
 Phases 1 and 2 are implemented in `packages/maistro-core/src/maistro/auth/oauth.py`
 with tests in `packages/maistro-core/tests/auth/test_oauth.py`. **Phase 3
 (hive-conductor start/callback routes + middleware public prefixes) and Phase 4
-(audit-event wiring into the product event bus) are follow-up work.**
+(audit-event wiring into the product event bus) are follow-up work.** Front matter
+was corrected from `Implemented` to `In Progress` (D2/#290): there is no
+`/v1/auth/oauth/{provider}/start`-or-`/callback` route anywhere in the tree, so
+this spec's own two-phase gap makes the feature unreachable end-to-end today,
+which `Implemented` did not convey.
 
 Deviations from the phase text above:
 

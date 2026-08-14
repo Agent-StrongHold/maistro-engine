@@ -40,6 +40,7 @@ from dags.author_examples import (
     SEUSS,
     THE_BAD_GUYS,
 )
+from maistro.http import shared_client
 
 
 def _bedtime_authors(age: int) -> list[dict]:
@@ -156,7 +157,6 @@ async def search_bestsellers(age: int, genre: str = "", tone: str = "") -> dict[
     Returns real book titles, ratings, and why they're popular — used as
     additional context for the writing nodes alongside our static examples.
     """
-    import httpx
 
     brave_key = os.environ.get("BRAVE_SEARCH_API_KEY", "")
     if not brave_key:
@@ -176,7 +176,7 @@ async def search_bestsellers(age: int, genre: str = "", tone: str = "") -> dict[
 
     try:
         await asyncio.sleep(1.1)  # Brave rate limit
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with shared_client(timeout=15.0) as client:
             r = await client.get(
                 "https://api.search.brave.com/res/v1/web/search",
                 headers={"X-Subscription-Token": brave_key, "Accept": "application/json"},

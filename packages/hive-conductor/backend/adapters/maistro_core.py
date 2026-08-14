@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-import httpx
+from maistro.http import shared_client
 
 if TYPE_CHECKING:
     from config import Settings
@@ -83,7 +83,7 @@ class _HttpOpenAILLMClient:
         if tool_choice:
             payload["tool_choice"] = tool_choice
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with shared_client(timeout=120.0) as client:
             r = await client.post(
                 f"{self._base}/chat/completions",
                 headers=self._headers(),
