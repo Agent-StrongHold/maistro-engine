@@ -20,6 +20,7 @@ from maistro.events.checkpoints import (
     CheckpointVersionError,
     InMemoryCheckpointStore,
     SqliteCheckpointStore,
+    checkpoint_created_event,
     resolve_checkpoint,
 )
 from maistro.events.durable_log import (
@@ -129,6 +130,7 @@ __all__ = [
     "TriggerDefinition",
     "TriggerStore",
     "append_from_bus_event",
+    "checkpoint_created_event",
     "get_event_bus",
     "pattern_matches",
     "process_events",
