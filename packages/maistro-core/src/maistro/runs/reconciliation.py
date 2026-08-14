@@ -71,7 +71,9 @@ class AttemptLifecycleReconciler:
             run = await self._store.transition_run(run.run_id, RunStatus.QUEUED)
         if run.status in {RunStatus.QUEUED, RunStatus.WAITING}:
             return await self._store.transition_run(run.run_id, RunStatus.RUNNING)
-        raise RunIntegrityError(f"Run {run.run_id!r} cannot enter running from {run.status.value!r}")
+        raise RunIntegrityError(
+            f"Run {run.run_id!r} cannot enter running from {run.status.value!r}"
+        )
 
     async def _ensure_node_run_running(self, node_run: NodeRun) -> NodeRun:
         if node_run.status in TERMINAL_RUN_STATUSES:
