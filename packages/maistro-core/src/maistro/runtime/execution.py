@@ -8,6 +8,8 @@ implementation.
 
 The runtime deliberately treats ``work_item``, ``execution_context``, and emitted
 events as opaque values. Domain interpretation belongs to callers.
+
+Governed by ADR-081426-1f7c / SPEC-081426-1f7c.
 """
 
 from __future__ import annotations
@@ -23,6 +25,14 @@ from typing import Any, Protocol, runtime_checkable
 
 ExecutionCallable = Callable[[Any, Any], Awaitable[Any]]
 EventSink = Callable[["RuntimeEventEnvelope"], Awaitable[None]]
+
+
+class RuntimeDeadlineExceeded(TimeoutError):
+    """The Runtime-owned physical execution deadline expired."""
+
+    def __init__(self, execution_id: str) -> None:
+        super().__init__(f"Runtime deadline exceeded for execution {execution_id!r}")
+        self.execution_id = execution_id
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +85,7 @@ class ExecutionRuntime(Protocol):
     Work and context are passed opaquely to the injected ``executor`` callable.
     ``execution_id`` identifies one physical execution, normally an Attempt.
 
-    Governed by
-    ``docs/adr/ADR-081226-a66b-run-noderun-attempt-lifecycle.md``.
+    Governed by ``ADR-081426-1f7c`` / ``SPEC-081426-1f7c``.
     """
 
     async def execute(
@@ -204,11 +213,11 @@ class PythonExecutionRuntime:
         except asyncio.CancelledError:
             self._executions_cancelled += 1
             raise
-        except TimeoutError:
+        except TimeoutError as exc:
             if timeout_context is not None and timeout_context.expired():
                 self._executions_timed_out += 1
-            else:
-                self._executions_failed += 1
+                raise RuntimeDeadlineExceeded(execution_id) from exc
+            self._executions_failed += 1
             raise
         except Exception:
             self._executions_failed += 1
@@ -328,6 +337,7 @@ __all__ = [
     "ExecutionCallable",
     "ExecutionRuntime",
     "PythonExecutionRuntime",
+    "RuntimeDeadlineExceeded",
     "RuntimeEventEnvelope",
     "RuntimeHealth",
     "RuntimeMetrics",

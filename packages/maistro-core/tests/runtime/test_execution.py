@@ -5,7 +5,11 @@ from typing import Any
 
 import pytest
 
-from maistro.runtime import ExecutionRuntime, PythonExecutionRuntime
+from maistro.runtime import (
+    ExecutionRuntime,
+    PythonExecutionRuntime,
+    RuntimeDeadlineExceeded,
+)
 
 
 @pytest.mark.asyncio
@@ -124,13 +128,13 @@ async def test_cancel_propagates_to_active_execution() -> None:
 
 
 @pytest.mark.asyncio
-async def test_deadline_is_enforced() -> None:
+async def test_runtime_deadline_has_distinct_classification() -> None:
     runtime = PythonExecutionRuntime()
 
     async def executor(_work_item: Any, _context: Any) -> None:
         await asyncio.sleep(0.1)
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(RuntimeDeadlineExceeded) as exc_info:
         await runtime.execute(
             None,
             None,
@@ -139,7 +143,10 @@ async def test_deadline_is_enforced() -> None:
             timeout_s=0.001,
         )
 
+    assert isinstance(exc_info.value, TimeoutError)
+    assert exc_info.value.execution_id == "attempt-timeout"
     assert runtime.metrics().executions_timed_out == 1
+    assert runtime.metrics().executions_failed == 0
 
 
 @pytest.mark.asyncio
@@ -147,7 +154,7 @@ async def test_deadline_includes_waiting_for_capacity() -> None:
     runtime = PythonExecutionRuntime(max_concurrency=1)
     await runtime.acquire_slot("blocker")
 
-    with pytest.raises(TimeoutError):
+    with pytest.raises(RuntimeDeadlineExceeded):
         await runtime.execute(
             None,
             None,
@@ -160,6 +167,7 @@ async def test_deadline_includes_waiting_for_capacity() -> None:
     metrics = runtime.metrics()
     assert metrics.executions_timed_out == 1
     assert metrics.executions_failed == 0
+    assert metrics.active_slots == 0
 
 
 @pytest.mark.asyncio
@@ -169,7 +177,7 @@ async def test_executor_timeout_is_a_failure_not_runtime_deadline() -> None:
     async def executor(_work_item: Any, _context: Any) -> None:
         raise TimeoutError("downstream operation timed out")
 
-    with pytest.raises(TimeoutError, match="downstream"):
+    with pytest.raises(TimeoutError, match="downstream") as exc_info:
         await runtime.execute(
             None,
             None,
@@ -178,6 +186,7 @@ async def test_executor_timeout_is_a_failure_not_runtime_deadline() -> None:
             timeout_s=1,
         )
 
+    assert not isinstance(exc_info.value, RuntimeDeadlineExceeded)
     metrics = runtime.metrics()
     assert metrics.executions_failed == 1
     assert metrics.executions_timed_out == 0
@@ -216,6 +225,25 @@ async def test_event_sink_can_emit_follow_up_without_deadlock() -> None:
     assert first.sequence == 1
     assert runtime.metrics().event_sequence == 2
     assert runtime.metrics().events_emitted == 2
+
+
+@pytest.mark.asyncio
+async def test_event_sink_failure_does_not_leave_sequence_lock_held() -> None:
+    fail_once = True
+
+    async def sink(_envelope: Any) -> None:
+        nonlocal fail_once
+        if fail_once:
+            fail_once = False
+            raise RuntimeError("sink failed")
+
+    runtime = PythonExecutionRuntime(event_sink=sink)
+    with pytest.raises(RuntimeError, match="sink failed"):
+        await runtime.emit("first")
+
+    second = await asyncio.wait_for(runtime.emit("second"), timeout=1)
+    assert second.sequence == 2
+    assert runtime.metrics().event_sequence == 2
 
 
 @pytest.mark.asyncio
