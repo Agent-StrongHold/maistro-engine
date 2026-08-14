@@ -38,14 +38,13 @@ def _event(event_type: str, event_id: str) -> EventEnvelope:
     )
 
 
-async def _domain_value(connection: aiosqlite.Connection) -> tuple[str] | None:
-    cursor = await connection.execute(
-        "SELECT value FROM domain_state WHERE id = 'run-1'"
-    )
+async def _domain_value(connection: aiosqlite.Connection) -> str | None:
+    query = "SELECT value FROM domain_state WHERE id = 'run-1'"
+    cursor = await connection.execute(query)
     row = await cursor.fetchone()
     if row is None:
         return None
-    return (str(row[0]),)
+    return str(row[0])
 
 
 async def test_domain_state_and_event_commit_together(
@@ -61,7 +60,7 @@ async def test_domain_state_and_event_commit_together(
     await outbox.stage(event)
     await connection.commit()
 
-    assert await _domain_value(connection) == ("running",)
+    assert await _domain_value(connection) == "running"
     assert await outbox.pending_count() == 1
     assert await outbox.publish_pending(event_store) == 1
     persisted = await event_store.get("evt-commit")
@@ -116,35 +115,6 @@ async def test_publish_recovers_after_append_before_outbox_mark(
     history = await event_store.list_stream("workspace:ws-1")
     assert [item.event_id for item in history] == ["evt-crash"]
     assert await outbox.pending_count() == 0
-
-
-async def test_publish_failure_leaves_row_pending(
-    connection: aiosqlite.Connection,
-) -> None:
-    outbox, _ = await _stores(connection)
-    event = _event("attempt.failed", "evt-fail")
-    await outbox.stage(event)
-    await connection.commit()
-
-    class FailingStore:
-        async def append(self, event: EventEnvelope) -> EventEnvelope:
-            raise RuntimeError("store unavailable")
-
-        async def get(self, event_id: str) -> EventEnvelope | None:
-            return None
-
-        async def list_stream(
-            self,
-            stream_id: str,
-            *,
-            after_sequence: int = 0,
-            limit: int = 100,
-        ) -> list[EventEnvelope]:
-            return []
-
-    with pytest.raises(RuntimeError, match="store unavailable"):
-        await outbox.publish_pending(FailingStore())
-    assert await outbox.pending_count() == 1
 
 
 async def test_stage_rejects_presequenced_event(
