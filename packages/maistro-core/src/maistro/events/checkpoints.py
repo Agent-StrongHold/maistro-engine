@@ -8,6 +8,7 @@ needed to create a replacement Attempt after recovery.
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 import time
@@ -111,11 +112,15 @@ class Checkpoint:
         _require_text("run_id", self.run_id)
         _require_text("executable_version", self.executable_version)
         _validate_versions(self.schema_version, self.event_sequence)
+        detached_state = copy.deepcopy(self.state)
+        detached_provenance = copy.deepcopy(self.provenance)
         resolved_hash = _checkpoint_state_hash(
-            self.state,
+            detached_state,
             self.state_locator,
             self.state_hash,
         )
+        object.__setattr__(self, "state", detached_state)
+        object.__setattr__(self, "provenance", detached_provenance)
         object.__setattr__(self, "state_hash", resolved_hash)
 
     @property
@@ -227,7 +232,12 @@ class InMemoryCheckpointStore:
                 raise ValueError("sequence is store-assigned and must be None on append")
 
             run = self._runs.setdefault(checkpoint.run_id, [])
-            persisted = replace(checkpoint, sequence=len(run) + 1)
+            persisted = replace(
+                checkpoint,
+                sequence=len(run) + 1,
+                state=copy.deepcopy(checkpoint.state),
+                provenance=copy.deepcopy(checkpoint.provenance),
+            )
             run.append(persisted)
             self._checkpoints_by_id[persisted.checkpoint_id] = persisted
             return persisted
@@ -296,50 +306,67 @@ class SqliteCheckpointStore:
 
     async def append(self, checkpoint: Checkpoint) -> Checkpoint:
         async with self._lock:
-            existing = await self.get(checkpoint.checkpoint_id)
-            if existing is not None:
-                return existing
             if checkpoint.sequence is not None:
                 raise ValueError("sequence is store-assigned and must be None on append")
 
-            cursor = await self._conn.execute(
-                "SELECT COALESCE(MAX(sequence), 0) + 1 FROM canonical_checkpoints WHERE run_id = ?",
-                (checkpoint.run_id,),
-            )
-            row = await cursor.fetchone()
-            sequence = int(row[0]) if row is not None else 1
-            persisted = replace(checkpoint, sequence=sequence)
-            await self._conn.execute(
-                """INSERT INTO canonical_checkpoints (
-                    checkpoint_id, run_id, sequence, schema_version, created_at,
-                    workspace_id, project_id, node_run_id, attempt_id, event_sequence,
-                    previous_checkpoint_id, reason, executable_version, state,
-                    state_locator, state_hash, graph_id, graph_snapshot_hash, provenance
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    persisted.checkpoint_id,
-                    persisted.run_id,
-                    persisted.sequence,
-                    persisted.schema_version,
-                    persisted.created_at,
-                    persisted.workspace_id,
-                    persisted.project_id,
-                    persisted.node_run_id,
-                    persisted.attempt_id,
-                    persisted.event_sequence,
-                    persisted.previous_checkpoint_id,
-                    persisted.reason,
-                    persisted.executable_version,
-                    json.dumps(persisted.state),
-                    persisted.state_locator,
-                    persisted.state_hash,
-                    persisted.graph_id,
-                    persisted.graph_snapshot_hash,
-                    json.dumps(persisted.provenance),
-                ),
-            )
-            await self._conn.commit()
-            return persisted
+            await self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await self._conn.execute(
+                    "SELECT * FROM canonical_checkpoints WHERE checkpoint_id = ?",
+                    (checkpoint.checkpoint_id,),
+                )
+                existing = await cursor.fetchone()
+                if existing is not None:
+                    await self._conn.commit()
+                    return self._row_to_checkpoint(tuple(existing))
+
+                cursor = await self._conn.execute(
+                    "SELECT COALESCE(MAX(sequence), 0) + 1 "
+                    "FROM canonical_checkpoints WHERE run_id = ?",
+                    (checkpoint.run_id,),
+                )
+                row = await cursor.fetchone()
+                sequence = int(row[0]) if row is not None else 1
+                persisted = replace(
+                    checkpoint,
+                    sequence=sequence,
+                    state=copy.deepcopy(checkpoint.state),
+                    provenance=copy.deepcopy(checkpoint.provenance),
+                )
+                await self._conn.execute(
+                    """INSERT INTO canonical_checkpoints (
+                        checkpoint_id, run_id, sequence, schema_version, created_at,
+                        workspace_id, project_id, node_run_id, attempt_id, event_sequence,
+                        previous_checkpoint_id, reason, executable_version, state,
+                        state_locator, state_hash, graph_id, graph_snapshot_hash, provenance
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        persisted.checkpoint_id,
+                        persisted.run_id,
+                        persisted.sequence,
+                        persisted.schema_version,
+                        persisted.created_at,
+                        persisted.workspace_id,
+                        persisted.project_id,
+                        persisted.node_run_id,
+                        persisted.attempt_id,
+                        persisted.event_sequence,
+                        persisted.previous_checkpoint_id,
+                        persisted.reason,
+                        persisted.executable_version,
+                        json.dumps(persisted.state),
+                        persisted.state_locator,
+                        persisted.state_hash,
+                        persisted.graph_id,
+                        persisted.graph_snapshot_hash,
+                        json.dumps(persisted.provenance),
+                    ),
+                )
+                await self._conn.commit()
+                return persisted
+            except Exception:
+                await self._conn.rollback()
+                raise
 
     async def get(self, checkpoint_id: str) -> Checkpoint | None:
         cursor = await self._conn.execute(
