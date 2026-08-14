@@ -1,9 +1,10 @@
 """Canonical Attempt -> ExecutionRuntime execution seam.
 
-This service owns the domain-side ordering around one physical try: create and
-persist the Attempt, mark it running, invoke Runtime using ``attempt_id`` as the
-physical execution identity, persist the terminal Attempt outcome, then hand
-control back to domain reconciliation. Runtime never mutates Run/NodeRun state.
+This service owns the domain-side ordering around one physical try: prepare the
+logical Run/NodeRun, create and persist the Attempt, mark it running, invoke
+Runtime using ``attempt_id`` as the physical execution identity, persist the
+terminal Attempt outcome, then perform policy-neutral logical reconciliation.
+Runtime never mutates Run/NodeRun state.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from maistro.runs.model import Attempt, AttemptStatus
+from maistro.runs.reconciliation import AttemptLifecycleReconciler
 from maistro.runs.store import RunStore
 from maistro.runtime import (
     ExecutionCallable,
@@ -36,7 +38,8 @@ class AttemptExecutionService:
     ) -> None:
         self._store = store
         self._runtime = runtime
-        self._reconciler = reconciler
+        self._lifecycle = AttemptLifecycleReconciler(store)
+        self._after_reconcile = reconciler
 
     async def execute(
         self,
@@ -58,6 +61,7 @@ class AttemptExecutionService:
                 raise ValueError("timeout_s must be > 0")
             deadline_at = datetime.now(UTC) + timedelta(seconds=timeout_s)
 
+        await self._lifecycle.prepare_execution(node_run_id)
         attempt = await self._store.create_attempt(
             node_run_id,
             runtime_id=runtime_id or type(self._runtime).__name__,
@@ -132,8 +136,9 @@ class AttemptExecutionService:
         )
 
     async def _reconcile(self, attempt: Attempt) -> None:
-        if self._reconciler is not None:
-            await self._reconciler(attempt.model_copy(deep=True))
+        await self._lifecycle.reconcile(attempt)
+        if self._after_reconcile is not None:
+            await self._after_reconcile(attempt.model_copy(deep=True))
 
 
 __all__ = ["AttemptExecutionService", "AttemptReconciler"]
