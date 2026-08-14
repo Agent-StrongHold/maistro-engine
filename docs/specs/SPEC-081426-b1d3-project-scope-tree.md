@@ -30,7 +30,7 @@ tests: []
 source:
   - packages/maistro-core/src/maistro/projects
   - packages/maistro-core/src/maistro/workspaces
-layer: Domain
+layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
 ---
