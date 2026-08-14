@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from maistro.graph.definitions import Graph
@@ -120,13 +121,13 @@ class SqliteRunStore:
             if parent.project_id != graph.project_id and not allow_cross_project:
                 raise RunIntegrityError(
                     "child Run cannot implicitly cross Project boundaries; "
-                    "caller must authorize and request the destination Project"
+                    "caller must authorize and request the destination Project",
                 )
             if parent_node_run_id is not None:
                 parent_node_run = await self._require_node_run(parent_node_run_id)
                 if parent_node_run.run_id != parent_run_id:
                     raise RunIntegrityError(
-                        "parent_node_run_id does not belong to parent_run_id"
+                        "parent_node_run_id does not belong to parent_run_id",
                     )
 
         run = Run(
@@ -169,7 +170,7 @@ class SqliteRunStore:
         run_id: str,
         target: RunStatus,
         *,
-        at: Any | None = None,
+        at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
     ) -> Run:
@@ -191,7 +192,7 @@ class SqliteRunStore:
         graph = run.graph.materialize()
         if not any(node.node_id == node_id for node in graph.nodes):
             raise RunIntegrityError(
-                f"node_id {node_id!r} is not present in the Run Graph snapshot"
+                f"node_id {node_id!r} is not present in the Run Graph snapshot",
             )
 
         row = await self._fetchone(
@@ -237,7 +238,7 @@ class SqliteRunStore:
         node_run_id: str,
         target: RunStatus,
         *,
-        at: Any | None = None,
+        at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
     ) -> NodeRun:
@@ -264,7 +265,7 @@ class SqliteRunStore:
         *,
         runtime_id: str = "python",
         executor_id: str = "",
-        deadline_at: Any | None = None,
+        deadline_at: datetime | None = None,
         resume_checkpoint_id: str | None = None,
     ) -> Attempt:
         node_run = await self._require_node_run(node_run_id)
@@ -281,7 +282,7 @@ class SqliteRunStore:
             )
             if active is not None:
                 raise ActiveAttemptExists(
-                    f"NodeRun {node_run_id!r} already has an active Attempt"
+                    f"NodeRun {node_run_id!r} already has an active Attempt",
                 )
 
             row = await self._fetchone(
@@ -325,7 +326,7 @@ class SqliteRunStore:
             )
             if active is not None:
                 raise ActiveAttemptExists(
-                    f"NodeRun {node_run_id!r} already has an active Attempt"
+                    f"NodeRun {node_run_id!r} already has an active Attempt",
                 ) from exc
             raise RunIntegrityError("Attempt persistence integrity failure") from exc
         except Exception:
@@ -354,7 +355,7 @@ class SqliteRunStore:
         attempt_id: str,
         target: AttemptStatus,
         *,
-        at: Any | None = None,
+        at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
         metrics: dict[str, object] | None = None,
@@ -381,7 +382,7 @@ class SqliteRunStore:
         project = await self._project_store.get(graph.project_id)
         if project is None:
             raise RunIntegrityError(
-                f"Graph Project {graph.project_id!r} does not exist in canonical Project scope"
+                f"Graph Project {graph.project_id!r} does not exist in canonical Project scope",
             )
         if project.workspace_id != graph.workspace_id:
             raise RunIntegrityError("Graph Project does not belong to the Graph Workspace")
