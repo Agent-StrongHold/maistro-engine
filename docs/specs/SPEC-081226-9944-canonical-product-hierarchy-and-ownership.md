@@ -1,3 +1,37 @@
+---
+id: SPEC-081226-9944
+title: Canonical Product Hierarchy and Ownership
+repo: maistro-engine
+kind: spec
+status: Accepted
+created: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+substrate:
+  - maistro-engine#ADR-081226-9944
+implements:
+  - maistro-engine#ADR-081226-9944
+related: []
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests:
+  - packages/maistro-core/tests/workspaces/test_membership.py
+  - packages/maistro-core/tests/workspaces/test_store.py
+source:
+  - packages/maistro-core/src/maistro/workspaces
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # SPEC-081226-9944: Canonical Product Hierarchy and Ownership
 
 - **Status:** Active
