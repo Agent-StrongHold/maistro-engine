@@ -1,5 +1,4 @@
-"""Event bus for cross-service communication, plus the durable event log,
-trigger store, and idempotent processing loop (ADR-086)."""
+"""Canonical events, legacy event bus, durable log, and trigger processing."""
 
 from maistro.events.bus import (
     ActionHandler,
@@ -16,6 +15,12 @@ from maistro.events.durable_log import (
     LoggedEvent,
     SqliteEventLog,
     append_from_bus_event,
+)
+from maistro.events.envelope import (
+    EventEnvelope,
+    EventStore,
+    InMemoryEventStore,
+    SqliteEventStore,
 )
 from maistro.events.invocations import (
     MAX_ATTEMPTS,
@@ -47,18 +52,22 @@ __all__ = [
     "Event",
     "EventBus",
     "EventCategory",
+    "EventEnvelope",
     "EventLogStore",
+    "EventStore",
     "HTTPHandlerCaller",
     "HandlerCallError",
     "HandlerCaller",
     "HandlerInvocation",
     "InMemoryEventLog",
+    "InMemoryEventStore",
     "InMemoryInvocationStore",
     "InMemoryTriggerStore",
     "InvocationStatus",
     "InvocationStore",
     "LoggedEvent",
     "SqliteEventLog",
+    "SqliteEventStore",
     "SqliteInvocationStore",
     "SqliteTriggerStore",
     "Trigger",
