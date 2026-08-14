@@ -29,6 +29,33 @@ def _state_hash(state: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _require_text(name: str, value: str) -> None:
+    if not value.strip():
+        raise ValueError(f"{name} must be a non-empty string")
+
+
+def _validate_versions(schema_version: int, event_sequence: int | None) -> None:
+    if schema_version < 1:
+        raise ValueError("schema_version must be positive")
+    if event_sequence is not None and event_sequence < 1:
+        raise ValueError("event_sequence must be positive when present")
+
+
+def _checkpoint_state_hash(
+    state: dict[str, Any],
+    state_locator: str,
+    supplied_hash: str,
+) -> str:
+    has_locator = bool(state_locator.strip())
+    if not state and not has_locator:
+        raise ValueError("checkpoint requires inline state or state_locator")
+    if supplied_hash:
+        return supplied_hash
+    if state:
+        return _state_hash(state)
+    raise ValueError("external checkpoint state requires state_hash")
+
+
 class CheckpointError(RuntimeError):
     """Base error for canonical checkpoint persistence and resume."""
 
@@ -79,24 +106,17 @@ class Checkpoint:
     provenance: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if not self.workspace_id.strip():
-            raise ValueError("workspace_id must be a non-empty string")
-        if not self.project_id.strip():
-            raise ValueError("project_id must be a non-empty string")
-        if not self.run_id.strip():
-            raise ValueError("run_id must be a non-empty string")
-        if not self.executable_version.strip():
-            raise ValueError("executable_version must be a non-empty string")
-        if self.schema_version < 1:
-            raise ValueError("schema_version must be positive")
-        if self.event_sequence is not None and self.event_sequence < 1:
-            raise ValueError("event_sequence must be positive when present")
-        if not self.state and not self.state_locator.strip():
-            raise ValueError("checkpoint requires inline state or state_locator")
-        if self.state and not self.state_hash:
-            object.__setattr__(self, "state_hash", _state_hash(self.state))
-        if self.state_locator and not self.state_hash:
-            raise ValueError("external checkpoint state requires state_hash")
+        _require_text("workspace_id", self.workspace_id)
+        _require_text("project_id", self.project_id)
+        _require_text("run_id", self.run_id)
+        _require_text("executable_version", self.executable_version)
+        _validate_versions(self.schema_version, self.event_sequence)
+        resolved_hash = _checkpoint_state_hash(
+            self.state,
+            self.state_locator,
+            self.state_hash,
+        )
+        object.__setattr__(self, "state_hash", resolved_hash)
 
     @property
     def ref(self) -> CheckpointRef:
