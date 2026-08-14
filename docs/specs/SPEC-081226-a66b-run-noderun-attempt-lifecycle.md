@@ -167,6 +167,10 @@ A Schedule trigger MUST create/resume a Run. Scheduler records MAY reference Run
 
 Existing durable Run/Node records MAY remain during migration but MUST become persistence projections/adapters of canonical Run/NodeRun semantics rather than separate authoritative definitions.
 
+### R16. Canonical execution service boundary
+
+Domain and product callers SHOULD enter universal execution through a canonical Run service that creates Run/NodeRun identity and routes physical work through Attempt -> ExecutionRuntime. That service MUST NOT own graph traversal, authorization, Provider selection, retry eligibility, scheduling, or Run-completion policy. Retrying physical work MUST be an explicit operation on the existing NodeRun rather than implicit creation of another logical NodeRun.
+
 ## Acceptance Criteria
 
 1. Unit tests cover every allowed Run transition and representative illegal/terminal transitions.
@@ -186,6 +190,7 @@ Existing durable Run/Node records MAY remain during migration but MUST become pe
 15. GraphRun/durable adapters preserve conditional traversal, fanout/fanin, retries, and pause/resume while using canonical IDs.
 16. Persisted Run/NodeRun/Attempt history reloads with identical logical/physical relationships.
 17. Migrated execution entry paths cannot complete workload without a canonical Run.
+18. The canonical execution service can execute `Graph -> Run -> NodeRun -> Attempt -> ExecutionRuntime` for one Node without importing graph traversal, authorization, Binding/Provider selection, or product-specific lifecycle code.
 
 ## Migration order
 
