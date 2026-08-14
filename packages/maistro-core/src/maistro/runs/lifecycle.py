@@ -15,9 +15,7 @@ from maistro.runs.model import (
 
 RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
     RunStatus.CREATED: frozenset({RunStatus.QUEUED, RunStatus.CANCELLED}),
-    RunStatus.QUEUED: frozenset(
-        {RunStatus.RUNNING, RunStatus.CANCELLED, RunStatus.TIMED_OUT}
-    ),
+    RunStatus.QUEUED: frozenset({RunStatus.RUNNING, RunStatus.CANCELLED, RunStatus.TIMED_OUT}),
     RunStatus.RUNNING: frozenset(
         {
             RunStatus.WAITING,
@@ -37,9 +35,7 @@ RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
             RunStatus.TIMED_OUT,
         }
     ),
-    RunStatus.PAUSED: frozenset(
-        {RunStatus.QUEUED, RunStatus.CANCELLED, RunStatus.TIMED_OUT}
-    ),
+    RunStatus.PAUSED: frozenset({RunStatus.QUEUED, RunStatus.CANCELLED, RunStatus.TIMED_OUT}),
     RunStatus.COMPLETED: frozenset(),
     RunStatus.FAILED: frozenset(),
     RunStatus.CANCELLED: frozenset(),
@@ -108,9 +104,7 @@ def transition_run(
     result: object | None = None,
     error: str | None = None,
 ) -> Run:
-    return Run.model_validate(
-        _logical_values(run, target, at=at, result=result, error=error)
-    )
+    return Run.model_validate(_logical_values(run, target, at=at, result=result, error=error))
 
 
 def transition_node_run(
