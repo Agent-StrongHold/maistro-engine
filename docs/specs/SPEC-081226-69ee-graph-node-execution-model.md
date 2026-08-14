@@ -1,3 +1,40 @@
+---
+id: SPEC-081226-69ee
+title: Graph and Node Execution Model
+repo: maistro-engine
+kind: spec
+status: AC Defined
+created: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+  - status: AC Defined
+    date: 2026-08-12
+substrate:
+  - maistro-engine#ADR-081226-69ee
+implements:
+  - maistro-engine#ADR-081226-69ee
+related:
+  - maistro-engine#ADR-081226-a66b
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests:
+  - packages/maistro-core/tests/test_graph_compat.py
+  - packages/maistro-core/tests/test_node_type_registry.py
+source:
+  - packages/maistro-core/src/maistro/graph
+layer: Orchestration
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # SPEC-081226-69ee: Graph and Node Execution Model
 
 - **Status:** Active
