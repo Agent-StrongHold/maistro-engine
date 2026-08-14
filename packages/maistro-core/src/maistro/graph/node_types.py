@@ -15,8 +15,10 @@ class OpenNodeParameters(BaseModel):
 
 
 def _is_valid_identifier(value: str) -> bool:
-    return bool(value) and value == value.strip() and not any(
-        character.isspace() for character in value
+    return (
+        bool(value)
+        and value == value.strip()
+        and not any(character.isspace() for character in value)
     )
 
 
