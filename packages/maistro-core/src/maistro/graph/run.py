@@ -9,12 +9,7 @@ from typing import Any
 
 import structlog
 
-from maistro.graph.conditions import (
-    compare_condition_values,
-    evaluate_predicate,
-    MISSING as _MISSING,
-    parse_condition_rhs,
-)
+import maistro.graph.conditions as graph_conditions
 from maistro.graph.events import (
     GraphEvent,
     cycle_started,
@@ -46,6 +41,7 @@ from maistro.graph.types import (
 from maistro.resilience.backoff import BackoffConfig
 
 logger = structlog.get_logger()
+_MISSING = graph_conditions.MISSING
 
 
 def _get_temperature(
@@ -76,12 +72,12 @@ def _resolve_path(
 
 def _parse_rhs(value: str) -> object:
     """Compatibility wrapper for the shared graph predicate literal parser."""
-    return parse_condition_rhs(value)
+    return graph_conditions.parse_condition_rhs(value)
 
 
 def _compare(lhs: object, operator: str, rhs: object) -> bool:
     """Compatibility wrapper for the shared graph predicate comparator."""
-    return compare_condition_values(lhs, operator, rhs)
+    return graph_conditions.compare_condition_values(lhs, operator, rhs)
 
 
 def evaluate_condition(
@@ -90,7 +86,7 @@ def evaluate_condition(
     code: CodeOutput | None,
     review: ReviewOutput | None,
 ) -> bool:
-    return evaluate_predicate(
+    return graph_conditions.evaluate_predicate(
         condition,
         lambda path: _resolve_path(path, plan, code, review),
     )
