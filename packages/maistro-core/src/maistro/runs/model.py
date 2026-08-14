@@ -62,6 +62,7 @@ class GraphSnapshot(BaseModel):
 
     graph_id: str
     workspace_id: str
+    project_id: str
     content_hash: str
     definition_json: str
 
@@ -70,6 +71,7 @@ class GraphSnapshot(BaseModel):
         return cls(
             graph_id=graph.graph_id,
             workspace_id=graph.workspace_id,
+            project_id=graph.project_id,
             content_hash=graph.content_hash,
             definition_json=graph.model_dump_json(),
         )
@@ -84,18 +86,21 @@ class GraphSnapshot(BaseModel):
             raise ValueError("graph snapshot graph_id does not match definition")
         if graph.workspace_id != self.workspace_id:
             raise ValueError("graph snapshot workspace_id does not match definition")
+        if graph.project_id != self.project_id:
+            raise ValueError("graph snapshot project_id does not match definition")
         if graph.content_hash != self.content_hash:
             raise ValueError("graph snapshot content_hash does not match definition")
         return self
 
 
 class Run(BaseModel):
-    """One logical execution of a stable Workspace-owned Graph snapshot."""
+    """One logical execution of a stable Graph snapshot in one Project scope."""
 
     model_config = ConfigDict(extra="forbid")
 
     run_id: str = Field(default_factory=_id)
     workspace_id: str
+    project_id: str
     graph: GraphSnapshot
     status: RunStatus = RunStatus.CREATED
     parent_run_id: str | None = None
@@ -114,8 +119,12 @@ class Run(BaseModel):
     def _validate_run(self) -> Run:
         if not self.workspace_id.strip():
             raise ValueError("workspace_id must be a non-empty string")
+        if not self.project_id.strip():
+            raise ValueError("project_id must be a non-empty string")
         if self.graph.workspace_id != self.workspace_id:
             raise ValueError("Run and Graph snapshot must belong to the same Workspace")
+        if self.graph.project_id != self.project_id:
+            raise ValueError("Run and Graph snapshot must belong to the same Project")
         if self.parent_run_id == self.run_id:
             raise ValueError("Run cannot be its own parent")
         if self.status in TERMINAL_RUN_STATUSES and self.finished_at is None:

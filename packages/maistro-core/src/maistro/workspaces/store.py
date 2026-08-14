@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from maistro.projects.scope_store import InMemoryProjectScopeStore, ProjectScopeStore
 from maistro.workspaces.model import (
     Workspace,
     WorkspaceAccessDenied,
@@ -51,11 +52,12 @@ class WorkspaceStore(Protocol):
 
 
 class InMemoryWorkspaceStore:
-    """Reference store with Workspace identity separated from membership."""
+    """Reference Workspace store that atomically provisions the Root Project."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, project_store: ProjectScopeStore | None = None) -> None:
         self._workspaces: dict[str, Workspace] = {}
         self._memberships: dict[tuple[str, str], WorkspaceMembership] = {}
+        self.project_store: ProjectScopeStore = project_store or InMemoryProjectScopeStore()
 
     async def create(
         self,
@@ -73,6 +75,12 @@ class InMemoryWorkspaceStore:
         )
         self._workspaces[workspace.workspace_id] = workspace
         self._memberships[(workspace.workspace_id, creator_user_id)] = owner
+        try:
+            await self.project_store.create_root(workspace.workspace_id)
+        except Exception:
+            del self._workspaces[workspace.workspace_id]
+            del self._memberships[(workspace.workspace_id, creator_user_id)]
+            raise
         return workspace.model_copy(deep=True)
 
     async def get(self, workspace_id: str) -> Workspace | None:
@@ -92,6 +100,10 @@ class InMemoryWorkspaceStore:
         del self._workspaces[workspace_id]
         for key in [key for key in self._memberships if key[0] == workspace_id]:
             del self._memberships[key]
+
+        purge = getattr(self.project_store, "purge_workspace", None)
+        if purge is not None:
+            purge(workspace_id)
 
     async def list_for_user(self, user_id: str) -> list[Workspace]:
         workspace_ids = {

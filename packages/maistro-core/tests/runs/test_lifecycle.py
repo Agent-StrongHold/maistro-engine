@@ -23,6 +23,7 @@ def _graph() -> Graph:
     return Graph(
         graph_id="graph-1",
         workspace_id="workspace-1",
+        project_id="project-1",
         name="One node",
         nodes=[Node(node_id="node-1", node_type="agent")],
     )
@@ -37,19 +38,32 @@ def test_graph_snapshot_is_stable_after_mutable_graph_changes() -> None:
     materialized = snapshot.materialize()
     assert materialized.nodes[0].parameters == {}
     assert snapshot.content_hash != graph.content_hash
+    assert snapshot.project_id == "project-1"
 
 
-def test_run_requires_graph_snapshot_from_same_workspace() -> None:
+def test_run_requires_graph_snapshot_from_same_workspace_and_project() -> None:
     snapshot = GraphSnapshot.from_graph(_graph())
 
     with pytest.raises(ValueError, match="same Workspace"):
-        Run(workspace_id="workspace-2", graph=snapshot)
+        Run(
+            workspace_id="workspace-2",
+            project_id="project-1",
+            graph=snapshot,
+        )
+
+    with pytest.raises(ValueError, match="same Project"):
+        Run(
+            workspace_id="workspace-1",
+            project_id="project-2",
+            graph=snapshot,
+        )
 
 
 def test_run_transition_sets_start_and_finish_timestamps() -> None:
     created_at = datetime(2026, 8, 13, 12, tzinfo=UTC)
     run = Run(
         workspace_id="workspace-1",
+        project_id="project-1",
         graph=GraphSnapshot.from_graph(_graph()),
         created_at=created_at,
         updated_at=created_at,
@@ -68,6 +82,7 @@ def test_run_transition_sets_start_and_finish_timestamps() -> None:
     assert running.started_at == created_at + timedelta(seconds=2)
     assert completed.finished_at == created_at + timedelta(seconds=3)
     assert completed.result == {"ok": True}
+    assert completed.project_id == "project-1"
 
     with pytest.raises(InvalidLifecycleTransition, match="completed -> running"):
         transition_run(completed, RunStatus.RUNNING)

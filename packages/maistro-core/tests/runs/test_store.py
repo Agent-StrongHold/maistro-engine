@@ -12,10 +12,15 @@ from maistro.runs import (
 )
 
 
-def _graph(*, workspace_id: str = "workspace-1") -> Graph:
+def _graph(
+    *,
+    workspace_id: str = "workspace-1",
+    project_id: str = "project-1",
+) -> Graph:
     return Graph(
-        graph_id=f"graph-{workspace_id}",
+        graph_id=f"graph-{workspace_id}-{project_id}",
         workspace_id=workspace_id,
+        project_id=project_id,
         name="Pipeline",
         nodes=[
             Node(node_id="first", node_type="agent"),
@@ -43,7 +48,10 @@ async def test_retry_creates_new_attempt_under_same_node_run_and_run() -> None:
 
     assert second.node_run_id == node_run.node_run_id
     assert second.ordinal == 2
-    assert (await store.get_run(run.run_id)).run_id == run.run_id  # type: ignore[union-attr]
+    stored = await store.get_run(run.run_id)
+    assert stored is not None
+    assert stored.run_id == run.run_id
+    assert stored.project_id == "project-1"
 
 
 @pytest.mark.asyncio
@@ -80,7 +88,7 @@ async def test_only_one_active_attempt_per_node_run() -> None:
 
 
 @pytest.mark.asyncio
-async def test_child_run_requires_explicit_parent_correlation_and_same_workspace() -> None:
+async def test_child_run_same_project_keeps_parent_correlation() -> None:
     store = InMemoryRunStore()
     parent = await store.create_run(_graph())
     parent_node = await store.create_node_run(parent.run_id, node_id="first")
@@ -93,11 +101,33 @@ async def test_child_run_requires_explicit_parent_correlation_and_same_workspace
 
     assert child.parent_run_id == parent.run_id
     assert child.parent_node_run_id == parent_node.node_run_id
+    assert child.project_id == parent.project_id
+
+
+@pytest.mark.asyncio
+async def test_child_run_cross_project_is_explicit_but_same_workspace_only() -> None:
+    store = InMemoryRunStore()
+    parent = await store.create_run(_graph(project_id="project-parent"))
+
+    with pytest.raises(RunIntegrityError, match="implicitly cross Project"):
+        await store.create_run(
+            _graph(project_id="project-publishing"),
+            parent_run_id=parent.run_id,
+        )
+
+    child = await store.create_run(
+        _graph(project_id="project-publishing"),
+        parent_run_id=parent.run_id,
+        allow_cross_project=True,
+    )
+    assert child.workspace_id == parent.workspace_id
+    assert child.project_id == "project-publishing"
 
     with pytest.raises(RunIntegrityError, match="cross Workspace"):
         await store.create_run(
-            _graph(workspace_id="workspace-2"),
+            _graph(workspace_id="workspace-2", project_id="project-2"),
             parent_run_id=parent.run_id,
+            allow_cross_project=True,
         )
 
 

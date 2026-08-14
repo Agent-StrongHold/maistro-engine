@@ -57,10 +57,11 @@ class Edge(BaseModel):
 
 
 class Graph(BaseModel):
-    """Canonical mutable Workspace-owned composition of Nodes and Edges."""
+    """Canonical mutable composition filed in exactly one Workspace Project."""
 
     graph_id: str = Field(default_factory=_id)
     workspace_id: str
+    project_id: str
     name: str
     description: str = ""
     nodes: list[Node] = Field(default_factory=list)
@@ -72,6 +73,8 @@ class Graph(BaseModel):
     def _validate_graph(self) -> Graph:
         if not self.workspace_id.strip():
             raise ValueError("workspace_id must be a non-empty string")
+        if not self.project_id.strip():
+            raise ValueError("project_id must be a non-empty string")
         node_ids = {node.node_id for node in self.nodes}
         if len(node_ids) != len(self.nodes):
             raise ValueError("node_id values must be unique within a Graph")
@@ -83,7 +86,10 @@ class Graph(BaseModel):
         return self
 
     def _snapshot_content(self) -> dict[str, Any]:
-        return self.model_dump(exclude={"graph_id", "workspace_id"}, mode="json")
+        return self.model_dump(
+            exclude={"graph_id", "workspace_id", "project_id"},
+            mode="json",
+        )
 
     @property
     def content_hash(self) -> str:
@@ -148,7 +154,7 @@ class NodeTemplate(BaseModel):
 
 
 class GraphTemplate(BaseModel):
-    """Versioned reusable Graph topology snapshot."""
+    """Versioned Workspace-wide reusable Graph topology snapshot."""
 
     template_id: str = Field(default_factory=_id)
     workspace_id: str
@@ -174,7 +180,13 @@ class GraphTemplate(BaseModel):
     def content_hash(self) -> str:
         return _content_hash(self._reusable_content())
 
-    def instantiate(self, *, graph_id: str | None = None, name: str | None = None) -> Graph:
+    def instantiate(
+        self,
+        *,
+        project_id: str,
+        graph_id: str | None = None,
+        name: str | None = None,
+    ) -> Graph:
         node_id_map = {node.node_id: _id() for node in self.nodes}
         nodes = [
             node.model_copy(deep=True, update={"node_id": node_id_map[node.node_id]})
@@ -194,6 +206,7 @@ class GraphTemplate(BaseModel):
         return Graph(
             graph_id=graph_id or _id(),
             workspace_id=self.workspace_id,
+            project_id=project_id,
             name=name if name is not None else self.name,
             description=self.description,
             nodes=nodes,

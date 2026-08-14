@@ -1,14 +1,12 @@
 """Live Persona domain model.
 
-`PersonaTemplate` remains the reusable authoring/template definition.  This
-module defines the live, Workspace-owned product context described by
-ADR-081226-e626.  A Persona selects surfaces, template catalogs, defaults and
-availability ceilings; it never owns execution lifecycle state.
+Persona is the Workspace's taste, style, purpose, and behavioral configuration.
+It is not an actor, ownership boundary, execution lifecycle, or authorization
+layer. Security authority is resolved from Principal/Workspace/Project scopes.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
@@ -17,12 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PersonaSurface(StrEnum):
-    """Well-known product surfaces.
-
-    Persona surface values are intentionally stored as strings so specialized
-    packages can register additional surfaces without extending this enum.  The
-    enum is a convenience vocabulary for the surfaces core MAIstro knows about.
-    """
+    """Well-known product surfaces a Persona may configure/expose."""
 
     UI = "ui"
     API = "api"
@@ -31,12 +24,7 @@ class PersonaSurface(StrEnum):
 
 
 class Persona(BaseModel):
-    """A live product context owned by exactly one Workspace.
-
-    Catalog and availability fields contain references only.  Persona does not
-    copy template content, credentials, provider implementations, or Run state.
-    Defaults apply when new objects are created and are not retroactive.
-    """
+    """The single live taste/style/purpose context for a Workspace."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -47,37 +35,25 @@ class Persona(BaseModel):
     description: str = ""
     theme: str | None = None
 
-    # Surface names are free strings by design.  PersonaSurface provides the
-    # standard vocabulary while product packages remain free to add their own.
-    allowed_surfaces: set[str] = Field(default_factory=set)
+    taste: dict[str, Any] = Field(default_factory=dict)
+    style: dict[str, Any] = Field(default_factory=dict)
+    style_guidance: str = ""
 
-    # Catalog references.  The referenced template objects remain independently
-    # versioned and owned according to the template/provenance architecture.
+    surfaces: set[str] = Field(default_factory=set)
+
     node_template_ids: list[str] = Field(default_factory=list)
     graph_template_ids: list[str] = Field(default_factory=list)
 
-    # Permission names represent a ceiling below Workspace authority.  An empty
-    # ceiling grants nothing; callers must intersect with parent authority.
-    permission_ceiling: set[str] = Field(default_factory=set)
-    policy_defaults: dict[str, Any] = Field(default_factory=dict)
-
-    # Availability references, never embedded credentials or provider objects.
-    available_capability_ids: list[str] = Field(default_factory=list)
-    available_binding_ids: list[str] = Field(default_factory=list)
-
-    # Defaults for future object creation.  Existing Nodes, Graphs and Runs are
-    # not mutated when these values change.
+    preferred_capability_ids: list[str] = Field(default_factory=list)
+    preferred_binding_ids: list[str] = Field(default_factory=list)
     default_model_id: str | None = None
     default_provider_id: str | None = None
-    defaults: dict[str, Any] = Field(default_factory=dict)
 
-    # Optional provenance when this Persona was adopted/created from an
-    # existing PersonaTemplate or other versioned template source.
+    defaults: dict[str, Any] = Field(default_factory=dict)
+    behavior_defaults: dict[str, Any] = Field(default_factory=dict)
+
     source_template_id: str | None = None
     source_template_version: str | None = None
-
-    # Product/domain packages may attach namespaced metadata without growing the
-    # canonical model for every specialized UX concern.
     extension_metadata: dict[str, Any] = Field(default_factory=dict)
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -90,25 +66,17 @@ class Persona(BaseModel):
             raise ValueError("must be a non-empty string")
         return value
 
-    @field_validator("allowed_surfaces", "permission_ceiling")
+    @field_validator("surfaces")
     @classmethod
-    def _require_non_blank_names(cls, values: set[str]) -> set[str]:
+    def _require_non_blank_surfaces(cls, values: set[str]) -> set[str]:
         if any(not value.strip() for value in values):
-            raise ValueError("surface and permission names must be non-empty strings")
+            raise ValueError("surface names must be non-empty strings")
         return values
 
-    def allows_surface(self, surface: str | PersonaSurface) -> bool:
-        """Return whether this Persona exposes a named product surface."""
-        return str(surface) in self.allowed_surfaces
+    def exposes_surface(self, surface: str | PersonaSurface) -> bool:
+        """Return whether this Persona configures a named product surface."""
 
-    def effective_permissions(self, parent_permissions: Iterable[str]) -> frozenset[str]:
-        """Narrow parent authority to this Persona's permission ceiling.
-
-        This helper deliberately cannot add a permission absent from the parent
-        Workspace/User chain.  Later Graph/Node/Binding/Invocation layers apply
-        the same intersection rule to the result.
-        """
-        return frozenset(parent_permissions).intersection(self.permission_ceiling)
+        return str(surface) in self.surfaces
 
 
 __all__ = ["Persona", "PersonaSurface"]
