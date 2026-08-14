@@ -33,6 +33,18 @@ def test_workspace_membership_is_required(resolver: AuthorizationResolver) -> No
     assert decision.reason == "active workspace membership required"
 
 
+def test_suspended_workspace_membership_is_rejected(resolver: AuthorizationResolver) -> None:
+    membership = WorkspaceMembership(
+        workspace_id="ws-1",
+        principal_id="user-1",
+        grants=frozenset({"run:read"}),
+        status=MembershipStatus.SUSPENDED,
+    )
+    decision = resolver.resolve(permission="run:read", workspace_membership=membership)
+    assert decision.allowed is False
+    assert decision.effective_permissions == frozenset()
+
+
 def test_workspace_grant_is_effective_without_project_narrowing(
     resolver: AuthorizationResolver,
     workspace_member: WorkspaceMembership,
@@ -43,6 +55,31 @@ def test_workspace_grant_is_effective_without_project_narrowing(
         project_path=("root", "child"),
     )
     assert decision.allowed is True
+
+
+def test_workspace_deny_cannot_be_regranted_by_project(resolver: AuthorizationResolver) -> None:
+    membership = WorkspaceMembership(
+        workspace_id="ws-1",
+        principal_id="user-1",
+        grants=frozenset({"run:read", "run:execute"}),
+        denies=frozenset({"run:execute"}),
+    )
+    decision = resolver.resolve(
+        permission="run:execute",
+        workspace_membership=membership,
+        project_path=("root",),
+        project_memberships=(
+            ProjectMembership(
+                workspace_id="ws-1",
+                project_id="root",
+                principal_id="user-1",
+                grants=frozenset({"run:execute"}),
+            ),
+        ),
+    )
+    assert decision.allowed is False
+    assert "run:execute" in decision.denied_permissions
+    assert "run:execute" not in decision.effective_permissions
 
 
 def test_project_grants_can_narrow_but_never_widen(
@@ -130,6 +167,46 @@ def test_sibling_membership_does_not_affect_target_path(
     assert decision.allowed is True
 
 
+def test_other_principal_membership_does_not_affect_resolution(
+    resolver: AuthorizationResolver,
+    workspace_member: WorkspaceMembership,
+) -> None:
+    decision = resolver.resolve(
+        permission="run:execute",
+        workspace_membership=workspace_member,
+        project_path=("root",),
+        project_memberships=(
+            ProjectMembership(
+                workspace_id="ws-1",
+                project_id="root",
+                principal_id="user-2",
+                denies=frozenset({"run:execute"}),
+            ),
+        ),
+    )
+    assert decision.allowed is True
+
+
+def test_other_workspace_membership_does_not_affect_resolution(
+    resolver: AuthorizationResolver,
+    workspace_member: WorkspaceMembership,
+) -> None:
+    decision = resolver.resolve(
+        permission="run:execute",
+        workspace_membership=workspace_member,
+        project_path=("root",),
+        project_memberships=(
+            ProjectMembership(
+                workspace_id="ws-2",
+                project_id="root",
+                principal_id="user-1",
+                denies=frozenset({"run:execute"}),
+            ),
+        ),
+    )
+    assert decision.allowed is True
+
+
 def test_suspended_project_membership_denies_path(
     resolver: AuthorizationResolver,
     workspace_member: WorkspaceMembership,
@@ -186,6 +263,16 @@ def test_project_resource_visible_to_its_descendants_not_siblings(
         workspace_membership=workspace_member,
         project_path=("root", "project-b"),
     )
+
+
+def test_suspended_workspace_member_cannot_view_resource(resolver: AuthorizationResolver) -> None:
+    membership = WorkspaceMembership(
+        workspace_id="ws-1",
+        principal_id="user-1",
+        status=MembershipStatus.SUSPENDED,
+    )
+    scope = ResourceScope(workspace_id="ws-1", kind=ResourceScopeKind.WORKSPACE)
+    assert not resolver.can_view_resource(scope=scope, workspace_membership=membership)
 
 
 def test_policy_scope_is_workspace_isolated(
