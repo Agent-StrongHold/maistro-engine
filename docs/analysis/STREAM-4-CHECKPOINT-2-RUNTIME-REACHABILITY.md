@@ -154,20 +154,25 @@ Do not implement a new durable `TaskRecord` persistence track now. If Task remai
 
 Classification: `live compatibility queue; durability roadmap superseded by Run convergence`.
 
-## 6. Hive scheduler is reachable but its advertised execution behavior is not connected
+## 6. Hive scheduler is reachable, but its ordinary 30-second cadence does not actually fire schedules
 
-Hive starts `services.scheduler` from application lifespan. The scheduler wakes every 30 seconds, evaluates stored cron schedules, and calls `_fire_schedule()`.
+Hive starts `services.scheduler` from application lifespan and the loop wakes every 30 seconds. The scheduler is therefore reachable, but the normal cadence has a broken eligibility edge: `_last_check` is refreshed after every tick while `_should_fire()` requires at least one minute since that value. Under ordinary operation, each check sees roughly 30 seconds and returns false.
 
-`_fire_schedule()` currently:
+`_fire_schedule()` is therefore **not** regularly reached. It can become reachable only after a sufficiently long process stall, scheduling delay, or clock jump.
+
+If `_fire_schedule()` is reached, it currently:
 
 1. updates the schedule's `last_run`
 2. logs `schedule_fire`
 3. reads `mission_template_id`
 4. returns without submitting a Mission, Task, Run, Graph, or other execution object
 
-The module docstring says it "fires scheduled missions," but the implementation does not actually launch one.
+There are thus two distinct defects to preserve as migration findings, not parity requirements:
 
-This is not dead code. It is a live, reachable scheduler with a disconnected execution edge.
+1. **cadence defect:** normal scheduler ticks do not satisfy their own firing threshold;
+2. **execution-edge defect:** even a rare `_fire_schedule()` call does not launch work.
+
+The module docstring says it "fires scheduled missions," but ordinary runtime behavior does not support that claim.
 
 ### Handoff
 
@@ -179,9 +184,11 @@ not:
 
 `Schedule -> Mission lifecycle clone`
 
+Migration must fix scheduling eligibility itself as well as the execution handoff. Do not write a parity test that expects the existing 30-second `_last_check` reset behavior.
+
 Stream 7 should preserve the Hive schedule product/API surface if desired; Stream 1 / recovery ownership should define the canonical execution handoff.
 
-Classification: `reachable but behaviorally disconnected`.
+Classification: `reachable loop with broken cadence + disconnected execution edge`.
 
 ## 7. A second scheduling model exists in maistro-core
 
@@ -243,7 +250,7 @@ Parity matrix must include GraphRun routing/fan-out plus durable pause/resume/ch
 
 - Hive Workspace is a live adopted-persona/product surface and must be migrated rather than discarded.
 - Hive Mission should remain a projection, not own lifecycle.
-- Hive Schedule is live UI/API behavior but its current fire path does not execute anything.
+- Hive Schedule is live UI/API behavior, but its ordinary cadence currently fails to fire and the rare fire path still does not execute anything.
 
 ## Deletion / replacement status after Checkpoint 2
 
