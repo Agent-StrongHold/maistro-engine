@@ -1,5 +1,6 @@
 """Canonical logical and physical execution lifecycle."""
 
+from maistro.runs.execution import AttemptExecutionService, AttemptReconciler
 from maistro.runs.lifecycle import (
     ATTEMPT_TRANSITIONS,
     RUN_TRANSITIONS,
@@ -35,7 +36,9 @@ __all__ = [
     "TERMINAL_RUN_STATUSES",
     "ActiveAttemptExists",
     "Attempt",
+    "AttemptExecutionService",
     "AttemptNotFound",
+    "AttemptReconciler",
     "AttemptStatus",
     "GraphSnapshot",
     "InMemoryRunStore",
