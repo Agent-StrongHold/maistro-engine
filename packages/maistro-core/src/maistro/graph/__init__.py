@@ -1,8 +1,23 @@
 from __future__ import annotations
 
+from maistro.graph.definitions import (
+    Edge,
+    Graph,
+    GraphTemplate,
+    Node,
+    NodeTemplate,
+    TemplateProvenance,
+)
 from maistro.graph.executor import run_graph
 from maistro.graph.harness_executor import HarnessExecutionError, HarnessNodeExecutor
 from maistro.graph.node import NodeExecutor
+from maistro.graph.node_types import (
+    DEFAULT_NODE_TYPES,
+    NodeTypeRegistry,
+    NodeTypeSpec,
+    OpenNodeParameters,
+    build_default_node_type_registry,
+)
 from maistro.graph.optimizer import GraphOptimizer
 from maistro.graph.types import (
     AgentRole,
@@ -30,24 +45,33 @@ from maistro.graph.types import (
 )
 
 __all__ = [
+    "DEFAULT_NODE_TYPES",
     "AgentRole",
     "CodeOutput",
     "ConductorOutput",
     "ConductorRoutingOutput",
+    "Edge",
     "ExecutionMode",
+    "Graph",
     "GraphBlackboard",
     "GraphConfig",
     "GraphEdge",
     "GraphNodeResult",
     "GraphOptimizer",
     "GraphTask",
+    "GraphTemplate",
     "HarnessExecutionError",
     "HarnessNodeExecutor",
     "HarnessOutput",
     "HyperagentOutput",
+    "Node",
     "NodeConfig",
     "NodeExecutor",
     "NodePerformanceMetrics",
+    "NodeTemplate",
+    "NodeTypeRegistry",
+    "NodeTypeSpec",
+    "OpenNodeParameters",
     "OptimizationSignal",
     "PMRoleOutput",
     "PlanOutput",
@@ -55,6 +79,8 @@ __all__ = [
     "ScoutContext",
     "ScoutOutput",
     "SubTask",
+    "TemplateProvenance",
     "ToolEvaluation",
+    "build_default_node_type_registry",
     "run_graph",
 ]
