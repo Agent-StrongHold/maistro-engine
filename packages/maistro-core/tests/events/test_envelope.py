@@ -66,7 +66,9 @@ def test_envelope_preserves_canonical_correlation_fields() -> None:
 
 
 def test_stream_scope_prefers_run_then_workspace_then_system() -> None:
-    assert EventEnvelope(type="x", run_id="r1", workspace_id="w1").stream_id == "run:r1"
+    assert (
+        EventEnvelope(type="x", run_id="r1", workspace_id="w1").stream_id == "run:r1"
+    )
     assert EventEnvelope(type="x", workspace_id="w1").stream_id == "workspace:w1"
     assert EventEnvelope(type="x").stream_id == "system"
 
@@ -89,12 +91,16 @@ class TestEventStoreContract:
         assert run_a_2.sequence == 2
 
     async def test_append_is_idempotent_by_event_id(self, store: EventStore) -> None:
-        event = EventEnvelope(type="node.completed", run_id="r1", event_id="stable-event")
+        event = EventEnvelope(
+            type="node.completed", run_id="r1", event_id="stable-event"
+        )
         first = await store.append(event)
         duplicate = await store.append(event)
 
         assert duplicate == first
-        assert [e.event_id for e in await store.list_stream("run:r1")] == ["stable-event"]
+        assert [e.event_id for e in await store.list_stream("run:r1")] == [
+            "stable-event"
+        ]
 
     async def test_store_rejects_caller_assigned_sequence(self, store: EventStore) -> None:
         event = EventEnvelope(type="x", run_id="r1", sequence=99)
@@ -123,7 +129,9 @@ class TestEventStoreContract:
         assert [event.type for event in page] == ["event.2", "event.3"]
         assert await store.list_stream("run:r1", limit=0) == []
 
-    async def test_concurrent_appends_do_not_duplicate_sequences(self, store: EventStore) -> None:
+    async def test_concurrent_appends_do_not_duplicate_sequences(
+        self, store: EventStore
+    ) -> None:
         persisted = await asyncio.gather(
             *(
                 store.append(EventEnvelope(type="node.progress", run_id="r1"))
@@ -131,7 +139,9 @@ class TestEventStoreContract:
             )
         )
 
-        sequences = sorted(event.sequence for event in persisted if event.sequence is not None)
+        sequences = sorted(
+            event.sequence for event in persisted if event.sequence is not None
+        )
         assert sequences == list(range(1, 26))
 
     async def test_retry_attempts_share_run_history(self, store: EventStore) -> None:
