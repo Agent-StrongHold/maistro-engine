@@ -74,6 +74,9 @@ class ExecutionRuntime(Protocol):
     Implementations must not interpret graph, run, agent, or tool semantics.
     Work and context are passed opaquely to the injected ``executor`` callable.
     ``execution_id`` identifies one physical execution, normally an Attempt.
+
+    Governed by
+    ``docs/adr/ADR-081226-a66b-run-noderun-attempt-lifecycle.md``.
     """
 
     async def execute(
@@ -137,6 +140,7 @@ class PythonExecutionRuntime:
         self._event_sink = event_sink
         self._event_lock = asyncio.Lock()
         self._active: dict[str, asyncio.Task[Any]] = {}
+        self._slot_waiters: set[str] = set()
         self._slot_holders: set[str] = set()
 
         self._executions_started = 0
@@ -182,22 +186,18 @@ class PythonExecutionRuntime:
         self._active[execution_id] = task
         self._executions_started += 1
         slot_acquired = False
+        timeout_context: asyncio.Timeout | None = None
         try:
-            wait_s = await self.acquire_slot(execution_id)
-            slot_acquired = True
-            self._scheduling_wait_seconds_last = wait_s
-            self._scheduling_wait_seconds_total += wait_s
-            self._peak_concurrency = max(self._peak_concurrency, len(self._slot_holders))
-
             if timeout_s is None:
+                await self.acquire_slot(execution_id)
+                slot_acquired = True
                 result = await executor(work_item, execution_context)
             else:
-                try:
-                    async with asyncio.timeout(timeout_s):
-                        result = await executor(work_item, execution_context)
-                except TimeoutError:
-                    self._executions_timed_out += 1
-                    raise
+                timeout_context = asyncio.timeout(timeout_s)
+                async with timeout_context:
+                    await self.acquire_slot(execution_id)
+                    slot_acquired = True
+                    result = await executor(work_item, execution_context)
 
             self._executions_completed += 1
             return result
@@ -205,6 +205,10 @@ class PythonExecutionRuntime:
             self._executions_cancelled += 1
             raise
         except TimeoutError:
+            if timeout_context is not None and timeout_context.expired():
+                self._executions_timed_out += 1
+            else:
+                self._executions_failed += 1
             raise
         except Exception:
             self._executions_failed += 1
@@ -229,18 +233,28 @@ class PythonExecutionRuntime:
                 emitted_at=datetime.now(UTC),
                 event=event,
             )
-            if self._event_sink is not None:
-                await self._event_sink(envelope)
             self._events_emitted += 1
-            return envelope
+
+        if self._event_sink is not None:
+            await self._event_sink(envelope)
+        return envelope
 
     async def acquire_slot(self, execution_id: str) -> float:
-        if execution_id in self._slot_holders:
-            raise ValueError(f"execution_id already holds a slot: {execution_id}")
+        if execution_id in self._slot_holders or execution_id in self._slot_waiters:
+            raise ValueError(f"execution_id already acquiring or holds a slot: {execution_id}")
+
+        self._slot_waiters.add(execution_id)
         started = time.perf_counter()
-        await self._semaphore.acquire()
+        try:
+            await self._semaphore.acquire()
+        finally:
+            self._slot_waiters.discard(execution_id)
+
         wait_s = time.perf_counter() - started
         self._slot_holders.add(execution_id)
+        self._scheduling_wait_seconds_last = wait_s
+        self._scheduling_wait_seconds_total += wait_s
+        self._peak_concurrency = max(self._peak_concurrency, len(self._slot_holders))
         return wait_s
 
     def release_slot(self, execution_id: str) -> None:
