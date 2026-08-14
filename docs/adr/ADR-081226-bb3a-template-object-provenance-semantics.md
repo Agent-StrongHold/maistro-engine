@@ -1,3 +1,36 @@
+---
+id: ADR-081226-bb3a
+title: Template, Object and Provenance Semantics
+repo: maistro-engine
+kind: adr
+status: Accepted
+created: 2026-08-12
+accepted: 2026-08-12
+history:
+  - status: Proposed
+    date: 2026-08-12
+  - status: Accepted
+    date: 2026-08-12
+substrate: []
+implements: []
+related:
+  - maistro-engine#ADR-081226-9944
+supersedes: []
+superseded-by: []
+blocks: []
+blocked-by: []
+contracts:
+  - boundary
+  - behavioral
+tests:
+  - packages/maistro-core/tests/test_graph_definitions.py
+source:
+  - packages/maistro-core/src/maistro/graph/definitions.py
+layer: Foundation
+owners:
+  - '@BlakeMatthews-dev'
+---
+
 # ADR-081226-bb3a: Template, Object and Provenance Semantics
 
 - **Status:** Accepted
