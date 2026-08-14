@@ -1,24 +1,32 @@
 """Canonical checkpoint contract and durable persistence.
 
 Checkpoints are immutable execution snapshots scoped to one canonical Run. They
-carry opaque state plus the canonical execution identifiers needed to resume an
-Attempt without coupling persistence to the Run model implementation.
+carry opaque resumable state plus compatibility metadata and the canonical IDs
+needed to create a replacement Attempt after recovery.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import time
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from uuid import uuid4
 
+from maistro.events.envelope import EventEnvelope
+
 if TYPE_CHECKING:
     import aiosqlite
 
 CHECKPOINT_SCHEMA_VERSION = 1
 SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS = frozenset({CHECKPOINT_SCHEMA_VERSION})
+
+
+def _state_hash(state: dict[str, Any]) -> str:
+    encoded = json.dumps(state, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 class CheckpointError(RuntimeError):
@@ -30,7 +38,7 @@ class CheckpointNotFoundError(CheckpointError):
 
 
 class CheckpointVersionError(CheckpointError):
-    """A checkpoint cannot be resumed by the requested schema version set."""
+    """A checkpoint cannot be resumed by the requested compatibility set."""
 
 
 @dataclass(frozen=True)
@@ -43,17 +51,18 @@ class CheckpointRef:
 
 @dataclass(frozen=True)
 class Checkpoint:
-    """Immutable checkpoint snapshot for one canonical Run.
+    """Immutable resumability fact for one canonical Run.
 
-    ``sequence`` is assigned by the store and orders checkpoints within a Run.
-    ``event_sequence`` is optional and records the last canonical event known to
-    be reflected in ``state`` so recovery can replay later events deterministically.
+    State may be stored inline, referenced through ``state_locator``, or both. A
+    content hash is always retained. ``executable_version`` identifies the runtime
+    or executable contract that must be compatible before resume.
     """
 
     workspace_id: str
     project_id: str
     run_id: str
-    state: dict[str, Any]
+    executable_version: str
+    state: dict[str, Any] = field(default_factory=dict)
     checkpoint_id: str = field(default_factory=lambda: uuid4().hex)
     schema_version: int = CHECKPOINT_SCHEMA_VERSION
     sequence: int | None = None
@@ -62,6 +71,10 @@ class Checkpoint:
     attempt_id: str = ""
     previous_checkpoint_id: str = ""
     reason: str = ""
+    state_locator: str = ""
+    state_hash: str = ""
+    graph_id: str = ""
+    graph_snapshot_hash: str = ""
     created_at: float = field(default_factory=time.time)
     provenance: dict[str, Any] = field(default_factory=dict)
 
@@ -72,10 +85,18 @@ class Checkpoint:
             raise ValueError("project_id must be a non-empty string")
         if not self.run_id.strip():
             raise ValueError("run_id must be a non-empty string")
+        if not self.executable_version.strip():
+            raise ValueError("executable_version must be a non-empty string")
         if self.schema_version < 1:
             raise ValueError("schema_version must be positive")
         if self.event_sequence is not None and self.event_sequence < 1:
             raise ValueError("event_sequence must be positive when present")
+        if not self.state and not self.state_locator.strip():
+            raise ValueError("checkpoint requires inline state or state_locator")
+        if self.state and not self.state_hash:
+            object.__setattr__(self, "state_hash", _state_hash(self.state))
+        if self.state_locator and not self.state_hash:
+            raise ValueError("external checkpoint state requires state_hash")
 
     @property
     def ref(self) -> CheckpointRef:
@@ -84,6 +105,33 @@ class Checkpoint:
             checkpoint_id=self.checkpoint_id,
             schema_version=self.schema_version,
         )
+
+
+def checkpoint_created_event(checkpoint: Checkpoint) -> EventEnvelope:
+    """Project a persisted checkpoint into its correlated canonical Event."""
+    return EventEnvelope(
+        type="checkpoint.created",
+        workspace_id=checkpoint.workspace_id,
+        project_id=checkpoint.project_id,
+        run_id=checkpoint.run_id,
+        node_run_id=checkpoint.node_run_id,
+        attempt_id=checkpoint.attempt_id,
+        source="checkpoint",
+        provenance=dict(checkpoint.provenance),
+        payload={
+            "checkpoint_id": checkpoint.checkpoint_id,
+            "checkpoint_sequence": checkpoint.sequence,
+            "schema_version": checkpoint.schema_version,
+            "event_sequence": checkpoint.event_sequence,
+            "executable_version": checkpoint.executable_version,
+            "state_locator": checkpoint.state_locator,
+            "state_hash": checkpoint.state_hash,
+            "graph_id": checkpoint.graph_id,
+            "graph_snapshot_hash": checkpoint.graph_snapshot_hash,
+            "previous_checkpoint_id": checkpoint.previous_checkpoint_id,
+            "reason": checkpoint.reason,
+        },
+    )
 
 
 @runtime_checkable
@@ -118,13 +166,9 @@ async def resolve_checkpoint(
     ref: CheckpointRef,
     *,
     supported_schema_versions: frozenset[int] = SUPPORTED_CHECKPOINT_SCHEMA_VERSIONS,
+    supported_executable_versions: frozenset[str] | None = None,
 ) -> Checkpoint:
-    """Resolve and validate a resume reference.
-
-    The reference schema version must be supported and must match the durable
-    checkpoint. This prevents a caller from silently interpreting state with the
-    wrong schema after deployment or migration.
-    """
+    """Resolve a resume reference and reject incompatible state/executable versions."""
     if ref.schema_version not in supported_schema_versions:
         raise CheckpointVersionError(
             f"checkpoint schema version {ref.schema_version} is not supported"
@@ -135,6 +179,13 @@ async def resolve_checkpoint(
     if checkpoint.schema_version != ref.schema_version:
         raise CheckpointVersionError(
             "resume reference schema version does not match persisted checkpoint"
+        )
+    if (
+        supported_executable_versions is not None
+        and checkpoint.executable_version not in supported_executable_versions
+    ):
+        raise CheckpointVersionError(
+            f"checkpoint executable version {checkpoint.executable_version} is not supported"
         )
     return checkpoint
 
@@ -198,7 +249,12 @@ CREATE TABLE IF NOT EXISTS canonical_checkpoints (
     event_sequence INTEGER,
     previous_checkpoint_id TEXT NOT NULL DEFAULT '',
     reason TEXT NOT NULL DEFAULT '',
-    state TEXT NOT NULL,
+    executable_version TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT '{}',
+    state_locator TEXT NOT NULL DEFAULT '',
+    state_hash TEXT NOT NULL,
+    graph_id TEXT NOT NULL DEFAULT '',
+    graph_snapshot_hash TEXT NOT NULL DEFAULT '',
     provenance TEXT NOT NULL DEFAULT '{}',
     UNIQUE(run_id, sequence)
 );
@@ -237,8 +293,9 @@ class SqliteCheckpointStore:
                 """INSERT INTO canonical_checkpoints (
                     checkpoint_id, run_id, sequence, schema_version, created_at,
                     workspace_id, project_id, node_run_id, attempt_id, event_sequence,
-                    previous_checkpoint_id, reason, state, provenance
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    previous_checkpoint_id, reason, executable_version, state,
+                    state_locator, state_hash, graph_id, graph_snapshot_hash, provenance
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     persisted.checkpoint_id,
                     persisted.run_id,
@@ -252,7 +309,12 @@ class SqliteCheckpointStore:
                     persisted.event_sequence,
                     persisted.previous_checkpoint_id,
                     persisted.reason,
+                    persisted.executable_version,
                     json.dumps(persisted.state),
+                    persisted.state_locator,
+                    persisted.state_hash,
+                    persisted.graph_id,
+                    persisted.graph_snapshot_hash,
                     json.dumps(persisted.provenance),
                 ),
             )
@@ -309,6 +371,11 @@ class SqliteCheckpointStore:
             event_sequence=row[9],
             previous_checkpoint_id=row[10],
             reason=row[11],
-            state=json.loads(row[12]),
-            provenance=json.loads(row[13]),
+            executable_version=row[12],
+            state=json.loads(row[13]),
+            state_locator=row[14],
+            state_hash=row[15],
+            graph_id=row[16],
+            graph_snapshot_hash=row[17],
+            provenance=json.loads(row[18]),
         )
