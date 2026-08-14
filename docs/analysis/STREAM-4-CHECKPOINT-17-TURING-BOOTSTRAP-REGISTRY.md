@@ -72,10 +72,13 @@ Its documented responsibilities are:
 
 The README explicitly states that `--apply` performs compose build only and that container startup remains a separate operator action.
 
+Bootstrap is also consumed by a real Hive product entry point: `packages/hive-conductor/backend/routes/install.py` dynamically adds `packages/maistro-bootstrap/src` to `sys.path` and imports `maistro_bootstrap.session.get_session_defaults` for the install-session API. That is a live control-plane dependency and must be preserved even though Bootstrap stays outside normal Run execution.
+
 Classification:
 
 - keep outside canonical Run/NodeRun/Attempt
 - treat install plan/schema/resolver/platform detection as control-plane/bootstrap behavior
+- preserve the Hive install-session compatibility surface while package wiring is normalized
 - connect provider/environment initialization to canonical registries where useful
 - do not model install/bootstrap operations as ordinary Workspace product Runs unless a future explicit user-work execution requirement emerges
 
@@ -108,7 +111,7 @@ Turing provider/security bridge behavior is useful adapter input, but actual LLM
 
 Turing should remain a specialized product/domain adapter. Preserve its self-model/cognition/producer/chat semantics while replacing generic provider/memory/security/session/artifact plumbing with canonical services.
 
-Bootstrap and maistro-registry should remain outside normal product execution migration except for narrow integration seams.
+Bootstrap and maistro-registry should remain outside normal product execution migration except for narrow integration seams. Bootstrap's live Hive install-session adapter is a compatibility requirement, not evidence that install operations should become Runs.
 
 ## Delete-after candidate
 
@@ -116,11 +119,17 @@ Strong candidate:
 
 `packages/maistro-turing/src/maistro_turing/runtime.py`
 
+Evidence collected:
+
+- the file itself explicitly declares itself dead and shadowed by `runtime/`
+- `runtime/__init__.py` contains the active implementation
+- package build includes `src/maistro_turing` as a package tree; it does not name the flat module as a special build target
+- repository code search found no exact-path reference to the inert file
+
 Prerequisites before deletion:
 
-1. confirm no scripts/tests inspect this exact source path rather than import `maistro_turing.runtime`
-2. confirm package build does not explicitly include/reference the flat module
-3. run Turing package tests after deletion
-4. update reachability baseline if this file is tracked there
+1. run Turing package tests after deletion
+2. confirm no non-indexed external packaging/operator script depends on the exact source-file path
+3. update reachability baseline if this file is tracked there
 
 No deletion is performed in this audit checkpoint.
