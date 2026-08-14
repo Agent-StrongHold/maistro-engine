@@ -50,6 +50,8 @@ Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
 Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs.
+Stream 7 product-adapter parity adds four maistro-core and two maistro-canvas
+node IDs.
 Stream 2 event, checkpoint, and outbox coverage adds 51 maistro-core node IDs.
 The repo-task wrapper compatibility regression adds one maistro-evolve node ID.
 Workspace creation was deliberately moved out of the scope-gated parametrized
@@ -59,14 +61,14 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6113 | `ci.yml` |
+| `packages/maistro-core/tests` | 6117 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
 | `packages/maistro-design/tests` | 156 | `ci.yml` |
 | `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
-| `packages/maistro-canvas/tests` | 122 | `ci.yml` |
+| `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 612 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
