@@ -53,48 +53,34 @@ User[] <-> WorkspaceMembership[] <-> Workspace[]
 
 ## Requirements
 
-1. `Workspace` is the durable product environment. Existing `Project` identity
-   remains its compatibility persistence identity during migration.
-2. `WorkspaceMembership` is the User-to-Workspace relationship and supports many
-   users per Workspace and many Workspaces per user.
-3. Canonical Workspace roles are `member`, `contributor`, and `owner`.
-4. Member operates existing workflows/templates but does not edit shared
-   Graph/Node/Template definitions.
-5. Contributor includes member behavior and may create/edit shared
-   Graph/Node/Template definitions.
-6. Owner includes contributor behavior and additionally changes the Workspace
-   Persona, membership/roles, and Workspace-wide configuration.
-7. Normal Workspace-to-live-Persona cardinality is 1:1. Canonical persistence
-   rejects a second live Persona for the same Workspace.
-8. Temporary zero-Persona state is allowed only for bounded onboarding,
-   migration, deletion, or replacement transitions.
-9. Specialized executable actors are Agents/Nodes rather than additional
-   Personas.
-10. A one-node Graph is valid and uses the same canonical Run path as any other
-    Graph.
-11. Manual, scheduled, delegated, Builders, RSI, Evolve and specialized-package
-    execution converges on Workspace-owned Run/NodeRun/Attempt state.
-12. Session remains continuity across Runs; Schedule remains trigger metadata.
-13. ExecutionRuntime owns execution mechanics, not product ownership or Run
-    persistence semantics.
-14. Filesystem execution roots use names such as `workdir`, `workspace_path`, or
-    `sandbox_root` rather than overloading product Workspace identity.
-
-## Compatibility mapping
-
-- legacy Project primary owner -> Workspace `owner`
-- legacy Project editor -> Workspace `contributor`
-- legacy Project viewer -> Workspace `member`
-- legacy `project_id` -> canonical Workspace identity
-
-Compatibility mapping must not create another durable Workspace root.
+1. `Workspace` is the durable product environment and canonical ownership root.
+2. Workspace identity MUST NOT be represented by a Project alias or legacy persistence key.
+3. Workspace ownership/access MUST be represented by `WorkspaceMembership`, not an `owner_user_id` field on Workspace.
+4. `WorkspaceMembership` supports many users per Workspace and many Workspaces per user.
+5. Canonical Workspace roles are `member`, `contributor`, and `owner`.
+6. Member operates existing workflows/templates but does not edit shared Graph/Node/Template definitions.
+7. Contributor includes member behavior and may create/edit shared Graph/Node/Template definitions.
+8. Owner includes contributor behavior and additionally changes the Workspace Persona, membership/roles, and Workspace-wide configuration.
+9. A Workspace MUST retain at least one owner membership and MAY have multiple owners.
+10. Normal Workspace-to-live-Persona cardinality is 1:1. Canonical persistence rejects a second live Persona for the same Workspace.
+11. Temporary zero-Persona state is allowed only for bounded onboarding, deletion, or replacement transitions.
+12. Specialized executable actors are Agents/Nodes rather than additional Personas.
+13. A persisted Graph MUST contain its `workspace_id`; no `project_id` fallback is required.
+14. A one-node Graph is valid and uses the same canonical Run path as any other Graph.
+15. Manual, scheduled, delegated, Builders, RSI, Evolve and specialized-package execution converges on Workspace-owned Run/NodeRun/Attempt state.
+16. Session remains continuity across Runs; Schedule remains trigger metadata.
+17. ExecutionRuntime owns execution mechanics, not product ownership or Run persistence semantics.
+18. Filesystem execution roots use names such as `workdir`, `workspace_path`, or `sandbox_root` rather than overloading product Workspace identity.
+19. Duplicate legacy concepts MAY be deleted once their callers are converted; compatibility aliases are not required.
 
 ## Acceptance criteria
 
-- canonical and legacy IDs resolve to the same Workspace;
-- membership role projection matches the mapping above;
+- Workspace records contain no primary-owner field;
+- one Workspace can have two owner memberships;
+- the last owner cannot be removed or downgraded without another owner already present;
+- user Workspace listing is derived from membership rather than embedded ownership;
 - one live Persona can be stored for a Workspace and a second is rejected;
 - two Workspaces may each have one live Persona;
-- specialized actors can be added without adding another Persona;
-- a one-node Graph reaches the same Run lifecycle as a multi-node Graph; and
-- migrated execution paths retain Workspace attribution across persistence.
+- persisted Graphs require a canonical `workspace_id`;
+- specialized actors can be added without adding another Persona; and
+- a one-node Graph reaches the same Run lifecycle as a multi-node Graph.
