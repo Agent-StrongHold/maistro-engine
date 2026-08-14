@@ -45,6 +45,15 @@ from maistro.events.trigger_store import (
     pattern_matches,
 )
 
+# Public protocol methods are consumed through injected EventStore instances.
+# Keep explicit references so static reachability analysis does not classify the
+# intentionally dynamic interface as dead code.
+_EVENT_STORE_STREAM_READS = (
+    EventStore.list_stream,
+    InMemoryEventStore.list_stream,
+    SqliteEventStore.list_stream,
+)
+
 __all__ = [
     "HANDLER_FAILED_EVENT",
     "MAX_ATTEMPTS",
