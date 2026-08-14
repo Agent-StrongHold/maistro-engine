@@ -2,21 +2,21 @@
 
 from maistro.runs.lifecycle import (
     ATTEMPT_TRANSITIONS,
-    RUN_TRANSITIONS,
     InvalidLifecycleTransition,
+    RUN_TRANSITIONS,
     transition_attempt,
     transition_node_run,
     transition_run,
 )
 from maistro.runs.model import (
+    TERMINAL_ATTEMPT_STATUSES,
+    TERMINAL_RUN_STATUSES,
     Attempt,
     AttemptStatus,
     GraphSnapshot,
     NodeRun,
     Run,
     RunStatus,
-    TERMINAL_ATTEMPT_STATUSES,
-    TERMINAL_RUN_STATUSES,
 )
 from maistro.runs.store import (
     ActiveAttemptExists,
@@ -31,6 +31,8 @@ from maistro.runs.store import (
 __all__ = [
     "ATTEMPT_TRANSITIONS",
     "RUN_TRANSITIONS",
+    "TERMINAL_ATTEMPT_STATUSES",
+    "TERMINAL_RUN_STATUSES",
     "ActiveAttemptExists",
     "Attempt",
     "AttemptNotFound",
@@ -45,8 +47,6 @@ __all__ = [
     "RunNotFound",
     "RunStatus",
     "RunStore",
-    "TERMINAL_ATTEMPT_STATUSES",
-    "TERMINAL_RUN_STATUSES",
     "transition_attempt",
     "transition_node_run",
     "transition_run",
