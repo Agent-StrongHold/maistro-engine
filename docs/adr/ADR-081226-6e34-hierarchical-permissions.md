@@ -1,117 +1,73 @@
 ---
 id: ADR-081226-6e34
-title: Hierarchical Permissions
+title: Scoped Grants and Deny-Wins Authorization
 repo: maistro-engine
 kind: adr
 status: Accepted
 created: 2026-08-12
 accepted: 2026-08-12
+layer: Security
+owners:
+  - '@BlakeMatthews-dev'
 history:
   - status: Proposed
     date: 2026-08-12
   - status: Accepted
     date: 2026-08-12
-substrate: []
-implements: []
 related:
+  - maistro-engine#ADR-081426-b1d3
   - maistro-engine#ADR-081226-9944
   - maistro-engine#ADR-081226-e626
-  - maistro-engine#ADR-081226-6b46
-supersedes: []
-superseded-by: []
-blocks: []
-blocked-by: []
-contracts:
-  - boundary
-  - behavioral
-tests: []
-source:
-  - packages/maistro-core/src/maistro/workspaces
-  - packages/maistro-core/src/maistro/policy
-layer: Governance
-owners:
-  - '@BlakeMatthews-dev'
 ---
 
-# ADR-081226-6e34: Hierarchical Permissions
-
-- **Status:** Accepted
-- **Date:** 2026-08-12
-- **Updated:** 2026-08-13
-- **Deciders:** MAIstro maintainers
-- **Technical Area:** Authorization, policy, credentials, security
-
-## Context
-
-MAIstro has auth scopes, collaboration roles, agent/tool allowlists, approval
-checks, sandbox restrictions, credential rules and package-specific trust
-systems. These controls need one path that follows the actual Workspace and Run
-model.
-
-Product review clarified that Workspace access is not a property of Workspace
-itself. It is the User-to-Workspace `WorkspaceMembership` relationship.
+# ADR-081226-6e34: Scoped Grants and Deny-Wins Authorization
 
 ## Decision
 
-Authorization narrows through:
+MAIstro authorization is modeled as scope plus authority/actions, not as one globally ordered role hierarchy.
+
+WorkspaceMembership establishes access and broad Workspace grants. ProjectMembership and other scope-bound grants may add authority inside narrower scopes. Object-specific grants may add authority at still narrower scopes where supported.
+
+For an object inside a Project tree, applicable grants accumulate from all scopes that contain the object:
 
 ```text
-User
-  -> WorkspaceMembership
-    -> Workspace
-      -> Persona
-        -> Graph
-          -> Node
-            -> Binding
-              -> Invocation
+Workspace grants
++ Root Project grants
++ ancestor Project grants
++ target Project grants
++ object-specific grants
 ```
 
-WorkspaceMembership contributes the collaboration role for that User in that
-Workspace. Canonical roles are member, contributor and owner.
+A grant never escapes the scope in which it was issued. A Project grant applies to that Project and descendants, not ancestors, siblings, or unrelated Projects. Because scope narrows independently from action strength, a principal may legitimately have stronger authority inside a narrower Project than elsewhere in the Workspace.
 
-- member may operate existing Workspace workflows/resources within the remaining
-  effective limits;
-- contributor adds shared Graph/Node/Template editing;
-- owner adds Workspace-level Persona, membership/role and administrative changes.
+## Denies
 
-Each later level may inherit or narrow what came before. A child does not create
-new authority absent from its ancestors.
+Explicit denies accumulate across the same applicable scopes and always win over grants.
 
-Permission and Policy remain distinct. Permission determines whether an action
-is available at all. Policy determines whether an otherwise available action may
-proceed under current conditions. Policy can deny, defer or add conditions; it
-does not manufacture unavailable authority.
+```text
+effective authority = union(applicable grants) - union(applicable denies)
+```
 
-Invocation remains the final execution enforcement boundary for external/tool/
-model/provider/harness/sandbox/agent-backed fulfillment. Earlier product checks
-remain useful for UX and defense in depth.
+A descendant grant cannot grant around an inherited deny. The deny must be changed or removed at the scope where it originated.
 
-Child Runs inherit Workspace and authorization context and may narrow it.
-Cross-Workspace behavior requires an explicit mechanism rather than implicit
-parentage.
+Denies may target actions or resources, including capability, Binding, Credential, Provider, object type, or individual object identity where the authorization engine supports that selector.
 
-Credential resolution follows an allowed Binding/Invocation and remains subject
-to credential scope. Existing Warden/Sentinel/Gate/trust/sandbox systems become
-inputs/evaluators on this canonical path rather than alternate roots.
+## Delegation
+
+Permission to perform an action does not imply permission to grant that action. Delegation/grant authority is explicit and remains scope-bound. A principal may only issue a grant when an applicable rule explicitly authorizes that delegation in the target scope.
+
+## Resource visibility
+
+Project resource visibility is a scope rule distinct from action grants. Project-scoped resources flow downward only. Authorization cannot make a child-scoped Credential or Binding visible to an ancestor or sibling unless an explicit resource-sharing primitive is introduced by a future ADR.
+
+## Persona
+
+Persona is not an authorization scope. Persona contributes no grants, denies, permission ceiling, credential visibility, or privilege. Persona preference resolution happens only after authorization/resource visibility establishes the legal candidate set.
+
+## Policy
+
+Policy may impose additional runtime/behavioral restrictions after structural grant/deny resolution. Policy MUST NOT silently turn a structural deny into an allow.
 
 ## Consequences
 
-- Collaboration roles are part of the same effective authorization path as
-  Persona, Graph, Node and Binding restrictions.
-- Shared Workspaces no longer need a parallel collaboration security model.
-- Agent-backed tools cannot exceed the calling context.
-- Existing direct provider/tool paths need convergence where they bypass this
-  boundary.
-
-## Compliance
-
-A path complies when it resolves the actor's WorkspaceMembership, applies the
-role contribution, narrows through Workspace/Persona/Graph/Node/Binding, checks
-the Invocation before fulfillment, and keeps policy incapable of widening the
-result.
-
-## References
-
-- `ADR-081226-9944`
-- `ADR-081226-e626`
-- `ADR-081226-6b46`
+The old rule that every descendant can only narrow its parent is rejected as too simplistic. Narrow scopes can add authority, while deny-wins and scope containment prevent that authority from leaking outward.

@@ -1,6 +1,6 @@
 ---
 id: SPEC-081226-e626
-title: Persona and Surface Model
+title: Persona and Product Surface Model
 repo: maistro-engine
 kind: spec
 status: AC Defined
@@ -18,6 +18,7 @@ implements:
   - maistro-engine#ADR-081226-e626
 related:
   - maistro-engine#ADR-081226-9944
+  - maistro-engine#ADR-081426-b1d3
   - maistro-engine#ADR-081226-6e34
 supersedes: []
 superseded-by: []
@@ -26,95 +27,76 @@ blocked-by: []
 contracts:
   - boundary
   - behavioral
-tests:
-  - packages/maistro-core/tests/personas/test_model.py
-  - packages/maistro-core/tests/personas/test_store.py
+tests: []
 source:
   - packages/maistro-core/src/maistro/personas
-layer: UserClient
+layer: Domain
 owners:
   - '@BlakeMatthews-dev'
 ---
 
-# SPEC-081226-e626: Persona and Surface Model
+# SPEC-081226-e626: Persona and Product Surface Model
 
 - **Status:** Active
-- **Date:** 2026-08-12
-- **Updated:** 2026-08-13
+- **Date:** 2026-08-14 revision
 - **ADR:** `ADR-081226-e626`
-
-## Required Persona shape
-
-Canonical Persona must expose or resolve:
-
-```text
-persona_id
-workspace_id
-name
-purpose/description?
-theme/metadata?
-allowed_surfaces[]
-node_template_catalog[]
-graph_template_catalog[]
-permission_ceiling
-policy_defaults
-binding_availability[]
-model/provider defaults?
-created_at/updated_at
-```
-
-Domain packages may attach namespaced extension metadata without redefining
-Persona lifecycle.
 
 ## Requirements
 
-1. A live Persona must have exactly one owning Workspace.
-2. Canonical persistence must reject a second live Persona for a Workspace.
-3. A Workspace may transiently have zero Personas only during onboarding,
-   migration, deletion/replacement, or another explicitly bounded transition.
-4. Canonical product flows should converge the Workspace to one live Persona.
-5. Workspace must not maintain an active-Persona selector or concurrent live
-   Persona collection.
-6. Specialized actors are Agents/Nodes, not additional Personas.
-7. Persona must not own execution status, retry, cancellation or checkpoint
-   state.
-8. Launching work through the Persona must create/use canonical Graph/Node/Run
-   services.
-9. Run should retain `persona_id` provenance when Persona configuration shaped
-   the execution.
-10. Persona template catalogs reference canonical template identities and must
-    not copy/mutate template content.
-11. Persona settings may narrow inherited Workspace behavior but cannot widen
-    authority available at the Workspace boundary.
-12. Workspace owner scope is required to modify Persona configuration; member and
-    contributor roles consume the Workspace through that Persona.
-13. Surface availability is a product-interface rule and does not replace the
-    lower execution authorization checks.
-14. Persona default changes are non-retroactive for existing Nodes, Graphs and
-    active Runs.
-15. Specialized packages may add surfaces/templates/metadata to the one Persona
-    while preserving canonical Run lifecycle.
+### R1. Cardinality
+
+A Workspace MUST have at most one live Persona record at a time. Persona identity MUST be scoped to one Workspace.
+
+### R2. Purpose, taste, and style
+
+Persona MUST support explicit representation of purpose and configurable taste/style guidance. Implementations MAY structure these as typed fields, text guidance, or extensible settings, but the stored model MUST be able to express all three concerns distinctly.
+
+### R3. Behavioral and creation defaults
+
+Persona MAY define defaults used when creating new Workspace/Project objects or resolving ordinary behavior. These defaults are preference/configuration inputs and become ordinary object-owned configuration when applied at creation time.
+
+### R4. Preferences
+
+Persona MAY name preferred models, providers, capabilities, Bindings, prompts, parameters, or templates. A preference MUST NOT imply that the preferred resource is authorized or visible in the current Project.
+
+### R5. Product surfaces
+
+Persona MAY configure relevant product surfaces such as `ui`, `builders_cli`, and `builders_rsi`. Surface configuration controls product experience/exposure, not security authority.
+
+### R6. No authorization semantics
+
+Persona MUST NOT contain or compute:
+
+- permission ceilings,
+- security grants,
+- explicit denies,
+- Project membership,
+- credential visibility,
+- privilege elevation,
+- authority widening or narrowing.
+
+Authorization services MUST be able to resolve Principal authority without consulting Persona.
+
+### R7. Agent separation
+
+Persona MUST NOT own Run/NodeRun/Attempt state and MUST NOT be treated as an Agent actor. Agent behavior executes through Nodes/Graphs/Runs.
+
+### R8. Project-default interaction
+
+When creation defaults are resolved, Persona defaults MAY be applied after Workspace defaults and before Project ancestry defaults. Project defaults closer to the destination MAY override Persona defaults. Once created, the object owns the resolved configuration.
 
 ## Acceptance Criteria
 
-1. Creating a Persona for a Workspace succeeds when none exists.
-2. Creating a second Persona for that Workspace is rejected.
-3. Two different Workspaces may each own one Persona.
-4. Deleting/replacing the Persona preserves the one-live-Persona invariant.
-5. Updating Persona defaults leaves an already-started Run snapshot unchanged.
-6. A specialized actor is represented as Agent/Node configuration while the
-   Workspace continues to have only one Persona.
-7. Builders UI/CLI/RSI can operate through the same Persona and underlying
-   Graph/Run records.
-8. Canvas/Turing-specific fields can be represented as namespaced extensions
-   without creating secondary live Personas.
-9. A member or contributor can operate through the Persona but cannot perform an
-   owner-scoped Persona modification.
-10. A Run shaped by the Persona remains correlated to the same Workspace and
-    records Persona provenance.
+1. A Persona can encode a Workspace purpose independently from its name.
+2. A Persona can encode taste/aesthetic and style/voice guidance independently.
+3. Persona can configure UI/Builders surfaces without changing the principal's effective permissions.
+4. A Persona can prefer Binding A while Project authorization makes only Binding B available; A remains unavailable.
+5. Persona data has no `permission_ceiling`, grants, denies, or credential-scope field.
+6. Authorization resolution produces the same result when Persona style/taste/purpose/preferences change.
+7. Persona creation defaults participate in new-object resolution but later Persona changes do not mutate existing objects.
+8. Exactly one live Persona per Workspace is enforced by the Persona store/service.
+9. Persona remains definition/configuration only and contains no Run/Attempt lifecycle state.
 
 ## Non-goals
 
-This specification does not make agent personality/self-model data Persona-level,
-does not require Persona to own Workspace membership, and does not define a
-multi-Persona switching UX.
+This SPEC does not define Project authorization, Agent identity, Provider fallback, or the visual design of Persona-editing UI.
