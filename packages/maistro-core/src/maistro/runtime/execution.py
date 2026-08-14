@@ -6,7 +6,7 @@ concurrency, cancellation propagation, deadline enforcement, event sequencing,
 and the measurements needed to decide whether any hot path ever merits a native
 implementation.
 
-The runtime deliberately treats ``compiled_graph``, ``run_context``, and emitted
+The runtime deliberately treats ``work_item``, ``execution_context``, and emitted
 events as opaque values. Domain interpretation belongs to callers.
 """
 
@@ -72,22 +72,23 @@ class ExecutionRuntime(Protocol):
     """Substitutable boundary for execution mechanics.
 
     Implementations must not interpret graph, run, agent, or tool semantics.
-    Those values are passed opaquely to the injected ``executor`` callable.
+    Work and context are passed opaquely to the injected ``executor`` callable.
+    ``execution_id`` identifies one physical execution, normally an Attempt.
     """
 
     async def execute(
         self,
-        compiled_graph: Any,
-        run_context: Any,
+        work_item: Any,
+        execution_context: Any,
         *,
-        run_id: str,
+        execution_id: str,
         executor: ExecutionCallable,
         timeout_s: float | None = None,
     ) -> Any:
         """Execute opaque domain work under runtime mechanics."""
         ...
 
-    async def cancel(self, run_id: str) -> bool:
+    async def cancel(self, execution_id: str) -> bool:
         """Request cancellation of an active or slot-waiting execution."""
         ...
 
@@ -95,12 +96,12 @@ class ExecutionRuntime(Protocol):
         """Assign a monotonically increasing sequence and publish an event."""
         ...
 
-    async def acquire_slot(self, run_id: str) -> float:
+    async def acquire_slot(self, execution_id: str) -> float:
         """Acquire bounded-concurrency capacity and return wait time in seconds."""
         ...
 
-    def release_slot(self, run_id: str) -> None:
-        """Release capacity held by ``run_id``."""
+    def release_slot(self, execution_id: str) -> None:
+        """Release capacity held by ``execution_id``."""
         ...
 
     def metrics(self) -> RuntimeMetrics:
@@ -152,13 +153,13 @@ class PythonExecutionRuntime:
 
     def _validate_execution_request(
         self,
-        run_id: str,
+        execution_id: str,
         timeout_s: float | None,
     ) -> asyncio.Task[Any]:
-        if not run_id:
-            raise ValueError("run_id is required")
-        if run_id in self._active:
-            raise ValueError(f"run_id already active: {run_id}")
+        if not execution_id:
+            raise ValueError("execution_id is required")
+        if execution_id in self._active:
+            raise ValueError(f"execution_id already active: {execution_id}")
         if timeout_s is not None and timeout_s <= 0:
             raise ValueError("timeout_s must be > 0")
 
@@ -169,31 +170,31 @@ class PythonExecutionRuntime:
 
     async def execute(
         self,
-        compiled_graph: Any,
-        run_context: Any,
+        work_item: Any,
+        execution_context: Any,
         *,
-        run_id: str,
+        execution_id: str,
         executor: ExecutionCallable,
         timeout_s: float | None = None,
     ) -> Any:
-        task = self._validate_execution_request(run_id, timeout_s)
+        task = self._validate_execution_request(execution_id, timeout_s)
 
-        self._active[run_id] = task
+        self._active[execution_id] = task
         self._executions_started += 1
         slot_acquired = False
         try:
-            wait_s = await self.acquire_slot(run_id)
+            wait_s = await self.acquire_slot(execution_id)
             slot_acquired = True
             self._scheduling_wait_seconds_last = wait_s
             self._scheduling_wait_seconds_total += wait_s
             self._peak_concurrency = max(self._peak_concurrency, len(self._slot_holders))
 
             if timeout_s is None:
-                result = await executor(compiled_graph, run_context)
+                result = await executor(work_item, execution_context)
             else:
                 try:
                     async with asyncio.timeout(timeout_s):
-                        result = await executor(compiled_graph, run_context)
+                        result = await executor(work_item, execution_context)
                 except TimeoutError:
                     self._executions_timed_out += 1
                     raise
@@ -209,12 +210,12 @@ class PythonExecutionRuntime:
             self._executions_failed += 1
             raise
         finally:
-            self._active.pop(run_id, None)
+            self._active.pop(execution_id, None)
             if slot_acquired:
-                self.release_slot(run_id)
+                self.release_slot(execution_id)
 
-    async def cancel(self, run_id: str) -> bool:
-        task = self._active.get(run_id)
+    async def cancel(self, execution_id: str) -> bool:
+        task = self._active.get(execution_id)
         if task is None or task.done():
             return False
         task.cancel()
@@ -233,19 +234,19 @@ class PythonExecutionRuntime:
             self._events_emitted += 1
             return envelope
 
-    async def acquire_slot(self, run_id: str) -> float:
-        if run_id in self._slot_holders:
-            raise ValueError(f"run_id already holds a slot: {run_id}")
+    async def acquire_slot(self, execution_id: str) -> float:
+        if execution_id in self._slot_holders:
+            raise ValueError(f"execution_id already holds a slot: {execution_id}")
         started = time.perf_counter()
         await self._semaphore.acquire()
         wait_s = time.perf_counter() - started
-        self._slot_holders.add(run_id)
+        self._slot_holders.add(execution_id)
         return wait_s
 
-    def release_slot(self, run_id: str) -> None:
-        if run_id not in self._slot_holders:
-            raise ValueError(f"run_id does not hold a slot: {run_id}")
-        self._slot_holders.remove(run_id)
+    def release_slot(self, execution_id: str) -> None:
+        if execution_id not in self._slot_holders:
+            raise ValueError(f"execution_id does not hold a slot: {execution_id}")
+        self._slot_holders.remove(execution_id)
         self._semaphore.release()
 
     def metrics(self) -> RuntimeMetrics:
