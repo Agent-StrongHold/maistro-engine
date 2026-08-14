@@ -243,7 +243,7 @@ def test_workspace_resource_visible_anywhere_in_same_workspace(
     )
 
 
-def test_project_resource_visible_to_its_descendants_not_siblings(
+def test_project_resource_visible_only_in_exact_owning_project(
     resolver: AuthorizationResolver,
     workspace_member: WorkspaceMembership,
 ) -> None:
@@ -253,7 +253,13 @@ def test_project_resource_visible_to_its_descendants_not_siblings(
         project_id="project-a",
         resource_kind=ResourceKind.BINDING,
     )
+
     assert resolver.can_view_resource(
+        scope=scope,
+        workspace_membership=workspace_member,
+        project_path=("root", "project-a"),
+    )
+    assert not resolver.can_view_resource(
         scope=scope,
         workspace_membership=workspace_member,
         project_path=("root", "project-a", "project-a-child"),
@@ -262,6 +268,28 @@ def test_project_resource_visible_to_its_descendants_not_siblings(
         scope=scope,
         workspace_membership=workspace_member,
         project_path=("root", "project-b"),
+    )
+    assert not resolver.can_view_resource(
+        scope=scope,
+        workspace_membership=workspace_member,
+        project_path=("root",),
+    )
+
+
+def test_project_resource_requires_target_project_context(
+    resolver: AuthorizationResolver,
+    workspace_member: WorkspaceMembership,
+) -> None:
+    scope = ResourceScope(
+        workspace_id="ws-1",
+        kind=ResourceScopeKind.PROJECT,
+        project_id="project-a",
+        resource_kind=ResourceKind.CREDENTIAL,
+    )
+    assert not resolver.can_view_resource(
+        scope=scope,
+        workspace_membership=workspace_member,
+        project_path=(),
     )
 
 
