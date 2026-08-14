@@ -34,7 +34,7 @@ source:
   - packages/maistro-core/src/maistro/personas
   - packages/maistro-core/src/maistro/graph
   - packages/maistro-core/src/maistro/runs
-layer: Domain
+layer: Foundation
 owners:
   - '@BlakeMatthews-dev'
 ---
