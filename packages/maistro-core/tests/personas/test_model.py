@@ -64,9 +64,7 @@ def test_persona_permissions_can_only_narrow_parent_authority() -> None:
         permission_ceiling={"runs.execute", "artifacts.read", "credentials.admin"},
     )
 
-    effective = persona.effective_permissions(
-        {"runs.execute", "artifacts.read", "graphs.edit"}
-    )
+    effective = persona.effective_permissions({"runs.execute", "artifacts.read", "graphs.edit"})
 
     assert effective == frozenset({"runs.execute", "artifacts.read"})
     assert "credentials.admin" not in effective
