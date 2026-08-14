@@ -40,20 +40,27 @@ PYTHONPATH=packages/maistro-core/src:packages/maistro-evolve/src:packages/maistr
 
 ## Counts as of current branch
 
-Refreshed after the runtime cleanup queue (#355, #359, #361) and the promotion
-CI reconciliation. The repo-task wrapper compatibility regression adds one
-maistro-evolve node ID. Workspace creation was deliberately moved out of the
-scope-gated parametrized Hive cases and into the ordinary product-surface check,
-so Hive loses one collected node ID while retaining the intended assertion.
-Stream 5 parity characterization adds four maistro-core node IDs.
+Refreshed after the runtime cleanup queue (#355, #359, #361), the promotion
+CI reconciliation, the Workspace/Persona convergence slice, and Stream 5 parity
+characterization. The convergence work adds 44 maistro-core node IDs covering
+ExecutionRuntime mechanics, Project to Workspace compatibility,
+WorkspaceMembership role semantics, the live Persona model, and
+one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
+Stream 1 adds 99 maistro-core node IDs for the canonical Project,
+Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
+Stream 6 adds five provider-parity node IDs.
+Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs.
 Stream 7 product-adapter parity adds four maistro-core and two maistro-canvas
-node IDs. Stream 3 authorization/resource-scope coverage adds 18 maistro-core
-node IDs, and Stream 6 provider parity adds five maistro-core node IDs.
-Other suite counts are unchanged.
+node IDs.
+The repo-task wrapper compatibility regression adds one maistro-evolve node ID.
+Workspace creation was deliberately moved out of the scope-gated parametrized
+Hive cases and into the ordinary product-surface check, so Hive loses one
+collected node ID while retaining the intended assertion. Other suite counts are
+unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 5967 | `ci.yml` |
+| `packages/maistro-core/tests` | 6066 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
