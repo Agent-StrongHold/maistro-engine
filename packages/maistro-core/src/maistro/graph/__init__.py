@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from maistro.graph.compat import graph_config_to_graph
 from maistro.graph.definitions import (
     Edge,
     Graph,
@@ -83,6 +82,5 @@ __all__ = [
     "TemplateProvenance",
     "ToolEvaluation",
     "build_default_node_type_registry",
-    "graph_config_to_graph",
     "run_graph",
 ]
