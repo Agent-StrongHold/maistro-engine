@@ -1,0 +1,50 @@
+name: Stream 1 Diagnostic
+
+on:
+  push:
+    branches:
+      - feat/execution-runtime-spine-373
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --extra bootstrap
+      - name: Annotate Vulture findings
+        run: |
+          uv run vulture packages/*/src --min-confidence 60 \
+            --exclude '*/third_party/*' > /tmp/vulture.log 2>&1 || true
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/vulture.log').read_text().splitlines()
+          print(f'Vulture findings: {len(lines)}')
+          for line in lines:
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::warning title=Vulture::{escaped}')
+          PY
+      - name: Annotate root test failures
+        run: |
+          uv run pytest tests/ --ignore=tests/tools/registry -v --tb=short > /tmp/root-tests.log 2>&1 || true
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('/tmp/root-tests.log').read_text().splitlines()
+          interesting = [
+              line for line in lines
+              if line.startswith(('FAILED ', 'ERROR '))
+              or ' short test summary info ' in line
+              or line.startswith('E   ')
+          ]
+          print(f'Root-test diagnostic lines: {len(interesting)}')
+          for line in interesting:
+              escaped = line.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::warning title=RootTests::{escaped}')
+          PY
