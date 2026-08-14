@@ -12,13 +12,13 @@ from maistro.runtime import ExecutionRuntime, PythonExecutionRuntime
 async def test_executes_opaque_domain_work() -> None:
     runtime = PythonExecutionRuntime(max_concurrency=2)
 
-    async def executor(graph: Any, context: Any) -> dict[str, Any]:
-        return {"graph": graph, "context": context}
+    async def executor(work_item: Any, context: Any) -> dict[str, Any]:
+        return {"work_item": work_item, "context": context}
 
     result = await runtime.execute(
-        {"nodes": ["opaque"]},
+        {"node": "opaque"},
         {"workspace_id": "ws-1"},
-        run_id="run-1",
+        execution_id="attempt-1",
         executor=executor,
     )
 
@@ -39,7 +39,7 @@ async def test_bounds_concurrency_and_records_wait() -> None:
     release_first = asyncio.Event()
     second_started = asyncio.Event()
 
-    async def executor(_graph: Any, context: str) -> str:
+    async def executor(_work_item: Any, context: str) -> str:
         if context == "first":
             first_started.set()
             await release_first.wait()
@@ -48,11 +48,11 @@ async def test_bounds_concurrency_and_records_wait() -> None:
         return context
 
     first = asyncio.create_task(
-        runtime.execute(None, "first", run_id="run-1", executor=executor)
+        runtime.execute(None, "first", execution_id="attempt-1", executor=executor)
     )
     await first_started.wait()
     second = asyncio.create_task(
-        runtime.execute(None, "second", run_id="run-2", executor=executor)
+        runtime.execute(None, "second", execution_id="attempt-2", executor=executor)
     )
     await asyncio.sleep(0)
 
@@ -66,39 +66,75 @@ async def test_bounds_concurrency_and_records_wait() -> None:
 
 
 @pytest.mark.asyncio
+async def test_parallel_attempts_can_share_one_logical_run_context() -> None:
+    runtime = PythonExecutionRuntime(max_concurrency=2)
+    both_started = asyncio.Event()
+    started = 0
+
+    async def executor(_work_item: Any, context: dict[str, str]) -> str:
+        nonlocal started
+        started += 1
+        if started == 2:
+            both_started.set()
+        await both_started.wait()
+        return context["run_id"]
+
+    first = asyncio.create_task(
+        runtime.execute(
+            "node-a",
+            {"run_id": "run-1"},
+            execution_id="attempt-a",
+            executor=executor,
+        )
+    )
+    second = asyncio.create_task(
+        runtime.execute(
+            "node-b",
+            {"run_id": "run-1"},
+            execution_id="attempt-b",
+            executor=executor,
+        )
+    )
+
+    assert await first == "run-1"
+    assert await second == "run-1"
+    assert runtime.metrics().peak_concurrency == 2
+
+
+@pytest.mark.asyncio
 async def test_cancel_propagates_to_active_execution() -> None:
     runtime = PythonExecutionRuntime()
     started = asyncio.Event()
 
-    async def executor(_graph: Any, _context: Any) -> None:
+    async def executor(_work_item: Any, _context: Any) -> None:
         started.set()
         await asyncio.Event().wait()
 
     task = asyncio.create_task(
-        runtime.execute(None, None, run_id="run-cancel", executor=executor)
+        runtime.execute(None, None, execution_id="attempt-cancel", executor=executor)
     )
     await started.wait()
 
-    assert await runtime.cancel("run-cancel") is True
+    assert await runtime.cancel("attempt-cancel") is True
     with pytest.raises(asyncio.CancelledError):
         await task
 
     assert runtime.metrics().executions_cancelled == 1
-    assert await runtime.cancel("run-cancel") is False
+    assert await runtime.cancel("attempt-cancel") is False
 
 
 @pytest.mark.asyncio
 async def test_deadline_is_enforced() -> None:
     runtime = PythonExecutionRuntime()
 
-    async def executor(_graph: Any, _context: Any) -> None:
+    async def executor(_work_item: Any, _context: Any) -> None:
         await asyncio.sleep(0.1)
 
     with pytest.raises(TimeoutError):
         await runtime.execute(
             None,
             None,
-            run_id="run-timeout",
+            execution_id="attempt-timeout",
             executor=executor,
             timeout_s=0.001,
         )
