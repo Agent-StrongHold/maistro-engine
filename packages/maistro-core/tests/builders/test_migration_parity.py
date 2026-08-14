@@ -45,6 +45,9 @@ async def test_runtime_result_artifact_crosses_stage_boundary_and_worker_handoff
         type="acceptance_spec",
         path="runs/builders-run-1/acceptance.json",
         producer="frank",
+        content_type="application/vnd.maistro.acceptance+json",
+        version="7",
+        metadata={"schema": "acceptance-v2", "reviewed": True},
     )
 
     async def analyze(request: RunRequest) -> RunResult:
@@ -74,7 +77,7 @@ async def test_runtime_result_artifact_crosses_stage_boundary_and_worker_handoff
     assert next_request.run_id == "builders-run-1"
     assert next_request.worker is WorkerName.MASON
     assert next_request.stage == "tests_written"
-    assert [item.artifact_id for item in next_request.artifacts] == ["artifact-spec-1"]
+    assert next_request.artifacts == [artifact]
     assert next_request.context["runtime_version"] == "v1"
 
 
