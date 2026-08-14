@@ -45,8 +45,9 @@ CI reconciliation. The repo-task wrapper compatibility regression adds one
 maistro-evolve node ID. Workspace creation was deliberately moved out of the
 scope-gated parametrized Hive cases and into the ordinary product-surface check,
 so Hive loses one collected node ID while retaining the intended assertion.
-Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs.
-Other suite counts are unchanged.
+Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs
+relative to this branch's 5,936-node starting inventory. Other suite counts are
+unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
