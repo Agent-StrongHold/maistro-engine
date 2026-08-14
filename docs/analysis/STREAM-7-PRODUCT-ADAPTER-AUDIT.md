@@ -1,6 +1,6 @@
 # Stream 7 Product Adapter Audit
 
-Status: pre-migration audit only. This document does not redefine canonical objects, state machines, persistence, permissions, or Binding/Invocation contracts.
+Status: pre-migration audit and behavior-locking work only. This document does not redefine canonical objects, state machines, persistence, permissions, or Binding/Invocation contracts.
 
 Baseline: `develop` at `ea6f0850323eedc7ff4c421cbf92d2617b347dbb`.
 
@@ -22,438 +22,223 @@ The immediate job while upstream streams are still converging is therefore to id
 
 ### Stream 1: canonical domain spine
 
-Stream 7 needs the following stable and available from its base branch:
+Stream 7 needs stable Project/Workspace ownership, Graph/Node identity, Run/NodeRun/Attempt lifecycle and persistence, reconciliation/terminalization, and the real Attempt -> ExecutionRuntime entry point available from its base branch.
 
-- Project/Workspace ownership and project scope/tree semantics;
-- Graph/Node identity and template provenance;
-- Run/NodeRun/Attempt lifecycle and persistence;
-- Run reconciliation after Attempt completion/failure/cancellation/timeout;
-- the real Attempt -> ExecutionRuntime entry point.
-
-The open convergence PR currently contains these canonical model/spec files, but they are not yet on `develop`. Product migration code should not copy or shadow them locally.
+Product migration code must not copy or shadow those contracts locally.
 
 ### Stream 2: Event + Checkpoint
 
 Required before product producer migration:
 
-- canonical Event envelope and correlation IDs;
-- stable sequencing/store semantics;
+- canonical Event envelope/correlation;
+- sequence/store semantics;
 - canonical Checkpoint/resume references;
-- producer-facing append contract.
-
-The first Event slice can be consumed once merged, but Stream 7 should not migrate package-specific checkpoint/recovery behavior until the checkpoint contract lands.
+- producer-facing persistence/outbox contract.
 
 ### Stream 3: authorization/resources
 
-Required before product entry points become canonical production entry points:
+Required before migrated product entry points become canonical production entry points:
 
 - repository-backed membership/project ancestry integration;
 - project/workspace resource visibility;
 - Binding/credential/policy scope resolution;
 - Invocation enforcement seam.
 
-Product adapters may be structurally migrated before final enforcement, but they must not bypass authorization to become reachable.
+Persona remains product taste/style/purpose, not an authorization actor.
 
 ### Stream 4: reachability audit
 
-Continuous input, not a hard merge gate. Stream 7 should consume its findings as preservation/deletion evidence.
+Continuous evidence input, not a hard merge gate.
 
 ### Stream 5: Graph + durable convergence
 
-Required for product adapters that rely on graph traversal, pause/resume, fan-out/fan-in, conditional routing, durable recovery, or HITL. In particular, Builders, RSI, Evolve, Canvas pipelines, and portions of Hive must not choose between old GraphRun and durable execution themselves.
+Required for product paths using graph traversal, pause/resume, fan-out/fan-in, conditional routing, durable recovery, or HITL. Product adapters must not choose among competing graph runtimes themselves.
 
 ### Stream 6: Capability execution
 
-Required for product adapters that invoke tools, models, providers, sandboxes, MCP/HTTP, harnesses, or delegated agents through canonical execution. Stream 6 currently has an audit branch but no implementation delta from `develop`, so Stream 7 must not invent interim Binding/Invocation APIs.
+Required for product adapters invoking tools, models, providers, sandboxes, MCP/HTTP, harnesses, or delegated agents. Stream 7 must not invent interim Binding/Invocation APIs.
 
 ## Merge/base strategy
 
-For implementation, upstream canonical-contract work should normally merge back to `develop` before Stream 7 begins consuming it.
+Implementation should normally consume canonical contracts after they merge to `develop`. A stacked integration branch is technically possible but is not the default because Stream 7 spans the widest package surface and would otherwise multiply upstream churn into product-package conflicts.
 
-A temporary stacked/integration branch is technically possible, but it would couple product migrations to unstable branch SHAs and create unnecessary conflict churn across the widest package surface in the repo. Stream 7 is intentionally a consumer stream, so its implementation branches should be cut from a `develop` that already contains the contracts they consume.
-
-Audit-only work can proceed safely from current `develop` because it changes no canonical interfaces.
+Audit and characterization work can proceed safely against current `develop` because it changes no canonical interfaces.
 
 ## Product-by-product audit
 
 ### Builders (`maistro.builders`)
 
-Current package evidence shows Builders owns its own contracts, graph representation/executor, orchestrator, pipeline, logger and runtime dispatcher.
-
-Current duplicate universal lifecycle concepts include:
-
-- `RunStatus` with queued/running/passed/failed/blocked;
-- `RunRequest` carrying its own `run_id` and workspace reference;
-- `RunResult` carrying terminal workflow status;
-- `StageEvent` as a package-specific durable event;
-- `ArtifactRef` as a package-specific artifact reference;
-- `BuildersRuntime.execute()` as a stage-dispatch execution boundary;
-- Builders graph/orchestrator/pipeline execution paths.
+Current duplicate universal lifecycle concepts include package-local Run status/request/result, StageEvent, ArtifactRef, RunState, retries, runtime-version state, BuildersRuntime, and private graph/orchestrator/pipeline execution ownership.
 
 Behavior to preserve:
 
-- Frank/Mason/Auditor roles and stage-specific behavior;
-- prompts and prompt versions;
-- stage-specific allowed-tool configuration;
-- spec/claim/audit behavior;
-- Builders workflow semantics and UX/CLI/RSI surfaces;
-- specialized artifact types and stage outputs.
+- Frank/Mason/Auditor role semantics;
+- stage ordering and gates;
+- prompts/prompt versions;
+- stage-specific tools;
+- claim/spec/audit behavior;
+- artifacts and stage outputs;
+- revision loops;
+- CLI/UI/RSI product surfaces.
 
 Target mapping:
 
-- Builders workflow -> GraphTemplate/Graph;
+- workflow -> GraphTemplate/Graph;
 - worker/stage -> NodeTemplate/Node;
-- `RunRequest` -> adapter/projection over canonical Run + NodeRun inputs;
-- `RunResult` -> NodeRun result/output projection;
-- `StageEvent` -> canonical Event payload;
-- Builders `ArtifactRef` -> canonical Artifact reference;
-- `BuildersRuntime` registration/dispatch -> NodeType/Binding registry behavior, not lifecycle owner;
-- Builders CLI/UI/RSI -> Persona-exposed surfaces over the same canonical objects.
+- logical execution -> Run/NodeRun;
+- physical retry -> Attempt;
+- StageEvent -> canonical Event payload;
+- private ArtifactRef -> canonical Artifact reference;
+- runtime registration/dispatch -> specialized Node/Binding behavior rather than lifecycle ownership.
 
-Parity tests required before removal:
+Stream 7 coverage now added in `packages/maistro-core/tests/builders/test_migration_parity.py` pins:
 
-- stage ordering and dependency behavior;
-- unsupported worker/stage failure semantics;
-- prompt version resolution;
-- allowed-tool resolution per worker/stage;
-- claim/spec validation behavior;
-- artifact production and provenance;
-- failure/blocking behavior;
-- CLI/UI/RSI producing equivalent workflow outcomes.
+- artifact handoff across stages/workers;
+- failure terminalization without accidental advance;
+- retry preserving the same logical Builders run/stage;
+- review -> implementation revision under the same logical workflow.
+
+These characterize product semantics. They do not endorse the private lifecycle as canonical.
 
 ### RSI (`maistro-rsi`)
 
-RSI already composes many useful subsystems rather than rebuilding them, but it still owns a private execution lifecycle.
-
-Current lifecycle ownership observed in `RsiCycle` / autorun:
-
-- generates its own `run_id`;
-- creates and destroys per-cycle workspaces/sandboxes;
-- performs branch -> patch -> test -> evaluate -> tournament inside one private cycle;
-- owns terminal `RsiCycleResult`;
-- owns an autonomous multi-cycle loop with wall-clock stopping;
-- owns resumability through an HTR tree snapshot;
-- owns append-only audit JSONL and learnings JSONL;
-- directly discovers/selects models and constructs gateway calls;
-- directly executes sandbox/git/test/eval operations;
-- directly loops over cycles rather than receiving Schedule/Run triggers.
+Current private lifecycle ownership includes cycle run IDs/results, sandbox lifetime, autonomous loop execution, wall-clock stopping, HTR snapshots acting as resumability, JSONL execution audit, direct model/provider selection, and direct sandbox/git/test/eval execution.
 
 Behavior to preserve:
 
-- hypothesis tree and frontier selection;
-- proposer/fallback/circuit-open behavior;
-- branch/patch/test experiment semantics;
-- quarantine/Warden gating before PR escape;
-- differential workspace probes;
-- benchmark evaluation and Elo comparison;
-- best-candidate/improvement semantics;
-- retained learnings and tree-domain state;
-- quota-aware model-selection policy where still useful;
-- PR promotion behavior.
+- HTR hypothesis/frontier semantics;
+- proposer fallback/circuit breaking;
+- branch/patch/test experiments;
+- quarantine/Warden fail-closed behavior;
+- differential probes;
+- benchmark/Elo evidence;
+- retained learnings;
+- repository identity and experiment lineage;
+- promotion behavior.
 
 Target mapping:
 
-- one RSI experiment/cycle -> Graph/Run;
-- hypothesis/branch/patch/test/evaluate/battle -> Nodes/NodeRuns;
-- sandbox/git/model/eval calls -> Bindings/Invocations;
-- physical retries -> Attempts;
-- HTR tree -> RSI domain artifact/state, not Run lifecycle;
-- tree snapshot -> domain artifact/checkpoint payload referenced by canonical Checkpoint where resumability requires it;
-- audit log -> canonical Events plus retained RSI-specific audit projection if useful;
-- learnings ledger -> canonical Memory/artifact service projection;
-- autonomous repetition -> Schedule/policy -> Run, or an explicit controller Graph, not a private timer/execution universe.
+- cycle -> Graph/Run;
+- experiment steps -> Nodes/NodeRuns;
+- sandbox/git/model/eval -> Bindings/Invocations;
+- physical retry -> Attempt;
+- HTR tree -> RSI domain state referenced by canonical Checkpoint/Artifact;
+- execution audit -> canonical Event stream plus domain projection if useful;
+- autonomous repetition -> Schedule/policy -> Run.
 
-Parity tests required:
-
-- failed patch becomes a pruned experiment, not whole-program failure;
-- quarantine remains fail-closed;
-- proposer circuit-breaker behavior;
-- tree resume across process restart;
-- retained-learning recall and Warden filtering;
-- differential benchmark/tournament winner semantics;
-- cleanup of sandbox/workspace resources;
-- open-PR gating and provenance.
+Existing RSI tests already strongly cover migration-sensitive semantics: per-cycle snapshots, atomic writes, resume without seed duplication, explicit fresh start, retained learnings, corruption tolerance, Warden scan on append/recall, circuit breaking, and failed experiments continuing as dead ends. Stream 7 should avoid redundant RSI tests until an adapter seam exists.
 
 ### Evolve (`maistro-evolve`)
 
-Preserve as a domain optimization/evolution subsystem, not an execution root.
+Preserve populations, mutation/crossover, fitness, tournaments/Elo, benchmark fidelity, candidate promotion/rollback governance, and audit evidence.
 
-Behavior to preserve:
-
-- genome/population representations;
-- mutation/crossover;
-- fitness/evaluation semantics;
-- tournaments/Elo;
-- benchmark harnesses and real/proxy fidelity distinctions;
-- promotion/rollback governance;
-- audit evidence around candidate selection.
-
-Lifecycle to replace where present:
-
-- private evolution-cycle execution;
-- private periodic/timer loops;
-- package-owned retries/cancellation where equivalent to Attempt mechanics;
-- package-specific run/event identity.
-
-Target mapping:
-
-- evolution cycle -> Graph/Run;
-- candidate evaluations -> evaluation Nodes/NodeRuns;
-- model/tool/benchmark fulfillment -> Bindings/Invocations;
-- periodic evolve -> Schedule -> Run;
-- candidate outputs -> NodeTemplate/GraphTemplate candidates plus domain evidence/artifacts;
-- promotion/rollback remains template/version governance, not Run rollback.
-
-Parity tests:
-
-- deterministic mutation/crossover invariants;
-- fitness scoring and tournament outcome equivalence;
-- benchmark fidelity guarantees;
-- promotion threshold and rollback rules;
-- scheduled repetition produces the same candidate/evidence sequence as the old loop.
+Converge private cycle/timer/retry/execution identity onto Graph/Run/NodeRun/Attempt, Schedule, Event, and Binding/Invocation. Do not blindly collapse evolution Genome into Agent Genome; normalize only genuinely shared primitives.
 
 ### Canvas (`maistro-canvas`)
 
-Canvas must not be flattened into generic core. It contains a real book/canvas product plus reusable image/composition mechanics.
+Canvas contains legitimate product/domain semantics plus a private generation-job lifecycle.
 
 Behavior to preserve:
 
-- book-building domain state and UX;
-- canvas/compositor behavior;
-- RGBA/image assembly;
-- image-generation integration;
-- export behavior;
-- human review/edit flow;
-- application-specific persistence where it represents book-domain state.
+- book/canvas/layer state;
+- compositor/image assembly;
+- generate/refine/reference/composite/text actions;
+- layer placement, pose, visibility, masks and regions;
+- image generation and export behavior;
+- image version history;
+- BookLayer retry/upgrade invariants;
+- lease recovery semantics needed to recover lost physical work.
+
+Private lifecycle to converge:
+
+- GenerationJobRecord status as universal execution state;
+- CanvasJobRunner;
+- worker leases;
+- job attempt counters;
+- bounded retry terminalization;
+- direct executor/provider ownership.
 
 Target mapping:
 
-- book maker -> Persona/product surface;
-- book pipeline -> GraphTemplate/Graph;
-- agent/image/compositor/review/export stages -> specialized Nodes;
-- image/model/tool calls -> Bindings/Invocations;
-- generated images/files/exports -> canonical Artifacts with Canvas/book metadata;
-- execution history -> canonical Run/NodeRun/Attempt;
-- Canvas domain documents remain Canvas domain objects.
+- Canvas workflow -> Graph/Run;
+- generation/composition action -> Node/NodeRun;
+- physical provider try -> Attempt;
+- lease/reaper recovery -> canonical scheduler/recovery mechanics compatible with Attempt ownership;
+- provider execution -> Binding/Invocation;
+- generated/exported output -> canonical Artifact carrying Canvas domain metadata.
 
-Parity tests:
+Stream 7 coverage now added in `packages/maistro-canvas/tests/test_migration_parity.py` pins:
 
-- page/scene ordering;
-- compositor output equivalence;
-- image-generation request/response behavior;
-- review/edit persistence;
-- export reproducibility;
-- existing frontend/API book workflow remains usable while execution moves underneath it.
+1. A transient provider failure retries the same logical generation job. Job/canvas/layer identity, action, model, prompt and generation parameters survive unchanged while only the physical attempt count advances. The successful retry clears the lease and produces the result path.
+2. `BookLayer.retry()` and `BookLayer.upgrade()` preserve image history and placement/pose/mask metadata while replacing the active image, with upgrade moving quality to final.
+
+This explicitly supports the eventual mapping: one logical Canvas generation -> one NodeRun, physical retries -> Attempts.
 
 ### Turing (`maistro-turing`)
 
-The package contains bridge/runtime modules, cognition/reactor behavior, producers, self-model types, providers/tools, and memory extensions. This is a domain/cognition extension, not a second universal runtime.
+Preserve self-model/autonoetic state, cognition/reactor stages, proactive producer semantics, agent-specific mood/personality/drives, memory extensions, and Turing-specific tools/providers.
 
-Behavior to preserve:
-
-- self-model and autonoetic domain state;
-- cognition/reactor stages;
-- proactive producer semantics;
-- mood/personality/drives where agent-specific;
-- Turing memory extensions;
-- Turing-specific tools/providers.
-
-Target mapping:
-
-- Workspace purpose/taste/style portions -> Persona where applicable;
-- agent-specific cognition/personality -> Agent/Genome/Node definition;
-- actor/chat/cognition execution -> Graph/Run/NodeRuns;
-- proactive producers -> Schedule/Event trigger -> Run;
-- providers/tools -> Capability/Provider/Binding/Invocation;
-- memory -> canonical memory scopes with Turing-specific payload/schema.
-
-Parity tests:
-
-- cognition stage ordering;
-- self-model state transitions;
-- producer trigger behavior;
-- memory recall/update semantics;
-- actor/chat observable behavior.
+Converge actor/chat/cognition execution to Graph/Run/NodeRun, proactive execution to Schedule/Event trigger -> Run, and direct provider/tool execution to Binding/Invocation. Persona-level taste/style/purpose belongs to Persona; agent-specific cognition remains Turing/Genome behavior.
 
 ### Hive Conductor
 
-Hive is the broadest adapter surface and should migrate late enough that canonical services are real, not mocked by another local store.
+Preserve Mission Control UX, chat/session workflows, project navigation, DAG editing/inspection, scheduling UI, agent/tool/integration surfaces, audit/admin behavior, and useful isolation mechanics.
 
-Behavior to preserve:
-
-- Mission Control UX;
-- chat/session workflows;
-- workspace/persona presentation;
-- DAG editing/inspection;
-- scheduling UI;
-- agent/tool/integration surfaces;
-- security/admin/audit surfaces;
-- files/container/settings product behavior.
-
-Lifecycle/ownership to replace:
-
-- app-local workspace/project models that conflict with canonical ownership-root Workspace/Project semantics;
-- app-local DAG/run execution semantics;
-- app-local scheduler execution paths;
-- app-local agent dispatch that bypasses canonical Binding/Invocation;
-- app-local execution/event identities where canonical IDs now exist.
-
-Target mapping:
-
-- Hive routes/services become application adapters over canonical core services;
-- Workspace/Persona UI reads/writes canonical ownership objects;
-- DAG UI edits canonical Graph/Node objects;
-- launch actions create canonical Runs;
-- live inspection consumes canonical Events/NodeRuns/Attempts;
-- tool/integration invocation resolves canonical Bindings;
-- schedules create Runs rather than execute workloads directly.
-
-Parity tests:
-
-- existing major user flows end-to-end;
-- workspace/persona isolation;
-- DAG create/edit/activate/run;
-- chat/session continuity;
-- schedule creation/trigger behavior;
-- agent invocation;
-- tool/integration invocation;
-- live and historical run inspection;
-- security/elevation behavior at production entry points.
+Converge app-local Workspace/Project collisions, private DAG/run execution, private scheduler execution, direct Agent/tool invocation, synthetic run state, and app-local lifecycle stores onto canonical core services.
 
 ### Design (`maistro-design`)
 
-Preserve as a specialized design domain and provider ecosystem.
+Preserve DesignProject, DesignSystem, DesignSkill, renderer behavior, design-specific trust/review/scanning, catalog/import, and output semantics.
 
-Behavior to preserve:
-
-- DesignProject domain state;
-- DesignSkill and DesignSystem assets;
-- renderer discovery/registry;
-- HTML/SVG/typography rendering;
-- trust/review/scanning specific to design assets;
-- catalog/import/bundle behavior.
-
-Target mapping:
-
-- DesignProject -> Workspace-owned domain object/artifact set;
-- DesignSkill -> NodeTemplate and/or Capability asset depending semantics;
-- DesignSystem -> Persona/workspace-scoped reusable domain asset;
-- RenderSlot -> Capability;
-- renderer -> Provider;
-- consumer configuration -> Binding;
-- render call -> Invocation;
-- DesignEngine remains a domain service/adapter, not ExecutionRuntime.
-
-Parity tests:
-
-- renderer selection;
-- render output equivalence;
-- trust/review rules;
-- catalog/import behavior;
-- persisted design-project behavior.
+Map RenderSlot -> Capability, renderer -> Provider, consumer configuration -> Binding, render call -> Invocation, execution -> NodeRun/Attempt, and output -> Artifact. DesignEngine remains a domain adapter, not ExecutionRuntime.
 
 ### Bootstrap (`maistro-bootstrap`)
 
-Bootstrap is not a normal Stream 7 runtime migration target.
-
-Preserve:
-
-- installation/materialization;
-- environment/provider initialization;
-- migrations/configuration;
-- release/bootstrap behavior.
-
-Rule:
-
-- keep bootstrap in the platform/install plane;
-- connect it to canonical registries/default seeding only where needed;
-- do not force installation/bootstrap activity into Run unless it is explicitly user work executed by the product runtime.
+Keep in the platform/install plane. It may seed or materialize canonical objects but should not become a product Run lifecycle owner.
 
 ### Registry (`maistro-registry`)
 
-The ADR/SPEC registry is engineering control-plane infrastructure and should remain outside canonical product execution. It may be used by Builders/RSI as a capability, but it should not itself become a product Run ontology.
+Keep ADR/SPEC lifecycle and conformance in the engineering control plane. Product Nodes may invoke it as a capability without folding Registry into the runtime ontology.
 
-## Cross-package duplicate families Stream 7 must eliminate
+## Cross-package duplicate families
 
-1. **Run identity/status**
-   - Builders `RunStatus` / run IDs;
-   - RSI cycle run IDs/results;
-   - app/package run concepts.
-   - Target: canonical Run/NodeRun/Attempt.
+1. Run identity/status -> canonical Run/NodeRun/Attempt.
+2. Package events/audit logs -> canonical Event plus domain projections where useful.
+3. Package artifact references/files -> canonical Artifact ownership/provenance plus domain metadata.
+4. Private dispatchers/runtimes -> domain adapters over canonical execution.
+5. Timers/autonomous loops -> Schedule/Event trigger -> Run.
+6. Direct tool/provider/model/sandbox calls -> Capability/Provider/Binding/Invocation.
 
-2. **Events/audit logs**
-   - Builders `StageEvent`;
-   - RSI JSONL audit;
-   - package/app-specific progress callbacks.
-   - Target: canonical Event envelope, retaining domain payload projections where useful.
+## Safe work before upstream merges
 
-3. **Artifacts**
-   - Builders `ArtifactRef`;
-   - Canvas generated/exported files;
-   - RSI snapshots/diffs/evidence;
-   - Design render artifacts.
-   - Target: canonical Artifact ownership/provenance plus domain metadata.
-
-4. **Execution dispatchers/runtimes**
-   - BuildersRuntime;
-   - RSI private cycle orchestration;
-   - Turing runtime/actor execution;
-   - app-local graph/run dispatch.
-   - Target: domain adapter -> Graph/Node -> Run/NodeRun/Attempt -> ExecutionRuntime mechanics.
-
-5. **Timers/autonomous loops**
-   - RSI autorun/evolve loops;
-   - proactive producers where timer-backed.
-   - Target: Schedule/Event trigger -> Run, while preserving domain controller state.
-
-6. **Tool/provider execution**
-   - direct gateway/model/tool/sandbox/provider calls in product packages.
-   - Target: Capability/Provider/Binding/Invocation after Stream 6.
-
-## Safe work Stream 7 can do before upstream merges
-
-- add behavior characterization tests around current product-domain behavior;
-- document old-to-canonical mapping;
-- identify direct provider/tool/model/sandbox calls that will need Bindings;
-- identify package-specific run IDs/status/event/artifact/checkpoint types;
-- identify app-local stores that own universal execution state;
-- mark deletion candidates but do not delete them;
-- define adapter seams/interfaces in tests or analysis without importing unstable canonical types;
-- create fixture sets that can later be run against both legacy and canonical paths.
+- behavior characterization tests;
+- old-to-canonical mapping;
+- direct-call and reachability inventories;
+- package-local identity/status/event/artifact/checkpoint inventory;
+- deletion prerequisites;
+- compatibility fixtures that can later exercise legacy and canonical paths.
 
 ## Work Stream 7 must not do yet
 
 - define another Run/NodeRun/Attempt model;
 - define another Event envelope;
 - define temporary Binding/Invocation contracts;
-- choose a winner between GraphRun and durable execution;
-- migrate checkpoint/resume semantics before Stream 2/5 contracts;
+- choose a winner between graph runtimes;
+- migrate checkpoint/resume ahead of Stream 2/5;
 - bypass authorization to make a migrated path reachable;
-- delete legacy behavior before parity tests exist.
+- delete legacy behavior before parity and data migration are established.
 
-## Recommended migration order inside Stream 7
+## Recommended migration order
 
-1. Builders characterization + adapter, because its duplicate lifecycle is explicit and its mapping is clean.
-2. RSI characterization + adapter, preserving HTR/evaluation/quarantine as domain behavior.
+1. Builders adapter.
+2. RSI adapter preserving HTR/evaluation/quarantine domain behavior.
 3. Evolve scheduled-run conversion.
-4. Canvas execution adapter while preserving Canvas domain/UI.
+4. Canvas execution adapter preserving Canvas domain/UI/recovery behavior.
 5. Turing execution/producer adapter.
 6. Design provider/binding adapter.
-7. Hive product-shell convergence after the underlying adapters and live Run inspection APIs exist.
-8. Bootstrap/Registry only for narrow integration changes, not ontology migration.
+7. Hive shell convergence after underlying canonical services exist.
+8. Bootstrap/Registry only for narrow integration changes.
 
 ## Ready-to-code gate
 
-Stream 7 product migration can start when the branch it is based on exposes stable, tested versions of:
-
-- canonical Workspace/Project scope IDs;
-- Graph/Node definitions;
-- Run/NodeRun/Attempt lifecycle + reconciliation + stores;
-- Attempt -> ExecutionRuntime entry point;
-- canonical Event producer/store contract;
-- canonical Checkpoint reference contract for resumable products;
-- authorization resource-scope adapter;
-- Capability/Provider/Binding/Invocation contract;
-- Graph/durable parity adapter for products requiring graph traversal/recovery.
-
-Not every product needs every item. Builders can start after Run + Event + Binding + Graph seams stabilize. RSI/Evolve require Run + Event + Binding and scheduler/recovery decisions. Canvas/Turing/Hive should wait for the broader set.
+Product implementation begins when the shared base exposes stable, tested canonical Workspace/Project scope, Graph/Node, Run/NodeRun/Attempt + reconciliation/store, Attempt -> ExecutionRuntime, Event, Checkpoint where required, authorization resource scopes, Binding/Invocation, and graph/durable convergence for graph-dependent products.
