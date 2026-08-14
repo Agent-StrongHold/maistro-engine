@@ -1,8 +1,7 @@
-"""Legacy Project API plus the canonical Workspace compatibility bridge.
+"""Legacy Project domain retained only until its consumers move to Workspace.
 
-``Project`` remains the durable representation during migration. New code should
-prefer :mod:`maistro.workspaces`; Workspace exports here are retained so callers
-using the first compatibility surface continue to resolve the same durable IDs.
+New code must use :mod:`maistro.workspaces`. Project is no longer a Workspace
+alias or persistence authority for canonical product state.
 """
 
 from __future__ import annotations
@@ -21,31 +20,12 @@ from .types import (
     ProjectSettings,
     RepoResourceBinding,
 )
-from .workspace import (
-    InMemoryWorkspaceStore,
-    Workspace,
-    WorkspaceAccessDenied,
-    WorkspaceMember,
-    WorkspaceMembership,
-    WorkspaceNotFound,
-    WorkspaceOwnershipError,
-    WorkspaceQuotaExceeded,
-    WorkspaceRole,
-    WorkspaceSettings,
-    WorkspaceStore,
-    legacy_project_role_for_workspace_role,
-    membership_for,
-    memberships_for,
-    resolve_workspace_id,
-    workspace_role_from_legacy,
-)
 
 __all__ = [
     "KNOWN_DOMAINS",
     "AirtableResourceBinding",
     "DomainConfig",
     "InMemoryProjectStore",
-    "InMemoryWorkspaceStore",
     "JiraResourceBinding",
     "Project",
     "ProjectAccessDenied",
@@ -56,21 +36,6 @@ __all__ = [
     "ProjectSettings",
     "ProjectStore",
     "RepoResourceBinding",
-    "Workspace",
-    "WorkspaceAccessDenied",
-    "WorkspaceMember",
-    "WorkspaceMembership",
-    "WorkspaceNotFound",
-    "WorkspaceOwnershipError",
-    "WorkspaceQuotaExceeded",
-    "WorkspaceRole",
-    "WorkspaceSettings",
-    "WorkspaceStore",
     "domain_for",
     "domain_use_cases",
-    "legacy_project_role_for_workspace_role",
-    "membership_for",
-    "memberships_for",
-    "resolve_workspace_id",
-    "workspace_role_from_legacy",
 ]
