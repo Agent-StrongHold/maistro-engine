@@ -15,6 +15,10 @@ from maistro.runs.model import RunStatus
 from .types import DurableRunRecord
 
 
+def _clone(record: DurableRunRecord) -> DurableRunRecord:
+    return DurableRunRecord.model_validate_json(record.model_dump_json())
+
+
 def _replace_state(
     state: GraphExecutionState,
     **updates: object,
@@ -82,12 +86,12 @@ class InMemoryDurableRunStore:
         async with self._lock:
             if record.run_id in self._rows:
                 raise ValueError(f"run_id collision: {record.run_id!r}")
-            self._rows[record.run_id] = record.model_copy(deep=True)
-            return self._rows[record.run_id].model_copy(deep=True)
+            self._rows[record.run_id] = _clone(record)
+            return _clone(self._rows[record.run_id])
 
     async def get(self, run_id: str) -> DurableRunRecord | None:
         record = self._rows.get(run_id)
-        return record.model_copy(deep=True) if record is not None else None
+        return _clone(record) if record is not None else None
 
     async def update(self, record: DurableRunRecord) -> DurableRunRecord:
         async with self._lock:
@@ -99,8 +103,8 @@ class InMemoryDurableRunStore:
                     f"version regression: stored={existing.version} "
                     f"incoming={record.version}"
                 )
-            self._rows[record.run_id] = record.model_copy(deep=True)
-            return self._rows[record.run_id].model_copy(deep=True)
+            self._rows[record.run_id] = _clone(record)
+            return _clone(self._rows[record.run_id])
 
     async def list_by_status(
         self,
@@ -115,7 +119,7 @@ class InMemoryDurableRunStore:
                 continue
             if project_id is not None and record.run.project_id != project_id:
                 continue
-            out.append(record.model_copy(deep=True))
+            out.append(_clone(record))
             if len(out) >= limit:
                 break
         return out
@@ -129,7 +133,7 @@ class InMemoryDurableRunStore:
             if record.run.project_id == project_id
         ]
         runs.sort(key=lambda record: record.run.created_at, reverse=True)
-        return [record.model_copy(deep=True) for record in runs[:limit]]
+        return [_clone(record) for record in runs[:limit]]
 
     async def submit_hitl_answer(
         self,
@@ -143,7 +147,7 @@ class InMemoryDurableRunStore:
                 raise KeyError(f"no such run: {run_id!r}")
             updated = _answer_record(record, node_id, answer)
             self._rows[run_id] = updated
-            return updated.model_copy(deep=True)
+            return _clone(updated)
 
 
 _SCHEMA_SQL = """\
@@ -272,7 +276,7 @@ def _create_sync(
             row,
         )
         conn.commit()
-    return record.model_copy(deep=True)
+    return _clone(record)
 
 
 def _get_sync(
@@ -321,7 +325,7 @@ def _update_sync(
                 f"incoming={record.version}"
             )
         conn.commit()
-    return record.model_copy(deep=True)
+    return _clone(record)
 
 
 def _list_by_status_sync(
