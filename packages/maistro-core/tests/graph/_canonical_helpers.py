@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
 from maistro.graph.definitions import Edge, Graph, Node
-from maistro.graph.execution_state import GraphExecutionState
+from maistro.graph.durable_runs.executor import resume_durable_graph, run_durable_graph
+from maistro.graph.durable_runs.protocol import DurableRunStore
 from maistro.graph.durable_runs.types import DurableRunRecord
+from maistro.graph.execution_state import GraphExecutionState
+from maistro.graph.nodes.base import BaseNode
 from maistro.runs.lifecycle import transition_run
 from maistro.runs.model import GraphSnapshot, NodeRun, Run, RunStatus
+
+LegacyResolver = Callable[[str, dict[str, Any]], BaseNode[Any, Any]]
 
 
 def graph_from_dag(
@@ -48,7 +54,16 @@ def graph_from_dag(
         metadata = {
             key: value
             for key, value in raw.items()
-            if key not in {"id", "edge_id", "from_node", "from_role", "to_node", "to_role", "condition"}
+            if key
+            not in {
+                "id",
+                "edge_id",
+                "from_node",
+                "from_role",
+                "to_node",
+                "to_role",
+                "condition",
+            }
         }
         edges.append(
             Edge(
@@ -75,6 +90,77 @@ def graph_from_dag(
         edges=edges,
         metadata=metadata,
     )
+
+
+def _legacy_dag(graph: Graph) -> dict[str, Any]:
+    """Project canonical Graphs back into the old resolver fixture shape."""
+
+    return {
+        "id": graph.graph_id,
+        "name": graph.name,
+        "entry_node": graph.metadata.get("entry_node"),
+        "nodes": [
+            {
+                "id": node.node_id,
+                "kind": node.node_type,
+                "inputs": dict(node.inputs),
+                "config": dict(node.parameters),
+                **dict(node.metadata),
+            }
+            for node in graph.nodes
+        ],
+        "edges": [
+            {
+                "edge_id": edge.edge_id,
+                "from_node": edge.from_node,
+                "to_node": edge.to_node,
+                "condition": edge.condition,
+                **dict(edge.metadata),
+            }
+            for edge in graph.edges
+        ],
+    }
+
+
+async def run_legacy_dag_fixture(
+    dag: dict[str, Any],
+    *,
+    store: DurableRunStore,
+    node_resolver: LegacyResolver,
+    inputs: dict[str, Any] | None = None,
+    user_id: str | None = None,
+    project_id: str | None = None,
+    run_id: str | None = None,
+) -> DurableRunRecord:
+    """Execute a raw legacy test fixture through the canonical public executor."""
+
+    graph = graph_from_dag(dag, project_id=project_id or "test-project")
+
+    def resolver(node_id: str, _graph: Graph) -> BaseNode[Any, Any]:
+        return node_resolver(node_id, dag)
+
+    return await run_durable_graph(
+        graph,
+        store=store,
+        node_resolver=resolver,
+        inputs=inputs,
+        actor_principal_id=user_id,
+        run_id=run_id,
+    )
+
+
+async def resume_legacy_dag_fixture(
+    run_id: str,
+    *,
+    store: DurableRunStore,
+    node_resolver: LegacyResolver,
+) -> DurableRunRecord:
+    """Resume canonical persistence while preserving old resolver test fixtures."""
+
+    def resolver(node_id: str, graph: Graph) -> BaseNode[Any, Any]:
+        return node_resolver(node_id, _legacy_dag(graph))
+
+    return await resume_durable_graph(run_id, store=store, node_resolver=resolver)
 
 
 def run_at_status(
