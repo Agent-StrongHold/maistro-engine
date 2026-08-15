@@ -15,11 +15,13 @@ from typing import ClassVar
 import pytest
 from pydantic import BaseModel
 
-from maistro.graph.durable_runs import InMemoryDurableRunStore, run_durable_dag
+from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus
 from maistro.graph.durable_runs.executor import _next_node
 from maistro.graph.nodes.base import BaseNode, NodeContext, NodeResult
 from maistro.graph.run import _next_nodes
 from maistro.graph.types import AgentRole, GraphConfig, GraphEdge, ReviewOutput
+
+from ._canonical_helpers import graph_from_dag, run_legacy_dag_fixture
 
 
 class _PassInput(BaseModel):
@@ -104,35 +106,39 @@ def test_graphrun_frontier_contains_sequential_and_parallel_targets() -> None:
 
 def test_durable_routing_rejects_false_condition() -> None:
     """Durable routing uses the same predicate dialect as GraphRun."""
-    dag = {
-        "nodes": [{"id": "start"}, {"id": "wrong"}, {"id": "right"}],
-        "edges": [
-            {
-                "from_node": "start",
-                "to_node": "wrong",
-                "condition": "review.approved == False",
-            },
-            {
-                "from_node": "start",
-                "to_node": "right",
-                "condition": "review.approved == True",
-            },
-        ],
-    }
+    graph = graph_from_dag(
+        {
+            "nodes": [{"id": "start"}, {"id": "wrong"}, {"id": "right"}],
+            "edges": [
+                {
+                    "from_node": "start",
+                    "to_node": "wrong",
+                    "condition": "review.approved == False",
+                },
+                {
+                    "from_node": "start",
+                    "to_node": "right",
+                    "condition": "review.approved == True",
+                },
+            ],
+        }
+    )
     result = NodeResult(
         success=True,
         status="completed",
         output={"review": {"approved": True}},
     )
 
-    assert _next_node(dag, "start", result) == "right"
+    target, decisions = _next_node(graph, "start", "node-run-1", result)
+    assert target == "right"
+    assert [decision.selected for decision in decisions] == [False, True]
 
 
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Stream 5 gap: durable traversal stores one current_node_id and cannot "
-        "execute and persist the multi-node frontier required for fan-out"
+        "Stream 5 gap: durable traversal remains single-frontier and cannot "
+        "execute both targets required for fan-out"
     ),
 )
 async def test_durable_run_must_execute_and_persist_parallel_frontier() -> None:
@@ -152,9 +158,9 @@ async def test_durable_run_must_execute_and_persist_parallel_frontier() -> None:
     }
     store = InMemoryDurableRunStore()
 
-    record = await run_durable_dag(dag, store=store, node_resolver=_pass_resolver)
+    record = await run_legacy_dag_fixture(dag, store=store, node_resolver=_pass_resolver)
     persisted = await store.get(record.run_id)
 
     assert persisted is not None
-    assert {node.node_id for node in persisted.node_records} == {"start", "left", "right"}
-    assert all(node.phase.value == "completed" for node in persisted.node_records)
+    assert {node.node_id for node in persisted.node_runs} == {"start", "left", "right"}
+    assert all(node.status is RunStatus.COMPLETED for node in persisted.node_runs)
