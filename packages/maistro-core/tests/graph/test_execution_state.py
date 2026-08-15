@@ -78,9 +78,7 @@ def test_state_round_trips_blackboard_and_decisions() -> None:
     state = GraphExecutionState(
         run_id="run-1",
         active_node_ids=["review"],
-        blackboard_snapshot={
-            "metadata": {"answer": 42, "history": ["draft", "review"]}
-        },
+        blackboard_snapshot={"metadata": {"answer": 42, "history": ["draft", "review"]}},
         edge_decisions=[
             GraphEdgeDecision(
                 edge_id="e1",
