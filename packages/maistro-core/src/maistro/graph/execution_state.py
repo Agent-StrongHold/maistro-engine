@@ -102,10 +102,31 @@ class GraphExecutionState(BaseModel):
     edge_decisions: tuple[GraphEdgeDecision, ...] = Field(default_factory=tuple)
     metadata: Mapping[str, Any] = Field(default_factory=dict)
 
+    @field_validator("run_id")
+    @classmethod
+    def _validate_run_id(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("run_id must be a non-empty string")
+        return value
+
+    @field_validator("active_node_ids")
+    @classmethod
+    def _validate_active_node_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("active_node_ids must not contain duplicates")
+        if any(not node_id.strip() for node_id in value):
+            raise ValueError("active_node_ids must contain non-empty strings")
+        return value
+
     @field_validator("visit_counts", mode="after")
     @classmethod
     def _freeze_visit_counts(cls, value: Mapping[str, int]) -> Mapping[str, int]:
-        return MappingProxyType(dict(value))
+        snapshot = dict(value)
+        if any(not node_id.strip() for node_id in snapshot):
+            raise ValueError("visit_counts keys must be non-empty strings")
+        if any(count < 0 for count in snapshot.values()):
+            raise ValueError("visit_counts values must be non-negative")
+        return MappingProxyType(snapshot)
 
     @field_validator("blackboard_snapshot", "metadata", mode="after")
     @classmethod
@@ -115,32 +136,24 @@ class GraphExecutionState(BaseModel):
             raise ValueError(f"{info.field_name} must be a JSON object")
         return frozen
 
+    @field_validator("edge_decisions")
+    @classmethod
+    def _validate_edge_decisions(
+        cls, value: tuple[GraphEdgeDecision, ...]
+    ) -> tuple[GraphEdgeDecision, ...]:
+        decision_keys = [
+            (decision.source_node_run_id, decision.edge_id) for decision in value
+        ]
+        if len(decision_keys) != len(set(decision_keys)):
+            raise ValueError("edge_decisions must be unique per source_node_run_id and edge_id")
+        return value
+
     @field_serializer("visit_counts", "blackboard_snapshot", "metadata")
     def _serialize_mapping(self, value: Mapping[str, Any]) -> dict[str, Any]:
         thawed = _thaw_json(value)
         if not isinstance(thawed, dict):
             raise TypeError("graph execution mappings must serialize as JSON objects")
         return thawed
-
-    @model_validator(mode="after")
-    def _validate_state(self) -> GraphExecutionState:
-        if not self.run_id.strip():
-            raise ValueError("run_id must be a non-empty string")
-        if len(self.active_node_ids) != len(set(self.active_node_ids)):
-            raise ValueError("active_node_ids must not contain duplicates")
-        if any(not node_id.strip() for node_id in self.active_node_ids):
-            raise ValueError("active_node_ids must contain non-empty strings")
-        if any(not node_id.strip() for node_id in self.visit_counts):
-            raise ValueError("visit_counts keys must be non-empty strings")
-        if any(count < 0 for count in self.visit_counts.values()):
-            raise ValueError("visit_counts values must be non-negative")
-
-        decision_keys = [
-            (decision.source_node_run_id, decision.edge_id) for decision in self.edge_decisions
-        ]
-        if len(decision_keys) != len(set(decision_keys)):
-            raise ValueError("edge_decisions must be unique per source_node_run_id and edge_id")
-        return self
 
 
 __all__ = ["GraphEdgeDecision", "GraphExecutionState"]
