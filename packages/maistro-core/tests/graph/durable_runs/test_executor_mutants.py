@@ -208,7 +208,7 @@ class TestCheckpointSuccess:
 
     def test_result_output_preserves_mapping(self) -> None:
         payload = {"text": "a"}
-        assert _result_output(NodeResult(success=True, output=payload)) is payload
+        assert _result_output(NodeResult(success=True, output=payload)) == payload
 
     def test_result_output_serializes_pydantic_model(self) -> None:
         assert _result_output(NodeResult(success=True, output=_Out(text="a"))) == {"text": "a"}
@@ -221,7 +221,7 @@ class TestSynthDepth:
             run_id="r-depth",
             blackboard_snapshot={"metadata": {"synth_depth": 3}},
         )
-        spec = record.graph.nodes[0]
+        spec = record.run.graph.materialize().nodes[0]
         updated = _maybe_increment_synth_depth(
             record,
             spec,

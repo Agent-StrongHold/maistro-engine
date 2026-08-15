@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from maistro.graph.execution_state import GraphExecutionState
+from maistro.graph.execution_state import GraphExecutionState, thaw_json_value
 from maistro.runs.lifecycle import transition_node_run, transition_run
 from maistro.runs.model import RunStatus
 
@@ -23,14 +23,14 @@ def _replace_state(
     state: GraphExecutionState,
     **updates: object,
 ) -> GraphExecutionState:
-    values = state.model_dump(mode="python")
-    values.update(updates)
+    values = state.model_dump(mode="json")
+    values.update({key: thaw_json_value(value) for key, value in updates.items()})
     return GraphExecutionState.model_validate(values)
 
 
 def _replace_record(record: DurableRunRecord, **updates: object) -> DurableRunRecord:
-    values = record.model_dump(mode="python")
-    values.update(updates)
+    values = record.model_dump(mode="json")
+    values.update({key: thaw_json_value(value) for key, value in updates.items()})
     return DurableRunRecord.model_validate(values)
 
 
