@@ -3,8 +3,6 @@ registry)."""
 
 from __future__ import annotations
 
-from .._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
-
 from typing import Any
 
 import httpx
@@ -22,6 +20,8 @@ from maistro.graph.seeds import (
     daily_status_seed,
     list_seeds_for,
 )
+
+from .._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
 
 
 def _make_fake_async_client(fake_issues: dict[str, Any]) -> type:

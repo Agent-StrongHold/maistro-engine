@@ -14,8 +14,6 @@ agent.yaml-only path), one of these tests will break first.
 
 from __future__ import annotations
 
-from ._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
-
 import contextlib
 from typing import ClassVar
 
@@ -27,6 +25,8 @@ from maistro.graph.durable_runs import (
 )
 from maistro.graph.nodes import BaseNode, NodeContext, get_node, register_node
 from maistro.projects import InMemoryProjectStore
+
+from ._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
 
 # --- Creative-team (canvas_creative) DAG fixtures -------------------------
 

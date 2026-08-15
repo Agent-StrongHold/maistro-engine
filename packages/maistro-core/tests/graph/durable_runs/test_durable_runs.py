@@ -16,12 +16,6 @@ Covers:
 
 from __future__ import annotations
 
-from .._canonical_helpers import (
-    durable_record,
-    resume_legacy_dag_fixture as resume_durable_dag,
-    run_legacy_dag_fixture as run_durable_dag,
-)
-
 import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
@@ -42,6 +36,16 @@ from maistro.graph.nodes import (
     get_node,
     pause_until,
     register_node,
+)
+
+from .._canonical_helpers import (
+    durable_record,
+)
+from .._canonical_helpers import (
+    resume_legacy_dag_fixture as resume_durable_dag,
+)
+from .._canonical_helpers import (
+    run_legacy_dag_fixture as run_durable_dag,
 )
 
 # --- Test fixtures: tiny nodes registered just for these tests -------------

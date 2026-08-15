@@ -175,9 +175,10 @@ async def test_base_context_survives_the_handoff_into_a_real_spawn_harness_node(
     in agent.spawn_harness's context alongside num_cycles -- not clobbered by
     the flat upstream-output-wins merge in _resolve_inputs."""
     from maistro.graph.durable_runs import InMemoryDurableRunStore
-    from .._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
     from maistro.graph.nodes import BaseNode, get_node
     from maistro.graph.nodes.agent_spawn_harness import AgentSpawnHarnessNode
+
+    from .._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
 
     class _FakeAdapter:
         def __init__(self) -> None:
