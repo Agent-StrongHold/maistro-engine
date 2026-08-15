@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from pydantic import BaseModel
@@ -13,11 +13,11 @@ from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
 from maistro.graph.nodes.base import BaseNode, NodeContext, NodeResult
 from maistro.runs.lifecycle import transition_node_run, transition_run
 from maistro.runs.model import (
-    TERMINAL_RUN_STATUSES,
     GraphSnapshot,
     NodeRun,
     Run,
     RunStatus,
+    TERMINAL_RUN_STATUSES,
 )
 
 from .protocol import DurableRunStore
@@ -210,7 +210,7 @@ async def _walk(
         record = await _checkpoint_success(record, node_run, result, store=store)
 
         metadata = record.graph_state.blackboard_snapshot.get("metadata", {})
-        if isinstance(metadata, dict) and metadata.get("halt_requested"):
+        if isinstance(metadata, Mapping) and metadata.get("halt_requested"):
             reason = str(metadata.get("halt_reason") or "halt_requested")
             return await _mark_failed(
                 record,
@@ -468,7 +468,7 @@ def _next_node(
 
 def _initial_inputs(record: DurableRunRecord) -> dict[str, Any]:
     value = record.graph_state.metadata.get("initial_inputs", {})
-    return dict(value) if isinstance(value, dict) else {}
+    return dict(value) if isinstance(value, Mapping) else {}
 
 
 def _resolve_inputs(
