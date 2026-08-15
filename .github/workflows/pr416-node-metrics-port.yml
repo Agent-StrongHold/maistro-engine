@@ -210,6 +210,7 @@ jobs:
       - name: Format and lint migrated test
         run: |
           uv run ruff format packages/hive-conductor/backend/tests/test_node_metrics.py
+          uv run ruff check --select I001 --fix packages/hive-conductor/backend/tests/test_node_metrics.py
           uv run ruff check packages/hive-conductor/backend/tests/test_node_metrics.py
       - name: Validate node metrics and daily status contracts
         run: |
