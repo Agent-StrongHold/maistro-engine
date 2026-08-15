@@ -32,6 +32,9 @@ class DurableRunRecord(BaseModel):
         ordinals = [node_run.ordinal for node_run in self.node_runs]
         if ordinals != list(range(1, len(ordinals) + 1)):
             raise ValueError("NodeRun ordinals must be consecutive in persistence order")
+        node_ids = {node.node_id for node in self.run.graph.materialize().nodes}
+        if any(node_id not in node_ids for node_id in self.graph_state.active_node_ids):
+            raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
         return self
 
     @property
