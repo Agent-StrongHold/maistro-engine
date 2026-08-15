@@ -45,6 +45,7 @@ def _replace_state(
     state: GraphExecutionState,
     **updates: object,
 ) -> GraphExecutionState:
+    """Return a validated graph state with selected fields replaced."""
     values = state.model_dump(mode="json")
     values.update({key: thaw_json_value(value) for key, value in updates.items()})
     return GraphExecutionState.model_validate(values)
@@ -54,6 +55,7 @@ def _replace_record(
     record: DurableRunRecord,
     **updates: object,
 ) -> DurableRunRecord:
+    """Return a validated durable record with selected fields replaced."""
     values = record.model_dump(mode="json")
     values.update({key: thaw_json_value(value) for key, value in updates.items()})
     return DurableRunRecord.model_validate(values)
@@ -65,6 +67,7 @@ async def _checkpoint(
     store: DurableRunStore,
     **updates: object,
 ) -> DurableRunRecord:
+    """Persist one optimistic-concurrency checkpoint with a bumped version."""
     return await store.update(
         _replace_record(
             record,
@@ -80,6 +83,7 @@ def _new_run(
     run_id: str | None,
     actor_principal_id: str | None,
 ) -> Run:
+    """Create a canonical running Run for a durable Graph execution."""
     values: dict[str, object] = {
         "workspace_id": graph.workspace_id,
         "project_id": graph.project_id,
@@ -248,6 +252,7 @@ async def _finish_walk(
     store: DurableRunStore,
     max_steps: int,
 ) -> DurableRunRecord:
+    """Complete an exhausted walk or fail it when a live frontier remains."""
     if record.active_node_id is not None:
         return await _mark_failed(
             record,
@@ -262,6 +267,7 @@ async def _finish_walk(
 
 
 def _entry_node(graph: Graph) -> str:
+    """Select the explicit Graph entry or derive the first root node."""
     explicit = graph.metadata.get("entry_node") or graph.metadata.get("entry")
     if explicit:
         node_id = str(explicit)
@@ -276,6 +282,7 @@ def _entry_node(graph: Graph) -> str:
 
 
 def _node_spec(graph: Graph, node_id: str) -> GraphNode | None:
+    """Return the canonical node definition for a node id when present."""
     return next((node for node in graph.nodes if node.node_id == node_id), None)
 
 
@@ -283,6 +290,7 @@ def _latest_nonterminal_node_run_index(
     record: DurableRunRecord,
     node_id: str,
 ) -> int | None:
+    """Find the newest unfinished NodeRun for a canonical Graph node."""
     for index in range(len(record.node_runs) - 1, -1, -1):
         node_run = record.node_runs[index]
         if node_run.node_id == node_id and node_run.status not in TERMINAL_RUN_STATUSES:
@@ -296,6 +304,7 @@ async def _ensure_running_node_run(
     *,
     store: DurableRunStore,
 ) -> tuple[DurableRunRecord, NodeRun]:
+    """Resume or create the canonical running NodeRun for the active node."""
     node_runs = list(record.node_runs)
     existing_index = _latest_nonterminal_node_run_index(record, node_id)
     if existing_index is not None:
@@ -331,6 +340,7 @@ async def _ensure_running_node_run(
 
 
 def _value_at_path(value: object, path: str) -> object:
+    """Resolve a dotted predicate path through Pydantic or mapping values."""
     for part in path.split("."):
         if isinstance(value, BaseModel):
             value = getattr(value, part, MISSING)
@@ -344,6 +354,7 @@ def _value_at_path(value: object, path: str) -> object:
 
 
 def _predicate_namespace(graph: Graph, node_id: str) -> str | None:
+    """Map planner, coder, and reviewer node identities to predicate slots."""
     spec = _node_spec(graph, node_id)
     if spec is None:
         return None
@@ -364,6 +375,7 @@ def _completed_predicate_state(
     graph: Graph,
     record: DurableRunRecord | None,
 ) -> dict[str, object]:
+    """Rebuild predicate namespaces from completed canonical NodeRuns."""
     state: dict[str, object] = {}
     if record is None:
         return state
@@ -382,6 +394,7 @@ def _merge_current_predicate_state(
     current_id: str,
     result: NodeResult,
 ) -> dict[str, object]:
+    """Overlay the current node result onto reconstructed predicate state."""
     output = result.output
     dumped = output.model_dump() if isinstance(output, BaseModel) else output
     if isinstance(dumped, dict):
@@ -402,6 +415,7 @@ def _predicate_state(
     result: NodeResult,
     record: DurableRunRecord | None,
 ) -> dict[str, object]:
+    """Build the canonical routing predicate state for the current edge."""
     state = _completed_predicate_state(graph, record)
     return _merge_current_predicate_state(state, graph, current_id, result)
 
@@ -412,6 +426,7 @@ def _result_value(
     *,
     predicate_state: dict[str, object] | None = None,
 ) -> object:
+    """Resolve a predicate path against accumulated state or current output."""
     parts = path.split(".", 1)
     if len(parts) == 2 and predicate_state is not None:
         namespace, remainder = parts
@@ -426,6 +441,7 @@ def _result_matches_condition(
     *,
     predicate_state: dict[str, object] | None = None,
 ) -> bool:
+    """Evaluate one canonical edge predicate against durable execution state."""
     return evaluate_predicate(
         condition,
         lambda path: _result_value(
@@ -472,6 +488,7 @@ def _next_node(
 
 
 def _initial_inputs(record: DurableRunRecord) -> dict[str, Any]:
+    """Return the immutable initial input mapping captured in graph metadata."""
     value = record.graph_state.metadata.get("initial_inputs", {})
     return dict(value) if isinstance(value, Mapping) else {}
 
@@ -481,6 +498,7 @@ def _resolve_inputs(
     current: NodeRun,
     spec: GraphNode,
 ) -> dict[str, Any]:
+    """Combine node defaults with the latest upstream result or run inputs."""
     static_inputs = {**spec.parameters, **spec.inputs}
     upstream_output: dict[str, Any] | None = None
     for node_run in reversed(record.node_runs):
@@ -495,6 +513,7 @@ def _resolve_inputs(
 
 
 def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRecord:
+    """Lift in-place blackboard mutations into persisted graph execution state."""
     blackboard = ctx.blackboard
     if blackboard is None or not hasattr(blackboard, "metadata"):
         return record
@@ -508,6 +527,7 @@ def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRe
 
 
 def _actually_spawned(kind: str, result: NodeResult) -> bool:
+    """Return whether a spawn-capable node actually dispatched child work."""
     if kind == "agent.synth_dag":
         output = result.output
         return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
@@ -519,6 +539,7 @@ def _maybe_increment_synth_depth(
     spec: GraphNode,
     result: NodeResult,
 ) -> DurableRunRecord:
+    """Advance synthesis depth after a node actually spawns a child graph."""
     if spec.node_type not in _DEPTH_INCREMENTING_KINDS or not _actually_spawned(
         spec.node_type, result
     ):
@@ -532,6 +553,7 @@ def _maybe_increment_synth_depth(
 
 
 def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
+    """Reconstruct NodeContext from canonical run and persisted graph state."""
     from maistro.graph.types import GraphBlackboard
 
     snapshot = record.graph_state.blackboard_snapshot
@@ -565,6 +587,7 @@ def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
 
 
 def _replace_node_run(record: DurableRunRecord, updated: NodeRun) -> DurableRunRecord:
+    """Replace one canonical NodeRun in a durable checkpoint by identity."""
     node_runs = list(record.node_runs)
     for index, node_run in enumerate(node_runs):
         if node_run.node_run_id == updated.node_run_id:
@@ -574,6 +597,7 @@ def _replace_node_run(record: DurableRunRecord, updated: NodeRun) -> DurableRunR
 
 
 def _result_output(result: NodeResult) -> object | None:
+    """Convert a node output to a JSON-compatible canonical Run result."""
     output = result.output
     if isinstance(output, BaseModel):
         return output.model_dump(mode="json")
@@ -581,6 +605,7 @@ def _result_output(result: NodeResult) -> object | None:
 
 
 def _clear_pause_metadata(state: GraphExecutionState) -> GraphExecutionState:
+    """Remove persisted pause metadata after execution resumes or completes."""
     metadata = dict(state.metadata)
     metadata.pop("pause", None)
     return _replace_state(state, metadata=metadata)
@@ -593,6 +618,7 @@ async def _checkpoint_success(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
+    """Persist successful NodeRun terminalization and clear pause state."""
     completed = transition_node_run(
         node_run,
         RunStatus.COMPLETED,
@@ -615,6 +641,7 @@ async def _checkpoint_pause(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
+    """Persist a wait or HITL pause on both Run and NodeRun lifecycle state."""
     paused_reason = str((result.metadata or {}).get("paused_reason") or "")
     human = paused_reason in {
         "awaiting_human_answer",
@@ -648,6 +675,7 @@ async def _checkpoint_failure(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
+    """Persist matching NodeRun and Run failure terminalization."""
     message = result.error_message or f"node {node_run.node_id} failed"
     error = f"{result.error_code or 'NodeFailure'}: {message}"[:512]
     failed_node = transition_node_run(node_run, RunStatus.FAILED, error=error)
@@ -661,6 +689,7 @@ async def _mark_completed(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
+    """Terminalize the canonical Run with its most recent completed result."""
     result = next(
         (
             node_run.result
@@ -681,6 +710,7 @@ async def _mark_completed(
 
 
 def _running_run(run: Run) -> Run:
+    """Normalize resumable lifecycle states to RUNNING before failure."""
     if run.status is RunStatus.RUNNING:
         return run
     if run.status is RunStatus.PAUSED:
@@ -699,6 +729,7 @@ async def _mark_failed(
     error_message: str,
     store: DurableRunStore,
 ) -> DurableRunRecord:
+    """Terminalize the canonical Run as failed with a bounded error string."""
     run = _running_run(record.run)
     error = f"{error_code}: {error_message}"[:512]
     if run.status is not RunStatus.RUNNING:
