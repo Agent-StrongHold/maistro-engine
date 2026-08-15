@@ -92,18 +92,14 @@ class TestResumeDurableGraphGuards:
 
     async def test_paused_hitl_requires_answer_before_resume(self) -> None:
         store = InMemoryDurableRunStore()
-        await store.create(
-            _record_for("r-paused", status=RunStatus.PAUSED, active_node_id="n1")
-        )
+        await store.create(_record_for("r-paused", status=RunStatus.PAUSED, active_node_id="n1"))
         with pytest.raises(ValueError, match="receive an answer"):
             await resume_durable_graph("r-paused", store=store, node_resolver=_resolver)
 
     async def test_waiting_empty_frontier_resumes_and_completes(self) -> None:
         store = InMemoryDurableRunStore()
         await store.create(_record_for("r-waiting", status=RunStatus.WAITING))
-        result = await resume_durable_graph(
-            "r-waiting", store=store, node_resolver=_resolver
-        )
+        result = await resume_durable_graph("r-waiting", store=store, node_resolver=_resolver)
         assert result.status is RunStatus.COMPLETED
 
 
@@ -133,9 +129,7 @@ class TestEntryNode:
             _entry_node(graph)
 
     def test_unknown_explicit_entry_is_rejected(self) -> None:
-        graph = graph_from_dag(
-            {"entry_node": "missing", "nodes": [{"id": "n1"}], "edges": []}
-        )
+        graph = graph_from_dag({"entry_node": "missing", "nodes": [{"id": "n1"}], "edges": []})
         with pytest.raises(ValueError, match="does not exist"):
             _entry_node(graph)
 
@@ -276,9 +270,7 @@ class TestCanonicalNodeRunPersistence:
         store = InMemoryDurableRunStore()
         await store.create(record)
 
-        updated, node_run = await _ensure_running_node_run(
-            record, "n1", store=store
-        )
+        updated, node_run = await _ensure_running_node_run(record, "n1", store=store)
         assert node_run.node_run_id == existing.node_run_id
         assert node_run.status is RunStatus.RUNNING
         assert len(updated.node_runs) == 1
@@ -296,9 +288,7 @@ class TestCanonicalNodeRunPersistence:
         store = InMemoryDurableRunStore()
         await store.create(record)
 
-        updated, node_run = await _ensure_running_node_run(
-            record, "n1", store=store
-        )
+        updated, node_run = await _ensure_running_node_run(record, "n1", store=store)
         assert node_run.node_run_id != existing.node_run_id
         assert node_run.ordinal == 2
         assert node_run.status is RunStatus.RUNNING
