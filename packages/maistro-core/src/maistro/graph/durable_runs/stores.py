@@ -159,14 +159,48 @@ CREATE INDEX IF NOT EXISTS idx_durable_graph_runs_resume_at
     ON durable_graph_runs(resume_at);
 """
 
+_LEGACY_TABLE = "durable_runs"
+
+
+def _legacy_row_count(conn: sqlite3.Connection) -> int:
+    """Return legacy durable row count without assuming the legacy column schema."""
+    table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (_LEGACY_TABLE,),
+    ).fetchone()
+    if table is None:
+        return 0
+    row = conn.execute(f"SELECT COUNT(*) AS count FROM {_LEGACY_TABLE}").fetchone()
+    return int(row["count"] if isinstance(row, sqlite3.Row) else row[0])
+
+
+def _reject_unmigrated_legacy_rows(conn: sqlite3.Connection) -> None:
+    """Refuse to hide legacy records that cannot be scope-migrated safely."""
+    count = _legacy_row_count(conn)
+    if count == 0:
+        return
+    raise RuntimeError(
+        "legacy durable_runs contains "
+        f"{count} persisted run(s) from the pre-canonical schema; automatic migration is unsafe "
+        "because those records do not carry workspace_id. Migrate or explicitly archive the "
+        "legacy rows before opening the canonical durable graph store."
+    )
+
 
 class SqliteDurableRunStore:
-    """SQLite-backed canonical durable graph checkpoint store."""
+    """SQLite-backed canonical durable graph checkpoint store.
+
+    The pre-canonical store used ``durable_runs`` records that had Project but
+    no Workspace ownership. Those rows cannot be projected into canonical Run
+    state without inventing scope, so construction fails closed while any are
+    present instead of silently starting an apparently empty replacement table.
+    """
 
     def __init__(self, db_path: str | Path) -> None:
         self._path = str(db_path)
         self._lock = asyncio.Lock()
         with self._connect() as conn:
+            _reject_unmigrated_legacy_rows(conn)
             conn.executescript(_SCHEMA_SQL)
 
     def _connect(self) -> sqlite3.Connection:
