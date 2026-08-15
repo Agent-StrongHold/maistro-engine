@@ -46,6 +46,7 @@ characterization. The convergence work adds 44 maistro-core node IDs covering
 ExecutionRuntime mechanics, Project to Workspace compatibility,
 WorkspaceMembership role semantics, the live Persona model, and
 one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
+Graph routing parity in #402 adds 10 maistro-core node IDs.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -61,7 +62,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6117 | `ci.yml` |
+| `packages/maistro-core/tests` | 6127 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
