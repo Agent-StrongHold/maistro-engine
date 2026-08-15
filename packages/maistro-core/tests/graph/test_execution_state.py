@@ -129,7 +129,9 @@ def test_state_cannot_be_mutated_after_validation() -> None:
 
 
 def test_active_frontier_rejects_duplicate_node_ids() -> None:
-    with pytest.raises(ValidationError, match="active_node_ids must not contain duplicates"):
+    with pytest.raises(
+        ValidationError, match="active_node_ids must not contain duplicates"
+    ):
         GraphExecutionState(run_id="run-1", active_node_ids=["worker", "worker"])
 
 
