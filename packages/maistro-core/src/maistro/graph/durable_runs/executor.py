@@ -331,10 +331,10 @@ def _merge_current_predicate_state(
     output = result.output
     dumped = output.model_dump() if isinstance(output, BaseModel) else output
     if isinstance(dumped, dict):
-        for namespace in ("plan", "code", "review"):
-            value = dumped.get(namespace, MISSING)
+        for slot in ("plan", "code", "review"):
+            value = dumped.get(slot, MISSING)
             if value is not MISSING:
-                state[namespace] = value
+                state[slot] = value
 
     namespace = _predicate_namespace(dag, current_id)
     if namespace is not None and output is not None:
