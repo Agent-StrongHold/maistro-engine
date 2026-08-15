@@ -178,7 +178,12 @@ def plan_payload(packets: list[Packet]) -> dict[str, Any]:
 
 def simulation(packets: list[Packet]) -> dict[str, float]:
     if not packets:
-        return {"max_seconds": 0.0, "median_seconds": 0.0, "p95_seconds": 0.0, "imbalance": 1.0}
+        return {
+            "max_seconds": 0.0,
+            "median_seconds": 0.0,
+            "p95_seconds": 0.0,
+            "imbalance": 1.0,
+        }
     loads = sorted(packet.estimated_seconds for packet in packets)
     median = statistics.median(loads)
     p95_index = max(0, math.ceil(len(loads) * 0.95) - 1)
@@ -195,7 +200,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("targets", type=Path, help="TSV from mutation_targets.py")
     parser.add_argument("--history", type=Path, required=True)
-    parser.add_argument("--target-minutes", type=float, default=DEFAULT_PACKET_SECONDS / 60)
+    parser.add_argument(
+        "--target-minutes", type=float, default=DEFAULT_PACKET_SECONDS / 60
+    )
     parser.add_argument("--runner-capacity", type=int, default=DEFAULT_RUNNER_CAPACITY)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
