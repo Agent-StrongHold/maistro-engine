@@ -1,0 +1,18 @@
+name: ruff-format-diagnostic
+
+on:
+  pull_request:
+    branches: [develop]
+
+jobs:
+  format-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install 3.12
+      - run: uv sync --locked --all-extras
+      - name: Show canonical Ruff formatting diff
+        run: |
+          uv run ruff format --diff scripts/mutation_history.py scripts/mutation_scheduler.py tests/test_mutation_scheduler.py
+          exit 1
