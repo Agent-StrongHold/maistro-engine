@@ -37,6 +37,10 @@ def sample(**overrides):
         "mutant_count": 50,
         "viable_mutants": 40,
         "killed_mutants": 38,
+        "surviving_mutants": 2,
+        "non_viable_mutants": 8,
+        "invalid_mutants": 1,
+        "undetermined_mutants": 1,
         "kill_rate": 0.95,
         "runner": "ubuntu-latest",
         "python_version": "3.12.9",
@@ -60,6 +64,8 @@ def test_first_complete_sample_initializes_history(module) -> None:
     assert entry["ewma_baseline_test_seconds"] == 2.0
     assert entry["viable_mutants"] == 40
     assert entry["killed_mutants"] == 38
+    assert entry["surviving_mutants"] == 2
+    assert entry["non_viable_mutants"] == 8
     assert entry["last_verified_commit"] == "abc123"
 
 
