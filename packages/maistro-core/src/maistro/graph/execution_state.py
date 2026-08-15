@@ -110,7 +110,9 @@ class GraphExecutionState(BaseModel):
     @field_validator("blackboard_snapshot", "metadata", mode="after")
     @classmethod
     def _freeze_json_mapping(
-        cls, value: Mapping[str, Any], info: Any
+        cls,
+        value: Mapping[str, Any],
+        info: Any,
     ) -> Mapping[str, Any]:
         frozen = _freeze_json(dict(value), path=str(info.field_name))
         if not isinstance(frozen, Mapping):
