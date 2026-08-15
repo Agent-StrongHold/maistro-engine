@@ -16,7 +16,7 @@ def test_state_can_persist_multi_node_frontier() -> None:
         visit_counts={"start": 1, "left": 1, "right": 1},
     )
 
-    assert state.active_node_ids == ["left", "right"]
+    assert state.active_node_ids == ("left", "right")
     assert state.cycle == 2
 
 
@@ -53,11 +53,34 @@ def test_edge_decisions_distinguish_repeated_visits_to_same_edge() -> None:
     assert state.edge_decisions[1].selected is False
 
 
+def test_duplicate_edge_decision_for_same_source_run_is_rejected() -> None:
+    first = GraphEdgeDecision(
+        edge_id="review-to-code",
+        source_node_id="review",
+        source_node_run_id="node-run-1",
+        target_node_id="code",
+        selected=True,
+        cycle=1,
+    )
+    contradictory = first.model_copy(update={"selected": False})
+
+    with pytest.raises(
+        ValidationError,
+        match="edge_decisions must be unique per source_node_run_id and edge_id",
+    ):
+        GraphExecutionState(
+            run_id="run-1",
+            edge_decisions=[first, contradictory],
+        )
+
+
 def test_state_round_trips_blackboard_and_decisions() -> None:
     state = GraphExecutionState(
         run_id="run-1",
         active_node_ids=["review"],
-        blackboard_snapshot={"metadata": {"answer": 42}},
+        blackboard_snapshot={
+            "metadata": {"answer": 42, "history": ["draft", "review"]}
+        },
         edge_decisions=[
             GraphEdgeDecision(
                 edge_id="e1",
@@ -73,6 +96,36 @@ def test_state_round_trips_blackboard_and_decisions() -> None:
     restored = GraphExecutionState.model_validate_json(state.model_dump_json())
 
     assert restored == state
+
+
+def test_state_rejects_non_json_checkpoint_values() -> None:
+    with pytest.raises(ValidationError, match="must contain only JSON values"):
+        GraphExecutionState(
+            run_id="run-1",
+            blackboard_snapshot={"bad": {"not", "json"}},
+        )
+
+    with pytest.raises(ValidationError, match="finite JSON numbers"):
+        GraphExecutionState(
+            run_id="run-1",
+            metadata={"score": float("nan")},
+        )
+
+
+def test_state_cannot_be_mutated_after_validation() -> None:
+    state = GraphExecutionState(
+        run_id="run-1",
+        active_node_ids=["worker"],
+        visit_counts={"worker": 1},
+        blackboard_snapshot={"metadata": {"answer": 42}},
+    )
+
+    with pytest.raises(ValidationError):
+        state.cycle = -1
+    with pytest.raises(TypeError):
+        state.visit_counts["worker"] = -1  # type: ignore[index]
+    with pytest.raises(TypeError):
+        state.blackboard_snapshot["metadata"]["answer"] = 0
 
 
 def test_active_frontier_rejects_duplicate_node_ids() -> None:
