@@ -1,0 +1,31 @@
+exit_status=0
+ok     packages/maistro-core/tests: 6133
+ok     packages/maistro-evolve/tests: 629
+ok     packages/maistro-rsi/tests: 427
+ok     packages/maistro-server/tests: 185
+ok     packages/maistro-turing/tests: 176
+ok     packages/maistro-design/tests: 156
+ok     packages/maistro-bootstrap/tests: 123
+ok     packages/maistro-canvas/tests: 124
+ok     packages/maistro-turing/backend/tests: 26
+ok     tests/: 616
+ok     formal/: 417
+DRIFT  packages/hive-conductor/backend/tests: inventory 1230, collected 1233
+ok     packages/hive-conductor/tests/e2e: 24
+
+updated docs/testing/SUITE-INVENTORY.md (1 row(s))
+
+--- inventory diff ---
+diff --git a/docs/testing/SUITE-INVENTORY.md b/docs/testing/SUITE-INVENTORY.md
+index 3a9e7b4..e8139e2 100644
+--- a/docs/testing/SUITE-INVENTORY.md
++++ b/docs/testing/SUITE-INVENTORY.md
+@@ -79,7 +79,7 @@ unchanged.
+ | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
+ | `tests/` (root) | 616 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+ | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
+-| `packages/hive-conductor/backend/tests` | 1230 | `ci.yml` (bare python) |
++| `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
+ | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
+ 
+ ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
