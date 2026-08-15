@@ -47,7 +47,7 @@ def test_suspended_workspace_membership_is_rejected(resolver: AuthorizationResol
     assert decision.effective_permissions == frozenset()
 
 
-def test_workspace_grant_is_effective_without_project_narrowing(
+def test_workspace_grant_is_effective_without_project_overlay(
     resolver: AuthorizationResolver,
     workspace_member: WorkspaceMembership,
 ) -> None:
@@ -84,41 +84,36 @@ def test_workspace_deny_cannot_be_regranted_by_project(resolver: AuthorizationRe
     assert "run:execute" not in decision.effective_permissions
 
 
-def test_project_grants_can_narrow_but_never_widen(
+def test_project_grant_can_add_authority_inside_narrower_scope(
     resolver: AuthorizationResolver,
     workspace_member: WorkspaceMembership,
 ) -> None:
     memberships = (
         ProjectMembership(
             workspace_id="ws-1",
-            project_id="root",
-            principal_id="user-1",
-            grants=frozenset({"run:read", "credential:use"}),
-        ),
-        ProjectMembership(
-            workspace_id="ws-1",
             project_id="child",
             principal_id="user-1",
-            grants=frozenset({"run:read", "run:execute"}),
+            grants=frozenset({"run:admin"}),
         ),
     )
 
-    read = resolver.resolve(
-        permission="run:read",
+    child = resolver.resolve(
+        permission="run:admin",
         workspace_membership=workspace_member,
         project_path=("root", "child"),
         project_memberships=memberships,
     )
-    execute = resolver.resolve(
-        permission="run:execute",
+    parent = resolver.resolve(
+        permission="run:admin",
         workspace_membership=workspace_member,
-        project_path=("root", "child"),
+        project_path=("root",),
         project_memberships=memberships,
     )
 
-    assert read.allowed is True
-    assert execute.allowed is False
-    assert "run:execute" not in execute.effective_permissions
+    assert child.allowed is True
+    assert "run:admin" in child.effective_permissions
+    assert parent.allowed is False
+    assert "run:admin" not in parent.effective_permissions
 
 
 def test_deny_is_sticky_and_wins_over_descendant_grant(
@@ -167,6 +162,34 @@ def test_sibling_membership_does_not_affect_target_path(
         ),
     )
     assert decision.allowed is True
+
+
+def test_sibling_grant_does_not_escape_its_issuance_scope(
+    resolver: AuthorizationResolver,
+    workspace_member: WorkspaceMembership,
+) -> None:
+    membership = ProjectMembership(
+        workspace_id="ws-1",
+        project_id="child-b",
+        principal_id="user-1",
+        grants=frozenset({"run:admin"}),
+    )
+
+    sibling = resolver.resolve(
+        permission="run:admin",
+        workspace_membership=workspace_member,
+        project_path=("root", "child-a"),
+        project_memberships=(membership,),
+    )
+    owner = resolver.resolve(
+        permission="run:admin",
+        workspace_membership=workspace_member,
+        project_path=("root", "child-b"),
+        project_memberships=(membership,),
+    )
+
+    assert sibling.allowed is False
+    assert owner.allowed is True
 
 
 def test_other_principal_membership_does_not_affect_resolution(
@@ -245,7 +268,7 @@ def test_workspace_resource_visible_anywhere_in_same_workspace(
     )
 
 
-def test_project_resource_visible_only_in_exact_owning_project(
+def test_project_resource_flows_downward_but_not_upward_or_sideways(
     resolver: AuthorizationResolver,
     workspace_member: WorkspaceMembership,
 ) -> None:
@@ -261,7 +284,7 @@ def test_project_resource_visible_only_in_exact_owning_project(
         workspace_membership=workspace_member,
         project_path=("root", "project-a"),
     )
-    assert not resolver.can_view_resource(
+    assert resolver.can_view_resource(
         scope=scope,
         workspace_membership=workspace_member,
         project_path=("root", "project-a", "project-a-child"),
