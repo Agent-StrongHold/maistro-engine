@@ -8,16 +8,17 @@ from typing import Any
 from pydantic import BaseModel
 
 from maistro.graph.conditions import MISSING, evaluate_predicate
-from maistro.graph.definitions import Graph, Node as GraphNode
+from maistro.graph.definitions import Graph
+from maistro.graph.definitions import Node as GraphNode
 from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
 from maistro.graph.nodes.base import BaseNode, NodeContext, NodeResult
 from maistro.runs.lifecycle import transition_node_run, transition_run
 from maistro.runs.model import (
+    TERMINAL_RUN_STATUSES,
     GraphSnapshot,
     NodeRun,
     Run,
     RunStatus,
-    TERMINAL_RUN_STATUSES,
 )
 
 from .protocol import DurableRunStore
