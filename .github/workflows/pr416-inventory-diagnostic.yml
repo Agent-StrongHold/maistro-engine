@@ -1,3 +1,4 @@
+# Temporary diagnostic. Remove after capturing the suite-inventory delta.
 name: PR416 suite inventory diagnostic
 
 on:
