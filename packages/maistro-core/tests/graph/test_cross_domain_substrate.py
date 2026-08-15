@@ -4,7 +4,7 @@ The DAG substrate (Node protocol, registry, durable runs, executor,
 Project model) is supposed to be **domain-neutral** — PM Fleet is one
 use case riding on top of it, not part of its definition. These tests
 prove that by composing DAGs for *non-PM* domains and running them
-through the same `run_durable_dag` executor without any PM-specific
+through the same `canonical durable Graph executor without any PM-specific
 hooks.
 
 If a future change accidentally couples the substrate to PM (e.g. a

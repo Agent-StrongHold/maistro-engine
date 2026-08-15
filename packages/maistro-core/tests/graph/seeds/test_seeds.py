@@ -15,7 +15,6 @@ from maistro.graph.dag_validator import validate_dag
 from maistro.graph.durable_runs import (
     InMemoryDurableRunStore,
     RunStatus,
-    run_durable_dag,
 )
 from maistro.graph.nodes import get_node
 from maistro.graph.seeds import (
@@ -218,25 +217,25 @@ async def test_daily_status_seed_walks_through_executor_with_mocked_jira(
     )
     assert result.status == RunStatus.COMPLETED, (
         f"daily-status DAG did not complete: status={result.status}, "
-        f"error={result.error_code}/{result.error_message}, "
-        f"records={[(nr.node_id, nr.phase, nr.error_code) for nr in result.node_records]}"
+        f"error={result.run.error}, "
+        f"records={[(nr.node_id, nr.status, nr.error) for nr in result.node_runs]}"
     )
 
-    by_id = {nr.node_id: nr for nr in result.node_records}
+    by_id = {nr.node_id: nr for nr in result.node_runs}
     # Jira poll returned 2 issues.
-    assert by_id["jira_poll"].output is not None
-    assert by_id["jira_poll"].output["count"] == 2
+    assert by_id["jira_poll"].result is not None
+    assert by_id["jira_poll"].result["count"] == 2
     # Filter kept only the Epic.
-    assert by_id["jira_epic_filter"].output is not None
-    assert by_id["jira_epic_filter"].output["kept"] == 1
-    assert by_id["jira_epic_filter"].output["dropped"] == 1
+    assert by_id["jira_epic_filter"].result is not None
+    assert by_id["jira_epic_filter"].result["kept"] == 1
+    assert by_id["jira_epic_filter"].result["dropped"] == 1
     # Format produced a markdown section.
-    fm = by_id["jira_summary_format"].output
+    fm = by_id["jira_summary_format"].result
     assert fm is not None
     assert "PROJ-100" in fm["markdown"]
     assert "## Jira Epics updated" in fm["markdown"]
     # Dashboard appended.
-    da = by_id["jira_dash_append"].output
+    da = by_id["jira_dash_append"].result
     assert da is not None
     assert da["dashboard_id"] == "daily-status"
     assert da["sections_total"] >= 1
@@ -273,7 +272,7 @@ async def test_daily_status_seed_short_circuits_when_no_epics_match(
         dag, store=store, node_resolver=_seed_node_resolver, project_id="pm-proj-2"
     )
     assert result.status == RunStatus.COMPLETED
-    by_id = {nr.node_id: nr for nr in result.node_records}
-    assert by_id["jira_epic_filter"].output["kept"] == 0
-    assert "_No Epics updated" in by_id["jira_summary_format"].output["markdown"]
-    assert by_id["jira_dash_append"].output["sections_total"] >= 1
+    by_id = {nr.node_id: nr for nr in result.node_runs}
+    assert by_id["jira_epic_filter"].result["kept"] == 0
+    assert "_No Epics updated" in by_id["jira_summary_format"].result["markdown"]
+    assert by_id["jira_dash_append"].result["sections_total"] >= 1
