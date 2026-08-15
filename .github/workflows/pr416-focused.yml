@@ -16,15 +16,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          uv run ruff check \
-            packages/maistro-core/src/maistro/graph/durable_runs \
-            packages/maistro-core/tests/graph/_canonical_helpers.py \
-            packages/maistro-core/tests/graph/durable_runs \
-            packages/maistro-core/tests/graph/test_stream5_parity_characterization.py \
-            packages/maistro-core/tests/graph/test_cross_domain_substrate.py \
-            packages/maistro-core/tests/graph/seeds/test_seeds.py \
-            packages/maistro-core/tests/graph/nodes/test_rsi_quota_pace_trigger.py \
-            2>&1 | tee ruff-pr416.txt
+          uv run ruff check . 2>&1 | tee ruff-pr416.txt
       - name: Focused canonical durable tests
         continue-on-error: true
         run: |
