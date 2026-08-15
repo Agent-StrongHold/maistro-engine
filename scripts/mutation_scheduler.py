@@ -95,9 +95,7 @@ def _historical_cost(entry: dict[str, Any]) -> tuple[float, str] | None:
     return None
 
 
-def estimate_targets(
-    rows: list[tuple[str, str]], history: dict[str, Any]
-) -> list[Target]:
+def estimate_targets(rows: list[tuple[str, str]], history: dict[str, Any]) -> list[Target]:
     entries = history.get("entries", {})
     known: dict[str, tuple[float, str]] = {}
     for source, _tests in rows:
@@ -123,9 +121,7 @@ def estimate_targets(
     return estimated
 
 
-def packet_count(
-    targets: list[Target], target_seconds: float, runner_capacity: int
-) -> int:
+def packet_count(targets: list[Target], target_seconds: float, runner_capacity: int) -> int:
     if not targets:
         return 0
     if target_seconds <= 0:
@@ -200,9 +196,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("targets", type=Path, help="TSV from mutation_targets.py")
     parser.add_argument("--history", type=Path, required=True)
-    parser.add_argument(
-        "--target-minutes", type=float, default=DEFAULT_PACKET_SECONDS / 60
-    )
+    parser.add_argument("--target-minutes", type=float, default=DEFAULT_PACKET_SECONDS / 60)
     parser.add_argument("--runner-capacity", type=int, default=DEFAULT_RUNNER_CAPACITY)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
