@@ -233,7 +233,6 @@
     "maistro_rsi.harness_adapter",
     "maistro_rsi.rate_pacer",
     "maistro_turing.memory",
-    "maistro_turing.producers",
     "maistro_turing.providers",
     "maistro_turing.schema",
     "maistro_turing.tools",
