@@ -45,9 +45,7 @@ def test_history_ewma_beats_bootstrap_estimate(module) -> None:
         }
     }
 
-    estimates = {
-        target.source: target for target in module.estimate_targets(rows, history)
-    }
+    estimates = {target.source: target for target in module.estimate_targets(rows, history)}
     assert estimates["a.py"].estimated_seconds == 120
     assert estimates["a.py"].estimate_kind == "history-ewma"
     assert estimates["b.py"].estimated_seconds == 60
@@ -63,9 +61,7 @@ def test_unknown_cost_uses_inventory_median(module) -> None:
         }
     }
 
-    estimates = {
-        target.source: target for target in module.estimate_targets(rows, history)
-    }
+    estimates = {target.source: target for target in module.estimate_targets(rows, history)}
     assert estimates["new.py"].estimated_seconds == 200
     assert estimates["new.py"].estimate_kind == "inventory-median-fallback"
 
@@ -103,8 +99,7 @@ def test_planner_is_deterministic(module) -> None:
 
 def test_packet_count_expands_beyond_runner_capacity(module) -> None:
     targets = [
-        module.Target(f"source-{index}.py", "tests/x", 900, "history-ewma")
-        for index in range(10)
+        module.Target(f"source-{index}.py", "tests/x", 900, "history-ewma") for index in range(10)
     ]
 
     assert module.packet_count(targets, target_seconds=900, runner_capacity=4) == 10
