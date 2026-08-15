@@ -47,6 +47,7 @@ ExecutionRuntime mechanics, Project to Workspace compatibility,
 WorkspaceMembership role semantics, the live Persona model, and
 one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
 Graph routing parity in #402 adds 10 maistro-core node IDs.
+Graph execution-state frontier coverage in #403 adds nine maistro-core node IDs.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -63,7 +64,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6128 | `ci.yml` |
+| `packages/maistro-core/tests` | 6137 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -122,7 +123,7 @@ Two things the gate deliberately does **not** do:
 - **It does not distinguish skips from passes.** `--collect-only` counts
   collected node IDs, which is the right denominator for "did this suite stop
   collecting". Whether a collected test then skips is the runtime suites' and
-  coverage gate's business (C2/#287), not this one's — the
+  the coverage gate's business (C2/#287), not this one's — the
   `pytest.importorskip` guards on `packages/hive-conductor/tests/e2e` are
   exactly why: they keep the directory *collecting* 24 node IDs whether or not
   `browser_use` is installed, which is the property this gate wants to hold.
