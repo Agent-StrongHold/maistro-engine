@@ -136,8 +136,7 @@ class GraphExecutionState(BaseModel):
             raise ValueError("visit_counts values must be non-negative")
 
         decision_keys = [
-            (decision.source_node_run_id, decision.edge_id)
-            for decision in self.edge_decisions
+            (decision.source_node_run_id, decision.edge_id) for decision in self.edge_decisions
         ]
         if len(decision_keys) != len(set(decision_keys)):
             raise ValueError("edge_decisions must be unique per source_node_run_id and edge_id")
