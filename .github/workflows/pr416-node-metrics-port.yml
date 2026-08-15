@@ -1,0 +1,229 @@
+name: PR416 canonical node metrics test migration
+
+on:
+  push:
+    branches:
+      - feat/graph-durable-canonical-persistence
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/graph-durable-canonical-persistence
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install 3.12
+      - run: uv sync --locked --all-extras
+      - run: uv pip install -r packages/hive-conductor/backend/requirements.txt
+      - name: Migrate stale durable-node metrics fixtures
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/hive-conductor/backend/tests/test_node_metrics.py")
+          text = path.read_text()
+
+          old_models = '''@dataclass
+          class _FakeNodeRec:
+              """Duck-typed stand-in for DurableNodeRecord."""
+
+              node_id: str
+              kind: str = ""
+              phase: str = "COMPLETED"
+              latency_ms: int = 0
+              tokens_in: int = 0
+              tokens_out: int = 0
+              cost_usd: float = 0.0
+              model_used: str = ""
+
+
+          @dataclass
+          class _FakeRun:
+              run_id: str = "r1"
+              dag_id: str = "daily-status"
+              project_id: str = "proj-A"
+              node_records: list[Any] = field(default_factory=list)
+          '''
+          new_models = '''@dataclass
+          class _FakeGraphNode:
+              node_id: str
+              node_type: str
+
+
+          @dataclass
+          class _FakeGraph:
+              graph_id: str
+              nodes: list[_FakeGraphNode]
+
+
+          @dataclass
+          class _FakeGraphSnapshot:
+              graph: _FakeGraph
+
+              def materialize(self) -> _FakeGraph:
+                  return self.graph
+
+
+          @dataclass
+          class _FakeRun:
+              run_id: str
+              project_id: str
+              graph: _FakeGraphSnapshot
+
+
+          @dataclass
+          class _FakeNodeRun:
+              node_id: str
+              status: Any = "completed"
+              latency_ms: int = 0
+              started_at: datetime = field(init=False)
+              finished_at: datetime = field(init=False)
+
+              def __post_init__(self) -> None:
+                  self.started_at = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
+                  self.finished_at = self.started_at + timedelta(milliseconds=self.latency_ms)
+
+
+          @dataclass
+          class _FakeRecord:
+              run: _FakeRun
+              node_runs: list[_FakeNodeRun] = field(default_factory=list)
+
+
+          def _fake_record(
+              *,
+              run_id: str = "r1",
+              dag_id: str = "daily-status",
+              project_id: str = "proj-A",
+              nodes: list[tuple[_FakeNodeRun, str]],
+          ) -> _FakeRecord:
+              graph = _FakeGraph(
+                  graph_id=dag_id,
+                  nodes=[_FakeGraphNode(node.node_id, kind) for node, kind in nodes],
+              )
+              run = _FakeRun(
+                  run_id=run_id,
+                  project_id=project_id,
+                  graph=_FakeGraphSnapshot(graph),
+              )
+              return _FakeRecord(run=run, node_runs=[node for node, _kind in nodes])
+          '''
+          if old_models not in text:
+              raise SystemExit("stale metrics fixture model block changed; refusing blind edit")
+          text = text.replace(old_models, new_models)
+
+          old_ingest = '''    run = _FakeRun(
+                  run_id="r-001",
+                  dag_id="daily-status",
+                  project_id="proj-X",
+                  node_records=[
+                      _FakeNodeRec("n1", "jira.poll", "COMPLETED", 150, 5, 12),
+                      _FakeNodeRec("n2", "transform.alias", "COMPLETED", 5, 0, 0),
+                      _FakeNodeRec("n3", "dashboard.append", "FAILED", 80, 0, 0),
+                  ],
+              )
+          '''
+          new_ingest = '''    run = _fake_record(
+                  run_id="r-001",
+                  dag_id="daily-status",
+                  project_id="proj-X",
+                  nodes=[
+                      (_FakeNodeRun("n1", "completed", 150), "jira.poll"),
+                      (_FakeNodeRun("n2", "completed", 5), "transform.alias"),
+                      (_FakeNodeRun("n3", "failed", 80), "dashboard.append"),
+                  ],
+              )
+          '''
+          if old_ingest not in text:
+              raise SystemExit("ingest test block changed; refusing blind edit")
+          text = text.replace(old_ingest, new_ingest)
+          text = text.replace(
+              '    assert by_id["n1"]["tokens_in"] == 5\n    assert by_id["n1"]["tokens_out"] == 12\n',
+              '    # Invocation/resource metrics move onto Attempt in the next spine slice.\n'
+              '    assert by_id["n1"]["tokens_in"] == 0\n'
+              '    assert by_id["n1"]["tokens_out"] == 0\n',
+          )
+
+          old_phase = '''def test_record_run_completion_phase_enum_coerced() -> None:
+              """phase coming in as 'NodePhase.COMPLETED' (string repr of StrEnum)
+              must normalize to bare 'COMPLETED' for the aggregator's match."""
+              from services.node_metrics_store import (
+                  NodeMetricsStore,
+                  record_run_completion,
+                  set_store,
+              )
+
+              store = NodeMetricsStore()
+              set_store(store)
+              try:
+                  run = _FakeRun(
+                      node_records=[
+                          _FakeNodeRec("n1", "x", "NodePhase.COMPLETED", 100, 0, 0),
+                      ]
+                  )
+                  record_run_completion(run)
+                  agg = store.aggregate(window_seconds=3600)
+                  assert agg["succeeded"] == 1
+                  assert agg["count"] == 1
+              finally:
+                  set_store(NodeMetricsStore())  # reset for other tests
+          '''
+          new_phase = '''def test_record_run_completion_canonical_status_coerced() -> None:
+              """Canonical RunStatus values normalize to the metrics phase vocabulary."""
+              from maistro.runs.model import RunStatus
+              from services.node_metrics_store import (
+                  NodeMetricsStore,
+                  record_run_completion,
+                  set_store,
+              )
+
+              store = NodeMetricsStore()
+              set_store(store)
+              try:
+                  run = _fake_record(
+                      nodes=[(_FakeNodeRun("n1", RunStatus.COMPLETED, 100), "x")]
+                  )
+                  record_run_completion(run)
+                  agg = store.aggregate(window_seconds=3600)
+                  assert agg["succeeded"] == 1
+                  assert agg["count"] == 1
+              finally:
+                  set_store(NodeMetricsStore())  # reset for other tests
+          '''
+          if old_phase not in text:
+              raise SystemExit("phase coercion test block changed; refusing blind edit")
+          text = text.replace(old_phase, new_phase)
+          text = text.replace(
+              "  - record_run_completion ingests every node_record correctly",
+              "  - record_run_completion ingests every canonical NodeRun correctly",
+          )
+          text = text.replace(
+              "    # No node_records attr; should not raise",
+              "    # No canonical run envelope; should not raise",
+          )
+          path.write_text(text)
+          PY
+      - name: Format and lint migrated test
+        run: |
+          uv run ruff format packages/hive-conductor/backend/tests/test_node_metrics.py
+          uv run ruff check packages/hive-conductor/backend/tests/test_node_metrics.py
+      - name: Validate node metrics and daily status contracts
+        run: |
+          env PYTHONPATH="$(find packages -type d -name src -printf '%p:')packages/hive-conductor/backend" \
+            uv run pytest -q \
+              packages/hive-conductor/backend/tests/test_node_metrics.py \
+              packages/hive-conductor/backend/tests/test_daily_status_runner.py
+      - name: Commit canonical metrics test migration
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/hive-conductor/backend/tests/test_node_metrics.py
+          git commit -m "test(hive): migrate node metrics to canonical NodeRun"
+          git push origin HEAD:feat/graph-durable-canonical-persistence
