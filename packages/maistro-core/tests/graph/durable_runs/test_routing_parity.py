@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -20,7 +21,7 @@ class _Envelope(BaseModel):
     review: _Review
 
 
-def _result(output: object) -> NodeResult:
+def _result(output: dict[str, Any] | BaseModel | None) -> NodeResult:
     return NodeResult(success=True, status="completed", output=output)
 
 
