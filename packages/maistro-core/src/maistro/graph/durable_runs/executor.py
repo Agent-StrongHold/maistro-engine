@@ -44,6 +44,14 @@ NodeResolver = Callable[[str, dict[str, Any]], BaseNode[Any, Any]]
 # the spawning node's own invocation. Kept in sync with `agent_synth_dag.py`
 # and `agent_spawn_harness.py`'s registered `kind` ClassVars.
 _DEPTH_INCREMENTING_KINDS = frozenset({"agent.synth_dag", "agent.spawn_harness"})
+_PREDICATE_NAMESPACE_ALIASES = {
+    "plan": "plan",
+    "planner": "plan",
+    "code": "code",
+    "coder": "code",
+    "review": "review",
+    "reviewer": "review",
+}
 
 
 # --- Entrypoint: start a new run ------------------------------------------
@@ -200,7 +208,7 @@ async def _walk(
 
         record = _maybe_increment_synth_depth(record, spec, result)
 
-        next_id = _next_node(dag, node_id, result)
+        next_id = _next_node(dag, node_id, result, record)
         record = record.model_copy(
             update={
                 "current_node_id": next_id,
@@ -270,9 +278,8 @@ def _node_spec(dag: dict[str, Any], node_id: str) -> dict[str, Any] | None:
     return None
 
 
-def _result_value(result: NodeResult, path: str) -> object:
-    """Resolve a dotted predicate path against a durable node result payload."""
-    value: object = result.output
+def _value_at_path(value: object, path: str) -> object:
+    """Resolve a dotted path through either Pydantic or mapping payloads."""
     for part in path.split("."):
         if isinstance(value, BaseModel):
             value = getattr(value, part, MISSING)
@@ -285,26 +292,120 @@ def _result_value(result: NodeResult, path: str) -> object:
     return value
 
 
-def _result_matches_condition(condition: str, result: NodeResult) -> bool:
-    """Evaluate the canonical graph predicate dialect against durable output."""
-    return evaluate_predicate(condition, lambda path: _result_value(result, path))
+def _predicate_namespace(dag: dict[str, Any], node_id: str) -> str | None:
+    """Map legacy planner/coder/reviewer node identity to predicate namespaces."""
+    spec = _node_spec(dag, node_id) or {}
+    for value in (spec.get("role"), spec.get("agent_role"), spec.get("id"), spec.get("kind")):
+        token = str(value or "").lower().rsplit(".", 1)[-1]
+        namespace = _PREDICATE_NAMESPACE_ALIASES.get(token)
+        if namespace is not None:
+            return namespace
+    return None
 
 
-def _next_node(dag: dict[str, Any], current_id: str, result: NodeResult) -> str | None:
+def _completed_predicate_state(
+    dag: dict[str, Any], record: DurableRunRecord | None
+) -> dict[str, object]:
+    """Rebuild canonical predicate namespaces from completed checkpoints."""
+    state: dict[str, object] = {}
+    if record is None:
+        return state
+    for node_record in record.node_records:
+        if node_record.phase != NodePhase.COMPLETED:
+            continue
+        if node_record.output is None:
+            continue
+        namespace = _predicate_namespace(dag, node_record.node_id)
+        if namespace is not None:
+            state[namespace] = node_record.output
+    return state
+
+
+def _merge_current_predicate_state(
+    state: dict[str, object],
+    dag: dict[str, Any],
+    current_id: str,
+    result: NodeResult,
+) -> dict[str, object]:
+    """Overlay the current result onto the reconstructed predicate state."""
+    output = result.output
+    dumped = output.model_dump() if isinstance(output, BaseModel) else output
+    if isinstance(dumped, dict):
+        for slot in ("plan", "code", "review"):
+            value = dumped.get(slot, MISSING)
+            if value is not MISSING:
+                state[slot] = value
+
+    namespace = _predicate_namespace(dag, current_id)
+    if namespace is not None and output is not None:
+        state[namespace] = output
+    return state
+
+
+def _predicate_state(
+    dag: dict[str, Any],
+    current_id: str,
+    result: NodeResult,
+    record: DurableRunRecord | None,
+) -> dict[str, object]:
+    """Reconstruct GraphRun's plan/code/review slots from durable checkpoints."""
+    state = _completed_predicate_state(dag, record)
+    return _merge_current_predicate_state(state, dag, current_id, result)
+
+
+def _result_value(
+    result: NodeResult,
+    path: str,
+    *,
+    predicate_state: dict[str, object] | None = None,
+) -> object:
+    """Resolve a canonical predicate path against durable execution state."""
+    parts = path.split(".", 1)
+    if len(parts) == 2 and predicate_state is not None:
+        namespace, remainder = parts
+        if namespace in predicate_state:
+            return _value_at_path(predicate_state[namespace], remainder)
+    return _value_at_path(result.output, path)
+
+
+def _result_matches_condition(
+    condition: str,
+    result: NodeResult,
+    *,
+    predicate_state: dict[str, object] | None = None,
+) -> bool:
+    """Evaluate the canonical graph predicate dialect against durable state."""
+    return evaluate_predicate(
+        condition,
+        lambda path: _result_value(result, path, predicate_state=predicate_state),
+    )
+
+
+def _next_node(
+    dag: dict[str, Any],
+    current_id: str,
+    result: NodeResult,
+    record: DurableRunRecord | None = None,
+) -> str | None:
     """Pick the first outgoing edge whose canonical predicate is satisfied.
 
     Durable execution still has a single-node frontier; parallel fan-out is a
     separate convergence target. Within that constraint, edge selection uses
     the same predicate dialect and document-order precedence as GraphRun.
     """
+    predicate_state = _predicate_state(dag, current_id, result, record)
     edges = dag.get("edges") or []
     outgoing = [e for e in edges if str(e.get("from_node") or e.get("from_role")) == current_id]
     for edge in outgoing:
-        condition = edge.get("condition")
-        if condition and not _result_matches_condition(str(condition), result):
-            continue
         target = edge.get("to_node") or edge.get("to_role")
-        return str(target) if target else None
+        if not target:
+            continue
+        condition = edge.get("condition")
+        if condition and not _result_matches_condition(
+            str(condition), result, predicate_state=predicate_state
+        ):
+            continue
+        return str(target)
     return None
 
 

@@ -46,14 +46,16 @@ characterization. The convergence work adds 44 maistro-core node IDs covering
 ExecutionRuntime mechanics, Project to Workspace compatibility,
 WorkspaceMembership role semantics, the live Persona model, and
 one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
+Graph routing parity in #402 adds 10 maistro-core node IDs.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
-Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs.
+Stream 3 authorization/resource-scope coverage adds 19 maistro-core node IDs.
 Stream 7 product-adapter parity adds four maistro-core and two maistro-canvas
 node IDs.
 Stream 2 event, checkpoint, and outbox coverage adds 51 maistro-core node IDs.
 The repo-task wrapper compatibility regression adds one maistro-evolve node ID.
+Reachability production-root coverage adds four root-suite node IDs.
 Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
 collected node ID while retaining the intended assertion. Other suite counts are
@@ -61,7 +63,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6117 | `ci.yml` |
+| `packages/maistro-core/tests` | 6128 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -70,7 +72,7 @@ unchanged.
 | `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
-| `tests/` (root) | 612 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+| `tests/` (root) | 616 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
 | `packages/hive-conductor/backend/tests` | 1230 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
@@ -120,7 +122,7 @@ Two things the gate deliberately does **not** do:
 - **It does not distinguish skips from passes.** `--collect-only` counts
   collected node IDs, which is the right denominator for "did this suite stop
   collecting". Whether a collected test then skips is the runtime suites' and
-  the coverage gate's business (C2/#287), not this one's — the
+  coverage gate's business (C2/#287), not this one's — the
   `pytest.importorskip` guards on `packages/hive-conductor/tests/e2e` are
   exactly why: they keep the directory *collecting* 24 node IDs whether or not
   `browser_use` is installed, which is the property this gate wants to hold.

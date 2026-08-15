@@ -2,7 +2,7 @@
 by test_durable_runs.py: resume_durable_dag's missing-run/bad-status
 branches, _walk's unknown-node branch, _entry_node's nodes-fallback and
 no-nodes-raise branches, _node_spec's no-match branch, _next_node's
-all-conditions-fallback branch, _lift_blackboard's no-blackboard early
+conditional-routing branch, _lift_blackboard's no-blackboard early
 return, and _build_ctx's blackboard-construction exception fallback."""
 
 from __future__ import annotations
@@ -139,7 +139,7 @@ class TestNodeSpec:
 
 
 class TestNextNode:
-    def test_all_outgoing_edges_have_conditions_takes_first(self) -> None:
+    def test_unmatched_conditional_edges_do_not_route(self) -> None:
         dag = {
             "edges": [
                 {"from_node": "a", "to_node": "b", "condition": "x == 1"},
@@ -147,7 +147,7 @@ class TestNextNode:
             ]
         }
         result = NodeResult(success=True, status="completed", output=None)
-        assert _next_node(dag, "a", result) == "b"
+        assert _next_node(dag, "a", result) is None
 
 
 class TestLiftBlackboard:
@@ -258,11 +258,9 @@ class TestExecutorMutationGaps:
     def test_next_node_prefers_the_first_unconditional_edge(self) -> None:
         """Kills `for e in outgoing:` -> `for e in []`.
 
-        With the loop skipped, the function falls through to `outgoing[0]` and
-        returns the *conditional* edge's target. Ordering the conditional edge
-        first is what makes the two behaviours distinguishable — with an
-        unconditional edge at index 0 the mutant returns the same answer and
-        the test proves nothing.
+        With the loop skipped, the function returns no target. Ordering a false
+        conditional edge before the unconditional edge proves the loop must
+        continue past an unmatched predicate and select the fallback edge.
         """
         dag = {
             "edges": [
@@ -273,8 +271,8 @@ class TestExecutorMutationGaps:
 
         assert _next_node(dag, "a", NodeResult(success=True, output={})) == "plain"
 
-    def test_next_node_falls_back_to_the_first_edge_when_all_are_conditional(self) -> None:
-        """Control for the test above: the fallback path must still work."""
+    def test_next_node_returns_none_when_all_conditions_are_unmatched(self) -> None:
+        """Conditional edges are not an implicit first-edge fallback."""
         dag = {
             "edges": [
                 {"from_node": "a", "to_node": "first", "condition": "x"},
@@ -282,7 +280,7 @@ class TestExecutorMutationGaps:
             ]
         }
 
-        assert _next_node(dag, "a", NodeResult(success=True, output={})) == "first"
+        assert _next_node(dag, "a", NodeResult(success=True, output={})) is None
 
     def test_next_node_returns_none_with_no_outgoing_edges(self) -> None:
         dag = {"edges": [{"from_node": "b", "to_node": "c"}]}
