@@ -3,6 +3,8 @@ registry)."""
 
 from __future__ import annotations
 
+from .._canonical_helpers import run_legacy_dag_fixture as run_durable_dag
+
 from typing import Any
 
 import httpx

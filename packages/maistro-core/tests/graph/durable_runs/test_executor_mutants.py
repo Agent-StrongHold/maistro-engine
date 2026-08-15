@@ -16,13 +16,14 @@ thirteen mutants on that line survive it. Starting from 3 separates them.
 
 from __future__ import annotations
 
+from .._canonical_helpers import durable_record, graph_from_dag
+
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
 from maistro.graph.durable_runs import (
-    DurableNodeRecord,
     DurableRunRecord,
     InMemoryDurableRunStore,
     RunStatus,

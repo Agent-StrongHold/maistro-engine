@@ -7,6 +7,8 @@ return, and _build_ctx's blackboard-construction exception fallback."""
 
 from __future__ import annotations
 
+from .._canonical_helpers import durable_record, graph_from_dag
+
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
@@ -14,7 +16,6 @@ import pytest
 from pydantic import BaseModel
 
 from maistro.graph.durable_runs import (
-    DurableNodeRecord,
     DurableRunRecord,
     InMemoryDurableRunStore,
     RunStatus,

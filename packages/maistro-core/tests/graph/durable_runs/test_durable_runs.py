@@ -16,6 +16,12 @@ Covers:
 
 from __future__ import annotations
 
+from .._canonical_helpers import (
+    durable_record,
+    resume_legacy_dag_fixture as resume_durable_dag,
+    run_legacy_dag_fixture as run_durable_dag,
+)
+
 import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar
@@ -29,8 +35,6 @@ from maistro.graph.durable_runs import (
     InMemoryDurableRunStore,
     RunStatus,
     SqliteDurableRunStore,
-    resume_durable_dag,
-    run_durable_dag,
 )
 from maistro.graph.nodes import (
     BaseNode,
