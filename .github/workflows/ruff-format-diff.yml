@@ -1,0 +1,16 @@
+name: ruff-format-diff
+
+on:
+  pull_request:
+    branches: [develop]
+
+jobs:
+  show-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.5.x"
+      - name: Show Ruff formatter diff
+        run: uvx --from ruff==0.15.12 ruff format --diff packages/maistro-core/src/maistro/graph/execution_state.py
