@@ -117,6 +117,7 @@ jobs:
           PY
       - name: Format and lint changed paths
         run: |
+          uv run ruff check --select I001 --fix packages/hive-conductor/backend/tests/test_daily_status_runner.py
           uv run ruff format \
             packages/maistro-core/src/maistro/container.py \
             packages/hive-conductor/backend/services/daily_status_runner.py \
