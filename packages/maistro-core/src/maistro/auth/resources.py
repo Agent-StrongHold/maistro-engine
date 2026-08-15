@@ -1,21 +1,21 @@
 """Project-tree authorization and resource visibility contracts.
 
 This module is deliberately independent from Persona and from the legacy
-``Project.members`` role model. It defines the authorization seam that can be
-backed by durable WorkspaceMembership/ProjectMembership persistence without
-making authorization depend on product presentation concepts.
+``Project.members`` role model. It provides the small, pure authorization
+contract used by callers that already hold canonical Project ancestry.
 
-Resolution rules:
+Production Project authorization should obtain ancestry and persisted
+ProjectMembership records from ``maistro.projects.ProjectScopeStore`` and use
+``maistro.projects.resolve_project_authorization``. This module must mirror the
+same architectural invariants:
 
-* a workspace membership is required;
-* workspace grants establish the maximum permission ceiling;
-* project grants may narrow that ceiling but never widen it;
-* denies are sticky and always win;
-* project-scoped resources are visible only in their exact owning project;
-* workspace-scoped resources are visible anywhere in the workspace.
-
-The caller supplies the canonical project ancestry from root to target. Tree
-storage remains owned by the Project domain rather than this module.
+* an active Workspace membership is required;
+* authority may increase as scope narrows;
+* Project grants apply only inside their Project subtree;
+* inherited denies are sticky and always win;
+* Project-scoped resources flow downward to descendants, never upward or sideways;
+* Workspace-scoped resources are visible anywhere in the Workspace;
+* Persona never participates in authorization.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ class MembershipStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class WorkspaceMembership:
-    """A principal's authorization membership in a workspace."""
+    """A principal's authorization membership in a Workspace."""
 
     workspace_id: str
     principal_id: str
@@ -47,12 +47,11 @@ class WorkspaceMembership:
 
 @dataclass(frozen=True, slots=True)
 class ProjectMembership:
-    """A principal's authorization overlay at one project in a project tree.
+    """A principal's authorization additions/restrictions at one Project scope.
 
-    ``grants`` is a narrowing allowlist. An empty grant set means "inherit the
-    current ceiling unchanged". A non-empty grant set intersects the current
-    ceiling. Consequently a child project can never grant a permission that
-    was unavailable at its parent or workspace.
+    Project grants are additive within the Project subtree. They do not need to
+    be present at Workspace scope first. A grant issued at one Project never
+    applies to its parent, sibling, or another unrelated subtree.
     """
 
     workspace_id: str
@@ -79,7 +78,7 @@ class ResourceScopeKind(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ResourceScope:
-    """Ownership/visibility scope for a credential, Binding, policy, or peer resource."""
+    """Ownership/visibility scope for a Credential, Binding, policy, or peer resource."""
 
     workspace_id: str
     kind: ResourceScopeKind
@@ -105,10 +104,11 @@ class AuthorizationDecision:
 
 
 class AuthorizationResolver:
-    """Resolve permissions and resource visibility over a canonical project path.
+    """Evaluate permissions over canonical Project ancestry supplied by the caller.
 
-    ``project_path`` arguments are ordered root -> target and contain project
-    IDs only. The resolver intentionally has no Persona input or dependency.
+    ``project_path`` is ordered Root Project -> target. Production callers should
+    obtain that path from ``ProjectScopeStore.lineage`` rather than constructing a
+    hierarchy ad hoc. The resolver intentionally has no Persona input or dependency.
     """
 
     def resolve(
@@ -151,9 +151,8 @@ class AuthorizationResolver:
                     denied_permissions=frozenset(denied),
                     reason=f"project membership suspended at {membership.project_id}",
                 )
+            effective.update(membership.grants)
             denied.update(membership.denies)
-            if membership.grants:
-                effective.intersection_update(membership.grants)
             effective.difference_update(denied)
 
         allowed = permission in effective and permission not in denied
@@ -162,9 +161,7 @@ class AuthorizationResolver:
             permission=permission,
             effective_permissions=frozenset(effective),
             denied_permissions=frozenset(denied),
-            reason="allowed"
-            if allowed
-            else "permission outside effective project ceiling or explicitly denied",
+            reason="allowed" if allowed else "permission not granted or explicitly denied",
         )
 
     def can_view_resource(
@@ -179,9 +176,10 @@ class AuthorizationResolver:
         This is ownership visibility only. Call ``resolve`` separately for the
         action permission required to read/use/mutate that resource.
 
-        ``project_path`` is root -> target. Project-scoped resources are exact:
-        only the target project may use a resource it owns. Ancestors,
-        descendants, and siblings do not inherit project-scoped resources.
+        ``project_path`` is Root Project -> target. A Project-scoped resource is
+        visible when its owning Project is on the target's ancestry, so resources
+        flow downward to descendants but never upward to parents or sideways to
+        siblings.
         """
         if (
             workspace_membership is None
@@ -191,8 +189,7 @@ class AuthorizationResolver:
             return False
         if scope.kind is ResourceScopeKind.WORKSPACE:
             return True
-        path = tuple(project_path)
-        return bool(path) and scope.project_id == path[-1]
+        return scope.project_id in tuple(project_path)
 
     @staticmethod
     def _overlays_for_path(
