@@ -15,73 +15,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feat/graph-durable-canonical-persistence
-      - name: Port durable-run assertions to canonical Run and NodeRun
+      - name: Finish canonical test assertions
         run: |
           python - <<'PY'
           from pathlib import Path
-          import re
 
-          path = Path('packages/maistro-core/tests/graph/durable_runs/test_durable_runs.py')
-          text = path.read_text()
-
-          text = re.sub(
-              r'def _record_for\(run_id: str\) -> DurableRunRecord:\n.*?\n\nasync def test_create_get_roundtrip',
-              '''def _record_for(run_id: str) -> DurableRunRecord:\n    return durable_record(\n        {"id": "d1", "nodes": [{"id": "n1"}], "edges": []},\n        run_id=run_id,\n    )\n\n\nasync def test_create_get_roundtrip''',
-              text,
-              flags=re.S,
-          )
-
+          seed = Path('packages/maistro-core/tests/graph/seeds/test_seeds.py')
+          text = seed.read_text()
+          text = text.replace('    run_durable_dag,\n', '')
+          text = text.replace('.node_records', '.node_runs')
+          text = text.replace('.output', '.result')
           text = text.replace(
-              'b = _record_for("b").model_copy(update={"status": RunStatus.COMPLETED})',
-              'b = durable_record(\n        {"id": "d1", "nodes": [{"id": "n1"}], "edges": []},\n        run_id="b",\n        status=RunStatus.COMPLETED,\n    )',
+              'f"error={result.error_code}/{result.error_message}, "\n        f"records={[(nr.node_id, nr.phase, nr.error_code) for nr in result.node_runs]}"',
+              'f"error={result.run.error}, "\n        f"records={[(nr.node_id, nr.status, nr.error) for nr in result.node_runs]}"',
           )
-          text = re.sub(
-              r'rec = _record_for\("r-sqlite-1"\)\.model_copy\(\n\s*update=\{"status": RunStatus\.PAUSED_HITL, "current_node_id": "ask-1"\}\n\s*\)',
-              'rec = durable_record(\n        {"id": "d1", "nodes": [{"id": "ask-1"}], "edges": []},\n        run_id="r-sqlite-1",\n        status=RunStatus.PAUSED,\n        active_node_id="ask-1",\n    )',
-              text,
-          )
+          seed.write_text(text)
 
-          replacements = [
-              ('RunStatus.PAUSED_HITL', 'RunStatus.PAUSED'),
-              ('RunStatus.PAUSED_WAIT', 'RunStatus.WAITING'),
-              ('.current_node_id', '.active_node_id'),
-              ('.node_records', '.node_runs'),
-              ('.blackboard_snapshot', '.graph_state.blackboard_snapshot'),
-              ('result.finished_at', 'result.run.finished_at'),
-              ('.output', '.result'),
-          ]
-          for old, new in replacements:
-              text = text.replace(old, new)
-
-          text = text.replace('.phase == "completed"', '.status is RunStatus.COMPLETED')
-          text = text.replace('.phase == "paused"', '.status is RunStatus.PAUSED')
-          text = text.replace('.phase == "failed"', '.status is RunStatus.FAILED')
-
-          text = text.replace(
-              'assert by_id["ask"].pause_metadata.get("question") == "Continue?"',
-              'assert result.graph_state.metadata["pause"]["metadata"]["question"] == "Continue?"',
-          )
-
-          text = text.replace(
-              'assert result.error_code == "ValueError"\n    assert "intentional test failure" in (result.error_message or "")',
-              'assert result.run.error is not None\n    assert result.run.error.startswith("ValueError:")\n    assert "intentional test failure" in result.run.error',
-          )
-          text = text.replace(
-              'assert by_id["boom"].error_code == "ValueError"',
-              'assert by_id["boom"].error is not None\n    assert by_id["boom"].error.startswith("ValueError:")',
-          )
-          text = text.replace(
-              'assert result.error_code == "HaltRequested"\n    assert (result.error_message or "").startswith("test halt") or "test halt" in (\n        result.error_message or ""\n    )',
-              'assert result.run.error is not None\n    assert result.run.error.startswith("HaltRequested:")\n    assert "test halt" in result.run.error',
-          )
-
-          # Canonical status filter: _record_for creates RUNNING records.
-          text = text.replace(
-              'assert {r.run_id for r in running} == set()  # both start "pending" not running',
-              'assert {r.run_id for r in running} == {"a"}',
-          )
-
-          path.write_text(text)
+          cross = Path('packages/maistro-core/tests/graph/test_cross_domain_substrate.py')
+          text = cross.read_text()
+          text = text.replace('run_durable_dag` executor', 'canonical durable Graph executor')
+          cross.write_text(text)
           PY
       - name: Commit semantic port
         run: |
@@ -90,6 +43,6 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/maistro-core/tests/graph/durable_runs/test_durable_runs.py
-          git commit -m "test(graph): port durable executor assertions to canonical lifecycle"
+          git add packages/maistro-core/tests/graph
+          git commit -m "test(graph): finish canonical durable test assertions"
           git push origin HEAD:feat/graph-durable-canonical-persistence
