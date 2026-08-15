@@ -104,7 +104,8 @@ def _canonical_graph_from_snapshot(
         metadata = {
             key: value
             for key, value in raw.items()
-            if key not in {"id", "edge_id", "from_node", "from_role", "to_node", "to_role", "condition"}
+            if key
+            not in {"id", "edge_id", "from_node", "from_role", "to_node", "to_role", "condition"}
         }
         edges.append(
             Edge(

@@ -21,7 +21,6 @@ from services.daily_status_runner import (  # noqa: E402
     run_daily_status_dag,
 )
 
-
 # --- registry + projection -------------------------------------------------
 
 
