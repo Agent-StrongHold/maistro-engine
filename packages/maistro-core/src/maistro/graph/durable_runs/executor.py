@@ -337,9 +337,8 @@ def _merge_current_predicate_state(
                 state[namespace] = value
 
     namespace = _predicate_namespace(dag, current_id)
-    if namespace is not None:
-        if output is not None:
-            state[namespace] = output
+    if namespace is not None and output is not None:
+        state[namespace] = output
     return state
 
 
