@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -140,6 +140,28 @@ class GraphExecutionState(BaseModel):
         if not isinstance(thawed, dict):
             raise TypeError("graph execution mappings must serialize as JSON objects")
         return thawed
+
+
+if TYPE_CHECKING:
+
+    def _vulture_pydantic_contract_usage(
+        edge_decision: GraphEdgeDecision,
+        state: GraphExecutionState,
+    ) -> None:
+        """Keep reflection-owned Pydantic surface visible to production-only Vulture scans."""
+        _ = edge_decision.source_node_id
+        _ = edge_decision._validate_identity
+        _ = state.active_node_ids
+        _ = state.visit_counts
+        _ = state.edge_decisions
+        _ = state._validate_run_id
+        _ = state._validate_active_node_ids
+        _ = state._freeze_visit_counts
+        _ = state._freeze_json_mapping
+        _ = state._validate_edge_decisions
+        _ = state._serialize_mapping
+
+    _ = _vulture_pydantic_contract_usage
 
 
 __all__ = ["GraphEdgeDecision", "GraphExecutionState"]
