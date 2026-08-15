@@ -23,7 +23,11 @@ PLANNER_VERSION = 1
 
 def load(path: Path) -> dict[str, Any]:
     if not path.is_file():
-        return {"version": HISTORY_VERSION, "planner_version": PLANNER_VERSION, "entries": {}}
+        return {
+            "version": HISTORY_VERSION,
+            "planner_version": PLANNER_VERSION,
+            "entries": {},
+        }
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload.setdefault("entries", {})
     return payload
@@ -83,10 +87,18 @@ def merge_entry(previous: dict[str, Any], sample: dict[str, Any]) -> dict[str, A
         "baseline_test_seconds": round(baseline_seconds, 6),
         "mutation_seconds": round(mutation_seconds, 6),
         "ewma_baseline_test_seconds": round(
-            _ewma(float(prior_baseline) if prior_baseline is not None else None, baseline_seconds), 6
+            _ewma(
+                float(prior_baseline) if prior_baseline is not None else None,
+                baseline_seconds,
+            ),
+            6,
         ),
         "ewma_mutation_seconds": round(
-            _ewma(float(prior_mutation) if prior_mutation is not None else None, mutation_seconds), 6
+            _ewma(
+                float(prior_mutation) if prior_mutation is not None else None,
+                mutation_seconds,
+            ),
+            6,
         ),
         "sample_count": count,
         "runner": sample["runner"],
@@ -141,8 +153,12 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, json.JSONDecodeError) as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 1
-    args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote mutation history candidate for {len(result['entries'])} source file(s)")
+    args.output.write_text(
+        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(
+        f"wrote mutation history candidate for {len(result['entries'])} source file(s)"
+    )
     return 0
 
 
