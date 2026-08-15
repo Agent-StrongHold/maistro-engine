@@ -13,14 +13,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Any
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_serializer,
-    field_validator,
-    model_validator,
-)
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 def _freeze_json(value: object, *, path: str) -> object:
@@ -65,17 +58,12 @@ class GraphEdgeDecision(BaseModel):
     cycle: int = Field(ge=0)
     condition: str | None = None
 
-    @model_validator(mode="after")
-    def _validate_identity(self) -> GraphEdgeDecision:
-        for value, name in (
-            (self.edge_id, "edge_id"),
-            (self.source_node_id, "source_node_id"),
-            (self.source_node_run_id, "source_node_run_id"),
-            (self.target_node_id, "target_node_id"),
-        ):
-            if not value.strip():
-                raise ValueError(f"{name} must be a non-empty string")
-        return self
+    @field_validator("edge_id", "source_node_id", "source_node_run_id", "target_node_id")
+    @classmethod
+    def _validate_identity(cls, value: str, info: Any) -> str:
+        if not value.strip():
+            raise ValueError(f"{info.field_name} must be a non-empty string")
+        return value
 
 
 class GraphExecutionState(BaseModel):
