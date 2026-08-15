@@ -506,9 +506,7 @@ def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRe
 def _actually_spawned(kind: str, result: NodeResult) -> bool:
     if kind == "agent.synth_dag":
         output = result.output
-        return bool(getattr(output, "success", True)) or bool(
-            getattr(output, "dispatched", False)
-        )
+        return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
     return True
 
 
@@ -517,9 +515,8 @@ def _maybe_increment_synth_depth(
     spec: GraphNode,
     result: NodeResult,
 ) -> DurableRunRecord:
-    if (
-        spec.node_type not in _DEPTH_INCREMENTING_KINDS
-        or not _actually_spawned(spec.node_type, result)
+    if spec.node_type not in _DEPTH_INCREMENTING_KINDS or not _actually_spawned(
+        spec.node_type, result
     ):
         return record
     snapshot = dict(record.graph_state.blackboard_snapshot)

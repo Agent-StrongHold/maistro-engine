@@ -40,13 +40,10 @@ def _answer_record(
     answer: dict[str, Any],
 ) -> DurableRunRecord:
     if record.run.status is not RunStatus.PAUSED:
-        raise ValueError(
-            f"run {record.run_id!r} not paused on HITL (status={record.run.status})"
-        )
+        raise ValueError(f"run {record.run_id!r} not paused on HITL (status={record.run.status})")
     if record.active_node_id != node_id:
         raise ValueError(
-            f"run {record.run_id!r} waiting on node {record.active_node_id!r}, "
-            f"not {node_id!r}"
+            f"run {record.run_id!r} waiting on node {record.active_node_id!r}, not {node_id!r}"
         )
 
     answered = {**answer, "answered_at": datetime.now(UTC).isoformat()}
@@ -100,8 +97,7 @@ class InMemoryDurableRunStore:
                 raise KeyError(f"no such run: {record.run_id!r}")
             if record.version <= existing.version:
                 raise ValueError(
-                    f"version regression: stored={existing.version} "
-                    f"incoming={record.version}"
+                    f"version regression: stored={existing.version} incoming={record.version}"
                 )
             self._rows[record.run_id] = _clone(record)
             return _clone(self._rows[record.run_id])
@@ -124,14 +120,8 @@ class InMemoryDurableRunStore:
                 break
         return out
 
-    async def list_for_project(
-        self, project_id: str, *, limit: int = 25
-    ) -> list[DurableRunRecord]:
-        runs = [
-            record
-            for record in self._rows.values()
-            if record.run.project_id == project_id
-        ]
+    async def list_for_project(self, project_id: str, *, limit: int = 25) -> list[DurableRunRecord]:
+        runs = [record for record in self._rows.values() if record.run.project_id == project_id]
         runs.sort(key=lambda record: record.run.created_at, reverse=True)
         return [_clone(record) for record in runs[:limit]]
 
@@ -230,9 +220,7 @@ class SqliteDurableRunStore:
             project_id,
         )
 
-    async def list_for_project(
-        self, project_id: str, *, limit: int = 25
-    ) -> list[DurableRunRecord]:
+    async def list_for_project(self, project_id: str, *, limit: int = 25) -> list[DurableRunRecord]:
         return await asyncio.to_thread(
             _list_for_project_sync,
             self,
@@ -321,8 +309,7 @@ def _update_sync(
             if existing is None:
                 raise KeyError(f"no such run: {record.run_id!r}")
             raise ValueError(
-                f"version regression: stored={existing['version']} "
-                f"incoming={record.version}"
+                f"version regression: stored={existing['version']} incoming={record.version}"
             )
         conn.commit()
     return _clone(record)
