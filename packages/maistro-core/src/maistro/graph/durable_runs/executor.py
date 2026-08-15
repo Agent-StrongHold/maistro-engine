@@ -303,6 +303,46 @@ def _predicate_namespace(dag: dict[str, Any], node_id: str) -> str | None:
     return None
 
 
+def _completed_predicate_state(
+    dag: dict[str, Any], record: DurableRunRecord | None
+) -> dict[str, object]:
+    """Rebuild canonical predicate namespaces from completed checkpoints."""
+    state: dict[str, object] = {}
+    if record is None:
+        return state
+    for node_record in record.node_records:
+        if node_record.phase != NodePhase.COMPLETED:
+            continue
+        if node_record.output is None:
+            continue
+        namespace = _predicate_namespace(dag, node_record.node_id)
+        if namespace is not None:
+            state[namespace] = node_record.output
+    return state
+
+
+def _merge_current_predicate_state(
+    state: dict[str, object],
+    dag: dict[str, Any],
+    current_id: str,
+    result: NodeResult,
+) -> dict[str, object]:
+    """Overlay the current result onto the reconstructed predicate state."""
+    output = result.output
+    dumped = output.model_dump() if isinstance(output, BaseModel) else output
+    if isinstance(dumped, dict):
+        for namespace in ("plan", "code", "review"):
+            value = dumped.get(namespace, MISSING)
+            if value is not MISSING:
+                state[namespace] = value
+
+    namespace = _predicate_namespace(dag, current_id)
+    if namespace is not None:
+        if output is not None:
+            state[namespace] = output
+    return state
+
+
 def _predicate_state(
     dag: dict[str, Any],
     current_id: str,
@@ -310,26 +350,8 @@ def _predicate_state(
     record: DurableRunRecord | None,
 ) -> dict[str, object]:
     """Reconstruct GraphRun's plan/code/review slots from durable checkpoints."""
-    state: dict[str, object] = {}
-    if record is not None:
-        for node_record in record.node_records:
-            if node_record.phase != NodePhase.COMPLETED or node_record.output is None:
-                continue
-            namespace = _predicate_namespace(dag, node_record.node_id)
-            if namespace is not None:
-                state[namespace] = node_record.output
-
-    output = result.output
-    dumped = output.model_dump() if isinstance(output, BaseModel) else output
-    if isinstance(dumped, dict):
-        for namespace in ("plan", "code", "review"):
-            if namespace in dumped:
-                state[namespace] = dumped[namespace]
-
-    namespace = _predicate_namespace(dag, current_id)
-    if namespace is not None and output is not None:
-        state[namespace] = output
-    return state
+    state = _completed_predicate_state(dag, record)
+    return _merge_current_predicate_state(state, dag, current_id, result)
 
 
 def _result_value(
