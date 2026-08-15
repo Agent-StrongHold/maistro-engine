@@ -1,0 +1,38 @@
+name: PR416 suite inventory diagnostic
+
+on:
+  push:
+    branches:
+      - feat/graph-durable-canonical-persistence
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/graph-durable-canonical-persistence
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --all-extras
+      - run: uv pip install --system -r packages/hive-conductor/backend/requirements.txt
+      - name: Capture suite inventory result
+        shell: bash
+        run: |
+          set +e
+          python scripts/check-suite-inventory.py --update > /tmp/inventory-output.txt 2>&1
+          status=$?
+          {
+            echo "exit_status=$status"
+            cat /tmp/inventory-output.txt
+            echo
+            echo "--- inventory diff ---"
+            git diff -- docs/testing/SUITE-INVENTORY.md
+          } > docs/testing/PR416-INVENTORY-DIAGNOSTIC.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/testing/PR416-INVENTORY-DIAGNOSTIC.txt docs/testing/SUITE-INVENTORY.md
+          git commit -m "chore(ci): capture PR416 suite inventory diagnostic"
+          git push origin HEAD:feat/graph-durable-canonical-persistence
