@@ -1,0 +1,49 @@
+name: PR416 suite inventory refresh
+
+on:
+  push:
+    branches:
+      - feat/graph-durable-canonical-persistence
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/graph-durable-canonical-persistence
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --all-extras
+      - name: Refresh maistro-core suite inventory
+        run: |
+          python scripts/check-suite-inventory.py \
+            --suite packages/maistro-core/tests \
+            --update
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('docs/testing/SUITE-INVENTORY.md')
+          text = path.read_text()
+          anchor = 'Graph execution-state frontier coverage in #403 adds nine maistro-core node IDs.\n'
+          note = (
+              'Durable graph canonical-persistence convergence in #416 replaces legacy\n'
+              'DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,\n'
+              'for a net reduction of six maistro-core node IDs while retaining the\n'
+              'durability, routing, HITL, restart, mutation, and persistence invariants.\n'
+          )
+          if note not in text:
+              text = text.replace(anchor, anchor + note)
+              path.write_text(text)
+          PY
+      - name: Commit refreshed inventory
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/testing/SUITE-INVENTORY.md
+          git commit -m "test(graph): reconcile canonical durable suite inventory"
+          git push origin HEAD:feat/graph-durable-canonical-persistence
