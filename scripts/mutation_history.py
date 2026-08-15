@@ -153,12 +153,8 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, json.JSONDecodeError) as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 1
-    args.output.write_text(
-        json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    print(
-        f"wrote mutation history candidate for {len(result['entries'])} source file(s)"
-    )
+    args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"wrote mutation history candidate for {len(result['entries'])} source file(s)")
     return 0
 
 
