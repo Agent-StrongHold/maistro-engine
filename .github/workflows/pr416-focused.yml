@@ -1,0 +1,25 @@
+name: PR416 focused durable validation
+
+on:
+  push:
+    branches:
+      - feat/graph-durable-canonical-persistence
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --all-extras
+      - name: Focused canonical durable tests
+        run: |
+          uv run pytest -q \
+            packages/maistro-core/tests/graph/durable_runs \
+            packages/maistro-core/tests/graph/test_stream5_parity_characterization.py \
+            packages/maistro-core/tests/graph/test_cross_domain_substrate.py \
+            packages/maistro-core/tests/graph/seeds/test_seeds.py \
+            packages/maistro-core/tests/graph/nodes/test_rsi_quota_pace_trigger.py
+      - name: Core suite collection count
+        if: always()
+        run: uv run pytest --collect-only -q packages/maistro-core/tests | tail -n 5
