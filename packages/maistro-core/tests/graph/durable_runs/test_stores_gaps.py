@@ -74,9 +74,7 @@ async def test_submit_hitl_answer_wrong_status_raises_valueerror() -> None:
 
 async def test_submit_hitl_answer_wrong_node_raises_valueerror() -> None:
     store = InMemoryDurableRunStore()
-    await store.create(
-        _record_for("r1", status=RunStatus.PAUSED, active_node_id="ask")
-    )
+    await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
     with pytest.raises(ValueError, match="waiting on node"):
         await store.submit_hitl_answer("r1", "wrong-node", {"answer": "x"})
 
@@ -140,18 +138,14 @@ async def test_sqlite_submit_hitl_answer_wrong_status_raises_valueerror(tmp_path
 
 async def test_sqlite_submit_hitl_answer_wrong_node_raises_valueerror(tmp_path) -> None:
     store = SqliteDurableRunStore(tmp_path / "durable.db")
-    await store.create(
-        _record_for("r1", status=RunStatus.PAUSED, active_node_id="ask")
-    )
+    await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
     with pytest.raises(ValueError, match="waiting on node"):
         await store.submit_hitl_answer("r1", "wrong-node", {"answer": "x"})
 
 
 async def test_sqlite_submit_hitl_answer_success_updates_record(tmp_path) -> None:
     store = SqliteDurableRunStore(tmp_path / "durable.db")
-    await store.create(
-        _record_for("r1", status=RunStatus.PAUSED, active_node_id="ask")
-    )
+    await store.create(_record_for("r1", status=RunStatus.PAUSED, active_node_id="ask"))
     updated = await store.submit_hitl_answer("r1", "ask", {"answer": "yes"})
     assert updated.status is RunStatus.QUEUED
     assert updated.hitl_answers["ask"]["answer"] == "yes"
