@@ -141,9 +141,7 @@ class GraphExecutionState(BaseModel):
     def _validate_edge_decisions(
         cls, value: tuple[GraphEdgeDecision, ...]
     ) -> tuple[GraphEdgeDecision, ...]:
-        decision_keys = [
-            (decision.source_node_run_id, decision.edge_id) for decision in value
-        ]
+        decision_keys = [(decision.source_node_run_id, decision.edge_id) for decision in value]
         if len(decision_keys) != len(set(decision_keys)):
             raise ValueError("edge_decisions must be unique per source_node_run_id and edge_id")
         return value
