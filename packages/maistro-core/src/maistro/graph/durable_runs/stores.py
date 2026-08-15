@@ -170,7 +170,7 @@ def _legacy_row_count(conn: sqlite3.Connection) -> int:
     ).fetchone()
     if table is None:
         return 0
-    row = conn.execute(f"SELECT COUNT(*) AS count FROM {_LEGACY_TABLE}").fetchone()
+    row = conn.execute("SELECT COUNT(*) AS count FROM durable_runs").fetchone()
     return int(row["count"] if isinstance(row, sqlite3.Row) else row[0])
 
 
