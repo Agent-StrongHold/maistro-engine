@@ -1,0 +1,36 @@
+name: PR416 legacy persistence guard validation
+
+on:
+  push:
+    branches:
+      - feat/graph-durable-canonical-persistence
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/graph-durable-canonical-persistence
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --all-extras
+      - name: Validate legacy guard
+        run: |
+          uv run ruff check packages/maistro-core/src/maistro/graph/durable_runs/stores.py packages/maistro-core/tests/graph/durable_runs/test_sqlite_legacy_guard.py
+          uv run ruff format --check packages/maistro-core/src/maistro/graph/durable_runs/stores.py packages/maistro-core/tests/graph/durable_runs/test_sqlite_legacy_guard.py
+          uv run pytest -q packages/maistro-core/tests/graph/durable_runs/test_sqlite_legacy_guard.py
+      - name: Refresh core suite inventory
+        run: python scripts/check-suite-inventory.py --suite packages/maistro-core/tests --update
+      - name: Commit inventory refresh
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/testing/SUITE-INVENTORY.md
+          git commit -m "test(graph): refresh suite inventory for legacy guard"
+          git push origin HEAD:feat/graph-durable-canonical-persistence
