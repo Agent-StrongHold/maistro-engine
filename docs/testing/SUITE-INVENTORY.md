@@ -48,6 +48,10 @@ WorkspaceMembership role semantics, the live Persona model, and
 one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
 Graph routing parity in #402 adds 10 maistro-core node IDs.
 Graph execution-state frontier coverage in #403 adds nine maistro-core node IDs.
+Durable graph canonical-persistence convergence in #416 replaces legacy
+DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,
+for a net reduction of six maistro-core node IDs while retaining the
+durability, routing, HITL, restart, mutation, and persistence invariants.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -64,7 +68,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6137 | `ci.yml` |
+| `packages/maistro-core/tests` | 6131 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
