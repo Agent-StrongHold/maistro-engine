@@ -8,9 +8,41 @@ edge decisions.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
+
+def _freeze_json(value: object, *, path: str) -> object:
+    """Validate and recursively freeze a lossless JSON value."""
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"{path} must contain only finite JSON numbers")
+        return value
+    if isinstance(value, list):
+        return tuple(_freeze_json(item, path=f"{path}[]") for item in value)
+    if isinstance(value, dict):
+        frozen: dict[str, object] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError(f"{path} keys must be strings")
+            frozen[key] = _freeze_json(item, path=f"{path}.{key}")
+        return MappingProxyType(frozen)
+    raise ValueError(f"{path} must contain only JSON values")
+
+
+def _thaw_json(value: object) -> object:
+    """Return ordinary JSON containers for persistence serialization."""
+    if isinstance(value, Mapping):
+        return {key: _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
 
 
 class GraphEdgeDecision(BaseModel):
@@ -40,24 +72,50 @@ class GraphEdgeDecision(BaseModel):
 
 
 class GraphExecutionState(BaseModel):
-    """Persistable traversal state associated with one canonical Run.
+    """Persistable immutable traversal state associated with one canonical Run.
 
     This deliberately has no lifecycle status, retry/attempt counters, scope,
     deadlines, or terminal result. Those belong to Run/NodeRun/Attempt. Visit
     counts are traversal facts only: they let a cyclic graph distinguish the
     first visit to a node from later visits without pretending that a node has
     only one logical execution.
+
+    State transitions create a newly validated instance. Tuple frontiers and
+    decisions plus read-only mappings prevent a valid checkpoint from being
+    mutated into an invalid one after construction.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     run_id: str
-    active_node_ids: list[str] = Field(default_factory=list)
+    active_node_ids: tuple[str, ...] = Field(default_factory=tuple)
     cycle: int = Field(default=0, ge=0)
-    visit_counts: dict[str, int] = Field(default_factory=dict)
-    blackboard_snapshot: dict[str, Any] = Field(default_factory=dict)
-    edge_decisions: list[GraphEdgeDecision] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    visit_counts: Mapping[str, int] = Field(default_factory=dict)
+    blackboard_snapshot: Mapping[str, Any] = Field(default_factory=dict)
+    edge_decisions: tuple[GraphEdgeDecision, ...] = Field(default_factory=tuple)
+    metadata: Mapping[str, Any] = Field(default_factory=dict)
+
+    @field_validator("visit_counts", mode="after")
+    @classmethod
+    def _freeze_visit_counts(cls, value: Mapping[str, int]) -> Mapping[str, int]:
+        return MappingProxyType(dict(value))
+
+    @field_validator("blackboard_snapshot", "metadata", mode="after")
+    @classmethod
+    def _freeze_json_mapping(
+        cls, value: Mapping[str, Any], info: Any
+    ) -> Mapping[str, Any]:
+        frozen = _freeze_json(dict(value), path=str(info.field_name))
+        if not isinstance(frozen, Mapping):
+            raise ValueError(f"{info.field_name} must be a JSON object")
+        return frozen
+
+    @field_serializer("visit_counts", "blackboard_snapshot", "metadata")
+    def _serialize_mapping(self, value: Mapping[str, Any]) -> dict[str, Any]:
+        thawed = _thaw_json(value)
+        if not isinstance(thawed, dict):
+            raise TypeError("graph execution mappings must serialize as JSON objects")
+        return thawed
 
     @model_validator(mode="after")
     def _validate_state(self) -> GraphExecutionState:
@@ -71,6 +129,15 @@ class GraphExecutionState(BaseModel):
             raise ValueError("visit_counts keys must be non-empty strings")
         if any(count < 0 for count in self.visit_counts.values()):
             raise ValueError("visit_counts values must be non-negative")
+
+        decision_keys = [
+            (decision.source_node_run_id, decision.edge_id)
+            for decision in self.edge_decisions
+        ]
+        if len(decision_keys) != len(set(decision_keys)):
+            raise ValueError(
+                "edge_decisions must be unique per source_node_run_id and edge_id"
+            )
         return self
 
 
