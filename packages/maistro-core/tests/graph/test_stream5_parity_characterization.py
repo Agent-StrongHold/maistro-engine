@@ -1,9 +1,8 @@
 """Characterization and migration-target tests for Stream 5 graph convergence.
 
 These tests deliberately separate behavior that is already authoritative in
-``GraphRun`` from known durable-executor gaps. The xfailed cases describe the
-canonical behavior Stream 5 must make real once the Run/NodeRun/Attempt spine
-from Stream 1 lands.
+``GraphRun`` from known durable-executor gaps. Strict xfails describe canonical
+behavior Stream 5 has not made real yet; passing cases are parity already won.
 
 They must not be "fixed" by weakening the assertions or by teaching the tests
 about another temporary lifecycle model.
@@ -103,15 +102,8 @@ def test_graphrun_frontier_contains_sequential_and_parallel_targets() -> None:
     assert next_nodes == [AgentRole.CODER, AgentRole.REVIEWER]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Stream 5 gap: durable _next_node chooses the first conditional edge "
-        "instead of evaluating canonical predicates"
-    ),
-)
-def test_durable_routing_must_reject_false_condition() -> None:
-    """Migration target: durable routing must use the canonical predicate dialect."""
+def test_durable_routing_rejects_false_condition() -> None:
+    """Durable routing uses the same predicate dialect as GraphRun."""
     dag = {
         "nodes": [{"id": "start"}, {"id": "wrong"}, {"id": "right"}],
         "edges": [
