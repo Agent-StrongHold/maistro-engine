@@ -294,15 +294,16 @@ class SqliteRunStore:
                 deadline_at=deadline_at,
                 resume_checkpoint_id=resume_checkpoint_id,
             )
-            lease = ExecutionLease(
-                node_run_id=node_run_id,
-                attempt_id=attempt.attempt_id,
-                lease_epoch=ordinal,
-                holder=lease_holder or executor_id or runtime_id,
-            )
-            attempt = Attempt.model_validate(
-                {**attempt.model_dump(mode="python"), "execution_lease": lease}
-            )
+            if lease_holder is not None:
+                lease = ExecutionLease(
+                    node_run_id=node_run_id,
+                    attempt_id=attempt.attempt_id,
+                    lease_epoch=ordinal,
+                    holder=lease_holder,
+                )
+                attempt = Attempt.model_validate(
+                    {**attempt.model_dump(mode="python"), "execution_lease": lease}
+                )
             await self._conn.execute(
                 """INSERT INTO canonical_attempts
                    (attempt_id, node_run_id, ordinal, status, payload)
@@ -387,9 +388,7 @@ class SqliteRunStore:
     @staticmethod
     def _validate_fence(attempt: Attempt, fencing_token: str | None) -> None:
         lease = attempt.execution_lease
-        if lease is None:
-            return
-        if fencing_token != lease.fencing_token:
+        if lease is not None and fencing_token != lease.fencing_token:
             raise StaleExecutionFence(
                 f"Attempt {attempt.attempt_id!r} update rejected by execution fence"
             )
