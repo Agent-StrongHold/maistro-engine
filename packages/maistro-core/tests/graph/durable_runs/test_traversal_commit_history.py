@@ -13,6 +13,7 @@ from maistro.graph import (
     TraversalCommit,
 )
 from maistro.graph.durable_runs import DurableRunRecord
+from maistro.graph.traversal_commit import edge_decision_id
 from maistro.runs import (
     AcceptedNodeOutcome,
     AttemptResult,
@@ -220,6 +221,32 @@ def test_commit_outcome_identity_must_match_persisted_accepted_node_outcome() ->
             graph_state=state,
             node_runs=(altered_node_run,),
             traversal_commits=(commit,),
+        )
+
+
+def test_commit_routing_decision_must_belong_to_commit_source_node_run() -> None:
+    run, node_run, state, commit = _fixture()
+    foreign_decision = GraphEdgeDecision(
+        edge_id="edge-foreign",
+        source_node_id="b",
+        source_node_run_id="node-run-foreign",
+        target_node_id="a",
+        selected=True,
+        cycle=1,
+    )
+    state_with_foreign_decision = state.model_copy(
+        update={"edge_decisions": (*state.edge_decisions, foreign_decision)}
+    )
+    forged_commit = commit.model_copy(
+        update={"edge_decision_ids": (edge_decision_id(foreign_decision),)}
+    )
+
+    with pytest.raises(ValueError, match="source NodeRun"):
+        DurableRunRecord(
+            run=run,
+            graph_state=state_with_foreign_decision,
+            node_runs=(node_run,),
+            traversal_commits=(forged_commit,),
         )
 
 
