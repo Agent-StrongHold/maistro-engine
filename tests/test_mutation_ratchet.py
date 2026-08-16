@@ -56,7 +56,10 @@ def test_reviewed_source_specific_rate_is_stricter_than_floor(module) -> None:
 
 
 def test_candidate_never_weakens_reviewed_baseline(module) -> None:
-    baseline = {"owner": "@owner", "entries": {"a.py": {"kill_rate": 0.98, "killed": 98, "viable": 100}}}
+    baseline = {
+        "owner": "@owner",
+        "entries": {"a.py": {"kill_rate": 0.98, "killed": 98, "viable": 100}},
+    }
     candidate = module.baseline_candidate([telemetry(killed=95)], baseline)
     assert candidate["entries"]["a.py"]["kill_rate"] == pytest.approx(0.98)
 
