@@ -40,10 +40,10 @@ def edge_decision_id(decision: GraphEdgeDecision) -> str:
 
 
 def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
-    """Return stable identity for the physical result accepted by a NodeRun.
+    """Return stable identity for physical evidence plus its accepted logical disposition.
 
     ``accepted_at`` is intentionally excluded: replaying the same authoritative
-    physical evidence must reconstruct the same identity.
+    evidence and disposition must reconstruct the same identity.
     """
     return _digest(
         {
@@ -54,6 +54,7 @@ def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
             "attempt_result": outcome.attempt_result.result,
             "attempt_error": outcome.attempt_result.error,
             "attempt_finished_at": outcome.attempt_result.finished_at.isoformat(),
+            "logical_status": outcome.logical_status.value,
         }
     )
 
