@@ -30,21 +30,15 @@ def _digest(value: object) -> str:
 
 
 def graph_state_hash(state: GraphExecutionState) -> str:
-    """Return a stable digest of the complete persisted traversal projection."""
     return _digest(state.model_dump(mode="json"))
 
 
 def edge_decision_id(decision: GraphEdgeDecision) -> str:
-    """Return stable identity for one visit-correlated routing decision."""
     return _digest(decision.model_dump(mode="json"))
 
 
 def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
-    """Return stable identity for physical evidence plus its accepted logical disposition.
-
-    ``accepted_at`` is intentionally excluded: replaying the same authoritative
-    evidence and disposition must reconstruct the same identity.
-    """
+    """Hash physical evidence plus its accepted logical projection, excluding wall-clock acceptance."""
     return _digest(
         {
             "node_run_id": outcome.node_run_id,
@@ -55,6 +49,8 @@ def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
             "attempt_error": outcome.attempt_result.error,
             "attempt_finished_at": outcome.attempt_result.finished_at.isoformat(),
             "logical_status": outcome.logical_status.value,
+            "logical_result": outcome.result,
+            "logical_error": outcome.error,
         }
     )
 
@@ -73,7 +69,6 @@ def _commit_identity(
     checkpoint_id: str | None,
     commit_sequence: int,
 ) -> str:
-    """Content-address one logical transition so crash reconstruction is idempotent."""
     return _digest(
         {
             "run_id": run_id,
@@ -178,7 +173,6 @@ class TraversalCommit(BaseModel):
         prior_commit_id: str | None = None,
         checkpoint_id: str | None = None,
     ) -> TraversalCommit:
-        """Construct a content-addressed commit from one complete logical transition."""
         if prior_state.run_id != resulting_state.run_id:
             raise ValueError("TraversalCommit cannot cross Run identity")
         outcome_node_runs = tuple(outcome.node_run_id for outcome in accepted_outcomes)
@@ -222,9 +216,4 @@ class TraversalCommit(BaseModel):
         )
 
 
-__all__ = [
-    "TraversalCommit",
-    "accepted_outcome_id",
-    "edge_decision_id",
-    "graph_state_hash",
-]
+__all__ = ["TraversalCommit", "accepted_outcome_id", "edge_decision_id", "graph_state_hash"]
