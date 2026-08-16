@@ -12,7 +12,11 @@ import asyncio
 from collections.abc import Callable
 from datetime import datetime
 
-from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
+from maistro.runs.lifecycle import (
+    transition_attempt,
+    transition_node_run,
+    transition_run,
+)
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
     Attempt,
