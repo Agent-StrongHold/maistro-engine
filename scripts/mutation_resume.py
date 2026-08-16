@@ -9,13 +9,31 @@ import json
 from pathlib import Path
 from typing import Any
 
+_RUNTIME_CACHE_DIRS = {"__pycache__", ".pytest_cache", ".hypothesis"}
+_RUNTIME_CACHE_FILES = {".coverage"}
+_RUNTIME_CACHE_SUFFIXES = {".pyc", ".pyo"}
+
+
+def _is_runtime_cache(path: Path) -> bool:
+    return (
+        any(part in _RUNTIME_CACHE_DIRS for part in path.parts)
+        or path.name in _RUNTIME_CACHE_FILES
+        or path.suffix in _RUNTIME_CACHE_SUFFIXES
+    )
+
 
 def tree_hash(path_text: str) -> str:
     path = Path(path_text)
     if not path.exists():
         raise ValueError(f"checkpoint path does not exist: {path_text}")
     digest = hashlib.sha256()
-    files = [path] if path.is_file() else sorted(item for item in path.rglob("*") if item.is_file())
+    files = (
+        [path]
+        if path.is_file()
+        else sorted(
+            item for item in path.rglob("*") if item.is_file() and not _is_runtime_cache(item)
+        )
+    )
     for item in files:
         digest.update(item.as_posix().encode())
         digest.update(item.read_bytes())
