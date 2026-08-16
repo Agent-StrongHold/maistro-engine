@@ -26,8 +26,8 @@ def read_history(path: Path) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"entries": {}}
 
 
-def read_checkpoints(root: Path) -> list[dict[str, Any]]:
-    by_source: dict[str, dict[str, Any]] = {}
+def select_checkpoints(root: Path) -> list[tuple[Path, dict[str, Any]]]:
+    by_source: dict[str, tuple[Path, dict[str, Any]]] = {}
     for path in sorted(root.rglob("*.checkpoint.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict) or payload.get("complete") is not True:
@@ -37,10 +37,39 @@ def read_checkpoints(root: Path) -> list[dict[str, Any]]:
             continue
         current = by_source.get(source)
         if current is None or str(payload.get("verified_at", "")) >= str(
-            current.get("verified_at", "")
+            current[1].get("verified_at", "")
         ):
-            by_source[source] = payload
+            by_source[source] = (path, payload)
     return [by_source[source] for source in sorted(by_source)]
+
+
+def read_checkpoints(root: Path) -> list[dict[str, Any]]:
+    return [payload for _path, payload in select_checkpoints(root)]
+
+
+def validate_tool_fingerprint(rows: list[dict[str, Any]]) -> str | None:
+    if not rows:
+        return None
+    fingerprints = {row.get("tool_fingerprint") for row in rows}
+    if None in fingerprints or "" in fingerprints:
+        raise ValueError("complete mutation checkpoint is missing tool_fingerprint")
+    if len(fingerprints) != 1:
+        rendered = ", ".join(sorted(str(value) for value in fingerprints))
+        raise ValueError(f"mixed mutation tool fingerprints in sweep: {rendered}")
+    return str(next(iter(fingerprints)))
+
+
+def read_selected_mutation_rows(selected: list[tuple[Path, dict[str, Any]]]) -> list[str]:
+    mutation_rows: list[str] = []
+    for checkpoint_path, _payload in selected:
+        stem = checkpoint_path.name.removesuffix(".checkpoint.json")
+        rows_path = checkpoint_path.with_name(f"{stem}.rows.jsonl")
+        if not rows_path.is_file():
+            raise ValueError(f"complete checkpoint has no mutation rows: {checkpoint_path}")
+        mutation_rows.extend(
+            line for line in rows_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        )
+    return mutation_rows
 
 
 def classify(rows: list[dict[str, Any]], history: dict[str, Any]) -> tuple[list[str], list[str]]:
@@ -145,7 +174,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--markdown-output", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    rows = read_checkpoints(args.checkpoints)
+    selected = select_checkpoints(args.checkpoints)
+    rows = [payload for _path, payload in selected]
+    validate_tool_fingerprint(rows)
     inventory = read_inventory(args.inventory)
     history = read_history(args.history)
     report = build_report(rows, inventory, history)
@@ -153,11 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     args.telemetry_output.write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
     )
-    mutation_rows: list[str] = []
-    for path in sorted(args.checkpoints.rglob("*.rows.jsonl")):
-        mutation_rows.extend(
-            line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
-        )
+    mutation_rows = read_selected_mutation_rows(selected)
     args.rows_output.write_text("".join(line + "\n" for line in mutation_rows), encoding="utf-8")
     args.json_output.write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
