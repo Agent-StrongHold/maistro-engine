@@ -153,6 +153,30 @@ class Run(BaseModel):
             raise ValueError("Run and Graph snapshot must belong to the same Project")
 
 
+class ExecutionLease(BaseModel):
+    """Durable authority token for one physical Attempt execution epoch."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    node_run_id: str
+    attempt_id: str
+    lease_epoch: int = Field(ge=1)
+    holder: str
+    fencing_token: str = Field(default_factory=_id)
+    issued_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _validate_lease(self) -> ExecutionLease:
+        _require_non_empty(self.node_run_id, "node_run_id")
+        _require_non_empty(self.attempt_id, "attempt_id")
+        _require_non_empty(self.holder, "holder")
+        _require_non_empty(self.fencing_token, "fencing_token")
+        if self.expires_at is not None and self.expires_at <= self.issued_at:
+            raise ValueError("ExecutionLease.expires_at must be later than issued_at")
+        return self
+
+
 class AttemptResult(BaseModel):
     """Immutable evidence produced by one terminal physical Attempt."""
 
@@ -256,6 +280,7 @@ class Attempt(BaseModel):
     status: AttemptStatus = AttemptStatus.CREATED
     runtime_id: str = "python"
     executor_id: str = ""
+    execution_lease: ExecutionLease | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
@@ -268,6 +293,11 @@ class Attempt(BaseModel):
     @model_validator(mode="after")
     def _validate_attempt(self) -> Attempt:
         _require_non_empty(self.node_run_id, "node_run_id")
+        if self.execution_lease is not None:
+            if self.execution_lease.attempt_id != self.attempt_id:
+                raise ValueError("ExecutionLease.attempt_id must match Attempt.attempt_id")
+            if self.execution_lease.node_run_id != self.node_run_id:
+                raise ValueError("ExecutionLease.node_run_id must match Attempt.node_run_id")
         _validate_finished_at(
             terminal=self.status in TERMINAL_ATTEMPT_STATUSES,
             finished_at=self.finished_at,
@@ -283,6 +313,7 @@ __all__ = [
     "Attempt",
     "AttemptResult",
     "AttemptStatus",
+    "ExecutionLease",
     "GraphSnapshot",
     "NodeRun",
     "Run",
