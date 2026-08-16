@@ -36,7 +36,9 @@ def read_checkpoints(root: Path) -> list[dict[str, Any]]:
         if not isinstance(source, str) or not source:
             continue
         current = by_source.get(source)
-        if current is None or str(payload.get("verified_at", "")) >= str(current.get("verified_at", "")):
+        if current is None or str(payload.get("verified_at", "")) >= str(
+            current.get("verified_at", "")
+        ):
             by_source[source] = payload
     return [by_source[source] for source in sorted(by_source)]
 
@@ -91,9 +93,7 @@ def build_report(
         "regressed_sources": regressed,
         "slowest_sources": slowest,
         "aggregate_mutation_seconds": sum(float(row["mutation_seconds"]) for row in rows),
-        "aggregate_baseline_test_seconds": sum(
-            float(row["baseline_test_seconds"]) for row in rows
-        ),
+        "aggregate_baseline_test_seconds": sum(float(row["baseline_test_seconds"]) for row in rows),
     }
 
 
@@ -155,11 +155,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     mutation_rows: list[str] = []
     for path in sorted(args.checkpoints.rglob("*.rows.jsonl")):
-        mutation_rows.extend(line for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
-    args.rows_output.write_text(
-        "".join(line + "\n" for line in mutation_rows), encoding="utf-8"
+        mutation_rows.extend(
+            line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+        )
+    args.rows_output.write_text("".join(line + "\n" for line in mutation_rows), encoding="utf-8")
+    args.json_output.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    args.json_output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     args.markdown_output.write_text(render_markdown(report), encoding="utf-8")
     print(
         f"mutation aggregate: measured={report['measured_sources']}/{report['inventory_sources']} "
