@@ -3,10 +3,10 @@ from __future__ import annotations
 import pytest
 
 from maistro.graph import Graph, Node
-from maistro.graph.execution_state import GraphExecutionState
 from maistro.graph.durable_runs.execution_store import DurableRunExecutionStore
 from maistro.graph.durable_runs.stores import InMemoryDurableRunStore
 from maistro.graph.durable_runs.types import DurableRunRecord
+from maistro.graph.execution_state import GraphExecutionState
 from maistro.runs import AttemptExecutionService, AttemptStatus, RunStatus
 from maistro.runs.lifecycle import transition_node_run, transition_run
 from maistro.runs.model import GraphSnapshot, NodeRun, Run
@@ -46,7 +46,7 @@ async def test_attempt_service_persists_physical_try_in_same_durable_record() ->
     store, record, node_run_id = await _durable_running_node()
     execution_store = DurableRunExecutionStore(store, run_id=record.run_id)
     service = AttemptExecutionService(
-        store=execution_store,  # type: ignore[arg-type]
+        store=execution_store,
         runtime=PythonExecutionRuntime(),
     )
 
@@ -79,7 +79,7 @@ async def test_attempt_service_can_reconcile_durable_logical_state_when_requeste
     store, record, node_run_id = await _durable_running_node()
     execution_store = DurableRunExecutionStore(store, run_id=record.run_id)
     service = AttemptExecutionService(
-        store=execution_store,  # type: ignore[arg-type]
+        store=execution_store,
         runtime=PythonExecutionRuntime(),
     )
 
