@@ -132,7 +132,8 @@ def _resolver(node_id: str, dag: dict[str, Any]) -> BaseNode[Any, Any]:
     return _NODE_BY_ID[node_id]()
 
 
-async def test_unequal_parallel_branches_wait_for_fanin_and_merge_cross_cycle_outputs() -> None:
+async def test_unequal_parallel_branches_wait_for_fanin_and_merge_cross_cycle_outputs(
+) -> None:
     dag = {
         "id": "unequal-fanin",
         "entry_node": "start",
@@ -217,4 +218,7 @@ async def test_failed_frontier_cancels_paused_sibling() -> None:
     assert result.status is RunStatus.FAILED
     assert by_node["fail"].status is RunStatus.FAILED
     assert by_node["pause"].status is RunStatus.CANCELLED
-    assert all(node.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED} for node in result.node_runs)
+    assert all(
+        node.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}
+        for node in result.node_runs
+    )
