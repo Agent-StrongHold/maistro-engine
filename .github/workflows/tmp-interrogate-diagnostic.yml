@@ -56,7 +56,7 @@ jobs:
       - name: Format executor
         run: uvx --from ruff==0.15.12 ruff format packages/maistro-core/src/maistro/graph/durable_runs/executor.py
       - name: Verify docstring ratchet
-        run: uvx interrogate -c pyproject.toml --fail-under 45 packages/maistro-core/src/maistro/graph/durable_runs
+        run: uvx interrogate -f 45 packages/maistro-core/src/maistro/graph/durable_runs
       - name: Remove repair workflow and commit
         run: |
           rm .github/workflows/tmp-interrogate-diagnostic.yml
