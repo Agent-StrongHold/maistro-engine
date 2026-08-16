@@ -282,9 +282,7 @@ async def test_resume_cancels_orphaned_active_attempt_then_creates_recovery_atte
     store = InMemoryDurableRunStore()
     await store.create(_single_recovery_record(attempt_status=AttemptStatus.RUNNING))
 
-    record = await resume_durable_graph(
-        "recover-run", store=store, node_resolver=_resolver
-    )
+    record = await resume_durable_graph("recover-run", store=store, node_resolver=_resolver)
 
     assert record.status is RunStatus.COMPLETED
     assert [attempt.status for attempt in record.attempts] == [
@@ -307,9 +305,7 @@ async def test_resume_folds_completed_attempt_without_redispatching_node() -> No
         )
     )
 
-    record = await resume_durable_graph(
-        "recover-run", store=store, node_resolver=_resolver
-    )
+    record = await resume_durable_graph("recover-run", store=store, node_resolver=_resolver)
 
     assert record.status is RunStatus.COMPLETED
     assert len(record.attempts) == 1
