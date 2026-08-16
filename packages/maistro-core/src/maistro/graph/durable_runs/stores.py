@@ -41,33 +41,54 @@ def _answer_record(
 ) -> DurableRunRecord:
     if record.run.status is not RunStatus.PAUSED:
         raise ValueError(f"run {record.run_id!r} not paused on HITL (status={record.run.status})")
-    if record.active_node_id != node_id:
+    if node_id not in record.graph_state.active_node_ids:
         raise ValueError(
-            f"run {record.run_id!r} waiting on node {record.active_node_id!r}, not {node_id!r}"
+            f"run {record.run_id!r} waiting on frontier "
+            f"{record.graph_state.active_node_ids!r}, not {node_id!r}"
         )
+
+    node_runs = list(record.node_runs)
+    paused_index: int | None = None
+    for index in range(len(node_runs) - 1, -1, -1):
+        node_run = node_runs[index]
+        if node_run.node_id == node_id and node_run.status is RunStatus.PAUSED:
+            paused_index = index
+            break
+    if paused_index is None:
+        raise ValueError(f"run {record.run_id!r} has no paused NodeRun for node {node_id!r}")
 
     answered = {**answer, "answered_at": datetime.now(UTC).isoformat()}
     metadata = dict(record.graph_state.metadata)
     answers = dict(record.hitl_answers)
     answers[node_id] = answered
     metadata["hitl_answers"] = answers
-    metadata.pop("pause", None)
+
+    pauses_raw = metadata.get("pauses", {})
+    pauses = dict(pauses_raw) if isinstance(pauses_raw, dict) else {}
+    pauses.pop(node_id, None)
+    if pauses:
+        metadata["pauses"] = pauses
+        first_node_id = next(
+            active_id for active_id in record.graph_state.active_node_ids if active_id in pauses
+        )
+        metadata["pause"] = pauses[first_node_id]
+    else:
+        metadata.pop("pauses", None)
+        metadata.pop("pause", None)
+
+    node_runs[paused_index] = transition_node_run(
+        node_runs[paused_index],
+        RunStatus.QUEUED,
+    )
+    remaining_paused = any(node_run.status is RunStatus.PAUSED for node_run in node_runs)
+    run = record.run if remaining_paused else transition_run(record.run, RunStatus.QUEUED)
     graph_state = _replace_state(record.graph_state, metadata=metadata)
-
-    node_runs = list(record.node_runs)
-    for index in range(len(node_runs) - 1, -1, -1):
-        node_run = node_runs[index]
-        if node_run.node_id == node_id and node_run.status is RunStatus.PAUSED:
-            node_runs[index] = transition_node_run(node_run, RunStatus.QUEUED)
-            break
-
-    run = transition_run(record.run, RunStatus.QUEUED)
     return _replace_record(
         record,
         run=run,
         graph_state=graph_state,
         node_runs=tuple(node_runs),
-        resume_at=None,
+        resume_at=record.resume_at if remaining_paused else None,
         version=record.version + 1,
     )
 
