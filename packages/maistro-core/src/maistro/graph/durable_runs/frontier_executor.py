@@ -83,9 +83,7 @@ async def _checkpoint(
     store: DurableRunStore,
     **updates: object,
 ) -> DurableRunRecord:
-    return await store.update(
-        _replace_record(record, version=record.version + 1, **updates)
-    )
+    return await store.update(_replace_record(record, version=record.version + 1, **updates))
 
 
 def _new_run(
@@ -779,9 +777,7 @@ def _resolve_inputs(
         and decision.target_node_id == current.node_id
         and decision.cycle == cycle - 1
     ]
-    results_by_id = {
-        node_run.node_run_id: node_run.result for node_run in record.node_runs
-    }
+    results_by_id = {node_run.node_run_id: node_run.result for node_run in record.node_runs}
     upstream: dict[str, Any] = {}
     for source_run_id in source_run_ids:
         output = results_by_id.get(source_run_id)
@@ -837,9 +833,7 @@ def _merge_frontier_blackboards(
         if blackboard is None:
             continue
         current_metadata = dict(getattr(blackboard, "metadata", {}) or {})
-        current_annotations = dict(
-            getattr(blackboard, "node_annotations", {}) or {}
-        )
+        current_annotations = dict(getattr(blackboard, "node_annotations", {}) or {})
         _merge_changed_mapping(base_metadata, current_metadata, metadata)
         _merge_changed_mapping(base_annotations, current_annotations, annotations)
 
@@ -858,9 +852,7 @@ def _merge_frontier_blackboards(
 def _actually_spawned(kind: str, result: NodeResult) -> bool:
     if kind == "agent.synth_dag":
         output = result.output
-        return bool(getattr(output, "success", True)) or bool(
-            getattr(output, "dispatched", False)
-        )
+        return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
     return True
 
 
