@@ -2,9 +2,10 @@
 
 This service owns the domain-side ordering around one physical try: prepare the
 logical Run/NodeRun, create and persist the Attempt, mark it running, invoke
-Runtime using ``attempt_id`` as the physical execution identity, persist the
-terminal Attempt outcome, then perform policy-neutral logical reconciliation.
-Runtime never mutates Run/NodeRun state.
+Runtime using ``attempt_id`` as the physical execution identity, and persist the
+terminal physical outcome. Simple callers may retain default logical
+reconciliation; richer domains may defer acceptance and assign the logical
+NodeRun disposition themselves. Runtime never mutates Run/NodeRun state.
 """
 
 from __future__ import annotations
@@ -18,11 +19,7 @@ from maistro.runs.execution_store import AttemptExecutionStore
 from maistro.runs.model import Attempt, AttemptStatus
 from maistro.runs.reconciliation import AttemptLifecycleReconciler
 from maistro.runs.store import RunIntegrityError
-from maistro.runtime import (
-    ExecutionCallable,
-    ExecutionRuntime,
-    RuntimeDeadlineExceeded,
-)
+from maistro.runtime import ExecutionCallable, ExecutionRuntime, RuntimeDeadlineExceeded
 
 AttemptReconciler = Callable[[Attempt], Awaitable[None]]
 
@@ -53,9 +50,16 @@ class AttemptExecutionService:
         runtime_id: str | None = None,
         timeout_s: float | None = None,
         resume_checkpoint_id: str | None = None,
+        reconcile_completed: bool = True,
     ) -> Attempt:
-        """Create, run, terminalize, and reconcile one fenced physical Attempt."""
+        """Run one fenced physical Attempt.
 
+        ``reconcile_completed=False`` preserves a physically completed Attempt
+        while leaving the NodeRun running so domain logic can explicitly accept
+        that physical result as COMPLETED, FAILED, WAITING, or PAUSED. Physical
+        failures/cancellation/timeouts still reconcile immediately because no
+        successful result exists for domain acceptance.
+        """
         deadline_at = None
         if timeout_s is not None:
             if timeout_s <= 0:
@@ -124,7 +128,8 @@ class AttemptExecutionService:
             fencing_token=token,
             result=result,
         )
-        await self._reconcile(terminal)
+        if reconcile_completed:
+            await self._reconcile(terminal)
         return terminal
 
     async def cancel(self, attempt_id: str) -> bool:
