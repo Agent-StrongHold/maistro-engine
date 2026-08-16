@@ -9,6 +9,7 @@ that result authoritative for the logical NodeRun.
 
 from __future__ import annotations
 
+from maistro.runs.execution_store import AttemptExecutionStore
 from maistro.runs.model import (
     TERMINAL_ATTEMPT_STATUSES,
     TERMINAL_RUN_STATUSES,
@@ -20,13 +21,13 @@ from maistro.runs.model import (
     Run,
     RunStatus,
 )
-from maistro.runs.store import RunIntegrityError, RunStore
+from maistro.runs.store import RunIntegrityError
 
 
 class AttemptLifecycleReconciler:
     """Keep Run/NodeRun activity consistent with canonical physical Attempts."""
 
-    def __init__(self, store: RunStore) -> None:
+    def __init__(self, store: AttemptExecutionStore) -> None:
         self._store = store
 
     async def prepare_execution(self, node_run_id: str) -> NodeRun:
