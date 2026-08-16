@@ -134,15 +134,8 @@ def test_durable_routing_rejects_false_condition() -> None:
     assert [decision.selected for decision in decisions] == [False, True]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Stream 5 gap: durable traversal remains single-frontier and cannot "
-        "execute both targets required for fan-out"
-    ),
-)
 async def test_durable_run_must_execute_and_persist_parallel_frontier() -> None:
-    """Migration target: the durable entrypoint executes and persists both branches."""
+    """The durable entrypoint executes and persists both parallel branches."""
     dag = {
         "id": "stream5-fanout",
         "entry_node": "start",
