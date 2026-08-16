@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
-from maistro.runs.model import AcceptedNodeOutcome
+from maistro.runs.model import AcceptedNodeOutcome, RunStatus
 
 
 def _digest(value: object) -> str:
@@ -37,17 +37,40 @@ def edge_decision_id(decision: GraphEdgeDecision) -> str:
     return _digest(decision.model_dump(mode="json"))
 
 
+def _legacy_accepted_outcome_payload(outcome: AcceptedNodeOutcome) -> dict[str, object]:
+    evidence = outcome.attempt_result.model_dump(mode="json")
+    return {
+        "node_run_id": outcome.node_run_id,
+        "attempt_id": evidence["attempt_id"],
+        "attempt_ordinal": evidence["ordinal"],
+        "attempt_status": evidence["status"],
+        "attempt_result": evidence["result"],
+        "attempt_error": evidence["error"],
+        "attempt_finished_at": evidence["finished_at"],
+    }
+
+
 def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
-    """Hash physical evidence plus its accepted logical projection, excluding wall-clock acceptance."""
+    """Hash accepted evidence without invalidating pre-projection identities.
+
+    Before logical disposition/projection fields existed, a completed outcome's
+    identity was derived only from physical Attempt evidence. A normal
+    COMPLETED projection that leaves result/error unchanged is semantically the
+    same historical fact, so it must retain that exact v1 hash. Only outcomes
+    that add new semantics (non-COMPLETED disposition or a transformed logical
+    result/error) use the explicit v2 namespace.
+    """
+    legacy = _legacy_accepted_outcome_payload(outcome)
+    if (
+        outcome.logical_status is RunStatus.COMPLETED
+        and outcome.result == outcome.attempt_result.result
+        and outcome.error == outcome.attempt_result.error
+    ):
+        return _digest(legacy)
     return _digest(
         {
-            "node_run_id": outcome.node_run_id,
-            "attempt_id": outcome.attempt_result.attempt_id,
-            "attempt_ordinal": outcome.attempt_result.ordinal,
-            "attempt_status": outcome.attempt_result.status.value,
-            "attempt_result": outcome.attempt_result.result,
-            "attempt_error": outcome.attempt_result.error,
-            "attempt_finished_at": outcome.attempt_result.finished_at.isoformat(),
+            "identity_version": 2,
+            "physical": legacy,
             "logical_status": outcome.logical_status.value,
             "logical_result": outcome.result,
             "logical_error": outcome.error,
