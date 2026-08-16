@@ -140,9 +140,7 @@ class DurableRunExecutionStore:
                 attempt.status in {AttemptStatus.CREATED, AttemptStatus.RUNNING}
                 for attempt in existing
             ):
-                raise ActiveAttemptExists(
-                    f"NodeRun {node_run_id!r} already has an active Attempt"
-                )
+                raise ActiveAttemptExists(f"NodeRun {node_run_id!r} already has an active Attempt")
             created = Attempt(
                 node_run_id=node_run_id,
                 ordinal=max((attempt.ordinal for attempt in existing), default=0) + 1,
