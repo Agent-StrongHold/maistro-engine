@@ -108,21 +108,31 @@ def test_durable_record_accepts_verified_commit_chain_and_exposes_latest() -> No
     assert record.latest_traversal_commit == commit
 
 
-def test_latest_commit_must_project_current_graph_state() -> None:
+def test_post_commit_checkpoint_metadata_can_evolve_without_new_traversal_commit() -> None:
     run, node_run, state, commit = _fixture()
-    drifted = state.model_copy(update={"active_node_ids": ()})
+    checkpointed = state.model_copy(
+        update={
+            "metadata": {
+                "hitl_answers": {"b": {"answer": "approved"}},
+                "checkpoint_note": "persisted after traversal advancement",
+            }
+        }
+    )
 
-    with pytest.raises(ValueError, match="latest TraversalCommit"):
-        DurableRunRecord(
-            run=run,
-            graph_state=drifted,
-            node_runs=(node_run,),
-            traversal_commits=(commit,),
-        )
+    record = DurableRunRecord(
+        run=run,
+        graph_state=checkpointed,
+        node_runs=(node_run,),
+        traversal_commits=(commit,),
+    )
+
+    assert record.latest_traversal_commit == commit
+    assert record.graph_state.metadata["checkpoint_note"] == "persisted after traversal advancement"
 
 
 def test_commit_outcome_identity_must_match_persisted_accepted_node_outcome() -> None:
     run, node_run, state, commit = _fixture()
+    assert node_run.accepted_outcome is not None
     altered_outcome = node_run.accepted_outcome.model_copy(update={"result": {"value": 8}})
     altered_node_run = node_run.model_copy(
         update={"result": {"value": 8}, "accepted_outcome": altered_outcome}
