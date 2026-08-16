@@ -100,10 +100,14 @@ def evaluate(
 
         current_survivors = _survivor_ids(row)
         prior_survivors = prior.get("survivor_ids", [])
-        prior_survivor_set = {
-            value for value in prior_survivors if isinstance(value, str)
-        } if isinstance(prior_survivors, list) else set()
-        new_survivors = sorted(set(current_survivors) - prior_survivor_set) if prior_rate is not None else []
+        prior_survivor_set = (
+            {value for value in prior_survivors if isinstance(value, str)}
+            if isinstance(prior_survivors, list)
+            else set()
+        )
+        new_survivors = (
+            sorted(set(current_survivors) - prior_survivor_set) if prior_rate is not None else []
+        )
         if new_survivors:
             newly_surviving[source] = new_survivors
 
@@ -169,9 +173,7 @@ def baseline_candidate(
         previous = previous if isinstance(previous, dict) else {}
         previous_rate_value = previous.get("kill_rate")
         previous_rate = (
-            float(previous_rate_value)
-            if isinstance(previous_rate_value, (int, float))
-            else None
+            float(previous_rate_value) if isinstance(previous_rate_value, (int, float)) else None
         )
         if rate < floor:
             continue
@@ -269,7 +271,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error::{exc}", file=sys.stderr)
         return 2
 
-    args.json_output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.json_output.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     args.markdown_output.write_text(render_markdown(report), encoding="utf-8")
     args.candidate_output.write_text(
         json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
