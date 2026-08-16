@@ -11,6 +11,7 @@ from maistro.projects.scope_store import ProjectScopeStore
 from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
     AttemptStatus,
     GraphSnapshot,
@@ -95,7 +96,6 @@ class SqliteRunStore:
 
     async def ensure_schema(self) -> None:
         """Create canonical execution tables and relational integrity constraints."""
-
         await self._conn.executescript(_SCHEMA)
         await self._conn.commit()
 
@@ -113,7 +113,6 @@ class SqliteRunStore:
         await self._validate_graph_scope(graph)
         if parent_node_run_id is not None and parent_run_id is None:
             raise RunIntegrityError("parent_node_run_id requires parent_run_id")
-
         if parent_run_id is not None:
             parent = await self._require_run(parent_run_id)
             if parent.workspace_id != graph.workspace_id:
@@ -129,7 +128,6 @@ class SqliteRunStore:
                     raise RunIntegrityError(
                         "parent_node_run_id does not belong to parent_run_id",
                     )
-
         run = Run(
             workspace_id=graph.workspace_id,
             project_id=graph.project_id,
@@ -177,11 +175,7 @@ class SqliteRunStore:
         run = await self._require_run(run_id)
         updated = transition_run(run, target, at=at, result=result, error=error)
         await self._update_payload(
-            "canonical_runs",
-            "run_id",
-            run_id,
-            updated.status.value,
-            updated.model_dump_json(),
+            "canonical_runs", "run_id", run_id, updated.status.value, updated.model_dump_json()
         )
         return updated
 
@@ -194,7 +188,6 @@ class SqliteRunStore:
             raise RunIntegrityError(
                 f"node_id {node_id!r} is not present in the Run Graph snapshot",
             )
-
         row = await self._fetchone(
             "SELECT COALESCE(MAX(ordinal), 0) FROM canonical_node_runs WHERE run_id = ?",
             (run_id,),
@@ -241,6 +234,7 @@ class SqliteRunStore:
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun:
         node_run = await self._require_node_run(node_run_id)
         updated = transition_node_run(
@@ -249,6 +243,7 @@ class SqliteRunStore:
             at=at,
             result=result,
             error=error,
+            accepted_outcome=accepted_outcome,
         )
         await self._update_payload(
             "canonical_node_runs",
@@ -271,7 +266,6 @@ class SqliteRunStore:
         node_run = await self._require_node_run(node_run_id)
         if node_run.status in TERMINAL_RUN_STATUSES:
             raise RunIntegrityError("cannot create Attempt under a terminal NodeRun")
-
         await self._conn.execute("BEGIN IMMEDIATE")
         try:
             active = await self._fetchone(
@@ -284,7 +278,6 @@ class SqliteRunStore:
                 raise ActiveAttemptExists(
                     f"NodeRun {node_run_id!r} already has an active Attempt",
                 )
-
             row = await self._fetchone(
                 """SELECT COALESCE(MAX(ordinal), 0) FROM canonical_attempts
                    WHERE node_run_id = ?""",
