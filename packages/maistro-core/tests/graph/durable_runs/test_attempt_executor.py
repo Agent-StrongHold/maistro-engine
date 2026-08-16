@@ -6,10 +6,16 @@ from typing import Any, ClassVar
 import pytest
 from pydantic import BaseModel
 
-from maistro.graph import Edge, Graph, Node
-from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus, run_durable_graph
-from maistro.graph.nodes import BaseNode, NodeContext
-from maistro.runs import AttemptStatus
+from maistro.graph import Edge, Graph, GraphExecutionState, Node
+from maistro.graph.durable_runs import (
+    DurableRunRecord,
+    InMemoryDurableRunStore,
+    RunStatus,
+    resume_durable_graph,
+    run_durable_graph,
+)
+from maistro.graph.nodes import BaseNode, NodeContext, NodeResult
+from maistro.runs import Attempt, AttemptStatus, GraphSnapshot, NodeRun, Run
 from maistro.runtime import PythonExecutionRuntime
 
 
@@ -30,8 +36,10 @@ class _Start(BaseNode[_Empty, _Seed]):
     kind_category: ClassVar = "sync.transform"
     input_schema: ClassVar[type[BaseModel]] = _Empty
     output_schema: ClassVar[type[BaseModel]] = _Seed
+    calls: ClassVar[int] = 0
 
     async def _execute(self, inputs: _Empty, ctx: NodeContext) -> _Seed:
+        type(self).calls += 1
         return _Seed(seed="go")
 
 
@@ -157,6 +165,51 @@ def _blocking_resolver(node_id: str, graph: Graph) -> BaseNode[Any, Any]:
     return _Blocking()
 
 
+def _single_recovery_record(*, attempt_status: AttemptStatus, attempt_result: object | None = None) -> DurableRunRecord:
+    graph = Graph(
+        workspace_id="ws-1",
+        project_id="project-1",
+        name="Recovery",
+        nodes=[Node(node_id="start", node_type=_Start.kind)],
+        metadata={"entry_node": "start"},
+    )
+    run = Run(
+        run_id="recover-run",
+        workspace_id=graph.workspace_id,
+        project_id=graph.project_id,
+        graph=GraphSnapshot.from_graph(graph),
+        status=RunStatus.RUNNING,
+    )
+    node_run = NodeRun(
+        node_run_id="recover-node-run",
+        run_id=run.run_id,
+        node_id="start",
+        ordinal=1,
+        status=RunStatus.RUNNING,
+    )
+    values: dict[str, object] = {
+        "attempt_id": "recover-attempt",
+        "node_run_id": node_run.node_run_id,
+        "ordinal": 1,
+        "status": attempt_status,
+    }
+    if attempt_status is AttemptStatus.RUNNING:
+        values["started_at"] = run.created_at
+    if attempt_status in {AttemptStatus.COMPLETED, AttemptStatus.FAILED, AttemptStatus.CANCELLED, AttemptStatus.TIMED_OUT}:
+        values["started_at"] = run.created_at
+        values["finished_at"] = run.created_at
+        values["result"] = attempt_result
+    attempt = Attempt.model_validate(values)
+    state = GraphExecutionState(run_id=run.run_id, active_node_ids=("start",))
+    return DurableRunRecord(
+        run=run,
+        graph_state=state,
+        node_runs=(node_run,),
+        attempts=(attempt,),
+        version=1,
+    )
+
+
 @pytest.mark.asyncio
 async def test_public_durable_executor_routes_each_node_run_through_attempt_runtime() -> None:
     _Barrier.reset()
@@ -210,3 +263,41 @@ async def test_outer_cancellation_terminalizes_attempt_node_run_and_run() -> Non
     assert persisted.status is RunStatus.CANCELLED
     assert persisted.node_runs[0].status is RunStatus.CANCELLED
     assert persisted.attempts[0].status is AttemptStatus.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_resume_cancels_orphaned_active_attempt_then_creates_recovery_attempt() -> None:
+    _Start.calls = 0
+    store = InMemoryDurableRunStore()
+    await store.create(_single_recovery_record(attempt_status=AttemptStatus.RUNNING))
+
+    record = await resume_durable_graph("recover-run", store=store, node_resolver=_resolver)
+
+    assert record.status is RunStatus.COMPLETED
+    assert [attempt.status for attempt in record.attempts] == [
+        AttemptStatus.CANCELLED,
+        AttemptStatus.COMPLETED,
+    ]
+    assert [attempt.ordinal for attempt in record.attempts] == [1, 2]
+    assert _Start.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_resume_folds_completed_attempt_without_redispatching_node() -> None:
+    _Start.calls = 0
+    persisted_result = NodeResult(success=True, output={"seed": "already-done"})
+    store = InMemoryDurableRunStore()
+    await store.create(
+        _single_recovery_record(
+            attempt_status=AttemptStatus.COMPLETED,
+            attempt_result=persisted_result,
+        )
+    )
+
+    record = await resume_durable_graph("recover-run", store=store, node_resolver=_resolver)
+
+    assert record.status is RunStatus.COMPLETED
+    assert len(record.attempts) == 1
+    assert record.attempts[0].status is AttemptStatus.COMPLETED
+    assert record.node_runs[0].result == {"seed": "already-done"}
+    assert _Start.calls == 0
