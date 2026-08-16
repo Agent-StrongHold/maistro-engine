@@ -4,7 +4,7 @@ The reconciler owns universal lifecycle bookkeeping only. It never decides
 whether a failed/timed-out/cancelled Attempt is eligible for retry and it never
 decides Graph traversal completion. Physical completion is first captured as
 immutable AttemptResult evidence; only an explicit AcceptedNodeOutcome makes
-that result authoritative for the logical NodeRun.
+a projected result authoritative for the logical NodeRun.
 """
 
 from __future__ import annotations
@@ -50,10 +50,12 @@ class AttemptLifecycleReconciler:
 
         node_run = await self._require_node_run(attempt.node_run_id)
         if attempt.status is AttemptStatus.COMPLETED:
-            result = AttemptResult.from_attempt(persisted)
+            physical = AttemptResult.from_attempt(persisted)
             outcome = AcceptedNodeOutcome(
                 node_run_id=node_run.node_run_id,
-                attempt_result=result,
+                attempt_result=physical,
+                logical_status=RunStatus.COMPLETED,
+                result=physical.result,
             )
             return await self._accept_node_outcome(node_run, outcome)
 
@@ -107,8 +109,9 @@ class AttemptLifecycleReconciler:
             raise RunIntegrityError("completed Attempt requires a running logical NodeRun")
         return await self._store.transition_node_run(
             node_run.node_run_id,
-            RunStatus.COMPLETED,
-            result=outcome.attempt_result.result,
+            outcome.logical_status,
+            result=outcome.result,
+            error=outcome.error,
             accepted_outcome=outcome,
         )
 
