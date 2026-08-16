@@ -99,7 +99,18 @@ class AttemptLifecycleReconciler:
     ) -> NodeRun:
         if node_run.status is RunStatus.COMPLETED:
             accepted = node_run.accepted_outcome
-            if accepted is None or accepted.attempt_result != outcome.attempt_result:
+            if accepted is None:
+                # Pre-upgrade completed rows projected the physical result but
+                # did not persist AcceptedNodeOutcome. The lifecycle/store
+                # permit exactly this evidence-only backfill after validating
+                # the referenced Attempt against canonical storage.
+                return await self._store.transition_node_run(
+                    node_run.node_run_id,
+                    RunStatus.COMPLETED,
+                    result=node_run.result,
+                    accepted_outcome=outcome,
+                )
+            if accepted.attempt_result != outcome.attempt_result:
                 raise RunIntegrityError("NodeRun already has a different accepted outcome")
             return node_run
         if node_run.status is not RunStatus.RUNNING:
