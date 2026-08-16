@@ -39,14 +39,14 @@ async def run_durable_graph(
     runtime: ExecutionRuntime | None = None,
 ) -> DurableRunRecord:
     """Start a durable Graph whose physical node work crosses the Attempt firewall."""
-    run = traversal._new_run(  # noqa: SLF001
+    run = traversal._new_run(
         graph,
         run_id=run_id,
         actor_principal_id=actor_principal_id,
     )
     state = GraphExecutionState(
         run_id=run.run_id,
-        active_node_ids=(traversal._entry_node(graph),),  # noqa: SLF001
+        active_node_ids=(traversal._entry_node(graph),),
         blackboard_snapshot={
             "task_objective": graph.name,
             "metadata": {},
@@ -87,12 +87,9 @@ async def resume_durable_graph(
     record = await _reconcile_orphaned_attempts(record, store=store)
 
     run = record.run
-    if run.status is not RunStatus.RUNNING:
-        if run.status is RunStatus.WAITING:
-            run = transition_run(run, RunStatus.RUNNING)
-        elif run.status is RunStatus.QUEUED:
-            run = transition_run(run, RunStatus.RUNNING)
-    record = await traversal._checkpoint(  # noqa: SLF001
+    if run.status in {RunStatus.WAITING, RunStatus.QUEUED}:
+        run = transition_run(run, RunStatus.RUNNING)
+    record = await traversal._checkpoint(
         record,
         store=store,
         run=run,
@@ -150,18 +147,18 @@ async def _walk(
         steps += 1
         frontier = record.graph_state.active_node_ids
         unknown = next(
-            (node_id for node_id in frontier if traversal._node_spec(graph, node_id) is None),  # noqa: SLF001
+            (node_id for node_id in frontier if traversal._node_spec(graph, node_id) is None),
             None,
         )
         if unknown is not None:
-            return await traversal._mark_failed(  # noqa: SLF001
+            return await traversal._mark_failed(
                 record,
                 error_code="UnknownNode",
                 error_message=f"node_id={unknown!r} not present in Graph",
                 store=store,
             )
 
-        record, node_runs = await traversal._ensure_frontier_node_runs(  # noqa: SLF001
+        record, node_runs = await traversal._ensure_frontier_node_runs(
             record,
             frontier,
             store=store,
@@ -183,7 +180,7 @@ async def _walk(
             latest = await store.get(record.run_id)
             if latest is None:
                 raise KeyError(f"no such run: {record.run_id!r}") from exc
-            return await traversal._mark_failed(  # noqa: SLF001
+            return await traversal._mark_failed(
                 latest,
                 error_code="PhysicalExecutionError",
                 error_message=str(exc) or type(exc).__name__,
@@ -193,7 +190,7 @@ async def _walk(
         latest = await store.get(record.run_id)
         if latest is None:
             raise KeyError(f"no such run: {record.run_id!r}")
-        record = await traversal._fold_frontier(  # noqa: SLF001
+        record = await traversal._fold_frontier(
             latest,
             graph,
             items,
@@ -202,7 +199,7 @@ async def _walk(
         if record.run.status is not RunStatus.RUNNING:
             return record
 
-    return await traversal._finish_walk(  # noqa: SLF001
+    return await traversal._finish_walk(
         record,
         store=store,
         max_steps=max_steps,
@@ -217,19 +214,19 @@ async def _persist_cancelled_run(
     latest = await store.get(run_id)
     if latest is None:
         raise KeyError(f"no such run: {run_id!r}")
-    latest = traversal._cancel_unfinished_node_runs(latest)  # noqa: SLF001
-    run = traversal._running_run(latest.run)  # noqa: SLF001
+    latest = traversal._cancel_unfinished_node_runs(latest)
+    run = traversal._running_run(latest.run)
     if run.status is RunStatus.RUNNING:
         run = transition_run(
             run,
             RunStatus.CANCELLED,
             error="durable Graph execution cancelled",
         )
-    state = traversal._replace_state(  # noqa: SLF001
+    state = traversal._replace_state(
         latest.graph_state,
         active_node_ids=(),
     )
-    return await traversal._checkpoint(  # noqa: SLF001
+    return await traversal._checkpoint(
         latest,
         store=store,
         run=run,
@@ -251,11 +248,11 @@ async def _execute_frontier(
     """Execute/recover one complete frontier concurrently through canonical Attempts."""
     prepared: list[tuple[str, Any, NodeRun, Any, Any, dict[str, Any]]] = []
     for node_id, node_run in zip(frontier, node_runs, strict=True):
-        spec = traversal._node_spec(graph, node_id)  # noqa: SLF001
+        spec = traversal._node_spec(graph, node_id)
         assert spec is not None
-        ctx = traversal._build_ctx(record, node_id)  # noqa: SLF001
+        ctx = traversal._build_ctx(record, node_id)
         node = node_resolver(node_id, graph)
-        inputs = traversal._resolve_inputs(graph, record, node_run, spec)  # noqa: SLF001
+        inputs = traversal._resolve_inputs(graph, record, node_run, spec)
         prepared.append((node_id, spec, node_run, ctx, node, inputs))
 
     async def execute_one(
@@ -269,7 +266,7 @@ async def _execute_frontier(
         attempts = await execution_store.list_attempts(node_run.node_run_id)
         if attempts and attempts[-1].status is AttemptStatus.COMPLETED:
             persisted_result = NodeResult.model_validate(attempts[-1].result)
-            return traversal._FrontierItem(  # noqa: SLF001
+            return traversal._FrontierItem(
                 node_id,
                 spec,
                 node_run,
@@ -294,7 +291,7 @@ async def _execute_frontier(
         )
         if raw_result is None:
             raise RuntimeError(f"node {node_id!r} completed without a NodeResult")
-        return traversal._FrontierItem(  # noqa: SLF001
+        return traversal._FrontierItem(
             node_id,
             spec,
             node_run,
