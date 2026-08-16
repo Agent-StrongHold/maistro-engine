@@ -59,7 +59,14 @@ class AttemptExecutionService:
         that physical result as COMPLETED, FAILED, WAITING, or PAUSED. Physical
         failures/cancellation/timeouts still reconcile immediately because no
         successful result exists for domain acceptance.
+
+        A completed physical result awaiting acceptance is authoritative
+        candidate evidence. It must be reconciled or explicitly rejected by the
+        owning domain before another physical Attempt can be dispatched, or a
+        retry could duplicate external side effects.
         """
+        await self._reject_unaccepted_completion(node_run_id)
+
         deadline_at = None
         if timeout_s is not None:
             if timeout_s <= 0:
@@ -132,8 +139,23 @@ class AttemptExecutionService:
             await self._reconcile(terminal)
         return terminal
 
+    async def _reject_unaccepted_completion(self, node_run_id: str) -> None:
+        node_run = await self._store.get_node_run(node_run_id)
+        if node_run is None:
+            raise RunIntegrityError(f"NodeRun {node_run_id!r} does not exist")
+        if node_run.accepted_outcome is not None:
+            return
+        attempts = await self._store.list_attempts(node_run_id)
+        pending = next(
+            (attempt for attempt in reversed(attempts) if attempt.status is AttemptStatus.COMPLETED),
+            None,
+        )
+        if pending is not None:
+            raise RunIntegrityError(
+                "completed Attempt awaits domain acceptance; reconcile persisted evidence before redispatch"
+            )
+
     async def cancel(self, attempt_id: str) -> bool:
-        """Request mechanics cancellation by canonical physical Attempt identity."""
         return await self._runtime.cancel(attempt_id)
 
     async def _terminalize(
