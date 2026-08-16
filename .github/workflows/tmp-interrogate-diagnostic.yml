@@ -1,0 +1,29 @@
+name: tmp-interrogate-diagnostic
+on:
+  push:
+    branches: [feat/graph-frontier-execution]
+permissions:
+  contents: write
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.5.x"
+      - name: Setup Python 3.12
+        run: uv python install 3.12
+      - name: Install interrogate
+        run: uv pip install interrogate
+      - name: Capture report
+        run: |
+          mkdir -p .ci-diagnostics
+          uv run interrogate -vv packages/maistro-core/src/maistro/graph/durable_runs > .ci-diagnostics/interrogate.txt 2>&1 || true
+      - name: Commit report
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .ci-diagnostics/interrogate.txt
+          git commit -m "ci: capture interrogate diagnostic" || exit 0
+          git push
