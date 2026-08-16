@@ -1,0 +1,33 @@
+name: Format PR 419 once
+
+on:
+  push:
+    branches:
+      - feat/graph-frontier-execution
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/graph-frontier-execution
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: 0.5.x
+      - name: Format executor with CI Ruff version
+        run: uvx ruff==0.15.12 format packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+      - name: Commit formatter output when needed
+        run: |
+          if git diff --quiet; then
+            echo "No formatter changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+          git commit -m "Format durable frontier executor"
+          git push origin HEAD:feat/graph-frontier-execution
