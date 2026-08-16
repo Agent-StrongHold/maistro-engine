@@ -16,7 +16,8 @@ from maistro.graph.execution_state import GraphExecutionState
 from maistro.graph.nodes.base import NodeResult
 from maistro.runs.execution import AttemptExecutionService
 from maistro.runs.lifecycle import transition_run
-from maistro.runs.model import NodeRun, RunStatus
+from maistro.runs.model import AttemptStatus, NodeRun, RunStatus
+from maistro.runs.reconciliation import AttemptLifecycleReconciler
 from maistro.runtime import ExecutionRuntime, PythonExecutionRuntime
 
 from . import executor as traversal
@@ -38,8 +39,7 @@ async def run_durable_graph(
     runtime: ExecutionRuntime | None = None,
 ) -> DurableRunRecord:
     """Start a durable Graph whose physical node work crosses the Attempt firewall."""
-
-    run = traversal._new_run(  # noqa: SLF001 - same-package traversal primitive
+    run = traversal._new_run(  # noqa: SLF001
         graph,
         run_id=run_id,
         actor_principal_id=actor_principal_id,
@@ -71,8 +71,7 @@ async def resume_durable_graph(
     node_resolver: NodeResolver,
     runtime: ExecutionRuntime | None = None,
 ) -> DurableRunRecord:
-    """Resume a durable Graph while preserving the same physical runtime boundary."""
-
+    """Resume after reconciling persisted physical evidence before redispatch."""
     record = await store.get(run_id)
     if record is None:
         raise KeyError(f"no such run: {run_id!r}")
@@ -85,9 +84,20 @@ async def resume_durable_graph(
     }:
         raise ValueError(f"cannot resume run in status {record.run.status!r}")
 
+    # A resume call is an explicit recovery boundary. Attempts left CREATED or
+    # RUNNING belong to the lost process and cannot remain active forever. Mark
+    # them CANCELLED and reconcile their logical NodeRuns before deciding what
+    # physical work may run next. Completed Attempts are intentionally retained:
+    # _execute_frontier will fold their persisted result instead of invoking the
+    # node again.
+    record = await _reconcile_orphaned_attempts(record, store=store)
+
     run = record.run
     if run.status is not RunStatus.RUNNING:
-        run = transition_run(run, RunStatus.RUNNING)
+        if run.status is RunStatus.WAITING:
+            run = transition_run(run, RunStatus.RUNNING)
+        elif run.status is RunStatus.QUEUED:
+            run = transition_run(run, RunStatus.RUNNING)
     record = await traversal._checkpoint(  # noqa: SLF001
         record,
         store=store,
@@ -102,6 +112,32 @@ async def resume_durable_graph(
     )
 
 
+async def _reconcile_orphaned_attempts(
+    record: DurableRunRecord,
+    *,
+    store: DurableRunStore,
+) -> DurableRunRecord:
+    """Terminalize process-lost active Attempts and reconcile their NodeRuns."""
+    execution_store = DurableRunExecutionStore(store, run_id=record.run_id)
+    lifecycle = AttemptLifecycleReconciler(execution_store)
+    active = tuple(
+        attempt
+        for attempt in record.attempts
+        if attempt.status in {AttemptStatus.CREATED, AttemptStatus.RUNNING}
+    )
+    for attempt in active:
+        terminal = await execution_store.transition_attempt(
+            attempt.attempt_id,
+            AttemptStatus.CANCELLED,
+            error="orphaned physical Attempt recovered after process loss",
+        )
+        await lifecycle.reconcile(terminal)
+    latest = await store.get(record.run_id)
+    if latest is None:
+        raise KeyError(f"no such run: {record.run_id!r}")
+    return latest
+
+
 async def _walk(
     record: DurableRunRecord,
     *,
@@ -111,7 +147,6 @@ async def _walk(
     max_steps: int = 256,
 ) -> DurableRunRecord:
     """Execute persisted frontiers through Attempts, then fold Graph semantics."""
-
     graph = record.run.graph.materialize()
     execution_store = DurableRunExecutionStore(store, run_id=record.run_id)
     execution_service = AttemptExecutionService(store=execution_store, runtime=runtime)
@@ -147,9 +182,6 @@ async def _walk(
                 execution_service=execution_service,
             )
         except asyncio.CancelledError:
-            # Each active service call terminalizes its physical Attempt first.
-            # Graph then owns logical cancellation and must persist it even
-            # though the caller has cancelled the orchestration task.
             await asyncio.shield(_persist_cancelled_run(record.run_id, store=store))
             raise
         except Exception as exc:
@@ -163,9 +195,6 @@ async def _walk(
                 store=store,
             )
 
-        # Attempt creation/running/terminalization advances the same durable
-        # optimistic record. Reload before logical folding so Graph persistence
-        # never overwrites physical execution facts from a stale checkpoint.
         latest = await store.get(record.run_id)
         if latest is None:
             raise KeyError(f"no such run: {record.run_id!r}")
@@ -190,8 +219,6 @@ async def _persist_cancelled_run(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
-    """Reconcile a cancelled physical frontier into durable logical cancellation."""
-
     latest = await store.get(run_id)
     if latest is None:
         raise KeyError(f"no such run: {run_id!r}")
@@ -225,8 +252,7 @@ async def _execute_frontier(
     node_resolver: NodeResolver,
     execution_service: AttemptExecutionService,
 ) -> tuple[Any, ...]:
-    """Execute one complete frontier concurrently through canonical Attempts."""
-
+    """Execute/recover one complete frontier concurrently through canonical Attempts."""
     prepared: list[tuple[str, Any, NodeRun, Any, Any, dict[str, Any]]] = []
     for node_id, node_run in zip(frontier, node_runs, strict=True):
         spec = traversal._node_spec(graph, node_id)  # noqa: SLF001
@@ -244,6 +270,20 @@ async def _execute_frontier(
         node: Any,
         inputs: dict[str, Any],
     ) -> Any:
+        # If the prior process persisted a terminal physical success but died
+        # before Graph folding, the result is already durable evidence. Reuse
+        # it rather than redispatching potentially non-idempotent work.
+        attempts = await execution_service._store.list_attempts(node_run.node_run_id)  # noqa: SLF001
+        if attempts and attempts[-1].status is AttemptStatus.COMPLETED:
+            persisted_result = NodeResult.model_validate(attempts[-1].result)
+            return traversal._FrontierItem(  # noqa: SLF001
+                node_id,
+                spec,
+                node_run,
+                ctx,
+                persisted_result,
+            )
+
         raw_result: NodeResult | None = None
 
         async def executor(work_item: Any, execution_context: Any) -> NodeResult:
