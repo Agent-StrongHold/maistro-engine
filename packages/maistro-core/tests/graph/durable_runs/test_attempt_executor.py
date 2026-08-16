@@ -165,7 +165,9 @@ def _blocking_resolver(node_id: str, graph: Graph) -> BaseNode[Any, Any]:
     return _Blocking()
 
 
-def _single_recovery_record(*, attempt_status: AttemptStatus, attempt_result: object | None = None) -> DurableRunRecord:
+def _single_recovery_record(
+    *, attempt_status: AttemptStatus, attempt_result: object | None = None
+) -> DurableRunRecord:
     graph = Graph(
         workspace_id="ws-1",
         project_id="project-1",
@@ -195,7 +197,12 @@ def _single_recovery_record(*, attempt_status: AttemptStatus, attempt_result: ob
     }
     if attempt_status is AttemptStatus.RUNNING:
         values["started_at"] = run.created_at
-    if attempt_status in {AttemptStatus.COMPLETED, AttemptStatus.FAILED, AttemptStatus.CANCELLED, AttemptStatus.TIMED_OUT}:
+    if attempt_status in {
+        AttemptStatus.COMPLETED,
+        AttemptStatus.FAILED,
+        AttemptStatus.CANCELLED,
+        AttemptStatus.TIMED_OUT,
+    }:
         values["started_at"] = run.created_at
         values["finished_at"] = run.created_at
         values["result"] = attempt_result
@@ -225,7 +232,11 @@ async def test_public_durable_executor_routes_each_node_run_through_attempt_runt
 
     assert record.status is RunStatus.COMPLETED
     assert _Barrier.started == 2
-    assert [node_run.node_id for node_run in record.node_runs] == ["start", "left", "right"]
+    assert [node_run.node_id for node_run in record.node_runs] == [
+        "start",
+        "left",
+        "right",
+    ]
     assert len(record.attempts) == 3
     assert [attempt.ordinal for attempt in record.attempts] == [1, 1, 1]
     assert all(attempt.status is AttemptStatus.COMPLETED for attempt in record.attempts)
@@ -271,7 +282,9 @@ async def test_resume_cancels_orphaned_active_attempt_then_creates_recovery_atte
     store = InMemoryDurableRunStore()
     await store.create(_single_recovery_record(attempt_status=AttemptStatus.RUNNING))
 
-    record = await resume_durable_graph("recover-run", store=store, node_resolver=_resolver)
+    record = await resume_durable_graph(
+        "recover-run", store=store, node_resolver=_resolver
+    )
 
     assert record.status is RunStatus.COMPLETED
     assert [attempt.status for attempt in record.attempts] == [
@@ -294,7 +307,9 @@ async def test_resume_folds_completed_attempt_without_redispatching_node() -> No
         )
     )
 
-    record = await resume_durable_graph("recover-run", store=store, node_resolver=_resolver)
+    record = await resume_durable_graph(
+        "recover-run", store=store, node_resolver=_resolver
+    )
 
     assert record.status is RunStatus.COMPLETED
     assert len(record.attempts) == 1
