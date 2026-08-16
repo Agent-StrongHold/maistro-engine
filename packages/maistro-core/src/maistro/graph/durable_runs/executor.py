@@ -322,6 +322,133 @@ def _deferred_frontier(record: DurableRunRecord) -> tuple[str, ...]:
     return tuple(str(value) for value in raw)
 
 
+def _deferred_fanins(record: DurableRunRecord) -> tuple[str, ...]:
+    raw = record.graph_state.metadata.get("deferred_fanins", ())
+    if not isinstance(raw, (tuple, list)):
+        return ()
+    return tuple(str(value) for value in raw)
+
+
+def _latest_prior_node_run_ordinal(
+    record: DurableRunRecord,
+    node_id: str,
+    *,
+    before_ordinal: int | None = None,
+) -> int:
+    return max(
+        (
+            node_run.ordinal
+            for node_run in record.node_runs
+            if node_run.node_id == node_id
+            and (before_ordinal is None or node_run.ordinal < before_ordinal)
+        ),
+        default=0,
+    )
+
+
+def _selected_predecessor_decisions(
+    record: DurableRunRecord,
+    target_node_id: str,
+    *,
+    decisions: Iterable[GraphEdgeDecision] = (),
+    before_ordinal: int | None = None,
+) -> tuple[GraphEdgeDecision, ...]:
+    last_target_ordinal = _latest_prior_node_run_ordinal(
+        record,
+        target_node_id,
+        before_ordinal=before_ordinal,
+    )
+    runs_by_id = {node_run.node_run_id: node_run for node_run in record.node_runs}
+    latest_by_source: dict[str, tuple[int, GraphEdgeDecision]] = {}
+    for decision in (*record.graph_state.edge_decisions, *tuple(decisions)):
+        if not decision.selected or decision.target_node_id != target_node_id:
+            continue
+        source_run = runs_by_id.get(decision.source_node_run_id)
+        if source_run is None or source_run.ordinal <= last_target_ordinal:
+            continue
+        current = latest_by_source.get(decision.source_node_id)
+        if current is None or source_run.ordinal > current[0]:
+            latest_by_source[decision.source_node_id] = (source_run.ordinal, decision)
+    return tuple(
+        decision
+        for _, decision in sorted(latest_by_source.values(), key=lambda item: item[0])
+    )
+
+
+def _can_reach(graph: Graph, start_node_id: str, target_node_id: str) -> bool:
+    if start_node_id == target_node_id:
+        return True
+    seen = {start_node_id}
+    frontier = [start_node_id]
+    while frontier:
+        current = frontier.pop()
+        for edge in graph.edges:
+            if edge.from_node != current or edge.to_node in seen:
+                continue
+            if edge.to_node == target_node_id:
+                return True
+            seen.add(edge.to_node)
+            frontier.append(edge.to_node)
+    return False
+
+
+def _partition_ready_targets(
+    record: DurableRunRecord,
+    graph: Graph,
+    next_ids: tuple[str, ...],
+    decisions: tuple[GraphEdgeDecision, ...],
+    paused: tuple[_FrontierItem, ...],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    candidates = _dedupe(
+        (*_deferred_frontier(record), *_deferred_fanins(record), *next_ids)
+    )
+    roots = _dedupe(
+        (*_deferred_frontier(record), *next_ids, *(item.node_id for item in paused))
+    )
+    ready: list[str] = []
+    blocked: list[str] = []
+
+    for target in candidates:
+        incoming = _dedupe(edge.from_node for edge in graph.edges if edge.to_node == target)
+        if len(incoming) <= 1:
+            ready.append(target)
+            continue
+
+        resolved = {
+            decision.source_node_id
+            for decision in _selected_predecessor_decisions(
+                record,
+                target,
+                decisions=decisions,
+            )
+        }
+        unresolved = tuple(node_id for node_id in incoming if node_id not in resolved)
+        other_roots = tuple(node_id for node_id in roots if node_id != target)
+        waits_for_live_branch = any(
+            any(_can_reach(graph, root, predecessor) for root in other_roots)
+            for predecessor in unresolved
+        )
+        if waits_for_live_branch:
+            blocked.append(target)
+        else:
+            ready.append(target)
+
+    return _dedupe(ready), _dedupe(blocked)
+
+
+def _with_deferred_fanins(
+    record: DurableRunRecord,
+    node_ids: tuple[str, ...],
+) -> DurableRunRecord:
+    metadata = dict(record.graph_state.metadata)
+    if node_ids:
+        metadata["deferred_fanins"] = list(node_ids)
+    else:
+        metadata.pop("deferred_fanins", None)
+    state = _replace_state(record.graph_state, metadata=metadata)
+    return _replace_record(record, graph_state=state)
+
+
 async def _checkpoint_paused_frontier(
     record: DurableRunRecord,
     paused: tuple[_FrontierItem, ...],
@@ -338,7 +465,7 @@ async def _checkpoint_paused_frontier(
     metadata["pauses"] = pause_entries
     metadata["pause"] = pause_entries[paused[0].node_id]
 
-    combined_next = _dedupe((*_deferred_frontier(record), *next_ids))
+    combined_next = _dedupe(next_ids)
     if combined_next:
         metadata["deferred_frontier"] = list(combined_next)
     else:
@@ -373,7 +500,7 @@ async def _checkpoint_next_frontier(
     store: DurableRunStore,
 ) -> DurableRunRecord:
     metadata = dict(record.graph_state.metadata)
-    combined_next = _dedupe((*_deferred_frontier(record), *next_ids))
+    combined_next = _dedupe(next_ids)
     metadata.pop("pause", None)
     metadata.pop("pauses", None)
     metadata.pop("deferred_frontier", None)
@@ -424,6 +551,14 @@ async def _fold_frontier(
         )
 
     next_ids, decisions = _route_completed_items(record, graph, completed)
+    next_ids, blocked_fanins = _partition_ready_targets(
+        record,
+        graph,
+        next_ids,
+        decisions,
+        paused,
+    )
+    record = _with_deferred_fanins(record, blocked_fanins)
     if paused:
         return await _checkpoint_paused_frontier(
             record,
@@ -752,16 +887,16 @@ def _resolve_inputs(
 ) -> dict[str, Any]:
     """Merge selected immediate-predecessor outputs for deterministic fan-in."""
     static_inputs = {**spec.parameters, **spec.inputs}
-    cycle = record.graph_state.cycle
-    if cycle == 0:
+    if record.graph_state.cycle == 0:
         return {**static_inputs, **_initial_inputs(record)}
 
     source_run_ids = [
         decision.source_node_run_id
-        for decision in record.graph_state.edge_decisions
-        if decision.selected
-        and decision.target_node_id == current.node_id
-        and decision.cycle == cycle - 1
+        for decision in _selected_predecessor_decisions(
+            record,
+            current.node_id,
+            before_ordinal=current.ordinal,
+        )
     ]
     results_by_id = {node_run.node_run_id: node_run.result for node_run in record.node_runs}
     upstream: dict[str, Any] = {}
@@ -769,7 +904,7 @@ def _resolve_inputs(
         output = results_by_id.get(source_run_id)
         if isinstance(output, Mapping):
             upstream.update(dict(output))
-    if upstream:
+    if source_run_ids:
         return {**static_inputs, **upstream}
     return {**static_inputs, **_initial_inputs(record)}
 
@@ -937,6 +1072,23 @@ def _running_run(run: Run) -> Run:
     return run
 
 
+def _cancel_unfinished_node_runs(record: DurableRunRecord) -> DurableRunRecord:
+    node_runs = list(record.node_runs)
+    changed = False
+    for index, node_run in enumerate(node_runs):
+        if node_run.status in TERMINAL_RUN_STATUSES:
+            continue
+        node_runs[index] = transition_node_run(
+            node_run,
+            RunStatus.CANCELLED,
+            error="cancelled because the durable run failed",
+        )
+        changed = True
+    if not changed:
+        return record
+    return _replace_record(record, node_runs=tuple(node_runs))
+
+
 async def _mark_failed(
     record: DurableRunRecord,
     *,
@@ -944,6 +1096,7 @@ async def _mark_failed(
     error_message: str,
     store: DurableRunStore,
 ) -> DurableRunRecord:
+    record = _cancel_unfinished_node_runs(record)
     run = _running_run(record.run)
     error = f"{error_code}: {error_message}"[:512]
     if run.status is not RunStatus.RUNNING:
