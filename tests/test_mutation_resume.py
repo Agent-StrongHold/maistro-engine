@@ -103,6 +103,18 @@ def test_content_change_invalidates_checkpoint(module, tmp_path: Path) -> None:
     assert not reused
 
 
+def test_runtime_test_caches_do_not_change_scope_hash(module, tmp_path: Path) -> None:
+    _source, tests = write_tree(tmp_path)
+    before = module.tree_hash(str(tests))
+    cache = tests / "__pycache__"
+    cache.mkdir()
+    (cache / "test_source.cpython-312-pytest.pyc").write_bytes(b"runtime cache")
+    pytest_cache = tests / ".pytest_cache"
+    pytest_cache.mkdir()
+    (pytest_cache / "README.md").write_text("generated\n", encoding="utf-8")
+    assert module.tree_hash(str(tests)) == before
+
+
 def test_checkpoint_reader_groups_sources(module, tmp_path: Path) -> None:
     source, tests = write_tree(tmp_path)
     root = tmp_path / "checkpoints"
