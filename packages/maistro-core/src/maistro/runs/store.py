@@ -5,20 +5,18 @@ from typing import Any, Protocol, runtime_checkable
 
 from maistro.graph.definitions import Graph
 from maistro.projects.scope_store import ProjectScopeStore
-from maistro.runs.lifecycle import (
-    transition_attempt,
-    transition_node_run,
-    transition_run,
-)
+from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
     AcceptedNodeOutcome,
     Attempt,
+    AttemptResult,
     AttemptStatus,
     GraphSnapshot,
     NodeRun,
     Run,
     RunStatus,
+    evidence_values_equal,
 )
 
 
@@ -40,6 +38,25 @@ class RunIntegrityError(ValueError):
 
 class ActiveAttemptExists(RunIntegrityError):
     pass
+
+
+def validate_accepted_outcome_against_attempt(
+    outcome: AcceptedNodeOutcome,
+    attempt: Attempt,
+) -> None:
+    """Require authoritative logical evidence to match one canonical persisted Attempt."""
+    expected = AttemptResult.from_attempt(attempt)
+    actual = outcome.attempt_result
+    if (
+        actual.attempt_id != expected.attempt_id
+        or actual.node_run_id != expected.node_run_id
+        or actual.ordinal != expected.ordinal
+        or actual.status is not expected.status
+        or actual.finished_at != expected.finished_at
+        or actual.error != expected.error
+        or not evidence_values_equal(actual.result, expected.result)
+    ):
+        raise RunIntegrityError("accepted outcome does not match its canonical persisted Attempt")
 
 
 @runtime_checkable
@@ -215,6 +232,11 @@ class InMemoryRunStore:
         accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun:
         node_run = self._require_node_run(node_run_id)
+        if accepted_outcome is not None:
+            if accepted_outcome.node_run_id != node_run_id:
+                raise RunIntegrityError("accepted outcome belongs to a different NodeRun")
+            attempt = self._require_attempt(accepted_outcome.attempt_result.attempt_id)
+            validate_accepted_outcome_against_attempt(accepted_outcome, attempt)
         updated = transition_node_run(
             node_run,
             target,
@@ -329,4 +351,5 @@ __all__ = [
     "RunIntegrityError",
     "RunNotFound",
     "RunStore",
+    "validate_accepted_outcome_against_attempt",
 ]
