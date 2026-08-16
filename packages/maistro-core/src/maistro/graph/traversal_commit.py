@@ -13,10 +13,17 @@ import hashlib
 import json
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
 from maistro.runs.model import AcceptedNodeOutcome, RunStatus
+
+_JSON_VALUE = TypeAdapter(object)
+
+
+def _json_value(value: object) -> object:
+    """Project arbitrary Pydantic-supported values into stable JSON-mode data."""
+    return _JSON_VALUE.dump_python(value, mode="json")
 
 
 def _digest(value: object) -> str:
@@ -29,6 +36,14 @@ def _digest(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _same_json_value(left: object, right: object) -> bool:
+    return json.dumps(
+        _json_value(left), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ) == json.dumps(
+        _json_value(right), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+
+
 def graph_state_hash(state: GraphExecutionState) -> str:
     return _digest(state.model_dump(mode="json"))
 
@@ -38,32 +53,33 @@ def edge_decision_id(decision: GraphEdgeDecision) -> str:
 
 
 def _legacy_accepted_outcome_payload(outcome: AcceptedNodeOutcome) -> dict[str, object]:
-    evidence = outcome.attempt_result.model_dump(mode="json")
+    """Reproduce the exact v1 identity payload used before logical projection existed."""
+    evidence = outcome.attempt_result
     return {
         "node_run_id": outcome.node_run_id,
-        "attempt_id": evidence["attempt_id"],
-        "attempt_ordinal": evidence["ordinal"],
-        "attempt_status": evidence["status"],
-        "attempt_result": evidence["result"],
-        "attempt_error": evidence["error"],
-        "attempt_finished_at": evidence["finished_at"],
+        "attempt_id": evidence.attempt_id,
+        "attempt_ordinal": evidence.ordinal,
+        "attempt_status": evidence.status.value,
+        "attempt_result": _json_value(evidence.result),
+        "attempt_error": evidence.error,
+        "attempt_finished_at": evidence.finished_at.isoformat(),
     }
 
 
 def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
     """Hash accepted evidence without invalidating pre-projection identities.
 
-    Before logical disposition/projection fields existed, a completed outcome's
-    identity was derived only from physical Attempt evidence. A normal
-    COMPLETED projection that leaves result/error unchanged is semantically the
-    same historical fact, so it must retain that exact v1 hash. Only outcomes
-    that add new semantics (non-COMPLETED disposition or a transformed logical
-    result/error) use the explicit v2 namespace.
+    A default COMPLETED projection that does not alter result/error retains the
+    exact v1 hash format. Outcomes that add a distinct logical disposition or
+    transformed projection use an explicit v2 namespace. JSON-mode projection
+    makes both formats safe for nested datetime/UUID values accepted by
+    persistence, and comparison remains stable for non-reflexive values such as
+    NaN.
     """
     legacy = _legacy_accepted_outcome_payload(outcome)
     if (
         outcome.logical_status is RunStatus.COMPLETED
-        and outcome.result == outcome.attempt_result.result
+        and _same_json_value(outcome.result, outcome.attempt_result.result)
         and outcome.error == outcome.attempt_result.error
     ):
         return _digest(legacy)
@@ -72,7 +88,7 @@ def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
             "identity_version": 2,
             "physical": legacy,
             "logical_status": outcome.logical_status.value,
-            "logical_result": outcome.result,
+            "logical_result": _json_value(outcome.result),
             "logical_error": outcome.error,
         }
     )
