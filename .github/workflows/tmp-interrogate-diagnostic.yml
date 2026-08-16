@@ -3,69 +3,18 @@ on:
   push:
     branches: [feat/graph-frontier-execution]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  repair:
+  diagnose:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v7
         with:
           version: "0.5.x"
-      - name: Setup Python 3.12
-        run: uv python install 3.12
-      - name: Sync project environment
-        run: |
+      - run: uv python install 3.12
+      - run: |
           uv sync --locked --all-extras
           uv pip install interrogate
-      - name: Document frontier contracts
-        run: |
-          python - <<'PY'
-          import ast
-          from pathlib import Path
-
-          path = Path('packages/maistro-core/src/maistro/graph/durable_runs/executor.py')
-          source = path.read_text()
-          tree = ast.parse(source)
-          docs = {
-              '_execute_frontier': 'Execute all prepared frontier nodes concurrently against one persisted snapshot.',
-              '_classify_frontier_results': 'Terminalize frontier NodeRuns and partition their results by outcome.',
-              '_route_completed_items': 'Collect deterministic successor targets and immutable edge decisions.',
-              '_selected_predecessor_decisions': 'Select the latest routed predecessor decisions for one fan-in visit.',
-              '_fanin_waits_for_live_branch': 'Return whether a fan-in must wait for a still-live predecessor branch.',
-              '_partition_ready_targets': 'Partition successor targets into executable and deferred fan-in frontiers.',
-              '_checkpoint_paused_frontier': 'Persist paused siblings together with successors deferred until resume.',
-              '_checkpoint_next_frontier': 'Persist the next executable frontier and advance the traversal cycle.',
-              '_ensure_frontier_node_runs': 'Resume or create one canonical running NodeRun per frontier member.',
-              '_cancel_unfinished_node_runs': 'Terminalize every unfinished sibling NodeRun when the parent run fails.',
-          }
-          inserts = []
-          for node in ast.walk(tree):
-              if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                  continue
-              doc = docs.get(node.name)
-              if doc is None or ast.get_docstring(node, clean=False) is not None:
-                  continue
-              first = node.body[0]
-              indent = ' ' * first.col_offset
-              inserts.append((first.lineno - 1, f'{indent}"""{doc}"""\n'))
-          lines = source.splitlines(keepends=True)
-          for index, text in sorted(inserts, reverse=True):
-              lines.insert(index, text)
-          path.write_text(''.join(lines))
-          print(f'inserted {len(inserts)} docstrings')
-          if len(inserts) < 8:
-              raise SystemExit('unexpectedly few docstrings inserted')
-          PY
-      - name: Format executor
-        run: uv run ruff format packages/maistro-core/src/maistro/graph/durable_runs/executor.py
-      - name: Verify exact docstring ratchet
-        run: uv run interrogate -f 45 packages/maistro-core/src/maistro/graph/durable_runs
-      - name: Remove repair workflow and commit
-        run: |
-          rm .github/workflows/tmp-interrogate-diagnostic.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add packages/maistro-core/src/maistro/graph/durable_runs/executor.py .github/workflows/tmp-interrogate-diagnostic.yml
-          git commit -m "docs: document frontier execution contracts"
-          git push
+      - name: Detailed durable-run docstring report
+        run: uv run interrogate -vv packages/maistro-core/src/maistro/graph/durable_runs
