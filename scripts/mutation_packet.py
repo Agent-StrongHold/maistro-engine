@@ -128,7 +128,9 @@ def execute_source(
         commit=commit,
     )
     checkpoint_path = checkpoint_dir / f"{identifier}.checkpoint.json"
-    checkpoint_path.write_text(json.dumps(checkpoint, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    checkpoint_path.write_text(
+        json.dumps(checkpoint, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     shutil.copy2(report_path, checkpoint_dir / f"{identifier}.report.json")
     shutil.copy2(rows_path, checkpoint_dir / rows_path.name)
 
