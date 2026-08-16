@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from maistro.graph import Graph, Node
-from maistro.graph.execution_state import GraphExecutionState
 from maistro.graph.durable_runs.types import DurableRunRecord
+from maistro.graph.execution_state import GraphExecutionState
 from maistro.runs.model import Attempt, GraphSnapshot, NodeRun, Run
 
 
