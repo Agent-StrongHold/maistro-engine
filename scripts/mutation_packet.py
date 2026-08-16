@@ -64,9 +64,7 @@ def build_checkpoint(
     assert isinstance(raw, dict)
     viable = report["viable"]
     assert isinstance(viable, list)
-    survivor_ids = sorted(
-        survivor_identity(item) for item in viable if isinstance(item, dict)
-    )
+    survivor_ids = sorted(survivor_identity(item) for item in viable if isinstance(item, dict))
     return {
         "source": source,
         "source_hash": mutation_resume.tree_hash(source),
