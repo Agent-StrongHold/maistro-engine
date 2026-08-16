@@ -48,6 +48,10 @@ WorkspaceMembership role semantics, the live Persona model, and
 one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
 Graph routing parity in #402 adds 10 maistro-core node IDs.
 Graph execution-state frontier coverage in #403 adds nine maistro-core node IDs.
+Durable graph canonical-persistence convergence in #416 replaces legacy
+DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,
+for a net reduction of six maistro-core node IDs while retaining the
+durability, routing, HITL, restart, mutation, and persistence invariants.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -67,7 +71,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6137 | `ci.yml` |
+| `packages/maistro-core/tests` | 6133 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -78,5 +82,55 @@ unchanged.
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 638 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1230 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
+
+## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
+
+C1's context lists this directory as ~31 orphaned tests. That count does not
+survive contact with the files. It contains four `test_*.py` modules, and only
+**one** is a pytest suite:
+
+- **`test_pm_workflow_api.py`** — 24 real tests. **Already covered**: the
+  `hive-conductor-e2e` job runs it against the docker-compose stack. It is not
+  orphaned.
+- **`test_pm_agent.py`**, **`test_pm_real_atlassian.py`** — **not test suites**.
+  Neither defines a single `test_*` function; both are manual scripts whose
+  entry point is `run_pm_workflow()` / `run()` under
+  `if __name__ == "__main__"`. They contribute **zero** node IDs. Adding them
+  to a CI invocation would run nothing.
+- **`test_pm_vision.py`** — real tests, but they drive a real browser against a
+  live conductor and need a real `GOOGLE_API_KEY`.
+
+All three of the latter imported `browser_use` unguarded at module scope. That
+package ships only in `Dockerfile.research` (the main image deliberately sheds
+the browser surface — see the root `Dockerfile` header), so importing it raised
+`ModuleNotFoundError` **at collection time**, which aborted collection for the
+entire directory — all four modules, including the 24 real tests. They are now
+`pytest.importorskip`-guarded, so the directory collects cleanly and each
+skip states its reason.
+
+**`test_pm_workflow_api.py` is deliberately left unguarded.** A
+`skipif`-on-unreachable-server would make it silently skip inside the very
+compose job that exists to run it — converting a real test into a green no-op.
+It should error loudly when the stack it needs is absent.
+
+## C1's acceptance criterion — how it is met
+
+C1 asks that "CI-collected node IDs match [this inventory] (± documented
+skips)". This document is the inventory half; `scripts/check-suite-inventory.py`
+is the comparison half, wired into `ci.yml`'s `test` job (C1/#286). Every row
+above has an entry in that script's `RECIPES` table — a row with no recipe is a
+hard error rather than a silent skip, so adding a suite here cannot look gated
+without being gated.
+
+Two things the gate deliberately does **not** do:
+
+- **It does not compare node-ID sets.** See the rationale at the top.
+- **It does not distinguish skips from passes.** `--collect-only` counts
+  collected node IDs, which is the right denominator for "did this suite stop
+  collecting". Whether a collected test then skips is the runtime suites' and
+  the coverage gate's business (C2/#287), not this one's — the
+  `pytest.importorskip` guards on `packages/hive-conductor/tests/e2e` are
+  exactly why: they keep the directory *collecting* 24 node IDs whether or not
+  `browser_use` is installed, which is the property this gate wants to hold.
