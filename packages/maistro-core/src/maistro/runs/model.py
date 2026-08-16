@@ -70,6 +70,14 @@ TERMINAL_ATTEMPT_STATUSES = frozenset(
         AttemptStatus.YIELDED,
     }
 )
+ACCEPTED_NODE_OUTCOME_STATUSES = frozenset(
+    {
+        RunStatus.WAITING,
+        RunStatus.PAUSED,
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+    }
+)
 
 
 class GraphSnapshot(BaseModel):
@@ -214,12 +222,13 @@ class AttemptResult(BaseModel):
 
 
 class AcceptedNodeOutcome(BaseModel):
-    """The one physical result accepted as authoritative for a logical NodeRun."""
+    """One physical result accepted as authoritative for a logical NodeRun disposition."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     node_run_id: str
     attempt_result: AttemptResult
+    logical_status: RunStatus = RunStatus.COMPLETED
     accepted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
@@ -228,7 +237,9 @@ class AcceptedNodeOutcome(BaseModel):
         if self.attempt_result.node_run_id != self.node_run_id:
             raise ValueError("accepted AttemptResult must belong to the NodeRun")
         if self.attempt_result.status is not AttemptStatus.COMPLETED:
-            raise ValueError("only a completed AttemptResult can become an accepted Node outcome")
+            raise ValueError("only a physically completed AttemptResult can be accepted")
+        if self.logical_status not in ACCEPTED_NODE_OUTCOME_STATUSES:
+            raise ValueError("accepted Node outcome has an unsupported logical disposition")
         return self
 
 
@@ -257,8 +268,8 @@ class NodeRun(BaseModel):
         if self.accepted_outcome is not None:
             if self.accepted_outcome.node_run_id != self.node_run_id:
                 raise ValueError("accepted outcome must belong to this NodeRun")
-            if self.status is not RunStatus.COMPLETED:
-                raise ValueError("accepted outcome requires a completed NodeRun")
+            if self.status is not self.accepted_outcome.logical_status:
+                raise ValueError("NodeRun status must match its accepted logical outcome")
             if self.result != self.accepted_outcome.attempt_result.result:
                 raise ValueError("NodeRun.result must project the accepted AttemptResult")
         _validate_finished_at(
@@ -307,6 +318,7 @@ class Attempt(BaseModel):
 
 
 __all__ = [
+    "ACCEPTED_NODE_OUTCOME_STATUSES",
     "TERMINAL_ATTEMPT_STATUSES",
     "TERMINAL_RUN_STATUSES",
     "AcceptedNodeOutcome",
