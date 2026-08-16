@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-import pytest
 from pydantic import BaseModel
 
 from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus
