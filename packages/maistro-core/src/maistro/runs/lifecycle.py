@@ -118,6 +118,18 @@ def transition_node_run(
     accepted_outcome: AcceptedNodeOutcome | None = None,
 ) -> NodeRun:
     values = _logical_values(node_run, target, at=at, result=result, error=error)
+
+    # WAITING/PAUSED accepted outcomes describe the authoritative disposition
+    # of the physical Attempt that caused suspension. Resuming the same logical
+    # visit supersedes that disposition; retaining it would make the queued or
+    # running NodeRun invalid and prevent a later Attempt from being accepted.
+    if (
+        node_run.accepted_outcome is not None
+        and node_run.status in {RunStatus.WAITING, RunStatus.PAUSED}
+        and target in {RunStatus.QUEUED, RunStatus.RUNNING}
+    ):
+        values["accepted_outcome"] = None
+
     if accepted_outcome is not None:
         values["accepted_outcome"] = accepted_outcome
     return NodeRun.model_validate(values)
