@@ -64,13 +64,50 @@ async def test_physical_completion_can_wait_for_domain_acceptance() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("logical_status", [RunStatus.PAUSED, RunStatus.WAITING, RunStatus.FAILED])
-async def test_domain_can_accept_completed_physical_result_with_noncompleted_disposition(
+async def test_domain_can_project_completed_physical_result_to_noncompleted_disposition(
     logical_status: RunStatus,
 ) -> None:
     store, node_run_id, service = await _execution()
 
     async def executor(_work_item: Any, _context: Any) -> dict[str, str]:
-        return {"domain": logical_status.value}
+        return {"physical": logical_status.value}
+
+    terminal = await service.execute(
+        node_run_id,
+        None,
+        None,
+        executor=executor,
+        reconcile_completed=False,
+    )
+    logical_result = None if logical_status is not RunStatus.COMPLETED else terminal.result
+    logical_error = "logical failure" if logical_status is RunStatus.FAILED else None
+    outcome = AcceptedNodeOutcome(
+        node_run_id=node_run_id,
+        attempt_result=AttemptResult.from_attempt(terminal),
+        logical_status=logical_status,
+        result=logical_result,
+        error=logical_error,
+    )
+    accepted = await store.transition_node_run(
+        node_run_id,
+        logical_status,
+        result=logical_result,
+        error=logical_error,
+        accepted_outcome=outcome,
+    )
+
+    assert accepted.status is logical_status
+    assert accepted.accepted_outcome == outcome
+    assert accepted.result is None
+    assert accepted.accepted_outcome.attempt_result.result == terminal.result
+
+
+@pytest.mark.asyncio
+async def test_domain_can_project_envelope_to_smaller_logical_result() -> None:
+    store, node_run_id, service = await _execution()
+
+    async def executor(_work_item: Any, _context: Any) -> dict[str, Any]:
+        return {"success": True, "output": {"value": 7}, "telemetry": {"tokens": 3}}
 
     terminal = await service.execute(
         node_run_id,
@@ -82,19 +119,19 @@ async def test_domain_can_accept_completed_physical_result_with_noncompleted_dis
     outcome = AcceptedNodeOutcome(
         node_run_id=node_run_id,
         attempt_result=AttemptResult.from_attempt(terminal),
-        logical_status=logical_status,
+        logical_status=RunStatus.COMPLETED,
+        result={"value": 7},
     )
     accepted = await store.transition_node_run(
         node_run_id,
-        logical_status,
-        result=terminal.result,
-        error="logical failure" if logical_status is RunStatus.FAILED else None,
+        RunStatus.COMPLETED,
+        result={"value": 7},
         accepted_outcome=outcome,
     )
 
-    assert accepted.status is logical_status
-    assert accepted.accepted_outcome == outcome
-    assert accepted.result == terminal.result
+    assert accepted.result == {"value": 7}
+    assert accepted.accepted_outcome is not None
+    assert accepted.accepted_outcome.attempt_result.result != accepted.result
 
 
 @pytest.mark.asyncio
@@ -111,3 +148,4 @@ async def test_default_execution_still_accepts_simple_completed_result() -> None
     assert accepted is not None and accepted.status is RunStatus.COMPLETED
     assert accepted.accepted_outcome is not None
     assert accepted.accepted_outcome.logical_status is RunStatus.COMPLETED
+    assert accepted.accepted_outcome.result == "ok"
