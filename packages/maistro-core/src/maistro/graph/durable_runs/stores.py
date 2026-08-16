@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,35 @@ def _replace_record(record: DurableRunRecord, **updates: object) -> DurableRunRe
     return DurableRunRecord.model_validate(values)
 
 
+def _paused_node_run_index(record: DurableRunRecord, node_id: str) -> int:
+    for index in range(len(record.node_runs) - 1, -1, -1):
+        node_run = record.node_runs[index]
+        if node_run.node_id == node_id and node_run.status is RunStatus.PAUSED:
+            return index
+    raise ValueError(f"run {record.run_id!r} has no paused NodeRun for node {node_id!r}")
+
+
+def _pause_metadata_after_answer(
+    record: DurableRunRecord,
+    metadata: dict[str, Any],
+    node_id: str,
+) -> dict[str, Any]:
+    pauses_raw = metadata.get("pauses", {})
+    pauses = dict(pauses_raw) if isinstance(pauses_raw, Mapping) else {}
+    pauses.pop(node_id, None)
+    if not pauses:
+        metadata.pop("pauses", None)
+        metadata.pop("pause", None)
+        return metadata
+
+    metadata["pauses"] = pauses
+    first_node_id = next(
+        active_id for active_id in record.graph_state.active_node_ids if active_id in pauses
+    )
+    metadata["pause"] = pauses[first_node_id]
+    return metadata
+
+
 def _answer_record(
     record: DurableRunRecord,
     node_id: str,
@@ -47,35 +77,15 @@ def _answer_record(
             f"{record.graph_state.active_node_ids!r}, not {node_id!r}"
         )
 
-    node_runs = list(record.node_runs)
-    paused_index: int | None = None
-    for index in range(len(node_runs) - 1, -1, -1):
-        node_run = node_runs[index]
-        if node_run.node_id == node_id and node_run.status is RunStatus.PAUSED:
-            paused_index = index
-            break
-    if paused_index is None:
-        raise ValueError(f"run {record.run_id!r} has no paused NodeRun for node {node_id!r}")
-
+    paused_index = _paused_node_run_index(record, node_id)
     answered = {**answer, "answered_at": datetime.now(UTC).isoformat()}
     metadata = dict(record.graph_state.metadata)
     answers = dict(record.hitl_answers)
     answers[node_id] = answered
     metadata["hitl_answers"] = answers
+    metadata = _pause_metadata_after_answer(record, metadata, node_id)
 
-    pauses_raw = metadata.get("pauses", {})
-    pauses = dict(pauses_raw) if isinstance(pauses_raw, dict) else {}
-    pauses.pop(node_id, None)
-    if pauses:
-        metadata["pauses"] = pauses
-        first_node_id = next(
-            active_id for active_id in record.graph_state.active_node_ids if active_id in pauses
-        )
-        metadata["pause"] = pauses[first_node_id]
-    else:
-        metadata.pop("pauses", None)
-        metadata.pop("pause", None)
-
+    node_runs = list(record.node_runs)
     node_runs[paused_index] = transition_node_run(
         node_runs[paused_index],
         RunStatus.QUEUED,
