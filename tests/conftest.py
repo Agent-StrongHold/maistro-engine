@@ -16,8 +16,12 @@ os.environ.setdefault("MAISTRO_DRY_RUN", "1")
 os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "6000")
 os.environ.setdefault("RATE_LIMIT_BURST", "1000")
 
-_MUTATION_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "mutation.yml"
-_MUTATION_DEFERRED_MARKER = "Mutation testing is temporarily disabled until self-hosted runners are restored."
+_MUTATION_WORKFLOW = (
+    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "mutation.yml"
+)
+_MUTATION_DEFERRED_MARKER = (
+    "Mutation testing is temporarily disabled until self-hosted runners are restored."
+)
 _MUTATION_ACTIVE_WORKFLOW_TESTS = {
     "tests/test_mutation_targets.py::TestPolicyPriorityIsReachable::test_every_package_source_is_in_the_workflow_scope",
     "tests/test_mutation_targets.py::TestWorkflowDiffsAgainstItsOwnBase::test_no_hardcoded_main_in_the_changed_files_diff",
