@@ -75,6 +75,20 @@ class _Right(BaseNode[_Empty, _BranchOut]):
         return _BranchOut(branch="right")
 
 
+class _Blocking(BaseNode[_Empty, _Seed]):
+    kind: ClassVar[str] = "test.attempt.blocking"
+    kind_category: ClassVar = "sync.transform"
+    input_schema: ClassVar[type[BaseModel]] = _Empty
+    output_schema: ClassVar[type[BaseModel]] = _Seed
+    started: ClassVar[asyncio.Event | None] = None
+
+    async def _execute(self, inputs: _Empty, ctx: NodeContext) -> _Seed:
+        assert self.started is not None
+        self.started.set()
+        await asyncio.Event().wait()
+        return _Seed(seed="unreachable")
+
+
 class _RecordingRuntime(PythonExecutionRuntime):
     def __init__(self) -> None:
         super().__init__()
@@ -127,6 +141,22 @@ def _resolver(node_id: str, graph: Graph) -> BaseNode[Any, Any]:
     return {"start": _Start, "left": _Left, "right": _Right}[node_id]()
 
 
+def _blocking_graph() -> Graph:
+    return Graph(
+        workspace_id="ws-1",
+        project_id="project-1",
+        name="Cancelled Attempt",
+        nodes=[Node(node_id="blocking", node_type=_Blocking.kind)],
+        metadata={"entry_node": "blocking"},
+    )
+
+
+def _blocking_resolver(node_id: str, graph: Graph) -> BaseNode[Any, Any]:
+    del graph
+    assert node_id == "blocking"
+    return _Blocking()
+
+
 @pytest.mark.asyncio
 async def test_public_durable_executor_routes_each_node_run_through_attempt_runtime() -> None:
     _Barrier.reset()
@@ -150,3 +180,33 @@ async def test_public_durable_executor_routes_each_node_run_through_attempt_runt
         node_run.node_run_id for node_run in record.node_runs
     }
     assert set(runtime.execution_ids) == {attempt.attempt_id for attempt in record.attempts}
+
+
+@pytest.mark.asyncio
+async def test_outer_cancellation_terminalizes_attempt_node_run_and_run() -> None:
+    _Blocking.started = asyncio.Event()
+    store = InMemoryDurableRunStore()
+    task = asyncio.create_task(
+        run_durable_graph(
+            _blocking_graph(),
+            store=store,
+            node_resolver=_blocking_resolver,
+            run_id="cancel-run",
+        )
+    )
+
+    await asyncio.wait_for(_Blocking.started.wait(), timeout=1.0)
+    in_flight = await store.get("cancel-run")
+    assert in_flight is not None
+    assert in_flight.node_runs[0].status is RunStatus.RUNNING
+    assert in_flight.attempts[0].status is AttemptStatus.RUNNING
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    persisted = await store.get("cancel-run")
+    assert persisted is not None
+    assert persisted.status is RunStatus.CANCELLED
+    assert persisted.node_runs[0].status is RunStatus.CANCELLED
+    assert persisted.attempts[0].status is AttemptStatus.CANCELLED
