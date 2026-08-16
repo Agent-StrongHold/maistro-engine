@@ -151,7 +151,9 @@ def main(argv: list[str]) -> int:
 
     current = scores(args.rows)
     if not current:
-        print("::error::No mutation outcomes found; this is a configuration failure.", file=sys.stderr)
+        print(
+            "::error::No mutation outcomes found; this is a configuration failure.", file=sys.stderr
+        )
         return 1
     if args.write_baseline:
         existing = (
@@ -163,7 +165,9 @@ def main(argv: list[str]) -> int:
             json.dumps(payload(current, existing), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        print(f"wrote legacy candidate mutation baseline for {len(current)} source file(s): {args.baseline}")
+        print(
+            f"wrote legacy candidate mutation baseline for {len(current)} source file(s): {args.baseline}"
+        )
         return 0
     if not args.baseline.is_file():
         print(f"::error::Missing mutation baseline: {args.baseline}", file=sys.stderr)
