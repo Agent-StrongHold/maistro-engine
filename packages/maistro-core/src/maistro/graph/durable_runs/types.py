@@ -12,6 +12,36 @@ from maistro.graph.execution_state import GraphExecutionState
 from maistro.runs.model import Attempt, NodeRun, Run, RunStatus
 
 
+def _validate_node_run_links(run: Run, node_runs: tuple[NodeRun, ...]) -> set[str]:
+    if any(node_run.run_id != run.run_id for node_run in node_runs):
+        raise ValueError("every NodeRun must belong to the persisted Run")
+    ordinals = [node_run.ordinal for node_run in node_runs]
+    if ordinals != list(range(1, len(ordinals) + 1)):
+        raise ValueError("NodeRun ordinals must be consecutive in persistence order")
+    return {node_run.node_run_id for node_run in node_runs}
+
+
+def _validate_attempt_links(attempts: tuple[Attempt, ...], node_run_ids: set[str]) -> None:
+    if any(attempt.node_run_id not in node_run_ids for attempt in attempts):
+        raise ValueError("every Attempt must belong to a persisted NodeRun")
+    attempts_by_node_run: dict[str, list[int]] = {}
+    for attempt in attempts:
+        attempts_by_node_run.setdefault(attempt.node_run_id, []).append(attempt.ordinal)
+    if any(
+        ordinals != list(range(1, len(ordinals) + 1))
+        for ordinals in attempts_by_node_run.values()
+    ):
+        raise ValueError("Attempt ordinals must be consecutive per NodeRun")
+
+
+def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
+    if graph_state.run_id != run.run_id:
+        raise ValueError("graph_state.run_id must match run.run_id")
+    node_ids = {node.node_id for node in run.graph.materialize().nodes}
+    if any(node_id not in node_ids for node_id in graph_state.active_node_ids):
+        raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
+
+
 class DurableRunRecord(BaseModel):
     """Persisted canonical Run plus graph-specific continuation state."""
 
@@ -26,29 +56,9 @@ class DurableRunRecord(BaseModel):
 
     @model_validator(mode="after")
     def _validate_links(self) -> DurableRunRecord:
-        if self.graph_state.run_id != self.run.run_id:
-            raise ValueError("graph_state.run_id must match run.run_id")
-        if any(node_run.run_id != self.run.run_id for node_run in self.node_runs):
-            raise ValueError("every NodeRun must belong to the persisted Run")
-        ordinals = [node_run.ordinal for node_run in self.node_runs]
-        if ordinals != list(range(1, len(ordinals) + 1)):
-            raise ValueError("NodeRun ordinals must be consecutive in persistence order")
-
-        node_run_ids = {node_run.node_run_id for node_run in self.node_runs}
-        if any(attempt.node_run_id not in node_run_ids for attempt in self.attempts):
-            raise ValueError("every Attempt must belong to a persisted NodeRun")
-        attempts_by_node_run: dict[str, list[int]] = {}
-        for attempt in self.attempts:
-            attempts_by_node_run.setdefault(attempt.node_run_id, []).append(attempt.ordinal)
-        if any(
-            ordinals != list(range(1, len(ordinals) + 1))
-            for ordinals in attempts_by_node_run.values()
-        ):
-            raise ValueError("Attempt ordinals must be consecutive per NodeRun")
-
-        node_ids = {node.node_id for node in self.run.graph.materialize().nodes}
-        if any(node_id not in node_ids for node_id in self.graph_state.active_node_ids):
-            raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
+        _validate_graph_links(self.run, self.graph_state)
+        node_run_ids = _validate_node_run_links(self.run, self.node_runs)
+        _validate_attempt_links(self.attempts, node_run_ids)
         return self
 
     @property
