@@ -15,15 +15,93 @@ jobs:
         with:
           ref: feat/graph-frontier-execution
       - uses: astral-sh/setup-uv@v7
+      - name: Harden multi-node HITL answer persistence
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/maistro-core/src/maistro/graph/durable_runs/stores.py')
+          text = path.read_text()
+          start = text.index('def _answer_record(')
+          end = text.index('\n\nclass InMemoryDurableRunStore:', start)
+          replacement = '''def _answer_record(
+              record: DurableRunRecord,
+              node_id: str,
+              answer: dict[str, Any],
+          ) -> DurableRunRecord:
+              if record.run.status is not RunStatus.PAUSED:
+                  raise ValueError(
+                      f"run {record.run_id!r} not paused on HITL (status={record.run.status})"
+                  )
+              if node_id not in record.graph_state.active_node_ids:
+                  raise ValueError(
+                      f"run {record.run_id!r} waiting on frontier "
+                      f"{record.graph_state.active_node_ids!r}, not {node_id!r}"
+                  )
+
+              node_runs = list(record.node_runs)
+              paused_index: int | None = None
+              for index in range(len(node_runs) - 1, -1, -1):
+                  node_run = node_runs[index]
+                  if node_run.node_id == node_id and node_run.status is RunStatus.PAUSED:
+                      paused_index = index
+                      break
+              if paused_index is None:
+                  raise ValueError(
+                      f"run {record.run_id!r} has no paused NodeRun for node {node_id!r}"
+                  )
+
+              answered = {**answer, "answered_at": datetime.now(UTC).isoformat()}
+              metadata = dict(record.graph_state.metadata)
+              answers = dict(record.hitl_answers)
+              answers[node_id] = answered
+              metadata["hitl_answers"] = answers
+
+              pauses_raw = metadata.get("pauses", {})
+              pauses = dict(pauses_raw) if isinstance(pauses_raw, dict) else {}
+              pauses.pop(node_id, None)
+              if pauses:
+                  metadata["pauses"] = pauses
+                  first_node_id = next(
+                      active_id
+                      for active_id in record.graph_state.active_node_ids
+                      if active_id in pauses
+                  )
+                  metadata["pause"] = pauses[first_node_id]
+              else:
+                  metadata.pop("pauses", None)
+                  metadata.pop("pause", None)
+
+              node_runs[paused_index] = transition_node_run(
+                  node_runs[paused_index],
+                  RunStatus.QUEUED,
+              )
+              remaining_paused = any(
+                  node_run.status is RunStatus.PAUSED for node_run in node_runs
+              )
+              run = record.run if remaining_paused else transition_run(record.run, RunStatus.QUEUED)
+              graph_state = _replace_state(record.graph_state, metadata=metadata)
+              return _replace_record(
+                  record,
+                  run=run,
+                  graph_state=graph_state,
+                  node_runs=tuple(node_runs),
+                  resume_at=record.resume_at if remaining_paused else None,
+                  version=record.version + 1,
+              )
+          '''
+          path.write_text(text[:start] + replacement + text[end:])
+          PY
+      - uses: astral-sh/setup-uv@v7
       - name: Apply Ruff formatter
-        run: uvx --from ruff==0.15.12 ruff format packages/maistro-core/src/maistro/graph/durable_runs/frontier_executor.py
-      - name: Commit formatter output when needed
+        run: uvx --from ruff==0.15.12 ruff format packages/maistro-core/src/maistro/graph/durable_runs/frontier_executor.py packages/maistro-core/src/maistro/graph/durable_runs/stores.py
+      - name: Commit exact recovery and formatter output
         run: |
           if git diff --quiet; then
             exit 0
           fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add packages/maistro-core/src/maistro/graph/durable_runs/frontier_executor.py
-          git commit -m 'style(graph): format frontier executor'
+          git add packages/maistro-core/src/maistro/graph/durable_runs/frontier_executor.py packages/maistro-core/src/maistro/graph/durable_runs/stores.py
+          git commit -m 'fix(graph): harden frontier HITL recovery'
           git push origin HEAD:feat/graph-frontier-execution
