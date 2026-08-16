@@ -105,3 +105,79 @@ Add eventual adversarial tests for:
 - later knowledge changes unable to mutate historical Decision.WHY;
 - execution Outcome correction not mutating historical I_OBSERVED;
 - naive repeated evaluation demonstrating why acceptance gates require adaptive-testing controls.
+
+## 2026-08-16 — older cognitive-agent and workflow identity prior art
+
+### Strong cognitive-architecture hit
+
+13. **US7249117B2 / US20080016020 — Knowledge discovery agent system and method**
+    - Uses an extended BDI structure with `Beliefs`, `Desires`, `Intentions`, `Methods`, `Values`, and `History`.
+    - `History` stores previous attempted plans, the belief state associated with the plan, and the methods invoked.
+    - Describes intentionally malleable/organic software agents capable of self-modification based on cognitive judgments.
+    - Patent pressure:
+      - kills broad "persistent agent + beliefs/desires/intentions + historical belief state + action/method history + self-modification" framing;
+      - substantially narrows any integrated Turing claim.
+    - Remaining MAIstro differences must come from stricter typed/forbidden transitions, immutable historical version binding, provenance/authority semantics, objective execution identity, and explicit separation among decision, action, outcome, observation, evidence, and later revision.
+
+14. **US20080091628A1 — Cognitive architecture for learning, action, and perception**
+    - Integrates perception, memory, planning, decision-making, action, self-learning, and affect.
+    - Patent pressure: broad "comprehensive cognitive architecture" framing is dead.
+
+15. **US20090271358A1 — Evidential Reasoning Network and Method**
+    - Transaction-aware evidence/opinion graph records changing belief, disbelief, uncertainty, trust, and evidence over time.
+    - Patent pressure: temporal epistemic stance and historical opinion transitions are old individually.
+    - Engineering lesson: preserve explicit transition histories and distinguish evidence from agent stance toward evidence.
+
+### Execution identity hits
+
+16. **US20070055558A1 — probabilistic workflow mining**
+    - Explicitly states that a workflow representation can create a new task node each time a task is repeated.
+    - Patent pressure: `revisit -> new occurrence identity` is not novel by itself.
+
+17. **US5745687A — distributed workflow routing**
+    - Routing nodes select subsequent nodes.
+    - Modifier nodes cause earlier work nodes to be performed again after errors or reactivation.
+    - Patent pressure: reprocessing/re-execution of graph nodes and routing history are old.
+
+18. **Apache Airflow TaskInstance / try history**
+    - `TaskInstance` is the authoritative persisted logical task execution state within a DAG run; task try numbers are separately tracked and exposed through APIs.
+    - Airflow can preserve/reschedule the same try in some cases and move task instances into retry states after failure.
+    - Patent pressure: static task -> logical task instance -> try is strong art against generic `Node -> NodeRun -> Attempt` identity.
+
+19. **Prefect task-run states**
+    - Stable task-run identity carries rich state transitions including retrying, crashed, cancelled, paused, etc.
+    - Patent pressure: retry/cancellation/recovery state under durable task-run identity is standard.
+
+20. **US10540624B2 / US20180025307A1 — provenance-aware application execution**
+    - Records applications, data, invocation data, execution subsequences, and execution history in provenance graphs.
+    - Patent pressure: execution provenance graphs and replay/recommendation from histories are old.
+
+21. **US8209204B2 — changing process behavior using provenance**
+    - Captures execution trace as provenance graph, compares actual execution patterns against stored practices, and changes future/current process behavior based on discrepancies.
+    - Patent pressure: provenance-driven behavioral adaptation is old.
+
+### Narrow execution survivor after these hits
+
+The execution candidate should no longer be framed as:
+
+- new identity for a repeated task;
+- task instance plus retry count;
+- routing provenance;
+- recovery/reprocessing.
+
+The remaining combination is specifically:
+
+- a static graph Node;
+- a durable logical **visit** identity that changes for a semantic traversal revisit of that Node;
+- a durable physical Attempt identity that changes for retry of the **same** logical visit;
+- graph routing decisions keyed to the logical visit identity;
+- recovery preserving the distinction so a retry never masquerades as a new traversal visit and a revisit never masquerades as a retry.
+
+No reviewed reference yet matches that exact combination. Obviousness pressure is now very high from Airflow TaskInstance/try + repeated-task occurrence modeling + cyclic workflow/reprocessing + provenance.
+
+### Engineering consequences despite patent pressure
+
+- Keep `NodeRun` and `Attempt` semantically orthogonal even if patent scope fails; conflating them destroys correct replay, debugging, routing provenance, retry accounting, and cyclic-graph analysis.
+- Persist routing provenance against the actual source visit, not the static Node definition.
+- Build tests where the same static Node is revisited and separately retried within one Run; assert that the event/provenance graph can distinguish all occurrences and tries after restart.
+- Do not infer logical execution history from runtime logs or try counters; persist first-class identities.
