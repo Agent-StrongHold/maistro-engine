@@ -62,6 +62,9 @@ Stream 2 event, checkpoint, and outbox coverage adds 51 maistro-core node IDs.
 The repo-task wrapper compatibility regression adds one maistro-evolve node ID.
 Reachability production-root coverage adds four root-suite node IDs.
 Mutation scheduler/history coverage adds ten root-suite node IDs.
+Mutation continuation and repository-health aggregation add fifteen root-suite
+node IDs, including checkpoint cache stability, complete-row-only baseline
+aggregation, and single-tool-fingerprint sweep validation.
 Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
 collected node ID while retaining the intended assertion. Other suite counts are
@@ -78,7 +81,7 @@ unchanged.
 | `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
-| `tests/` (root) | 626 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+| `tests/` (root) | 641 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
 | `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
