@@ -36,12 +36,14 @@ def _freeze_json(value: object, *, path: str) -> object:
     raise ValueError(f"{path} must contain only JSON values")
 
 
-def _thaw_json(value: object) -> object:
-    """Return ordinary JSON containers for persistence serialization."""
+def thaw_json_value(value: object) -> object:
+    """Return ordinary JSON-compatible containers from frozen graph state."""
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
     if isinstance(value, Mapping):
-        return {key: _thaw_json(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_thaw_json(item) for item in value]
+        return {str(key): thaw_json_value(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [thaw_json_value(item) for item in value]
     return value
 
 
@@ -136,7 +138,7 @@ class GraphExecutionState(BaseModel):
 
     @field_serializer("visit_counts", "blackboard_snapshot", "metadata")
     def _serialize_mapping(self, value: Mapping[str, Any]) -> dict[str, Any]:
-        thawed = _thaw_json(value)
+        thawed = thaw_json_value(value)
         if not isinstance(thawed, dict):
             raise TypeError("graph execution mappings must serialize as JSON objects")
         return thawed
@@ -164,4 +166,4 @@ if TYPE_CHECKING:
     _ = _vulture_pydantic_contract_usage
 
 
-__all__ = ["GraphEdgeDecision", "GraphExecutionState"]
+__all__ = ["GraphEdgeDecision", "GraphExecutionState", "thaw_json_value"]

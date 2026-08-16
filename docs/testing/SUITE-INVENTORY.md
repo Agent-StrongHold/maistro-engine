@@ -48,6 +48,10 @@ WorkspaceMembership role semantics, the live Persona model, and
 one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
 Graph routing parity in #402 adds 10 maistro-core node IDs.
 Graph execution-state frontier coverage in #403 adds nine maistro-core node IDs.
+Durable graph canonical-persistence convergence in #416 replaces legacy
+DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,
+for a net reduction of six maistro-core node IDs while retaining the
+durability, routing, HITL, restart, mutation, and persistence invariants.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -65,7 +69,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6137 | `ci.yml` |
+| `packages/maistro-core/tests` | 6133 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -76,7 +80,7 @@ unchanged.
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 626 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1230 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"
