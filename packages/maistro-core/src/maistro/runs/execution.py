@@ -16,7 +16,7 @@ from typing import Any
 
 from maistro.runs.model import Attempt, AttemptStatus
 from maistro.runs.reconciliation import AttemptLifecycleReconciler
-from maistro.runs.store import RunStore
+from maistro.runs.store import RunIntegrityError, RunStore
 from maistro.runtime import (
     ExecutionCallable,
     ExecutionRuntime,
@@ -53,7 +53,7 @@ class AttemptExecutionService:
         timeout_s: float | None = None,
         resume_checkpoint_id: str | None = None,
     ) -> Attempt:
-        """Create, run, terminalize, and reconcile one physical Attempt."""
+        """Create, run, terminalize, and reconcile one fenced physical Attempt."""
 
         deadline_at = None
         if timeout_s is not None:
@@ -61,17 +61,24 @@ class AttemptExecutionService:
                 raise ValueError("timeout_s must be > 0")
             deadline_at = datetime.now(UTC) + timedelta(seconds=timeout_s)
 
+        runtime_name = runtime_id or type(self._runtime).__name__
         await self._lifecycle.prepare_execution(node_run_id)
         attempt = await self._store.create_attempt(
             node_run_id,
-            runtime_id=runtime_id or type(self._runtime).__name__,
+            runtime_id=runtime_name,
             executor_id=executor_id,
             deadline_at=deadline_at,
             resume_checkpoint_id=resume_checkpoint_id,
+            lease_holder=executor_id or runtime_name,
         )
+        lease = attempt.execution_lease
+        if lease is None:
+            raise RunIntegrityError("store-created Attempt is missing its execution lease")
+        token = lease.fencing_token
         attempt = await self._store.transition_attempt(
             attempt.attempt_id,
             AttemptStatus.RUNNING,
+            fencing_token=token,
         )
 
         try:
@@ -86,6 +93,7 @@ class AttemptExecutionService:
             terminal = await self._terminalize(
                 attempt.attempt_id,
                 AttemptStatus.CANCELLED,
+                fencing_token=token,
                 error="execution cancelled",
             )
             await self._reconcile(terminal)
@@ -94,6 +102,7 @@ class AttemptExecutionService:
             terminal = await self._terminalize(
                 attempt.attempt_id,
                 AttemptStatus.TIMED_OUT,
+                fencing_token=token,
                 error=str(exc),
             )
             await self._reconcile(terminal)
@@ -102,6 +111,7 @@ class AttemptExecutionService:
             terminal = await self._terminalize(
                 attempt.attempt_id,
                 AttemptStatus.FAILED,
+                fencing_token=token,
                 error=str(exc),
             )
             await self._reconcile(terminal)
@@ -110,6 +120,7 @@ class AttemptExecutionService:
         terminal = await self._terminalize(
             attempt.attempt_id,
             AttemptStatus.COMPLETED,
+            fencing_token=token,
             result=result,
         )
         await self._reconcile(terminal)
@@ -125,6 +136,7 @@ class AttemptExecutionService:
         attempt_id: str,
         status: AttemptStatus,
         *,
+        fencing_token: str,
         result: object | None = None,
         error: str | None = None,
     ) -> Attempt:
@@ -133,6 +145,7 @@ class AttemptExecutionService:
             status,
             result=result,
             error=error,
+            fencing_token=fencing_token,
         )
 
     async def _reconcile(self, attempt: Attempt) -> None:
