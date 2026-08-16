@@ -83,7 +83,9 @@ async def _checkpoint(
     store: DurableRunStore,
     **updates: object,
 ) -> DurableRunRecord:
-    return await store.update(_replace_record(record, version=record.version + 1, **updates))
+    return await store.update(
+        _replace_record(record, version=record.version + 1, **updates)
+    )
 
 
 def _new_run(
@@ -264,7 +266,11 @@ def _classify_frontier_results(
         if item is None:
             continue
         if item.result.status == "paused":
-            target = RunStatus.PAUSED if _is_human_pause(item.result) else RunStatus.WAITING
+            target = (
+                RunStatus.PAUSED
+                if _is_human_pause(item.result)
+                else RunStatus.WAITING
+            )
             node_runs[index] = transition_node_run(node_run, target)
             paused.append(item)
         elif item.result.success:
@@ -409,7 +415,9 @@ def _partition_ready_targets(
     blocked: list[str] = []
 
     for target in candidates:
-        incoming = _dedupe(edge.from_node for edge in graph.edges if edge.to_node == target)
+        incoming = _dedupe(
+            edge.from_node for edge in graph.edges if edge.to_node == target
+        )
         if len(incoming) <= 1:
             ready.append(target)
             continue
@@ -649,7 +657,10 @@ def _latest_nonterminal_node_run_index(
 ) -> int | None:
     for index in range(len(record.node_runs) - 1, -1, -1):
         node_run = record.node_runs[index]
-        if node_run.node_id == node_id and node_run.status not in TERMINAL_RUN_STATUSES:
+        if (
+            node_run.node_id == node_id
+            and node_run.status not in TERMINAL_RUN_STATUSES
+        ):
             return index
     return None
 
@@ -675,7 +686,9 @@ async def _ensure_frontier_node_runs(
                 node_runs[existing_index] = node_run
                 changed = True
             elif node_run.status is RunStatus.PAUSED:
-                raise ValueError("paused NodeRun must receive HITL input before execution")
+                raise ValueError(
+                    "paused NodeRun must receive HITL input before execution"
+                )
             selected.append(node_run)
             continue
 
@@ -898,7 +911,9 @@ def _resolve_inputs(
             before_ordinal=current.ordinal,
         )
     ]
-    results_by_id = {node_run.node_run_id: node_run.result for node_run in record.node_runs}
+    results_by_id = {
+        node_run.node_run_id: node_run.result for node_run in record.node_runs
+    }
     upstream: dict[str, Any] = {}
     for source_run_id in source_run_ids:
         output = results_by_id.get(source_run_id)
@@ -957,7 +972,9 @@ def _merge_frontier_blackboards(
 def _actually_spawned(kind: str, result: NodeResult) -> bool:
     if kind == "agent.synth_dag":
         output = result.output
-        return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
+        return bool(getattr(output, "success", True)) or bool(
+            getattr(output, "dispatched", False)
+        )
     return True
 
 
