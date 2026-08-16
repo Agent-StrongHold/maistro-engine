@@ -267,9 +267,7 @@ def _classify_frontier_results(
             continue
         if item.result.status == "paused":
             target = (
-                RunStatus.PAUSED
-                if _is_human_pause(item.result)
-                else RunStatus.WAITING
+                RunStatus.PAUSED if _is_human_pause(item.result) else RunStatus.WAITING
             )
             node_runs[index] = transition_node_run(node_run, target)
             paused.append(item)
@@ -657,10 +655,7 @@ def _latest_nonterminal_node_run_index(
 ) -> int | None:
     for index in range(len(record.node_runs) - 1, -1, -1):
         node_run = record.node_runs[index]
-        if (
-            node_run.node_id == node_id
-            and node_run.status not in TERMINAL_RUN_STATUSES
-        ):
+        if node_run.node_id == node_id and node_run.status not in TERMINAL_RUN_STATUSES:
             return index
     return None
 
