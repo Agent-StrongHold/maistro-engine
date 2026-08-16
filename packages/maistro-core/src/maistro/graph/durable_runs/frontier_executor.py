@@ -9,7 +9,7 @@ fan-in deterministic.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -59,13 +59,19 @@ class _FrontierItem:
     result: NodeResult
 
 
-def _replace_state(state: GraphExecutionState, **updates: object) -> GraphExecutionState:
+def _replace_state(
+    state: GraphExecutionState,
+    **updates: object,
+) -> GraphExecutionState:
     values = state.model_dump(mode="json")
     values.update({key: thaw_json_value(value) for key, value in updates.items()})
     return GraphExecutionState.model_validate(values)
 
 
-def _replace_record(record: DurableRunRecord, **updates: object) -> DurableRunRecord:
+def _replace_record(
+    record: DurableRunRecord,
+    **updates: object,
+) -> DurableRunRecord:
     values = record.model_dump(mode="json")
     values.update({key: thaw_json_value(value) for key, value in updates.items()})
     return DurableRunRecord.model_validate(values)
@@ -111,7 +117,11 @@ async def run_durable_graph(
     actor_principal_id: str | None = None,
     run_id: str | None = None,
 ) -> DurableRunRecord:
-    run = _new_run(graph, run_id=run_id, actor_principal_id=actor_principal_id)
+    run = _new_run(
+        graph,
+        run_id=run_id,
+        actor_principal_id=actor_principal_id,
+    )
     state = GraphExecutionState(
         run_id=run.run_id,
         active_node_ids=(_entry_node(graph),),
@@ -138,7 +148,11 @@ async def resume_durable_graph(
         raise KeyError(f"no such run: {run_id!r}")
     if record.run.status is RunStatus.PAUSED:
         raise ValueError("HITL run must receive an answer before resume")
-    if record.run.status not in {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.WAITING}:
+    if record.run.status not in {
+        RunStatus.QUEUED,
+        RunStatus.RUNNING,
+        RunStatus.WAITING,
+    }:
         raise ValueError(f"cannot resume run in status {record.run.status!r}")
 
     run = record.run
@@ -162,7 +176,10 @@ async def _walk(
     while record.graph_state.active_node_ids and steps < max_steps:
         steps += 1
         frontier = record.graph_state.active_node_ids
-        unknown = next((node_id for node_id in frontier if _node_spec(graph, node_id) is None), None)
+        unknown = next(
+            (node_id for node_id in frontier if _node_spec(graph, node_id) is None),
+            None,
+        )
         if unknown is not None:
             return await _mark_failed(
                 record,
@@ -171,7 +188,11 @@ async def _walk(
                 store=store,
             )
 
-        record, node_runs = await _ensure_frontier_node_runs(record, frontier, store=store)
+        record, node_runs = await _ensure_frontier_node_runs(
+            record,
+            frontier,
+            store=store,
+        )
         items = await _execute_frontier(
             record,
             graph,
@@ -194,20 +215,182 @@ async def _execute_frontier(
     *,
     node_resolver: NodeResolver,
 ) -> tuple[_FrontierItem, ...]:
-    prepared: list[tuple[str, GraphNode, NodeRun, NodeContext, BaseNode[Any, Any], dict[str, Any]]] = []
+    prepared: list[
+        tuple[
+            str,
+            GraphNode,
+            NodeRun,
+            NodeContext,
+            BaseNode[Any, Any],
+            dict[str, Any],
+        ]
+    ] = []
     for node_id, node_run in zip(frontier, node_runs, strict=True):
         spec = _node_spec(graph, node_id)
         assert spec is not None
         ctx = _build_ctx(record, node_id)
         node = node_resolver(node_id, graph)
-        prepared.append((node_id, spec, node_run, ctx, node, _resolve_inputs(graph, record, node_run, spec)))
+        inputs = _resolve_inputs(graph, record, node_run, spec)
+        prepared.append((node_id, spec, node_run, ctx, node, inputs))
 
     results = await asyncio.gather(
         *(node.run(inputs, ctx) for _, _, _, ctx, node, inputs in prepared)
     )
     return tuple(
         _FrontierItem(node_id, spec, node_run, ctx, result)
-        for (node_id, spec, node_run, ctx, _, _), result in zip(prepared, results, strict=True)
+        for (node_id, spec, node_run, ctx, _, _), result in zip(
+            prepared,
+            results,
+            strict=True,
+        )
+    )
+
+
+def _classify_frontier_results(
+    record: DurableRunRecord,
+    items: tuple[_FrontierItem, ...],
+) -> tuple[
+    DurableRunRecord,
+    tuple[_FrontierItem, ...],
+    tuple[_FrontierItem, ...],
+    tuple[_FrontierItem, ...],
+]:
+    node_runs = list(record.node_runs)
+    completed: list[_FrontierItem] = []
+    paused: list[_FrontierItem] = []
+    failures: list[_FrontierItem] = []
+    by_id = {item.node_run.node_run_id: item for item in items}
+
+    for index, node_run in enumerate(node_runs):
+        item = by_id.get(node_run.node_run_id)
+        if item is None:
+            continue
+        if item.result.status == "paused":
+            target = RunStatus.PAUSED if _is_human_pause(item.result) else RunStatus.WAITING
+            node_runs[index] = transition_node_run(node_run, target)
+            paused.append(item)
+        elif item.result.success:
+            node_runs[index] = transition_node_run(
+                node_run,
+                RunStatus.COMPLETED,
+                result=_result_output(item.result),
+            )
+            completed.append(item)
+        else:
+            message = item.result.error_message or f"node {node_run.node_id} failed"
+            error = f"{item.result.error_code or 'NodeFailure'}: {message}"[:512]
+            node_runs[index] = transition_node_run(
+                node_run,
+                RunStatus.FAILED,
+                error=error,
+            )
+            failures.append(item)
+
+    updated = _replace_record(record, node_runs=tuple(node_runs))
+    return updated, tuple(completed), tuple(paused), tuple(failures)
+
+
+def _route_completed_items(
+    record: DurableRunRecord,
+    graph: Graph,
+    completed: tuple[_FrontierItem, ...],
+) -> tuple[tuple[str, ...], tuple[GraphEdgeDecision, ...]]:
+    targets: list[str] = []
+    decisions: list[GraphEdgeDecision] = []
+    for item in completed:
+        item_targets, item_decisions = _next_nodes(
+            graph,
+            item.node_id,
+            item.node_run.node_run_id,
+            item.result,
+            record,
+        )
+        targets.extend(item_targets)
+        decisions.extend(item_decisions)
+    return _dedupe(targets), tuple(decisions)
+
+
+def _blackboard_halt_reason(record: DurableRunRecord) -> str | None:
+    metadata = record.graph_state.blackboard_snapshot.get("metadata", {})
+    if not isinstance(metadata, Mapping) or not metadata.get("halt_requested"):
+        return None
+    return str(metadata.get("halt_reason") or "halt_requested")
+
+
+def _deferred_frontier(record: DurableRunRecord) -> tuple[str, ...]:
+    raw = record.graph_state.metadata.get("deferred_frontier", ())
+    if not isinstance(raw, (tuple, list)):
+        return ()
+    return tuple(str(value) for value in raw)
+
+
+async def _checkpoint_paused_frontier(
+    record: DurableRunRecord,
+    paused: tuple[_FrontierItem, ...],
+    next_ids: tuple[str, ...],
+    decisions: tuple[GraphEdgeDecision, ...],
+    *,
+    store: DurableRunStore,
+) -> DurableRunRecord:
+    metadata = dict(record.graph_state.metadata)
+    pause_entries = {item.node_id: _pause_entry(item.result) for item in paused}
+    existing_pauses = metadata.get("pauses", {})
+    if isinstance(existing_pauses, Mapping):
+        pause_entries = {**dict(existing_pauses), **pause_entries}
+    metadata["pauses"] = pause_entries
+    metadata["pause"] = pause_entries[paused[0].node_id]
+
+    combined_next = _dedupe((*_deferred_frontier(record), *next_ids))
+    if combined_next:
+        metadata["deferred_frontier"] = list(combined_next)
+    else:
+        metadata.pop("deferred_frontier", None)
+
+    state = _replace_state(
+        record.graph_state,
+        active_node_ids=tuple(item.node_id for item in paused),
+        edge_decisions=(*record.graph_state.edge_decisions, *decisions),
+        metadata=metadata,
+    )
+    human = any(_is_human_pause(item.result) for item in paused)
+    run = transition_run(
+        record.run,
+        RunStatus.PAUSED if human else RunStatus.WAITING,
+    )
+    resume_at = _earliest_resume(item.result.resume_at for item in paused)
+    return await _checkpoint(
+        record,
+        store=store,
+        run=run,
+        graph_state=state,
+        resume_at=resume_at,
+    )
+
+
+async def _checkpoint_next_frontier(
+    record: DurableRunRecord,
+    next_ids: tuple[str, ...],
+    decisions: tuple[GraphEdgeDecision, ...],
+    *,
+    store: DurableRunStore,
+) -> DurableRunRecord:
+    metadata = dict(record.graph_state.metadata)
+    combined_next = _dedupe((*_deferred_frontier(record), *next_ids))
+    metadata.pop("pause", None)
+    metadata.pop("pauses", None)
+    metadata.pop("deferred_frontier", None)
+    state = _replace_state(
+        record.graph_state,
+        active_node_ids=combined_next,
+        cycle=record.graph_state.cycle + 1,
+        edge_decisions=(*record.graph_state.edge_decisions, *decisions),
+        metadata=metadata,
+    )
+    return await _checkpoint(
+        record,
+        store=store,
+        graph_state=state,
+        resume_at=None,
     )
 
 
@@ -219,122 +402,47 @@ async def _fold_frontier(
     store: DurableRunStore,
 ) -> DurableRunRecord:
     """Fold concurrent results deterministically in active-frontier order."""
-    current_cycle = record.graph_state.cycle
-    node_runs = list(record.node_runs)
-    paused: list[_FrontierItem] = []
-    completed: list[_FrontierItem] = []
-    failures: list[_FrontierItem] = []
-
-    by_id = {item.node_run.node_run_id: item for item in items}
-    for index, node_run in enumerate(node_runs):
-        item = by_id.get(node_run.node_run_id)
-        if item is None:
-            continue
-        result = item.result
-        if result.status == "paused":
-            target = RunStatus.PAUSED if _is_human_pause(result) else RunStatus.WAITING
-            node_runs[index] = transition_node_run(node_run, target)
-            paused.append(item)
-        elif result.success:
-            node_runs[index] = transition_node_run(
-                node_run,
-                RunStatus.COMPLETED,
-                result=_result_output(result),
-            )
-            completed.append(item)
-        else:
-            message = result.error_message or f"node {node_run.node_id} failed"
-            error = f"{result.error_code or 'NodeFailure'}: {message}"[:512]
-            node_runs[index] = transition_node_run(node_run, RunStatus.FAILED, error=error)
-            failures.append(item)
-
-    record = _replace_record(record, node_runs=tuple(node_runs))
+    record, completed, paused, failures = _classify_frontier_results(record, items)
     record = _merge_frontier_blackboards(record, items)
     for item in completed:
         record = _maybe_increment_synth_depth(record, item.spec, item.result)
 
     if failures:
         first = failures[0]
-        message = first.result.error_message or f"node {first.node_id} failed"
         return await _mark_failed(
             record,
             error_code=first.result.error_code or "NodeFailure",
-            error_message=message,
+            error_message=first.result.error_message or f"node {first.node_id} failed",
             store=store,
         )
 
-    metadata_snapshot = record.graph_state.blackboard_snapshot.get("metadata", {})
-    if isinstance(metadata_snapshot, Mapping) and metadata_snapshot.get("halt_requested"):
+    halt_reason = _blackboard_halt_reason(record)
+    if halt_reason is not None:
         return await _mark_failed(
             record,
             error_code="HaltRequested",
-            error_message=str(metadata_snapshot.get("halt_reason") or "halt_requested"),
+            error_message=halt_reason,
             store=store,
         )
 
-    next_ids: list[str] = []
-    decisions: list[GraphEdgeDecision] = []
-    for item in completed:
-        targets, item_decisions = _next_nodes(
-            graph,
-            item.node_id,
-            item.node_run.node_run_id,
-            item.result,
-            record,
-        )
-        next_ids.extend(targets)
-        decisions.extend(item_decisions)
-
-    metadata = dict(record.graph_state.metadata)
-    deferred = [str(value) for value in metadata.get("deferred_frontier", ())]
-    combined_next = _dedupe((*deferred, *next_ids))
-
+    next_ids, decisions = _route_completed_items(record, graph, completed)
     if paused:
-        pause_entries = {
-            item.node_id: _pause_entry(item.result)
-            for item in paused
-        }
-        existing_pauses = metadata.get("pauses", {})
-        if isinstance(existing_pauses, Mapping):
-            pause_entries = {**dict(existing_pauses), **pause_entries}
-        metadata["pauses"] = pause_entries
-        metadata["pause"] = pause_entries[paused[0].node_id]
-        if combined_next:
-            metadata["deferred_frontier"] = list(combined_next)
-        else:
-            metadata.pop("deferred_frontier", None)
-
-        state = _replace_state(
-            record.graph_state,
-            active_node_ids=tuple(item.node_id for item in paused),
-            edge_decisions=(*record.graph_state.edge_decisions, *decisions),
-            metadata=metadata,
-        )
-        human = any(_is_human_pause(item.result) for item in paused)
-        run = transition_run(record.run, RunStatus.PAUSED if human else RunStatus.WAITING)
-        resume_at = _earliest_resume(item.result.resume_at for item in paused)
-        return await _checkpoint(
+        return await _checkpoint_paused_frontier(
             record,
+            paused,
+            next_ids,
+            decisions,
             store=store,
-            run=run,
-            graph_state=state,
-            resume_at=resume_at,
         )
-
-    metadata.pop("pause", None)
-    metadata.pop("pauses", None)
-    metadata.pop("deferred_frontier", None)
-    state = _replace_state(
-        record.graph_state,
-        active_node_ids=combined_next,
-        cycle=current_cycle + 1,
-        edge_decisions=(*record.graph_state.edge_decisions, *decisions),
-        metadata=metadata,
+    return await _checkpoint_next_frontier(
+        record,
+        next_ids,
+        decisions,
+        store=store,
     )
-    return await _checkpoint(record, store=store, graph_state=state, resume_at=None)
 
 
-def _dedupe(values: tuple[str, ...] | list[str] | Any) -> tuple[str, ...]:
+def _dedupe(values: Iterable[str]) -> tuple[str, ...]:
     seen: set[str] = set()
     result: list[str] = []
     for value in values:
@@ -360,7 +468,7 @@ def _pause_entry(result: NodeResult) -> dict[str, object]:
     }
 
 
-def _earliest_resume(values: Any) -> datetime | None:
+def _earliest_resume(values: Iterable[datetime | None]) -> datetime | None:
     present = [value for value in values if value is not None]
     return min(present) if present else None
 
@@ -402,7 +510,10 @@ def _node_spec(graph: Graph, node_id: str) -> GraphNode | None:
     return next((node for node in graph.nodes if node.node_id == node_id), None)
 
 
-def _latest_nonterminal_node_run_index(record: DurableRunRecord, node_id: str) -> int | None:
+def _latest_nonterminal_node_run_index(
+    record: DurableRunRecord,
+    node_id: str,
+) -> int | None:
     for index in range(len(record.node_runs) - 1, -1, -1):
         node_run = record.node_runs[index]
         if node_run.node_id == node_id and node_run.status not in TERMINAL_RUN_STATUSES:
@@ -422,9 +533,8 @@ async def _ensure_frontier_node_runs(
     changed = False
 
     for node_id in frontier:
-        existing_index = _latest_nonterminal_node_run_index(
-            _replace_record(record, node_runs=tuple(node_runs)), node_id
-        )
+        search_record = _replace_record(record, node_runs=tuple(node_runs))
+        existing_index = _latest_nonterminal_node_run_index(search_record, node_id)
         if existing_index is not None:
             node_run = node_runs[existing_index]
             if node_run.status in {RunStatus.QUEUED, RunStatus.WAITING}:
@@ -436,7 +546,11 @@ async def _ensure_frontier_node_runs(
             selected.append(node_run)
             continue
 
-        node_run = NodeRun(run_id=record.run_id, node_id=node_id, ordinal=len(node_runs) + 1)
+        node_run = NodeRun(
+            run_id=record.run_id,
+            node_id=node_id,
+            ordinal=len(node_runs) + 1,
+        )
         node_run = transition_node_run(node_run, RunStatus.QUEUED)
         node_run = transition_node_run(node_run, RunStatus.RUNNING)
         node_runs.append(node_run)
@@ -461,7 +575,11 @@ async def _ensure_running_node_run(
     *,
     store: DurableRunStore,
 ) -> tuple[DurableRunRecord, NodeRun]:
-    updated, selected = await _ensure_frontier_node_runs(record, (node_id,), store=store)
+    updated, selected = await _ensure_frontier_node_runs(
+        record,
+        (node_id,),
+        store=store,
+    )
     return updated, selected[0]
 
 
@@ -537,7 +655,10 @@ def _predicate_state(
     record: DurableRunRecord | None,
 ) -> dict[str, object]:
     return _merge_current_predicate_state(
-        _completed_predicate_state(graph, record), graph, current_id, result
+        _completed_predicate_state(graph, record),
+        graph,
+        current_id,
+        result,
     )
 
 
@@ -563,7 +684,11 @@ def _result_matches_condition(
 ) -> bool:
     return evaluate_predicate(
         condition,
-        lambda path: _result_value(result, path, predicate_state=predicate_state),
+        lambda path: _result_value(
+            result,
+            path,
+            predicate_state=predicate_state,
+        ),
     )
 
 
@@ -620,7 +745,13 @@ def _next_node(
     result: NodeResult,
     record: DurableRunRecord | None = None,
 ) -> tuple[str | None, tuple[GraphEdgeDecision, ...]]:
-    targets, decisions = _next_nodes(graph, current_id, source_node_run_id, result, record)
+    targets, decisions = _next_nodes(
+        graph,
+        current_id,
+        source_node_run_id,
+        result,
+        record,
+    )
     return (targets[0] if targets else None), decisions
 
 
@@ -648,7 +779,9 @@ def _resolve_inputs(
         and decision.target_node_id == current.node_id
         and decision.cycle == cycle - 1
     ]
-    results_by_id = {node_run.node_run_id: node_run.result for node_run in record.node_runs}
+    results_by_id = {
+        node_run.node_run_id: node_run.result for node_run in record.node_runs
+    }
     upstream: dict[str, Any] = {}
     for source_run_id in source_run_ids:
         output = results_by_id.get(source_run_id)
@@ -659,7 +792,10 @@ def _resolve_inputs(
     return {**static_inputs, **_initial_inputs(record)}
 
 
-def _lift_blackboard(record: DurableRunRecord, ctx: NodeContext) -> DurableRunRecord:
+def _lift_blackboard(
+    record: DurableRunRecord,
+    ctx: NodeContext,
+) -> DurableRunRecord:
     blackboard = ctx.blackboard
     if blackboard is None or not hasattr(blackboard, "metadata"):
         return record
@@ -701,7 +837,9 @@ def _merge_frontier_blackboards(
         if blackboard is None:
             continue
         current_metadata = dict(getattr(blackboard, "metadata", {}) or {})
-        current_annotations = dict(getattr(blackboard, "node_annotations", {}) or {})
+        current_annotations = dict(
+            getattr(blackboard, "node_annotations", {}) or {}
+        )
         _merge_changed_mapping(base_metadata, current_metadata, metadata)
         _merge_changed_mapping(base_annotations, current_annotations, annotations)
 
@@ -710,14 +848,19 @@ def _merge_frontier_blackboards(
     snapshot["node_annotations"] = annotations
     return _replace_record(
         record,
-        graph_state=_replace_state(record.graph_state, blackboard_snapshot=snapshot),
+        graph_state=_replace_state(
+            record.graph_state,
+            blackboard_snapshot=snapshot,
+        ),
     )
 
 
 def _actually_spawned(kind: str, result: NodeResult) -> bool:
     if kind == "agent.synth_dag":
         output = result.output
-        return bool(getattr(output, "success", True)) or bool(getattr(output, "dispatched", False))
+        return bool(getattr(output, "success", True)) or bool(
+            getattr(output, "dispatched", False)
+        )
     return True
 
 
@@ -726,7 +869,10 @@ def _maybe_increment_synth_depth(
     spec: GraphNode,
     result: NodeResult,
 ) -> DurableRunRecord:
-    if spec.node_type not in _DEPTH_INCREMENTING_KINDS or not _actually_spawned(spec.node_type, result):
+    if spec.node_type not in _DEPTH_INCREMENTING_KINDS or not _actually_spawned(
+        spec.node_type,
+        result,
+    ):
         return record
     snapshot = dict(record.graph_state.blackboard_snapshot)
     metadata = dict(snapshot.get("metadata") or {})
@@ -760,11 +906,17 @@ def _build_ctx(record: DurableRunRecord, node_id: str) -> NodeContext:
         user_id=record.run.actor_principal_id,
         project_id=record.run.project_id,
         blackboard=blackboard,
-        metadata={"hitl_answers": dict(record.hitl_answers), "synth_depth": synth_depth},
+        metadata={
+            "hitl_answers": dict(record.hitl_answers),
+            "synth_depth": synth_depth,
+        },
     )
 
 
-def _replace_node_run(record: DurableRunRecord, updated: NodeRun) -> DurableRunRecord:
+def _replace_node_run(
+    record: DurableRunRecord,
+    updated: NodeRun,
+) -> DurableRunRecord:
     node_runs = list(record.node_runs)
     for index, node_run in enumerate(node_runs):
         if node_run.node_run_id == updated.node_run_id:
@@ -794,10 +946,19 @@ async def _checkpoint_success(
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
-    completed = transition_node_run(node_run, RunStatus.COMPLETED, result=_result_output(result))
+    completed = transition_node_run(
+        node_run,
+        RunStatus.COMPLETED,
+        result=_result_output(result),
+    )
     record = _replace_node_run(record, completed)
     state = _clear_pause_metadata(record.graph_state)
-    return await _checkpoint(record, store=store, graph_state=state, resume_at=None)
+    return await _checkpoint(
+        record,
+        store=store,
+        graph_state=state,
+        resume_at=None,
+    )
 
 
 async def _checkpoint_pause(
@@ -847,12 +1008,22 @@ async def _mark_completed(
     store: DurableRunStore,
 ) -> DurableRunRecord:
     result = next(
-        (node_run.result for node_run in reversed(record.node_runs) if node_run.status is RunStatus.COMPLETED),
+        (
+            node_run.result
+            for node_run in reversed(record.node_runs)
+            if node_run.status is RunStatus.COMPLETED
+        ),
         None,
     )
     run = transition_run(record.run, RunStatus.COMPLETED, result=result)
     state = _replace_state(record.graph_state, active_node_ids=())
-    return await _checkpoint(record, store=store, run=run, graph_state=state, resume_at=None)
+    return await _checkpoint(
+        record,
+        store=store,
+        run=run,
+        graph_state=state,
+        resume_at=None,
+    )
 
 
 def _running_run(run: Run) -> Run:
@@ -880,7 +1051,12 @@ async def _mark_failed(
         raise ValueError(f"cannot fail run in status {run.status!r}")
     run = transition_run(run, RunStatus.FAILED, error=error)
     state = _replace_state(record.graph_state, active_node_ids=())
-    return await _checkpoint(record, store=store, run=run, graph_state=state)
+    return await _checkpoint(
+        record,
+        store=store,
+        run=run,
+        graph_state=state,
+    )
 
 
 __all__ = ["NodeResolver", "resume_durable_graph", "run_durable_graph"]
