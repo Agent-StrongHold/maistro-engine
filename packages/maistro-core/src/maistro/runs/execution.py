@@ -12,11 +12,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from maistro.runs.model import Attempt, AttemptStatus
-from maistro.runs.reconciliation import AttemptLifecycleReconciler
-from maistro.runs.store import RunStore
+from maistro.runs.reconciliation import AttemptLifecycleReconciler, AttemptLifecycleStore
 from maistro.runtime import (
     ExecutionCallable,
     ExecutionRuntime,
@@ -26,13 +25,39 @@ from maistro.runtime import (
 AttemptReconciler = Callable[[Attempt], Awaitable[None]]
 
 
+@runtime_checkable
+class AttemptExecutionStore(AttemptLifecycleStore, Protocol):
+    """Minimal persistence contract required to execute one physical Attempt."""
+
+    async def create_attempt(
+        self,
+        node_run_id: str,
+        *,
+        runtime_id: str = "python",
+        executor_id: str = "",
+        deadline_at: datetime | None = None,
+        resume_checkpoint_id: str | None = None,
+    ) -> Attempt: ...
+
+    async def transition_attempt(
+        self,
+        attempt_id: str,
+        target: AttemptStatus,
+        *,
+        at: datetime | None = None,
+        result: object | None = None,
+        error: str | None = None,
+        metrics: dict[str, object] | None = None,
+    ) -> Attempt: ...
+
+
 class AttemptExecutionService:
     """Execute physical Attempts while keeping lifecycle authority in domain code."""
 
     def __init__(
         self,
         *,
-        store: RunStore,
+        store: AttemptExecutionStore,
         runtime: ExecutionRuntime,
         reconciler: AttemptReconciler | None = None,
     ) -> None:
@@ -158,4 +183,4 @@ class AttemptExecutionService:
             await self._after_reconcile(attempt.model_copy(deep=True))
 
 
-__all__ = ["AttemptExecutionService", "AttemptReconciler"]
+__all__ = ["AttemptExecutionService", "AttemptExecutionStore", "AttemptReconciler"]
