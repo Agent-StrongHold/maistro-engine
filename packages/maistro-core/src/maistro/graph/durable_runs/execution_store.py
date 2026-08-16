@@ -9,8 +9,8 @@ store or dual-writing execution identity.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime
-from typing import Callable
 
 from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
 from maistro.runs.model import (
