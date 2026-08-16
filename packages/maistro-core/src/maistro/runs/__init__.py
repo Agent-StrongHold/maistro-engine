@@ -33,6 +33,7 @@ from maistro.runs.store import (
     RunIntegrityError,
     RunNotFound,
     RunStore,
+    StaleExecutionFence,
 )
 
 __all__ = [
@@ -62,6 +63,7 @@ __all__ = [
     "RunStatus",
     "RunStore",
     "SqliteRunStore",
+    "StaleExecutionFence",
     "transition_attempt",
     "transition_node_run",
     "transition_run",
