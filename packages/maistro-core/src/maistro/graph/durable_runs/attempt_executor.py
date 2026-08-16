@@ -16,7 +16,7 @@ from maistro.graph.execution_state import GraphExecutionState
 from maistro.graph.nodes.base import NodeResult
 from maistro.runs.execution import AttemptExecutionService
 from maistro.runs.lifecycle import transition_run
-from maistro.runs.model import RunStatus
+from maistro.runs.model import NodeRun, RunStatus
 from maistro.runtime import ExecutionRuntime, PythonExecutionRuntime
 
 from . import executor as traversal
@@ -137,14 +137,31 @@ async def _walk(
             frontier,
             store=store,
         )
-        items = await _execute_frontier(
-            record,
-            graph,
-            frontier,
-            node_runs,
-            node_resolver=node_resolver,
-            execution_service=execution_service,
-        )
+        try:
+            items = await _execute_frontier(
+                record,
+                graph,
+                frontier,
+                node_runs,
+                node_resolver=node_resolver,
+                execution_service=execution_service,
+            )
+        except asyncio.CancelledError:
+            # Each active service call terminalizes its physical Attempt first.
+            # Graph then owns logical cancellation and must persist it even
+            # though the caller has cancelled the orchestration task.
+            await asyncio.shield(_persist_cancelled_run(record.run_id, store=store))
+            raise
+        except Exception as exc:
+            latest = await store.get(record.run_id)
+            if latest is None:
+                raise KeyError(f"no such run: {record.run_id!r}") from exc
+            return await traversal._mark_failed(  # noqa: SLF001
+                latest,
+                error_code="PhysicalExecutionError",
+                error_message=str(exc) or type(exc).__name__,
+                store=store,
+            )
 
         # Attempt creation/running/terminalization advances the same durable
         # optimistic record. Reload before logical folding so Graph persistence
@@ -168,18 +185,49 @@ async def _walk(
     )
 
 
+async def _persist_cancelled_run(
+    run_id: str,
+    *,
+    store: DurableRunStore,
+) -> DurableRunRecord:
+    """Reconcile a cancelled physical frontier into durable logical cancellation."""
+
+    latest = await store.get(run_id)
+    if latest is None:
+        raise KeyError(f"no such run: {run_id!r}")
+    latest = traversal._cancel_unfinished_node_runs(latest)  # noqa: SLF001
+    run = traversal._running_run(latest.run)  # noqa: SLF001
+    if run.status is RunStatus.RUNNING:
+        run = transition_run(
+            run,
+            RunStatus.CANCELLED,
+            error="durable Graph execution cancelled",
+        )
+    state = traversal._replace_state(  # noqa: SLF001
+        latest.graph_state,
+        active_node_ids=(),
+    )
+    return await traversal._checkpoint(  # noqa: SLF001
+        latest,
+        store=store,
+        run=run,
+        graph_state=state,
+        resume_at=None,
+    )
+
+
 async def _execute_frontier(
     record: DurableRunRecord,
     graph: Graph,
     frontier: tuple[str, ...],
-    node_runs: tuple[Any, ...],
+    node_runs: tuple[NodeRun, ...],
     *,
     node_resolver: NodeResolver,
     execution_service: AttemptExecutionService,
 ) -> tuple[Any, ...]:
     """Execute one complete frontier concurrently through canonical Attempts."""
 
-    prepared: list[tuple[str, Any, Any, Any, Any, dict[str, Any]]] = []
+    prepared: list[tuple[str, Any, NodeRun, Any, Any, dict[str, Any]]] = []
     for node_id, node_run in zip(frontier, node_runs, strict=True):
         spec = traversal._node_spec(graph, node_id)  # noqa: SLF001
         assert spec is not None
@@ -191,7 +239,7 @@ async def _execute_frontier(
     async def execute_one(
         node_id: str,
         spec: Any,
-        node_run: Any,
+        node_run: NodeRun,
         ctx: Any,
         node: Any,
         inputs: dict[str, Any],
