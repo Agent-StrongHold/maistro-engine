@@ -14,9 +14,10 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from maistro.runs.execution_store import AttemptExecutionStore
 from maistro.runs.model import Attempt, AttemptStatus
 from maistro.runs.reconciliation import AttemptLifecycleReconciler
-from maistro.runs.store import RunIntegrityError, RunStore
+from maistro.runs.store import RunIntegrityError
 from maistro.runtime import (
     ExecutionCallable,
     ExecutionRuntime,
@@ -32,7 +33,7 @@ class AttemptExecutionService:
     def __init__(
         self,
         *,
-        store: RunStore,
+        store: AttemptExecutionStore,
         runtime: ExecutionRuntime,
         reconciler: AttemptReconciler | None = None,
     ) -> None:
@@ -128,7 +129,6 @@ class AttemptExecutionService:
 
     async def cancel(self, attempt_id: str) -> bool:
         """Request mechanics cancellation by canonical physical Attempt identity."""
-
         return await self._runtime.cancel(attempt_id)
 
     async def _terminalize(
