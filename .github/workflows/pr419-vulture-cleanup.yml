@@ -1,0 +1,87 @@
+name: pr419-vulture-cleanup
+
+on:
+  push:
+    branches: [feat/graph-frontier-execution]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/graph-frontier-execution
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.5.x"
+      - name: Remove obsolete single-node compatibility helpers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/maistro-core/src/maistro/graph/durable_runs/executor.py')
+          lines = path.read_text().splitlines(keepends=True)
+          targets = {
+              '_ensure_running_node_run',
+              '_lift_blackboard',
+              '_checkpoint_success',
+              '_checkpoint_pause',
+              '_checkpoint_failure',
+          }
+          out = []
+          i = 0
+          removed = []
+          while i < len(lines):
+              line = lines[i]
+              marker = None
+              for prefix in ('def ', 'async def '):
+                  if line.startswith(prefix):
+                      name = line[len(prefix):].split('(', 1)[0]
+                      if name in targets:
+                          marker = name
+                      break
+              if marker is None:
+                  out.append(line)
+                  i += 1
+                  continue
+              removed.append(marker)
+              i += 1
+              while i < len(lines):
+                  nxt = lines[i]
+                  if nxt.startswith('def ') or nxt.startswith('async def ') or nxt.startswith('class ') or nxt.startswith('@'):
+                      break
+                  i += 1
+              while out and out[-1].strip() == '':
+                  out.pop()
+              out.extend(['\n', '\n'])
+          missing = targets - set(removed)
+          if missing:
+              raise SystemExit(f'missing expected helpers: {sorted(missing)}')
+          path.write_text(''.join(out))
+          print('removed:', ', '.join(sorted(removed)))
+          PY
+      - name: Install and verify focused quality gates
+        run: |
+          uv python install 3.12
+          uv sync --locked --all-extras
+          uv pip install vulture
+          uv run ruff format packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+          uv run ruff check packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+          uv run vulture packages/*/src --min-confidence 60 --exclude '*/third_party/*' > /tmp/vulture.log 2>&1 || true
+          count=$(wc -l < /tmp/vulture.log | tr -d ' ')
+          grep 'graph/durable_runs/executor.py' /tmp/vulture.log || true
+          echo "vulture finding count: $count"
+          test "$count" -le 1423
+      - name: Commit cleanup
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove obsolete durable executor helpers"
+          git push origin HEAD:feat/graph-frontier-execution
