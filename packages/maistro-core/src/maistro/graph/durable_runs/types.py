@@ -21,17 +21,14 @@ def _validate_node_run_links(run: Run, node_runs: tuple[NodeRun, ...]) -> set[st
     return {node_run.node_run_id for node_run in node_runs}
 
 
-def _validate_attempt_links(
-    attempts: tuple[Attempt, ...], node_run_ids: set[str]
-) -> None:
+def _validate_attempt_links(attempts: tuple[Attempt, ...], node_run_ids: set[str]) -> None:
     if any(attempt.node_run_id not in node_run_ids for attempt in attempts):
         raise ValueError("every Attempt must belong to a persisted NodeRun")
     attempts_by_node_run: dict[str, list[int]] = {}
     for attempt in attempts:
         attempts_by_node_run.setdefault(attempt.node_run_id, []).append(attempt.ordinal)
     if any(
-        ordinals != list(range(1, len(ordinals) + 1))
-        for ordinals in attempts_by_node_run.values()
+        ordinals != list(range(1, len(ordinals) + 1)) for ordinals in attempts_by_node_run.values()
     ):
         raise ValueError("Attempt ordinals must be consecutive per NodeRun")
 
@@ -41,9 +38,7 @@ def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
         raise ValueError("graph_state.run_id must match run.run_id")
     node_ids = {node.node_id for node in run.graph.materialize().nodes}
     if any(node_id not in node_ids for node_id in graph_state.active_node_ids):
-        raise ValueError(
-            "active graph frontier must reference nodes in the Run Graph snapshot"
-        )
+        raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
 
 
 class DurableRunRecord(BaseModel):
