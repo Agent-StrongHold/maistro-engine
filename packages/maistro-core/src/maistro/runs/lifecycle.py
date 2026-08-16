@@ -6,6 +6,7 @@ from typing import Any
 from maistro.runs.model import (
     TERMINAL_ATTEMPT_STATUSES,
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
     AttemptStatus,
     NodeRun,
@@ -114,10 +115,12 @@ def transition_node_run(
     at: datetime | None = None,
     result: object | None = None,
     error: str | None = None,
+    accepted_outcome: AcceptedNodeOutcome | None = None,
 ) -> NodeRun:
-    return NodeRun.model_validate(
-        _logical_values(node_run, target, at=at, result=result, error=error)
-    )
+    values = _logical_values(node_run, target, at=at, result=result, error=error)
+    if accepted_outcome is not None:
+        values["accepted_outcome"] = accepted_outcome
+    return NodeRun.model_validate(values)
 
 
 def transition_attempt(
