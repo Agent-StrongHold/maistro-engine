@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Ratchet Cosmic Ray kill rates per production source file.
+"""Ratchet Cosmic Ray mutation quality per production source file.
 
-The committed baseline records the last reviewed full-codebase sweep. A source
-without an entry is report-only and receives a mergeable candidate; an existing
-entry must clear both the 90% floor and its prior rate. ``--write-baseline``
-creates that candidate JSON for human review and commit.
+PR-era callers can still score raw Cosmic Ray dump JSONL. Repository-health
+candidate generation uses the complete viability-adjusted telemetry emitted by
+the scheduler, enforcing both the global floor and any stricter reviewed
+per-source baseline. Automated candidates may tighten but never weaken reviewed
+baselines.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+
+import mutation_ratchet
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASELINE = ROOT / "quality" / "mutation-baseline.json"
@@ -44,6 +47,7 @@ def scores(rows_path: Path) -> dict[str, tuple[int, int]]:
 def payload(
     current: dict[str, tuple[int, int]], baseline: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    """Legacy raw-row candidate builder retained for non-scheduler callers."""
     entries = dict((baseline or {}).get("entries", {}))
     entries.update(
         {
@@ -56,14 +60,15 @@ def payload(
         "version": 1,
         "owner": "@BlakeMatthews-dev",
         "policy": (
-            "Per-source mutation ratchet. New sources must meet the 90% floor; "
-            "reviewed sources must not regress below their recorded kill rate."
+            "Legacy raw per-source mutation candidate. Repository-health sweeps use "
+            "viability-adjusted version-2 candidates."
         ),
         "entries": dict(sorted(entries.items())),
     }
 
 
 def enforce(current: dict[str, tuple[int, int]], baseline: dict[str, Any]) -> list[str]:
+    """Enforce the global floor plus source-specific reviewed non-regression."""
     entries = baseline.get("entries", {})
     failures: list[str] = []
     for source, (killed, total) in sorted(current.items()):
@@ -71,13 +76,63 @@ def enforce(current: dict[str, tuple[int, int]], baseline: dict[str, Any]) -> li
             failures.append(f"{source}: no mutants produced")
             continue
         rate = killed / total
-        if source not in entries:
-            continue
-        prior = entries[source].get("kill_rate", FLOOR)
+        entry = entries.get(source, {}) if isinstance(entries, dict) else {}
+        prior = entry.get("kill_rate", FLOOR) if isinstance(entry, dict) else FLOOR
         required = max(FLOOR, float(prior))
         if rate < required:
             failures.append(f"{source}: {rate:.1%} below required {required:.1%}")
     return failures
+
+
+def _scheduler_telemetry_for(rows_path: Path) -> Path | None:
+    candidate = rows_path.with_name("mutation-telemetry-all.jsonl")
+    return candidate if candidate.is_file() else None
+
+
+def _publish_ratchet_into_health_report(rows_path: Path, report: dict[str, Any]) -> None:
+    json_path = rows_path.with_name("mutation-health-report.json")
+    markdown_path = rows_path.with_name("mutation-health-report.md")
+    if json_path.is_file():
+        payload_json = json.loads(json_path.read_text(encoding="utf-8"))
+        if isinstance(payload_json, dict):
+            payload_json["ratchet"] = report
+            json_path.write_text(
+                json.dumps(payload_json, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+    if markdown_path.is_file():
+        existing = markdown_path.read_text(encoding="utf-8")
+        markdown_path.write_text(
+            existing.rstrip() + "\n\n" + mutation_ratchet.render_markdown(report),
+            encoding="utf-8",
+        )
+
+
+def _write_scheduler_candidate(rows_path: Path, baseline_path: Path) -> int:
+    telemetry_path = _scheduler_telemetry_for(rows_path)
+    if telemetry_path is None:
+        raise ValueError("scheduler telemetry not found beside aggregate mutation rows")
+    telemetry = mutation_ratchet.read_telemetry(telemetry_path)
+    baseline = mutation_ratchet.load_json(baseline_path)
+    history_path = ROOT / "quality" / "mutation-history.json"
+    history = mutation_ratchet.load_json(history_path)
+    report = mutation_ratchet.evaluate(telemetry, baseline, history, floor=FLOOR)
+    candidate = mutation_ratchet.baseline_candidate(telemetry, baseline, floor=FLOOR)
+    baseline_path.write_text(
+        json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    _publish_ratchet_into_health_report(rows_path, report)
+    print(
+        f"wrote viability-adjusted mutation baseline candidate for {len(telemetry)} source file(s): "
+        f"{baseline_path}"
+    )
+    print(
+        f"mutation ratchet: quality_failures={len(report['quality_failures'])} "
+        f"runtime_regressions={len(report['runtime_regressions'])} "
+        f"newly_surviving_sources={len(report['newly_surviving'])}"
+    )
+    for failure in report["quality_failures"]:
+        print(f"::error::{failure}", file=sys.stderr)
+    return 1 if report["quality_failures"] else 0
 
 
 def main(argv: list[str]) -> int:
@@ -86,11 +141,17 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     parser.add_argument("--write-baseline", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.write_baseline and _scheduler_telemetry_for(args.rows) is not None:
+        try:
+            return _write_scheduler_candidate(args.rows, args.baseline)
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            print(f"::error::{exc}", file=sys.stderr)
+            return 2
+
     current = scores(args.rows)
     if not current:
-        print(
-            "::error::No mutation outcomes found; this is a configuration failure.", file=sys.stderr
-        )
+        print("::error::No mutation outcomes found; this is a configuration failure.", file=sys.stderr)
         return 1
     if args.write_baseline:
         existing = (
@@ -102,21 +163,12 @@ def main(argv: list[str]) -> int:
             json.dumps(payload(current, existing), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
-        print(
-            f"wrote candidate mutation baseline for {len(current)} source file(s): {args.baseline}"
-        )
+        print(f"wrote legacy candidate mutation baseline for {len(current)} source file(s): {args.baseline}")
         return 0
     if not args.baseline.is_file():
         print(f"::error::Missing mutation baseline: {args.baseline}", file=sys.stderr)
         return 1
     baseline = json.loads(args.baseline.read_text(encoding="utf-8"))
-    unbaselined = sorted(set(current) - set(baseline.get("entries", {})))
-    if unbaselined:
-        print(
-            "mutation baseline has no entry for "
-            f"{len(unbaselined)} source file(s); reporting them without enforcement until a "
-            "reviewed candidate is committed"
-        )
     failures = enforce(current, baseline)
     print(
         f"mutation baseline summary: {len(current)} source file(s), {len(failures)} regression(s)"
