@@ -58,16 +58,24 @@ class DurableRunRecord(BaseModel):
             return
         if [commit.commit_sequence for commit in commits] != list(range(1, len(commits) + 1)):
             raise ValueError("TraversalCommit sequences must be consecutive from one")
-        all_decision_ids = {edge_decision_id(item) for item in self.graph_state.edge_decisions}
-        previous_id: str | None = None
+
+        decisions_by_id = {
+            edge_decision_id(decision): decision for decision in self.graph_state.edge_decisions
+        }
+        previous: TraversalCommit | None = None
         for commit in commits:
             if commit.run_id != self.run.run_id:
                 raise ValueError("every TraversalCommit must belong to the persisted Run")
             if commit.graph_snapshot_hash != self.run.graph.content_hash:
                 raise ValueError("TraversalCommit graph snapshot must match the Run snapshot")
-            if commit.prior_commit_id != previous_id:
+            expected_parent = previous.traversal_commit_id if previous is not None else None
+            if commit.prior_commit_id != expected_parent:
                 raise ValueError("TraversalCommit history must form one parent-linked chain")
+            if previous is not None and commit.prior_state_hash != previous.resulting_state_hash:
+                raise ValueError("adjacent TraversalCommits must link resulting and prior state hashes")
+
             source_runs: list[NodeRun] = []
+            source_ids = set(commit.ordered_source_node_run_ids)
             for node_run_id in commit.ordered_source_node_run_ids:
                 source = node_runs_by_id.get(node_run_id)
                 if source is None:
@@ -80,9 +88,22 @@ class DurableRunRecord(BaseModel):
             )
             if persisted_outcome_ids != commit.accepted_outcome_ids:
                 raise ValueError("TraversalCommit outcome identities must match persisted NodeRuns")
-            if any(decision_id not in all_decision_ids for decision_id in commit.edge_decision_ids):
-                raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
-            previous_id = commit.traversal_commit_id
+
+            for decision_id in commit.edge_decision_ids:
+                decision = decisions_by_id.get(decision_id)
+                if decision is None:
+                    raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
+                if decision.source_node_run_id not in source_ids:
+                    raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
+            previous = commit
+
+        # Non-traversal metadata may legitimately change after a commit (for
+        # example a HITL answer), so we intentionally do not require the live
+        # state's full hash to remain equal to the latest committed hash. The
+        # active frontier, however, is itself traversal state and may not drift
+        # without another authoritative traversal transition.
+        if commits[-1].resulting_frontier != self.graph_state.active_node_ids:
+            raise ValueError("latest TraversalCommit frontier must match persisted GraphExecutionState")
 
     @property
     def run_id(self) -> str:
