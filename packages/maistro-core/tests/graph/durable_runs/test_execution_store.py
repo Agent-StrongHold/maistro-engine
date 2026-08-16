@@ -99,3 +99,50 @@ async def test_attempt_service_can_reconcile_durable_logical_state_when_requeste
     assert persisted.attempts[-1].status is AttemptStatus.COMPLETED
     assert persisted.node_runs[0].status is RunStatus.COMPLETED
     assert persisted.node_runs[0].result == "ok"
+
+
+@pytest.mark.asyncio
+async def test_retry_reuses_logical_node_run_and_appends_second_attempt() -> None:
+    store, record, node_run_id = await _durable_running_node()
+    execution_store = DurableRunExecutionStore(store, run_id=record.run_id)
+    service = AttemptExecutionService(
+        store=execution_store,
+        runtime=PythonExecutionRuntime(),
+    )
+
+    async def fail(_work_item: object, _context: object) -> str:
+        raise RuntimeError("first physical try failed")
+
+    with pytest.raises(RuntimeError, match="first physical try failed"):
+        await service.execute(node_run_id, None, None, executor=fail)
+
+    after_failure = await store.get(record.run_id)
+    assert after_failure is not None
+    assert after_failure.node_runs[0].node_run_id == node_run_id
+    assert after_failure.node_runs[0].status is RunStatus.WAITING
+    assert after_failure.run.status is RunStatus.WAITING
+    assert len(after_failure.attempts) == 1
+    assert after_failure.attempts[0].ordinal == 1
+    assert after_failure.attempts[0].status is AttemptStatus.FAILED
+
+    async def recover(_work_item: object, _context: object) -> str:
+        return "recovered"
+
+    second = await service.execute(
+        node_run_id,
+        None,
+        None,
+        executor=recover,
+        resume_checkpoint_id="checkpoint-1",
+    )
+
+    persisted = await store.get(record.run_id)
+    assert persisted is not None
+    assert len(persisted.node_runs) == 1
+    assert persisted.node_runs[0].node_run_id == node_run_id
+    assert persisted.node_runs[0].status is RunStatus.COMPLETED
+    assert [attempt.ordinal for attempt in persisted.attempts] == [1, 2]
+    assert persisted.attempts[1].attempt_id == second.attempt_id
+    assert persisted.attempts[1].resume_checkpoint_id == "checkpoint-1"
+    assert persisted.attempts[1].status is AttemptStatus.COMPLETED
+    assert persisted.attempts[1].result == "recovered"
