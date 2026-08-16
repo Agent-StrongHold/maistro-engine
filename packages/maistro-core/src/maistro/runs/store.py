@@ -5,11 +5,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from maistro.graph.definitions import Graph
 from maistro.projects.scope_store import ProjectScopeStore
-from maistro.runs.lifecycle import (
-    transition_attempt,
-    transition_node_run,
-    transition_run,
-)
+from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
     AcceptedNodeOutcome,
@@ -262,15 +258,16 @@ class InMemoryRunStore:
             deadline_at=deadline_at,
             resume_checkpoint_id=resume_checkpoint_id,
         )
-        lease = ExecutionLease(
-            node_run_id=node_run_id,
-            attempt_id=attempt.attempt_id,
-            lease_epoch=ordinal,
-            holder=lease_holder or executor_id or runtime_id,
-        )
-        attempt = Attempt.model_validate(
-            {**attempt.model_dump(mode="python"), "execution_lease": lease}
-        )
+        if lease_holder is not None:
+            lease = ExecutionLease(
+                node_run_id=node_run_id,
+                attempt_id=attempt.attempt_id,
+                lease_epoch=ordinal,
+                holder=lease_holder,
+            )
+            attempt = Attempt.model_validate(
+                {**attempt.model_dump(mode="python"), "execution_lease": lease}
+            )
         self._attempts[attempt.attempt_id] = attempt
         return attempt.model_copy(deep=True)
 
@@ -312,11 +309,10 @@ class InMemoryRunStore:
         self._attempts[attempt_id] = updated
         return updated.model_copy(deep=True)
 
-    def _validate_fence(self, attempt: Attempt, fencing_token: str | None) -> None:
+    @staticmethod
+    def _validate_fence(attempt: Attempt, fencing_token: str | None) -> None:
         lease = attempt.execution_lease
-        if lease is None:
-            return
-        if fencing_token != lease.fencing_token:
+        if lease is not None and fencing_token != lease.fencing_token:
             raise StaleExecutionFence(
                 f"Attempt {attempt.attempt_id!r} update rejected by execution fence"
             )
