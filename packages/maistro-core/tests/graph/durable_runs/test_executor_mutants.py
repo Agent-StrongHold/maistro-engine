@@ -11,10 +11,8 @@ from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus
 from maistro.graph.durable_runs.executor import (
     _actually_spawned,
     _build_ctx,
-    _checkpoint_success,
-    _ensure_running_node_run,
+    _ensure_frontier_node_runs,
     _initial_inputs,
-    _lift_blackboard,
     _maybe_increment_synth_depth,
     _new_run,
     _result_output,
@@ -136,7 +134,8 @@ class TestCanonicalNodeRunCreation:
             version=2,
         )
         await store.create(record)
-        updated, node_run = await _ensure_running_node_run(record, "n1", store=store)
+        updated, node_runs = await _ensure_frontier_node_runs(record, ("n1",), store=store)
+        node_run = node_runs[0]
         assert updated.version == 3
         assert node_run.ordinal == 1
         assert node_run.status is RunStatus.RUNNING
@@ -157,7 +156,8 @@ class TestCanonicalNodeRunCreation:
         )
         store = InMemoryDurableRunStore()
         await store.create(record)
-        updated, resumed = await _ensure_running_node_run(record, "n1", store=store)
+        updated, node_runs = await _ensure_frontier_node_runs(record, ("n1",), store=store)
+        resumed = node_runs[0]
         assert resumed.node_run_id == node_run.node_run_id
         assert resumed.status is RunStatus.RUNNING
         assert len(updated.node_runs) == 1
@@ -176,36 +176,14 @@ class TestCanonicalNodeRunCreation:
         )
         store = InMemoryDurableRunStore()
         await store.create(record)
-        updated, repeated = await _ensure_running_node_run(record, "n1", store=store)
+        updated, node_runs = await _ensure_frontier_node_runs(record, ("n1",), store=store)
+        repeated = node_runs[0]
         assert repeated.node_run_id != node_run.node_run_id
         assert repeated.ordinal == 2
         assert len(updated.node_runs) == 2
 
 
-class TestCheckpointSuccess:
-    async def test_success_checkpoint_bumps_version_and_serializes_output(self) -> None:
-        node_run = NodeRun(run_id="r-ckpt", node_id="n1", ordinal=1)
-        node_run = transition_node_run(node_run, RunStatus.QUEUED)
-        node_run = transition_node_run(node_run, RunStatus.RUNNING)
-        record = durable_record(
-            {"id": "one", "nodes": [{"id": "n1", "kind": _EchoNode.kind}], "edges": []},
-            run_id="r-ckpt",
-            active_node_id="n1",
-            node_runs=(node_run,),
-            version=2,
-        )
-        store = InMemoryDurableRunStore()
-        await store.create(record)
-        updated = await _checkpoint_success(
-            record,
-            node_run,
-            NodeResult(success=True, output=_Out(text="a")),
-            store=store,
-        )
-        assert updated.version == 3
-        assert updated.node_runs[0].status is RunStatus.COMPLETED
-        assert updated.node_runs[0].result == {"text": "a"}
-
+class TestResultOutput:
     def test_result_output_preserves_mapping(self) -> None:
         payload = {"text": "a"}
         assert _result_output(NodeResult(success=True, output=payload)) == payload
@@ -252,31 +230,6 @@ class TestSynthDepth:
             blackboard_snapshot={"metadata": {"other": 1}},
         )
         assert _build_ctx(record, "n1").metadata["synth_depth"] == 0
-
-
-class _Blackboard:
-    def __init__(self, metadata: dict[str, Any], annotations: Any) -> None:
-        self.metadata = metadata
-        self.node_annotations = annotations
-
-
-class TestBlackboardLift:
-    def test_metadata_and_annotations_are_persisted(self) -> None:
-        record = durable_record(
-            {"id": "one", "nodes": [{"id": "n1", "kind": _EchoNode.kind}], "edges": []},
-            run_id="r-bb",
-            blackboard_snapshot={"metadata": {"old": 1}, "node_annotations": {}},
-        )
-        ctx = NodeContext(
-            run_id="r-bb",
-            dag_id="one",
-            node_id="n1",
-            blackboard=_Blackboard({"new": 2}, {"n1": {"score": 1}}),
-        )
-        updated = _lift_blackboard(record, ctx)
-        snapshot = updated.graph_state.blackboard_snapshot
-        assert snapshot["metadata"] == {"new": 2}
-        assert snapshot["node_annotations"] == {"n1": {"score": 1}}
 
 
 class TestInitialInputsAndIdentity:
