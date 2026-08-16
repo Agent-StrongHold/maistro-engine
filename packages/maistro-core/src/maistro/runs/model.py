@@ -153,6 +153,61 @@ class Run(BaseModel):
             raise ValueError("Run and Graph snapshot must belong to the same Project")
 
 
+class AttemptResult(BaseModel):
+    """Immutable evidence produced by one terminal physical Attempt."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    attempt_id: str
+    node_run_id: str
+    ordinal: int = Field(ge=1)
+    status: AttemptStatus
+    result: Any | None = None
+    error: str | None = None
+    finished_at: datetime
+
+    @model_validator(mode="after")
+    def _validate_attempt_result(self) -> AttemptResult:
+        _require_non_empty(self.attempt_id, "attempt_id")
+        _require_non_empty(self.node_run_id, "node_run_id")
+        if self.status not in TERMINAL_ATTEMPT_STATUSES:
+            raise ValueError("AttemptResult requires a terminal physical Attempt status")
+        return self
+
+    @classmethod
+    def from_attempt(cls, attempt: Attempt) -> AttemptResult:
+        if attempt.status not in TERMINAL_ATTEMPT_STATUSES or attempt.finished_at is None:
+            raise ValueError("AttemptResult can only be created from a terminal Attempt")
+        return cls(
+            attempt_id=attempt.attempt_id,
+            node_run_id=attempt.node_run_id,
+            ordinal=attempt.ordinal,
+            status=attempt.status,
+            result=attempt.result,
+            error=attempt.error,
+            finished_at=attempt.finished_at,
+        )
+
+
+class AcceptedNodeOutcome(BaseModel):
+    """The one physical result accepted as authoritative for a logical NodeRun."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    node_run_id: str
+    attempt_result: AttemptResult
+    accepted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def _validate_accepted_outcome(self) -> AcceptedNodeOutcome:
+        _require_non_empty(self.node_run_id, "node_run_id")
+        if self.attempt_result.node_run_id != self.node_run_id:
+            raise ValueError("accepted AttemptResult must belong to the NodeRun")
+        if self.attempt_result.status is not AttemptStatus.COMPLETED:
+            raise ValueError("only a completed AttemptResult can become an accepted Node outcome")
+        return self
+
+
 class NodeRun(BaseModel):
     """One logical execution of one Node within a Run."""
 
@@ -167,6 +222,7 @@ class NodeRun(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    accepted_outcome: AcceptedNodeOutcome | None = None
     result: Any | None = None
     error: str | None = None
 
@@ -174,6 +230,13 @@ class NodeRun(BaseModel):
     def _validate_node_run(self) -> NodeRun:
         _require_non_empty(self.run_id, "run_id")
         _require_non_empty(self.node_id, "node_id")
+        if self.accepted_outcome is not None:
+            if self.accepted_outcome.node_run_id != self.node_run_id:
+                raise ValueError("accepted outcome must belong to this NodeRun")
+            if self.status is not RunStatus.COMPLETED:
+                raise ValueError("accepted outcome requires a completed NodeRun")
+            if self.result != self.accepted_outcome.attempt_result.result:
+                raise ValueError("NodeRun.result must project the accepted AttemptResult")
         _validate_finished_at(
             terminal=self.status in TERMINAL_RUN_STATUSES,
             finished_at=self.finished_at,
@@ -216,7 +279,9 @@ class Attempt(BaseModel):
 __all__ = [
     "TERMINAL_ATTEMPT_STATUSES",
     "TERMINAL_RUN_STATUSES",
+    "AcceptedNodeOutcome",
     "Attempt",
+    "AttemptResult",
     "AttemptStatus",
     "GraphSnapshot",
     "NodeRun",
