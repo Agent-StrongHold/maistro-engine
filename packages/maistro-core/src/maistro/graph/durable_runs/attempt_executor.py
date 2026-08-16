@@ -145,56 +145,13 @@ async def _walk(
 
     while record.graph_state.active_node_ids and steps < max_steps:
         steps += 1
-        frontier = record.graph_state.active_node_ids
-        unknown = next(
-            (node_id for node_id in frontier if traversal._node_spec(graph, node_id) is None),
-            None,
-        )
-        if unknown is not None:
-            return await traversal._mark_failed(
-                record,
-                error_code="UnknownNode",
-                error_message=f"node_id={unknown!r} not present in Graph",
-                store=store,
-            )
-
-        record, node_runs = await traversal._ensure_frontier_node_runs(
+        record = await _walk_frontier(
             record,
-            frontier,
+            graph=graph,
             store=store,
-        )
-        try:
-            items = await _execute_frontier(
-                record,
-                graph,
-                frontier,
-                node_runs,
-                node_resolver=node_resolver,
-                execution_service=execution_service,
-                execution_store=execution_store,
-            )
-        except asyncio.CancelledError:
-            await asyncio.shield(_persist_cancelled_run(record.run_id, store=store))
-            raise
-        except Exception as exc:
-            latest = await store.get(record.run_id)
-            if latest is None:
-                raise KeyError(f"no such run: {record.run_id!r}") from exc
-            return await traversal._mark_failed(
-                latest,
-                error_code="PhysicalExecutionError",
-                error_message=str(exc) or type(exc).__name__,
-                store=store,
-            )
-
-        latest = await store.get(record.run_id)
-        if latest is None:
-            raise KeyError(f"no such run: {record.run_id!r}")
-        record = await traversal._fold_frontier(
-            latest,
-            graph,
-            items,
-            store=store,
+            node_resolver=node_resolver,
+            execution_service=execution_service,
+            execution_store=execution_store,
         )
         if record.run.status is not RunStatus.RUNNING:
             return record
@@ -204,6 +161,79 @@ async def _walk(
         store=store,
         max_steps=max_steps,
     )
+
+
+async def _walk_frontier(
+    record: DurableRunRecord,
+    *,
+    graph: Graph,
+    store: DurableRunStore,
+    node_resolver: NodeResolver,
+    execution_service: AttemptExecutionService,
+    execution_store: DurableRunExecutionStore,
+) -> DurableRunRecord:
+    frontier = record.graph_state.active_node_ids
+    unknown = next(
+        (node_id for node_id in frontier if traversal._node_spec(graph, node_id) is None),
+        None,
+    )
+    if unknown is not None:
+        return await traversal._mark_failed(
+            record,
+            error_code="UnknownNode",
+            error_message=f"node_id={unknown!r} not present in Graph",
+            store=store,
+        )
+
+    record, node_runs = await traversal._ensure_frontier_node_runs(
+        record,
+        frontier,
+        store=store,
+    )
+    try:
+        items = await _execute_frontier(
+            record,
+            graph,
+            frontier,
+            node_runs,
+            node_resolver=node_resolver,
+            execution_service=execution_service,
+            execution_store=execution_store,
+        )
+    except asyncio.CancelledError:
+        await asyncio.shield(_persist_cancelled_run(record.run_id, store=store))
+        raise
+    except Exception as exc:
+        latest = await _reload_record(record.run_id, store=store, cause=exc)
+        return await traversal._mark_failed(
+            latest,
+            error_code="PhysicalExecutionError",
+            error_message=str(exc) or type(exc).__name__,
+            store=store,
+        )
+
+    latest = await _reload_record(record.run_id, store=store)
+    return await traversal._fold_frontier(
+        latest,
+        graph,
+        items,
+        store=store,
+    )
+
+
+async def _reload_record(
+    run_id: str,
+    *,
+    store: DurableRunStore,
+    cause: BaseException | None = None,
+) -> DurableRunRecord:
+    latest = await store.get(run_id)
+    if latest is None:
+        error = KeyError(f"no such run: {run_id!r}")
+        if cause is not None:
+            raise error from cause
+        raise error
+    return latest
 
 
 async def _persist_cancelled_run(
