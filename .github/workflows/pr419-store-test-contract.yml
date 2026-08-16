@@ -1,0 +1,48 @@
+name: pr419-store-test-contract
+
+on:
+  push:
+    branches: [feat/graph-frontier-execution]
+
+permissions:
+  contents: write
+
+jobs:
+  adapt:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/graph-frontier-execution
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.5.x"
+      - name: Update HITL frontier assertion
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/maistro-core/tests/graph/durable_runs/test_stores_gaps.py')
+          text = path.read_text()
+          old = 'with pytest.raises(ValueError, match="waiting on node"):'
+          new = 'with pytest.raises(ValueError, match="waiting on frontier"):'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one legacy assertion, got {text.count(old)}')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Verify durable runs scope
+        run: |
+          uv python install 3.12
+          uv sync --locked --all-extras
+          uv run ruff format packages/maistro-core/tests/graph/durable_runs/test_stores_gaps.py
+          uv run ruff check packages/maistro-core/tests/graph/durable_runs/test_stores_gaps.py
+          uv run pytest packages/maistro-core/tests/graph/durable_runs --timeout=15 -q -x
+      - name: Commit contract update
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/maistro-core/tests/graph/durable_runs/test_stores_gaps.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Update HITL store test for frontier semantics"
+          git push origin HEAD:feat/graph-frontier-execution
