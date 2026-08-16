@@ -33,6 +33,7 @@ def row(source: str, rate: float, viable: int, killed: int, mutation: float) -> 
         "source": source,
         "complete": True,
         "verified_at": "2026-08-15T20:00:00+00:00",
+        "tool_fingerprint": "tools-v1",
         "viable_mutants": viable,
         "killed_mutants": killed,
         "surviving_mutants": viable - killed,
@@ -73,6 +74,33 @@ def test_checkpoint_reader_uses_latest_complete_source(module, tmp_path: Path) -
     incomplete["complete"] = False
     (root / "bad.checkpoint.json").write_text(json.dumps(incomplete), encoding="utf-8")
     assert module.read_checkpoints(root) == [newer]
+
+
+def test_baseline_rows_only_come_from_selected_complete_checkpoints(module, tmp_path: Path) -> None:
+    root = tmp_path / "checkpoints"
+    complete_dir = root / "complete"
+    incomplete_dir = root / "incomplete"
+    complete_dir.mkdir(parents=True)
+    incomplete_dir.mkdir(parents=True)
+
+    complete = row("a.py", 1.0, 1, 1, 1)
+    incomplete = row("b.py", 0.0, 1, 0, 1)
+    incomplete["complete"] = False
+    (complete_dir / "a.checkpoint.json").write_text(json.dumps(complete), encoding="utf-8")
+    (complete_dir / "a.rows.jsonl").write_text('{"mutant": "complete"}\n', encoding="utf-8")
+    (incomplete_dir / "b.checkpoint.json").write_text(json.dumps(incomplete), encoding="utf-8")
+    (incomplete_dir / "b.rows.jsonl").write_text('{"mutant": "partial"}\n', encoding="utf-8")
+
+    selected = module.select_checkpoints(root)
+    assert module.read_selected_mutation_rows(selected) == ['{"mutant": "complete"}']
+
+
+def test_mixed_tool_fingerprints_are_rejected(module) -> None:
+    first = row("a.py", 1.0, 1, 1, 1)
+    second = row("b.py", 1.0, 1, 1, 1)
+    second["tool_fingerprint"] = "tools-v2"
+    with pytest.raises(ValueError, match="mixed mutation tool fingerprints"):
+        module.validate_tool_fingerprint([first, second])
 
 
 def test_markdown_surfaces_regressions_and_unmeasured(module) -> None:
