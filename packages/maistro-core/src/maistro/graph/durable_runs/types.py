@@ -9,12 +9,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from maistro.graph.execution_state import GraphExecutionState
-from maistro.graph.traversal_commit import (
-    TraversalCommit,
-    accepted_outcome_id,
-    edge_decision_id,
-    graph_state_hash,
-)
+from maistro.graph.traversal_commit import TraversalCommit, accepted_outcome_id, edge_decision_id
 from maistro.runs.model import Attempt, NodeRun, Run, RunStatus
 
 
@@ -88,8 +83,6 @@ class DurableRunRecord(BaseModel):
             if any(decision_id not in all_decision_ids for decision_id in commit.edge_decision_ids):
                 raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
             previous_id = commit.traversal_commit_id
-        if commits[-1].resulting_state_hash != graph_state_hash(self.graph_state):
-            raise ValueError("latest TraversalCommit must project the persisted GraphExecutionState")
 
     @property
     def run_id(self) -> str:
