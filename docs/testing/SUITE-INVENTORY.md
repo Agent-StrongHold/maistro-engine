@@ -52,7 +52,7 @@ Durable graph canonical-persistence convergence in #416 replaces legacy
 DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,
 for a net reduction of six maistro-core node IDs while retaining the
 durability, routing, HITL, restart, mutation, and persistence invariants.
-Real durable Graph frontier execution adds four maistro-core node IDs covering
+Real durable Graph frontier execution adds six maistro-core node IDs covering
 concurrent fan-out, deterministic NodeRun ordering, source-correlated routing,
 and fan-in input merging.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
@@ -72,7 +72,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6137 | `ci.yml` |
+| `packages/maistro-core/tests` | 6139 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
