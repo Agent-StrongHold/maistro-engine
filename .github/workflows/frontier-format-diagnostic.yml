@@ -1,0 +1,17 @@
+name: frontier format diagnostic
+
+on:
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  format-diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - name: Show Ruff formatter diff
+        run: uvx --from ruff==0.15.12 ruff format --diff packages/maistro-core/src/maistro/graph/durable_runs/frontier_executor.py
