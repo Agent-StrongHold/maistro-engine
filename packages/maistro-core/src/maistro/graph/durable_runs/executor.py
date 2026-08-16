@@ -567,20 +567,6 @@ async def _ensure_frontier_node_runs(
     return record, tuple(selected)
 
 
-async def _ensure_running_node_run(
-    record: DurableRunRecord,
-    node_id: str,
-    *,
-    store: DurableRunStore,
-) -> tuple[DurableRunRecord, NodeRun]:
-    updated, selected = await _ensure_frontier_node_runs(
-        record,
-        (node_id,),
-        store=store,
-    )
-    return updated, selected[0]
-
-
 def _value_at_path(value: object, path: str) -> object:
     for part in path.split("."):
         if isinstance(value, BaseModel):
@@ -788,22 +774,6 @@ def _resolve_inputs(
     return {**static_inputs, **_initial_inputs(record)}
 
 
-def _lift_blackboard(
-    record: DurableRunRecord,
-    ctx: NodeContext,
-) -> DurableRunRecord:
-    blackboard = ctx.blackboard
-    if blackboard is None or not hasattr(blackboard, "metadata"):
-        return record
-    snapshot = dict(record.graph_state.blackboard_snapshot)
-    snapshot["metadata"] = dict(getattr(blackboard, "metadata", {}) or {})
-    annotations = getattr(blackboard, "node_annotations", None)
-    if annotations is not None:
-        snapshot["node_annotations"] = dict(annotations or {})
-    state = _replace_state(record.graph_state, blackboard_snapshot=snapshot)
-    return _replace_record(record, graph_state=state)
-
-
 def _merge_changed_mapping(
     base: Mapping[str, Any],
     current: Mapping[str, Any],
@@ -929,69 +899,6 @@ def _clear_pause_metadata(state: GraphExecutionState) -> GraphExecutionState:
     metadata.pop("pause", None)
     metadata.pop("pauses", None)
     return _replace_state(state, metadata=metadata)
-
-
-async def _checkpoint_success(
-    record: DurableRunRecord,
-    node_run: NodeRun,
-    result: NodeResult,
-    *,
-    store: DurableRunStore,
-) -> DurableRunRecord:
-    completed = transition_node_run(
-        node_run,
-        RunStatus.COMPLETED,
-        result=_result_output(result),
-    )
-    record = _replace_node_run(record, completed)
-    state = _clear_pause_metadata(record.graph_state)
-    return await _checkpoint(
-        record,
-        store=store,
-        graph_state=state,
-        resume_at=None,
-    )
-
-
-async def _checkpoint_pause(
-    record: DurableRunRecord,
-    node_run: NodeRun,
-    result: NodeResult,
-    *,
-    store: DurableRunStore,
-) -> DurableRunRecord:
-    human = _is_human_pause(result)
-    target = RunStatus.PAUSED if human else RunStatus.WAITING
-    paused_node = transition_node_run(node_run, target)
-    run = transition_run(record.run, target)
-    entry = {"node_id": node_run.node_id, **_pause_entry(result)}
-    metadata = dict(record.graph_state.metadata)
-    metadata["pause"] = entry
-    metadata["pauses"] = {node_run.node_id: entry}
-    state = _replace_state(record.graph_state, metadata=metadata)
-    record = _replace_node_run(record, paused_node)
-    return await _checkpoint(
-        record,
-        store=store,
-        run=run,
-        graph_state=state,
-        resume_at=result.resume_at,
-    )
-
-
-async def _checkpoint_failure(
-    record: DurableRunRecord,
-    node_run: NodeRun,
-    result: NodeResult,
-    *,
-    store: DurableRunStore,
-) -> DurableRunRecord:
-    message = result.error_message or f"node {node_run.node_id} failed"
-    error = f"{result.error_code or 'NodeFailure'}: {message}"[:512]
-    failed_node = transition_node_run(node_run, RunStatus.FAILED, error=error)
-    record = _replace_node_run(record, failed_node)
-    run = transition_run(record.run, RunStatus.FAILED, error=error)
-    return await _checkpoint(record, store=store, run=run)
 
 
 async def _mark_completed(
