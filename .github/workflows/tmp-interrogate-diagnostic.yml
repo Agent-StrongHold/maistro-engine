@@ -14,6 +14,10 @@ jobs:
           version: "0.5.x"
       - name: Setup Python 3.12
         run: uv python install 3.12
+      - name: Sync project environment
+        run: |
+          uv sync --locked --all-extras
+          uv pip install interrogate
       - name: Document frontier contracts
         run: |
           python - <<'PY'
@@ -54,9 +58,9 @@ jobs:
               raise SystemExit('unexpectedly few docstrings inserted')
           PY
       - name: Format executor
-        run: uvx --from ruff==0.15.12 ruff format packages/maistro-core/src/maistro/graph/durable_runs/executor.py
-      - name: Verify docstring ratchet
-        run: uvx interrogate -f 45 packages/maistro-core/src/maistro/graph/durable_runs
+        run: uv run ruff format packages/maistro-core/src/maistro/graph/durable_runs/executor.py
+      - name: Verify exact docstring ratchet
+        run: uv run interrogate -f 45 packages/maistro-core/src/maistro/graph/durable_runs
       - name: Remove repair workflow and commit
         run: |
           rm .github/workflows/tmp-interrogate-diagnostic.yml
