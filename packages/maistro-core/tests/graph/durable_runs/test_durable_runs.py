@@ -29,8 +29,6 @@ from maistro.graph.durable_runs import (
     InMemoryDurableRunStore,
     RunStatus,
     SqliteDurableRunStore,
-    resume_durable_dag,
-    run_durable_dag,
 )
 from maistro.graph.nodes import (
     BaseNode,
@@ -38,6 +36,16 @@ from maistro.graph.nodes import (
     get_node,
     pause_until,
     register_node,
+)
+
+from .._canonical_helpers import (
+    durable_record,
+)
+from .._canonical_helpers import (
+    resume_legacy_dag_fixture as resume_durable_dag,
+)
+from .._canonical_helpers import (
+    run_legacy_dag_fixture as run_durable_dag,
 )
 
 # --- Test fixtures: tiny nodes registered just for these tests -------------
@@ -157,14 +165,9 @@ def mem_store() -> DurableRunStore:
 
 
 def _record_for(run_id: str) -> DurableRunRecord:
-    now = datetime.now(UTC)
-    return DurableRunRecord(
+    return durable_record(
+        {"id": "d1", "nodes": [{"id": "n1"}], "edges": []},
         run_id=run_id,
-        dag_id="d1",
-        dag_snapshot={"nodes": [], "edges": []},
-        started_at=now,
-        last_step_at=now,
-        version=1,
     )
 
 
@@ -192,12 +195,16 @@ async def test_update_requires_higher_version(mem_store: DurableRunStore) -> Non
 
 async def test_list_by_status_filters_correctly(mem_store: DurableRunStore) -> None:
     a = _record_for("a")
-    b = _record_for("b").model_copy(update={"status": RunStatus.COMPLETED})
+    b = durable_record(
+        {"id": "d1", "nodes": [{"id": "n1"}], "edges": []},
+        run_id="b",
+        status=RunStatus.COMPLETED,
+    )
     await mem_store.create(a)
     await mem_store.create(b)
     running = await mem_store.list_by_status(RunStatus.RUNNING)
     completed = await mem_store.list_by_status(RunStatus.COMPLETED)
-    assert {r.run_id for r in running} == set()  # both start "pending" not running
+    assert {r.run_id for r in running} == {"a"}
     assert {r.run_id for r in completed} == {"b"}
 
 
@@ -207,8 +214,11 @@ async def test_list_by_status_filters_correctly(mem_store: DurableRunStore) -> N
 async def test_sqlite_store_roundtrips_across_reopen(tmp_path) -> None:
     db = tmp_path / "durable.db"
     store1 = SqliteDurableRunStore(db)
-    rec = _record_for("r-sqlite-1").model_copy(
-        update={"status": RunStatus.PAUSED_HITL, "current_node_id": "ask-1"}
+    rec = durable_record(
+        {"id": "d1", "nodes": [{"id": "ask-1"}], "edges": []},
+        run_id="r-sqlite-1",
+        status=RunStatus.PAUSED,
+        active_node_id="ask-1",
     )
     await store1.create(rec)
 
@@ -216,8 +226,8 @@ async def test_sqlite_store_roundtrips_across_reopen(tmp_path) -> None:
     store2 = SqliteDurableRunStore(db)
     got = await store2.get("r-sqlite-1")
     assert got is not None
-    assert got.status == RunStatus.PAUSED_HITL
-    assert got.current_node_id == "ask-1"
+    assert got.status == RunStatus.PAUSED
+    assert got.active_node_id == "ask-1"
 
 
 async def test_sqlite_store_optimistic_concurrency(tmp_path) -> None:
@@ -255,12 +265,12 @@ async def test_run_sync_dag_completes_in_one_walk(mem_store: DurableRunStore) ->
         project_id="proj-a",
     )
     assert result.status == RunStatus.COMPLETED
-    assert result.finished_at is not None
-    assert len(result.node_records) == 2
-    assert result.node_records[0].node_id == "n1"
-    assert result.node_records[0].output == {"text": "HELLO"}
-    assert result.node_records[1].node_id == "n2"
-    assert result.node_records[1].output == {"text": "HELLO!!"}
+    assert result.run.finished_at is not None
+    assert len(result.node_runs) == 2
+    assert result.node_runs[0].node_id == "n1"
+    assert result.node_runs[0].result == {"text": "HELLO"}
+    assert result.node_runs[1].node_id == "n2"
+    assert result.node_runs[1].result == {"text": "HELLO!!"}
 
 
 async def test_run_sync_dag_persists_each_node_to_store(mem_store: DurableRunStore) -> None:
@@ -273,7 +283,7 @@ async def test_run_sync_dag_persists_each_node_to_store(mem_store: DurableRunSto
     on_disk = await mem_store.get(result.run_id)
     assert on_disk is not None
     assert on_disk.status == RunStatus.COMPLETED
-    assert len(on_disk.node_records) == 2
+    assert len(on_disk.node_runs) == 2
 
 
 # --- Executor: HITL DAG pauses then resumes -------------------------------
@@ -304,15 +314,15 @@ async def test_hitl_dag_pauses_at_ask_node(mem_store: DurableRunStore) -> None:
         inputs={"text": "hi"},
         user_id="alice",
     )
-    assert result.status == RunStatus.PAUSED_HITL
-    assert result.current_node_id == "ask"
+    assert result.status == RunStatus.PAUSED
+    assert result.active_node_id == "ask"
     # First node should have completed successfully.
-    by_id = {nr.node_id: nr for nr in result.node_records}
-    assert by_id["u1"].phase == "completed"
-    assert by_id["u1"].output == {"text": "HI"}
+    by_id = {nr.node_id: nr for nr in result.node_runs}
+    assert by_id["u1"].status is RunStatus.COMPLETED
+    assert by_id["u1"].result == {"text": "HI"}
     # Ask node recorded with phase=paused and the question metadata.
-    assert by_id["ask"].phase == "paused"
-    assert by_id["ask"].pause_metadata.get("question") == "Continue?"
+    assert by_id["ask"].status is RunStatus.PAUSED
+    assert result.graph_state.metadata["pause"]["metadata"]["question"] == "Continue?"
 
 
 async def test_hitl_dag_resumes_after_submit_answer(mem_store: DurableRunStore) -> None:
@@ -322,7 +332,7 @@ async def test_hitl_dag_resumes_after_submit_answer(mem_store: DurableRunStore) 
         node_resolver=_resolver,
         inputs={"text": "hi"},
     )
-    assert started.status == RunStatus.PAUSED_HITL
+    assert started.status == RunStatus.PAUSED
 
     await mem_store.submit_hitl_answer(started.run_id, "ask", {"answer": "yes"})
     resumed = await resume_durable_dag(
@@ -331,14 +341,14 @@ async def test_hitl_dag_resumes_after_submit_answer(mem_store: DurableRunStore) 
         node_resolver=_resolver,
     )
     assert resumed.status == RunStatus.COMPLETED
-    by_id = {nr.node_id: nr for nr in resumed.node_records}
-    assert by_id["ask"].phase == "completed"
+    by_id = {nr.node_id: nr for nr in resumed.node_runs}
+    assert by_id["ask"].status is RunStatus.COMPLETED
     # _MiniAskNode emits its `text` field so downstream nodes that expect
     # {text, suffix} (like _AppendNode) pick it up by name.
-    assert by_id["ask"].output == {"text": "yes"}
-    assert by_id["a1"].phase == "completed"
+    assert by_id["ask"].result == {"text": "yes"}
+    assert by_id["a1"].status is RunStatus.COMPLETED
     # Append got "yes" from upstream + suffix " <done>".
-    assert by_id["a1"].output == {"text": "yes <done>"}
+    assert by_id["a1"].result == {"text": "yes <done>"}
 
 
 # --- Executor: failure halts the run --------------------------------------
@@ -364,12 +374,14 @@ async def test_failed_node_marks_run_failed(mem_store: DurableRunStore) -> None:
         node_resolver=_resolver,
     )
     assert result.status == RunStatus.FAILED
-    assert result.error_code == "ValueError"
-    assert "intentional test failure" in (result.error_message or "")
-    by_id = {nr.node_id: nr for nr in result.node_records}
-    assert by_id["u1"].phase == "completed"
-    assert by_id["boom"].phase == "failed"
-    assert by_id["boom"].error_code == "ValueError"
+    assert result.run.error is not None
+    assert result.run.error.startswith("ValueError:")
+    assert "intentional test failure" in result.run.error
+    by_id = {nr.node_id: nr for nr in result.node_runs}
+    assert by_id["u1"].status is RunStatus.COMPLETED
+    assert by_id["boom"].status is RunStatus.FAILED
+    assert by_id["boom"].error is not None
+    assert by_id["boom"].error.startswith("ValueError:")
 
 
 # --- Executor: simulated container restart --------------------------------
@@ -387,7 +399,7 @@ async def test_sqlite_paused_run_resumes_after_simulated_restart(tmp_path) -> No
         inputs={"text": "hi"},
         user_id="alice",
     )
-    assert started.status == RunStatus.PAUSED_HITL
+    assert started.status == RunStatus.PAUSED
     run_id = started.run_id
     del store1
 
@@ -395,14 +407,14 @@ async def test_sqlite_paused_run_resumes_after_simulated_restart(tmp_path) -> No
     store2 = SqliteDurableRunStore(db)
     persisted = await store2.get(run_id)
     assert persisted is not None
-    assert persisted.status == RunStatus.PAUSED_HITL
+    assert persisted.status == RunStatus.PAUSED
     # Submit the answer.
     await store2.submit_hitl_answer(run_id, "ask", {"answer": "shipped"})
     final = await resume_durable_dag(run_id, store=store2, node_resolver=_resolver)
     assert final.status == RunStatus.COMPLETED
     # And the answer survived the restart through to the downstream node.
-    by_id = {nr.node_id: nr for nr in final.node_records}
-    assert by_id["a1"].output == {"text": "shipped <done>"}
+    by_id = {nr.node_id: nr for nr in final.node_runs}
+    assert by_id["a1"].result == {"text": "shipped <done>"}
 
 
 # --- Executor: compliance.block halt_run=True halts the run ---------------
@@ -442,15 +454,14 @@ async def test_compliance_block_with_halt_run_marks_run_failed(
     # AFTER each node completes, then checks halt_requested before
     # advancing. So u1 ran, block ran (success), then halt fired before a1.
     assert result.status == RunStatus.FAILED
-    assert result.error_code == "HaltRequested"
-    assert (result.error_message or "").startswith("test halt") or "test halt" in (
-        result.error_message or ""
-    )
-    by_id = {nr.node_id: nr for nr in result.node_records}
-    assert by_id["u1"].phase == "completed"
-    assert by_id["block"].phase == "completed"
-    assert by_id["block"].output is not None
-    assert by_id["block"].output["halt_run"] is True
+    assert result.run.error is not None
+    assert result.run.error.startswith("HaltRequested:")
+    assert "test halt" in result.run.error
+    by_id = {nr.node_id: nr for nr in result.node_runs}
+    assert by_id["u1"].status is RunStatus.COMPLETED
+    assert by_id["block"].status is RunStatus.COMPLETED
+    assert by_id["block"].result is not None
+    assert by_id["block"].result["halt_run"] is True
     # a1 must NOT have run — the halt fired before advancing to it.
     assert "a1" not in by_id
 
@@ -536,7 +547,7 @@ async def test_agent_synth_dag_refuses_to_spawn_once_depth_reaches_cap_via_durab
     # A business-level refusal isn't an executor-level failure — n2's own
     # output says so, but the walk still completes normally.
     assert result.status == RunStatus.COMPLETED
-    n2_output = result.node_records[-1].output
+    n2_output = result.node_runs[-1].result
     assert n2_output is not None
     assert n2_output["success"] is False
     assert "recursion depth cap reached" in n2_output["error"]
@@ -659,7 +670,7 @@ async def test_synth_dag_with_failed_subgraph_still_increments_depth_for_the_nex
 
     result = await run_durable_dag(dag, store=mem_store, node_resolver=_local_resolver)
     assert result.status == RunStatus.COMPLETED
-    n1_output = result.node_records[0].output
+    n1_output = result.node_runs[0].result
     assert n1_output is not None
     assert n1_output["success"] is False  # the sub-graph itself failed
     assert n1_output["dispatched"] is True  # but it WAS actually dispatched
