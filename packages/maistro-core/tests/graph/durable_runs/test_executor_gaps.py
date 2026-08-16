@@ -11,9 +11,8 @@ from maistro.graph.definitions import Graph
 from maistro.graph.durable_runs import InMemoryDurableRunStore, RunStatus
 from maistro.graph.durable_runs.executor import (
     _build_ctx,
-    _ensure_running_node_run,
+    _ensure_frontier_node_runs,
     _entry_node,
-    _lift_blackboard,
     _mark_completed,
     _mark_failed,
     _next_node,
@@ -196,11 +195,6 @@ class TestNodeSpecAndRouting:
 
 
 class TestContextAndBlackboard:
-    def test_none_blackboard_returns_record_unchanged(self) -> None:
-        record = _record_for("r-lift")
-        ctx = NodeContext(run_id="r-lift", dag_id="d1", node_id="n1", blackboard=None)
-        assert _lift_blackboard(record, ctx) is record
-
     def test_malformed_blackboard_snapshot_falls_back_to_none(self) -> None:
         record = _record_for(
             "r-ctx",
@@ -270,7 +264,8 @@ class TestCanonicalNodeRunPersistence:
         store = InMemoryDurableRunStore()
         await store.create(record)
 
-        updated, node_run = await _ensure_running_node_run(record, "n1", store=store)
+        updated, node_runs = await _ensure_frontier_node_runs(record, ("n1",), store=store)
+        node_run = node_runs[0]
         assert node_run.node_run_id == existing.node_run_id
         assert node_run.status is RunStatus.RUNNING
         assert len(updated.node_runs) == 1
@@ -288,7 +283,8 @@ class TestCanonicalNodeRunPersistence:
         store = InMemoryDurableRunStore()
         await store.create(record)
 
-        updated, node_run = await _ensure_running_node_run(record, "n1", store=store)
+        updated, node_runs = await _ensure_frontier_node_runs(record, ("n1",), store=store)
+        node_run = node_runs[0]
         assert node_run.node_run_id != existing.node_run_id
         assert node_run.ordinal == 2
         assert node_run.status is RunStatus.RUNNING
