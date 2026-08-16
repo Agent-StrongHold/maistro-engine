@@ -24,6 +24,27 @@ from maistro.runs import (
 )
 
 
+def _accepted_outcome(
+    *,
+    node_run_id: str,
+    attempt_id: str,
+    result: object,
+) -> AcceptedNodeOutcome:
+    return AcceptedNodeOutcome(
+        node_run_id=node_run_id,
+        attempt_result=AttemptResult(
+            attempt_id=attempt_id,
+            node_run_id=node_run_id,
+            ordinal=1,
+            status=AttemptStatus.COMPLETED,
+            result=result,
+            finished_at=datetime(2026, 8, 16, 10, 0, tzinfo=UTC),
+        ),
+        logical_status=RunStatus.COMPLETED,
+        result=result,
+    )
+
+
 def _fixture() -> tuple[Run, NodeRun, GraphExecutionState, TraversalCommit]:
     graph = Graph(
         workspace_id="ws-1",
@@ -42,18 +63,9 @@ def _fixture() -> tuple[Run, NodeRun, GraphExecutionState, TraversalCommit]:
         graph=GraphSnapshot.from_graph(graph),
         status=RunStatus.RUNNING,
     )
-    physical = AttemptResult(
+    outcome = _accepted_outcome(
+        node_run_id="node-run-a",
         attempt_id="attempt-a",
-        node_run_id="node-run-a",
-        ordinal=1,
-        status=AttemptStatus.COMPLETED,
-        result={"physical": "envelope"},
-        finished_at=datetime(2026, 8, 16, 10, 0, tzinfo=UTC),
-    )
-    outcome = AcceptedNodeOutcome(
-        node_run_id="node-run-a",
-        attempt_result=physical,
-        logical_status=RunStatus.COMPLETED,
         result={"value": 7},
     )
     node_run = NodeRun(
@@ -130,6 +142,70 @@ def test_post_commit_checkpoint_metadata_can_evolve_without_new_traversal_commit
     assert record.graph_state.metadata["checkpoint_note"] == "persisted after traversal advancement"
 
 
+def test_latest_commit_frontier_must_match_live_traversal_frontier() -> None:
+    run, node_run, state, commit = _fixture()
+    drifted = state.model_copy(update={"active_node_ids": ("a",)})
+
+    with pytest.raises(ValueError, match="frontier"):
+        DurableRunRecord(
+            run=run,
+            graph_state=drifted,
+            node_runs=(node_run,),
+            traversal_commits=(commit,),
+        )
+
+
+def test_adjacent_commits_must_link_resulting_and_prior_state_hashes() -> None:
+    run, first_node_run, first_state, first_commit = _fixture()
+    second_outcome = _accepted_outcome(
+        node_run_id="node-run-b",
+        attempt_id="attempt-b",
+        result={"done": True},
+    )
+    second_node_run = NodeRun(
+        node_run_id="node-run-b",
+        run_id=run.run_id,
+        node_id="b",
+        ordinal=2,
+        status=RunStatus.COMPLETED,
+        finished_at=datetime(2026, 8, 16, 10, 2, tzinfo=UTC),
+        accepted_outcome=second_outcome,
+        result={"done": True},
+    )
+    # This transition is individually valid and correctly parent-linked, but it
+    # starts from an unrelated traversal state instead of commit 1's result.
+    unrelated_prior = GraphExecutionState(
+        run_id=run.run_id,
+        active_node_ids=("b",),
+        cycle=99,
+        edge_decisions=first_state.edge_decisions,
+    )
+    final_state = GraphExecutionState(
+        run_id=run.run_id,
+        active_node_ids=(),
+        cycle=100,
+        edge_decisions=first_state.edge_decisions,
+    )
+    second_commit = TraversalCommit.from_transition(
+        graph_snapshot_hash=run.graph.content_hash,
+        prior_state=unrelated_prior,
+        resulting_state=final_state,
+        ordered_source_node_run_ids=(second_node_run.node_run_id,),
+        accepted_outcomes=(second_outcome,),
+        edge_decisions=(),
+        commit_sequence=2,
+        prior_commit_id=first_commit.traversal_commit_id,
+    )
+
+    with pytest.raises(ValueError, match="adjacent TraversalCommits"):
+        DurableRunRecord(
+            run=run,
+            graph_state=final_state,
+            node_runs=(first_node_run, second_node_run),
+            traversal_commits=(first_commit, second_commit),
+        )
+
+
 def test_commit_outcome_identity_must_match_persisted_accepted_node_outcome() -> None:
     run, node_run, state, commit = _fixture()
     assert node_run.accepted_outcome is not None
@@ -148,7 +224,7 @@ def test_commit_outcome_identity_must_match_persisted_accepted_node_outcome() ->
 
 
 def test_commit_graph_snapshot_must_match_run_snapshot() -> None:
-    run, node_run, state, commit = _fixture()
+    run, _node_run, _state, commit = _fixture()
     payload = commit.model_dump(mode="python")
     payload["graph_snapshot_hash"] = "different"
     payload["traversal_commit_id"] = commit.traversal_commit_id
