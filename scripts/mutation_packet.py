@@ -69,7 +69,7 @@ def build_checkpoint(
         "pytest_version": environment["pytest_version"],
         "tool_fingerprint": environment["tool_fingerprint"],
         "verified_commit": commit,
-        "verified_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "verified_at": dt.datetime.now(dt.UTC).isoformat(),
         "complete": int(report["pending"]) == 0,
     }
 
