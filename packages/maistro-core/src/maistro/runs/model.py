@@ -222,13 +222,15 @@ class AttemptResult(BaseModel):
 
 
 class AcceptedNodeOutcome(BaseModel):
-    """One physical result accepted as authoritative for a logical NodeRun disposition."""
+    """Authoritative logical projection of one physically completed AttemptResult."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     node_run_id: str
     attempt_result: AttemptResult
     logical_status: RunStatus = RunStatus.COMPLETED
+    result: Any | None = None
+    error: str | None = None
     accepted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @model_validator(mode="after")
@@ -270,8 +272,10 @@ class NodeRun(BaseModel):
                 raise ValueError("accepted outcome must belong to this NodeRun")
             if self.status is not self.accepted_outcome.logical_status:
                 raise ValueError("NodeRun status must match its accepted logical outcome")
-            if self.result != self.accepted_outcome.attempt_result.result:
-                raise ValueError("NodeRun.result must project the accepted AttemptResult")
+            if self.result != self.accepted_outcome.result:
+                raise ValueError("NodeRun.result must project the accepted logical result")
+            if self.error != self.accepted_outcome.error:
+                raise ValueError("NodeRun.error must project the accepted logical error")
         _validate_finished_at(
             terminal=self.status in TERMINAL_RUN_STATUSES,
             finished_at=self.finished_at,
