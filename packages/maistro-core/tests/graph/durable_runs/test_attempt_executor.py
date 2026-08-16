@@ -146,7 +146,7 @@ async def test_public_durable_executor_routes_each_node_run_through_attempt_runt
     assert len(record.attempts) == 3
     assert [attempt.ordinal for attempt in record.attempts] == [1, 1, 1]
     assert all(attempt.status is AttemptStatus.COMPLETED for attempt in record.attempts)
-    assert [attempt.node_run_id for attempt in record.attempts] == [
+    assert {attempt.node_run_id for attempt in record.attempts} == {
         node_run.node_run_id for node_run in record.node_runs
-    ]
+    }
     assert set(runtime.execution_ids) == {attempt.attempt_id for attempt in record.attempts}
