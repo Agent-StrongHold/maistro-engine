@@ -52,8 +52,16 @@ class AttemptExecutionService:
         runtime_id: str | None = None,
         timeout_s: float | None = None,
         resume_checkpoint_id: str | None = None,
+        reconcile_logical: bool = True,
     ) -> Attempt:
-        """Create, run, terminalize, and reconcile one physical Attempt."""
+        """Create, run, terminalize, and optionally reconcile one physical Attempt.
+
+        Graph-like domain executors that own their own NodeRun outcome semantics
+        may set ``reconcile_logical=False``. The Attempt is still prepared,
+        persisted, executed through Runtime, and terminalized before control
+        returns; only the policy-neutral NodeRun/Run reconciliation step is
+        deferred to that domain executor.
+        """
 
         deadline_at = None
         if timeout_s is not None:
@@ -88,7 +96,7 @@ class AttemptExecutionService:
                 AttemptStatus.CANCELLED,
                 error="execution cancelled",
             )
-            await self._reconcile(terminal)
+            await self._maybe_reconcile(terminal, reconcile_logical=reconcile_logical)
             raise
         except RuntimeDeadlineExceeded as exc:
             terminal = await self._terminalize(
@@ -96,7 +104,7 @@ class AttemptExecutionService:
                 AttemptStatus.TIMED_OUT,
                 error=str(exc),
             )
-            await self._reconcile(terminal)
+            await self._maybe_reconcile(terminal, reconcile_logical=reconcile_logical)
             raise
         except Exception as exc:
             terminal = await self._terminalize(
@@ -104,7 +112,7 @@ class AttemptExecutionService:
                 AttemptStatus.FAILED,
                 error=str(exc),
             )
-            await self._reconcile(terminal)
+            await self._maybe_reconcile(terminal, reconcile_logical=reconcile_logical)
             raise
 
         terminal = await self._terminalize(
@@ -112,7 +120,7 @@ class AttemptExecutionService:
             AttemptStatus.COMPLETED,
             result=result,
         )
-        await self._reconcile(terminal)
+        await self._maybe_reconcile(terminal, reconcile_logical=reconcile_logical)
         return terminal
 
     async def cancel(self, attempt_id: str) -> bool:
@@ -134,6 +142,15 @@ class AttemptExecutionService:
             result=result,
             error=error,
         )
+
+    async def _maybe_reconcile(
+        self,
+        attempt: Attempt,
+        *,
+        reconcile_logical: bool,
+    ) -> None:
+        if reconcile_logical:
+            await self._reconcile(attempt)
 
     async def _reconcile(self, attempt: Attempt) -> None:
         await self._lifecycle.reconcile(attempt)
