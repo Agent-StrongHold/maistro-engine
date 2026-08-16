@@ -391,6 +391,40 @@ def _can_reach(graph: Graph, start_node_id: str, target_node_id: str) -> bool:
     return False
 
 
+def _selected_predecessor_sources(
+    record: DurableRunRecord,
+    target_node_id: str,
+    decisions: tuple[GraphEdgeDecision, ...],
+) -> set[str]:
+    return {
+        decision.source_node_id
+        for decision in _selected_predecessor_decisions(
+            record,
+            target_node_id,
+            decisions=decisions,
+        )
+    }
+
+
+def _fanin_waits_for_live_branch(
+    record: DurableRunRecord,
+    graph: Graph,
+    target: str,
+    decisions: tuple[GraphEdgeDecision, ...],
+    roots: tuple[str, ...],
+) -> bool:
+    incoming = _dedupe(edge.from_node for edge in graph.edges if edge.to_node == target)
+    if len(incoming) <= 1:
+        return False
+    resolved = _selected_predecessor_sources(record, target, decisions)
+    unresolved = tuple(node_id for node_id in incoming if node_id not in resolved)
+    other_roots = tuple(node_id for node_id in roots if node_id != target)
+    return any(
+        any(_can_reach(graph, root, predecessor) for root in other_roots)
+        for predecessor in unresolved
+    )
+
+
 def _partition_ready_targets(
     record: DurableRunRecord,
     graph: Graph,
@@ -402,32 +436,13 @@ def _partition_ready_targets(
     roots = _dedupe((*_deferred_frontier(record), *next_ids, *(item.node_id for item in paused)))
     ready: list[str] = []
     blocked: list[str] = []
-
     for target in candidates:
-        incoming = _dedupe(edge.from_node for edge in graph.edges if edge.to_node == target)
-        if len(incoming) <= 1:
-            ready.append(target)
-            continue
-
-        resolved = {
-            decision.source_node_id
-            for decision in _selected_predecessor_decisions(
-                record,
-                target,
-                decisions=decisions,
-            )
-        }
-        unresolved = tuple(node_id for node_id in incoming if node_id not in resolved)
-        other_roots = tuple(node_id for node_id in roots if node_id != target)
-        waits_for_live_branch = any(
-            any(_can_reach(graph, root, predecessor) for root in other_roots)
-            for predecessor in unresolved
+        target_list = (
+            blocked
+            if _fanin_waits_for_live_branch(record, graph, target, decisions, roots)
+            else ready
         )
-        if waits_for_live_branch:
-            blocked.append(target)
-        else:
-            ready.append(target)
-
+        target_list.append(target)
     return _dedupe(ready), _dedupe(blocked)
 
 
