@@ -84,12 +84,6 @@ async def resume_durable_graph(
     }:
         raise ValueError(f"cannot resume run in status {record.run.status!r}")
 
-    # A resume call is an explicit recovery boundary. Attempts left CREATED or
-    # RUNNING belong to the lost process and cannot remain active forever. Mark
-    # them CANCELLED and reconcile their logical NodeRuns before deciding what
-    # physical work may run next. Completed Attempts are intentionally retained:
-    # _execute_frontier will fold their persisted result instead of invoking the
-    # node again.
     record = await _reconcile_orphaned_attempts(record, store=store)
 
     run = record.run
@@ -180,6 +174,7 @@ async def _walk(
                 node_runs,
                 node_resolver=node_resolver,
                 execution_service=execution_service,
+                execution_store=execution_store,
             )
         except asyncio.CancelledError:
             await asyncio.shield(_persist_cancelled_run(record.run_id, store=store))
@@ -251,6 +246,7 @@ async def _execute_frontier(
     *,
     node_resolver: NodeResolver,
     execution_service: AttemptExecutionService,
+    execution_store: DurableRunExecutionStore,
 ) -> tuple[Any, ...]:
     """Execute/recover one complete frontier concurrently through canonical Attempts."""
     prepared: list[tuple[str, Any, NodeRun, Any, Any, dict[str, Any]]] = []
@@ -270,10 +266,7 @@ async def _execute_frontier(
         node: Any,
         inputs: dict[str, Any],
     ) -> Any:
-        # If the prior process persisted a terminal physical success but died
-        # before Graph folding, the result is already durable evidence. Reuse
-        # it rather than redispatching potentially non-idempotent work.
-        attempts = await execution_service._store.list_attempts(node_run.node_run_id)  # noqa: SLF001
+        attempts = await execution_store.list_attempts(node_run.node_run_id)
         if attempts and attempts[-1].status is AttemptStatus.COMPLETED:
             persisted_result = NodeResult.model_validate(attempts[-1].result)
             return traversal._FrontierItem(  # noqa: SLF001
