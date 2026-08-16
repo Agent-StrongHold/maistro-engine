@@ -9,7 +9,8 @@
 # Repository health:
 #   - scheduled / manually dispatched only
 #   - plan the complete production inventory into cost-aware packets
-#   - collect per-source timing, quality, content and environment telemetry
+#   - checkpoint each completed source immediately for continuation-aware reruns
+#   - aggregate all source checkpoints into one repository health report
 #   - publish reviewed history/baseline candidates; never auto-accept regression
 
 name: mutation
@@ -240,125 +241,75 @@ jobs:
           PY
           cat mutation-environment.json
 
-      - name: Baseline and mutate packet sources with per-source telemetry
+      - name: Detect checkpoints from earlier attempts in this sweep
+        id: prior
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREFIX: mutation-checkpoint-${{ github.run_id }}-
         run: |
           set -euo pipefail
-          : > mutation-telemetry.jsonl
-          : > mutation-sessions.tsv
-          : > mutation-rows.jsonl
-          while IFS=$'\t' read -r src tests; do
-            [ -z "$src" ] && continue
-            safe=$(echo "$src" | tr '/.' '__')
-            session="session-${safe}.sqlite"
-            report="report-${safe}.json"
+          count=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" \
+            | python -c 'import json, os, sys; pages=json.load(sys.stdin); artifacts=sum((p.get("artifacts", []) for p in pages), []); print(sum(a.get("name", "").startswith(os.environ["PREFIX"]) for a in artifacts))')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -gt 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          mkdir -p prior-checkpoints
 
-            baseline_start=$(python -c 'import time; print(time.time())')
-            env PYTHONPATH="$(find packages -type d -name src -printf '%p:')" \
-              uv run pytest "$tests" --timeout=20 -q -x
-            baseline_end=$(python -c 'import time; print(time.time())')
+      - name: Download checkpoints from earlier attempts
+        if: steps.prior.outputs.found == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-checkpoint-${{ github.run_id }}-*
+          path: prior-checkpoints
+          merge-multiple: true
 
-            cat > cosmic-ray.toml <<EOF
-          [cosmic-ray]
-          module-path = "$src"
-          timeout = 60.0
-          excluded-modules = []
-          test-command = "env PYTHONPATH=$(find packages -type d -name src -printf '%p:') python -m pytest $tests --timeout=20 -q -x"
+      - name: Install in-job artifact checkpoint client
+        run: npm install --no-save --prefix /tmp/mutation-artifact-client @actions/artifact@2
 
-          [cosmic-ray.distributor]
-          name = "local"
+      - name: Resume packet and checkpoint every completed source
+        env:
+          NODE_PATH: /tmp/mutation-artifact-client/node_modules
+        run: |
+          uv run python scripts/mutation_packet.py mutation-targets.tsv \
+            --checkpoints prior-checkpoints \
+            --environment mutation-environment.json \
+            --commit "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --uploader scripts/upload_mutation_checkpoint.cjs
 
-          [cosmic-ray.distributor.local]
-          worker-count = 4
-          EOF
-
-            mutation_start=$(python -c 'import time; print(time.time())')
-            uv run cosmic-ray init cosmic-ray.toml "$session"
-            uv run cosmic-ray exec cosmic-ray.toml "$session"
-            mutation_end=$(python -c 'import time; print(time.time())')
-            uv run cosmic-ray dump "$session" >> mutation-rows.jsonl
-            printf '%s\t%s\n' "$session" "$src" >> mutation-sessions.tsv
-            uv run python scripts/mutation_viability.py "$session" "$src" --json "$report"
-
-            SRC="$src" TESTS="$tests" REPORT="$report" \
-            BASELINE_START="$baseline_start" BASELINE_END="$baseline_end" \
-            MUTATION_START="$mutation_start" MUTATION_END="$mutation_end" \
-            GIT_SHA="$GITHUB_SHA" python - <<'PY' >> mutation-telemetry.jsonl
-          import hashlib, json, os
-          from pathlib import Path
-
-          def tree_hash(path_text):
-              path = Path(path_text)
-              digest = hashlib.sha256()
-              files = [path] if path.is_file() else sorted(p for p in path.rglob('*') if p.is_file())
-              for item in files:
-                  digest.update(item.as_posix().encode())
-                  digest.update(item.read_bytes())
-              return digest.hexdigest()
-
-          src = os.environ['SRC']
-          tests = os.environ['TESTS']
-          report = json.load(open(os.environ['REPORT']))
-          env = json.load(open('mutation-environment.json'))
-          adjusted = report['adjusted']
-          row = {
-              'source': src,
-              'source_hash': tree_hash(src),
-              'test_scope_hash': tree_hash(tests),
-              'baseline_test_seconds': float(os.environ['BASELINE_END']) - float(os.environ['BASELINE_START']),
-              'mutation_seconds': float(os.environ['MUTATION_END']) - float(os.environ['MUTATION_START']),
-              'mutant_count': report['raw']['total'],
-              'viable_mutants': adjusted['total'],
-              'killed_mutants': adjusted['killed'],
-              'surviving_mutants': len(report['viable']),
-              'non_viable_mutants': len(report['non_viable']),
-              'invalid_mutants': len(report['invalid']),
-              'undetermined_mutants': len(report['undetermined']),
-              'kill_rate': adjusted['rate'],
-              'runner': env['runner'],
-              'python_version': env['python_version'],
-              'cosmic_ray_version': env['cosmic_ray_version'],
-              'pytest_version': env['pytest_version'],
-              'tool_fingerprint': env['tool_fingerprint'],
-              'verified_commit': os.environ['GIT_SHA'],
-              'verified_at': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),
-              'complete': report['pending'] == 0,
-          }
-          print(json.dumps(row, sort_keys=True))
-          PY
-          done < mutation-targets.tsv
-
-      - name: Score packet without turning repository health into a PR gate
+      - name: Score newly executed packet work
         id: score
         continue-on-error: true
         run: |
-          uv run python scripts/mutation_viability.py \
-            --sessions mutation-sessions.tsv \
-            --threshold 0.90 \
-            --json mutation-health.json
-
-      - name: Build reviewed mutation history candidate
-        run: |
-          uv run python scripts/mutation_history.py mutation-telemetry.jsonl \
-            --history quality/mutation-history.json \
-            --output mutation-history-candidate-${{ matrix.packet.id }}.json
-
-      - name: Build reviewed mutation baseline candidate
-        run: |
-          cp quality/mutation-baseline.json mutation-baseline-candidate-${{ matrix.packet.id }}.json
-          uv run python scripts/check_mutation_baseline.py mutation-rows.jsonl \
-            --baseline mutation-baseline-candidate-${{ matrix.packet.id }}.json \
-            --write-baseline
+          if [ -s mutation-sessions.tsv ]; then
+            uv run python scripts/mutation_viability.py \
+              --sessions mutation-sessions.tsv \
+              --threshold 0.90 \
+              --json mutation-health.json
+          else
+            echo '{"continued": true, "new_sources": 0}' > mutation-health.json
+          fi
 
       - name: Publish packet health summary
+        if: always()
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json
-          telemetry = [json.loads(line) for line in open('mutation-telemetry.jsonl') if line.strip()]
+          new = [json.loads(line) for line in open('mutation-telemetry.jsonl') if line.strip()] if __import__('pathlib').Path('mutation-telemetry.jsonl').exists() else []
+          reused = [json.loads(line) for line in open('mutation-reused.jsonl') if line.strip()] if __import__('pathlib').Path('mutation-reused.jsonl').exists() else []
           print('## Mutation health packet')
+          print()
+          print(f"Continued from prior checkpoints: **{len(reused)} source(s)**")
+          print(f"Executed this attempt: **{len(new)} source(s)**")
           print()
           print('| Source | Viable | Killed | Survived | Kill rate | Baseline | Mutation |')
           print('|---|---:|---:|---:|---:|---:|---:|')
-          for row in telemetry:
+          for row in reused + new:
               print(
                   f"| `{row['source']}` | {row['viable_mutants']} | {row['killed_mutants']} | "
                   f"{row['surviving_mutants']} | {row['kill_rate']:.1%} | "
@@ -369,15 +320,108 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mutation-health-packet-${{ matrix.packet.id }}
+          name: mutation-health-packet-${{ matrix.packet.id }}-attempt-${{ github.run_attempt }}
           path: |
             mutation-targets.tsv
+            mutation-targets-pending.tsv
+            mutation-reused.jsonl
             mutation-environment.json
             mutation-sessions.tsv
             mutation-rows.jsonl
             mutation-telemetry.jsonl
             mutation-health.json
-            mutation-history-candidate-${{ matrix.packet.id }}.json
-            mutation-baseline-candidate-${{ matrix.packet.id }}.json
             report-*.json
             session-*.sqlite
+
+  mutation-health-aggregate:
+    name: Aggregate repository mutation health
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    needs: [mutation-health-plan, mutation-health]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+      - run: uv python install 3.12
+      - run: uv sync --locked --all-extras
+
+      - name: Download sweep plan
+        uses: actions/download-artifact@v4
+        with:
+          name: mutation-health-plan-${{ github.run_id }}
+          path: mutation-plan-artifact
+
+      - name: Detect completed source checkpoints
+        id: checkpoints
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREFIX: mutation-checkpoint-${{ github.run_id }}-
+        run: |
+          set -euo pipefail
+          count=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?per_page=100" \
+            | python -c 'import json, os, sys; pages=json.load(sys.stdin); artifacts=sum((p.get("artifacts", []) for p in pages), []); print(sum(a.get("name", "").startswith(os.environ["PREFIX"]) for a in artifacts))')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          if [ "$count" -gt 0 ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+          mkdir -p mutation-checkpoints-all
+
+      - name: Download every completed source checkpoint
+        if: steps.checkpoints.outputs.found == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mutation-checkpoint-${{ github.run_id }}-*
+          path: mutation-checkpoints-all
+          merge-multiple: true
+
+      - name: Build repository mutation health report
+        run: |
+          uv run python scripts/mutation_aggregate.py \
+            --checkpoints mutation-checkpoints-all \
+            --inventory mutation-plan-artifact/mutation-targets-all.tsv \
+            --history quality/mutation-history.json \
+            --telemetry-output mutation-telemetry-all.jsonl \
+            --rows-output mutation-rows-all.jsonl \
+            --json-output mutation-health-report.json \
+            --markdown-output mutation-health-report.md
+          cat mutation-health-report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build reviewed mutation history candidate
+        run: |
+          uv run python scripts/mutation_history.py mutation-telemetry-all.jsonl \
+            --history quality/mutation-history.json \
+            --output mutation-history-candidate.json
+
+      - name: Build reviewed mutation baseline candidate
+        run: |
+          cp quality/mutation-baseline.json mutation-baseline-candidate.json
+          if [ -s mutation-rows-all.jsonl ]; then
+            uv run python scripts/check_mutation_baseline.py mutation-rows-all.jsonl \
+              --baseline mutation-baseline-candidate.json \
+              --write-baseline
+          fi
+
+      - name: Upload repository mutation health report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-health-report-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            mutation-health-report.json
+            mutation-health-report.md
+            mutation-telemetry-all.jsonl
+            mutation-rows-all.jsonl
+            mutation-history-candidate.json
+            mutation-baseline-candidate.json
+
+      - name: Require a complete health sweep
+        run: |
+          python - <<'PY'
+          import json
+          report = json.load(open('mutation-health-report.json'))
+          if not report['complete']:
+              missing = len(report['unmeasured_sources'])
+              raise SystemExit(f"mutation health sweep incomplete: {missing} source(s) remain; rerun failed jobs to continue")
+          PY
