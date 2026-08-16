@@ -12,6 +12,7 @@ from maistro.runs.lifecycle import (
 )
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
     AttemptStatus,
     GraphSnapshot,
@@ -81,6 +82,7 @@ class RunStore(Protocol):
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun: ...
 
     async def create_attempt(
@@ -110,12 +112,7 @@ class RunStore(Protocol):
 
 
 class InMemoryRunStore:
-    """Reference lifecycle store for canonical Run -> NodeRun -> Attempt state.
-
-    A Run store is always attached to the canonical Project scope store. Run
-    creation therefore validates the Graph's Project identity before the Graph
-    snapshot becomes durable execution identity.
-    """
+    """Reference lifecycle store for canonical Run -> NodeRun -> Attempt state."""
 
     def __init__(self, *, project_store: ProjectScopeStore) -> None:
         self._project_store = project_store
@@ -135,10 +132,8 @@ class InMemoryRunStore:
         provenance: dict[str, Any] | None = None,
     ) -> Run:
         await self._validate_graph_scope(graph)
-
         if parent_node_run_id is not None and parent_run_id is None:
             raise RunIntegrityError("parent_node_run_id requires parent_run_id")
-
         if parent_run_id is not None:
             parent = self._require_run(parent_run_id)
             if parent.workspace_id != graph.workspace_id:
@@ -152,7 +147,6 @@ class InMemoryRunStore:
                 parent_node_run = self._require_node_run(parent_node_run_id)
                 if parent_node_run.run_id != parent_run_id:
                     raise RunIntegrityError("parent_node_run_id does not belong to parent_run_id")
-
         run = Run(
             workspace_id=graph.workspace_id,
             project_id=graph.project_id,
@@ -188,11 +182,9 @@ class InMemoryRunStore:
         run = self._require_run(run_id)
         if run.status in TERMINAL_RUN_STATUSES:
             raise RunIntegrityError("cannot create NodeRun under a terminal Run")
-
         graph = run.graph.materialize()
         if not any(node.node_id == node_id for node in graph.nodes):
             raise RunIntegrityError(f"node_id {node_id!r} is not present in the Run Graph snapshot")
-
         ordinal = 1 + sum(node_run.run_id == run_id for node_run in self._node_runs.values())
         node_run = NodeRun(run_id=run_id, node_id=node_id, ordinal=ordinal)
         self._node_runs[node_run.node_run_id] = node_run
@@ -220,6 +212,7 @@ class InMemoryRunStore:
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun:
         node_run = self._require_node_run(node_run_id)
         updated = transition_node_run(
@@ -228,6 +221,7 @@ class InMemoryRunStore:
             at=at,
             result=result,
             error=error,
+            accepted_outcome=accepted_outcome,
         )
         self._node_runs[node_run_id] = updated
         return updated.model_copy(deep=True)
@@ -244,7 +238,6 @@ class InMemoryRunStore:
         node_run = self._require_node_run(node_run_id)
         if node_run.status in TERMINAL_RUN_STATUSES:
             raise RunIntegrityError("cannot create Attempt under a terminal NodeRun")
-
         existing = [
             attempt for attempt in self._attempts.values() if attempt.node_run_id == node_run_id
         ]
@@ -252,7 +245,6 @@ class InMemoryRunStore:
             attempt.status in {AttemptStatus.CREATED, AttemptStatus.RUNNING} for attempt in existing
         ):
             raise ActiveAttemptExists(f"NodeRun {node_run_id!r} already has an active Attempt")
-
         ordinal = max((attempt.ordinal for attempt in existing), default=0) + 1
         attempt = Attempt(
             node_run_id=node_run_id,
