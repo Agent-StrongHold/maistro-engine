@@ -31,21 +31,13 @@ class AttemptLifecycleReconciler:
 
     async def prepare_execution(self, node_run_id: str) -> NodeRun:
         """Put the containing Run and NodeRun in ``running`` before a physical try."""
-
         node_run = await self._require_node_run(node_run_id)
         run = await self._require_run(node_run.run_id)
         await self._ensure_run_running(run)
         return await self._ensure_node_run_running(node_run)
 
     async def reconcile(self, attempt: Attempt) -> NodeRun:
-        """Reconcile one already-persisted terminal Attempt into logical activity.
-
-        A completed physical Attempt is represented by immutable AttemptResult
-        evidence and explicitly accepted before the NodeRun becomes completed.
-        Other terminal physical outcomes park the NodeRun in ``waiting`` so
-        retry policy remains outside Runtime and this universal reconciler.
-        """
-
+        """Reconcile one already-persisted terminal Attempt into logical activity."""
         if attempt.status not in TERMINAL_ATTEMPT_STATUSES:
             raise RunIntegrityError("cannot reconcile a non-terminal Attempt")
 
@@ -106,7 +98,8 @@ class AttemptLifecycleReconciler:
         outcome: AcceptedNodeOutcome,
     ) -> NodeRun:
         if node_run.status is RunStatus.COMPLETED:
-            if node_run.accepted_outcome != outcome:
+            accepted = node_run.accepted_outcome
+            if accepted is None or accepted.attempt_result != outcome.attempt_result:
                 raise RunIntegrityError("NodeRun already has a different accepted outcome")
             return node_run
         if node_run.status is not RunStatus.RUNNING:
@@ -136,7 +129,6 @@ class AttemptLifecycleReconciler:
         run = await self._require_run(run_id)
         if run.status is not RunStatus.RUNNING:
             return run
-
         node_runs = await self._store.list_node_runs(run_id)
         if any(
             node_run.status in {RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING}
