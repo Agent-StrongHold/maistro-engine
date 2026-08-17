@@ -153,14 +153,10 @@ class TraversalCommit(BaseModel):
             raise ValueError("initial TraversalCommit cannot have a prior_commit_id")
         if self.commit_sequence > 1 and not self.prior_commit_id:
             raise ValueError("noninitial TraversalCommit requires prior_commit_id")
-        if len(self.ordered_source_node_run_ids) != len(
-            set(self.ordered_source_node_run_ids)
-        ):
+        if len(self.ordered_source_node_run_ids) != len(set(self.ordered_source_node_run_ids)):
             raise ValueError("source NodeRuns must appear once per TraversalCommit")
         if len(self.accepted_outcome_ids) != len(self.ordered_source_node_run_ids):
-            raise ValueError(
-                "every advancing source NodeRun must contribute one accepted outcome"
-            )
+            raise ValueError("every advancing source NodeRun must contribute one accepted outcome")
         if len(self.accepted_outcome_ids) != len(set(self.accepted_outcome_ids)):
             raise ValueError("accepted outcomes must be unique per TraversalCommit")
         if len(self.edge_decision_ids) != len(set(self.edge_decision_ids)):
@@ -181,9 +177,7 @@ class TraversalCommit(BaseModel):
             commit_sequence=self.commit_sequence,
         )
         if self.traversal_commit_id != expected:
-            raise ValueError(
-                "TraversalCommit identity does not match its authoritative content"
-            )
+            raise ValueError("TraversalCommit identity does not match its authoritative content")
         return self
 
     @classmethod
@@ -203,18 +197,11 @@ class TraversalCommit(BaseModel):
         """Construct a content-addressed commit from one complete advancing transition."""
         if prior_state.run_id != resulting_state.run_id:
             raise ValueError("TraversalCommit cannot cross Run identity")
-        outcome_node_runs = tuple(
-            outcome.node_run_id for outcome in accepted_outcomes
-        )
+        outcome_node_runs = tuple(outcome.node_run_id for outcome in accepted_outcomes)
         if outcome_node_runs != ordered_source_node_run_ids:
-            raise ValueError(
-                "accepted outcomes must match source NodeRuns in deterministic order"
-            )
+            raise ValueError("accepted outcomes must match source NodeRuns in deterministic order")
         source_set = set(ordered_source_node_run_ids)
-        if any(
-            decision.source_node_run_id not in source_set
-            for decision in edge_decisions
-        ):
+        if any(decision.source_node_run_id not in source_set for decision in edge_decisions):
             raise ValueError("routing decisions must come from this commit's source NodeRuns")
 
         prior_decisions = prior_state.edge_decisions
@@ -223,9 +210,7 @@ class TraversalCommit(BaseModel):
             len(resulting_decisions) < len(prior_decisions)
             or resulting_decisions[: len(prior_decisions)] != prior_decisions
         ):
-            raise ValueError(
-                "resulting state must preserve prior routing-decision history"
-            )
+            raise ValueError("resulting state must preserve prior routing-decision history")
         transition_decisions = resulting_decisions[len(prior_decisions) :]
         if transition_decisions != edge_decisions:
             raise ValueError(
@@ -296,9 +281,7 @@ class TraversalCheckpoint(BaseModel):
             raise ValueError("TraversalCheckpoint identities and hashes must be non-empty")
         if any(not item.strip() for item in self.ordered_source_node_run_ids):
             raise ValueError("TraversalCheckpoint source NodeRun IDs cannot be empty")
-        if len(self.ordered_source_node_run_ids) != len(
-            set(self.ordered_source_node_run_ids)
-        ):
+        if len(self.ordered_source_node_run_ids) != len(set(self.ordered_source_node_run_ids)):
             raise ValueError("TraversalCheckpoint source NodeRuns must be unique")
         expected = _checkpoint_identity(
             run_id=self.run_id,
