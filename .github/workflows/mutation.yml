@@ -1,36 +1,23 @@
-# Mutation testing is temporarily disabled while GitHub-hosted Actions minutes
-# are constrained. Keep this workflow and required check name so branch
-# protection continues to receive a successful PR status without running
-# Cosmic Ray or consuming long-lived hosted runner time.
+# Mutation testing is temporarily disabled until self-hosted runner capacity is
+# restored. Do not run mutation automatically on pull requests or schedules,
+# and do not consume GitHub-hosted Actions minutes while it is parked.
 #
 # The mutation implementation, scheduler, checkpointing, history, baselines,
 # and repository-health tooling remain in the repository and Git history.
-# Restore PR safety and repository-health execution on self-hosted runners when
-# that capacity is available again.
+# Restore PR safety and repository-health execution here when self-hosted
+# capacity is available again.
 
 name: mutation
 
 on:
-  pull_request:
-    branches: [main, integration, develop]
-    paths:
-      - 'packages/**/*.py'
-      - 'scripts/mutation_*.py'
-      - 'quality/mutation-*.json'
-      - '.github/workflows/mutation.yml'
   workflow_dispatch:
 
-concurrency:
-  group: mutation-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  mutation-pr:
-    name: Mutation testing on changed files
-    runs-on: ubuntu-latest
-    timeout-minutes: 1
+  mutation-deferred:
+    name: Mutation testing deferred to self-hosted runners
+    runs-on: self-hosted
     steps:
       - name: Mutation temporarily disabled
         run: |
           echo "Mutation testing is temporarily disabled until self-hosted runners are restored."
-          echo "No mutants were executed in this check."
+          echo "No mutation workload is configured on GitHub-hosted runners."
