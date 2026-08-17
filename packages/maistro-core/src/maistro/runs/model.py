@@ -325,10 +325,10 @@ __all__ = [
     "Attempt",
     "AttemptResult",
     "AttemptStatus",
+    "evidence_values_equal",
     "NodeRun",
     "Run",
     "RunStatus",
     "TERMINAL_ATTEMPT_STATUSES",
     "TERMINAL_RUN_STATUSES",
-    "evidence_values_equal",
 ]
