@@ -129,6 +129,19 @@ async def _reconcile_orphaned_attempts(
     return latest
 
 
+def _can_reuse_completed_attempt(
+    record: DurableRunRecord,
+    node_id: str,
+    result: NodeResult,
+) -> bool:
+    """Reuse immutable physical evidence unless new HITL input requires redispatch."""
+    return not (
+        result.status == "paused"
+        and traversal._is_human_pause(result)
+        and node_id in record.hitl_answers
+    )
+
+
 async def _walk(
     record: DurableRunRecord,
     *,
@@ -295,13 +308,14 @@ async def _execute_frontier(
         attempts = await execution_store.list_attempts(node_run.node_run_id)
         if attempts and attempts[-1].status is AttemptStatus.COMPLETED:
             persisted_result = NodeResult.model_validate(attempts[-1].result)
-            return traversal._FrontierItem(
-                node_id,
-                spec,
-                node_run,
-                ctx,
-                persisted_result,
-            )
+            if _can_reuse_completed_attempt(record, node_id, persisted_result):
+                return traversal._FrontierItem(
+                    node_id,
+                    spec,
+                    node_run,
+                    ctx,
+                    persisted_result,
+                )
 
         raw_result: NodeResult | None = None
 
