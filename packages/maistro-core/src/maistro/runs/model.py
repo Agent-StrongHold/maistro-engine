@@ -98,9 +98,13 @@ def evidence_values_equal(left: Any, right: Any) -> bool:
     """Compare persisted projections, including non-reflexive numeric values such as NaN."""
     if left is right:
         return True
-    if isinstance(left, float) and isinstance(right, float):
-        if math.isnan(left) and math.isnan(right):
-            return True
+    if (
+        isinstance(left, float)
+        and isinstance(right, float)
+        and math.isnan(left)
+        and math.isnan(right)
+    ):
+        return True
     if isinstance(left, dict) and isinstance(right, dict):
         return left.keys() == right.keys() and all(
             evidence_values_equal(left[key], right[key]) for key in left
