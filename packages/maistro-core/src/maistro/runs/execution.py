@@ -12,18 +12,37 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from maistro.runs.model import Attempt, AttemptStatus
-from maistro.runs.reconciliation import AttemptLifecycleReconciler
-from maistro.runs.store import RunStore
-from maistro.runtime import (
-    ExecutionCallable,
-    ExecutionRuntime,
-    RuntimeDeadlineExceeded,
-)
+from maistro.runs.reconciliation import AttemptLifecycleReconciler, AttemptLifecycleStore
+from maistro.runtime import ExecutionCallable, ExecutionRuntime, RuntimeDeadlineExceeded
 
 AttemptReconciler = Callable[[Attempt], Awaitable[None]]
+
+
+@runtime_checkable
+class AttemptExecutionStore(AttemptLifecycleStore, Protocol):
+    async def create_attempt(
+        self,
+        node_run_id: str,
+        *,
+        runtime_id: str = "python",
+        executor_id: str = "",
+        deadline_at: datetime | None = None,
+        resume_checkpoint_id: str | None = None,
+    ) -> Attempt: ...
+
+    async def transition_attempt(
+        self,
+        attempt_id: str,
+        target: AttemptStatus,
+        *,
+        at: datetime | None = None,
+        result: object | None = None,
+        error: str | None = None,
+        metrics: dict[str, object] | None = None,
+    ) -> Attempt: ...
 
 
 class AttemptExecutionService:
@@ -32,7 +51,7 @@ class AttemptExecutionService:
     def __init__(
         self,
         *,
-        store: RunStore,
+        store: AttemptExecutionStore,
         runtime: ExecutionRuntime,
         reconciler: AttemptReconciler | None = None,
     ) -> None:
@@ -52,9 +71,16 @@ class AttemptExecutionService:
         runtime_id: str | None = None,
         timeout_s: float | None = None,
         resume_checkpoint_id: str | None = None,
+        reconcile_logical: bool = True,
     ) -> Attempt:
-        """Create, run, terminalize, and reconcile one physical Attempt."""
+        """Create, run, terminalize, and optionally defer successful reconciliation.
 
+        ``reconcile_logical=False`` allows Graph-like domains to interpret a
+        *successfully completed* physical result themselves. It never suppresses
+        reconciliation of cancellation, timeout, or failure: once physical work
+        is gone those exceptional terminal facts must be reflected in logical
+        persistence before the exception propagates.
+        """
         deadline_at = None
         if timeout_s is not None:
             if timeout_s <= 0:
@@ -69,10 +95,7 @@ class AttemptExecutionService:
             deadline_at=deadline_at,
             resume_checkpoint_id=resume_checkpoint_id,
         )
-        attempt = await self._store.transition_attempt(
-            attempt.attempt_id,
-            AttemptStatus.RUNNING,
-        )
+        attempt = await self._store.transition_attempt(attempt.attempt_id, AttemptStatus.RUNNING)
 
         try:
             result = await self._runtime.execute(
@@ -112,12 +135,11 @@ class AttemptExecutionService:
             AttemptStatus.COMPLETED,
             result=result,
         )
-        await self._reconcile(terminal)
+        if reconcile_logical:
+            await self._reconcile(terminal)
         return terminal
 
     async def cancel(self, attempt_id: str) -> bool:
-        """Request mechanics cancellation by canonical physical Attempt identity."""
-
         return await self._runtime.cancel(attempt_id)
 
     async def _terminalize(
@@ -141,4 +163,4 @@ class AttemptExecutionService:
             await self._after_reconcile(attempt.model_copy(deep=True))
 
 
-__all__ = ["AttemptExecutionService", "AttemptReconciler"]
+__all__ = ["AttemptExecutionService", "AttemptExecutionStore", "AttemptReconciler"]

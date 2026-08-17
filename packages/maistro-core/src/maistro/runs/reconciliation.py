@@ -10,6 +10,9 @@ domain policy decides retry, resume, or terminalization.
 
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Protocol, runtime_checkable
+
 from maistro.runs.model import (
     TERMINAL_ATTEMPT_STATUSES,
     TERMINAL_RUN_STATUSES,
@@ -19,13 +22,46 @@ from maistro.runs.model import (
     Run,
     RunStatus,
 )
-from maistro.runs.store import RunIntegrityError, RunStore
+from maistro.runs.store import RunIntegrityError
+
+
+@runtime_checkable
+class AttemptLifecycleStore(Protocol):
+    """Minimal persisted lifecycle contract required around physical Attempts."""
+
+    async def get_run(self, run_id: str) -> Run | None: ...
+
+    async def transition_run(
+        self,
+        run_id: str,
+        target: RunStatus,
+        *,
+        at: datetime | None = None,
+        result: object | None = None,
+        error: str | None = None,
+    ) -> Run: ...
+
+    async def get_node_run(self, node_run_id: str) -> NodeRun | None: ...
+
+    async def list_node_runs(self, run_id: str) -> list[NodeRun]: ...
+
+    async def transition_node_run(
+        self,
+        node_run_id: str,
+        target: RunStatus,
+        *,
+        at: datetime | None = None,
+        result: object | None = None,
+        error: str | None = None,
+    ) -> NodeRun: ...
+
+    async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
 
 
 class AttemptLifecycleReconciler:
     """Keep Run/NodeRun activity consistent with canonical physical Attempts."""
 
-    def __init__(self, store: RunStore) -> None:
+    def __init__(self, store: AttemptLifecycleStore) -> None:
         self._store = store
 
     async def prepare_execution(self, node_run_id: str) -> NodeRun:
@@ -145,4 +181,4 @@ class AttemptLifecycleReconciler:
         return node_run
 
 
-__all__ = ["AttemptLifecycleReconciler"]
+__all__ = ["AttemptLifecycleReconciler", "AttemptLifecycleStore"]
