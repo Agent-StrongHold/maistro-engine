@@ -68,8 +68,5 @@ async def test_replay_backfills_pre_upgrade_completed_node_run() -> None:
 
     assert reconciled.status is RunStatus.COMPLETED
     assert reconciled.accepted_outcome is not None
-    assert (
-        reconciled.accepted_outcome.attempt_result.attempt_id
-        == terminal.attempt_id
-    )
+    assert reconciled.accepted_outcome.attempt_result.attempt_id == terminal.attempt_id
     assert reconciled.finished_at == current.finished_at

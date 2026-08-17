@@ -111,7 +111,8 @@ def evidence_values_equal(left: Any, right: Any) -> bool:
         )
     if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
         return len(left) == len(right) and all(
-            evidence_values_equal(l_item, r_item) for l_item, r_item in zip(left, right, strict=True)
+            evidence_values_equal(l_item, r_item)
+            for l_item, r_item in zip(left, right, strict=True)
         )
     try:
         return bool(left == right)

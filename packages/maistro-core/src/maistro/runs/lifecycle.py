@@ -126,7 +126,9 @@ def transition_node_run(
         if node_run.accepted_outcome is not None or accepted_outcome is None:
             raise InvalidLifecycleTransition("illegal transition: completed -> completed")
         if not evidence_values_equal(node_run.result, accepted_outcome.attempt_result.result):
-            raise InvalidLifecycleTransition("legacy completed NodeRun result differs from AttemptResult")
+            raise InvalidLifecycleTransition(
+                "legacy completed NodeRun result differs from AttemptResult"
+            )
         values = node_run.model_dump(mode="python")
         values["accepted_outcome"] = accepted_outcome
         return NodeRun.model_validate(values)

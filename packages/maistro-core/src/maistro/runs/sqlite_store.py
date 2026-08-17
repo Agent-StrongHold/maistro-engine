@@ -311,7 +311,9 @@ class SqliteRunStore:
                 (node_run_id,),
             )
             if active is not None:
-                raise ActiveAttemptExists(f"NodeRun {node_run_id!r} already has an active Attempt") from exc
+                raise ActiveAttemptExists(
+                    f"NodeRun {node_run_id!r} already has an active Attempt"
+                ) from exc
             raise RunIntegrityError("Attempt persistence integrity failure") from exc
         except Exception:
             await self._conn.rollback()
