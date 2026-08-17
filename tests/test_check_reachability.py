@@ -33,7 +33,14 @@ def test_baseline_matches_the_tree(check):
     """The committed baseline is the current truth — otherwise the first CI run
     after any merge fails for reasons unrelated to that merge."""
     unreachable, _ = check.unreachable_modules()
-    assert sorted(json.loads(BASELINE.read_text())["unreachable"]) == unreachable
+    baseline = sorted(json.loads(BASELINE.read_text())["unreachable"])
+    stale = sorted(set(baseline) - set(unreachable))
+    added = sorted(set(unreachable) - set(baseline))
+    if stale:
+        print(f"::error title=Reachability baseline stale::{','.join(stale)}")
+    if added:
+        print(f"::error title=New unreachable modules::{','.join(added)}")
+    assert baseline == unreachable
 
 
 def test_entry_points_are_reachable(check):
