@@ -62,7 +62,7 @@ async def test_replay_backfills_pre_upgrade_completed_node_run() -> None:
     # Simulate a row persisted before AcceptedNodeOutcome existed. The legacy
     # row already contains the projected result and terminal lifecycle facts.
     legacy = current.model_copy(update={"accepted_outcome": None})
-    store._node_runs[node_run_id] = legacy  # noqa: SLF001 - compatibility fixture
+    store._node_runs[node_run_id] = legacy
 
     reconciled = await AttemptLifecycleReconciler(store).reconcile(terminal)
 
