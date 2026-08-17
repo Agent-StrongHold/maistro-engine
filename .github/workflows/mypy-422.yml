@@ -1,0 +1,28 @@
+name: mypy-422
+
+on:
+  push:
+    branches: [feat/attempt-result-acceptance]
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.5.x"
+      - run: uv python install 3.12
+      - run: uv sync --locked --all-extras
+      - name: Strict mypy diagnostics
+        shell: bash
+        run: |
+          set +e
+          uv run mypy packages/maistro-core/src packages/maistro-server/src packages/maistro-turing/src packages/maistro-canvas/src packages/maistro-bootstrap/src packages/maistro-registry/src packages/maistro-evolve/src packages/maistro-rsi/src packages/maistro-design/src --strict --show-error-codes 2>&1 | tee /tmp/mypy.txt
+          status=${PIPESTATUS[0]}
+          while IFS= read -r line; do
+            if [[ "$line" == *": error:"* ]]; then
+              echo "::error::$line"
+            fi
+          done < /tmp/mypy.txt
+          exit "$status"
