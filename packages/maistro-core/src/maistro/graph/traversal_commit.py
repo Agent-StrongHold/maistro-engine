@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -366,6 +367,39 @@ class TraversalCheckpoint(BaseModel):
             checkpoint_id=checkpoint_id,
             checkpoint_sequence=checkpoint_sequence,
         )
+
+
+if TYPE_CHECKING:
+
+    def _vulture_traversal_contract_usage(
+        commit: TraversalCommit,
+        checkpoint: TraversalCheckpoint,
+    ) -> None:
+        _ = commit.traversal_commit_id
+        _ = commit.run_id
+        _ = commit.prior_commit_id
+        _ = commit.graph_snapshot_hash
+        _ = commit.prior_state_hash
+        _ = commit.ordered_source_node_run_ids
+        _ = commit.accepted_outcome_ids
+        _ = commit.edge_decision_ids
+        _ = commit.resulting_frontier
+        _ = commit.resulting_state_hash
+        _ = commit.checkpoint_id
+        _ = commit.commit_sequence
+        _ = commit.committed_at
+        _ = checkpoint.traversal_checkpoint_id
+        _ = checkpoint.run_id
+        _ = checkpoint.graph_snapshot_hash
+        _ = checkpoint.state_hash
+        _ = checkpoint.ordered_source_node_run_ids
+        _ = checkpoint.checkpoint_id
+        _ = checkpoint.checkpoint_sequence
+        _ = checkpoint.checkpointed_at
+        _ = TraversalCommit.from_transition
+        _ = TraversalCheckpoint.from_state
+
+    _ = _vulture_traversal_contract_usage
 
 
 __all__ = [
