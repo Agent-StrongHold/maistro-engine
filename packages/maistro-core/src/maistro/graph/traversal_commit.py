@@ -165,7 +165,9 @@ def _validate_transition_inputs(
     ):
         raise ValueError("resulting state must preserve prior routing-decision history")
     if resulting_decisions[len(prior_decisions) :] != edge_decisions:
-        raise ValueError("commit routing decisions must exactly match decisions added by transition")
+        raise ValueError(
+            "commit routing decisions must exactly match decisions added by transition"
+        )
 
 
 class TraversalCommit(BaseModel):
