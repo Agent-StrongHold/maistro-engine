@@ -103,6 +103,18 @@ def _checkpoint_identity(
     )
 
 
+def _require_commit_identity(value: str) -> str:
+    if not value.strip():
+        raise ValueError("TraversalCommit identities and hashes must be non-empty")
+    return value
+
+
+def _require_commit_members(value: tuple[str, ...]) -> tuple[str, ...]:
+    if any(not item.strip() for item in value):
+        raise ValueError("TraversalCommit identity collections cannot contain empty values")
+    return value
+
+
 def _validate_commit_collections(
     *,
     source_ids: tuple[str, ...],
@@ -127,6 +139,33 @@ def _validate_commit_chain(commit_sequence: int, prior_commit_id: str | None) ->
         raise ValueError("initial TraversalCommit cannot have a prior_commit_id")
     if commit_sequence > 1 and not prior_commit_id:
         raise ValueError("noninitial TraversalCommit requires prior_commit_id")
+
+
+def _validate_transition_inputs(
+    *,
+    prior_state: GraphExecutionState,
+    resulting_state: GraphExecutionState,
+    ordered_source_node_run_ids: tuple[str, ...],
+    accepted_outcomes: tuple[AcceptedNodeOutcome, ...],
+    edge_decisions: tuple[GraphEdgeDecision, ...],
+) -> None:
+    if prior_state.run_id != resulting_state.run_id:
+        raise ValueError("TraversalCommit cannot cross Run identity")
+    outcome_node_runs = tuple(outcome.node_run_id for outcome in accepted_outcomes)
+    if outcome_node_runs != ordered_source_node_run_ids:
+        raise ValueError("accepted outcomes must match source NodeRuns in deterministic order")
+    source_set = set(ordered_source_node_run_ids)
+    if any(decision.source_node_run_id not in source_set for decision in edge_decisions):
+        raise ValueError("routing decisions must come from this commit's source NodeRuns")
+    prior_decisions = prior_state.edge_decisions
+    resulting_decisions = resulting_state.edge_decisions
+    if (
+        len(resulting_decisions) < len(prior_decisions)
+        or resulting_decisions[: len(prior_decisions)] != prior_decisions
+    ):
+        raise ValueError("resulting state must preserve prior routing-decision history")
+    if resulting_decisions[len(prior_decisions) :] != edge_decisions:
+        raise ValueError("commit routing decisions must exactly match decisions added by transition")
 
 
 class TraversalCommit(BaseModel):
@@ -157,9 +196,7 @@ class TraversalCommit(BaseModel):
     )
     @classmethod
     def _non_empty_identity(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("TraversalCommit identities and hashes must be non-empty")
-        return value
+        return _require_commit_identity(value)
 
     @field_validator(
         "ordered_source_node_run_ids",
@@ -169,9 +206,7 @@ class TraversalCommit(BaseModel):
     )
     @classmethod
     def _non_empty_members(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if any(not item.strip() for item in value):
-            raise ValueError("TraversalCommit identity collections cannot contain empty values")
-        return value
+        return _require_commit_members(value)
 
     @model_validator(mode="after")
     def _validate_cardinality_and_identity(self) -> TraversalCommit:
@@ -214,28 +249,13 @@ class TraversalCommit(BaseModel):
         checkpoint_id: str | None = None,
     ) -> TraversalCommit:
         """Construct a content-addressed commit from one complete advancing transition."""
-        if prior_state.run_id != resulting_state.run_id:
-            raise ValueError("TraversalCommit cannot cross Run identity")
-        outcome_node_runs = tuple(outcome.node_run_id for outcome in accepted_outcomes)
-        if outcome_node_runs != ordered_source_node_run_ids:
-            raise ValueError("accepted outcomes must match source NodeRuns in deterministic order")
-        source_set = set(ordered_source_node_run_ids)
-        if any(decision.source_node_run_id not in source_set for decision in edge_decisions):
-            raise ValueError("routing decisions must come from this commit's source NodeRuns")
-
-        prior_decisions = prior_state.edge_decisions
-        resulting_decisions = resulting_state.edge_decisions
-        if (
-            len(resulting_decisions) < len(prior_decisions)
-            or resulting_decisions[: len(prior_decisions)] != prior_decisions
-        ):
-            raise ValueError("resulting state must preserve prior routing-decision history")
-        transition_decisions = resulting_decisions[len(prior_decisions) :]
-        if transition_decisions != edge_decisions:
-            raise ValueError(
-                "commit routing decisions must exactly match decisions added by transition"
-            )
-
+        _validate_transition_inputs(
+            prior_state=prior_state,
+            resulting_state=resulting_state,
+            ordered_source_node_run_ids=ordered_source_node_run_ids,
+            accepted_outcomes=accepted_outcomes,
+            edge_decisions=edge_decisions,
+        )
         prior_hash = graph_state_hash(prior_state)
         outcome_ids = tuple(accepted_outcome_id(item) for item in accepted_outcomes)
         decision_ids = tuple(edge_decision_id(item) for item in edge_decisions)
