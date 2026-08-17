@@ -103,6 +103,32 @@ def _checkpoint_identity(
     )
 
 
+def _validate_commit_collections(
+    *,
+    source_ids: tuple[str, ...],
+    outcome_ids: tuple[str, ...],
+    decision_ids: tuple[str, ...],
+    frontier: tuple[str, ...],
+) -> None:
+    if len(source_ids) != len(set(source_ids)):
+        raise ValueError("source NodeRuns must appear once per TraversalCommit")
+    if len(outcome_ids) != len(source_ids):
+        raise ValueError("every advancing source NodeRun must contribute one accepted outcome")
+    if len(outcome_ids) != len(set(outcome_ids)):
+        raise ValueError("accepted outcomes must be unique per TraversalCommit")
+    if len(decision_ids) != len(set(decision_ids)):
+        raise ValueError("edge decisions must be unique per TraversalCommit")
+    if len(frontier) != len(set(frontier)):
+        raise ValueError("resulting frontier must not contain duplicate nodes")
+
+
+def _validate_commit_chain(commit_sequence: int, prior_commit_id: str | None) -> None:
+    if commit_sequence == 1 and prior_commit_id is not None:
+        raise ValueError("initial TraversalCommit cannot have a prior_commit_id")
+    if commit_sequence > 1 and not prior_commit_id:
+        raise ValueError("noninitial TraversalCommit requires prior_commit_id")
+
+
 class TraversalCommit(BaseModel):
     """One accepted advancing transition between durable Graph traversal states."""
 
@@ -149,20 +175,13 @@ class TraversalCommit(BaseModel):
 
     @model_validator(mode="after")
     def _validate_cardinality_and_identity(self) -> TraversalCommit:
-        if self.commit_sequence == 1 and self.prior_commit_id is not None:
-            raise ValueError("initial TraversalCommit cannot have a prior_commit_id")
-        if self.commit_sequence > 1 and not self.prior_commit_id:
-            raise ValueError("noninitial TraversalCommit requires prior_commit_id")
-        if len(self.ordered_source_node_run_ids) != len(set(self.ordered_source_node_run_ids)):
-            raise ValueError("source NodeRuns must appear once per TraversalCommit")
-        if len(self.accepted_outcome_ids) != len(self.ordered_source_node_run_ids):
-            raise ValueError("every advancing source NodeRun must contribute one accepted outcome")
-        if len(self.accepted_outcome_ids) != len(set(self.accepted_outcome_ids)):
-            raise ValueError("accepted outcomes must be unique per TraversalCommit")
-        if len(self.edge_decision_ids) != len(set(self.edge_decision_ids)):
-            raise ValueError("edge decisions must be unique per TraversalCommit")
-        if len(self.resulting_frontier) != len(set(self.resulting_frontier)):
-            raise ValueError("resulting frontier must not contain duplicate nodes")
+        _validate_commit_chain(self.commit_sequence, self.prior_commit_id)
+        _validate_commit_collections(
+            source_ids=self.ordered_source_node_run_ids,
+            outcome_ids=self.accepted_outcome_ids,
+            decision_ids=self.edge_decision_ids,
+            frontier=self.resulting_frontier,
+        )
         expected = _commit_identity(
             run_id=self.run_id,
             prior_commit_id=self.prior_commit_id,
