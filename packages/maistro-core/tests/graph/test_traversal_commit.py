@@ -63,6 +63,7 @@ def test_graph_state_hash_is_deterministic_and_state_sensitive() -> None:
         visit_counts={"a": 1},
         blackboard_snapshot={"value": 1},
     )
+
     assert graph_state_hash(state) == graph_state_hash(equivalent)
     assert graph_state_hash(state) != graph_state_hash(advanced)
 
@@ -72,6 +73,7 @@ def test_fact_identities_are_stable_across_equivalent_reconstruction() -> None:
     assert edge_decision_id(decision) == edge_decision_id(
         GraphEdgeDecision.model_validate(decision.model_dump(mode="json"))
     )
+
     first = _outcome("nr-a")
     later_acceptance = AcceptedNodeOutcome(
         node_run_id=first.node_run_id,
@@ -89,6 +91,7 @@ def test_accepted_outcome_identity_supports_json_serializable_typed_values() -> 
             "id": UUID("12345678-1234-5678-1234-567812345678"),
         },
     )
+
     assert len(accepted_outcome_id(outcome)) == 64
 
 
@@ -102,6 +105,7 @@ def test_same_transition_reconstructs_same_content_addressed_commit() -> None:
         edge_decisions=(_decision(),),
     )
     outcome = _outcome("nr-a")
+
     first = TraversalCommit.from_transition(
         graph_snapshot_hash="graph-hash",
         prior_state=prior,
@@ -120,6 +124,7 @@ def test_same_transition_reconstructs_same_content_addressed_commit() -> None:
         edge_decisions=(_decision(),),
         commit_sequence=1,
     )
+
     assert first.traversal_commit_id == reconstructed.traversal_commit_id
     assert first.prior_state_hash == graph_state_hash(prior)
     assert first.resulting_state_hash == graph_state_hash(resulting)
@@ -129,6 +134,7 @@ def test_same_transition_reconstructs_same_content_addressed_commit() -> None:
 def test_transition_requires_accepted_outcomes_in_source_visit_order() -> None:
     prior = GraphExecutionState(run_id="run-1", active_node_ids=("a", "c"))
     resulting = GraphExecutionState(run_id="run-1", active_node_ids=("b",))
+
     with pytest.raises(ValueError, match="deterministic order"):
         TraversalCommit.from_transition(
             graph_snapshot_hash="graph-hash",
@@ -144,7 +150,12 @@ def test_transition_requires_accepted_outcomes_in_source_visit_order() -> None:
 def test_transition_rejects_routing_decision_from_other_visit() -> None:
     prior = GraphExecutionState(run_id="run-1", active_node_ids=("a",))
     wrong = _decision("nr-other")
-    resulting = GraphExecutionState(run_id="run-1", active_node_ids=("b",), edge_decisions=(wrong,))
+    resulting = GraphExecutionState(
+        run_id="run-1",
+        active_node_ids=("b",),
+        edge_decisions=(wrong,),
+    )
+
     with pytest.raises(ValueError, match="source NodeRuns"):
         TraversalCommit.from_transition(
             graph_snapshot_hash="graph-hash",
@@ -160,7 +171,12 @@ def test_transition_rejects_routing_decision_from_other_visit() -> None:
 def test_transition_requires_supplied_decisions_to_be_exact_resulting_delta() -> None:
     prior = GraphExecutionState(run_id="run-1", active_node_ids=("a",))
     recorded = _decision()
-    resulting = GraphExecutionState(run_id="run-1", active_node_ids=("b",), edge_decisions=(recorded,))
+    resulting = GraphExecutionState(
+        run_id="run-1",
+        active_node_ids=("b",),
+        edge_decisions=(recorded,),
+    )
+
     with pytest.raises(ValueError, match="exactly match"):
         TraversalCommit.from_transition(
             graph_snapshot_hash="graph-hash",
@@ -176,6 +192,7 @@ def test_transition_requires_supplied_decisions_to_be_exact_resulting_delta() ->
 def test_noninitial_commit_requires_prior_commit_identity() -> None:
     prior = GraphExecutionState(run_id="run-1", active_node_ids=("a",))
     resulting = GraphExecutionState(run_id="run-1", active_node_ids=())
+
     with pytest.raises(ValueError, match="prior_commit_id"):
         TraversalCommit.from_transition(
             graph_snapshot_hash="graph-hash",
@@ -191,6 +208,7 @@ def test_noninitial_commit_requires_prior_commit_identity() -> None:
 def test_initial_commit_rejects_prior_commit_identity() -> None:
     prior = GraphExecutionState(run_id="run-1", active_node_ids=("a",))
     resulting = GraphExecutionState(run_id="run-1", active_node_ids=())
+
     with pytest.raises(ValueError, match="initial TraversalCommit"):
         TraversalCommit.from_transition(
             graph_snapshot_hash="graph-hash",
@@ -210,6 +228,7 @@ def test_paused_visit_has_nonadvancing_checkpoint_evidence() -> None:
         active_node_ids=("human-review",),
         metadata={"pause": {"reason": "approval"}},
     )
+
     checkpoint = TraversalCheckpoint.from_state(
         graph_snapshot_hash="graph-hash",
         state=paused,
@@ -224,6 +243,7 @@ def test_paused_visit_has_nonadvancing_checkpoint_evidence() -> None:
         checkpoint_sequence=1,
         checkpoint_id="cp-1",
     )
+
     assert checkpoint.traversal_checkpoint_id == reconstructed.traversal_checkpoint_id
     assert checkpoint.state_hash == graph_state_hash(paused)
     assert checkpoint.ordered_source_node_run_ids == ("nr-human",)
@@ -243,5 +263,6 @@ def test_content_address_detects_tampered_authoritative_transition() -> None:
     )
     payload = commit.model_dump(mode="python")
     payload["resulting_state_hash"] = "tampered"
+
     with pytest.raises(ValueError, match="identity does not match"):
         TraversalCommit.model_validate(payload)
