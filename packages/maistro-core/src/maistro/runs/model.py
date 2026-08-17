@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import math
 import uuid
+from collections.abc import Iterable
 from copy import deepcopy
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -44,9 +45,11 @@ class _FrozenDict(dict[Any, Any]):
     __delitem__ = _deny
     clear = _deny
     pop = _deny
-    popitem = _deny
     setdefault = _deny
     update = _deny
+
+    def popitem(self) -> tuple[Any, Any]:
+        raise TypeError("AttemptResult evidence is immutable")
 
     def __deepcopy__(self, _memo: dict[int, object]) -> _FrozenDict:
         return self
@@ -69,8 +72,12 @@ class _FrozenList(list[Any]):
     remove = _deny
     reverse = _deny
     sort = _deny
-    __iadd__ = _deny
-    __imul__ = _deny
+
+    def __iadd__(self, _values: Iterable[Any]) -> Self:
+        raise TypeError("AttemptResult evidence is immutable")
+
+    def __imul__(self, _value: int) -> Self:
+        raise TypeError("AttemptResult evidence is immutable")
 
     def __deepcopy__(self, _memo: dict[int, object]) -> _FrozenList:
         return self
@@ -132,6 +139,16 @@ class RunStatus(StrEnum):
     TIMED_OUT = "timed_out"
 
 
+TERMINAL_RUN_STATUSES = frozenset(
+    {
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+        RunStatus.TIMED_OUT,
+    }
+)
+
+
 class AttemptStatus(StrEnum):
     CREATED = "created"
     RUNNING = "running"
@@ -142,14 +159,6 @@ class AttemptStatus(StrEnum):
     YIELDED = "yielded"
 
 
-TERMINAL_RUN_STATUSES = frozenset(
-    {
-        RunStatus.COMPLETED,
-        RunStatus.FAILED,
-        RunStatus.CANCELLED,
-        RunStatus.TIMED_OUT,
-    }
-)
 TERMINAL_ATTEMPT_STATUSES = frozenset(
     {
         AttemptStatus.COMPLETED,
@@ -161,73 +170,27 @@ TERMINAL_ATTEMPT_STATUSES = frozenset(
 )
 
 
-class GraphSnapshot(BaseModel):
-    """Immutable-by-value Graph definition captured when a Run is created."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    graph_id: str
-    workspace_id: str
-    project_id: str
-    content_hash: str
-    definition_json: str
-
-    @classmethod
-    def from_graph(cls, graph: Graph) -> GraphSnapshot:
-        return cls(
-            graph_id=graph.graph_id,
-            workspace_id=graph.workspace_id,
-            project_id=graph.project_id,
-            content_hash=graph.content_hash,
-            definition_json=graph.model_dump_json(),
-        )
-
-    def materialize(self) -> Graph:
-        return Graph.model_validate_json(self.definition_json)
-
-    @model_validator(mode="after")
-    def _validate_snapshot(self) -> GraphSnapshot:
-        graph = self.materialize()
-        if graph.graph_id != self.graph_id:
-            raise ValueError("graph snapshot graph_id does not match definition")
-        if graph.workspace_id != self.workspace_id:
-            raise ValueError("graph snapshot workspace_id does not match definition")
-        if graph.project_id != self.project_id:
-            raise ValueError("graph snapshot project_id does not match definition")
-        if graph.content_hash != self.content_hash:
-            raise ValueError("graph snapshot content_hash does not match definition")
-        return self
-
-
 class Run(BaseModel):
-    """One logical execution of a stable Graph snapshot in one Project scope."""
-
     model_config = ConfigDict(extra="forbid")
 
     run_id: str = Field(default_factory=_id)
     workspace_id: str
     project_id: str
-    graph: GraphSnapshot
+    graph: Graph
     status: RunStatus = RunStatus.CREATED
-    parent_run_id: str | None = None
-    parent_node_run_id: str | None = None
-    persona_id: str | None = None
+    result: Any = None
+    error: str | None = None
     actor_principal_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    provenance: dict[str, Any] = Field(default_factory=dict)
-    result: Any | None = None
-    error: str | None = None
 
     @model_validator(mode="after")
-    def _validate_run(self) -> Run:
+    def _validate(self) -> Run:
+        _require_non_empty(self.run_id, "run_id")
         _require_non_empty(self.workspace_id, "workspace_id")
         _require_non_empty(self.project_id, "project_id")
-        self._validate_scope_identity()
-        if self.parent_run_id == self.run_id:
-            raise ValueError("Run cannot be its own parent")
         _validate_finished_at(
             terminal=self.status in TERMINAL_RUN_STATUSES,
             finished_at=self.finished_at,
@@ -235,131 +198,106 @@ class Run(BaseModel):
         )
         return self
 
-    def _validate_scope_identity(self) -> None:
-        if self.graph.workspace_id != self.workspace_id:
-            raise ValueError("Run and Graph snapshot must belong to the same Workspace")
-        if self.graph.project_id != self.project_id:
-            raise ValueError("Run and Graph snapshot must belong to the same Project")
-
 
 class AttemptResult(BaseModel):
-    """Immutable evidence produced by one terminal physical Attempt."""
+    """Immutable physical evidence captured from one terminal Attempt."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
     attempt_id: str
     node_run_id: str
-    ordinal: int = Field(ge=1)
+    ordinal: int
     status: AttemptStatus
-    result: Any | None = None
+    result: Any = None
     error: str | None = None
+    metrics: dict[str, object] = Field(default_factory=dict)
     finished_at: datetime
 
     @model_validator(mode="after")
-    def _validate_attempt_result(self) -> AttemptResult:
+    def _validate(self) -> AttemptResult:
+        if self.status not in TERMINAL_ATTEMPT_STATUSES:
+            raise ValueError("AttemptResult requires a terminal Attempt status")
         _require_non_empty(self.attempt_id, "attempt_id")
         _require_non_empty(self.node_run_id, "node_run_id")
-        if self.status not in TERMINAL_ATTEMPT_STATUSES:
-            raise ValueError("AttemptResult requires a terminal physical Attempt status")
-        frozen = _freeze_evidence_value(self.result)
-        if frozen is not self.result:
-            object.__setattr__(self, "result", frozen)
+        object.__setattr__(self, "result", _freeze_evidence_value(self.result))
+        object.__setattr__(self, "metrics", _FrozenDict(_freeze_evidence_value(self.metrics)))
         return self
-
-    @classmethod
-    def from_attempt(cls, attempt: Attempt) -> AttemptResult:
-        if attempt.status not in TERMINAL_ATTEMPT_STATUSES or attempt.finished_at is None:
-            raise ValueError("AttemptResult can only be created from a terminal Attempt")
-        return cls(
-            attempt_id=attempt.attempt_id,
-            node_run_id=attempt.node_run_id,
-            ordinal=attempt.ordinal,
-            status=attempt.status,
-            result=attempt.result,
-            error=attempt.error,
-            finished_at=attempt.finished_at,
-        )
 
 
 class AcceptedNodeOutcome(BaseModel):
-    """The one physical result accepted as authoritative for a logical NodeRun."""
+    """Authoritative logical acceptance of immutable physical Attempt evidence."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    node_run_id: str
     attempt_result: AttemptResult
     accepted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-    @model_validator(mode="after")
-    def _validate_accepted_outcome(self) -> AcceptedNodeOutcome:
-        _require_non_empty(self.node_run_id, "node_run_id")
-        if self.attempt_result.node_run_id != self.node_run_id:
-            raise ValueError("accepted AttemptResult must belong to the NodeRun")
-        if self.attempt_result.status is not AttemptStatus.COMPLETED:
-            raise ValueError("only a completed AttemptResult can become an accepted Node outcome")
-        return self
-
 
 class NodeRun(BaseModel):
-    """One logical execution of one Node within a Run."""
-
     model_config = ConfigDict(extra="forbid")
 
     node_run_id: str = Field(default_factory=_id)
     run_id: str
     node_id: str
-    ordinal: int = Field(ge=1)
+    ordinal: int
     status: RunStatus = RunStatus.CREATED
+    result: Any = None
+    accepted_outcome: AcceptedNodeOutcome | None = None
+    error: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    accepted_outcome: AcceptedNodeOutcome | None = None
-    result: Any | None = None
-    error: str | None = None
 
     @model_validator(mode="after")
-    def _validate_node_run(self) -> NodeRun:
+    def _validate(self) -> NodeRun:
+        _require_non_empty(self.node_run_id, "node_run_id")
         _require_non_empty(self.run_id, "run_id")
         _require_non_empty(self.node_id, "node_id")
-        if self.accepted_outcome is not None:
-            if self.accepted_outcome.node_run_id != self.node_run_id:
-                raise ValueError("accepted outcome must belong to this NodeRun")
-            if self.status is not RunStatus.COMPLETED:
-                raise ValueError("accepted outcome requires a completed NodeRun")
-            if not evidence_values_equal(self.result, self.accepted_outcome.attempt_result.result):
-                raise ValueError("NodeRun.result must project the accepted AttemptResult")
+        if self.ordinal < 1:
+            raise ValueError("NodeRun ordinal must be >= 1")
         _validate_finished_at(
             terminal=self.status in TERMINAL_RUN_STATUSES,
             finished_at=self.finished_at,
             subject="NodeRun",
         )
+        if self.accepted_outcome is not None:
+            evidence = self.accepted_outcome.attempt_result
+            if evidence.node_run_id != self.node_run_id:
+                raise ValueError("AcceptedNodeOutcome belongs to a different NodeRun")
+            if evidence.status is not AttemptStatus.COMPLETED:
+                raise ValueError("AcceptedNodeOutcome requires COMPLETED physical evidence")
+            if self.status is not RunStatus.COMPLETED:
+                raise ValueError("AcceptedNodeOutcome requires a COMPLETED NodeRun")
+            if not evidence_values_equal(self.result, evidence.result):
+                raise ValueError("NodeRun.result must project the accepted AttemptResult result")
         return self
 
 
 class Attempt(BaseModel):
-    """One physical try under a NodeRun."""
-
     model_config = ConfigDict(extra="forbid")
 
     attempt_id: str = Field(default_factory=_id)
     node_run_id: str
-    ordinal: int = Field(ge=1)
+    ordinal: int
     status: AttemptStatus = AttemptStatus.CREATED
     runtime_id: str = "python"
     executor_id: str = ""
+    resume_checkpoint_id: str | None = None
+    deadline_at: datetime | None = None
+    result: Any = None
+    error: str | None = None
+    metrics: dict[str, object] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    deadline_at: datetime | None = None
-    resume_checkpoint_id: str | None = None
-    result: Any | None = None
-    error: str | None = None
-    metrics: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_attempt(self) -> Attempt:
+    def _validate(self) -> Attempt:
+        _require_non_empty(self.attempt_id, "attempt_id")
         _require_non_empty(self.node_run_id, "node_run_id")
+        if self.ordinal < 1:
+            raise ValueError("Attempt ordinal must be >= 1")
         _validate_finished_at(
             terminal=self.status in TERMINAL_ATTEMPT_STATUSES,
             finished_at=self.finished_at,
@@ -367,17 +305,30 @@ class Attempt(BaseModel):
         )
         return self
 
+    def to_result(self) -> AttemptResult:
+        if self.status not in TERMINAL_ATTEMPT_STATUSES or self.finished_at is None:
+            raise ValueError("AttemptResult requires terminal physical evidence")
+        return AttemptResult(
+            attempt_id=self.attempt_id,
+            node_run_id=self.node_run_id,
+            ordinal=self.ordinal,
+            status=self.status,
+            result=self.result,
+            error=self.error,
+            metrics=self.metrics,
+            finished_at=self.finished_at,
+        )
+
 
 __all__ = [
-    "TERMINAL_ATTEMPT_STATUSES",
-    "TERMINAL_RUN_STATUSES",
     "AcceptedNodeOutcome",
     "Attempt",
     "AttemptResult",
     "AttemptStatus",
-    "GraphSnapshot",
     "NodeRun",
     "Run",
     "RunStatus",
+    "TERMINAL_ATTEMPT_STATUSES",
+    "TERMINAL_RUN_STATUSES",
     "evidence_values_equal",
 ]
