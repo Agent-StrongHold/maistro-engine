@@ -73,10 +73,12 @@ class _FrozenList(list[Any]):
     reverse = _deny
     sort = _deny
 
-    def __iadd__(self, _values: Iterable[Any]) -> Self:
+    def __iadd__(self, _values: Iterable[Any]) -> Self:  # type: ignore[misc]
+        """Reject list's mutating += contract for immutable evidence."""
         raise TypeError("AttemptResult evidence is immutable")
 
-    def __imul__(self, _value: int) -> Self:
+    def __imul__(self, _value: int) -> Self:  # type: ignore[misc,override]
+        """Reject list's mutating *= contract for immutable evidence."""
         raise TypeError("AttemptResult evidence is immutable")
 
     def __deepcopy__(self, _memo: dict[int, object]) -> _FrozenList:
