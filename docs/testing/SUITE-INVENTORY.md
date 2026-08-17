@@ -55,7 +55,7 @@ durability, routing, HITL, restart, mutation, and persistence invariants.
 Real durable Graph frontier execution adds six maistro-core node IDs covering
 concurrent fan-out, deterministic NodeRun ordering, source-correlated routing,
 and fan-in input merging.
-Durable Attempt/Runtime-boundary convergence adds seven maistro-core node IDs
+Durable Attempt/Runtime-boundary convergence adds nine maistro-core node IDs
 covering Attempt ownership, shared durable persistence, deferred domain
 reconciliation, real frontier execution through Attempt execution IDs,
 cancellation terminalization across Attempt, NodeRun, and Run, and recovery by
@@ -80,7 +80,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6146 | `ci.yml` |
+| `packages/maistro-core/tests` | 6148 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
