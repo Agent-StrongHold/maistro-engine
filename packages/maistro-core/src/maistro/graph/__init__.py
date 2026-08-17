@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from maistro.graph.definitions import (
     Edge,
     Graph,
@@ -53,12 +51,6 @@ from maistro.graph.types import (
     SubTask,
     ToolEvaluation,
 )
-
-if TYPE_CHECKING:
-    _ = TraversalCommit._non_empty_identity
-    _ = TraversalCommit._non_empty_members
-    _ = TraversalCommit._validate_cardinality_and_identity
-    _ = TraversalCheckpoint._validate_identity
 
 __all__ = [
     "DEFAULT_NODE_TYPES",
