@@ -2,10 +2,9 @@
 
 The reconciler owns universal lifecycle bookkeeping only. It never decides
 whether a failed/timed-out/cancelled Attempt is eligible for retry and it never
-decides Graph traversal completion. Unsuccessful physical outcomes park the
-logical NodeRun (and, when no other logical work is active, the Run) in
-``waiting`` so persistence does not claim a worker is still running while
-domain policy decides retry, resume, or terminalization.
+decides Graph traversal completion. Physical completion is first captured as
+immutable AttemptResult evidence; only an explicit AcceptedNodeOutcome makes
+that result authoritative for the logical NodeRun.
 """
 
 from __future__ import annotations
@@ -16,7 +15,9 @@ from typing import Protocol, runtime_checkable
 from maistro.runs.model import (
     TERMINAL_ATTEMPT_STATUSES,
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
+    AttemptResult,
     AttemptStatus,
     NodeRun,
     Run,
@@ -53,6 +54,7 @@ class AttemptLifecycleStore(Protocol):
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun: ...
 
     async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
@@ -66,21 +68,13 @@ class AttemptLifecycleReconciler:
 
     async def prepare_execution(self, node_run_id: str) -> NodeRun:
         """Put the containing Run and NodeRun in ``running`` before a physical try."""
-
         node_run = await self._require_node_run(node_run_id)
         run = await self._require_run(node_run.run_id)
         await self._ensure_run_running(run)
         return await self._ensure_node_run_running(node_run)
 
     async def reconcile(self, attempt: Attempt) -> NodeRun:
-        """Reconcile one already-persisted terminal Attempt into logical activity.
-
-        Success completes the logical NodeRun. Other terminal physical outcomes
-        park it in ``waiting`` without deciding retry eligibility. That keeps
-        retry policy outside Runtime and outside this universal reconciler while
-        preventing a durable phantom ``running`` worker.
-        """
-
+        """Reconcile one already-persisted terminal Attempt into logical activity."""
         if attempt.status not in TERMINAL_ATTEMPT_STATUSES:
             raise RunIntegrityError("cannot reconcile a non-terminal Attempt")
 
@@ -92,7 +86,12 @@ class AttemptLifecycleReconciler:
 
         node_run = await self._require_node_run(attempt.node_run_id)
         if attempt.status is AttemptStatus.COMPLETED:
-            return await self._complete_node_run(node_run, attempt)
+            result = AttemptResult.from_attempt(persisted)
+            outcome = AcceptedNodeOutcome(
+                node_run_id=node_run.node_run_id,
+                attempt_result=result,
+            )
+            return await self._accept_node_outcome(node_run, outcome)
 
         parked = await self._park_node_run(node_run, attempt)
         await self._park_run_if_inactive(parked.run_id)
@@ -130,15 +129,34 @@ class AttemptLifecycleReconciler:
             f"NodeRun {node_run.node_run_id!r} cannot enter running from {node_run.status.value!r}"
         )
 
-    async def _complete_node_run(self, node_run: NodeRun, attempt: Attempt) -> NodeRun:
+    async def _accept_node_outcome(
+        self,
+        node_run: NodeRun,
+        outcome: AcceptedNodeOutcome,
+    ) -> NodeRun:
         if node_run.status is RunStatus.COMPLETED:
+            accepted = node_run.accepted_outcome
+            if accepted is None:
+                # Pre-upgrade completed rows projected the physical result but
+                # did not persist AcceptedNodeOutcome. The lifecycle/store
+                # permit exactly this evidence-only backfill after validating
+                # the referenced Attempt against canonical storage.
+                return await self._store.transition_node_run(
+                    node_run.node_run_id,
+                    RunStatus.COMPLETED,
+                    result=node_run.result,
+                    accepted_outcome=outcome,
+                )
+            if accepted.attempt_result != outcome.attempt_result:
+                raise RunIntegrityError("NodeRun already has a different accepted outcome")
             return node_run
         if node_run.status is not RunStatus.RUNNING:
             raise RunIntegrityError("completed Attempt requires a running logical NodeRun")
         return await self._store.transition_node_run(
             node_run.node_run_id,
             RunStatus.COMPLETED,
-            result=attempt.result,
+            result=outcome.attempt_result.result,
+            accepted_outcome=outcome,
         )
 
     async def _park_node_run(self, node_run: NodeRun, attempt: Attempt) -> NodeRun:
@@ -159,7 +177,6 @@ class AttemptLifecycleReconciler:
         run = await self._require_run(run_id)
         if run.status is not RunStatus.RUNNING:
             return run
-
         node_runs = await self._store.list_node_runs(run_id)
         if any(
             node_run.status in {RunStatus.CREATED, RunStatus.QUEUED, RunStatus.RUNNING}

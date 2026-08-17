@@ -19,6 +19,7 @@ from maistro.runs.lifecycle import (
 )
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
     AttemptStatus,
     NodeRun,
@@ -91,6 +92,7 @@ class DurableRunExecutionStore:
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun:
         def update(record: DurableRunRecord) -> DurableRunRecord:
             node_runs = list(record.node_runs)
@@ -103,6 +105,7 @@ class DurableRunExecutionStore:
                     at=at,
                     result=result,
                     error=error,
+                    accepted_outcome=accepted_outcome,
                 )
                 return record.model_copy(update={"node_runs": tuple(node_runs)})
             raise RunIntegrityError(f"NodeRun {node_run_id!r} does not exist")

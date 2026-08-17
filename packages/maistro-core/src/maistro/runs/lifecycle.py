@@ -6,11 +6,13 @@ from typing import Any
 from maistro.runs.model import (
     TERMINAL_ATTEMPT_STATUSES,
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
     AttemptStatus,
     NodeRun,
     Run,
     RunStatus,
+    evidence_values_equal,
 )
 
 RUN_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
@@ -114,10 +116,27 @@ def transition_node_run(
     at: datetime | None = None,
     result: object | None = None,
     error: str | None = None,
+    accepted_outcome: AcceptedNodeOutcome | None = None,
 ) -> NodeRun:
-    return NodeRun.model_validate(
-        _logical_values(node_run, target, at=at, result=result, error=error)
-    )
+    # Compatibility migration for rows completed before AcceptedNodeOutcome
+    # existed. This is not a lifecycle transition: it only installs matching
+    # authoritative evidence onto an already-terminal logical record while
+    # preserving its original lifecycle timestamps.
+    if node_run.status is RunStatus.COMPLETED and target is RunStatus.COMPLETED:
+        if node_run.accepted_outcome is not None or accepted_outcome is None:
+            raise InvalidLifecycleTransition("illegal transition: completed -> completed")
+        if not evidence_values_equal(node_run.result, accepted_outcome.attempt_result.result):
+            raise InvalidLifecycleTransition(
+                "legacy completed NodeRun result differs from AttemptResult"
+            )
+        values = node_run.model_dump(mode="python")
+        values["accepted_outcome"] = accepted_outcome
+        return NodeRun.model_validate(values)
+
+    values = _logical_values(node_run, target, at=at, result=result, error=error)
+    if accepted_outcome is not None:
+        values["accepted_outcome"] = accepted_outcome
+    return NodeRun.model_validate(values)
 
 
 def transition_attempt(
