@@ -22,11 +22,12 @@ from maistro.runs.model import (
     AcceptedNodeOutcome,
     Attempt,
     AttemptStatus,
+    ExecutionLease,
     NodeRun,
     Run,
     RunStatus,
 )
-from maistro.runs.store import ActiveAttemptExists, RunIntegrityError
+from maistro.runs.store import ActiveAttemptExists, RunIntegrityError, StaleExecutionFence
 
 from .protocol import DurableRunStore
 from .types import DurableRunRecord
@@ -122,6 +123,7 @@ class DurableRunExecutionStore:
         executor_id: str = "",
         deadline_at: datetime | None = None,
         resume_checkpoint_id: str | None = None,
+        lease_holder: str | None = None,
     ) -> Attempt:
         created: Attempt | None = None
 
@@ -144,14 +146,25 @@ class DurableRunExecutionStore:
                 for attempt in existing
             ):
                 raise ActiveAttemptExists(f"NodeRun {node_run_id!r} already has an active Attempt")
+            ordinal = max((attempt.ordinal for attempt in existing), default=0) + 1
             created = Attempt(
                 node_run_id=node_run_id,
-                ordinal=max((attempt.ordinal for attempt in existing), default=0) + 1,
+                ordinal=ordinal,
                 runtime_id=runtime_id,
                 executor_id=executor_id,
                 deadline_at=deadline_at,
                 resume_checkpoint_id=resume_checkpoint_id,
             )
+            if lease_holder is not None:
+                lease = ExecutionLease(
+                    node_run_id=node_run_id,
+                    attempt_id=created.attempt_id,
+                    lease_epoch=ordinal,
+                    holder=lease_holder,
+                )
+                created = Attempt.model_validate(
+                    {**created.model_dump(mode="python"), "execution_lease": lease}
+                )
             return record.model_copy(update={"attempts": (*record.attempts, created)})
 
         await self._mutate(update)
@@ -185,12 +198,14 @@ class DurableRunExecutionStore:
         result: object | None = None,
         error: str | None = None,
         metrics: dict[str, object] | None = None,
+        fencing_token: str | None = None,
     ) -> Attempt:
         def update(record: DurableRunRecord) -> DurableRunRecord:
             attempts = list(record.attempts)
             for index, attempt in enumerate(attempts):
                 if attempt.attempt_id != attempt_id:
                     continue
+                self._validate_fence(attempt, fencing_token)
                 attempts[index] = transition_attempt(
                     attempt,
                     target,
@@ -205,6 +220,14 @@ class DurableRunExecutionStore:
         updated = await self._mutate(update)
         attempt = next(item for item in updated.attempts if item.attempt_id == attempt_id)
         return attempt.model_copy(deep=True)
+
+    @staticmethod
+    def _validate_fence(attempt: Attempt, fencing_token: str | None) -> None:
+        lease = attempt.execution_lease
+        if lease is not None and fencing_token != lease.fencing_token:
+            raise StaleExecutionFence(
+                f"Attempt {attempt.attempt_id!r} update rejected by execution fence"
+            )
 
     async def _get_record(self) -> DurableRunRecord:
         record = await self._store.get(self._run_id)
