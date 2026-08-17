@@ -16,6 +16,7 @@ from maistro.runs.model import (
     Attempt,
     AttemptResult,
     AttemptStatus,
+    ExecutionLease,
     GraphSnapshot,
     NodeRun,
     Run,
@@ -32,6 +33,7 @@ from maistro.runs.store import (
     RunIntegrityError,
     RunNotFound,
     RunStore,
+    StaleExecutionFence,
 )
 
 __all__ = [
@@ -48,6 +50,7 @@ __all__ = [
     "AttemptReconciler",
     "AttemptResult",
     "AttemptStatus",
+    "ExecutionLease",
     "GraphSnapshot",
     "InMemoryRunStore",
     "InvalidLifecycleTransition",
@@ -60,6 +63,7 @@ __all__ = [
     "RunStatus",
     "RunStore",
     "SqliteRunStore",
+    "StaleExecutionFence",
     "transition_attempt",
     "transition_node_run",
     "transition_run",

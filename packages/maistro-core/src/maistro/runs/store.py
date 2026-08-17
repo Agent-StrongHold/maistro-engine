@@ -12,6 +12,7 @@ from maistro.runs.model import (
     Attempt,
     AttemptResult,
     AttemptStatus,
+    ExecutionLease,
     GraphSnapshot,
     NodeRun,
     Run,
@@ -57,6 +58,10 @@ def validate_accepted_outcome_against_attempt(
         or not evidence_values_equal(actual.result, expected.result)
     ):
         raise RunIntegrityError("accepted outcome does not match its canonical persisted Attempt")
+
+
+class StaleExecutionFence(RunIntegrityError):
+    pass
 
 
 @runtime_checkable
@@ -110,6 +115,7 @@ class RunStore(Protocol):
         executor_id: str = "",
         deadline_at: datetime | None = None,
         resume_checkpoint_id: str | None = None,
+        lease_holder: str | None = None,
     ) -> Attempt: ...
 
     async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
@@ -125,6 +131,7 @@ class RunStore(Protocol):
         result: object | None = None,
         error: str | None = None,
         metrics: dict[str, object] | None = None,
+        fencing_token: str | None = None,
     ) -> Attempt: ...
 
 
@@ -256,6 +263,7 @@ class InMemoryRunStore:
         executor_id: str = "",
         deadline_at: datetime | None = None,
         resume_checkpoint_id: str | None = None,
+        lease_holder: str | None = None,
     ) -> Attempt:
         node_run = self._require_node_run(node_run_id)
         if node_run.status in TERMINAL_RUN_STATUSES:
@@ -276,6 +284,16 @@ class InMemoryRunStore:
             deadline_at=deadline_at,
             resume_checkpoint_id=resume_checkpoint_id,
         )
+        if lease_holder is not None:
+            lease = ExecutionLease(
+                node_run_id=node_run_id,
+                attempt_id=attempt.attempt_id,
+                lease_epoch=ordinal,
+                holder=lease_holder,
+            )
+            attempt = Attempt.model_validate(
+                {**attempt.model_dump(mode="python"), "execution_lease": lease}
+            )
         self._attempts[attempt.attempt_id] = attempt
         return attempt.model_copy(deep=True)
 
@@ -302,8 +320,10 @@ class InMemoryRunStore:
         result: object | None = None,
         error: str | None = None,
         metrics: dict[str, object] | None = None,
+        fencing_token: str | None = None,
     ) -> Attempt:
         attempt = self._require_attempt(attempt_id)
+        self._validate_fence(attempt, fencing_token)
         updated = transition_attempt(
             attempt,
             target,
@@ -314,6 +334,14 @@ class InMemoryRunStore:
         )
         self._attempts[attempt_id] = updated
         return updated.model_copy(deep=True)
+
+    @staticmethod
+    def _validate_fence(attempt: Attempt, fencing_token: str | None) -> None:
+        lease = attempt.execution_lease
+        if lease is not None and fencing_token != lease.fencing_token:
+            raise StaleExecutionFence(
+                f"Attempt {attempt.attempt_id!r} update rejected by execution fence"
+            )
 
     async def _validate_graph_scope(self, graph: Graph) -> None:
         project = await self._project_store.get(graph.project_id)
@@ -351,5 +379,6 @@ __all__ = [
     "RunIntegrityError",
     "RunNotFound",
     "RunStore",
+    "StaleExecutionFence",
     "validate_accepted_outcome_against_attempt",
 ]
