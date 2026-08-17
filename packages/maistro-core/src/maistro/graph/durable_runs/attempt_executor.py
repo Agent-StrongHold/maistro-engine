@@ -229,10 +229,9 @@ async def _reload_record(
 ) -> DurableRunRecord:
     latest = await store.get(run_id)
     if latest is None:
-        error = KeyError(f"no such run: {run_id!r}")
-        if cause is not None:
-            raise error from cause
-        raise error
+        if cause is None:
+            raise KeyError(f"no such run: {run_id!r}")
+        raise KeyError(f"no such run: {run_id!r}") from cause
     return latest
 
 
