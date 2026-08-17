@@ -61,7 +61,7 @@ async def test_replay_backfills_pre_upgrade_completed_node_run() -> None:
 
     # Simulate a row persisted before AcceptedNodeOutcome existed. The legacy
     # row already contains the projected result and terminal lifecycle facts.
-    # The reconciliation path must add evidence without rewriting that history.
+    # Reconciliation adds accepted evidence without rewriting that history.
     legacy = current.model_copy(update={"accepted_outcome": None})
     store._node_runs[node_run_id] = legacy
 
