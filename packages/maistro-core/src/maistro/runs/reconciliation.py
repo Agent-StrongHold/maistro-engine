@@ -54,6 +54,7 @@ class AttemptLifecycleStore(Protocol):
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun: ...
 
     async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
