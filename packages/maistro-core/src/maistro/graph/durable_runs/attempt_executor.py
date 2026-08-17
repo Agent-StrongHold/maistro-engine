@@ -307,7 +307,7 @@ async def _execute_frontier(
 
         async def executor(work_item: Any, execution_context: Any) -> NodeResult:
             nonlocal raw_result
-            result = await node.run(work_item, execution_context)
+            result: NodeResult = await node.run(work_item, execution_context)
             raw_result = result
             return result
 
