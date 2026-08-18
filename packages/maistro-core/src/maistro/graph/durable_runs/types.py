@@ -194,6 +194,7 @@ if TYPE_CHECKING:
         _ = record._validate_links
         _ = record.latest_traversal_commit
 
+    _: object
     _ = _vulture_pydantic_contract_usage
     _ = _validate_traversal_commits
 
