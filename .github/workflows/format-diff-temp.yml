@@ -1,0 +1,25 @@
+name: Temporary Ruff Format Diff
+
+on:
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install ruff==0.15.12
+      - name: Show formatter patch
+        run: |
+          ruff format --diff \
+            packages/maistro-core/src/maistro/graph/durable_runs/types.py \
+            packages/maistro-core/src/maistro/graph/traversal_commit.py \
+            packages/maistro-core/tests/graph/durable_runs/test_authoritative_traversal_advance.py \
+            packages/maistro-core/tests/runs/test_accepted_node_outcome_disposition.py || true
