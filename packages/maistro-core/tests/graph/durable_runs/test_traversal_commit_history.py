@@ -222,7 +222,7 @@ def test_commit_outcome_identity_must_match_persisted_accepted_node_outcome() ->
         )
 
 
-def test_commit_routing_decision_tamper_is_rejected_before_record_validation() -> None:
+def test_commit_routing_decision_must_belong_to_commit_source_node_run() -> None:
     run, node_run, state, commit = _fixture()
     foreign_decision = GraphEdgeDecision(
         edge_id="edge-foreign",
@@ -239,7 +239,7 @@ def test_commit_routing_decision_tamper_is_rejected_before_record_validation() -
         update={"edge_decision_ids": (edge_decision_id(foreign_decision),)}
     )
 
-    with pytest.raises(ValueError, match="identity does not match"):
+    with pytest.raises(ValueError, match="source NodeRun"):
         DurableRunRecord(
             run=run,
             graph_state=state_with_foreign_decision,
