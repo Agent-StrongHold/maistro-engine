@@ -42,6 +42,61 @@ def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
         raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
 
 
+def _validate_commit_chain(
+    run: Run,
+    commit: TraversalCommit,
+    previous: TraversalCommit | None,
+) -> None:
+    if commit.run_id != run.run_id:
+        raise ValueError("every TraversalCommit must belong to the persisted Run")
+    if commit.graph_snapshot_hash != run.graph.content_hash:
+        raise ValueError("TraversalCommit graph snapshot must match the Run snapshot")
+    expected_parent = previous.traversal_commit_id if previous is not None else None
+    if commit.prior_commit_id != expected_parent:
+        raise ValueError("TraversalCommit history must form one parent-linked chain")
+    if previous is not None and commit.prior_state_hash != previous.resulting_state_hash:
+        raise ValueError("adjacent TraversalCommits must link resulting and prior state hashes")
+
+
+def _commit_source_runs(
+    commit: TraversalCommit,
+    node_runs_by_id: dict[str, NodeRun],
+) -> tuple[list[NodeRun], set[str]]:
+    source_runs: list[NodeRun] = []
+    source_ids = set(commit.ordered_source_node_run_ids)
+    for node_run_id in commit.ordered_source_node_run_ids:
+        source = node_runs_by_id.get(node_run_id)
+        if source is None:
+            raise ValueError("TraversalCommit source NodeRun must be persisted")
+        if source.accepted_outcome is None:
+            raise ValueError("TraversalCommit source NodeRun requires an accepted outcome")
+        source_runs.append(source)
+    return source_runs, source_ids
+
+
+def _validate_commit_outcomes(commit: TraversalCommit, source_runs: list[NodeRun]) -> None:
+    persisted_outcome_ids = tuple(
+        accepted_outcome_id(source.accepted_outcome)
+        for source in source_runs
+        if source.accepted_outcome is not None
+    )
+    if persisted_outcome_ids != commit.accepted_outcome_ids:
+        raise ValueError("TraversalCommit outcome identities must match persisted NodeRuns")
+
+
+def _validate_commit_decisions(
+    commit: TraversalCommit,
+    decisions_by_id: dict[str, object],
+    source_ids: set[str],
+) -> None:
+    for decision_id in commit.edge_decision_ids:
+        decision = decisions_by_id.get(decision_id)
+        if decision is None:
+            raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
+        if not hasattr(decision, "source_node_run_id") or decision.source_node_run_id not in source_ids:
+            raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
+
+
 def _validate_traversal_commits(
     *,
     run: Run,
@@ -59,37 +114,10 @@ def _validate_traversal_commits(
     previous: TraversalCommit | None = None
 
     for commit in commits:
-        if commit.run_id != run.run_id:
-            raise ValueError("every TraversalCommit must belong to the persisted Run")
-        if commit.graph_snapshot_hash != run.graph.content_hash:
-            raise ValueError("TraversalCommit graph snapshot must match the Run snapshot")
-        expected_parent = previous.traversal_commit_id if previous is not None else None
-        if commit.prior_commit_id != expected_parent:
-            raise ValueError("TraversalCommit history must form one parent-linked chain")
-        if previous is not None and commit.prior_state_hash != previous.resulting_state_hash:
-            raise ValueError("adjacent TraversalCommits must link resulting and prior state hashes")
-
-        source_runs: list[NodeRun] = []
-        source_ids = set(commit.ordered_source_node_run_ids)
-        for node_run_id in commit.ordered_source_node_run_ids:
-            source = node_runs_by_id.get(node_run_id)
-            if source is None:
-                raise ValueError("TraversalCommit source NodeRun must be persisted")
-            if source.accepted_outcome is None:
-                raise ValueError("TraversalCommit source NodeRun requires an accepted outcome")
-            source_runs.append(source)
-        persisted_outcome_ids = tuple(
-            accepted_outcome_id(source.accepted_outcome) for source in source_runs
-        )
-        if persisted_outcome_ids != commit.accepted_outcome_ids:
-            raise ValueError("TraversalCommit outcome identities must match persisted NodeRuns")
-
-        for decision_id in commit.edge_decision_ids:
-            decision = decisions_by_id.get(decision_id)
-            if decision is None:
-                raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
-            if decision.source_node_run_id not in source_ids:
-                raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
+        _validate_commit_chain(run, commit, previous)
+        source_runs, source_ids = _commit_source_runs(commit, node_runs_by_id)
+        _validate_commit_outcomes(commit, source_runs)
+        _validate_commit_decisions(commit, decisions_by_id, source_ids)
         previous = commit
 
     if (
