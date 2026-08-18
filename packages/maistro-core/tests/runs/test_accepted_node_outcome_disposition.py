@@ -95,7 +95,10 @@ async def test_deferred_completed_result_blocks_redispatch_until_acceptance() ->
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("logical_status", [RunStatus.PAUSED, RunStatus.WAITING, RunStatus.FAILED])
+@pytest.mark.parametrize(
+    "logical_status",
+    [RunStatus.PAUSED, RunStatus.WAITING, RunStatus.FAILED],
+)
 async def test_domain_can_project_completed_physical_result_to_noncompleted_disposition(
     logical_status: RunStatus,
 ) -> None:
@@ -221,9 +224,12 @@ def test_default_completed_projection_preserves_v1_accepted_outcome_hash() -> No
         "attempt_result": physical.model_dump(mode="json"),
     }
     expected = hashlib.sha256(
-        json.dumps(legacy_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-            "utf-8"
-        )
+        json.dumps(
+            legacy_payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
     ).hexdigest()
 
     assert accepted_outcome_id(outcome) == expected
