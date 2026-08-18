@@ -436,13 +436,9 @@ if TYPE_CHECKING:
         _ = TraversalCommit._validate_cardinality_and_identity
         _ = TraversalCommit.from_transition
         _ = TraversalCheckpoint.from_state
-
-    _vulture_traversal_refs: tuple[object, ...] = (
-        _vulture_traversal_contract_usage,
-        _base_accepted_outcome_payload,
-        _json_value,
-        _same_json_value,
-    )
+        _ = _base_accepted_outcome_payload
+        _ = _json_value
+        _ = _same_json_value
 
 
 __all__ = [
