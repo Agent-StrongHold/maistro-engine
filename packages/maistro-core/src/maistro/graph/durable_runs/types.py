@@ -110,7 +110,9 @@ def _validate_traversal_commits(
         raise ValueError("TraversalCommit sequences must be consecutive from one")
 
     node_runs_by_id = {node_run.node_run_id: node_run for node_run in node_runs}
-    decisions_by_id = {edge_decision_id(decision): decision for decision in graph_state.edge_decisions}
+    decisions_by_id = {
+        edge_decision_id(decision): decision for decision in graph_state.edge_decisions
+    }
     previous: TraversalCommit | None = None
 
     for commit in commits:
