@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from maistro.graph.execution_state import GraphExecutionState
+from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
 from maistro.graph.traversal_commit import TraversalCommit, accepted_outcome_id, edge_decision_id
 from maistro.runs.model import TERMINAL_RUN_STATUSES, Attempt, NodeRun, Run, RunStatus
 
@@ -86,14 +86,14 @@ def _validate_commit_outcomes(commit: TraversalCommit, source_runs: list[NodeRun
 
 def _validate_commit_decisions(
     commit: TraversalCommit,
-    decisions_by_id: dict[str, object],
+    decisions_by_id: dict[str, GraphEdgeDecision],
     source_ids: set[str],
 ) -> None:
     for decision_id in commit.edge_decision_ids:
         decision = decisions_by_id.get(decision_id)
         if decision is None:
             raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
-        if not hasattr(decision, "source_node_run_id") or decision.source_node_run_id not in source_ids:
+        if decision.source_node_run_id not in source_ids:
             raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
 
 
