@@ -40,9 +40,7 @@ def _digest(value: object) -> str:
 def _same_json_value(left: object, right: object) -> bool:
     return json.dumps(
         _json_value(left), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ) == json.dumps(
-        _json_value(right), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    )
+    ) == json.dumps(_json_value(right), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 def graph_state_hash(state: GraphExecutionState) -> str:
