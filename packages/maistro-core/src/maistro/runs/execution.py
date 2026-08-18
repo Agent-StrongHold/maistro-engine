@@ -173,12 +173,17 @@ class AttemptExecutionService:
             return
         attempts = await self._store.list_attempts(node_run_id)
         pending = next(
-            (attempt for attempt in reversed(attempts) if attempt.status is AttemptStatus.COMPLETED),
+            (
+                attempt
+                for attempt in reversed(attempts)
+                if attempt.status is AttemptStatus.COMPLETED
+            ),
             None,
         )
         if pending is not None:
             raise RunIntegrityError(
-                "completed Attempt awaits domain acceptance; reconcile persisted evidence before redispatch"
+                "completed Attempt awaits domain acceptance; reconcile persisted evidence "
+                "before redispatch"
             )
 
     async def cancel(self, attempt_id: str) -> bool:
