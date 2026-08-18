@@ -22,6 +22,7 @@ from maistro.runs.model import (
     NodeRun,
     Run,
     RunStatus,
+    evidence_values_equal,
 )
 from maistro.runs.store import RunIntegrityError
 
@@ -58,6 +59,20 @@ class AttemptLifecycleStore(Protocol):
     ) -> NodeRun: ...
 
     async def get_attempt(self, attempt_id: str) -> Attempt | None: ...
+
+
+def _same_accepted_outcome(
+    left: AcceptedNodeOutcome,
+    right: AcceptedNodeOutcome,
+) -> bool:
+    """Compare authoritative acceptance semantics, excluding acceptance wall clock."""
+    return (
+        left.node_run_id == right.node_run_id
+        and left.attempt_result == right.attempt_result
+        and left.logical_status is right.logical_status
+        and evidence_values_equal(left.result, right.result)
+        and left.error == right.error
+    )
 
 
 class AttemptLifecycleReconciler:
@@ -157,7 +172,7 @@ class AttemptLifecycleReconciler:
                     error=node_run.error,
                     accepted_outcome=outcome,
                 )
-            if accepted != outcome:
+            if not _same_accepted_outcome(accepted, outcome):
                 raise RunIntegrityError("NodeRun already has a different accepted outcome")
             return node_run
         if node_run.status is not RunStatus.RUNNING:
