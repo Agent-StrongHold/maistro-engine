@@ -194,8 +194,10 @@ if TYPE_CHECKING:
         _ = record._validate_links
         _ = record.latest_traversal_commit
 
-    _ = _vulture_pydantic_contract_usage
-    _ = _validate_traversal_commits
+    _vulture_type_refs: tuple[object, ...] = (
+        _vulture_pydantic_contract_usage,
+        _validate_traversal_commits,
+    )
 
 
 __all__ = ["DurableRunRecord", "RunStatus"]
