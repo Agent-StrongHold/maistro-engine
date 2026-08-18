@@ -141,11 +141,10 @@ def transition_node_run(
         return legacy
 
     values = _logical_values(node_run, target, at=at, result=result, error=error)
-    if (
-        node_run.accepted_outcome is not None
-        and node_run.status in {RunStatus.WAITING, RunStatus.PAUSED}
-        and target in {RunStatus.QUEUED, RunStatus.RUNNING}
-    ):
+    if node_run.accepted_outcome is not None and node_run.status in {
+        RunStatus.WAITING,
+        RunStatus.PAUSED,
+    }:
         values["accepted_outcome"] = None
     if accepted_outcome is not None:
         values["accepted_outcome"] = accepted_outcome
