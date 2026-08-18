@@ -139,7 +139,8 @@ def _counter_delta(current: list[str], expected: list[str]) -> tuple[list[str], 
 
 
 def _snapshot_deltas(
-    rules: list[dict[str, Any]], classification: Classification
+    rules: list[dict[str, Any]],
+    classification: Classification,
 ) -> tuple[list[tuple[str, list[str]]], list[SnapshotDelta]]:
     missing: list[tuple[str, list[str]]] = []
     deltas: list[SnapshotDelta] = []
@@ -203,14 +204,20 @@ def main(argv: list[str]) -> int:
     missing, deltas = _snapshot_deltas(rules, classification)
 
     _print_summary(findings, classification)
-    _print_findings("Unreachable-code findings must be fixed:", classification.never_allowlist)
     _print_findings(
-        "Unclassified vulture findings need owner/category/rationale:", classification.unclassified
+        "Unreachable-code findings must be fixed:",
+        classification.never_allowlist,
+    )
+    _print_findings(
+        "Unclassified vulture findings need owner/category/rationale:",
+        classification.unclassified,
     )
     _print_missing_snapshots(missing)
     _print_snapshot_deltas(deltas)
 
-    failed = bool(classification.never_allowlist or classification.unclassified or missing or deltas)
+    failed = bool(
+        classification.never_allowlist or classification.unclassified or missing or deltas
+    )
     return int(failed)
 
 
