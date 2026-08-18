@@ -9,7 +9,7 @@ TraversalCommit in the same optimistic durable checkpoint.
 from __future__ import annotations
 
 from maistro.graph.definitions import Graph
-from maistro.graph.execution_state import GraphEdgeDecision
+from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
 from maistro.graph.traversal_commit import TraversalCommit
 from maistro.runs.lifecycle import transition_node_run
 from maistro.runs.model import (
@@ -126,6 +126,7 @@ def _accepted_outcomes(
 
 async def _checkpoint_advancement(
     record: DurableRunRecord,
+    prior_state: GraphExecutionState,
     completed: tuple[traversal._FrontierItem, ...],
     next_ids: tuple[str, ...],
     decisions: tuple[GraphEdgeDecision, ...],
@@ -148,7 +149,7 @@ async def _checkpoint_advancement(
     prior = record.latest_traversal_commit
     commit = TraversalCommit.from_transition(
         graph_snapshot_hash=record.run.graph.content_hash,
-        prior_state=record.graph_state,
+        prior_state=prior_state,
         resulting_state=state,
         ordered_source_node_run_ids=tuple(item.node_run.node_run_id for item in completed),
         accepted_outcomes=_accepted_outcomes(record, completed),
@@ -173,6 +174,7 @@ async def fold_authoritative_frontier(
     store: DurableRunStore,
 ) -> DurableRunRecord:
     """Fold physical frontier results through one authoritative logical boundary."""
+    prior_state = record.graph_state
     record, completed, paused, failures = _accept_frontier(record, items)
     record = traversal._merge_frontier_blackboards(record, items)
     for item in completed:
@@ -215,6 +217,7 @@ async def fold_authoritative_frontier(
         )
     return await _checkpoint_advancement(
         record,
+        prior_state,
         completed,
         next_ids,
         decisions,
