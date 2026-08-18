@@ -52,9 +52,10 @@ def _validate_traversal_checkpoints(
     run: Run,
     node_runs_by_id: dict[str, NodeRun],
     checkpoints: tuple[TraversalCheckpoint, ...],
-) -> None:
+) -> dict[str, TraversalCheckpoint]:
     if [item.checkpoint_sequence for item in checkpoints] != list(range(1, len(checkpoints) + 1)):
         raise ValueError("TraversalCheckpoint sequences must be consecutive from one")
+    by_id: dict[str, TraversalCheckpoint] = {}
     for checkpoint in checkpoints:
         if checkpoint.run_id != run.run_id:
             raise ValueError("every TraversalCheckpoint must belong to the persisted Run")
@@ -62,6 +63,8 @@ def _validate_traversal_checkpoints(
             raise ValueError("TraversalCheckpoint graph snapshot must match the Run snapshot")
         if any(source_id not in node_runs_by_id for source_id in checkpoint.ordered_source_node_run_ids):
             raise ValueError("TraversalCheckpoint source NodeRun must be persisted")
+        by_id[checkpoint.traversal_checkpoint_id] = checkpoint
+    return by_id
 
 
 def _checkpoint_frontier(
@@ -75,6 +78,27 @@ def _checkpoint_frontier(
     )
 
 
+def _validate_prior_state_link(
+    commit: TraversalCommit,
+    previous: TraversalCommit | None,
+    checkpoints_by_id: dict[str, TraversalCheckpoint],
+) -> None:
+    previous_hash = previous.resulting_state_hash if previous is not None else None
+    if previous_hash is None or commit.prior_state_hash == previous_hash:
+        if commit.checkpoint_id is not None:
+            checkpoint = checkpoints_by_id.get(commit.checkpoint_id)
+            if checkpoint is None or checkpoint.state_hash != commit.prior_state_hash:
+                raise ValueError("TraversalCommit checkpoint link must match its prior state")
+        return
+    if commit.checkpoint_id is None:
+        raise ValueError("non-advancing state drift requires a TraversalCheckpoint bridge")
+    checkpoint = checkpoints_by_id.get(commit.checkpoint_id)
+    if checkpoint is None:
+        raise ValueError("TraversalCommit checkpoint bridge must be persisted")
+    if checkpoint.state_hash != commit.prior_state_hash:
+        raise ValueError("TraversalCommit prior state must match its checkpoint bridge")
+
+
 def _validate_traversal_commits(
     *,
     run: Run,
@@ -84,7 +108,7 @@ def _validate_traversal_commits(
     checkpoints: tuple[TraversalCheckpoint, ...],
 ) -> None:
     node_runs_by_id = {node_run.node_run_id: node_run for node_run in node_runs}
-    _validate_traversal_checkpoints(
+    checkpoints_by_id = _validate_traversal_checkpoints(
         run=run,
         node_runs_by_id=node_runs_by_id,
         checkpoints=checkpoints,
@@ -105,8 +129,7 @@ def _validate_traversal_commits(
         expected_parent = previous.traversal_commit_id if previous is not None else None
         if commit.prior_commit_id != expected_parent:
             raise ValueError("TraversalCommit history must form one parent-linked chain")
-        if previous is not None and commit.prior_state_hash != previous.resulting_state_hash:
-            raise ValueError("adjacent TraversalCommits must link resulting and prior state hashes")
+        _validate_prior_state_link(commit, previous, checkpoints_by_id)
 
         source_runs: list[NodeRun] = []
         source_ids = set(commit.ordered_source_node_run_ids)
@@ -219,6 +242,7 @@ if TYPE_CHECKING:
         _ = record.latest_traversal_checkpoint
 
     _ = _checkpoint_frontier
+    _ = _validate_prior_state_link
     _ = _validate_traversal_checkpoints
     _ = _validate_traversal_commits
     _ = _vulture_pydantic_contract_usage
