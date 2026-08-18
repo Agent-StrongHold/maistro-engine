@@ -109,37 +109,6 @@ def transition_run(
     return Run.model_validate(_logical_values(run, target, at=at, result=result, error=error))
 
 
-def _migrate_legacy_completed_node_run(
-    node_run: NodeRun,
-    target: RunStatus,
-    accepted_outcome: AcceptedNodeOutcome | None,
-) -> NodeRun | None:
-    """Install authoritative evidence on a pre-AcceptedNodeOutcome completed row."""
-    if node_run.status is not RunStatus.COMPLETED or target is not RunStatus.COMPLETED:
-        return None
-    if node_run.accepted_outcome is not None or accepted_outcome is None:
-        raise InvalidLifecycleTransition("illegal transition: completed -> completed")
-    if accepted_outcome.logical_status is not RunStatus.COMPLETED:
-        raise InvalidLifecycleTransition(
-            "legacy completed NodeRun requires a completed accepted outcome"
-        )
-    if not evidence_values_equal(node_run.result, accepted_outcome.result):
-        raise InvalidLifecycleTransition("legacy completed NodeRun result differs from outcome")
-    if node_run.error != accepted_outcome.error:
-        raise InvalidLifecycleTransition("legacy completed NodeRun error differs from outcome")
-    values = node_run.model_dump(mode="python")
-    values["accepted_outcome"] = accepted_outcome
-    return NodeRun.model_validate(values)
-
-
-def _resuming_suspension(node_run: NodeRun, target: RunStatus) -> bool:
-    return (
-        node_run.accepted_outcome is not None
-        and node_run.status in {RunStatus.WAITING, RunStatus.PAUSED}
-        and target in {RunStatus.QUEUED, RunStatus.RUNNING}
-    )
-
-
 def transition_node_run(
     node_run: NodeRun,
     target: RunStatus,
@@ -149,12 +118,31 @@ def transition_node_run(
     error: str | None = None,
     accepted_outcome: AcceptedNodeOutcome | None = None,
 ) -> NodeRun:
-    legacy = _migrate_legacy_completed_node_run(node_run, target, accepted_outcome)
-    if legacy is not None:
-        return legacy
+    # Compatibility migration for rows completed before AcceptedNodeOutcome
+    # existed. This is not a lifecycle transition: it only installs matching
+    # authoritative evidence onto an already-terminal logical record while
+    # preserving its original lifecycle timestamps.
+    if node_run.status is RunStatus.COMPLETED and target is RunStatus.COMPLETED:
+        if node_run.accepted_outcome is not None or accepted_outcome is None:
+            raise InvalidLifecycleTransition("illegal transition: completed -> completed")
+        if accepted_outcome.logical_status is not RunStatus.COMPLETED:
+            raise InvalidLifecycleTransition(
+                "legacy completed NodeRun requires a completed accepted outcome"
+            )
+        if not evidence_values_equal(node_run.result, accepted_outcome.result):
+            raise InvalidLifecycleTransition("legacy completed NodeRun result differs from outcome")
+        if node_run.error != accepted_outcome.error:
+            raise InvalidLifecycleTransition("legacy completed NodeRun error differs from outcome")
+        values = node_run.model_dump(mode="python")
+        values["accepted_outcome"] = accepted_outcome
+        return NodeRun.model_validate(values)
 
     values = _logical_values(node_run, target, at=at, result=result, error=error)
-    if _resuming_suspension(node_run, target):
+    if (
+        node_run.accepted_outcome is not None
+        and node_run.status in {RunStatus.WAITING, RunStatus.PAUSED}
+        and target in {RunStatus.QUEUED, RunStatus.RUNNING}
+    ):
         values["accepted_outcome"] = None
     if accepted_outcome is not None:
         values["accepted_outcome"] = accepted_outcome
