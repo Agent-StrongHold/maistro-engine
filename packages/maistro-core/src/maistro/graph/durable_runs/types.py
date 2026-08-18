@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from maistro.graph.execution_state import GraphExecutionState
-from maistro.runs.model import Attempt, NodeRun, Run, RunStatus
+from maistro.graph.traversal_commit import TraversalCommit, accepted_outcome_id, edge_decision_id
+from maistro.runs.model import TERMINAL_RUN_STATUSES, Attempt, NodeRun, Run, RunStatus
 
 
 def _validate_node_run_links(run: Run, node_runs: tuple[NodeRun, ...]) -> set[str]:
@@ -41,8 +42,65 @@ def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
         raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
 
 
+def _validate_traversal_commits(
+    *,
+    run: Run,
+    graph_state: GraphExecutionState,
+    node_runs: tuple[NodeRun, ...],
+    commits: tuple[TraversalCommit, ...],
+) -> None:
+    if not commits:
+        return
+    if [commit.commit_sequence for commit in commits] != list(range(1, len(commits) + 1)):
+        raise ValueError("TraversalCommit sequences must be consecutive from one")
+
+    node_runs_by_id = {node_run.node_run_id: node_run for node_run in node_runs}
+    decisions_by_id = {edge_decision_id(decision): decision for decision in graph_state.edge_decisions}
+    previous: TraversalCommit | None = None
+
+    for commit in commits:
+        if commit.run_id != run.run_id:
+            raise ValueError("every TraversalCommit must belong to the persisted Run")
+        if commit.graph_snapshot_hash != run.graph.content_hash:
+            raise ValueError("TraversalCommit graph snapshot must match the Run snapshot")
+        expected_parent = previous.traversal_commit_id if previous is not None else None
+        if commit.prior_commit_id != expected_parent:
+            raise ValueError("TraversalCommit history must form one parent-linked chain")
+        if previous is not None and commit.prior_state_hash != previous.resulting_state_hash:
+            raise ValueError("adjacent TraversalCommits must link resulting and prior state hashes")
+
+        source_runs: list[NodeRun] = []
+        source_ids = set(commit.ordered_source_node_run_ids)
+        for node_run_id in commit.ordered_source_node_run_ids:
+            source = node_runs_by_id.get(node_run_id)
+            if source is None:
+                raise ValueError("TraversalCommit source NodeRun must be persisted")
+            if source.accepted_outcome is None:
+                raise ValueError("TraversalCommit source NodeRun requires an accepted outcome")
+            source_runs.append(source)
+        persisted_outcome_ids = tuple(
+            accepted_outcome_id(source.accepted_outcome) for source in source_runs
+        )
+        if persisted_outcome_ids != commit.accepted_outcome_ids:
+            raise ValueError("TraversalCommit outcome identities must match persisted NodeRuns")
+
+        for decision_id in commit.edge_decision_ids:
+            decision = decisions_by_id.get(decision_id)
+            if decision is None:
+                raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
+            if decision.source_node_run_id not in source_ids:
+                raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
+        previous = commit
+
+    if (
+        run.status not in TERMINAL_RUN_STATUSES
+        and commits[-1].resulting_frontier != graph_state.active_node_ids
+    ):
+        raise ValueError("latest TraversalCommit frontier must match persisted GraphExecutionState")
+
+
 class DurableRunRecord(BaseModel):
-    """Persisted canonical Run plus graph-specific continuation state."""
+    """Persisted canonical Run plus graph continuation, physical history, and commits."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -50,6 +108,7 @@ class DurableRunRecord(BaseModel):
     graph_state: GraphExecutionState
     node_runs: tuple[NodeRun, ...] = Field(default_factory=tuple)
     attempts: tuple[Attempt, ...] = Field(default_factory=tuple)
+    traversal_commits: tuple[TraversalCommit, ...] = Field(default_factory=tuple)
     resume_at: datetime | None = None
     version: int = Field(default=0, ge=0)
 
@@ -58,6 +117,12 @@ class DurableRunRecord(BaseModel):
         _validate_graph_links(self.run, self.graph_state)
         node_run_ids = _validate_node_run_links(self.run, self.node_runs)
         _validate_attempt_links(self.attempts, node_run_ids)
+        _validate_traversal_commits(
+            run=self.run,
+            graph_state=self.graph_state,
+            node_runs=self.node_runs,
+            commits=self.traversal_commits,
+        )
         return self
 
     @property
@@ -78,6 +143,10 @@ class DurableRunRecord(BaseModel):
         return active[0] if active else None
 
     @property
+    def latest_traversal_commit(self) -> TraversalCommit | None:
+        return self.traversal_commits[-1] if self.traversal_commits else None
+
+    @property
     def hitl_answers(self) -> dict[str, dict[str, object]]:
         raw = self.graph_state.metadata.get("hitl_answers", {})
         if not isinstance(raw, Mapping):
@@ -93,8 +162,10 @@ if TYPE_CHECKING:
 
     def _vulture_pydantic_contract_usage(record: DurableRunRecord) -> None:
         _ = record._validate_links
+        _ = record.latest_traversal_commit
 
     _ = _vulture_pydantic_contract_usage
+    _ = _validate_traversal_commits
 
 
 __all__ = ["DurableRunRecord", "RunStatus"]

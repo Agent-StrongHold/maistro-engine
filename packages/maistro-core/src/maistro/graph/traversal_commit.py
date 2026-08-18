@@ -14,10 +14,17 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
-from maistro.runs.model import AcceptedNodeOutcome
+from maistro.runs.model import AcceptedNodeOutcome, RunStatus
+
+_JSON_VALUE = TypeAdapter(object)
+
+
+def _json_value(value: object) -> object:
+    """Project arbitrary Pydantic-supported values into stable JSON-mode data."""
+    return _JSON_VALUE.dump_python(value, mode="json")
 
 
 def _digest(value: object) -> str:
@@ -30,6 +37,14 @@ def _digest(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _same_json_value(left: object, right: object) -> bool:
+    return json.dumps(
+        _json_value(left), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ) == json.dumps(
+        _json_value(right), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
+
+
 def graph_state_hash(state: GraphExecutionState) -> str:
     """Return a stable digest of the complete persisted traversal projection."""
     return _digest(state.model_dump(mode="json"))
@@ -40,16 +55,38 @@ def edge_decision_id(decision: GraphEdgeDecision) -> str:
     return _digest(decision.model_dump(mode="json"))
 
 
-def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
-    """Return stable identity for the accepted physical evidence.
+def _base_accepted_outcome_payload(outcome: AcceptedNodeOutcome) -> dict[str, object]:
+    """Return the pre-logical-projection identity payload for compatibility."""
+    return {
+        "node_run_id": outcome.node_run_id,
+        "attempt_result": outcome.attempt_result.model_dump(mode="json"),
+    }
 
-    Pydantic JSON mode is used so every value accepted by canonical persistence
-    (including UUID/datetime values nested inside an ``Any`` result) can be
-    hashed. ``accepted_at`` is intentionally excluded so replay time cannot
-    change authoritative identity.
+
+def accepted_outcome_id(outcome: AcceptedNodeOutcome) -> str:
+    """Return stable identity for accepted physical evidence and logical projection.
+
+    Existing default COMPLETED projections retain the identity introduced by the
+    TraversalCommit contract. Distinct logical dispositions or transformed
+    logical result/error projections use an explicit v2 namespace. Acceptance
+    wall-clock time remains excluded so crash reconstruction is idempotent.
     """
-    evidence = outcome.attempt_result.model_dump(mode="json")
-    return _digest({"node_run_id": outcome.node_run_id, "attempt_result": evidence})
+    physical = _base_accepted_outcome_payload(outcome)
+    if (
+        outcome.logical_status is RunStatus.COMPLETED
+        and _same_json_value(outcome.result, outcome.attempt_result.result)
+        and outcome.error == outcome.attempt_result.error
+    ):
+        return _digest(physical)
+    return _digest(
+        {
+            "identity_version": 2,
+            "physical": physical,
+            "logical_status": outcome.logical_status.value,
+            "logical_result": _json_value(outcome.result),
+            "logical_error": outcome.error,
+        }
+    )
 
 
 def _commit_identity(
@@ -403,6 +440,9 @@ if TYPE_CHECKING:
         _ = TraversalCheckpoint.from_state
 
     _ = _vulture_traversal_contract_usage
+    _ = _base_accepted_outcome_payload
+    _ = _json_value
+    _ = _same_json_value
 
 
 __all__ = [
