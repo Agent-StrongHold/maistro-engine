@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from maistro.graph.execution_state import GraphExecutionState
 from maistro.graph.traversal_commit import TraversalCommit, accepted_outcome_id, edge_decision_id
-from maistro.runs.model import Attempt, NodeRun, Run, RunStatus
+from maistro.runs.model import TERMINAL_RUN_STATUSES, Attempt, NodeRun, Run, RunStatus
 
 
 def _validate_node_run_links(run: Run, node_runs: tuple[NodeRun, ...]) -> set[str]:
@@ -92,7 +92,10 @@ def _validate_traversal_commits(
                 raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
         previous = commit
 
-    if commits[-1].resulting_frontier != graph_state.active_node_ids:
+    if (
+        run.status not in TERMINAL_RUN_STATUSES
+        and commits[-1].resulting_frontier != graph_state.active_node_ids
+    ):
         raise ValueError("latest TraversalCommit frontier must match persisted GraphExecutionState")
 
 
