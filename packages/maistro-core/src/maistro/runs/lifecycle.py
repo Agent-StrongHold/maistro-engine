@@ -118,11 +118,10 @@ def transition_node_run(
     error: str | None = None,
     accepted_outcome: AcceptedNodeOutcome | None = None,
 ) -> NodeRun:
-    # Compatibility migration for rows completed before AcceptedNodeOutcome
-    # existed. This is not a lifecycle transition: it only installs matching
-    # authoritative evidence onto an already-terminal logical record while
-    # preserving its original lifecycle timestamps.
-    if node_run.status is RunStatus.COMPLETED and target is RunStatus.COMPLETED:
+    def migrate_legacy_completed() -> NodeRun | None:
+        """Install authoritative evidence on a pre-AcceptedNodeOutcome completed row."""
+        if node_run.status is not RunStatus.COMPLETED or target is not RunStatus.COMPLETED:
+            return None
         if node_run.accepted_outcome is not None or accepted_outcome is None:
             raise InvalidLifecycleTransition("illegal transition: completed -> completed")
         if accepted_outcome.logical_status is not RunStatus.COMPLETED:
@@ -136,6 +135,10 @@ def transition_node_run(
         values = node_run.model_dump(mode="python")
         values["accepted_outcome"] = accepted_outcome
         return NodeRun.model_validate(values)
+
+    legacy = migrate_legacy_completed()
+    if legacy is not None:
+        return legacy
 
     values = _logical_values(node_run, target, at=at, result=result, error=error)
     if (
