@@ -1,17 +1,23 @@
-"""Atomic logical acceptance and authoritative Graph traversal advancement.
+"""Atomic logical acceptance and authoritative Graph traversal state changes.
 
-Physical Attempts are already durable before this module runs. This fold turns
-those immutable physical results into accepted logical NodeRun outcomes and, for
-an advancing frontier, persists the resulting GraphExecutionState and
-TraversalCommit in the same optimistic durable checkpoint.
+Physical Attempts are durable before this module runs. The authoritative fold
+projects that evidence into logical NodeRun outcomes, then persists advancing
+TraversalCommits or non-advancing TraversalCheckpoints with the owning Graph
+state in one optimistic durable update.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from maistro.graph.definitions import Graph
 from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
-from maistro.graph.traversal_commit import TraversalCommit
-from maistro.runs.lifecycle import transition_node_run
+from maistro.graph.traversal_commit import (
+    TraversalCheckpoint,
+    TraversalCommit,
+    graph_state_hash,
+)
+from maistro.runs.lifecycle import transition_node_run, transition_run
 from maistro.runs.model import (
     AcceptedNodeOutcome,
     AttemptResult,
@@ -124,6 +130,40 @@ def _accepted_outcomes(
     return tuple(outcomes)
 
 
+def _checkpoint_bridge_id(
+    record: DurableRunRecord,
+    prior_state: GraphExecutionState,
+) -> str | None:
+    checkpoint = record.latest_traversal_checkpoint
+    if checkpoint is None:
+        return None
+    if checkpoint.state_hash != graph_state_hash(prior_state):
+        return None
+    return checkpoint.traversal_checkpoint_id
+
+
+def _new_commit(
+    record: DurableRunRecord,
+    *,
+    prior_state: GraphExecutionState,
+    resulting_state: GraphExecutionState,
+    completed: tuple[traversal._FrontierItem, ...],
+    decisions: tuple[GraphEdgeDecision, ...],
+) -> TraversalCommit:
+    prior = record.latest_traversal_commit
+    return TraversalCommit.from_transition(
+        graph_snapshot_hash=record.run.graph.content_hash,
+        prior_state=prior_state,
+        resulting_state=resulting_state,
+        ordered_source_node_run_ids=tuple(item.node_run.node_run_id for item in completed),
+        accepted_outcomes=_accepted_outcomes(record, completed),
+        edge_decisions=decisions,
+        commit_sequence=len(record.traversal_commits) + 1,
+        prior_commit_id=prior.traversal_commit_id if prior is not None else None,
+        checkpoint_id=_checkpoint_bridge_id(record, prior_state),
+    )
+
+
 async def _checkpoint_advancement(
     record: DurableRunRecord,
     prior_state: GraphExecutionState,
@@ -146,16 +186,12 @@ async def _checkpoint_advancement(
         edge_decisions=(*record.graph_state.edge_decisions, *decisions),
         metadata=metadata,
     )
-    prior = record.latest_traversal_commit
-    commit = TraversalCommit.from_transition(
-        graph_snapshot_hash=record.run.graph.content_hash,
+    commit = _new_commit(
+        record,
         prior_state=prior_state,
         resulting_state=state,
-        ordered_source_node_run_ids=tuple(item.node_run.node_run_id for item in completed),
-        accepted_outcomes=_accepted_outcomes(record, completed),
-        edge_decisions=decisions,
-        commit_sequence=len(record.traversal_commits) + 1,
-        prior_commit_id=prior.traversal_commit_id if prior is not None else None,
+        completed=completed,
+        decisions=decisions,
     )
     return await traversal._checkpoint(
         record,
@@ -163,6 +199,71 @@ async def _checkpoint_advancement(
         graph_state=state,
         traversal_commits=(*record.traversal_commits, commit),
         resume_at=None,
+    )
+
+
+async def _checkpoint_suspension(
+    record: DurableRunRecord,
+    prior_state: GraphExecutionState,
+    completed: tuple[traversal._FrontierItem, ...],
+    paused: tuple[traversal._FrontierItem, ...],
+    next_ids: tuple[str, ...],
+    decisions: tuple[GraphEdgeDecision, ...],
+    *,
+    store: DurableRunStore,
+) -> DurableRunRecord:
+    """Persist partial advancement and paused logical visits in one durable fact set."""
+    metadata = dict(record.graph_state.metadata)
+    pause_entries = {item.node_id: traversal._pause_entry(item.result) for item in paused}
+    existing_pauses = metadata.get("pauses", {})
+    if isinstance(existing_pauses, Mapping):
+        pause_entries = {**dict(existing_pauses), **pause_entries}
+    metadata["pauses"] = pause_entries
+    metadata["pause"] = pause_entries[paused[0].node_id]
+
+    combined_next = traversal._dedupe(next_ids)
+    if combined_next:
+        metadata["deferred_frontier"] = list(combined_next)
+    else:
+        metadata.pop("deferred_frontier", None)
+
+    state = traversal._replace_state(
+        record.graph_state,
+        active_node_ids=tuple(item.node_id for item in paused),
+        edge_decisions=(*record.graph_state.edge_decisions, *decisions),
+        metadata=metadata,
+    )
+    commits = record.traversal_commits
+    if completed:
+        commit = _new_commit(
+            record,
+            prior_state=prior_state,
+            resulting_state=state,
+            completed=completed,
+            decisions=decisions,
+        )
+        commits = (*commits, commit)
+
+    checkpoint = TraversalCheckpoint.from_state(
+        graph_snapshot_hash=record.run.graph.content_hash,
+        state=state,
+        ordered_source_node_run_ids=tuple(item.node_run.node_run_id for item in paused),
+        checkpoint_sequence=len(record.traversal_checkpoints) + 1,
+    )
+    human = any(traversal._is_human_pause(item.result) for item in paused)
+    run = transition_run(
+        record.run,
+        RunStatus.PAUSED if human else RunStatus.WAITING,
+    )
+    resume_at = traversal._earliest_resume(item.result.resume_at for item in paused)
+    return await traversal._checkpoint(
+        record,
+        store=store,
+        run=run,
+        graph_state=state,
+        traversal_commits=commits,
+        traversal_checkpoints=(*record.traversal_checkpoints, checkpoint),
+        resume_at=resume_at,
     )
 
 
@@ -208,8 +309,10 @@ async def fold_authoritative_frontier(
     )
     record = traversal._with_deferred_fanins(record, blocked_fanins)
     if paused:
-        return await traversal._checkpoint_paused_frontier(
+        return await _checkpoint_suspension(
             record,
+            prior_state,
+            completed,
             paused,
             next_ids,
             decisions,
