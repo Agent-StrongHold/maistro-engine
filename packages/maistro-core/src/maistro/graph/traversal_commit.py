@@ -396,6 +396,9 @@ if TYPE_CHECKING:
         _ = checkpoint.checkpoint_id
         _ = checkpoint.checkpoint_sequence
         _ = checkpoint.checkpointed_at
+        _ = TraversalCommit._non_empty_identity
+        _ = TraversalCommit._non_empty_members
+        _ = TraversalCommit._validate_cardinality_and_identity
         _ = TraversalCommit.from_transition
         _ = TraversalCheckpoint.from_state
 
