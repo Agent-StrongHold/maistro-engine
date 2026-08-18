@@ -22,6 +22,7 @@ from maistro.runtime import ExecutionRuntime, PythonExecutionRuntime
 
 from . import executor as traversal
 from .authoritative_fold import fold_authoritative_frontier
+from .checkpoint_bridge import checkpoint_nonadvancing_state
 from .execution_store import DurableRunExecutionStore
 from .protocol import DurableRunStore
 from .types import DurableRunRecord
@@ -85,6 +86,7 @@ async def resume_durable_graph(
     }:
         raise ValueError(f"cannot resume run in status {record.run.status!r}")
 
+    record = await checkpoint_nonadvancing_state(record, store=store)
     record = await _reconcile_orphaned_attempts(record, store=store)
 
     run = record.run
