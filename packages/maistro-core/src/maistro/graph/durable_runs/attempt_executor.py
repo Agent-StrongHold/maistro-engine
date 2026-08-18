@@ -21,6 +21,7 @@ from maistro.runs.reconciliation import AttemptLifecycleReconciler
 from maistro.runtime import ExecutionRuntime, PythonExecutionRuntime
 
 from . import executor as traversal
+from .authoritative_fold import fold_authoritative_frontier
 from .execution_store import DurableRunExecutionStore
 from .protocol import DurableRunStore
 from .types import DurableRunRecord
@@ -226,7 +227,7 @@ async def _walk_frontier(
         )
 
     latest = await _reload_record(record.run_id, store=store)
-    return await traversal._fold_frontier(
+    return await fold_authoritative_frontier(
         latest,
         graph,
         items,
