@@ -193,7 +193,9 @@ if TYPE_CHECKING:
     def _vulture_pydantic_contract_usage(record: DurableRunRecord) -> None:
         _ = record._validate_links
         _ = record.latest_traversal_commit
-        _ = _validate_traversal_commits
+
+    _ = _vulture_pydantic_contract_usage
+    _ = _validate_traversal_commits
 
 
 __all__ = ["DurableRunRecord", "RunStatus"]
