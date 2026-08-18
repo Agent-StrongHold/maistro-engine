@@ -437,6 +437,7 @@ if TYPE_CHECKING:
         _ = TraversalCommit.from_transition
         _ = TraversalCheckpoint.from_state
 
+    _: object
     _ = _vulture_traversal_contract_usage
     _ = _base_accepted_outcome_payload
     _ = _json_value
