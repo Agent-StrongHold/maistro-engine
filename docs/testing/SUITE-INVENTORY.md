@@ -62,6 +62,8 @@ cancellation terminalization across Attempt, NodeRun, and Run, and recovery by
 appending a second Attempt under the same logical NodeRun.
 Accepted AttemptResult/NodeRun outcome separation adds nine maistro-core node
 IDs. Durable execution-lease fencing adds five more maistro-core node IDs.
+Authoritative TraversalCommit/TraversalCheckpoint contracts add eleven
+maistro-core node IDs.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
@@ -82,7 +84,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6162 | `ci.yml` |
+| `packages/maistro-core/tests` | 6173 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
