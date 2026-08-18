@@ -48,6 +48,20 @@ def graph_state_hash(state: GraphExecutionState) -> str:
     return _digest(state.model_dump(mode="json"))
 
 
+def _traversal_state_hash(state: GraphExecutionState) -> str:
+    """Hash only state owned by an accepted graph-advancement boundary.
+
+    Visit allocation and checkpoint/resume metadata can change durably between
+    accepted TraversalCommits without advancing the graph. Excluding those
+    fields keeps adjacent commit hashes chained while full GraphExecutionState
+    hashes remain available to TraversalCheckpoint.
+    """
+    values = state.model_dump(mode="json")
+    values.pop("visit_counts", None)
+    values.pop("metadata", None)
+    return _digest(values)
+
+
 def edge_decision_id(decision: GraphEdgeDecision) -> str:
     """Return stable identity for one visit-correlated routing decision."""
     return _digest(decision.model_dump(mode="json"))
@@ -294,11 +308,11 @@ class TraversalCommit(BaseModel):
             accepted_outcomes=accepted_outcomes,
             edge_decisions=edge_decisions,
         )
-        prior_hash = graph_state_hash(prior_state)
+        prior_hash = _traversal_state_hash(prior_state)
         outcome_ids = tuple(accepted_outcome_id(item) for item in accepted_outcomes)
         decision_ids = tuple(edge_decision_id(item) for item in edge_decisions)
         frontier = resulting_state.active_node_ids
-        resulting_hash = graph_state_hash(resulting_state)
+        resulting_hash = _traversal_state_hash(resulting_state)
         commit_id = _commit_identity(
             run_id=prior_state.run_id,
             prior_commit_id=prior_commit_id,
@@ -442,6 +456,7 @@ if TYPE_CHECKING:
     _ = _base_accepted_outcome_payload
     _ = _json_value
     _ = _same_json_value
+    _ = _traversal_state_hash
 
 
 __all__ = [
