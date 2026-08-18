@@ -168,6 +168,14 @@ TERMINAL_ATTEMPT_STATUSES = frozenset(
         AttemptStatus.YIELDED,
     }
 )
+ACCEPTED_NODE_OUTCOME_STATUSES = frozenset(
+    {
+        RunStatus.WAITING,
+        RunStatus.PAUSED,
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+    }
+)
 
 
 class GraphSnapshot(BaseModel):
@@ -315,13 +323,35 @@ class AttemptResult(BaseModel):
 
 
 class AcceptedNodeOutcome(BaseModel):
-    """The one physical result accepted as authoritative for a logical NodeRun."""
+    """Authoritative logical projection of one physically completed AttemptResult."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     node_run_id: str
     attempt_result: AttemptResult
+    logical_status: RunStatus = RunStatus.COMPLETED
+    result: Any | None = None
+    error: str | None = None
     accepted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_legacy_projection(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        projected = dict(value)
+        physical = projected.get("attempt_result")
+        if "result" not in projected:
+            if isinstance(physical, AttemptResult):
+                projected["result"] = physical.result
+            elif isinstance(physical, dict):
+                projected["result"] = physical.get("result")
+        if "error" not in projected:
+            if isinstance(physical, AttemptResult):
+                projected["error"] = physical.error
+            elif isinstance(physical, dict):
+                projected["error"] = physical.get("error")
+        return projected
 
     @model_validator(mode="after")
     def _validate_accepted_outcome(self) -> AcceptedNodeOutcome:
@@ -329,7 +359,9 @@ class AcceptedNodeOutcome(BaseModel):
         if self.attempt_result.node_run_id != self.node_run_id:
             raise ValueError("accepted AttemptResult must belong to the NodeRun")
         if self.attempt_result.status is not AttemptStatus.COMPLETED:
-            raise ValueError("only a completed AttemptResult can become an accepted Node outcome")
+            raise ValueError("only a physically completed AttemptResult can be accepted")
+        if self.logical_status not in ACCEPTED_NODE_OUTCOME_STATUSES:
+            raise ValueError("accepted Node outcome has an unsupported logical disposition")
         return self
 
 
@@ -358,10 +390,12 @@ class NodeRun(BaseModel):
         if self.accepted_outcome is not None:
             if self.accepted_outcome.node_run_id != self.node_run_id:
                 raise ValueError("accepted outcome must belong to this NodeRun")
-            if self.status is not RunStatus.COMPLETED:
-                raise ValueError("accepted outcome requires a completed NodeRun")
-            if not evidence_values_equal(self.result, self.accepted_outcome.attempt_result.result):
-                raise ValueError("NodeRun.result must project the accepted AttemptResult")
+            if self.status is not self.accepted_outcome.logical_status:
+                raise ValueError("NodeRun status must match its accepted logical outcome")
+            if not evidence_values_equal(self.result, self.accepted_outcome.result):
+                raise ValueError("NodeRun.result must project the accepted logical result")
+            if self.error != self.accepted_outcome.error:
+                raise ValueError("NodeRun.error must project the accepted logical error")
         _validate_finished_at(
             terminal=self.status in TERMINAL_RUN_STATUSES,
             finished_at=self.finished_at,
@@ -408,6 +442,7 @@ class Attempt(BaseModel):
 
 
 __all__ = [
+    "ACCEPTED_NODE_OUTCOME_STATUSES",
     "TERMINAL_ATTEMPT_STATUSES",
     "TERMINAL_RUN_STATUSES",
     "AcceptedNodeOutcome",

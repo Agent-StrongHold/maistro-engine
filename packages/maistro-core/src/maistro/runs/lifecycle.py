@@ -125,15 +125,25 @@ def transition_node_run(
     if node_run.status is RunStatus.COMPLETED and target is RunStatus.COMPLETED:
         if node_run.accepted_outcome is not None or accepted_outcome is None:
             raise InvalidLifecycleTransition("illegal transition: completed -> completed")
-        if not evidence_values_equal(node_run.result, accepted_outcome.attempt_result.result):
+        if accepted_outcome.logical_status is not RunStatus.COMPLETED:
             raise InvalidLifecycleTransition(
-                "legacy completed NodeRun result differs from AttemptResult"
+                "legacy completed NodeRun requires a completed accepted outcome"
             )
+        if not evidence_values_equal(node_run.result, accepted_outcome.result):
+            raise InvalidLifecycleTransition("legacy completed NodeRun result differs from outcome")
+        if node_run.error != accepted_outcome.error:
+            raise InvalidLifecycleTransition("legacy completed NodeRun error differs from outcome")
         values = node_run.model_dump(mode="python")
         values["accepted_outcome"] = accepted_outcome
         return NodeRun.model_validate(values)
 
     values = _logical_values(node_run, target, at=at, result=result, error=error)
+    if (
+        node_run.accepted_outcome is not None
+        and node_run.status in {RunStatus.WAITING, RunStatus.PAUSED}
+        and target in {RunStatus.QUEUED, RunStatus.RUNNING}
+    ):
+        values["accepted_outcome"] = None
     if accepted_outcome is not None:
         values["accepted_outcome"] = accepted_outcome
     return NodeRun.model_validate(values)
