@@ -437,10 +437,12 @@ if TYPE_CHECKING:
         _ = TraversalCommit.from_transition
         _ = TraversalCheckpoint.from_state
 
-    _ = _vulture_traversal_contract_usage
-    _ = _base_accepted_outcome_payload
-    _ = _json_value
-    _ = _same_json_value
+    _vulture_traversal_refs: tuple[object, ...] = (
+        _vulture_traversal_contract_usage,
+        _base_accepted_outcome_payload,
+        _json_value,
+        _same_json_value,
+    )
 
 
 __all__ = [
