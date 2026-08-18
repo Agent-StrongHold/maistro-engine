@@ -9,9 +9,16 @@ TraversalCommit in the same optimistic durable checkpoint.
 from __future__ import annotations
 
 from maistro.graph.definitions import Graph
+from maistro.graph.execution_state import GraphEdgeDecision
 from maistro.graph.traversal_commit import TraversalCommit
 from maistro.runs.lifecycle import transition_node_run
-from maistro.runs.model import AcceptedNodeOutcome, AttemptResult, AttemptStatus, NodeRun, RunStatus
+from maistro.runs.model import (
+    AcceptedNodeOutcome,
+    AttemptResult,
+    AttemptStatus,
+    NodeRun,
+    RunStatus,
+)
 
 from . import executor as traversal
 from .protocol import DurableRunStore
@@ -32,10 +39,15 @@ def _completed_attempt_result(record: DurableRunRecord, node_run_id: str) -> Att
     return AttemptResult.from_attempt(attempt)
 
 
-def _logical_outcome(record: DurableRunRecord, item: traversal._FrontierItem) -> AcceptedNodeOutcome:
+def _logical_outcome(
+    record: DurableRunRecord,
+    item: traversal._FrontierItem,
+) -> AcceptedNodeOutcome:
     physical = _completed_attempt_result(record, item.node_run.node_run_id)
     if item.result.status == "paused":
-        logical_status = RunStatus.PAUSED if traversal._is_human_pause(item.result) else RunStatus.WAITING
+        logical_status = (
+            RunStatus.PAUSED if traversal._is_human_pause(item.result) else RunStatus.WAITING
+        )
         result = None
         error = None
     elif item.result.success:
@@ -116,7 +128,7 @@ async def _checkpoint_advancement(
     record: DurableRunRecord,
     completed: tuple[traversal._FrontierItem, ...],
     next_ids: tuple[str, ...],
-    decisions: tuple[object, ...],
+    decisions: tuple[GraphEdgeDecision, ...],
     *,
     store: DurableRunStore,
 ) -> DurableRunRecord:
@@ -140,7 +152,7 @@ async def _checkpoint_advancement(
         resulting_state=state,
         ordered_source_node_run_ids=tuple(item.node_run.node_run_id for item in completed),
         accepted_outcomes=_accepted_outcomes(record, completed),
-        edge_decisions=tuple(decisions),
+        edge_decisions=decisions,
         commit_sequence=len(record.traversal_commits) + 1,
         prior_commit_id=prior.traversal_commit_id if prior is not None else None,
     )
