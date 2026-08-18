@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Run vulture and require exact reviewed finding identities.
+"""Run Vulture and require an exact, monotonic reviewed debt ledger.
 
-Rules in quality/vulture-baseline.json explain why a finding is dynamically or
-declaratively used. Each rule must also snapshot the stable identity multiset of
-the findings it currently accepts. CI therefore fails when accepted debt grows,
-shrinks, or is replaced by different debt without an explicit baseline update.
-High-confidence unreachable code is never allowlisted.
+Rules in quality/vulture-baseline.json explain why a static-analysis category is
+accepted. Each rule also records the count and SHA-256 digest of the sorted
+stable finding-identity multiset. Count catches growth and unbanked improvement;
+the digest catches same-count substitution. High-confidence unreachable code is
+never allowlisted.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
 import sys
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -62,14 +62,10 @@ class Classification:
 
 
 @dataclass(frozen=True)
-class SnapshotDelta:
+class RuleLedger:
     rule_id: str
-    added: list[str]
-    removed: list[str]
-
-    @property
-    def changed(self) -> bool:
-        return bool(self.added or self.removed)
+    finding_count: int
+    finding_sha256: str
 
 
 def _load_baseline() -> dict[str, Any]:
@@ -87,17 +83,14 @@ def _matches_rule(finding: Finding, rule: dict[str, Any]) -> bool:
     path_regex = rule.get("path_regex")
     if path_regex and not re.search(str(path_regex), finding.path):
         return False
-
     message_regex = rule.get("message_regex")
     if message_regex and not re.search(str(message_regex), finding.message):
         return False
-
     source_needles = rule.get("source_contains_any") or []
     if source_needles:
         source = _source_for(finding.path)
         if not any(str(needle) in source for needle in source_needles):
             return False
-
     return True
 
 
@@ -116,7 +109,6 @@ def _classify(findings: list[Finding], rules: list[dict[str, Any]]) -> Classific
     by_rule: dict[str, list[Finding]] = {str(rule["id"]): [] for rule in rules}
     unclassified: list[Finding] = []
     never_allowlist: list[Finding] = []
-
     for finding in findings:
         if "unreachable code" in finding.message:
             never_allowlist.append(finding)
@@ -126,36 +118,31 @@ def _classify(findings: list[Finding], rules: list[dict[str, Any]]) -> Classific
             unclassified.append(finding)
             continue
         by_rule[str(matched["id"])].append(finding)
-
     return Classification(by_rule, unclassified, never_allowlist)
 
 
-def _counter_delta(current: list[str], expected: list[str]) -> tuple[list[str], list[str]]:
-    current_counts = Counter(current)
-    expected_counts = Counter(expected)
-    added = sorted((current_counts - expected_counts).elements())
-    removed = sorted((expected_counts - current_counts).elements())
-    return added, removed
+def _ledger(rule_id: str, findings: list[Finding]) -> RuleLedger:
+    identities = sorted(finding.stable_key for finding in findings)
+    payload = "\n".join(identities).encode("utf-8")
+    return RuleLedger(rule_id, len(identities), hashlib.sha256(payload).hexdigest())
 
 
-def _snapshot_deltas(
-    rules: list[dict[str, Any]],
-    classification: Classification,
-) -> tuple[list[tuple[str, list[str]]], list[SnapshotDelta]]:
-    missing: list[tuple[str, list[str]]] = []
-    deltas: list[SnapshotDelta] = []
+def _ledger_failures(
+    rules: list[dict[str, Any]], classification: Classification
+) -> tuple[list[RuleLedger], list[tuple[RuleLedger, int, str]]]:
+    missing: list[RuleLedger] = []
+    changed: list[tuple[RuleLedger, int, str]] = []
     for rule in rules:
         rule_id = str(rule["id"])
-        current = sorted(finding.stable_key for finding in classification.by_rule[rule_id])
-        expected = rule.get("findings")
-        if not isinstance(expected, list):
-            missing.append((rule_id, current))
+        current = _ledger(rule_id, classification.by_rule[rule_id])
+        expected_count = rule.get("finding_count")
+        expected_digest = rule.get("finding_sha256")
+        if not isinstance(expected_count, int) or not isinstance(expected_digest, str):
+            missing.append(current)
             continue
-        added, removed = _counter_delta(current, [str(item) for item in expected])
-        delta = SnapshotDelta(rule_id, added, removed)
-        if delta.changed:
-            deltas.append(delta)
-    return missing, deltas
+        if current.finding_count != expected_count or current.finding_sha256 != expected_digest:
+            changed.append((current, expected_count, expected_digest))
+    return missing, changed
 
 
 def _print_summary(findings: list[Finding], classification: Classification) -> None:
@@ -175,25 +162,34 @@ def _print_findings(title: str, findings: list[Finding]) -> None:
         print(f"  {finding.render()}", file=sys.stderr)
 
 
-def _print_missing_snapshots(missing: list[tuple[str, list[str]]]) -> None:
-    if not missing:
-        return
-    print("\nRules missing exact `findings` snapshots:", file=sys.stderr)
-    for rule_id, current in missing:
-        rendered = json.dumps(current, indent=2)
-        print(f"\n  {rule_id} observed findings = {rendered}", file=sys.stderr)
-
-
-def _print_snapshot_deltas(deltas: list[SnapshotDelta]) -> None:
-    if not deltas:
-        return
-    print("\nReviewed finding snapshots changed:", file=sys.stderr)
-    for delta in deltas:
-        print(f"\n  {delta.rule_id}", file=sys.stderr)
-        for key in delta.added[:50]:
-            print(f"    + {key}", file=sys.stderr)
-        for key in delta.removed[:50]:
-            print(f"    - {key}", file=sys.stderr)
+def _print_ledger_failures(
+    missing: list[RuleLedger], changed: list[tuple[RuleLedger, int, str]]
+) -> None:
+    if missing:
+        print("\nRules missing exact count+digest ledger values:", file=sys.stderr)
+        for item in missing:
+            print(
+                f'  {item.rule_id}: "finding_count": {item.finding_count}, '
+                f'"finding_sha256": "{item.finding_sha256}"',
+                file=sys.stderr,
+            )
+    if changed:
+        print("\nReviewed Vulture debt changed:", file=sys.stderr)
+        for current, expected_count, expected_digest in changed:
+            direction = "grew" if current.finding_count > expected_count else "shrunk"
+            if current.finding_count == expected_count:
+                direction = "changed identity at constant count"
+            print(
+                f"  {current.rule_id}: {direction}; expected count={expected_count} "
+                f"sha256={expected_digest}, current count={current.finding_count} "
+                f"sha256={current.finding_sha256}",
+                file=sys.stderr,
+            )
+        print(
+            "\nAny improvement must be banked by lowering the count and updating the digest in "
+            "the same PR. Same-count substitutions require explicit review.",
+            file=sys.stderr,
+        )
 
 
 def main(argv: list[str]) -> int:
@@ -201,22 +197,21 @@ def main(argv: list[str]) -> int:
     rules = _load_baseline()["rules"]
     findings = _run_vulture(scan_args)
     classification = _classify(findings, rules)
-    missing, deltas = _snapshot_deltas(rules, classification)
+    missing, changed = _ledger_failures(rules, classification)
 
     _print_summary(findings, classification)
-    _print_findings(
-        "Unreachable-code findings must be fixed:",
-        classification.never_allowlist,
-    )
+    _print_findings("Unreachable-code findings must be fixed:", classification.never_allowlist)
     _print_findings(
         "Unclassified vulture findings need owner/category/rationale:",
         classification.unclassified,
     )
-    _print_missing_snapshots(missing)
-    _print_snapshot_deltas(deltas)
+    _print_ledger_failures(missing, changed)
 
     failed = bool(
-        classification.never_allowlist or classification.unclassified or missing or deltas
+        classification.never_allowlist
+        or classification.unclassified
+        or missing
+        or changed
     )
     return int(failed)
 
