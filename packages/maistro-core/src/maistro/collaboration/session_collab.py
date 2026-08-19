@@ -214,7 +214,14 @@ class SessionCollaboration:
         try:
             while True:
                 item = await queue.get()
-                if item is _CLOSE or not self.can(session_id, user_id, Action.VIEW):
+                # `item is None`, not `item is _CLOSE`: both are the same check
+                # (`_CLOSE` *is* None), but narrowing against the literal is what
+                # lets a type checker drop `None` from the yielded type. Comparing
+                # against the alias leaves this generator inferred as yielding
+                # `CollabEvent | None`, contradicting its `AsyncIterator[CollabEvent]`
+                # signature. `_CLOSE` stays the name used when *sending* the
+                # sentinel, where it reads as intent rather than as a value.
+                if item is None or not self.can(session_id, user_id, Action.VIEW):
                     break
                 yield item
         finally:
