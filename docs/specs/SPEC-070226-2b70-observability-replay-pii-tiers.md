@@ -26,6 +26,15 @@ tests:
   - packages/maistro-core/tests/observability/test_tiers.py
   - packages/maistro-core/tests/observability/test_replay.py
   - packages/maistro-core/tests/observability/test_proxy.py
+ac-modules:
+  AC-1: maistro.observability.proxy
+  AC-2: maistro.observability.replay
+  AC-3: maistro.observability.proxy
+  AC-4: maistro.observability.replay
+  AC-5: maistro.observability.replay
+  AC-6: maistro.observability.replay
+  AC-7: maistro.observability.tiers
+  AC-9: maistro.observability.proxy
 layer: Observability
 owners:
   - '@BlakeMatthews-dev'
@@ -146,23 +155,37 @@ code calls `litellm` directly, so the grep rule can be added to ci.yml at wiring
 
 ## Acceptance criteria
 
-- [x] Every LLM/tool call through the proxies writes a `ReplayEvent` carrying the active ADR-037
-      `trace_id`/`span_id` and a per-trace monotonic `seq`.
-- [x] `replay(trace_id)` yields events in original `seq` order (property test).
-- [x] Re-running an orchestration path in replay mode never invokes the real LLM or tool
-      (asserted via a poisoned real client that raises if touched).
-- [x] A divergent request during replay raises `ReplayDivergenceError` naming the seq and hash diff.
-- [x] `sensitive`-tagged payloads are only readable via the scoped read path; each read writes an
-      access-audit row.
-- [x] `secret`-tagged calls persist hash + metadata only — no payload bytes in any table (property
-      test over generated payloads).
-- [x] PII detector flags a `normal` event containing an email/card/secret-shaped token: raises in
-      dev mode, redacts + emits `pii.unexpected_match` in prod mode.
-- [ ] Direct `litellm` invocation in engine code fails CI; an agent wired with a non-proxy client
-      fails registration. *(Deferred to container/agent-factory wiring + ci.yml grep rule — see
-      wiring status above.)*
-- [x] Hot path is never blocked by recording for `normal` tier (buffer-overflow test drops records
-      and increments `observability.record_dropped`).
+- [x] **AC-1** Every LLM/tool call through the proxies writes a `ReplayEvent` carrying the
+      active ADR-037 `trace_id`/`span_id` and a `seq` that is monotonic per trace and
+      *shared* between the LLM and tool proxies, so interleaved calls replay in the order
+      they were made rather than in two independent sequences.
+- [x] **AC-2** `replay(trace_id)` yields events in original `seq` order, for any
+      interleaving of writes (property test over generated event sequences).
+- [x] **AC-3** Re-running an orchestration path in replay mode never invokes the real LLM
+      or tool, asserted via a poisoned real client that raises if touched.
+- [x] **AC-4** A request during replay that diverges from the recording raises
+      `ReplayDivergenceError` naming the `seq` and both hashes. Divergence covers a changed
+      request, a swapped call kind, and an exhausted trace — the three ways a replay can
+      stop corresponding to its recording.
+- [x] **AC-5** `sensitive`-tagged payloads are readable only via the scoped read path, and
+      each such read writes an `AccessAuditRecord`. Reading one that does not exist raises
+      rather than returning empty.
+- [x] **AC-6** `secret`-tagged calls persist hash + metadata only: no payload bytes appear
+      in any stored field (property test over generated payloads, including payloads
+      chosen to collide with metadata field names).
+- [x] **AC-7** The PII detector flags a `normal` event containing an email, card, or
+      secret-shaped token: it raises `UnexpectedPIIError` in dev mode, and in prod mode
+      redacts a *copy* — leaving the caller's object unmutated — and emits
+      `pii.unexpected_match`. It does not run on `sensitive` payloads, which are already
+      sealed.
+- [ ] **AC-8** Direct `litellm` invocation in engine code fails CI, and an agent wired with
+      a non-proxy client fails registration. *(Deferred to container/agent-factory wiring
+      plus a ci.yml grep rule — see wiring status above. Deliberately unticked: no test
+      claims it, and the ladder reports it as `declared`.)*
+- [x] **AC-9** Recording never blocks the hot path at `normal` tier: submission returns
+      without awaiting the write, a full buffer drops records and increments
+      `observability.record_dropped`, and `sensitive`/`secret` writes are never silently
+      dropped — those raise instead.
 
 ## Testing
 

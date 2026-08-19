@@ -48,6 +48,7 @@ def stores() -> tuple[InMemoryEventLog, InMemoryTriggerStore, InMemoryInvocation
     return InMemoryEventLog(), InMemoryTriggerStore(), InMemoryInvocationStore()
 
 
+@pytest.mark.ac("SPEC-070226-b234/AC-3")
 async def test_matching_trigger_invoked_once(
     stores: tuple[InMemoryEventLog, InMemoryTriggerStore, InMemoryInvocationStore],
 ) -> None:
@@ -87,6 +88,7 @@ async def test_multiple_triggers_fan_out(
     assert sorted(caller.calls) == sorted([(t1.trigger_id, e.id), (t2.trigger_id, e.id)])
 
 
+@pytest.mark.ac("SPEC-070226-b234/AC-4")
 async def test_retry_up_to_three_attempts_then_failed(
     stores: tuple[InMemoryEventLog, InMemoryTriggerStore, InMemoryInvocationStore],
 ) -> None:
@@ -121,6 +123,7 @@ async def test_retry_up_to_three_attempts_then_failed(
     assert failed_events[0].source == "reactor"
 
 
+@pytest.mark.ac("SPEC-070226-b234/AC-4")
 async def test_transient_failure_recovers(
     stores: tuple[InMemoryEventLog, InMemoryTriggerStore, InMemoryInvocationStore],
 ) -> None:
@@ -162,6 +165,7 @@ async def test_cursor_holds_back_on_unsettled_event(
     assert cursor == 2  # both settled now
 
 
+@pytest.mark.ac("SPEC-070226-b234/AC-3")
 async def test_crash_replay_no_duplicate_successful_invocations(
     stores: tuple[InMemoryEventLog, InMemoryTriggerStore, InMemoryInvocationStore],
 ) -> None:

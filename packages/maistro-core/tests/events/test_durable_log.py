@@ -30,11 +30,13 @@ async def log(request: pytest.FixtureRequest) -> AsyncIterator[EventLogStore]:
 
 
 class TestAppend:
+    @pytest.mark.ac("SPEC-070226-b234/AC-1")
     async def test_append_assigns_monotonic_ids(self, log: EventLogStore) -> None:
         e1 = await log.append("agent.created", payload={"a": 1})
         e2 = await log.append("agent.deleted")
         assert e2.id > e1.id
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-1")
     async def test_append_persists_fields(self, log: EventLogStore) -> None:
         e = await log.append(
             "task.completed",
@@ -55,6 +57,7 @@ class TestAppend:
     async def test_get_missing_returns_none(self, log: EventLogStore) -> None:
         assert await log.get(999) is None
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-1")
     async def test_no_lost_events(self, log: EventLogStore) -> None:
         for i in range(50):
             await log.append(f"e.{i}")
@@ -86,6 +89,7 @@ class TestQuery:
         assert await log.query(since=e.created_at + 100) == []
         assert await log.query(until=e.created_at - 100) == []
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-1")
     async def test_ascending_order(self, log: EventLogStore) -> None:
         for _ in range(5):
             await log.append("e.o")

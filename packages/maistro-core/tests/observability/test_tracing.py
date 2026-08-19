@@ -14,6 +14,7 @@ class TestGetTracer:
         tracer = _get_tracer()
         assert tracer is not None
 
+    @pytest.mark.ac("SPEC-228/AC-3")
     def test_returns_none_when_opentelemetry_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         real_import = builtins.__import__
 
@@ -28,6 +29,7 @@ class TestGetTracer:
 
 class TestTraceAgent:
     @pytest.mark.asyncio
+    @pytest.mark.ac("SPEC-228/AC-3")
     async def test_no_tracer_runs_function_directly(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("maistro.observability.tracing._get_tracer", lambda: None)
 
@@ -38,6 +40,7 @@ class TestTraceAgent:
         assert await fn(3) == 6
 
     @pytest.mark.asyncio
+    @pytest.mark.ac("SPEC-228/AC-3")
     async def test_success_path_sets_output_preview_and_returns_result(self) -> None:
         @trace_agent("my-agent")
         async def fn(x: int) -> int:
@@ -46,6 +49,7 @@ class TestTraceAgent:
         assert await fn(41) == 42
 
     @pytest.mark.asyncio
+    @pytest.mark.ac("SPEC-228/AC-3")
     async def test_exception_path_records_and_reraises(self) -> None:
         @trace_agent("my-agent")
         async def fn() -> None:

@@ -158,6 +158,15 @@ class FrontMatter(BaseModel):
     contracts: list[Contract] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
 
+    # Per-acceptance-criterion module map, keyed by AC id ("AC-3" -> "maistro.foo.bar").
+    #
+    # This is what lets a criterion's state be *measured* rather than asserted. A
+    # marked test proves the code works; only the module it asserts about, checked
+    # against the reachability graph, proves the capability actually runs. Without
+    # this map the ladder would stop at "a test passed", which is exactly what
+    # every module in quality/reachability-baseline.json already does.
+    ac_modules: dict[str, str] = Field(default_factory=dict, alias="ac-modules")
+
     # Provenance: repo paths (packages/…, apps/…) this record governs/derives from.
     source: list[str] = Field(default_factory=list)
 

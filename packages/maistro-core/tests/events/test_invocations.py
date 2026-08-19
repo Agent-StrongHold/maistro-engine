@@ -34,6 +34,7 @@ class TestInvocationStore:
         assert inv.attempts == 0
         assert not inv.is_terminal
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-3")
     async def test_get_or_create_is_idempotent(self, store: InvocationStore) -> None:
         inv = await store.get_or_create("t1", 1)
         inv.status = InvocationStatus.SUCCESS
@@ -43,6 +44,7 @@ class TestInvocationStore:
         assert again.status is InvocationStatus.SUCCESS
         assert again.attempts == 1
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-3")
     async def test_distinct_keys_are_distinct_rows(self, store: InvocationStore) -> None:
         await store.get_or_create("t1", 1)
         await store.get_or_create("t2", 1)
@@ -65,6 +67,7 @@ class TestInvocationStore:
     async def test_get_missing(self, store: InvocationStore) -> None:
         assert await store.get("t1", 999) is None
 
+    @pytest.mark.ac("SPEC-070226-b234/AC-3")
     async def test_terminal_statuses(self, store: InvocationStore) -> None:
         inv = await store.get_or_create("t1", 1)
         for status, terminal in [

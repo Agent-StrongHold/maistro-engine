@@ -16,6 +16,11 @@ contracts: []
 tests:
   - packages/maistro-core/tests/test_metrics.py
   - packages/maistro-core/tests/events/test_events.py
+ac-modules:
+  AC-1: maistro.observability.logging
+  AC-2: maistro.observability.metrics
+  AC-3: maistro.observability.tracing
+  AC-4: maistro.events.bus
 layer: Observability
 owners:
   - '@BlakeMatthews-dev'
@@ -78,16 +83,28 @@ requires for audit value.
 
 ## Acceptance criteria
 
-- [x] A logging module exists and configures structlog with request-scoped context
-- [x] A metrics registry exists and exposes counters/gauges/histograms (with different names than ADR-037 specifies)
-- [x] A tracing decorator exists with OTEL span fallback
-- [x] An event bus exists for cross-component signaling
-- [ ] The 6 ADR-037-named `maistro_*` metrics are emitted
-- [ ] The ~14 ADR-037-required spans are instrumented at their named call sites
-- [ ] The 6 ADR-037-named event topics are emitted
-- [ ] `trace_id`/`agent_id` are bound to log context
-- [ ] Events persist indefinitely (audit requirement)
-- [ ] Sampling/retention policy is configured
+The first four record what the scaffolding actually does; the remaining six are the
+gap against ADR-037 and are deliberately unticked. They carry no `ac-modules` entry
+because there is no module to point at yet — the ladder reports them as `declared`,
+which is the honest reading of "named in an ADR, not built".
+
+- [x] **AC-1** A logging module configures structlog with request-scoped context that is
+      bound per request and does not leak between concurrent requests.
+- [x] **AC-2** A metrics registry exposes counters, gauges, and histograms, and re-registering
+      the same metric name returns the existing instrument rather than raising or shadowing.
+      *(These names are the registry's own, not the `maistro_*` names ADR-037 specifies —
+      that is AC-5.)*
+- [x] **AC-3** A tracing decorator opens a span around the wrapped call and falls back to a
+      no-op when OTEL is absent, so an uninstrumented deployment neither fails nor silently
+      swallows the wrapped call's exceptions.
+- [x] **AC-4** An event bus delivers a published event to every subscriber of its topic, and
+      a subscriber that raises does not prevent delivery to the others.
+- [ ] **AC-5** The 6 ADR-037-named `maistro_*` metrics are emitted.
+- [ ] **AC-6** The ~14 ADR-037-required spans are instrumented at their named call sites.
+- [ ] **AC-7** The 6 ADR-037-named event topics are emitted.
+- [ ] **AC-8** `trace_id` and `agent_id` are bound to log context.
+- [ ] **AC-9** Events persist indefinitely (audit requirement).
+- [ ] **AC-10** A sampling and retention policy is configured.
 
 ## Testing
 

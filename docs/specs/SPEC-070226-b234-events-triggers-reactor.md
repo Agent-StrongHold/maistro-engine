@@ -24,6 +24,11 @@ tests:
   - packages/maistro-core/tests/events/test_trigger_store.py
   - packages/maistro-core/tests/events/test_invocations.py
   - packages/maistro-core/tests/events/test_processing.py
+ac-modules:
+  AC-1: maistro.events.durable_log
+  AC-2: maistro.events.trigger_store
+  AC-3: maistro.events.invocations
+  AC-4: maistro.events.processing
 layer: Observability
 owners:
   - '@BlakeMatthews-dev'
@@ -196,14 +201,25 @@ The `(trigger_id, event_id)` unique key ensures a handler is invoked at most onc
 
 ## Acceptance criteria
 
-- [x] Every event emitted is persisted to event_log (property: no lost events).
-- [x] Triggers match event patterns correctly ("agent.*" matches "agent.created" but not "task.created").
-- [x] Handler is invoked exactly once per event (idempotency test: simulate crash, restart, confirm
-      no duplicate invocations).
-- [x] Failed handler is retried up to 3 times (backoff via reactor tick cadence, not in-loop sleep).
-- [ ] Event query API (GET /events?event_type=...&since=...) returns paginated results.
-      (Store-level `EventLogStore.query()` supports this; the HTTP route belongs in
-      maistro-server / hive-conductor and is not wired yet.)
+- [x] **AC-1** Every event emitted is persisted to the event log before any handler sees
+      it, for any sequence of emissions (property: no lost events), with append-assigned
+      monotonic ids and ascending read order. Both the in-memory and SQLite backends
+      satisfy the same contract, asserted by running the suite against each. *(On-disk
+      restart durability is a further claim this does not make: the SQLite fixture is
+      `:memory:`.)*
+- [x] **AC-2** A trigger pattern matches on event-type segments, not substrings:
+      `agent.*` matches `agent.created` and not `task.created`, and not `agent.sub.created`
+      — one segment, not any suffix.
+- [x] **AC-3** A handler is invoked exactly once per event: an invocation record is claimed
+      before the call, so a crash and restart mid-handler replays no duplicate (test
+      simulates the crash by abandoning a claimed invocation and re-running the processor).
+- [x] **AC-4** A failed handler is retried up to 3 times, with backoff paced by reactor tick
+      cadence rather than an in-loop sleep, and is marked terminally failed on the 4th —
+      never retried forever.
+- [ ] **AC-5** An event query API (`GET /events?event_type=...&since=...`) returns paginated
+      results. *(`EventLogStore.query()` supports this at store level; the HTTP route
+      belongs in maistro-server / hive-conductor and is not wired. Deliberately unticked:
+      the ladder reports it as `declared`.)*
 
 ## Testing
 

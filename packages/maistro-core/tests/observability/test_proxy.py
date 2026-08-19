@@ -92,6 +92,7 @@ class TestProtocolConformance:
 
 
 class TestRecording:
+    @pytest.mark.ac("SPEC-070226-2b70/AC-1")
     async def test_events_carry_trace_span_and_monotonic_shared_seq(self) -> None:
         llm, tools, store, writer = build_recording_stack()
         await run_orchestration(llm, tools)
@@ -103,6 +104,7 @@ class TestRecording:
         assert [e.kind for e in events] == ["llm", "tool", "tool", "llm", "tool"]
         assert all(e.trace_id == "trace-1" and e.span_id == "span-1" for e in events)
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-1")
     async def test_request_hash_is_canonical_sha256(self) -> None:
         llm, _, store, writer = build_recording_stack()
         request = req("hello")
@@ -113,6 +115,7 @@ class TestRecording:
             {"model": "m1", "messages": [{"role": "user", "content": "hello"}], "params": {}}
         )
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-2")
     async def test_replay_iterator_yields_recorded_events(self) -> None:
         llm, tools, _, writer = build_recording_stack()
         await run_orchestration(llm, tools)
@@ -120,12 +123,14 @@ class TestRecording:
         events = [e async for e in llm.replay("trace-1")]
         assert [e.seq for e in events] == [0, 1, 2, 3, 4]
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     async def test_pii_detector_runs_on_normal_tier(self) -> None:
         detector = PIIDetector(mode="dev")
         llm, _, _, _ = build_recording_stack(pii_detector=detector)
         with pytest.raises(UnexpectedPIIError):
             await llm.call(req("contact carol@example.com"))
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     async def test_pii_detector_prod_redacts_stored_payload(self) -> None:
         detector = PIIDetector(mode="prod")
         llm, _, store, writer = build_recording_stack(pii_detector=detector)
@@ -134,6 +139,7 @@ class TestRecording:
         [event] = await store.events_for_trace("trace-1")
         assert "carol@example.com" not in str(event.payload)
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-7")
     async def test_pii_detector_skipped_on_sensitive_tier(self) -> None:
         detector = PIIDetector(mode="dev")
         llm, _, store, _writer = build_recording_stack(
@@ -145,6 +151,7 @@ class TestRecording:
 
 
 class TestReplayMode:
+    @pytest.mark.ac("SPEC-070226-2b70/AC-3")
     async def test_replay_serves_recorded_responses_without_real_client(self) -> None:
         llm, tools, store, writer = build_recording_stack()
         recorded = await run_orchestration(llm, tools)
@@ -159,6 +166,7 @@ class TestReplayMode:
         replayed = await run_orchestration(r_llm, r_tools)
         assert replayed == recorded
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-4")
     async def test_replay_divergence_on_changed_request(self) -> None:
         llm, tools, store, writer = build_recording_stack()
         await run_orchestration(llm, tools)
@@ -171,6 +179,7 @@ class TestReplayMode:
         assert exc_info.value.seq == 0
         assert exc_info.value.recorded_hash != exc_info.value.attempted_hash
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-4")
     async def test_replay_divergence_on_kind_swap(self) -> None:
         llm, tools, store, writer = build_recording_stack()
         await run_orchestration(llm, tools)
@@ -182,6 +191,7 @@ class TestReplayMode:
         with pytest.raises(ReplayDivergenceError):
             await r_tools.call(ToolCall(name="search", args={"q": "x"}))
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-1")
     async def test_replay_shares_cursor_across_llm_and_tool_proxies(self) -> None:
         llm, tools, store, writer = build_recording_stack()
         await run_orchestration(llm, tools)
@@ -197,6 +207,7 @@ class TestReplayMode:
 
 
 class TestBoundedRecordWriter:
+    @pytest.mark.ac("SPEC-070226-2b70/AC-9")
     async def test_normal_overflow_drops_and_increments_counter(self) -> None:
         class SlowStore(InMemoryRecordStore):
             async def record(self, event: ReplayEvent) -> None:
@@ -225,6 +236,7 @@ class TestBoundedRecordWriter:
         assert ctx.next_seq() == 0  # unrelated sanity: fresh context starts at 0
         writer._drain_task.cancel()  # type: ignore[union-attr]
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-9")
     async def test_normal_submit_never_blocks(self) -> None:
         class SlowStore(InMemoryRecordStore):
             async def record(self, event: ReplayEvent) -> None:
@@ -237,6 +249,7 @@ class TestBoundedRecordWriter:
                 await writer.submit(event)
         writer._drain_task.cancel()  # type: ignore[union-attr]
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-9")
     async def test_sensitive_write_never_silently_dropped(self) -> None:
         class FailingStore(InMemoryRecordStore):
             async def record(self, event: ReplayEvent) -> None:
@@ -247,6 +260,7 @@ class TestBoundedRecordWriter:
         with pytest.raises(RecordWriteError):
             await writer.submit(event)
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-9")
     async def test_secret_write_within_budget_succeeds(self) -> None:
         store = InMemoryRecordStore()
         writer = BoundedRecordWriter(store)
@@ -254,6 +268,7 @@ class TestBoundedRecordWriter:
         await writer.submit(event)
         assert len(await store.events_for_trace("t")) == 1
 
+    @pytest.mark.ac("SPEC-070226-2b70/AC-9")
     async def test_flush_persists_buffered_normal_events(self) -> None:
         store = InMemoryRecordStore()
         writer = BoundedRecordWriter(store)
