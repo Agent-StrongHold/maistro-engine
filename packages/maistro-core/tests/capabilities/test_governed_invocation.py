@@ -256,7 +256,9 @@ async def test_provider_cancellation_emits_causal_unknown_outcome_event() -> Non
     assert events[1].invocation_id
     assert events[1].payload["provider_name"] == "provider-a"
     assert events[1].payload["status"] == "unknown"
-    assert events[1].payload["error"] == "provider invocation cancelled with unknown external outcome"
+    assert (
+        events[1].payload["error"] == "provider invocation cancelled with unknown external outcome"
+    )
 
 
 @pytest.mark.asyncio
