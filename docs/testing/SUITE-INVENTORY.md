@@ -82,12 +82,13 @@ node IDs, including checkpoint cache stability, complete-row-only baseline
 aggregation, and single-tool-fingerprint sweep validation.
 Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
-collected node ID while retaining the intended assertion. Other suite counts are
-unchanged.
+collected node ID while retaining the intended assertion. Durable approval
+coverage now includes stateful policy charging of human-approved effects before
+provider dispatch. Other suite counts are unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6236 | `ci.yml` |
+| `packages/maistro-core/tests` | 6237 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
