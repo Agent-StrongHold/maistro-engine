@@ -83,3 +83,15 @@ class SequenceState:
         self.count += 1
         self.counts_by_kind[action.kind] = self.counts_by_kind.get(action.kind, 0) + 1
         self.history.append(action)
+
+    def copy(self) -> SequenceState:
+        """Return a detached deep-ish copy — mutating it can't affect the source
+        (``counts_by_kind`` and ``history`` are fresh containers)."""
+        return SequenceState(
+            tokens=self.tokens,
+            cost=self.cost,
+            seconds=self.seconds,
+            count=self.count,
+            counts_by_kind=dict(self.counts_by_kind),
+            history=deque(self.history, maxlen=self.history.maxlen),
+        )

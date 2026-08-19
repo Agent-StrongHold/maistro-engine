@@ -11,6 +11,7 @@ compose but gets a Makefile pinning the exact invocations `install.sh` uses
 from __future__ import annotations
 
 import copy
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -18,14 +19,32 @@ from typing import Any
 DEFAULT_IMAGE_REPOSITORY = "ghcr.io/blakematthews-dev"
 DEFAULT_IMAGE_TAG = "latest"
 
-# Services in the root compose that carry build: keys, mapped to their
-# published image names. Digest pins are injected by the release workflow
-# (Phase 5) — until then these tags are placeholders and install.sh falls
-# back to source_build unless MAISTRO_IMAGE_PULL_READY=1.
-PINNED_IMAGES: dict[str, str] = {
-    "maistro-engine": f"{DEFAULT_IMAGE_REPOSITORY}/maistro-engine:{DEFAULT_IMAGE_TAG}",
-    "hive-conductor": f"{DEFAULT_IMAGE_REPOSITORY}/hive-conductor:{DEFAULT_IMAGE_TAG}",
-}
+IMAGE_SERVICES = ("maistro-engine", "hive-conductor")
+
+
+def image_tag() -> str:
+    """Container tag the generated compose pins to.
+
+    `MAISTRO_IMAGE_TAG` is set by get.sh/install.sh to the release tag the
+    source tree was checked out at (E5/#298), so a `--version v1.0.0` install
+    runs `v1.0.0` images rather than whatever `latest` happens to point at.
+    Read at call time, not import time: the wizard runs as a subprocess of
+    install.sh, and an import-time snapshot would freeze the value before the
+    caller's environment is visible in tests.
+    """
+    return (os.environ.get("MAISTRO_IMAGE_TAG") or "").strip() or DEFAULT_IMAGE_TAG
+
+
+def pinned_images() -> dict[str, str]:
+    """Services in the root compose that carry build: keys, mapped to their
+    published image references at the currently selected tag."""
+    tag = image_tag()
+    return {name: f"{DEFAULT_IMAGE_REPOSITORY}/{name}:{tag}" for name in IMAGE_SERVICES}
+
+
+# Import-time snapshot at the default tag, kept for callers that want the
+# mapping as a constant. Prefer pinned_images() — it reflects MAISTRO_IMAGE_TAG.
+PINNED_IMAGES: dict[str, str] = pinned_images()
 
 
 def render_image_pull_compose(
@@ -37,7 +56,7 @@ def render_image_pull_compose(
     its build: key would reintroduce the source build this mode exists to
     avoid.
     """
-    image_map = {**PINNED_IMAGES, **(images or {})}
+    image_map = {**pinned_images(), **(images or {})}
     doc = copy.deepcopy(base_compose)
     services = doc.get("services")
     if not isinstance(services, dict):

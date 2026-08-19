@@ -205,6 +205,20 @@ jobs:
           # recovery/fencing provenance and are exercised through persistence
           # and tests even though vulture sees no direct production read yet.
           #
+          # 1426 (2026-08-19) E3/E5 release pipeline (#412): +1 for
+          # `maistro_bootstrap.delivery.PINNED_IMAGES`. It is an intentional
+          # public constant of a published package ("kept for callers that want
+          # the mapping as a constant"), so it is the planned-package-API class
+          # already baselined above rather than an oversight.
+          #
+          # Flagged, deliberately not changed here: it has no consumer in this
+          # repo, and its own module warns that an import-time snapshot freezes
+          # the tag before `MAISTRO_IMAGE_TAG` is visible — which is the exact
+          # `latest`-instead-of-pinned-tag bug E5/#298 exists to fix. Any caller
+          # who reaches for the constant instead of `pinned_images()` silently
+          # reintroduces it. Removing a published symbol is a breaking change
+          # and belongs in its own reviewed PR, not a rebase.
+          #
           # 1429 (2026-08-19) canonical Binding + durable Invocation (#430):
           # net +4, measured on the merged tree. Six new findings, all the
           # already-baselined false-positive class — three Pydantic
@@ -219,7 +233,13 @@ jobs:
           # `decay_driver.running` and `types/reactor.running` findings as used.
           # Recorded here so a later reader does not read the count as progress;
           # it is the count-ratchet blind spot #446 exists to close.
-          VULTURE_BASELINE: 1429
+          #
+          # 1430 (2026-08-19) measured on the tree where #412 and #430 are both
+          # present. Not 1429 and not 1426: each was measured against a develop
+          # lacking the other, and the two deltas are disjoint (+1 bootstrap,
+          # +4 capabilities). Taking either side's number wholesale would
+          # silently spend the other's reviewed allowance.
+          VULTURE_BASELINE: 1430
         run: |
           # `third_party/` is vendored upstream source (Google's IFEval verifier,
           # BFCL's AST checker), kept byte-faithful so the benchmarks run the
