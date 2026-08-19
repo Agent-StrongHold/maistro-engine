@@ -73,6 +73,7 @@ def _history() -> tuple[
         node_id="a",
         ordinal=1,
         status=RunStatus.COMPLETED,
+        finished_at=first_outcome.attempt_result.finished_at,
         accepted_outcome=first_outcome,
         result={"value": "a"},
     )
@@ -115,6 +116,7 @@ def _history() -> tuple[
         node_id="b",
         ordinal=2,
         status=RunStatus.COMPLETED,
+        finished_at=second_outcome.attempt_result.finished_at,
         accepted_outcome=second_outcome,
         result={"value": "b"},
     )

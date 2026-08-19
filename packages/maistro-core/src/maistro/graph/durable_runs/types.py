@@ -34,7 +34,8 @@ def _validate_attempt_links(attempts: tuple[Attempt, ...], node_run_ids: set[str
     for attempt in attempts:
         attempts_by_node_run.setdefault(attempt.node_run_id, []).append(attempt.ordinal)
     if any(
-        ordinals != list(range(1, len(ordinals) + 1)) for ordinals in attempts_by_node_run.values()
+        ordinals != list(range(1, len(ordinals) + 1))
+        for ordinals in attempts_by_node_run.values()
     ):
         raise ValueError("Attempt ordinals must be consecutive per NodeRun")
 
@@ -44,7 +45,9 @@ def _validate_graph_links(run: Run, graph_state: GraphExecutionState) -> None:
         raise ValueError("graph_state.run_id must match run.run_id")
     node_ids = {node.node_id for node in run.graph.materialize().nodes}
     if any(node_id not in node_ids for node_id in graph_state.active_node_ids):
-        raise ValueError("active graph frontier must reference nodes in the Run Graph snapshot")
+        raise ValueError(
+            "active graph frontier must reference nodes in the Run Graph snapshot"
+        )
 
 
 def _validate_checkpoint_record(
@@ -59,7 +62,8 @@ def _validate_checkpoint_record(
     if checkpoint.graph_snapshot_hash != run.graph.content_hash:
         raise ValueError("TraversalCheckpoint graph snapshot must match the Run snapshot")
     if any(
-        node_run_id not in node_run_ids for node_run_id in checkpoint.ordered_source_node_run_ids
+        node_run_id not in node_run_ids
+        for node_run_id in checkpoint.ordered_source_node_run_ids
     ):
         raise ValueError("TraversalCheckpoint source NodeRun must be persisted")
     if checkpoint.traversal_checkpoint_id in checkpoints_by_id:
@@ -178,9 +182,13 @@ def _validate_commit_decisions(
     for decision_id in commit.edge_decision_ids:
         decision = decisions_by_id.get(decision_id)
         if decision is None:
-            raise ValueError("TraversalCommit routing decisions must exist in GraphExecutionState")
+            raise ValueError(
+                "TraversalCommit routing decisions must exist in GraphExecutionState"
+            )
         if decision.source_node_run_id not in source_ids:
-            raise ValueError("TraversalCommit routing decision must belong to a source NodeRun")
+            raise ValueError(
+                "TraversalCommit routing decision must belong to a source NodeRun"
+            )
 
 
 def _validate_traversal_commits(
@@ -193,7 +201,9 @@ def _validate_traversal_commits(
 ) -> None:
     if not commits:
         return
-    if [commit.commit_sequence for commit in commits] != list(range(1, len(commits) + 1)):
+    if [commit.commit_sequence for commit in commits] != list(
+        range(1, len(commits) + 1)
+    ):
         raise ValueError("TraversalCommit sequences must be consecutive from one")
 
     node_runs_by_id = {node_run.node_run_id: node_run for node_run in node_runs}
@@ -220,7 +230,9 @@ def _validate_traversal_commits(
         run.status not in TERMINAL_RUN_STATUSES
         and commits[-1].resulting_frontier != graph_state.active_node_ids
     ):
-        raise ValueError("latest TraversalCommit frontier must match persisted GraphExecutionState")
+        raise ValueError(
+            "latest TraversalCommit frontier must match persisted GraphExecutionState"
+        )
 
 
 class DurableRunRecord(BaseModel):

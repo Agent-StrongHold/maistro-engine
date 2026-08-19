@@ -170,9 +170,13 @@ async def test_each_advancing_frontier_persists_accepted_outcome_and_commit() ->
         record.traversal_commits[1].prior_commit_id
         == record.traversal_commits[0].traversal_commit_id
     )
+    assert len(record.traversal_checkpoints) == 1
+    checkpoint = record.traversal_checkpoints[0]
+    assert record.traversal_commits[1].checkpoint_id == checkpoint.traversal_checkpoint_id
+    assert record.traversal_commits[1].prior_state_hash == checkpoint.state_hash
     assert (
         record.traversal_commits[1].prior_state_hash
-        == record.traversal_commits[0].resulting_state_hash
+        != record.traversal_commits[0].resulting_state_hash
     )
     assert all(node_run.accepted_outcome is not None for node_run in record.node_runs)
     for commit, node_run in zip(record.traversal_commits, record.node_runs, strict=True):

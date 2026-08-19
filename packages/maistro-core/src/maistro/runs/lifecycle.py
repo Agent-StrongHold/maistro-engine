@@ -62,6 +62,15 @@ ATTEMPT_TRANSITIONS: dict[AttemptStatus, frozenset[AttemptStatus]] = {
     AttemptStatus.YIELDED: frozenset(),
 }
 
+_ACCEPTANCE_SUPERSEDING_TRANSITIONS = frozenset(
+    {
+        RunStatus.QUEUED,
+        RunStatus.RUNNING,
+        RunStatus.CANCELLED,
+        RunStatus.TIMED_OUT,
+    }
+)
+
 
 class InvalidLifecycleTransition(ValueError):
     pass
@@ -153,7 +162,7 @@ def transition_node_run(
     if (
         node_run.accepted_outcome is not None
         and node_run.status in {RunStatus.WAITING, RunStatus.PAUSED}
-        and target in {RunStatus.QUEUED, RunStatus.RUNNING}
+        and target in _ACCEPTANCE_SUPERSEDING_TRANSITIONS
     ):
         values["accepted_outcome"] = None
     if accepted_outcome is not None:

@@ -130,17 +130,26 @@ async def _reconcile_orphaned_attempts(
     return latest
 
 
+def _requires_hitl_redispatch(
+    record: DurableRunRecord,
+    node_id: str,
+    result: NodeResult,
+) -> bool:
+    """Return whether accepted paused evidence must yield to newly submitted HITL input."""
+    return (
+        result.status == "paused"
+        and traversal._is_human_pause(result)
+        and node_id in record.hitl_answers
+    )
+
+
 def _can_reuse_completed_attempt(
     record: DurableRunRecord,
     node_id: str,
     result: NodeResult,
 ) -> bool:
     """Reuse immutable physical evidence unless new HITL input requires redispatch."""
-    return not (
-        result.status == "paused"
-        and traversal._is_human_pause(result)
-        and node_id in record.hitl_answers
-    )
+    return not _requires_hitl_redispatch(record, node_id, result)
 
 
 async def _walk(
@@ -306,10 +315,16 @@ async def _execute_frontier(
         node: Any,
         inputs: dict[str, Any],
     ) -> Any:
+        prior_completion_accepted = False
         attempts = await execution_store.list_attempts(node_run.node_run_id)
         if attempts and attempts[-1].status is AttemptStatus.COMPLETED:
             persisted_result = NodeResult.model_validate(attempts[-1].result)
-            if _can_reuse_completed_attempt(record, node_id, persisted_result):
+            prior_completion_accepted = _requires_hitl_redispatch(
+                record,
+                node_id,
+                persisted_result,
+            )
+            if not prior_completion_accepted:
                 return traversal._FrontierItem(
                     node_id,
                     spec,
@@ -333,6 +348,7 @@ async def _execute_frontier(
             executor=executor,
             executor_id=str(getattr(node, "kind", None) or spec.node_type or node_id),
             reconcile_logical=False,
+            prior_completion_accepted=prior_completion_accepted,
         )
         if raw_result is None:
             raise RuntimeError(f"node {node_id!r} completed without a NodeResult")

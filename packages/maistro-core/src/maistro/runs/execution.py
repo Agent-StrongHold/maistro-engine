@@ -78,6 +78,7 @@ class AttemptExecutionService:
         timeout_s: float | None = None,
         resume_checkpoint_id: str | None = None,
         reconcile_logical: bool = True,
+        prior_completion_accepted: bool = False,
     ) -> Attempt:
         """Create, run, terminalize, and optionally defer successful reconciliation.
 
@@ -86,8 +87,15 @@ class AttemptExecutionService:
         reconciliation of cancellation, timeout, or failure. A deferred
         completion must be accepted before redispatch so recovery cannot repeat
         an external side effect whose physical outcome is already durable.
+
+        ``prior_completion_accepted=True`` is a narrow continuation escape hatch
+        for domains that can prove the latest completed Attempt was previously
+        accepted and that new durable input now requires a fresh physical try.
         """
-        await self._reject_unaccepted_completion(node_run_id)
+        await self._reject_unaccepted_completion(
+            node_run_id,
+            prior_completion_accepted=prior_completion_accepted,
+        )
 
         deadline_at = None
         if timeout_s is not None:
@@ -165,7 +173,12 @@ class AttemptExecutionService:
         """Accept one persisted physical result with an explicit logical disposition."""
         return await self._lifecycle.accept_outcome(outcome)
 
-    async def _reject_unaccepted_completion(self, node_run_id: str) -> None:
+    async def _reject_unaccepted_completion(
+        self,
+        node_run_id: str,
+        *,
+        prior_completion_accepted: bool = False,
+    ) -> None:
         node_run = await self._store.get_node_run(node_run_id)
         if node_run is None:
             raise RunIntegrityError(f"NodeRun {node_run_id!r} does not exist")
@@ -180,7 +193,7 @@ class AttemptExecutionService:
             ),
             None,
         )
-        if pending is not None:
+        if pending is not None and not prior_completion_accepted:
             raise RunIntegrityError(
                 "completed Attempt awaits domain acceptance; reconcile persisted evidence "
                 "before redispatch"

@@ -239,7 +239,7 @@ def test_commit_routing_decision_must_belong_to_commit_source_node_run() -> None
         update={"edge_decision_ids": (edge_decision_id(foreign_decision),)}
     )
 
-    with pytest.raises(ValueError, match="source NodeRun"):
+    with pytest.raises(ValueError, match="authoritative content"):
         DurableRunRecord(
             run=run,
             graph_state=state_with_foreign_decision,
