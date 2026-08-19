@@ -24,6 +24,16 @@ AttemptReconciler = Callable[[Attempt], Awaitable[None]]
 AttemptContextFactory = Callable[[Attempt, Any], Any]
 
 
+def _materialize_execution_context(
+    attempt: Attempt,
+    execution_context: Any,
+    context_factory: AttemptContextFactory | None,
+) -> Any:
+    if context_factory is None:
+        return execution_context
+    return context_factory(attempt, execution_context)
+
+
 @runtime_checkable
 class AttemptExecutionStore(AttemptLifecycleStore, Protocol):
     async def create_attempt(
@@ -129,10 +139,10 @@ class AttemptExecutionService:
             AttemptStatus.RUNNING,
             fencing_token=token,
         )
-        runtime_context = (
-            context_factory(attempt, execution_context)
-            if context_factory is not None
-            else execution_context
+        runtime_context = _materialize_execution_context(
+            attempt,
+            execution_context,
+            context_factory,
         )
 
         try:
