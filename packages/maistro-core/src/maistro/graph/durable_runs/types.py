@@ -59,8 +59,7 @@ def _validate_checkpoint_record(
     if checkpoint.graph_snapshot_hash != run.graph.content_hash:
         raise ValueError("TraversalCheckpoint graph snapshot must match the Run snapshot")
     if any(
-        node_run_id not in node_run_ids
-        for node_run_id in checkpoint.ordered_source_node_run_ids
+        node_run_id not in node_run_ids for node_run_id in checkpoint.ordered_source_node_run_ids
     ):
         raise ValueError("TraversalCheckpoint source NodeRun must be persisted")
     if checkpoint.traversal_checkpoint_id in checkpoints_by_id:
