@@ -180,6 +180,24 @@ class InvocationExecutionService:
         self._store = store
         self._effect_lock = asyncio.Lock()
 
+    async def latest_effect(
+        self,
+        *,
+        binding: Binding,
+        run_id: str,
+        node_run_id: str,
+        effect_key: str,
+    ) -> Invocation | None:
+        """Return the latest canonical Invocation for one logical effect identity."""
+
+        history = await self._store.list_effect(
+            run_id=run_id,
+            node_run_id=node_run_id,
+            binding_id=binding.binding_id,
+            effect_key=effect_key,
+        )
+        return history[-1] if history else None
+
     async def invoke(
         self,
         *,
@@ -257,6 +275,8 @@ class InvocationExecutionService:
             )
             raise
         except asyncio.CancelledError:
+            # Cancellation after provider dispatch has indeterminate external
+            # outcome unless the slot-specific adapter proves otherwise.
             await self._terminalize(
                 invocation,
                 InvocationStatus.UNKNOWN,
