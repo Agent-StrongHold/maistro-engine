@@ -35,6 +35,19 @@ def cosmic_config(source: str, tests: str, pythonpath: str) -> str:
     return f'''[cosmic-ray]\nmodule-path = "{source}"\ntimeout = 60.0\nexcluded-modules = []\ntest-command = "env PYTHONPATH={pythonpath} python -m pytest {tests} --timeout=20 -q -x"\n\n[cosmic-ray.distributor]\nname = "local"\n\n[cosmic-ray.distributor.local]\nworker-count = 4\n'''
 
 
+def survivor_identity(item: dict[str, object]) -> str:
+    """Return a stable-enough identity for a meaningful surviving mutant.
+
+    Cosmic Ray job IDs are session-specific. Location, operator, and before/after
+    source text are much more useful for detecting a previously killed behavior
+    becoming surviving across otherwise equivalent sessions.
+    """
+    return (
+        f"L{int(item['line'])}:{int(item['col'])} {item['operator']} | "
+        f"{item.get('source', '')} => {item.get('mutated', '')}"
+    )
+
+
 def build_checkpoint(
     source: str,
     tests: str,
@@ -49,6 +62,9 @@ def build_checkpoint(
     assert isinstance(adjusted, dict)
     raw = report["raw"]
     assert isinstance(raw, dict)
+    viable = report["viable"]
+    assert isinstance(viable, list)
+    survivor_ids = sorted(survivor_identity(item) for item in viable if isinstance(item, dict))
     return {
         "source": source,
         "source_hash": mutation_resume.tree_hash(source),
@@ -58,7 +74,8 @@ def build_checkpoint(
         "mutant_count": int(raw["total"]),
         "viable_mutants": int(adjusted["total"]),
         "killed_mutants": int(adjusted["killed"]),
-        "surviving_mutants": len(report["viable"]),
+        "surviving_mutants": len(viable),
+        "survivor_ids": survivor_ids,
         "non_viable_mutants": len(report["non_viable"]),
         "invalid_mutants": len(report["invalid"]),
         "undetermined_mutants": len(report["undetermined"]),
