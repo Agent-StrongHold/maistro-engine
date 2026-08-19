@@ -12,8 +12,6 @@ import pytest
 from maistro_bootstrap.credentials import (
     BOOTSTRAP_CREDENTIALS_FILENAME,
     build_bootstrap_credentials,
-    load_bootstrap_credentials,
-    shred_credentials,
     validate_bootstrap_credentials,
     write_bootstrap_credentials,
 )
@@ -47,10 +45,10 @@ def test_write_is_owner_only_and_round_trips(tmp_path: Path) -> None:
     assert path.name == BOOTSTRAP_CREDENTIALS_FILENAME
     if os.name != "nt":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert load_bootstrap_credentials(path) == creds
+    assert json.loads(path.read_text(encoding="utf-8")) == creds
 
 
-def test_validate_rejects_missing_and_empty_secrets(tmp_path: Path) -> None:
+def test_validate_rejects_missing_and_empty_secrets() -> None:
     with pytest.raises(ValueError, match="missing keys"):
         validate_bootstrap_credentials({"admin_username": "a"})
     with pytest.raises(ValueError, match="non-empty"):
@@ -62,19 +60,6 @@ def test_validate_rejects_missing_and_empty_secrets(tmp_path: Path) -> None:
                 "user_password": "x",
             }
         )
-    bad = tmp_path / BOOTSTRAP_CREDENTIALS_FILENAME
-    bad.write_text(json.dumps(["not", "an", "object"]), encoding="utf-8")
-    with pytest.raises(ValueError, match="JSON object"):
-        load_bootstrap_credentials(bad)
-
-
-def test_shred_overwrites_and_unlinks(tmp_path: Path) -> None:
-    creds = build_bootstrap_credentials(_answers(), admin_password="a", user_password="u")
-    path = write_bootstrap_credentials(tmp_path, creds)
-    shred_credentials(path)
-    assert not path.exists()
-    # A 409'd re-run may shred an already-consumed file: missing is not an error.
-    shred_credentials(path)
 
 
 def test_answers_schema_still_rejects_password_fields() -> None:

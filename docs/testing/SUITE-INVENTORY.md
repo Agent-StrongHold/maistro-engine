@@ -97,7 +97,7 @@ a duplicate approval or Invocation. Other suite counts are unchanged.
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
 | `packages/maistro-design/tests` | 156 | `ci.yml` |
-| `packages/maistro-bootstrap/tests` | 125 | `ci.yml` |
+| `packages/maistro-bootstrap/tests` | 124 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
 | `tests/` (root) | 663 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
