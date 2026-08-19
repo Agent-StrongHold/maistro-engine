@@ -107,6 +107,10 @@ def main(argv: list[str]) -> int:
         print("\nComplexity regressions vs. recorded baseline:", file=sys.stderr)
         for block, baseline_complexity in regressions[:50]:
             print(f"  {block.render()} (baseline: {baseline_complexity})", file=sys.stderr)
+    if stale:
+        print("\nStale baseline entries no longer found:", file=sys.stderr)
+        for key in stale[:50]:
+            print(f"  {key}", file=sys.stderr)
 
     return 1 if new_findings or regressions else 0
 

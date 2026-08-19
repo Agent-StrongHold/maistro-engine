@@ -11,8 +11,10 @@ from maistro.projects.scope_store import ProjectScopeStore
 from maistro.runs.lifecycle import transition_attempt, transition_node_run, transition_run
 from maistro.runs.model import (
     TERMINAL_RUN_STATUSES,
+    AcceptedNodeOutcome,
     Attempt,
     AttemptStatus,
+    ExecutionLease,
     GraphSnapshot,
     NodeRun,
     Run,
@@ -24,6 +26,8 @@ from maistro.runs.store import (
     NodeRunNotFound,
     RunIntegrityError,
     RunNotFound,
+    StaleExecutionFence,
+    validate_accepted_outcome_against_attempt,
 )
 
 if TYPE_CHECKING:
@@ -94,8 +98,6 @@ class SqliteRunStore:
         self._project_store = project_store
 
     async def ensure_schema(self) -> None:
-        """Create canonical execution tables and relational integrity constraints."""
-
         await self._conn.executescript(_SCHEMA)
         await self._conn.commit()
 
@@ -113,7 +115,6 @@ class SqliteRunStore:
         await self._validate_graph_scope(graph)
         if parent_node_run_id is not None and parent_run_id is None:
             raise RunIntegrityError("parent_node_run_id requires parent_run_id")
-
         if parent_run_id is not None:
             parent = await self._require_run(parent_run_id)
             if parent.workspace_id != graph.workspace_id:
@@ -129,7 +130,6 @@ class SqliteRunStore:
                     raise RunIntegrityError(
                         "parent_node_run_id does not belong to parent_run_id",
                     )
-
         run = Run(
             workspace_id=graph.workspace_id,
             project_id=graph.project_id,
@@ -177,11 +177,7 @@ class SqliteRunStore:
         run = await self._require_run(run_id)
         updated = transition_run(run, target, at=at, result=result, error=error)
         await self._update_payload(
-            "canonical_runs",
-            "run_id",
-            run_id,
-            updated.status.value,
-            updated.model_dump_json(),
+            "canonical_runs", "run_id", run_id, updated.status.value, updated.model_dump_json()
         )
         return updated
 
@@ -194,7 +190,6 @@ class SqliteRunStore:
             raise RunIntegrityError(
                 f"node_id {node_id!r} is not present in the Run Graph snapshot",
             )
-
         row = await self._fetchone(
             "SELECT COALESCE(MAX(ordinal), 0) FROM canonical_node_runs WHERE run_id = ?",
             (run_id,),
@@ -241,14 +236,21 @@ class SqliteRunStore:
         at: datetime | None = None,
         result: object | None = None,
         error: str | None = None,
+        accepted_outcome: AcceptedNodeOutcome | None = None,
     ) -> NodeRun:
         node_run = await self._require_node_run(node_run_id)
+        if accepted_outcome is not None:
+            if accepted_outcome.node_run_id != node_run_id:
+                raise RunIntegrityError("accepted outcome belongs to a different NodeRun")
+            attempt = await self._require_attempt(accepted_outcome.attempt_result.attempt_id)
+            validate_accepted_outcome_against_attempt(accepted_outcome, attempt)
         updated = transition_node_run(
             node_run,
             target,
             at=at,
             result=result,
             error=error,
+            accepted_outcome=accepted_outcome,
         )
         await self._update_payload(
             "canonical_node_runs",
@@ -267,11 +269,11 @@ class SqliteRunStore:
         executor_id: str = "",
         deadline_at: datetime | None = None,
         resume_checkpoint_id: str | None = None,
+        lease_holder: str | None = None,
     ) -> Attempt:
         node_run = await self._require_node_run(node_run_id)
         if node_run.status in TERMINAL_RUN_STATUSES:
             raise RunIntegrityError("cannot create Attempt under a terminal NodeRun")
-
         await self._conn.execute("BEGIN IMMEDIATE")
         try:
             active = await self._fetchone(
@@ -284,7 +286,6 @@ class SqliteRunStore:
                 raise ActiveAttemptExists(
                     f"NodeRun {node_run_id!r} already has an active Attempt",
                 )
-
             row = await self._fetchone(
                 """SELECT COALESCE(MAX(ordinal), 0) FROM canonical_attempts
                    WHERE node_run_id = ?""",
@@ -299,6 +300,16 @@ class SqliteRunStore:
                 deadline_at=deadline_at,
                 resume_checkpoint_id=resume_checkpoint_id,
             )
+            if lease_holder is not None:
+                lease = ExecutionLease(
+                    node_run_id=node_run_id,
+                    attempt_id=attempt.attempt_id,
+                    lease_epoch=ordinal,
+                    holder=lease_holder,
+                )
+                attempt = Attempt.model_validate(
+                    {**attempt.model_dump(mode="python"), "execution_lease": lease}
+                )
             await self._conn.execute(
                 """INSERT INTO canonical_attempts
                    (attempt_id, node_run_id, ordinal, status, payload)
@@ -359,8 +370,10 @@ class SqliteRunStore:
         result: object | None = None,
         error: str | None = None,
         metrics: dict[str, object] | None = None,
+        fencing_token: str | None = None,
     ) -> Attempt:
         attempt = await self._require_attempt(attempt_id)
+        self._validate_fence(attempt, fencing_token)
         updated = transition_attempt(
             attempt,
             target,
@@ -377,6 +390,14 @@ class SqliteRunStore:
             updated.model_dump_json(),
         )
         return updated
+
+    @staticmethod
+    def _validate_fence(attempt: Attempt, fencing_token: str | None) -> None:
+        lease = attempt.execution_lease
+        if lease is not None and fencing_token != lease.fencing_token:
+            raise StaleExecutionFence(
+                f"Attempt {attempt.attempt_id!r} update rejected by execution fence"
+            )
 
     async def _validate_graph_scope(self, graph: Graph) -> None:
         project = await self._project_store.get(graph.project_id)
