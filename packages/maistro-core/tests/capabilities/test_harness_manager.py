@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any
 
+import pytest
+
 from maistro.agents.spec.agent_spec import AgentRole, AgentSpec
 from maistro.capabilities.binding import Binding
 from maistro.capabilities.bootstrap import default_capability_registry
 from maistro.capabilities.governed_invocation import GovernedInvocationExecutionService
 from maistro.capabilities.harness_manager import HarnessSessionManager
 from maistro.capabilities.invocation import InMemoryInvocationStore, InvocationExecutionService
-from maistro.capabilities.slots.harness_runner import SLOT_NAME
+from maistro.capabilities.slots.harness_runner import HarnessInputBlocked, SLOT_NAME
 from maistro.capabilities.types import Unavailable
 from maistro.events.envelope import InMemoryEventStore
 from maistro.policy import AfterCountRule, SequencePolicyEngine
@@ -112,9 +114,6 @@ async def test_full_session_lifecycle_with_safety():
 
     resp = await mgr.send(sid, [{"role": "user", "content": "hello"}])
     assert not isinstance(resp, Unavailable) and resp["content"] == "ok"
-
-    import pytest
-    from maistro.capabilities.slots.harness_runner import HarnessInputBlocked
 
     with pytest.raises(HarnessInputBlocked):
         await mgr.send(sid, [{"role": "user", "content": "do EVIL"}])
