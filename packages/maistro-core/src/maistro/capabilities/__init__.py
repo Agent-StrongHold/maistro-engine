@@ -1,12 +1,23 @@
-"""Capability framework: slots, providers, registry, discovery (SPEC-184)."""
+"""Capability framework: slots, providers, bindings, invocations, and discovery."""
 
 from __future__ import annotations
 
+from maistro.capabilities.binding import Binding, ResolvedBinding
 from maistro.capabilities.bootstrap import default_capability_registry
 from maistro.capabilities.discovery import discover_into
 from maistro.capabilities.harness_manager import HarnessSessionManager
 from maistro.capabilities.http import AsyncHttp
 from maistro.capabilities.http_client import HttpxAsyncHttp
+from maistro.capabilities.invocation import (
+    CapabilityUnavailable,
+    EffectNotApplied,
+    InMemoryInvocationStore,
+    Invocation,
+    InvocationExecutionService,
+    InvocationStatus,
+    UnsafeEffectRetry,
+)
+from maistro.capabilities.invocation_store import SqliteInvocationStore
 from maistro.capabilities.protocols import CapabilityProvider
 from maistro.capabilities.providers.harness_safety import (
     ActionGate,
@@ -44,21 +55,31 @@ __all__ = [
     "ActionGate",
     "AllowAllGate",
     "AsyncHttp",
+    "Binding",
     "CapabilityProvider",
     "CapabilityRegistry",
+    "CapabilityUnavailable",
+    "EffectNotApplied",
     "FallbackPolicy",
     "GuardedHarnessRunner",
     "HarnessInputBlocked",
     "HarnessRunner",
     "HarnessSessionManager",
     "HttpxAsyncHttp",
+    "InMemoryInvocationStore",
+    "Invocation",
+    "InvocationExecutionService",
+    "InvocationStatus",
     "OpencodeHarnessRunner",
     "ProviderHealth",
+    "ResolvedBinding",
     "SafeHarnessRunner",
     "SandboxExec",
     "SlotSpec",
+    "SqliteInvocationStore",
     "SubprocessHarnessRunner",
     "Unavailable",
+    "UnsafeEffectRetry",
     "default_capability_registry",
     "discover_into",
     "opencode_microvm_factory",
