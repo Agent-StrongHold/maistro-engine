@@ -21,6 +21,17 @@ from maistro.runs.store import RunIntegrityError
 from maistro.runtime import ExecutionCallable, ExecutionRuntime, RuntimeDeadlineExceeded
 
 AttemptReconciler = Callable[[Attempt], Awaitable[None]]
+AttemptContextFactory = Callable[[Attempt, Any], Any]
+
+
+def _materialize_execution_context(
+    attempt: Attempt,
+    execution_context: Any,
+    context_factory: AttemptContextFactory | None,
+) -> Any:
+    if context_factory is None:
+        return execution_context
+    return context_factory(attempt, execution_context)
 
 
 @runtime_checkable
@@ -78,6 +89,7 @@ class AttemptExecutionService:
         timeout_s: float | None = None,
         resume_checkpoint_id: str | None = None,
         reconcile_logical: bool = True,
+        context_factory: AttemptContextFactory | None = None,
         prior_completion_accepted: bool = False,
     ) -> Attempt:
         """Create, run, terminalize, and optionally defer successful reconciliation.
@@ -87,6 +99,11 @@ class AttemptExecutionService:
         reconciliation of cancellation, timeout, or failure. A deferred
         completion must be accepted before redispatch so recovery cannot repeat
         an external side effect whose physical outcome is already durable.
+
+        ``context_factory`` runs only after the Attempt has been persisted and
+        marked running. It lets a domain attach canonical ``attempt_id`` and
+        related correlation data to its execution context without teaching the
+        generic Runtime about Graph or capability semantics.
 
         ``prior_completion_accepted=True`` is a narrow continuation escape hatch
         for domains that can prove the latest completed Attempt was previously
@@ -122,11 +139,16 @@ class AttemptExecutionService:
             AttemptStatus.RUNNING,
             fencing_token=token,
         )
+        runtime_context = _materialize_execution_context(
+            attempt,
+            execution_context,
+            context_factory,
+        )
 
         try:
             result = await self._runtime.execute(
                 work_item,
-                execution_context,
+                runtime_context,
                 execution_id=attempt.attempt_id,
                 executor=executor,
                 timeout_s=timeout_s,
@@ -225,4 +247,9 @@ class AttemptExecutionService:
             await self._after_reconcile(attempt.model_copy(deep=True))
 
 
-__all__ = ["AttemptExecutionService", "AttemptExecutionStore", "AttemptReconciler"]
+__all__ = [
+    "AttemptContextFactory",
+    "AttemptExecutionService",
+    "AttemptExecutionStore",
+    "AttemptReconciler",
+]

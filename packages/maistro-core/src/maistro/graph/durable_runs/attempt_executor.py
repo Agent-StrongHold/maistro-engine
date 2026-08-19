@@ -13,10 +13,10 @@ from typing import Any
 
 from maistro.graph.definitions import Graph
 from maistro.graph.execution_state import GraphExecutionState
-from maistro.graph.nodes.base import NodeResult
+from maistro.graph.nodes.base import NodeContext, NodeResult
 from maistro.runs.execution import AttemptExecutionService
 from maistro.runs.lifecycle import transition_run
-from maistro.runs.model import AttemptStatus, NodeRun, RunStatus
+from maistro.runs.model import Attempt, AttemptStatus, NodeRun, RunStatus
 from maistro.runs.reconciliation import AttemptLifecycleReconciler
 from maistro.runtime import ExecutionRuntime, PythonExecutionRuntime
 
@@ -289,7 +289,7 @@ async def _execute_frontier(
     execution_store: DurableRunExecutionStore,
 ) -> tuple[Any, ...]:
     """Execute/recover one complete frontier concurrently through canonical Attempts."""
-    prepared: list[tuple[str, Any, NodeRun, Any, Any, dict[str, Any]]] = []
+    prepared: list[tuple[str, Any, NodeRun, NodeContext, Any, dict[str, Any]]] = []
     for node_id, node_run in zip(frontier, node_runs, strict=True):
         spec = traversal._node_spec(graph, node_id)
         assert spec is not None
@@ -302,7 +302,7 @@ async def _execute_frontier(
         node_id: str,
         spec: Any,
         node_run: NodeRun,
-        ctx: Any,
+        ctx: NodeContext,
         node: Any,
         inputs: dict[str, Any],
     ) -> Any:
@@ -332,6 +332,16 @@ async def _execute_frontier(
             raw_result = result
             return result
 
+        def context_for_attempt(attempt: Attempt, base: Any) -> NodeContext:
+            if not isinstance(base, NodeContext):
+                raise TypeError("durable Graph execution requires NodeContext")
+            return base.model_copy(
+                update={
+                    "node_run_id": node_run.node_run_id,
+                    "attempt_id": attempt.attempt_id,
+                }
+            )
+
         await execution_service.execute(
             node_run.node_run_id,
             inputs,
@@ -339,6 +349,7 @@ async def _execute_frontier(
             executor=executor,
             executor_id=str(getattr(node, "kind", None) or spec.node_type or node_id),
             reconcile_logical=False,
+            context_factory=context_for_attempt,
             prior_completion_accepted=prior_completion_accepted,
         )
         if raw_result is None:
