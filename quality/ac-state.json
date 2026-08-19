@@ -11,18 +11,18 @@
   "totals": {
     "specs": 174,
     "specs_with_ac_heading": 166,
-    "specs_with_ac_ids": 14,
+    "specs_with_ac_ids": 15,
     "specs_awaiting_retrofit": 152,
-    "criteria_declared": 107,
-    "criteria_annotated": 16,
-    "markers_found": 47,
+    "criteria_declared": 146,
+    "criteria_annotated": 55,
+    "markers_found": 86,
     "markers_without_criterion": 2,
     "criteria_claimed_but_unproven": 0,
-    "gherkin_criteria": 24,
-    "scenarios_without_ac_tag": 224,
+    "gherkin_criteria": 63,
+    "scenarios_without_ac_tag": 185,
     "gherkin_parse_errors": 0,
-    "completion_claims_contradicted": 4,
-    "completion_claims_unverifiable": 73
+    "completion_claims_contradicted": 6,
+    "completion_claims_unverifiable": 71
   },
   "markers_without_criterion": [
     "ADR-070126-6386/persist",
@@ -45,6 +45,13 @@
       "file": "docs/specs/SPEC-070226-b234-events-triggers-reactor.md"
     },
     {
+      "id": "SPEC-160",
+      "kind": "spec",
+      "declared_status": "Implemented",
+      "measured_tier": "passing",
+      "file": "docs/specs/SPEC-160-maistro-design-acceptance-criteria.md"
+    },
+    {
       "id": "SPEC-201",
       "kind": "spec",
       "declared_status": "Implemented",
@@ -57,6 +64,13 @@
       "declared_status": "Implemented",
       "measured_tier": "declared",
       "file": "docs/specs/SPEC-228-observability-baseline-gaps.md"
+    },
+    {
+      "id": "ADR-061",
+      "kind": "adr",
+      "declared_status": "Implemented",
+      "measured_tier": "passing",
+      "file": "docs/adr/ADR-061-maistro-design-package.md"
     }
   ],
   "completion_claims_unverifiable": [
@@ -192,13 +206,6 @@
       "declared_status": "Implemented",
       "measured_tier": "none",
       "file": "docs/specs/SPEC-080226-4c1f-log-redaction-wiring.md"
-    },
-    {
-      "id": "SPEC-160",
-      "kind": "spec",
-      "declared_status": "Implemented",
-      "measured_tier": "none",
-      "file": "docs/specs/SPEC-160-maistro-design-acceptance-criteria.md"
     },
     {
       "id": "SPEC-206",
@@ -500,13 +507,6 @@
       "declared_status": "Implemented",
       "measured_tier": "unmeasured",
       "file": "docs/adr/ADR-057-memory-exposure-mode.md"
-    },
-    {
-      "id": "ADR-061",
-      "kind": "adr",
-      "declared_status": "Implemented",
-      "measured_tier": "unmeasured",
-      "file": "docs/adr/ADR-061-maistro-design-package.md"
     },
     {
       "id": "ADR-062326-616c",
@@ -2713,59 +2713,527 @@
         "- maistro-engine#ADR-061"
       ],
       "has_ac_heading": false,
-      "criteria_total": 0,
-      "annotated": 0,
-      "gherkin_criteria": 0,
+      "criteria_total": 39,
+      "annotated": 39,
+      "gherkin_criteria": 39,
       "gherkin_parse_errors": [],
-      "scenarios_without_ac_tag": [
-        "min() is monotone \u2014 trust can only decrease",
-        "skull is the global minimum",
-        "min() is commutative",
-        "ordering is T0 > T1 > T2 > T3 > SKULL",
-        "Added pattern is detected in matching content",
-        "Non-matching content is not banned",
-        "list_patterns returns all added patterns",
-        "Enqueued record appears in pending()",
-        "Resolved record is no longer pending",
-        "Resolving unknown id raises ValueError",
-        "load_builtins populates at least 9 skills",
-        "All 7 SkillMode values have at least one built-in (excluding video and audio for v0)",
-        "Featured skills have non-empty discovery forms",
-        "t0 skill cannot be overwritten by t2 skill",
-        "delete returns False for unknown slug",
-        "list_by_mode returns only skills with matching mode",
-        "Registered system is retrievable by slug",
-        "get() returns None for unknown slug",
-        "delete returns False for unknown slug",
-        "list_all returns all registered systems",
-        "from_dict with colors list populates ColorToken list",
-        "from_dict with empty colors produces empty list",
-        "from_markdown extracts slug from front-matter",
-        "run_discovery returns serialisable list of field dicts",
-        "run_discovery raises SkillNotFoundError for unknown slug",
-        "generate returns DesignProject on happy path",
-        "generate sets trust_tier to minimum of all inputs",
-        "generate raises DiscoveryIncompleteError for missing required field",
-        "generate raises DesignSystemNotFoundError for unknown system slug",
-        "generate raises IncompatibleDesignSystemError",
-        "generate raises SkillModeError for image-mode skill with no image_gen",
-        "Warden-flagged discovery response raises TrustBannedError",
-        "Every scanned input creates a TrustReviewRecord",
-        "context_trust_tier is contaminated by t3 discovery responses",
-        "DesignOrchestrateNode registered under correct kind",
-        "DesignOrchestrateNode.input_schema is a valid Pydantic model",
-        "InMemoryDesignSkillRegistry satisfies DesignSkillRegistry protocol",
-        "InMemoryDesignSystemRegistry satisfies DesignSystemRegistry protocol",
-        "Package is importable and exposes public API"
-      ],
+      "scenarios_without_ac_tag": [],
       "distribution": {
         "declared": 0,
         "covered": 0,
-        "passing": 0,
-        "reachable": 0
+        "passing": 2,
+        "reachable": 37
       },
-      "tier": "none",
-      "criteria": []
+      "tier": "passing",
+      "criteria": [
+        {
+          "id": "SPEC-160/AC-1",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "min() is monotone \u2014 trust can only decrease"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-2",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "skull is the global minimum"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-3",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "min() is commutative"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-4",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "ordering is T0 > T1 > T2 > T3 > SKULL"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-5",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Added pattern is detected in matching content"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-6",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Non-matching content is not banned"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-7",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "list_patterns returns all added patterns"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-8",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Enqueued record appears in pending()"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-9",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Resolved record is no longer pending"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-10",
+          "claimed": false,
+          "module": "maistro_design.trust",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Resolving unknown id raises ValueError"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-11",
+          "claimed": false,
+          "module": "maistro_design.skills.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "load_builtins populates at least 9 skills"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-12",
+          "claimed": false,
+          "module": "maistro_design.skills.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "All 7 SkillMode values have at least one built-in (excluding video and audio for v0)"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-13",
+          "claimed": false,
+          "module": "maistro_design.skills.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Featured skills have non-empty discovery forms"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-14",
+          "claimed": false,
+          "module": "maistro_design.skills.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "t0 skill cannot be overwritten by t2 skill"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-15",
+          "claimed": false,
+          "module": "maistro_design.skills.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "delete returns False for unknown slug"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-16",
+          "claimed": false,
+          "module": "maistro_design.skills.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "list_by_mode returns only skills with matching mode"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-17",
+          "claimed": false,
+          "module": "maistro_design.systems.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Registered system is retrievable by slug"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-18",
+          "claimed": false,
+          "module": "maistro_design.systems.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "get() returns None for unknown slug"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-19",
+          "claimed": false,
+          "module": "maistro_design.systems.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "delete returns False for unknown slug"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-20",
+          "claimed": false,
+          "module": "maistro_design.systems.registry",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "list_all returns all registered systems"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-21",
+          "claimed": false,
+          "module": "maistro_design.systems.loader",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "from_dict with colors list populates ColorToken list"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-22",
+          "claimed": false,
+          "module": "maistro_design.systems.loader",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "from_dict with empty colors produces empty list"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-23",
+          "claimed": false,
+          "module": "maistro_design.systems.loader",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "from_markdown extracts slug from front-matter"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-24",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "run_discovery returns serialisable list of field dicts"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-25",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "run_discovery raises SkillNotFoundError for unknown slug"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-26",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "generate returns DesignProject on happy path"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-27",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "generate sets trust_tier to minimum of all inputs"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-28",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "generate raises DiscoveryIncompleteError for missing required field"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-29",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "generate raises DesignSystemNotFoundError for unknown system slug"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-30",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "generate raises IncompatibleDesignSystemError"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-31",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "generate raises SkillModeError for image-mode skill with no image_gen"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-32",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Warden-flagged discovery response raises TrustBannedError"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-33",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Every scanned input creates a TrustReviewRecord"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-34",
+          "claimed": false,
+          "module": "maistro_design.engine",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "context_trust_tier is contaminated by t3 discovery responses"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-35",
+          "claimed": false,
+          "module": "maistro_design.nodes",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "DesignOrchestrateNode registered under correct kind"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "SPEC-160/AC-36",
+          "claimed": false,
+          "module": "maistro_design.nodes",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "DesignOrchestrateNode.input_schema is a valid Pydantic model"
+          ],
+          "rung": "passing"
+        },
+        {
+          "id": "SPEC-160/AC-37",
+          "claimed": false,
+          "module": "maistro_design.protocols",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "InMemoryDesignSkillRegistry satisfies DesignSkillRegistry protocol"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-38",
+          "claimed": false,
+          "module": "maistro_design.protocols",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "InMemoryDesignSystemRegistry satisfies DesignSystemRegistry protocol"
+          ],
+          "rung": "reachable"
+        },
+        {
+          "id": "SPEC-160/AC-39",
+          "claimed": false,
+          "module": "maistro_design",
+          "covered_by": [
+            "packages/maistro-design/tests/test_design.py"
+          ],
+          "form": "gherkin",
+          "scenario": [
+            "Package is importable and exposes public API"
+          ],
+          "rung": "reachable"
+        }
+      ]
     },
     {
       "id": "SPEC-175",
@@ -6364,7 +6832,7 @@
       "specs": [
         "SPEC-160"
       ],
-      "measurable_specs": 0,
+      "measurable_specs": 1,
       "own_criteria": 0,
       "scenarios_without_ac_tag": [
         "TrustTier.min() is monotonically decreasing",
@@ -6376,7 +6844,7 @@
         "DesignOrchestrateNode is registered in the DAG registry"
       ],
       "gherkin_parse_errors": [],
-      "tier": "unmeasured"
+      "tier": "passing"
     },
     {
       "id": "ADR-061526-f383",

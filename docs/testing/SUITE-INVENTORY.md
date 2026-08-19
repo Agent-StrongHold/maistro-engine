@@ -102,7 +102,7 @@ a duplicate approval or Invocation. Other suite counts are unchanged.
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
 | `packages/maistro-turing/tests` | 176 | `ci.yml` |
-| `packages/maistro-design/tests` | 156 | `ci.yml` |
+| `packages/maistro-design/tests` | 161 | `ci.yml` |
 | `packages/maistro-bootstrap/tests` | 124 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
