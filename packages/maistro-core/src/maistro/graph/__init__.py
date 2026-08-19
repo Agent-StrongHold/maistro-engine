@@ -8,6 +8,7 @@ from maistro.graph.definitions import (
     NodeTemplate,
     TemplateProvenance,
 )
+from maistro.graph.execution_state import GraphEdgeDecision, GraphExecutionState
 from maistro.graph.executor import run_graph
 from maistro.graph.harness_executor import HarnessExecutionError, HarnessNodeExecutor
 from maistro.graph.node import NodeExecutor
@@ -19,6 +20,13 @@ from maistro.graph.node_types import (
     build_default_node_type_registry,
 )
 from maistro.graph.optimizer import GraphOptimizer
+from maistro.graph.traversal_commit import (
+    TraversalCheckpoint,
+    TraversalCommit,
+    accepted_outcome_id,
+    edge_decision_id,
+    graph_state_hash,
+)
 from maistro.graph.types import (
     AgentRole,
     CodeOutput,
@@ -56,6 +64,8 @@ __all__ = [
     "GraphBlackboard",
     "GraphConfig",
     "GraphEdge",
+    "GraphEdgeDecision",
+    "GraphExecutionState",
     "GraphNodeResult",
     "GraphOptimizer",
     "GraphTask",
@@ -81,6 +91,11 @@ __all__ = [
     "SubTask",
     "TemplateProvenance",
     "ToolEvaluation",
+    "TraversalCheckpoint",
+    "TraversalCommit",
+    "accepted_outcome_id",
     "build_default_node_type_registry",
+    "edge_decision_id",
+    "graph_state_hash",
     "run_graph",
 ]

@@ -129,7 +129,6 @@ jobs:
   hive-conductor-e2e-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Run PM workflow Playwright UI e2e against a live hive-conductor

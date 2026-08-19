@@ -46,15 +46,40 @@ characterization. The convergence work adds 44 maistro-core node IDs covering
 ExecutionRuntime mechanics, Project to Workspace compatibility,
 WorkspaceMembership role semantics, the live Persona model, and
 one-Persona-per-Workspace persistence. Stream 5 adds four maistro-core node IDs.
+Graph routing parity in #402 adds 10 maistro-core node IDs.
+Graph execution-state frontier coverage in #403 adds nine maistro-core node IDs.
+Durable graph canonical-persistence convergence in #416 replaces legacy
+DurableRun/DurableNode lifecycle tests with canonical Run/NodeRun coverage,
+for a net reduction of six maistro-core node IDs while retaining the
+durability, routing, HITL, restart, mutation, and persistence invariants.
+Real durable Graph frontier execution adds six maistro-core node IDs covering
+concurrent fan-out, deterministic NodeRun ordering, source-correlated routing,
+and fan-in input merging.
+Durable Attempt/Runtime-boundary convergence adds nine maistro-core node IDs
+covering Attempt ownership, shared durable persistence, deferred domain
+reconciliation, real frontier execution through Attempt execution IDs,
+cancellation terminalization across Attempt, NodeRun, and Run, and recovery by
+appending a second Attempt under the same logical NodeRun.
+Accepted AttemptResult/NodeRun outcome separation adds nine maistro-core node
+IDs. Durable execution-lease fencing adds five more maistro-core node IDs.
+Authoritative TraversalCommit/TraversalCheckpoint contracts add eleven
+maistro-core node IDs.
+PR #447 adds six maistro-core node IDs covering checkpoint-bridged traversal
+history, reuse of frozen execution state across transitions, and rejection of
+execution continuation after an accepted logical completion.
 Stream 1 adds 99 maistro-core node IDs for the canonical Project,
 Run/NodeRun/Attempt, runtime, persistence, and execution-service contracts.
 Stream 6 adds five provider-parity node IDs.
-Stream 3 authorization/resource-scope coverage adds 18 maistro-core node IDs.
+Stream 3 authorization/resource-scope coverage adds 19 maistro-core node IDs.
 Stream 7 product-adapter parity adds four maistro-core and two maistro-canvas
 node IDs.
 Stream 2 event, checkpoint, and outbox coverage adds 51 maistro-core node IDs.
 The repo-task wrapper compatibility regression adds one maistro-evolve node ID.
 Reachability production-root coverage adds four root-suite node IDs.
+Mutation scheduler/history coverage adds ten root-suite node IDs.
+Mutation continuation and repository-health aggregation add fifteen root-suite
+node IDs, including checkpoint cache stability, complete-row-only baseline
+aggregation, and single-tool-fingerprint sweep validation.
 Workspace creation was deliberately moved out of the scope-gated parametrized
 Hive cases and into the ordinary product-surface check, so Hive loses one
 collected node ID while retaining the intended assertion. Other suite counts are
@@ -62,7 +87,7 @@ unchanged.
 
 | Suite | Node IDs | Runs in CI |
 |---|---:|---|
-| `packages/maistro-core/tests` | 6117 | `ci.yml` |
+| `packages/maistro-core/tests` | 6201 | `ci.yml` |
 | `packages/maistro-evolve/tests` | 629 | `ci.yml` |
 | `packages/maistro-rsi/tests` | 427 | `ci.yml` |
 | `packages/maistro-server/tests` | 185 | `ci.yml` |
@@ -71,9 +96,9 @@ unchanged.
 | `packages/maistro-bootstrap/tests` | 123 | `ci.yml` |
 | `packages/maistro-canvas/tests` | 124 | `ci.yml` |
 | `packages/maistro-turing/backend/tests` | 26 | `ci.yml` (own invocation) |
-| `tests/` (root) | 616 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
+| `tests/` (root) | 641 | `ci.yml` (minus `tests/tools/registry`, which `registry.yml` owns) |
 | `formal/` | 417 | `formal-conformance.yml` + `quality.yml` Pillar 2 |
-| `packages/hive-conductor/backend/tests` | 1230 | `ci.yml` (bare python) |
+| `packages/hive-conductor/backend/tests` | 1233 | `ci.yml` (bare python) |
 | `packages/hive-conductor/tests/e2e` | 24 | `ci.yml` `hive-conductor-e2e` (docker-compose) |
 
 ## `packages/hive-conductor/tests/e2e` — read before "wiring it in"

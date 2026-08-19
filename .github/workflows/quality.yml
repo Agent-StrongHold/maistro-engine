@@ -200,7 +200,11 @@ jobs:
           # AuthorizationResolver.can_view_resource. Each is exercised by the
           # authorization tests. Vulture scans production only and cannot see
           # protocol dispatch, Pydantic hooks, or test-only consumers.
-          VULTURE_BASELINE: 1423
+          # Execution fencing adds +2 public persisted lease evidence fields
+          # (`lease_epoch` and `holder`) that are intentionally retained for
+          # recovery/fencing provenance and are exercised through persistence
+          # and tests even though vulture sees no direct production read yet.
+          VULTURE_BASELINE: 1425
         run: |
           # `third_party/` is vendored upstream source (Google's IFEval verifier,
           # BFCL's AST checker), kept byte-faithful so the benchmarks run the
