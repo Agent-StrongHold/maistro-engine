@@ -1,4 +1,3 @@
-# ruff: noqa: SLF001
 """Explicit Vulture references for framework/public surfaces in maistro-core.
 
 This module is quality-scanner input only. ``maistro-core`` packages only
