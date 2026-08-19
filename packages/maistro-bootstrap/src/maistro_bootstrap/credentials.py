@@ -6,6 +6,13 @@ credentials collected by the wizard travel through exactly one file:
 artifacts, consumed once by the installer's bootstrap step (POST
 /v1/setup/complete) and then shredded (SPEC-072726-3439 Phases 1/3).
 
+This module owns only the *staging* half. Consumption and shredding live in
+`install.sh` (`bootstrap_first_run` / `shred_file`), which posts the file
+straight to the API with `curl --data-binary` and shreds it on every terminal
+path — success, 409-already-provisioned, and setup-already-complete alike. It
+never needs to parse the file in Python, so there is deliberately no reader or
+shredder here to drift out of step with it.
+
 Headless installs stage the same file themselves and point
 MAISTRO_BOOTSTRAP_CREDENTIALS_FILE at it — same shape, same
 consume-once-and-shred semantics.
@@ -74,29 +81,3 @@ def write_bootstrap_credentials(target_dir: Path, creds: dict[str, Any]) -> Path
     if os.name != "nt":
         path.chmod(stat.S_IRUSR | stat.S_IWUSR)
     return path
-
-
-def load_bootstrap_credentials(path: Path) -> dict[str, Any]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError("bootstrap credentials file must contain a JSON object")
-    return validate_bootstrap_credentials(data)
-
-
-def shred_credentials(path: Path) -> None:
-    """Best-effort secure delete: overwrite with zeros, then unlink.
-
-    Overwriting is not a guarantee on journaling/COW filesystems, but it beats
-    leaving plaintext passwords recoverable via a plain unlink. Missing file
-    is not an error — a 409'd re-run may shred an already-consumed file.
-    """
-    if not path.exists():
-        return
-    try:
-        size = path.stat().st_size
-        with open(path, "r+b") as fh:
-            fh.write(b"\0" * size)
-            fh.flush()
-            os.fsync(fh.fileno())
-    finally:
-        path.unlink(missing_ok=True)
