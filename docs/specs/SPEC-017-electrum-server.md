@@ -6,8 +6,10 @@ kind: spec
 status: Proposed
 created: 2026-04-25
 substrate:
+  - maistro-engine#ADR-025
   - maistro-engine#ADR-028
-implements: []
+implements:
+  - maistro-engine#ADR-025
 related: []
 supersedes: []
 blocks: []
